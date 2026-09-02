@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-02-my-network-v1-design.md`
 
-## Release verification snapshot — 2026-09-02
+## Release verification snapshot — 2026-09-03
 
 - Latest feature-branch Application CI passed lint, typecheck, unit tests, and the Next.js production build.
 - Live Supabase Network migrations are applied through `20260902185658_add_network_notification_actor_index`.
