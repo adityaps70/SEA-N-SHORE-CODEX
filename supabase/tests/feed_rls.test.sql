@@ -32,8 +32,7 @@ set profile_type = 'seafarer',
       else 'member-b'
     end,
     headline = 'Maritime professional',
-    summary = 'Completed profile created only for feed row level security tests.',
-    onboarding_completed_at = now()
+    summary = 'Completed profile created only for feed row level security tests.'
 where id in (
   '11111111-1111-4111-8111-111111111111',
   '22222222-2222-4222-8222-222222222222'
@@ -44,6 +43,13 @@ values
   ('11111111-1111-4111-8111-111111111111', 'Chief Officer'),
   ('22222222-2222-4222-8222-222222222222', 'Second Engineer')
 on conflict (user_id) do update set rank = excluded.rank;
+
+update public.profiles
+set onboarding_completed_at = now()
+where id in (
+  '11111111-1111-4111-8111-111111111111',
+  '22222222-2222-4222-8222-222222222222'
+);
 
 set local role authenticated;
 select set_config('request.jwt.claim.role', 'authenticated', true);
