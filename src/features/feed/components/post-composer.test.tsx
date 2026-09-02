@@ -4,6 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import type { OwnProfile } from '@/features/profiles/types'
 import { PostComposer } from './post-composer'
 
+const refresh = vi.fn()
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh }),
+}))
+
 vi.mock('../actions', () => ({
   createPost: vi.fn(async () => ({ ok: true })),
 }))
