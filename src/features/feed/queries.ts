@@ -53,6 +53,14 @@ export function buildFeedCursorFilter(cursor: FeedCursor) {
   return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
 }
 
+export function feedNextCursor(
+  pageRows: readonly Pick<FeedPostRow, 'created_at' | 'id'>[],
+  hasMore: boolean,
+): FeedCursor | null {
+  const tail = pageRows.at(-1)
+  return hasMore && tail ? { createdAt: tail.created_at, id: tail.id } : null
+}
+
 export function feedRowAuthorId(row: Pick<FeedPostRow, 'profiles'>) {
   const author = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles
   return author?.id ?? ''
@@ -79,9 +87,7 @@ async function hydratePosts(
     supabase.from('post_comments').select(COMMENT_SELECT).in('post_id', postIds).order('created_at', { ascending: true }),
   ])
 
-  if (liked.error || saved.error || votes.error || comments.error) {
-    throw new Error('Unable to load your feed activity.')
-  }
+  if (liked.error || saved.error || votes.error || comments.error) throw new Error('Unable to load your feed activity.')
 
   const viewer: FeedViewerState = {
     likedPostIds: new Set((liked.data ?? []).map((item) => item.post_id)),
@@ -134,15 +140,12 @@ export async function getFeedPage(input: FeedRequest = {}): Promise<FeedPage> {
   const rows = (data ?? []) as unknown as FeedPostRow[]
   const hasMore = rows.length > parsed.limit
   const pageRows = rows.slice(0, parsed.limit)
-  const tail = pageRows.at(-1)
+  const nextCursor = feedNextCursor(pageRows, hasMore)
   const preferredAuthorIds = await getPreferredFeedAuthorIds()
   const displayRows = prioritizeRecentFeedRows(pageRows, preferredAuthorIds, feedRowAuthorId)
   const posts = await hydratePosts(displayRows, user.id, supabase)
 
-  return {
-    posts,
-    nextCursor: hasMore && tail ? { createdAt: tail.created_at, id: tail.id } : null,
-  }
+  return { posts, nextCursor }
 }
 
 export async function getPostById(id: string): Promise<FeedPost | null> {
