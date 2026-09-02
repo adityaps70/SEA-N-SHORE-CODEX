@@ -9,17 +9,12 @@ export type NetworkActionResult = { ok: true } | { ok: false; error: string }
 
 function networkError(message?: string) {
   switch (message) {
-    case 'network_request_exists':
-      return 'Request already sent.'
-    case 'network_already_connected':
-      return 'You’re already connected.'
+    case 'network_request_exists': return 'Request already sent.'
+    case 'network_already_connected': return 'You’re already connected.'
     case 'network_interaction_unavailable':
-    case 'network_action_not_allowed':
-      return 'This interaction is not available.'
-    case 'network_self_interaction':
-      return 'You cannot perform this action on your own profile.'
-    default:
-      return 'We could not update this relationship. Please try again.'
+    case 'network_action_not_allowed': return 'This interaction is not available.'
+    case 'network_self_interaction': return 'You cannot perform this action on your own profile.'
+    default: return 'We could not update this relationship. Please try again.'
   }
 }
 
@@ -61,38 +56,38 @@ async function connectionAction(
   return { ok: true }
 }
 
-export function followProfile(targetId: string) {
+export async function followProfile(targetId: string) {
   return targetAction('follow_profile', targetId)
 }
 
-export function unfollowProfile(targetId: string) {
+export async function unfollowProfile(targetId: string) {
   return targetAction('unfollow_profile', targetId)
 }
 
-export function sendConnectionRequest(targetId: string) {
+export async function sendConnectionRequest(targetId: string) {
   return targetAction('send_connection_request', targetId)
 }
 
-export function cancelConnectionRequest(connectionId: string) {
+export async function cancelConnectionRequest(connectionId: string) {
   return connectionAction('cancel_connection_request', connectionId)
 }
 
-export function acceptConnectionRequest(connectionId: string) {
+export async function acceptConnectionRequest(connectionId: string) {
   return connectionAction('accept_connection_request', connectionId)
 }
 
-export function declineConnectionRequest(connectionId: string) {
+export async function declineConnectionRequest(connectionId: string) {
   return connectionAction('decline_connection_request', connectionId)
 }
 
-export function removeConnection(connectionId: string) {
+export async function removeConnection(connectionId: string) {
   return connectionAction('remove_connection', connectionId)
 }
 
-export function blockProfile(targetId: string) {
+export async function blockProfile(targetId: string) {
   return targetAction('block_profile', targetId)
 }
 
-export function unblockProfile(targetId: string) {
+export async function unblockProfile(targetId: string) {
   return targetAction('unblock_profile', targetId)
 }
