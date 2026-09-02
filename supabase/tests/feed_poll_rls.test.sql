@@ -32,8 +32,20 @@ set profile_type = 'maritime_professional',
       else 'member-b-poll'
     end,
     headline = 'Maritime professional',
-    summary = 'Completed profile created only for feed poll row level security tests.',
-    onboarding_completed_at = now()
+    summary = 'Completed profile created only for feed poll row level security tests.'
+where id in (
+  '11111111-1111-4111-8111-111111111111',
+  '22222222-2222-4222-8222-222222222222'
+);
+
+insert into public.maritime_profiles (user_id)
+values
+  ('11111111-1111-4111-8111-111111111111'),
+  ('22222222-2222-4222-8222-222222222222')
+on conflict (user_id) do nothing;
+
+update public.profiles
+set onboarding_completed_at = now()
 where id in (
   '11111111-1111-4111-8111-111111111111',
   '22222222-2222-4222-8222-222222222222'
