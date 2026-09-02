@@ -72,6 +72,13 @@ function normalizeProfileRow(row: {
   }
 }
 
+function mapProfileRows(rows: unknown[]): PublicProfile[] {
+  return rows.flatMap((row) => {
+    const normalized = normalizeProfileRow(row as Parameters<typeof normalizeProfileRow>[0])
+    return normalized ? [mapPublicProfile(normalized)] : []
+  })
+}
+
 export async function getPublicProfileBySlug(slug: string): Promise<PublicProfile | null> {
   const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
@@ -117,7 +124,6 @@ export async function getOwnProfile(): Promise<OwnProfile | null> {
   }
 }
 
-
 export async function getNetworkProfiles(limit = 18): Promise<PublicProfile[]> {
   const user = await requireUser()
   const supabase = await createServerSupabaseClient()
@@ -128,12 +134,30 @@ export async function getNetworkProfiles(limit = 18): Promise<PublicProfile[]> {
     .not('onboarding_completed_at', 'is', null)
     .neq('id', user.id)
     .order('updated_at', { ascending: false })
-    .limit(Math.min(Math.max(limit, 1), 30))
+    .order('id', { ascending: true })
+    .limit(Math.min(Math.max(limit, 1), 60))
 
   if (error) throw new Error('Unable to load the professional network.')
+  return mapProfileRows(data ?? [])
+}
 
-  return (data ?? []).flatMap((row) => {
-    const normalized = normalizeProfileRow(row)
-    return normalized ? [mapPublicProfile(normalized)] : []
+export async function getPublicProfilesByIds(ids: string[]): Promise<PublicProfile[]> {
+  if (!ids.length) return []
+
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select(PUBLIC_PROFILE_SELECT)
+    .in('id', [...new Set(ids)])
+    .eq('account_status', 'active')
+    .not('onboarding_completed_at', 'is', null)
+
+  if (error) throw new Error('Unable to load these professional profiles.')
+
+  const profiles = mapProfileRows(data ?? [])
+  const byId = new Map(profiles.map((profile) => [profile.id, profile]))
+  return ids.flatMap((id) => {
+    const profile = byId.get(id)
+    return profile ? [profile] : []
   })
 }
