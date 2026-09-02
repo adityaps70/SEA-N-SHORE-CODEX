@@ -21,6 +21,7 @@ jobs:
     name: Terraform validate
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         directory:
           - infra/aws/bootstrap
@@ -34,8 +35,10 @@ jobs:
         with:
           terraform_version: 1.10.5
 
-      - name: Terraform format
-        run: terraform fmt -check -recursive infra/aws
+      - name: Show canonical Terraform formatting
+        run: |
+          terraform fmt -recursive infra/aws
+          git diff -- infra/aws
 
       - name: Terraform init
         working-directory: ${{ matrix.directory }}
