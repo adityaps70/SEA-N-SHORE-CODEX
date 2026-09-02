@@ -6,7 +6,7 @@ import { requireUser } from '@/features/auth/queries'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { commentInputSchema, createPostInputSchema, feedRequestSchema, pollVoteSchema } from './schemas'
 import { getFeedPage } from './queries'
-import type { FeedRequest, PostCategory } from './types'
+import { POST_CATEGORIES, type FeedRequest, type PostCategory } from './types'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
 
@@ -29,6 +29,12 @@ export type CommentActionState = {
   value?: string
 }
 
+const extensionByMime = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+} as const
+
 function postInputFromFormData(formData: FormData) {
   const mode = formData.get('mode') === 'poll' ? 'poll' : 'standard'
   return {
@@ -42,16 +48,34 @@ function postInputFromFormData(formData: FormData) {
 function safePostValues(formData: FormData): PostComposerState['values'] {
   const raw = postInputFromFormData(formData)
   const category = typeof raw.category === 'string' ? raw.category : undefined
-  const allowedCategories: PostCategory[] = [
-    'maritime_news', 'technical_discussion', 'vetting_sire_2_0', 'career_advice',
-    'safety_lessons', 'achievement', 'learning', 'industry_opinion',
-  ]
   return {
-    category: allowedCategories.includes(category as PostCategory) ? category as PostCategory : undefined,
+    category: POST_CATEGORIES.includes(category as PostCategory) ? category as PostCategory : undefined,
     body: typeof raw.body === 'string' && raw.body.length <= 5000 ? raw.body : undefined,
     mode: raw.mode,
     pollOptions: raw.pollOptions.flatMap((value) => typeof value === 'string' && value.length <= 120 ? [value] : []),
   }
+}
+
+function mediaInput(formData: FormData, mode: 'standard' | 'poll') {
+  const candidate = formData.get('media')
+  const media = candidate instanceof File && candidate.size > 0 ? candidate : null
+  const altValue = formData.get('altText')
+  const altText = typeof altValue === 'string' ? altValue.trim() : ''
+
+  if (media && mode === 'poll') {
+    return { error: 'Technical polls cannot include an image in this release.' } as const
+  }
+  if (altText.length > 300) {
+    return { error: 'Keep the image description to 300 characters or fewer.' } as const
+  }
+  if (!media) return { media: null, altText: altText || null } as const
+  if (media.size > 5 * 1024 * 1024) {
+    return { error: 'Images must be 5 MiB or smaller.' } as const
+  }
+  if (!(media.type in extensionByMime)) {
+    return { error: 'Use a JPEG, PNG, or WebP image.' } as const
+  }
+  return { media, altText: altText || null } as const
 }
 
 export async function createPost(
@@ -65,6 +89,11 @@ export async function createPost(
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
       values: safePostValues(formData),
     }
+  }
+
+  const media = mediaInput(formData, parsed.data.mode)
+  if ('error' in media) {
+    return { fieldErrors: { media: [media.error] }, values: safePostValues(formData) }
   }
 
   const user = await requireUser()
@@ -81,15 +110,47 @@ export async function createPost(
       return { error: 'We could not publish your poll. Your entries are still here.', values: safePostValues(formData) }
     }
   } else {
-    const { error } = await supabase.from('posts').insert({
-      id: crypto.randomUUID(),
+    const postId = crypto.randomUUID()
+    let storagePath: string | null = null
+
+    if (media.media) {
+      const extension = extensionByMime[media.media.type as keyof typeof extensionByMime]
+      storagePath = `${user.id}/${postId}/${crypto.randomUUID()}.${extension}`
+      const { error: uploadError } = await supabase.storage
+        .from('post-media')
+        .upload(storagePath, media.media, { contentType: media.media.type, upsert: false })
+      if (uploadError) {
+        return { error: 'We could not upload your image. Your post was not published.', values: safePostValues(formData) }
+      }
+    }
+
+    const { error: postError } = await supabase.from('posts').insert({
+      id: postId,
       author_id: user.id,
       category: data.category,
       body: data.body,
       post_type: 'standard',
     })
-    if (error) {
+
+    if (postError) {
+      if (storagePath) await supabase.storage.from('post-media').remove([storagePath])
       return { error: 'We could not publish your post. Your entries are still here.', values: safePostValues(formData) }
+    }
+
+    if (storagePath && media.media) {
+      const { error: mediaError } = await supabase.from('post_media').insert({
+        post_id: postId,
+        storage_path: storagePath,
+        mime_type: media.media.type,
+        alt_text: media.altText,
+      })
+      if (mediaError) {
+        await Promise.all([
+          supabase.storage.from('post-media').remove([storagePath]),
+          supabase.from('posts').update({ deleted_at: new Date().toISOString() }).eq('id', postId).eq('author_id', user.id),
+        ])
+        return { error: 'We could not attach your image, so the post was not published.', values: safePostValues(formData) }
+      }
     }
   }
 
