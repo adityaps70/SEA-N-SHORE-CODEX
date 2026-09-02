@@ -10,6 +10,17 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-02-my-network-v1-design.md`
 
+## Release verification snapshot — 2026-09-02
+
+- Latest feature-branch Application CI passed lint, typecheck, unit tests, and the Next.js production build.
+- Live Supabase Network migrations are applied through `20260902185658_add_network_notification_actor_index`.
+- Network relationship/block behavior was exercised with rollback-only multi-user checks against the live Supabase project.
+- Supabase security advisor has no Network-specific findings; the remaining notices pre-date My Network.
+- The Network-specific `notifications.actor_id` foreign key now has a covering index.
+- Playwright smoke specs are committed, but authenticated browser execution still requires dedicated E2E credentials.
+- Vercel Preview currently fails because Preview values are missing for `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+- Keep PR #2 in draft until Preview deployment and browser smoke QA are complete.
+
 ## Global Constraints
 
 - Follow is instant; Connect is request/accept; accepting creates mutual follows; unfollow does not disconnect; removing a connection does not force unfollow.
