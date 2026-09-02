@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { PublicProfile } from '../types'
 import { ProfileHeader } from './profile-header'
 
@@ -22,6 +22,8 @@ const profile: PublicProfile = {
   availability: 'Available now',
   skills: ['SIRE 2.0'],
 }
+
+afterEach(() => cleanup())
 
 describe('ProfileHeader', () => {
   it('renders identity and availability without relationship actions by default', () => {
