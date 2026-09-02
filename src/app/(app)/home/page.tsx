@@ -18,6 +18,18 @@ export default async function HomePage({
   const { category: categoryValue } = await searchParams
   const category = parseFeedCategory(categoryValue)
   const initialPage = await getFeedPage({ category })
+  const feedVersion = initialPage.posts
+    .map((post) => [
+      post.id,
+      post.updatedAt,
+      post.likeCount,
+      post.commentCount,
+      post.viewerLiked ? 1 : 0,
+      post.viewerSaved ? 1 : 0,
+      post.poll?.totalVotes ?? 0,
+      post.poll?.viewerOptionId ?? '',
+    ].join(':'))
+    .join('|')
 
   return (
     <FeedLayout profile={profile} category={category}>
@@ -28,7 +40,7 @@ export default async function HomePage({
         <FeedCategoryFilter category={category} />
       </div>
       <div className="mt-4">
-        <FeedList initialPage={initialPage} category={category} />
+        <FeedList key={`${category ?? 'all'}:${feedVersion}`} initialPage={initialPage} category={category} />
       </div>
     </FeedLayout>
   )
