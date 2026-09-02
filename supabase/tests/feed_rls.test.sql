@@ -1,7 +1,7 @@
 begin;
 
 create extension if not exists pgtap with schema extensions;
-select plan(10);
+select plan(14);
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
@@ -19,36 +19,47 @@ insert into auth.users (
   '00000000-0000-0000-0000-000000000000',
   'authenticated', 'authenticated', 'member-b@example.test', '',
   now(), now(), now(), '', '', '', ''
+),
+(
+  '33333333-3333-4333-8333-333333333333',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated', 'authenticated', 'member-c@example.test', '',
+  now(), now(), now(), '', '', '', ''
 );
 
 update public.profiles
 set profile_type = 'seafarer',
     full_name = case id
       when '11111111-1111-4111-8111-111111111111' then 'Member A'
-      else 'Member B'
+      when '22222222-2222-4222-8222-222222222222' then 'Member B'
+      else 'Member C'
     end,
     slug = case id
       when '11111111-1111-4111-8111-111111111111' then 'member-a'
-      else 'member-b'
+      when '22222222-2222-4222-8222-222222222222' then 'member-b'
+      else 'member-c'
     end,
     headline = 'Maritime professional',
     summary = 'Completed profile created only for feed row level security tests.'
 where id in (
   '11111111-1111-4111-8111-111111111111',
-  '22222222-2222-4222-8222-222222222222'
+  '22222222-2222-4222-8222-222222222222',
+  '33333333-3333-4333-8333-333333333333'
 );
 
 insert into public.maritime_profiles (user_id, rank)
 values
   ('11111111-1111-4111-8111-111111111111', 'Chief Officer'),
-  ('22222222-2222-4222-8222-222222222222', 'Second Engineer')
+  ('22222222-2222-4222-8222-222222222222', 'Second Engineer'),
+  ('33333333-3333-4333-8333-333333333333', 'Chief Engineer')
 on conflict (user_id) do update set rank = excluded.rank;
 
 update public.profiles
 set onboarding_completed_at = now()
 where id in (
   '11111111-1111-4111-8111-111111111111',
-  '22222222-2222-4222-8222-222222222222'
+  '22222222-2222-4222-8222-222222222222',
+  '33333333-3333-4333-8333-333333333333'
 );
 
 set local role authenticated;
@@ -119,6 +130,40 @@ select is(
   (select count(*) from public.saved_posts),
   1::bigint,
   'member sees only own save rows'
+);
+
+select set_config('request.jwt.claim.sub', '11111111-1111-4111-8111-111111111111', true);
+select lives_ok(
+  $$ select public.block_profile('22222222-2222-4222-8222-222222222222') $$,
+  'member A can block member B'
+);
+
+select set_config('request.jwt.claim.sub', '22222222-2222-4222-8222-222222222222', true);
+select is(
+  (select count(*) from public.posts
+   where id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  0::bigint,
+  'blocked member cannot read blocker feed post'
+);
+select is(
+  (select count(*) from public.profiles
+   where id = '11111111-1111-4111-8111-111111111111'),
+  0::bigint,
+  'blocked member cannot read blocker profile'
+);
+select is(
+  (select count(*) from public.post_comments
+   where post_id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  0::bigint,
+  'comments on blocked post are hidden through post visibility'
+);
+
+select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
+select is(
+  (select count(*) from public.posts
+   where id = 'aaaaaaaa-0000-4000-8000-000000000001'),
+  1::bigint,
+  'neutral member keeps feed visibility'
 );
 
 reset role;
