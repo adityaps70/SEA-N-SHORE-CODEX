@@ -35,8 +35,14 @@ const extensionByMime = {
   'image/webp': 'webp',
 } as const
 
+type AllowedImageMime = keyof typeof extensionByMime
+
+function isAllowedImageMime(value: string): value is AllowedImageMime {
+  return value in extensionByMime
+}
+
 function postInputFromFormData(formData: FormData) {
-  const mode = formData.get('mode') === 'poll' ? 'poll' : 'standard'
+  const mode: 'standard' | 'poll' = formData.get('mode') === 'poll' ? 'poll' : 'standard'
   return {
     category: formData.get('category'),
     body: formData.get('body'),
@@ -68,14 +74,14 @@ function mediaInput(formData: FormData, mode: 'standard' | 'poll') {
   if (altText.length > 300) {
     return { error: 'Keep the image description to 300 characters or fewer.' } as const
   }
-  if (!media) return { media: null, altText: altText || null } as const
+  if (!media) return { media: null, altText: altText || null, extension: null } as const
   if (media.size > 5 * 1024 * 1024) {
     return { error: 'Images must be 5 MiB or smaller.' } as const
   }
-  if (!(media.type in extensionByMime)) {
+  if (!isAllowedImageMime(media.type)) {
     return { error: 'Use a JPEG, PNG, or WebP image.' } as const
   }
-  return { media, altText: altText || null } as const
+  return { media, altText: altText || null, extension: extensionByMime[media.type] } as const
 }
 
 export async function createPost(
@@ -113,9 +119,8 @@ export async function createPost(
     const postId = crypto.randomUUID()
     let storagePath: string | null = null
 
-    if (media.media) {
-      const extension = extensionByMime[media.media.type as keyof typeof extensionByMime]
-      storagePath = `${user.id}/${postId}/${crypto.randomUUID()}.${extension}`
+    if (media.media && media.extension) {
+      storagePath = `${user.id}/${postId}/${crypto.randomUUID()}.${media.extension}`
       const { error: uploadError } = await supabase.storage
         .from('post-media')
         .upload(storagePath, media.media, { contentType: media.media.type, upsert: false })
