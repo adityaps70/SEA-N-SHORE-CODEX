@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Anchor, MapPin, Ship, TimerReset } from 'lucide-react'
 import type { PublicProfile } from '../types'
 
@@ -20,7 +21,13 @@ function initials(name: string) {
     .join('')
 }
 
-export function ProfileHeader({ profile }: { profile: PublicProfile }) {
+export function ProfileHeader({
+  profile,
+  actions,
+}: {
+  profile: PublicProfile
+  actions?: ReactNode
+}) {
   return (
     <section className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
       <div className="h-28 bg-[linear-gradient(115deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))] sm:h-36" />
@@ -40,12 +47,15 @@ export function ProfileHeader({ profile }: { profile: PublicProfile }) {
               </h1>
             </div>
           </div>
-          {profile.availability ? (
-            <span className="inline-flex w-fit items-center gap-2 rounded-xl border border-mist-100 bg-mist-50 px-3 py-2 text-sm font-medium text-navy-900">
-              <TimerReset aria-hidden="true" className="size-4 text-teal-500" />
-              {profile.availability}
-            </span>
-          ) : null}
+          <div className="flex flex-col items-start gap-3 sm:items-end">
+            {profile.availability ? (
+              <span className="inline-flex w-fit items-center gap-2 rounded-xl border border-mist-100 bg-mist-50 px-3 py-2 text-sm font-medium text-navy-900">
+                <TimerReset aria-hidden="true" className="size-4 text-teal-500" />
+                {profile.availability}
+              </span>
+            ) : null}
+            {actions ? <div className="w-full sm:w-auto">{actions}</div> : null}
+          </div>
         </div>
 
         {profile.headline ? (
