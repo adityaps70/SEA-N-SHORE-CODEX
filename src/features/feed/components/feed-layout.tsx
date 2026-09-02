@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { NetworkProfile } from '@/features/network/types'
 import type { OwnProfile } from '@/features/profiles/types'
 import type { PostCategory } from '../types'
 import { FeedDiscoveryRail } from './feed-discovery-rail'
@@ -7,10 +8,12 @@ import { FeedProfileCard } from './feed-profile-card'
 export function FeedLayout({
   profile,
   category,
+  suggestions,
   children,
 }: {
   profile: OwnProfile
   category?: PostCategory
+  suggestions: NetworkProfile[]
   children: ReactNode
 }) {
   return (
@@ -30,7 +33,7 @@ export function FeedLayout({
 
       <aside className="hidden xl:block">
         <div className="sticky top-6">
-          <FeedDiscoveryRail category={category} />
+          <FeedDiscoveryRail category={category} suggestions={suggestions} />
         </div>
       </aside>
     </section>
