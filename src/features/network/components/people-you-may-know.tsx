@@ -18,6 +18,7 @@ export function PeopleYouMayKnow({ profiles }: { profiles: NetworkProfile[] }) {
       <div className="mt-3 divide-y divide-mist-100">
         {profiles.map((profile) => {
           const relationshipKey = `${profile.relationship.following ? 1 : 0}:${profile.relationship.connection.kind}:${profile.relationship.connection.connectionId ?? ''}`
+          const identityLine = profile.headline ?? ([profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional')
           return (
             <article key={profile.id} className="py-3 first:pt-1 last:pb-1">
               <div className="flex items-start gap-3">
@@ -28,9 +29,7 @@ export function PeopleYouMayKnow({ profiles }: { profiles: NetworkProfile[] }) {
                   <Link href={`/people/${profile.slug}`} className="block truncate text-sm font-semibold text-navy-950 hover:text-ocean-700">
                     {profile.fullName}
                   </Link>
-                  <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted">
-                    {profile.headline ?? [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
-                  </p>
+                  <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted">{identityLine}</p>
                 </div>
               </div>
               <div className="mt-2 pl-[3.25rem]">
