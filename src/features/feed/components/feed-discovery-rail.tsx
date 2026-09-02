@@ -1,11 +1,21 @@
 import Link from 'next/link'
 import { BriefcaseBusiness, CalendarDays, UsersRound } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-know'
+import type { NetworkProfile } from '@/features/network/types'
 import { POST_CATEGORIES, POST_CATEGORY_LABELS, type PostCategory } from '../types'
 
-export function FeedDiscoveryRail({ category }: { category?: PostCategory }) {
+export function FeedDiscoveryRail({
+  category,
+  suggestions,
+}: {
+  category?: PostCategory
+  suggestions: NetworkProfile[]
+}) {
   return (
     <div className="space-y-4">
+      <PeopleYouMayKnow profiles={suggestions} />
+
       <Card className="border border-mist-100 p-5">
         <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Maritime topics</p>
         <h2 className="mt-1 text-lg font-semibold text-navy-950">Join the conversation</h2>
