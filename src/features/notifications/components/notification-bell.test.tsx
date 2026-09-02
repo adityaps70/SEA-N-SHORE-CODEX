@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NetworkNotification } from '../types'
 import { NotificationBell } from './notification-bell'
 
@@ -18,6 +18,8 @@ const notification: NetworkNotification = {
   message: 'Member A sent you a connection request.',
   destination: '/network?tab=requests',
 }
+
+afterEach(() => cleanup())
 
 describe('NotificationBell', () => {
   it('caps the unread badge and renders recent notification copy', () => {
