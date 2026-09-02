@@ -12,7 +12,7 @@
 
 ## Release verification snapshot — 2026-09-03
 
-- Latest feature-branch Application CI passed lint, typecheck, unit tests, and the Next.js production build.
+- Feature-branch Application CI has passed lint, typecheck, unit tests, and the Next.js production build after the final Network code/database changes.
 - Live Supabase Network migrations are applied through `20260902185658_add_network_notification_actor_index`.
 - Network relationship/block behavior was exercised with rollback-only multi-user checks against the live Supabase project.
 - Supabase security advisor has no Network-specific findings; the remaining notices pre-date My Network.
