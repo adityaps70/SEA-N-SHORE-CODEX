@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useRef, useState } from 'react'
+import { useActionState, useRef, useState } from 'react'
 import { BarChart3, ImagePlus, Send } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
@@ -25,30 +25,24 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
   const mediaRef = useRef<HTMLInputElement>(null)
-  const [state, formAction, pending] = useActionState(createPost, initialState)
   const [body, setBody] = useState('')
   const [category, setCategory] = useState<PostCategory>(defaultCategory ?? 'technical_discussion')
   const [mode, setMode] = useState<'standard' | 'poll'>('standard')
   const [pollFields, setPollFields] = useState<PollField[]>(() => newPollFields())
   const [mediaName, setMediaName] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (state.ok) {
+  const [state, formAction, pending] = useActionState(async (previousState: PostComposerState, formData: FormData) => {
+    const nextState = await createPost(previousState, formData)
+    if (nextState.ok) {
       formRef.current?.reset()
       setBody('')
       setMode('standard')
       setPollFields(newPollFields())
       setMediaName(null)
       router.refresh()
-      return
     }
-    if (state.values) {
-      if (state.values.body !== undefined) setBody(state.values.body)
-      if (state.values.category) setCategory(state.values.category)
-      if (state.values.mode) setMode(state.values.mode)
-      if (state.values.pollOptions?.length) setPollFields(newPollFields(state.values.pollOptions))
-    }
-  }, [state, router])
+    return nextState
+  }, initialState)
 
   function chooseMode(nextMode: 'standard' | 'poll') {
     setMode(nextMode)
