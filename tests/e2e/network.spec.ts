@@ -1,6 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
-async function signIn(page: Parameters<typeof test>[0] extends never ? never : any) {
+async function signIn(page: Page) {
   const email = process.env.E2E_USER_EMAIL
   const password = process.env.E2E_USER_PASSWORD
   test.skip(!email || !password, 'Set E2E_USER_EMAIL and E2E_USER_PASSWORD to run authenticated network smoke tests.')
