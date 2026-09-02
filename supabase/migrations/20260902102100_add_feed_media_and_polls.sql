@@ -41,6 +41,55 @@ create table public.post_poll_votes (
 create index post_poll_options_post_idx on public.post_poll_options (post_id, position);
 create index post_poll_votes_option_idx on public.post_poll_votes (option_id);
 
+create or replace function private.enforce_poll_option_count()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_post_id uuid;
+  v_count integer;
+begin
+  if tg_op = 'DELETE' then
+    v_post_id := old.post_id;
+  else
+    v_post_id := new.post_id;
+  end if;
+
+  if not exists (
+    select 1 from public.post_polls poll
+    where poll.post_id = v_post_id
+  ) then
+    return null;
+  end if;
+
+  select count(*)::integer
+  into v_count
+  from public.post_poll_options option_row
+  where option_row.post_id = v_post_id;
+
+  if v_count not between 2 and 6 then
+    raise check_violation using message = 'polls require 2 to 6 options';
+  end if;
+
+  return null;
+end;
+$$;
+
+revoke all on function private.enforce_poll_option_count()
+from public, anon, authenticated, service_role;
+
+create constraint trigger post_polls_require_options
+after insert on public.post_polls
+deferrable initially deferred
+for each row execute procedure private.enforce_poll_option_count();
+
+create constraint trigger post_poll_options_enforce_count
+after insert or delete or update of post_id on public.post_poll_options
+deferrable initially deferred
+for each row execute procedure private.enforce_poll_option_count();
+
 alter table public.post_media enable row level security;
 alter table public.post_polls enable row level security;
 alter table public.post_poll_options enable row level security;
@@ -49,10 +98,17 @@ alter table public.post_poll_votes enable row level security;
 revoke all on public.post_media, public.post_polls, public.post_poll_options, public.post_poll_votes
 from anon, authenticated;
 
-grant select, insert, delete on public.post_media to authenticated;
-grant select, insert, delete on public.post_polls to authenticated;
-grant select, insert, delete on public.post_poll_options to authenticated;
-grant select, insert, delete on public.post_poll_votes to authenticated;
+grant select, delete on public.post_media to authenticated;
+grant insert (post_id, storage_path, mime_type, alt_text) on public.post_media to authenticated;
+
+grant select, delete on public.post_polls to authenticated;
+grant insert (post_id) on public.post_polls to authenticated;
+
+grant select, delete on public.post_poll_options to authenticated;
+grant insert (post_id, label, position) on public.post_poll_options to authenticated;
+
+grant select, delete on public.post_poll_votes to authenticated;
+grant insert (post_id, option_id, user_id) on public.post_poll_votes to authenticated;
 grant update (option_id) on public.post_poll_votes to authenticated;
 
 create policy "active members read post media"
