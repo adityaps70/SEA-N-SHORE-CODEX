@@ -30,7 +30,6 @@ describe('FeedProfileCard', () => {
     render(<FeedProfileCard profile={profile} />)
     expect(screen.getByText('Member A')).toBeInTheDocument()
     expect(screen.getByText('Chief Officer | Tankers')).toBeInTheDocument()
-    expect(screen.getByText(/Chief Officer/)).toBeInTheDocument()
     expect(screen.getByText(/Example Shipping/)).toBeInTheDocument()
     expect(screen.getByText('12 years')).toBeInTheDocument()
     expect(screen.getByText('Available now')).toBeInTheDocument()
