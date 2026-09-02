@@ -1,7 +1,9 @@
 import { requireUser } from '@/features/auth/queries'
+import { getPreferredFeedAuthorIds } from '@/features/network/queries'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { feedRequestSchema } from './schemas'
 import { mapFeedPost, type FeedCommentRow, type FeedPostRow, type FeedViewerState } from './mappers'
+import { prioritizeRecentFeedRows } from './ranking'
 import type { FeedCursor, FeedPage, FeedPost, FeedRequest } from './types'
 
 const FEED_POST_SELECT = `
@@ -49,6 +51,11 @@ const COMMENT_SELECT = `
 
 export function buildFeedCursorFilter(cursor: FeedCursor) {
   return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+}
+
+export function feedRowAuthorId(row: Pick<FeedPostRow, 'profiles'>) {
+  const author = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles
+  return author?.id ?? ''
 }
 
 function mediaPath(row: FeedPostRow) {
@@ -127,8 +134,10 @@ export async function getFeedPage(input: FeedRequest = {}): Promise<FeedPage> {
   const rows = (data ?? []) as unknown as FeedPostRow[]
   const hasMore = rows.length > parsed.limit
   const pageRows = rows.slice(0, parsed.limit)
-  const posts = await hydratePosts(pageRows, user.id, supabase)
   const tail = pageRows.at(-1)
+  const preferredAuthorIds = await getPreferredFeedAuthorIds()
+  const displayRows = prioritizeRecentFeedRows(pageRows, preferredAuthorIds, feedRowAuthorId)
+  const posts = await hydratePosts(displayRows, user.id, supabase)
 
   return {
     posts,
