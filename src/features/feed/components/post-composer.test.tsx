@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { OwnProfile } from '@/features/profiles/types'
 import { PostComposer } from './post-composer'
 
@@ -13,6 +13,11 @@ vi.mock('next/navigation', () => ({
 vi.mock('../actions', () => ({
   createPost: vi.fn(async () => ({ ok: true })),
 }))
+
+afterEach(() => {
+  cleanup()
+  refresh.mockClear()
+})
 
 const profile: OwnProfile = {
   id: '11111111-1111-4111-8111-111111111111',
