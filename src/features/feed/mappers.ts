@@ -14,8 +14,9 @@ type AuthorRow = {
   maritime_profiles: MaritimeSummaryRow | MaritimeSummaryRow[] | null
 }
 
-type CommentRow = {
+export type FeedCommentRow = {
   id: string
+  post_id?: string
   body: string
   created_at: string
   profiles: AuthorRow | AuthorRow[] | null
@@ -49,7 +50,8 @@ export type FeedPostRow = {
   post_media: MediaRow | MediaRow[] | null
   post_polls: PollRow | PollRow[] | null
   post_reactions?: Array<{ count: number }> | { count: number } | null
-  post_comments?: CommentRow[] | null
+  post_comment_count?: Array<{ count: number }> | { count: number } | null
+  post_comments?: FeedCommentRow[] | null
 }
 
 export type FeedViewerState = {
@@ -83,7 +85,7 @@ function mapAuthor(row: AuthorRow | AuthorRow[] | null): FeedAuthor {
   }
 }
 
-function mapComment(row: CommentRow): FeedComment {
+function mapComment(row: FeedCommentRow): FeedComment {
   return {
     id: row.id,
     body: row.body,
@@ -134,7 +136,7 @@ export function mapFeedPost(
         }
       : null,
     likeCount: countRelation(row.post_reactions),
-    commentCount: comments.length,
+    commentCount: countRelation(row.post_comment_count) || comments.length,
     viewerLiked: viewer.likedPostIds.has(row.id),
     viewerSaved: viewer.savedPostIds.has(row.id),
     comments,
