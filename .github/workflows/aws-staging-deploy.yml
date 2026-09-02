@@ -1,0 +1,153 @@
+name: AWS Staging Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      deploy_to_ecs:
+        description: "After the first image is pushed and ECS exists, deploy this image to the staging service"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
+      ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required staging configuration
+        run: |
+          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}" || (echo "Missing staging variable AWS_ROLE_TO_ASSUME" && exit 1)
+          test -n "$AWS_REGION" || (echo "Missing staging variable AWS_REGION" && exit 1)
+          test -n "$ECR_REPOSITORY" || (echo "Missing staging variable ECR_REPOSITORY" && exit 1)
+          test -n "$NEXT_PUBLIC_SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" && exit 1)
+          test -n "$NEXT_PUBLIC_SUPABASE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SUPABASE_URL" && exit 1)
+          test -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" || (echo "Missing staging secret NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" && exit 1)
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push immutable application image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG="${GITHUB_SHA}-${GITHUB_RUN_ID}"
+          IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+          docker build \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            -t "$IMAGE_URI" .
+
+          docker push "$IMAGE_URI"
+
+          echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "### AWS image pushed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Tag: \`$IMAGE_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Repository: \`$ECR_REPOSITORY\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate ECS deployment configuration
+        if: ${{ inputs.deploy_to_ecs }}
+        run: |
+          test -n "$ECS_CLUSTER" || (echo "Missing staging variable ECS_CLUSTER" && exit 1)
+          test -n "$ECS_SERVICE" || (echo "Missing staging variable ECS_SERVICE" && exit 1)
+          test -n "$ECS_TASK_DEFINITION" || (echo "Missing staging variable ECS_TASK_DEFINITION" && exit 1)
+          test -n "$ECS_CONTAINER_NAME" || (echo "Missing staging variable ECS_CONTAINER_NAME" && exit 1)
+
+      - name: Create new ECS task definition revision
+        if: ${{ inputs.deploy_to_ecs }}
+        env:
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition "$ECS_TASK_DEFINITION" \
+            --query taskDefinition \
+            --output json > task-definition-current.json
+
+          jq \
+            --arg IMAGE "$IMAGE_URI" \
+            --arg NAME "$ECS_CONTAINER_NAME" \
+            --arg SITE "$NEXT_PUBLIC_SITE_URL" \
+            --arg SUPABASE_URL "$NEXT_PUBLIC_SUPABASE_URL" \
+            --arg SUPABASE_KEY "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            '
+            del(
+              .taskDefinitionArn,
+              .revision,
+              .status,
+              .requiresAttributes,
+              .compatibilities,
+              .registeredAt,
+              .registeredBy
+            )
+            | .containerDefinitions |= map(
+                if .name == $NAME then
+                  .image = $IMAGE
+                  | .environment = (
+                      ((.environment // [])
+                        | map(select(
+                            .name != "NEXT_PUBLIC_SITE_URL"
+                            and .name != "NEXT_PUBLIC_SUPABASE_URL"
+                            and .name != "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+                          )))
+                      + [
+                          {"name":"NEXT_PUBLIC_SITE_URL","value":$SITE},
+                          {"name":"NEXT_PUBLIC_SUPABASE_URL","value":$SUPABASE_URL},
+                          {"name":"NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY","value":$SUPABASE_KEY}
+                        ]
+                    )
+                else . end
+              )
+            ' task-definition-current.json > task-definition-new.json
+
+          NEW_TASK_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          echo "NEW_TASK_ARN=$NEW_TASK_ARN" >> "$GITHUB_ENV"
+
+      - name: Deploy ECS service and wait for stability
+        if: ${{ inputs.deploy_to_ecs }}
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$NEW_TASK_ARN" \
+            --force-new-deployment > /dev/null
+
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+
+          echo "### ECS staging deployment stable" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cluster: \`$ECS_CLUSTER\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Service: \`$ECS_SERVICE\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Task definition: \`$NEW_TASK_ARN\`" >> "$GITHUB_STEP_SUMMARY"
