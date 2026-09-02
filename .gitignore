@@ -1,0 +1,11 @@
+.worktrees/
+.superpowers/
+node_modules/
+.next/
+.env*
+!.env.example
+playwright-report/
+test-results/
+coverage/
+tsconfig.tsbuildinfo
+.DS_Store

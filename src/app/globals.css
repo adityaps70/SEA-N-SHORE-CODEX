@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+:root {
+  --navy-950: #071b2d;
+  --navy-900: #0b2740;
+  --ocean-700: #075e82;
+  --ocean-500: #0c8bb3;
+  --teal-500: #18a99a;
+  --mist-100: #edf4f6;
+  --mist-50: #f7fafb;
+  --verification-gold: #c99332;
+  --ink: #102532;
+  --muted: #607481;
+  --surface: #ffffff;
+  --radius-card: 1.25rem;
+  --shadow-card: 0 18px 48px rgb(7 27 45 / 0.08);
+}
+
+@theme inline {
+  --color-navy-950: var(--navy-950);
+  --color-navy-900: var(--navy-900);
+  --color-ocean-700: var(--ocean-700);
+  --color-ocean-500: var(--ocean-500);
+  --color-teal-500: var(--teal-500);
+  --color-mist-100: var(--mist-100);
+  --color-mist-50: var(--mist-50);
+  --color-verification-gold: var(--verification-gold);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+}
+
+* { box-sizing: border-box; }
+html { background: var(--mist-50); color: var(--ink); }
+body { min-height: 100vh; margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+:focus-visible { outline: 3px solid var(--ocean-700); outline-offset: 3px; }
+
+.onboarding-maritime-fields { display: grid; }
+
+@supports selector(.onboarding-form:has(input:checked)) {
+  .onboarding-maritime-fields { display: none; }
+  .onboarding-form:has(input[name="profileType"][value="seafarer"]:checked) .onboarding-maritime-fields,
+  .onboarding-form:has(input[name="profileType"][value="maritime_professional"]:checked) .onboarding-maritime-fields {
+    display: grid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
+}
