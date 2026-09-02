@@ -18,13 +18,16 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const relationship = viewer && viewer.id !== profile.id
     ? await getRelationshipState(profile.id)
     : null
+  const relationshipKey = relationship
+    ? `${relationship.following ? 1 : 0}:${relationship.connection.kind}:${relationship.connection.connectionId ?? ''}`
+    : ''
 
   return (
     <main className="mx-auto grid w-full max-w-5xl gap-5 px-4 py-6 sm:px-6 sm:py-10">
       <ProfileHeader
         profile={profile}
         actions={relationship ? (
-          <RelationshipControls profileId={profile.id} initialRelationship={relationship} />
+          <RelationshipControls key={relationshipKey} profileId={profile.id} initialRelationship={relationship} />
         ) : undefined}
       />
       <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
