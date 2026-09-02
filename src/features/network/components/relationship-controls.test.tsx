@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RelationshipControls } from './relationship-controls'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
@@ -15,6 +15,8 @@ vi.mock('../actions', () => ({
 }))
 
 const profileId = '22222222-2222-4222-8222-222222222222'
+
+afterEach(() => cleanup())
 
 describe('RelationshipControls', () => {
   it('shows Follow and Connect for an unrelated profile', () => {
