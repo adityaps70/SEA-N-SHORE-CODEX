@@ -98,7 +98,7 @@ export async function createPost(
   }
 
   const media = mediaInput(formData, parsed.data.mode)
-  if ('error' in media) {
+  if ('error' in media && typeof media.error === 'string') {
     return { fieldErrors: { media: [media.error] }, values: safePostValues(formData) }
   }
 
