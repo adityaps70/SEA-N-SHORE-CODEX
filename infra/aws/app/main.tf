@@ -113,7 +113,7 @@ data "aws_ecr_repository" "app" {
 }
 
 locals {
-  name_prefix = "${var.project_name}-${var.environment}"
+  name_prefix    = "${var.project_name}-${var.environment}"
   container_name = "web"
   common_tags = {
     Project     = "Sea N Shore"
@@ -440,11 +440,11 @@ resource "aws_ecs_task_definition" "web" {
 }
 
 resource "aws_ecs_service" "web" {
-  name            = "${local.name_prefix}-web"
-  cluster         = aws_ecs_cluster.app.id
-  task_definition = aws_ecs_task_definition.web.arn
-  desired_count   = var.desired_count
-  launch_type     = "FARGATE"
+  name             = "${local.name_prefix}-web"
+  cluster          = aws_ecs_cluster.app.id
+  task_definition  = aws_ecs_task_definition.web.arn
+  desired_count    = var.desired_count
+  launch_type      = "FARGATE"
   platform_version = "LATEST"
 
   enable_execute_command = true
