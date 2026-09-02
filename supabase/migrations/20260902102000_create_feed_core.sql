@@ -101,13 +101,19 @@ alter table public.saved_posts enable row level security;
 revoke all on public.posts, public.post_reactions, public.post_comments, public.saved_posts
 from anon, authenticated;
 
-grant select, insert on public.posts to authenticated;
+grant select on public.posts to authenticated;
+grant insert (id, author_id, category, body, post_type) on public.posts to authenticated;
 grant update (body, category, deleted_at) on public.posts to authenticated;
 
-grant select, insert, delete on public.post_reactions to authenticated;
-grant select, insert on public.post_comments to authenticated;
+grant select, delete on public.post_reactions to authenticated;
+grant insert (post_id, user_id, reaction_type) on public.post_reactions to authenticated;
+
+grant select on public.post_comments to authenticated;
+grant insert (post_id, author_id, body) on public.post_comments to authenticated;
 grant update (body, deleted_at) on public.post_comments to authenticated;
-grant select, insert, delete on public.saved_posts to authenticated;
+
+grant select, delete on public.saved_posts to authenticated;
+grant insert (post_id, user_id) on public.saved_posts to authenticated;
 
 create policy "active members read posts"
 on public.posts for select to authenticated
