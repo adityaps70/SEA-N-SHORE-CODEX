@@ -1,0 +1,15 @@
+aws_region                   = "ap-south-1"
+project_name                 = "sea-n-shore"
+environment                  = "staging"
+ecr_repository_name          = "sea-n-shore"
+image_tag                    = "REPLACE_WITH_EXISTING_ECR_IMAGE_TAG"
+site_url                     = "https://staging.example.com"
+supabase_url                 = "https://rrxyiwajrzcepyvscidh.supabase.co"
+supabase_publishable_key     = "REPLACE_WITH_CURRENT_PUBLISHABLE_KEY"
+certificate_arn              = ""
+allowed_ingress_cidrs        = ["0.0.0.0/0"]
+task_cpu                     = 512
+task_memory                  = 1024
+desired_count                = 1
+min_capacity                 = 1
+max_capacity                 = 4

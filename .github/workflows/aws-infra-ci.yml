@@ -1,0 +1,62 @@
+name: AWS Infrastructure CI
+
+on:
+  push:
+    branches: [infra/aws-migration]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - infra/aws/**
+      - .github/workflows/aws-*.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - infra/aws/**
+      - .github/workflows/aws-*.yml
+
+jobs:
+  terraform:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - infra/aws/bootstrap
+          - infra/aws/app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - name: Terraform format
+        run: terraform fmt -check -recursive infra/aws
+
+      - name: Terraform init
+        working-directory: ${{ matrix.directory }}
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        working-directory: ${{ matrix.directory }}
+        run: terraform validate
+
+  container:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_SITE_URL=http://localhost:3000 \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://sea-n-shore-test.supabase.co \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_test_key_for_ci_only \
+            -t sea-n-shore:ci .

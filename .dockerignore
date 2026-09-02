@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+coverage
+playwright-report
+test-results
+*.log
+supabase/tests
+tests
+docs
+.github
