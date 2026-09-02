@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { loadFeedPage } from '../actions'
 import type { FeedPage, PostCategory } from '../types'
 import { PostCard } from './post-card'
@@ -11,11 +11,6 @@ export function FeedList({ initialPage, category }: { initialPage: FeedPage; cat
   const [cursor, setCursor] = useState(initialPage.nextCursor)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
-
-  useEffect(() => {
-    setPosts(initialPage.posts)
-    setCursor(initialPage.nextCursor)
-  }, [initialPage])
 
   function loadMore() {
     if (!cursor || pending) return
