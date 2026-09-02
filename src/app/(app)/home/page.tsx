@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation'
-import { getOwnProfile } from '@/features/profiles/queries'
 import { getFeedPage } from '@/features/feed/queries'
 import { parseFeedCategory } from '@/features/feed/schemas'
-import { FeedLayout } from '@/features/feed/components/feed-layout'
-import { PostComposer } from '@/features/feed/components/post-composer'
 import { FeedCategoryFilter } from '@/features/feed/components/feed-category-filter'
+import { FeedLayout } from '@/features/feed/components/feed-layout'
 import { FeedList } from '@/features/feed/components/feed-list'
+import { PostComposer } from '@/features/feed/components/post-composer'
+import { getPeopleYouMayKnow } from '@/features/network/queries'
+import { getOwnProfile } from '@/features/profiles/queries'
 
 export default async function HomePage({
   searchParams,
@@ -17,7 +18,10 @@ export default async function HomePage({
 
   const { category: categoryValue } = await searchParams
   const category = parseFeedCategory(categoryValue)
-  const initialPage = await getFeedPage({ category })
+  const [initialPage, suggestions] = await Promise.all([
+    getFeedPage({ category }),
+    getPeopleYouMayKnow(4),
+  ])
   const feedVersion = initialPage.posts
     .map((post) => [
       post.id,
@@ -32,7 +36,7 @@ export default async function HomePage({
     .join('|')
 
   return (
-    <FeedLayout profile={profile} category={category}>
+    <FeedLayout profile={profile} category={category} suggestions={suggestions}>
       <div id="feed-composer" className="scroll-mt-24">
         <PostComposer profile={profile} defaultCategory={category} />
       </div>
