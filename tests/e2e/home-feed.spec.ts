@@ -5,7 +5,7 @@ test('signed-out visitor is redirected from home', async ({ page }) => {
   await expect(page).toHaveURL(/\/auth\/sign-in/)
 })
 
-test('completed member can open the maritime feed', async ({ page }) => {
+test('completed member can open the maritime feed and discovery surface', async ({ page }, testInfo) => {
   const email = process.env.E2E_USER_EMAIL
   const password = process.env.E2E_USER_PASSWORD
   test.skip(!email || !password, 'Set E2E_USER_EMAIL and E2E_USER_PASSWORD to run the authenticated feed smoke test.')
@@ -19,4 +19,10 @@ test('completed member can open the maritime feed', async ({ page }) => {
   await expect(page.getByPlaceholder('Share a maritime update, technical lesson, or industry insight...')).toBeVisible()
   await expect(page.getByText('Profile completeness')).toBeVisible()
   await expect(page.getByText(/Verified CoC|Reputation 6,200/i)).toHaveCount(0)
+
+  if (testInfo.project.name === 'mobile-safari') {
+    await expect(page.getByRole('link', { name: 'Network' })).toBeVisible()
+  } else {
+    await expect(page.getByRole('heading', { name: /People you may know/i })).toBeVisible()
+  }
 })
