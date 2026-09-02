@@ -4,7 +4,7 @@
 
 **Goal:** Replace the current `/home` welcome card with a production-ready maritime professional feed using real Supabase data, the existing Sea N Shore UI system, and secure social interactions.
 
-**Architecture:** Keep `/home` server-oriented for authentication, profile loading, and the first feed page. Put social behavior in a focused `src/features/feed` module with typed queries, Zod validation, server actions, and client interaction components. Add the social schema through versioned Supabase migrations with RLS, a private image bucket, and deterministic cursor pagination ordered by `created_at DESC, id DESC`.
+**Architecture:** Keep `/home` server-oriented for authentication, profile loading, and the initial feed page. Put social behavior in `src/features/feed` with typed queries, Zod validation, server actions, and small client interaction components. Add social data through versioned Supabase migrations with RLS, a private image bucket, and stable cursor pagination ordered by `created_at DESC, id DESC`.
 
 **Tech Stack:** Next.js 16.3.4, React 19.2.8, TypeScript 5, Tailwind CSS 4, Supabase JS/SSR 2.112.4/0.12.5, PostgreSQL + RLS, Zod 4.5.4, Vitest 4.1.11, Testing Library, Playwright.
 
@@ -12,98 +12,82 @@
 
 ## Global Constraints
 
-- Preserve the existing Sea N Shore navy/ocean/mist palette, typography, card radius, card shadow, navigation, and authenticated app shell.
-- Use only real profile/social data. Do not add fabricated verification badges, reputation points, connection counts, reaction counts, comments, shares, credentials, jobs, events, or professionals.
-- Keep verification UI absent until a database-backed verification workflow exists.
-- Initial post categories are exactly: Maritime News, Technical Discussion, Vetting & SIRE 2.0, Career Advice, Safety Lessons, Achievement, Learning, Industry Opinion.
-- Initial reaction system is Like only.
-- Posts are visible only to authenticated active members with completed onboarding.
-- Feed order is `created_at DESC, id DESC` with stable cursor pagination.
-- Initial post image support is one JPEG, PNG, or WebP image up to 5 MiB; images live in a private Supabase Storage bucket and are rendered through signed URLs.
-- Initial polls are single-choice, with 2–6 options.
-- Do not add groups, messaging, AI Co-Pilot, reputation scoring, algorithmic ranking, video upload, sponsored posts, or public unauthenticated post pages in this milestone.
-- Do not expose a Supabase service-role key to browser code.
-- Every new social table must have RLS enabled before release.
-- Any database function that is `SECURITY DEFINER` must have `SET search_path = ''`, explicit ownership, and minimum grants. Prefer `SECURITY INVOKER` where possible.
-- Keep the existing `AppHeader`, `MobileNav`, and `max-w-7xl` application shell unless a feed-specific child layout needs narrower columns.
-- Read the repository `AGENTS.md` and the installed Next.js 16 docs before changing Next.js APIs.
+- Preserve the existing navy/ocean/mist palette, typography, card radii/shadows, `AppHeader`, `MobileNav`, and `max-w-7xl` authenticated shell.
+- Use only real profile/social data. Never fabricate verification, reputation, connections, reactions, comments, shares, credentials, jobs, events, or named professionals.
+- Verification UI remains absent until a real verification workflow exists.
+- Categories are exactly: Maritime News, Technical Discussion, Vetting & SIRE 2.0, Career Advice, Safety Lessons, Achievement, Learning, Industry Opinion.
+- Reaction system is Like only.
+- Feed is for authenticated active members with completed onboarding.
+- Feed order is exactly `created_at DESC, id DESC` with cursor-based Load More.
+- One optional post image: JPEG/PNG/WebP, maximum 5 MiB, private Supabase Storage, signed URLs.
+- Polls are single-choice with 2–6 distinct options.
+- Do not add groups, messaging, AI Co-Pilot, reputation scoring, algorithmic ranking, video, sponsored posts, or public unauthenticated post pages.
+- Never expose a service-role key to client code.
+- Enable RLS on every social table before release.
+- Prefer `SECURITY INVOKER`. Any `SECURITY DEFINER` function must set `search_path = ''`, use explicit ownership, and minimum grants.
+- Read `AGENTS.md` and the installed Next.js 16 docs before changing Next.js APIs.
+
+## File Map
+
+Database:
+- `supabase/migrations/20260902102000_create_feed_core.sql`
+- `supabase/migrations/20260902102100_add_feed_media_and_polls.sql`
+- `supabase/tests/feed_rls.test.sql`
+- `supabase/tests/feed_poll_rls.test.sql`
+- regenerate `src/lib/supabase/database.types.ts`
+
+Domain/server:
+- `src/features/feed/types.ts`
+- `src/features/feed/schemas.ts`
+- `src/features/feed/schemas.test.ts`
+- `src/features/feed/mappers.ts`
+- `src/features/feed/mappers.test.ts`
+- `src/features/feed/queries.ts`
+- `src/features/feed/queries.test.ts`
+- `src/features/feed/actions.ts`
+- `src/features/feed/actions.test.ts`
+
+UI:
+- `src/features/feed/profile-completion.ts`
+- `src/features/feed/profile-completion.test.ts`
+- `src/features/feed/components/feed-layout.tsx`
+- `src/features/feed/components/feed-profile-card.tsx`
+- `src/features/feed/components/feed-profile-card.test.tsx`
+- `src/features/feed/components/feed-discovery-rail.tsx`
+- `src/features/feed/components/feed-category-filter.tsx`
+- `src/features/feed/components/post-composer.tsx`
+- `src/features/feed/components/post-composer.test.tsx`
+- `src/features/feed/components/feed-list.tsx`
+- `src/features/feed/components/post-card.tsx`
+- `src/features/feed/components/post-card.test.tsx`
+- `src/features/feed/components/comment-thread.tsx`
+- `src/features/feed/components/poll-card.tsx`
+- `src/features/feed/components/share-post-button.tsx`
+
+Routes/config:
+- replace `src/app/(app)/home/page.tsx`
+- create `src/app/(app)/posts/[id]/page.tsx`
+- modify `next.config.ts`
+- create `tests/e2e/home-feed.spec.ts`
 
 ---
 
-## File Structure
-
-Create or modify these units. Each file has one responsibility.
-
-### Database
-- Create `supabase/migrations/20260902102000_create_feed_core.sql` — posts, comments, likes, saves, core RLS, indexes, updated-at trigger.
-- Create `supabase/migrations/20260902102100_add_feed_media_and_polls.sql` — post media, private storage bucket/policies, polls/options/votes, poll-creation RPC.
-- Create `supabase/tests/feed_rls.test.sql` — ownership, read visibility, soft-delete, like/save/comment security tests.
-- Create `supabase/tests/feed_poll_rls.test.sql` — poll voting and media/poll ownership tests.
-- Regenerate `src/lib/supabase/database.types.ts` after migrations.
-
-### Feed domain
-- Create `src/features/feed/types.ts` — category constants, domain models, cursor/page types.
-- Create `src/features/feed/schemas.ts` — composer, comment, cursor, vote validation.
-- Create `src/features/feed/schemas.test.ts` — validation tests.
-- Create `src/features/feed/mappers.ts` — database row-to-domain mapping and signed-media attachment.
-- Create `src/features/feed/mappers.test.ts` — mapper tests.
-- Create `src/features/feed/queries.ts` — first page, later page, and single-post reads.
-- Create `src/features/feed/queries.test.ts` — cursor/filter construction and query orchestration tests.
-- Create `src/features/feed/actions.ts` — create post, load more, like, save, comment, poll vote server actions.
-- Create `src/features/feed/actions.test.ts` — action validation/error-path tests.
-
-### Feed UI
-- Create `src/features/feed/components/feed-layout.tsx` — responsive three-column shell.
-- Create `src/features/feed/components/feed-profile-card.tsx` — compact signed-in profile rail.
-- Create `src/features/feed/components/feed-profile-card.test.tsx`.
-- Create `src/features/feed/profile-completion.ts` — pure completion calculation.
-- Create `src/features/feed/profile-completion.test.ts`.
-- Create `src/features/feed/components/post-composer.tsx` — text/image/poll composer.
-- Create `src/features/feed/components/post-composer.test.tsx`.
-- Create `src/features/feed/components/feed-category-filter.tsx` — horizontal category navigation.
-- Create `src/features/feed/components/feed-list.tsx` — client-held feed pages and Load More.
-- Create `src/features/feed/components/post-card.tsx` — post article, counts, actions, media, poll.
-- Create `src/features/feed/components/post-card.test.tsx`.
-- Create `src/features/feed/components/comment-thread.tsx` — initial comments and add-comment form.
-- Create `src/features/feed/components/poll-card.tsx` — poll options/results/vote state.
-- Create `src/features/feed/components/feed-discovery-rail.tsx` — real category links and navigation-only discovery cards.
-- Create `src/features/feed/components/share-post-button.tsx` — native share or clipboard copy; no stored share count.
-
-### Routes/config
-- Replace `src/app/(app)/home/page.tsx` with the feed composition route.
-- Create `src/app/(app)/posts/[id]/page.tsx` — authenticated shareable post detail.
-- Modify `next.config.ts` to allow signed Supabase image URLs through `next/image`.
-- Add `tests/e2e/home-feed.spec.ts` — unauthenticated redirect plus authenticated feed smoke path when credentials are supplied.
-
----
-
-### Task 1: Create the secure core feed schema
+### Task 1: Core feed schema and RLS
 
 **Files:**
 - Create: `supabase/migrations/20260902102000_create_feed_core.sql`
-- Test later in Task 3: `supabase/tests/feed_rls.test.sql`
 
 **Interfaces:**
-- Produces enums `public.post_category`, `public.post_type`, `public.post_reaction_type`.
-- Produces tables `public.posts`, `public.post_reactions`, `public.post_comments`, `public.saved_posts`.
-- Later application code writes `author_id = auth.uid()` and never accepts an arbitrary author from form input.
+- Produces enums `post_category`, `post_type`, `post_reaction_type`.
+- Produces `posts`, `post_reactions`, `post_comments`, `saved_posts`.
 
-- [ ] **Step 1: Write the migration with enums and tables**
-
-Use these enum values and constraints:
+- [ ] **Step 1: Create enums and tables**
 
 ```sql
 create type public.post_category as enum (
-  'maritime_news',
-  'technical_discussion',
-  'vetting_sire_2_0',
-  'career_advice',
-  'safety_lessons',
-  'achievement',
-  'learning',
-  'industry_opinion'
+  'maritime_news', 'technical_discussion', 'vetting_sire_2_0',
+  'career_advice', 'safety_lessons', 'achievement', 'learning', 'industry_opinion'
 );
-
 create type public.post_type as enum ('standard', 'poll');
 create type public.post_reaction_type as enum ('like');
 
@@ -116,10 +100,7 @@ create table public.posts (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
-  constraint posts_body_check check (
-    body = btrim(body)
-    and char_length(body) between 1 and 5000
-  )
+  check (body = btrim(body) and char_length(body) between 1 and 5000)
 );
 
 create table public.post_reactions (
@@ -138,10 +119,7 @@ create table public.post_comments (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   deleted_at timestamptz,
-  constraint post_comments_body_check check (
-    body = btrim(body)
-    and char_length(body) between 1 and 2000
-  )
+  check (body = btrim(body) and char_length(body) between 1 and 2000)
 );
 
 create table public.saved_posts (
@@ -152,50 +130,27 @@ create table public.saved_posts (
 );
 ```
 
-- [ ] **Step 2: Add indexes and database-managed timestamps**
+- [ ] **Step 2: Add indexes and updated-at trigger**
 
 ```sql
-create index posts_feed_idx
-on public.posts (created_at desc, id desc)
-where deleted_at is null;
-
-create index posts_category_feed_idx
-on public.posts (category, created_at desc, id desc)
-where deleted_at is null;
-
-create index post_comments_post_idx
-on public.post_comments (post_id, created_at asc)
-where deleted_at is null;
-
-create index post_reactions_post_idx on public.post_reactions (post_id);
-create index saved_posts_user_idx on public.saved_posts (user_id, created_at desc);
+create index posts_feed_idx on public.posts(created_at desc, id desc) where deleted_at is null;
+create index posts_category_feed_idx on public.posts(category, created_at desc, id desc) where deleted_at is null;
+create index post_comments_post_idx on public.post_comments(post_id, created_at asc) where deleted_at is null;
+create index post_reactions_post_idx on public.post_reactions(post_id);
+create index saved_posts_user_idx on public.saved_posts(user_id, created_at desc);
 
 create or replace function private.set_feed_updated_at()
-returns trigger
-language plpgsql
-security invoker
-set search_path = ''
-as $$
-begin
-  new.updated_at := now();
-  return new;
-end;
-$$;
-
+returns trigger language plpgsql security invoker set search_path = '' as $$
+begin new.updated_at := now(); return new; end; $$;
 revoke all on function private.set_feed_updated_at() from public, anon, authenticated, service_role;
 
-create trigger posts_set_updated_at
-before update on public.posts
+create trigger posts_set_updated_at before update on public.posts
 for each row execute procedure private.set_feed_updated_at();
-
-create trigger post_comments_set_updated_at
-before update on public.post_comments
+create trigger post_comments_set_updated_at before update on public.post_comments
 for each row execute procedure private.set_feed_updated_at();
 ```
 
-- [ ] **Step 3: Enable RLS and explicit grants**
-
-Enable RLS on all four tables. Revoke all first, then grant only required table operations. Do not grant update of `author_id`, `post_id`, `user_id`, `created_at`, or `post_type` to authenticated members.
+- [ ] **Step 3: Enable RLS and minimum grants**
 
 ```sql
 alter table public.posts enable row level security;
@@ -203,77 +158,43 @@ alter table public.post_reactions enable row level security;
 alter table public.post_comments enable row level security;
 alter table public.saved_posts enable row level security;
 
-revoke all on public.posts, public.post_reactions, public.post_comments, public.saved_posts
-from anon, authenticated;
-
+revoke all on public.posts, public.post_reactions, public.post_comments, public.saved_posts from anon, authenticated;
 grant select, insert on public.posts to authenticated;
 grant update (body, category, deleted_at) on public.posts to authenticated;
-
 grant select, insert, delete on public.post_reactions to authenticated;
 grant select, insert on public.post_comments to authenticated;
 grant update (body, deleted_at) on public.post_comments to authenticated;
 grant select, insert, delete on public.saved_posts to authenticated;
 ```
 
-- [ ] **Step 4: Add RLS policies using active completed membership checks**
+- [ ] **Step 4: Add ownership/member policies**
 
-Use the same membership condition everywhere:
+Use this exact membership predicate in read/insert policies:
 
 ```sql
 exists (
-  select 1
-  from public.profiles viewer
+  select 1 from public.profiles viewer
   where viewer.id = (select auth.uid())
     and viewer.account_status = 'active'
     and viewer.onboarding_completed_at is not null
 )
 ```
 
-Policies must enforce:
+`posts`: active members read non-deleted posts; inserts require `author_id = auth.uid()`; updates require own author ID.
 
-```sql
-create policy "active members read posts"
-on public.posts for select to authenticated
-using (
-  deleted_at is null
-  and exists (
-    select 1 from public.profiles viewer
-    where viewer.id = (select auth.uid())
-      and viewer.account_status = 'active'
-      and viewer.onboarding_completed_at is not null
-  )
-);
+`post_comments`: active members read non-deleted comments; inserts/updates require own `author_id`.
 
-create policy "members create own posts"
-on public.posts for insert to authenticated
-with check (
-  author_id = (select auth.uid())
-  and deleted_at is null
-  and exists (
-    select 1 from public.profiles viewer
-    where viewer.id = (select auth.uid())
-      and viewer.account_status = 'active'
-      and viewer.onboarding_completed_at is not null
-  )
-);
+`post_reactions`: active members read reactions; inserts/deletes require own `user_id`.
 
-create policy "authors update own posts"
-on public.posts for update to authenticated
-using (author_id = (select auth.uid()))
-with check (author_id = (select auth.uid()));
-```
+`saved_posts`: users may select/insert/delete only rows whose `user_id = auth.uid()`.
 
-Apply equivalent ownership/member policies to comments and reactions. `saved_posts` is private: members may select only rows whose `user_id = auth.uid()`.
-
-- [ ] **Step 5: Validate migration syntax locally**
-
-Run:
+- [ ] **Step 5: Reset local database**
 
 ```bash
 npx supabase db reset
 ```
 
-Expected: all existing migrations plus `20260902102000_create_feed_core.sql` apply without SQL errors.
+Expected: migration applies without SQL error.
 
 - [ ] **Step 6: Commit**
 
@@ -284,35 +205,26 @@ git commit -m "feat: add secure feed core schema"
 
 ---
 
-### Task 2: Add private image media and technical polls
+### Task 2: Private image media and technical polls
 
 **Files:**
 - Create: `supabase/migrations/20260902102100_add_feed_media_and_polls.sql`
-- Test later in Task 3: `supabase/tests/feed_poll_rls.test.sql`
 
 **Interfaces:**
-- Produces tables `post_media`, `post_polls`, `post_poll_options`, `post_poll_votes`.
-- Produces private Storage bucket `post-media`.
-- Produces RPC `public.create_poll_post(p_category public.post_category, p_body text, p_options text[]) returns uuid`.
+- Produces `post_media`, `post_polls`, `post_poll_options`, `post_poll_votes`, private bucket `post-media`, and `create_poll_post(...)`.
 
-- [ ] **Step 1: Add one-image-per-post media metadata**
+- [ ] **Step 1: Add media and poll tables**
 
 ```sql
 create table public.post_media (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null unique references public.posts(id) on delete cascade,
   storage_path text not null unique,
-  mime_type text not null,
-  alt_text text,
-  created_at timestamptz not null default now(),
-  constraint post_media_mime_check check (mime_type in ('image/jpeg', 'image/png', 'image/webp')),
-  constraint post_media_alt_check check (alt_text is null or char_length(alt_text) <= 300)
+  mime_type text not null check (mime_type in ('image/jpeg','image/png','image/webp')),
+  alt_text text check (alt_text is null or char_length(alt_text) <= 300),
+  created_at timestamptz not null default now()
 );
-```
 
-- [ ] **Step 2: Add single-choice poll tables**
-
-```sql
 create table public.post_polls (
   post_id uuid primary key references public.posts(id) on delete cascade,
   created_at timestamptz not null default now()
@@ -321,14 +233,9 @@ create table public.post_polls (
 create table public.post_poll_options (
   id uuid primary key default gen_random_uuid(),
   post_id uuid not null references public.post_polls(post_id) on delete cascade,
-  label text not null,
-  position smallint not null,
-  constraint post_poll_options_label_check check (
-    label = btrim(label) and char_length(label) between 1 and 120
-  ),
-  constraint post_poll_options_position_check check (position between 0 and 5),
-  unique (post_id, position),
-  unique (post_id, id)
+  label text not null check (label = btrim(label) and char_length(label) between 1 and 120),
+  position smallint not null check (position between 0 and 5),
+  unique (post_id, position), unique (post_id, id)
 );
 
 create table public.post_poll_votes (
@@ -337,57 +244,43 @@ create table public.post_poll_votes (
   user_id uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default now(),
   primary key (post_id, user_id),
-  foreign key (post_id, option_id)
-    references public.post_poll_options(post_id, id)
-    on delete cascade
+  foreign key (post_id, option_id) references public.post_poll_options(post_id, id) on delete cascade
 );
 ```
 
-- [ ] **Step 3: Add RLS and minimum grants for media and polls**
+- [ ] **Step 2: Add RLS**
 
-Authenticated active completed members can read media/polls/options/votes. Only the post author can create/remove media and poll definitions. A member can insert/update/delete only their own `post_poll_votes` row. Use explicit column grants; do not grant anonymous access.
+Enable RLS on all four tables. Active completed members can read media/polls/options/votes. Only the post author may insert/delete media and poll definitions. A voter may insert/update/delete only their own vote. Grant only the table operations required for those policies.
 
-- [ ] **Step 4: Create the private Storage bucket and policies**
+- [ ] **Step 3: Add private Storage bucket and object policies**
 
 ```sql
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'post-media',
-  'post-media',
-  false,
-  5242880,
-  array['image/jpeg', 'image/png', 'image/webp']
-)
+insert into storage.buckets(id, name, public, file_size_limit, allowed_mime_types)
+values ('post-media','post-media',false,5242880,array['image/jpeg','image/png','image/webp'])
 on conflict (id) do update set
   public = false,
   file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
 ```
 
-Storage object names must start with the uploader UUID. Upload/delete policies must require:
+Upload/delete policy requires:
 
 ```sql
 bucket_id = 'post-media'
 and (storage.foldername(name))[1] = (select auth.uid())::text
 ```
 
-Read policy must require an authenticated active completed profile. The bucket remains private so feed queries must issue signed URLs.
+Read policy requires authenticated active completed membership. Keep the bucket private.
 
-- [ ] **Step 5: Add an atomic poll-post RPC**
-
-Create a `SECURITY INVOKER` function so post + poll + options commit or roll back together:
+- [ ] **Step 4: Create atomic single-choice poll RPC**
 
 ```sql
 create or replace function public.create_poll_post(
   p_category public.post_category,
   p_body text,
   p_options text[]
-)
-returns uuid
-language plpgsql
-security invoker
-set search_path = ''
-as $$
+) returns uuid
+language plpgsql security invoker set search_path = '' as $$
 declare
   v_user_id uuid := (select auth.uid());
   v_post_id uuid := gen_random_uuid();
@@ -400,9 +293,7 @@ begin
   select array_agg(option_text order by first_position)
   into v_options
   from (
-    select distinct on (lower(btrim(value)))
-      btrim(value) as option_text,
-      position as first_position
+    select distinct on (lower(btrim(value))) btrim(value) option_text, position first_position
     from unnest(coalesce(p_options, '{}'::text[])) with ordinality as entry(value, position)
     where char_length(btrim(value)) between 1 and 120
     order by lower(btrim(value)), position
@@ -412,38 +303,28 @@ begin
     raise exception using errcode = '22023', message = 'polls require 2 to 6 distinct options';
   end if;
 
-  insert into public.posts (id, author_id, category, body, post_type)
+  insert into public.posts(id, author_id, category, body, post_type)
   values (v_post_id, v_user_id, p_category, btrim(p_body), 'poll');
-
-  insert into public.post_polls (post_id) values (v_post_id);
-
-  insert into public.post_poll_options (post_id, label, position)
-  select v_post_id, value, (ordinality - 1)::smallint
-  from unnest(v_options) with ordinality;
-
+  insert into public.post_polls(post_id) values (v_post_id);
+  insert into public.post_poll_options(post_id, label, position)
+  select v_post_id, value, (ordinality - 1)::smallint from unnest(v_options) with ordinality;
   return v_post_id;
 end;
 $$;
 
-revoke all on function public.create_poll_post(public.post_category, text, text[])
-from public, anon, authenticated, service_role;
-grant execute on function public.create_poll_post(public.post_category, text, text[])
-to authenticated;
+revoke all on function public.create_poll_post(public.post_category,text,text[]) from public, anon, authenticated, service_role;
+grant execute on function public.create_poll_post(public.post_category,text,text[]) to authenticated;
 ```
 
-RLS remains the authorization layer because the RPC is `SECURITY INVOKER`.
-
-- [ ] **Step 6: Validate both migrations**
-
-Run:
+- [ ] **Step 5: Reset local database**
 
 ```bash
 npx supabase db reset
 ```
 
-Expected: reset succeeds and `storage.buckets` contains `post-media` with `public = false`.
+Expected: both new migrations apply; `post-media` is private.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add supabase/migrations/20260902102100_add_feed_media_and_polls.sql
@@ -452,7 +333,7 @@ git commit -m "feat: add feed media and polls"
 
 ---
 
-### Task 3: Prove feed RLS and regenerate Supabase types
+### Task 3: Database security tests and generated types
 
 **Files:**
 - Create: `supabase/tests/feed_rls.test.sql`
@@ -460,94 +341,63 @@ git commit -m "feat: add feed media and polls"
 - Modify: `src/lib/supabase/database.types.ts`
 
 **Interfaces:**
-- Produces generated TypeScript table/enums/function definitions used by all following tasks.
-- Tests prove member A cannot mutate member B's social data.
+- Proves member A cannot mutate member B's social content.
+- Supplies generated table/enums/function types to the application.
 
-- [ ] **Step 1: Write the core RLS pgTAP test**
+- [ ] **Step 1: Write core pgTAP tests**
 
-Use fixed UUIDs and create two confirmed auth users under the initial privileged role. Complete both profiles directly for test setup. Then switch to `authenticated` and set the request claims.
+Create two fixed auth users, complete their profile rows during privileged setup, then simulate each authenticated JWT with `set_config('request.jwt.claim.sub', '<uuid>', true)`.
 
-Core assertions must include these concrete cases:
+Include these assertions:
 
 ```sql
 select lives_ok(
-  $$ insert into public.posts (id, author_id, category, body)
-     values ('aaaaaaaa-0000-0000-0000-000000000001',
-             '11111111-1111-1111-1111-111111111111',
+  $$ insert into public.posts(id, author_id, category, body)
+     values ('aaaaaaaa-0000-4000-8000-000000000001',
+             '11111111-1111-4111-8111-111111111111',
              'technical_discussion',
              'A real technical lesson from member A.') $$,
-  'member A can create own post'
-);
-
-select is(
-  (select count(*) from public.posts
-   where id = 'aaaaaaaa-0000-0000-0000-000000000001'),
-  1::bigint,
-  'active completed member can read feed post'
+  'member A creates own post'
 );
 ```
 
-Switch JWT subject to member B and assert an attempted update of member A's post changes zero rows; member B can like/comment/save that readable post but can select only their own save. Suspend member B and assert feed reads return zero rows for B.
+As member B, an update against member A's post must affect zero rows. B may like/comment/save A's readable post, but B can select only B's own save. After B is suspended, B must see zero feed rows.
 
-- [ ] **Step 2: Write poll/media RLS tests**
+- [ ] **Step 2: Write media/poll pgTAP tests**
 
-Assert:
-- member A can execute `create_poll_post` with 2–6 distinct options;
-- 1 option and 7 options are rejected;
-- member B can vote once and update their own choice;
-- member B cannot alter member A's poll options;
-- media metadata can be inserted only for a post authored by the current member;
-- a media row cannot be attached twice to the same post.
+Assert `create_poll_post` accepts 2–6 distinct options and rejects 1 or 7; B can vote/change B's vote; B cannot modify A's poll definitions; media metadata can only be attached to the current author's post; `post_media.post_id` rejects a second image row.
 
-- [ ] **Step 3: Run database tests**
-
-Run:
+- [ ] **Step 3: Run DB tests**
 
 ```bash
 npm run test:db
 ```
 
-Expected: all feed pgTAP assertions pass.
+Expected: all feed pgTAP tests pass.
 
-- [ ] **Step 4: Regenerate project types**
+- [ ] **Step 4: Generate TypeScript types from the locally migrated schema**
 
-Run:
+This must use the local database before production migrations are applied:
 
 ```bash
-npx supabase gen types typescript --project-id rrxyiwajrzcepyvscidh > src/lib/supabase/database.types.ts
+npx supabase gen types typescript --local > src/lib/supabase/database.types.ts
 ```
 
-Then verify the generated file includes:
-- `posts`
-- `post_reactions`
-- `post_comments`
-- `saved_posts`
-- `post_media`
-- `post_polls`
-- `post_poll_options`
-- `post_poll_votes`
-- `post_category`
-- `post_type`
-- `create_poll_post`
+Verify generated types include all eight social tables, `post_category`, `post_type`, and `create_poll_post`.
 
-- [ ] **Step 5: Run typecheck**
+- [ ] **Step 5: Typecheck and commit**
 
 ```bash
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
 git add supabase/tests src/lib/supabase/database.types.ts
 git commit -m "test: cover feed security rules"
 ```
 
+Expected: typecheck PASS.
+
 ---
 
-### Task 4: Define the feed domain and validation rules
+### Task 4: Feed domain model, schemas, and mappers
 
 **Files:**
 - Create: `src/features/feed/types.ts`
@@ -557,316 +407,200 @@ git commit -m "test: cover feed security rules"
 - Create: `src/features/feed/mappers.test.ts`
 
 **Interfaces:**
-- Produces `POST_CATEGORIES`, `POST_CATEGORY_LABELS`, `FeedPost`, `FeedPage`, `FeedCursor`, `FeedComment`, `FeedPoll`.
-- Produces `createPostInputSchema`, `commentInputSchema`, `feedRequestSchema`, `pollVoteSchema`.
+- `FeedCursor = { createdAt: string; id: string }`
+- `FeedPage = { posts: FeedPost[]; nextCursor: FeedCursor | null }`
+- `POST_CATEGORIES`, `POST_CATEGORY_LABELS`, `createPostInputSchema`, `commentInputSchema`, `feedRequestSchema`, `pollVoteSchema`.
 
-- [ ] **Step 1: Write failing schema tests**
+- [ ] **Step 1: Write failing validation tests**
 
 ```ts
-import { describe, expect, it } from 'vitest'
-import { createPostInputSchema } from './schemas'
-
-describe('createPostInputSchema', () => {
-  it('normalizes a standard maritime post', () => {
-    const parsed = createPostInputSchema.parse({
-      category: 'technical_discussion',
-      body: '  Main engine troubleshooting lesson.  ',
-      mode: 'standard',
-      pollOptions: [],
-    })
-    expect(parsed.body).toBe('Main engine troubleshooting lesson.')
+it('normalizes a standard post', () => {
+  const value = createPostInputSchema.parse({
+    category: 'technical_discussion', body: '  Main engine lesson.  ', mode: 'standard', pollOptions: [],
   })
+  expect(value.body).toBe('Main engine lesson.')
+})
 
-  it('rejects a poll with fewer than two distinct options', () => {
-    expect(() => createPostInputSchema.parse({
-      category: 'career_advice',
-      body: 'Which shore role would you choose?',
-      mode: 'poll',
-      pollOptions: ['Marine Superintendent', 'Marine Superintendent'],
-    })).toThrow()
-  })
+it('rejects fewer than two distinct poll choices', () => {
+  expect(() => createPostInputSchema.parse({
+    category: 'career_advice', body: 'Which shore role?', mode: 'poll',
+    pollOptions: ['Marine Superintendent', 'Marine Superintendent'],
+  })).toThrow()
 })
 ```
 
-- [ ] **Step 2: Run tests and verify failure**
+- [ ] **Step 2: Run failing tests**
 
 ```bash
 npm test -- src/features/feed/schemas.test.ts
 ```
 
-Expected: FAIL because feed schemas do not exist.
+Expected: FAIL because module does not exist.
 
-- [ ] **Step 3: Implement canonical types and labels**
+- [ ] **Step 3: Implement constants and schemas**
 
-Use these exact values:
+Enum values:
 
 ```ts
 export const POST_CATEGORIES = [
-  'maritime_news',
-  'technical_discussion',
-  'vetting_sire_2_0',
-  'career_advice',
-  'safety_lessons',
-  'achievement',
-  'learning',
-  'industry_opinion',
+  'maritime_news','technical_discussion','vetting_sire_2_0','career_advice',
+  'safety_lessons','achievement','learning','industry_opinion',
 ] as const
-
-export type PostCategory = (typeof POST_CATEGORIES)[number]
-
-export const POST_CATEGORY_LABELS: Record<PostCategory, string> = {
-  maritime_news: 'Maritime News',
-  technical_discussion: 'Technical Discussion',
-  vetting_sire_2_0: 'Vetting & SIRE 2.0',
-  career_advice: 'Career Advice',
-  safety_lessons: 'Safety Lessons',
-  achievement: 'Achievement',
-  learning: 'Learning',
-  industry_opinion: 'Industry Opinion',
-}
 ```
 
-Define `FeedCursor` as `{ createdAt: string; id: string }`. Define `FeedPage` as `{ posts: FeedPost[]; nextCursor: FeedCursor | null }`.
+Labels map one-to-one to the approved human labels. Body: 1–5000; comment: 1–2000; poll: 2–6 distinct trimmed options of 1–120; feed limit: 1–20 default 12; cursor ID UUID and date ISO datetime.
 
-- [ ] **Step 4: Implement validation**
+- [ ] **Step 4: Implement and test mappers**
 
-`body`: trimmed, 1–5000 characters. `comment`: trimmed, 1–2000. Poll: exactly 2–6 normalized distinct option strings, each max 120. Feed limit: integer 1–20, default 12. Cursor ID: UUID; cursor date: ISO datetime.
+Map author identity/maritime fields, real reaction/comment counts, viewer like/save/vote state, image metadata + supplied signed URL, and poll options sorted by `position`. Missing maritime data maps to null/empty values rather than invented copy.
 
-- [ ] **Step 5: Add mapper tests and mapper implementation**
-
-Test that:
-- missing maritime profile maps rank/company to null;
-- nested reaction/comment count arrays map to numbers;
-- viewer like/save/vote sets map to booleans/selected option;
-- image metadata maps to a signed URL supplied by the query layer;
-- poll options preserve `position` order.
-
-- [ ] **Step 6: Run tests**
+- [ ] **Step 5: Run tests and commit**
 
 ```bash
 npm test -- src/features/feed/schemas.test.ts src/features/feed/mappers.test.ts
+git add src/features/feed
+git commit -m "feat: define feed domain model"
 ```
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/features/feed/types.ts src/features/feed/schemas.ts src/features/feed/schemas.test.ts src/features/feed/mappers.ts src/features/feed/mappers.test.ts
-git commit -m "feat: define feed domain model"
-```
-
 ---
 
-### Task 5: Implement deterministic feed queries
+### Task 5: Deterministic feed queries
 
 **Files:**
 - Create: `src/features/feed/queries.ts`
 - Create: `src/features/feed/queries.test.ts`
 
 **Interfaces:**
-- Produces `getFeedPage(input?: FeedRequest): Promise<FeedPage>`.
-- Produces `getPostById(id: string): Promise<FeedPost | null>`.
-- Produces pure `buildFeedCursorFilter(cursor: FeedCursor): string` for testability.
+- `getFeedPage(input?): Promise<FeedPage>`
+- `getPostById(id): Promise<FeedPost | null>`
+- `buildFeedCursorFilter(cursor): string`
 
-- [ ] **Step 1: Write failing cursor/filter tests**
-
-```ts
-it('builds a strict created-at/id tie-break cursor', () => {
-  expect(buildFeedCursorFilter({
-    createdAt: '2026-09-02T10:00:00.000Z',
-    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  })).toBe(
-    'created_at.lt.2026-09-02T10:00:00.000Z,and(created_at.eq.2026-09-02T10:00:00.000Z,id.lt.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa)',
-  )
-})
-```
-
-- [ ] **Step 2: Run query tests and verify failure**
-
-```bash
-npm test -- src/features/feed/queries.test.ts
-```
-
-Expected: FAIL because query module does not exist.
-
-- [ ] **Step 3: Implement the server query**
-
-Use `requireUser()` and `createServerSupabaseClient()`. Select 13 rows for a 12-row page so `nextCursor` is known without a separate count. Order exactly:
+- [ ] **Step 1: Write failing cursor test**
 
 ```ts
-.order('created_at', { ascending: false })
-.order('id', { ascending: false })
-.limit(limit + 1)
+expect(buildFeedCursorFilter({
+  createdAt: '2026-09-02T10:00:00.000Z',
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+})).toBe(
+  'created_at.lt.2026-09-02T10:00:00.000Z,and(created_at.eq.2026-09-02T10:00:00.000Z,id.lt.aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa)'
+)
 ```
 
-When a cursor exists:
+- [ ] **Step 2: Implement query pipeline**
 
-```ts
-query = query.or(buildFeedCursorFilter(cursor))
-```
+Use `requireUser()` and `createServerSupabaseClient()`. Request `limit + 1`; order first `created_at` descending, then `id` descending. Apply `.eq('category', category)` only when filtered and `.or(buildFeedCursorFilter(cursor))` only after Zod cursor validation.
 
-When a category exists:
+Select author profile/maritime data, one media row, reaction count, comment count, poll/options/vote counts. Batch viewer-specific likes, saves, and poll votes for the returned post IDs.
 
-```ts
-query = query.eq('category', category)
-```
-
-The select must include author identity, `maritime_profiles`, one `post_media` row, poll/options with vote counts, reaction count, and comment count. Fetch viewer-specific likes, saves, and poll votes in separate batched queries for the returned post IDs.
-
-- [ ] **Step 4: Resolve private image URLs in one batch**
-
-Collect all non-null `storage_path` values and call:
+- [ ] **Step 3: Sign private images in one call**
 
 ```ts
 supabase.storage.from('post-media').createSignedUrls(paths, 3600)
 ```
 
-Map each returned signed URL back to the post. If signing one file fails, render that post without the image rather than failing the full feed.
+A signing failure for one media item removes only that image from its mapped post; it does not fail the whole feed.
 
-- [ ] **Step 5: Implement `getPostById`**
+- [ ] **Step 4: Implement single-post query using the same mapper**
 
-Use the same row selection/mapping pipeline and RLS. Return `null` for missing/inaccessible/deleted posts. This powers `/posts/[id]` and share links.
+Deleted/inaccessible/missing post returns null.
 
-- [ ] **Step 6: Run tests and typecheck**
+- [ ] **Step 5: Test/typecheck/commit**
 
 ```bash
 npm test -- src/features/feed/queries.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add src/features/feed/queries.ts src/features/feed/queries.test.ts
 git commit -m "feat: add paginated feed queries"
 ```
 
+Expected: PASS.
+
 ---
 
-### Task 6: Implement server actions for social mutations
+### Task 6: Server actions for posts, Load More, likes, saves, comments, votes
 
 **Files:**
 - Create: `src/features/feed/actions.ts`
 - Create: `src/features/feed/actions.test.ts`
 
 **Interfaces:**
-- Produces `createPost(previousState, formData)`.
-- Produces `loadFeedPage(input)`.
-- Produces `setPostLiked(postId, liked)`.
-- Produces `setPostSaved(postId, saved)`.
-- Produces `addComment(previousState, formData)`.
-- Produces `setPollVote(postId, optionId)`.
-- Every action returns a serializable controlled result; database errors never leak raw SQL messages.
+- `createPost(previousState, formData)`
+- `loadFeedPage(input)`
+- `setPostLiked(postId, liked)`
+- `setPostSaved(postId, saved)`
+- `addComment(previousState, formData)`
+- `setPollVote(postId, optionId)`
 
-- [ ] **Step 1: Write failing action validation tests**
+- [ ] **Step 1: Write failing action tests**
 
-Mock `requireUser` and `createServerSupabaseClient`. Test that an invalid body never calls Supabase and returns field errors. Test that `setPostLiked(id, false)` deletes only the current user's row by matching both `post_id` and `user_id`.
+Mock auth/Supabase. Invalid body must not call Supabase. `setPostLiked(id,false)` must delete with both `.eq('post_id', id)` and `.eq('user_id', user.id)`.
 
-- [ ] **Step 2: Run tests and verify failure**
+- [ ] **Step 2: Implement standard post creation**
 
-```bash
-npm test -- src/features/feed/actions.test.ts
-```
-
-Expected: FAIL because actions do not exist.
-
-- [ ] **Step 3: Implement text post creation**
-
-Generate `postId = crypto.randomUUID()` in the server action. Never accept `author_id` from FormData.
+Never accept author ID from FormData:
 
 ```ts
-const { error } = await supabase.from('posts').insert({
-  id: postId,
-  author_id: user.id,
-  category: data.category,
-  body: data.body,
-  post_type: 'standard',
+const postId = crypto.randomUUID()
+await supabase.from('posts').insert({
+  id: postId, author_id: user.id, category: data.category, body: data.body, post_type: 'standard',
 })
 ```
 
-On success call `revalidatePath('/home')` and return `{ ok: true, postId }`.
+On success `revalidatePath('/home')` and return `{ ok: true, postId }`.
 
-- [ ] **Step 4: Implement load-more, like, save, and comment actions**
+- [ ] **Step 3: Implement remaining mutations**
 
-`loadFeedPage` delegates to `getFeedPage` after Zod validation. Like uses `upsert({ post_id, user_id, reaction_type: 'like' })` when true and deletes the matching row when false. Save follows the same pattern. Comment inserts `{ post_id, author_id: user.id, body }`.
+Like true: upsert `{post_id,user_id,reaction_type:'like'}`; false: delete own row. Save uses identical desired-state semantics. Comment inserts own author ID. `loadFeedPage` validates then calls `getFeedPage`. Vote upserts `{post_id,option_id,user_id}`.
 
-- [ ] **Step 5: Implement poll voting**
+- [ ] **Step 4: Control errors**
 
-Use an upsert on primary key `(post_id, user_id)`:
+Return useful form/action errors without returning raw database messages or SQL codes to UI.
 
-```ts
-await supabase.from('post_poll_votes').upsert({
-  post_id: postId,
-  option_id: optionId,
-  user_id: user.id,
-})
-```
-
-RLS and the composite foreign key ensure the option belongs to the target poll.
-
-- [ ] **Step 6: Run tests and typecheck**
+- [ ] **Step 5: Test/typecheck/commit**
 
 ```bash
 npm test -- src/features/feed/actions.test.ts
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 7: Commit**
-
-```bash
 git add src/features/feed/actions.ts src/features/feed/actions.test.ts
 git commit -m "feat: add feed mutation actions"
 ```
 
+Expected: PASS.
+
 ---
 
-### Task 7: Build the real profile rail and three-column home shell
+### Task 7: Three-column home shell and real profile rail
 
 **Files:**
 - Create: `src/features/feed/profile-completion.ts`
 - Create: `src/features/feed/profile-completion.test.ts`
+- Create: `src/features/feed/components/feed-layout.tsx`
 - Create: `src/features/feed/components/feed-profile-card.tsx`
 - Create: `src/features/feed/components/feed-profile-card.test.tsx`
-- Create: `src/features/feed/components/feed-layout.tsx`
 - Create: `src/features/feed/components/feed-discovery-rail.tsx`
 - Modify: `src/app/(app)/home/page.tsx`
 
 **Interfaces:**
-- `calculateProfileCompletion(profile: OwnProfile): number` returns an integer 0–100.
-- `FeedLayout` receives `profile`, `initialPage`, and `category`.
+- `calculateProfileCompletion(profile: OwnProfile): number`
+- `FeedLayout({ profile, initialPage, category })`
 
-- [ ] **Step 1: Write completion tests**
+- [ ] **Step 1: Test completion and profile card**
 
-For a maritime member, count these real fields: full name, headline, summary, location, at least one skill, rank, current company, sailing experience. A fully populated set returns 100; missing four of eight returns 50. For non-maritime profile types use only the first five generic fields.
+Maritime completion uses eight real fields: full name, headline, summary, location, at least one skill, rank, current company, sailing experience. Full = 100, four of eight = 50. Non-maritime uses the five generic fields.
 
-- [ ] **Step 2: Implement the completion function**
+Card test must render real name/headline/rank/company/experience/availability/completion/View Profile and must not render `Verified`, `Reputation`, or a fabricated connection count.
 
-Use booleans from actual fields only; do not infer credentials or verification.
+- [ ] **Step 2: Implement profile rail**
 
-- [ ] **Step 3: Write the profile-card rendering test**
+Use existing `Card`, the same gradient family as `ProfileHeader`, initials fallback, current Sea N Shore type/colors. Desktop rail is sticky; mobile version is compact.
 
-Assert that a seafarer card renders full name, headline, rank, company, `12 years`, availability, completion percentage, and `View profile`; assert it does not render `Verified`, `Reputation`, or a made-up connection count.
+- [ ] **Step 3: Implement discovery rail without fake listings**
 
-- [ ] **Step 4: Implement the feed profile card using existing design tokens**
+Show maritime category links and navigation-only cards for Network, Events, Jobs. Do not show fake vacancies, people, event dates, or counts.
 
-Use `Card`, the same gradient family already used by `ProfileHeader`, initials fallback, and existing colors. Desktop card is sticky through the parent rail; mobile shows a shorter summary. Use `/profile` for the primary action.
-
-- [ ] **Step 5: Implement the discovery rail without fake listings**
-
-Show:
-- `Maritime topics` linking to feed category URLs;
-- navigation cards to `/network`, `/events`, and `/jobs` with copy such as `Explore the professional network`, `Browse maritime events`, and `See maritime opportunities`.
-
-Do not render named people, event dates, job counts, or vacancy cards until those modules have real data.
-
-- [ ] **Step 6: Replace `/home` composition**
-
-Use:
+- [ ] **Step 4: Replace `/home`**
 
 ```ts
 const profile = await getOwnProfile()
@@ -875,113 +609,81 @@ const category = parseFeedCategory((await searchParams).category)
 const initialPage = await getFeedPage({ category })
 ```
 
-Render a grid equivalent to:
+Layout: desktop `280px | feed | 300px`; medium `280px | feed`; mobile one column. Center feed stays dominant.
 
-```text
-lg:  280px | minmax(0, 1fr)
-xl:  280px | minmax(0, 1fr) | 300px
-```
-
-The center column remains visually dominant. The right rail disappears before the left rail as viewport width narrows.
-
-- [ ] **Step 7: Run component tests and typecheck**
+- [ ] **Step 5: Test/typecheck/commit**
 
 ```bash
 npm test -- src/features/feed/profile-completion.test.ts src/features/feed/components/feed-profile-card.test.tsx
 npm run typecheck
+git add src/features/feed/profile-completion* src/features/feed/components/feed-layout.tsx src/features/feed/components/feed-profile-card* src/features/feed/components/feed-discovery-rail.tsx 'src/app/(app)/home/page.tsx'
+git commit -m "feat: turn home into feed layout"
 ```
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
-
-```bash
-git add src/features/feed/profile-completion.ts src/features/feed/profile-completion.test.ts src/features/feed/components/feed-profile-card.tsx src/features/feed/components/feed-profile-card.test.tsx src/features/feed/components/feed-layout.tsx src/features/feed/components/feed-discovery-rail.tsx 'src/app/(app)/home/page.tsx'
-git commit -m "feat: turn home into feed layout"
-```
-
 ---
 
-### Task 8: Build composer, category filters, feed cards, likes, saves, comments, and Load More
+### Task 8: Composer, filters, post cards, comments, Load More
 
 **Files:**
+- Create: `src/features/feed/components/feed-category-filter.tsx`
 - Create: `src/features/feed/components/post-composer.tsx`
 - Create: `src/features/feed/components/post-composer.test.tsx`
-- Create: `src/features/feed/components/feed-category-filter.tsx`
 - Create: `src/features/feed/components/feed-list.tsx`
 - Create: `src/features/feed/components/post-card.tsx`
 - Create: `src/features/feed/components/post-card.test.tsx`
 - Create: `src/features/feed/components/comment-thread.tsx`
 
 **Interfaces:**
-- `PostComposer` calls `createPost` via `useActionState`.
-- `FeedList` owns appended pages and calls `loadFeedPage` using `nextCursor`.
-- `PostCard` calls `setPostLiked`, `setPostSaved`, and renders `CommentThread`.
+- Composer uses `useActionState(createPost, ...)`.
+- FeedList appends `loadFeedPage` results.
+- PostCard uses desired-state Like/Save actions.
 
-- [ ] **Step 1: Write composer tests**
+- [ ] **Step 1: Write composer and card tests**
 
-Test placeholder copy exactly:
+Composer placeholder is exactly `Share a maritime update, technical lesson, or industry insight...`. Ensure category choice exists, submitted/invalid state is accessible, and no `Ask Co-Pilot` exists.
 
-```text
-Share a maritime update, technical lesson, or industry insight...
-```
+Post card test requires semantic `<article>`, author link, category, `<time dateTime>`, real counts, Like/Comment/Share/Save, and no unsupported verification badge.
 
-Assert category selection exists, `Post` is disabled while submitting, invalid state preserves body/category, and no `Ask Co-Pilot` control exists.
+- [ ] **Step 2: Implement category links**
 
-- [ ] **Step 2: Write post-card tests**
+`All -> /home`; each category -> `/home?category=<enum>`. Mobile row scrolls horizontally.
 
-Render a `FeedPost` fixture and assert:
-- semantic `<article>` exists;
-- author links to `/people/<slug>`;
-- category label renders;
-- `<time dateTime>` has the full timestamp;
-- Like, Comment, Share, Save controls exist;
-- no verification badge appears without a verification field;
-- real counts render from the fixture.
+- [ ] **Step 3: Implement composer**
 
-- [ ] **Step 3: Implement the category filter**
+On success clear form and `router.refresh()`; preserve safe entered values on failure.
 
-Render `All` plus all eight canonical categories as links. `All` points to `/home`; each category points to `/home?category=<enum-value>`. On mobile, use horizontal overflow rather than wrapping into multiple dense rows.
+- [ ] **Step 4: Implement post card + optimistic Like/Save**
 
-- [ ] **Step 4: Implement composer and text-post success behavior**
+Update local UI immediately with `useTransition`, then restore previous state if action returns failure. Use plain Like only.
 
-Use existing card/button visual language. After `{ ok: true }`, clear the form and call `router.refresh()` so the server-rendered first page contains the new post.
+- [ ] **Step 5: Implement comments**
 
-- [ ] **Step 5: Implement post cards and interaction state**
+Show real loaded comments and add-comment form. Successful comment refreshes route. No placeholder/fake comments.
 
-Use `useTransition` for Like/Save. Update local state immediately, then revert if the server action returns `{ ok: false }`. Use plain `Like`, `Comment`, `Share`, `Save`; do not introduce maritime-specific reaction types in this release.
+- [ ] **Step 6: Implement Load More**
 
-- [ ] **Step 6: Implement comments**
+Append returned posts, de-duplicate by ID, use returned next cursor, hide button when cursor is null.
 
-Initially show the mapped first comments returned by the query, followed by a compact add-comment form. On successful comment, refresh the route. Do not fabricate hidden comments or placeholder comments to inflate engagement.
+- [ ] **Step 7: Implement real empty state**
 
-- [ ] **Step 7: Implement stable Load More**
+Prompt to publish, visit Network, or Community. Do not seed sample member posts.
 
-`FeedList` starts with `initialPage.posts`. Load More sends the current category and `nextCursor`; append only IDs not already in the list. Replace the cursor with the returned `nextCursor`. Hide the control at `null`.
-
-- [ ] **Step 8: Implement the legitimate empty state**
-
-When `posts.length === 0`, render actions to publish the first update, explore `/network`, and visit `/community`. Do not seed fake member posts.
-
-- [ ] **Step 9: Run UI tests and typecheck**
+- [ ] **Step 8: Test/typecheck/commit**
 
 ```bash
 npm test -- src/features/feed/components/post-composer.test.tsx src/features/feed/components/post-card.test.tsx
 npm run typecheck
+git add src/features/feed/components
+git commit -m "feat: add interactive maritime feed"
 ```
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit**
-
-```bash
-git add src/features/feed/components/post-composer.tsx src/features/feed/components/post-composer.test.tsx src/features/feed/components/feed-category-filter.tsx src/features/feed/components/feed-list.tsx src/features/feed/components/post-card.tsx src/features/feed/components/post-card.test.tsx src/features/feed/components/comment-thread.tsx
-git commit -m "feat: add interactive maritime feed"
-```
-
 ---
 
-### Task 9: Add secure image/diagram upload and rendering
+### Task 9: Secure image/diagram upload
 
 **Files:**
 - Modify: `src/features/feed/actions.ts`
@@ -991,71 +693,46 @@ git commit -m "feat: add interactive maritime feed"
 - Modify: `next.config.ts`
 
 **Interfaces:**
-- Composer sends optional FormData key `media` and optional `altText`.
-- Standard post supports zero or one image; poll posts do not accept an image in this release.
+- FormData optional keys: `media`, `altText`.
+- One image on standard posts; polls and images cannot be combined in this release.
 
-- [ ] **Step 1: Write failing media validation tests**
+- [ ] **Step 1: Test media validation**
 
-Test rejection of:
-- file > 5 MiB;
-- `image/gif`;
-- an image submitted with `mode = 'poll'`;
-- alt text > 300 characters.
+Reject >5 MiB, GIF/other MIME, poll+image, alt >300. Accept JPEG/PNG/WebP.
 
-Test acceptance of JPEG, PNG, and WebP.
-
-- [ ] **Step 2: Implement server-side media validation**
-
-Never trust the filename extension. Map MIME types explicitly:
+- [ ] **Step 2: Validate MIME and size server-side**
 
 ```ts
 const extensionByMime = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
 } as const
 ```
 
-Reject any other `File.type`, and reject `file.size > 5 * 1024 * 1024`.
+Use MIME mapping, not filename extension.
 
-- [ ] **Step 3: Upload before inserting the visible post and clean up failures**
+- [ ] **Step 3: Upload with cleanup**
 
-Generate the post ID and storage path:
+Path is `${user.id}/${postId}/${crypto.randomUUID()}.${extension}`. Upload first. Insert post next, media metadata last. If DB insert fails, remove uploaded storage object. If metadata insert fails after post insert, remove storage object and remove/soft-delete the just-created post so no broken feed item remains.
 
-```ts
-const path = `${user.id}/${postId}/${crypto.randomUUID()}.${extension}`
-```
+- [ ] **Step 4: Add composer controls and rendering**
 
-Upload to `post-media`. Insert the post only after upload succeeds. Insert `post_media` after the post. If the post or media-row insert fails, remove the uploaded storage object. If the media-row insert fails after post insert, soft-delete/remove the newly created post as part of cleanup so no broken visible feed item remains.
+Photo/Diagram button, one accepted file, filename preview/remove, optional alt input. Use `next/image`; add HTTPS `**.supabase.co` to `images.remotePatterns` in `next.config.ts`.
 
-- [ ] **Step 4: Update the composer UI**
-
-Add `Photo/Diagram`, one file input with `accept="image/jpeg,image/png,image/webp"`, filename preview, remove control, and optional alt-text input. Keep the visual language consistent with existing cards and buttons.
-
-- [ ] **Step 5: Configure Next Image**
-
-Add Supabase to `images.remotePatterns` in `next.config.ts` using HTTPS and the `**.supabase.co` hostname pattern. Render the signed feed URL with `next/image`; use a responsive aspect container, rounded corners consistent with the post card, and `unoptimized` only if required for signed-query URLs.
-
-- [ ] **Step 6: Run tests, lint, typecheck**
+- [ ] **Step 5: Verify**
 
 ```bash
 npm test -- src/features/feed/actions.test.ts src/features/feed/components/post-composer.test.tsx src/features/feed/components/post-card.test.tsx
 npm run lint
 npm run typecheck
+git add src/features/feed next.config.ts
+git commit -m "feat: add private feed images"
 ```
 
 Expected: PASS with zero lint warnings.
 
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/features/feed/actions.ts src/features/feed/actions.test.ts src/features/feed/components/post-composer.tsx src/features/feed/components/post-card.tsx next.config.ts
-git commit -m "feat: add private feed images"
-```
-
 ---
 
-### Task 10: Add technical poll composition and voting UI
+### Task 10: Technical poll UI and voting
 
 **Files:**
 - Modify: `src/features/feed/components/post-composer.tsx`
@@ -1065,53 +742,41 @@ git commit -m "feat: add private feed images"
 - Modify: `src/features/feed/actions.ts`
 
 **Interfaces:**
-- Composer sends `mode = 'poll'` and repeated `pollOption` values.
-- `createPost` calls `supabase.rpc('create_poll_post', ...)` for poll mode.
-- `PollCard` receives mapped option counts and `viewerOptionId`.
+- Poll form sends `mode='poll'` and repeated `pollOption` values.
+- `createPost` calls RPC `create_poll_post` for poll mode.
 
-- [ ] **Step 1: Add composer poll tests**
+- [ ] **Step 1: Test poll composer**
 
-Assert `Technical Poll` reveals two option inputs, `Add option` stops at six, removing options stops at two, duplicate/blank options surface validation, and selecting poll mode hides/disables media upload.
+Technical Poll reveals two inputs. Add stops at 6; remove stops at 2; blanks/duplicates fail validation; media is disabled in poll mode.
 
-- [ ] **Step 2: Implement poll composer state**
-
-Start with two empty inputs. Use stable local IDs for React keys. Add/remove controls never allow fewer than two or more than six option fields.
-
-- [ ] **Step 3: Route poll submission through the atomic RPC**
+- [ ] **Step 2: Implement poll state and RPC submission**
 
 ```ts
-const { data: postId, error } = await supabase.rpc('create_poll_post', {
+await supabase.rpc('create_poll_post', {
   p_category: data.category,
   p_body: data.body,
   p_options: data.pollOptions,
 })
 ```
 
-Return the same controlled success/error state as standard posts.
+- [ ] **Step 3: Build accessible poll card**
 
-- [ ] **Step 4: Build accessible poll rendering**
+Use fieldset/radio semantics. Before vote show choices; after vote show real counts and percentages. Selected option stays visible. Members may change their vote through `setPollVote`.
 
-Use a fieldset/radio-group pattern. Before voting, show labels and a Vote action. After voting, show each option's count and percentage computed from real totals. Keep the selected option visible. A member can change their vote; `setPollVote` upserts their row.
-
-- [ ] **Step 5: Run tests**
+- [ ] **Step 4: Verify/commit**
 
 ```bash
 npm test -- src/features/feed/components/post-composer.test.tsx src/features/feed/components/post-card.test.tsx src/features/feed/actions.test.ts
 npm run typecheck
+git add src/features/feed
+git commit -m "feat: add technical feed polls"
 ```
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/features/feed/components/post-composer.tsx src/features/feed/components/post-composer.test.tsx src/features/feed/components/poll-card.tsx src/features/feed/components/post-card.tsx src/features/feed/actions.ts
-git commit -m "feat: add technical feed polls"
-```
-
 ---
 
-### Task 11: Add authenticated post detail and share/copy-link behavior
+### Task 11: Authenticated post detail and Share
 
 **Files:**
 - Create: `src/app/(app)/posts/[id]/page.tsx`
@@ -1119,19 +784,13 @@ git commit -m "feat: add technical feed polls"
 - Modify: `src/features/feed/components/post-card.tsx`
 
 **Interfaces:**
-- Shared URLs use `/posts/<uuid>`.
-- No database share/repost count is created in this milestone.
+- Share URL `/posts/<uuid>`.
+- No stored share/repost count.
 
-- [ ] **Step 1: Implement post detail route**
-
-Next.js 16 params are awaited:
+- [ ] **Step 1: Add detail route**
 
 ```ts
-export default async function PostPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function PostPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const post = await getPostById(id)
   if (!post) notFound()
@@ -1139,75 +798,53 @@ export default async function PostPage({
 }
 ```
 
-The authenticated app layout already protects the route.
-
-- [ ] **Step 2: Implement share fallback**
-
-In the client button construct:
+- [ ] **Step 2: Add native share/clipboard fallback**
 
 ```ts
 const url = new URL(`/posts/${postId}`, window.location.origin).toString()
 ```
 
-If `navigator.share` exists, call it with Sea N Shore title/text/url. Otherwise `await navigator.clipboard.writeText(url)`. Announce `Link copied` through an `aria-live="polite"` region.
+Use `navigator.share` when available, otherwise clipboard. Announce `Link copied` via `aria-live="polite"`. Do not increment any share count.
 
-- [ ] **Step 3: Keep share metrics absent**
-
-Do not increment a counter and do not label a copy-link count as shares. The post footer continues to display only real like/comment counts.
-
-- [ ] **Step 4: Run lint and typecheck**
+- [ ] **Step 3: Verify/commit**
 
 ```bash
 npm run lint
 npm run typecheck
-```
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
 git add 'src/app/(app)/posts/[id]/page.tsx' src/features/feed/components/share-post-button.tsx src/features/feed/components/post-card.tsx
 git commit -m "feat: add feed post sharing"
 ```
 
+Expected: PASS.
+
 ---
 
-### Task 12: Responsive, accessibility, end-to-end, and release verification
+### Task 12: Accessibility, responsive QA, production migration, Vercel release
 
 **Files:**
-- Modify feed components as required by test findings.
+- Modify feed components only when QA identifies an issue.
 - Create: `tests/e2e/home-feed.spec.ts`
 
 **Interfaces:**
-- Release is complete only after repository checks, production migrations, Supabase advisor review, and Vercel deployment verification.
+- Release completes only after code checks, database checks, advisor review, and deployed smoke verification.
 
-- [ ] **Step 1: Add accessibility semantics to every feed surface**
+- [ ] **Step 1: Accessibility pass**
 
-Verify:
-- every post is an `<article>` with an author/body label relationship;
-- icon-only controls have `aria-label`;
-- interactive targets are at least 44px high/wide where practical;
-- relative timestamps use `<time dateTime="...">`;
-- category filter has a navigation label;
-- image alt text uses stored `alt_text`, falling back to `Image attached to <author>'s post`;
-- poll options are keyboard operable;
-- optimistic errors are announced with `role="alert"` or `aria-live`;
-- focus rings continue to use the global Sea N Shore focus styling.
+Require semantic articles; author/body labels; `aria-label` on icon-only controls; practical 44px targets; `<time dateTime>`; labeled category navigation; stored image alt with fallback `Image attached to <author>'s post`; keyboard-operable polls; `role="alert"`/`aria-live` for mutation failures; existing focus ring retained.
 
-- [ ] **Step 2: Verify responsive layout manually at defined breakpoints**
+- [ ] **Step 2: Responsive pass**
 
-Check:
-- 390px: one center column, existing bottom navigation, compact profile summary, horizontal category scroll;
-- 768px: center-first layout with no right rail;
-- 1024px: left rail + feed;
-- 1280px and above: left rail + feed + discovery rail.
+390px: one feed column + existing bottom nav + compact profile + horizontal category scroll.
 
-No component may horizontally overflow the page except the intentionally scrollable category row.
+768px: center-first layout, no right rail.
+
+1024px: left profile + feed.
+
+1280px+: left profile + feed + discovery.
+
+Only category row may intentionally scroll horizontally.
 
 - [ ] **Step 3: Add Playwright smoke tests**
-
-At minimum:
 
 ```ts
 import { expect, test } from '@playwright/test'
@@ -1218,9 +855,9 @@ test('signed-out visitor is redirected from home', async ({ page }) => {
 })
 ```
 
-Add an authenticated test gated by `E2E_USER_EMAIL` and `E2E_USER_PASSWORD`. It signs in through the real UI, expects the feed composer placeholder, expects the current profile card, and checks there is no text matching `/Verified CoC|Reputation 6,200/i`. Do not commit credentials.
+Add authenticated smoke path using uncommitted `E2E_USER_EMAIL`/`E2E_USER_PASSWORD`: sign in through UI, expect composer placeholder and real profile card, and assert no `/Verified CoC|Reputation 6,200/i` text.
 
-- [ ] **Step 4: Run the full repository verification**
+- [ ] **Step 4: Full repository verification**
 
 ```bash
 npm run lint
@@ -1230,76 +867,51 @@ npm run build
 npm run test:db
 ```
 
-Expected: every available command passes. If local Supabase/Docker prevents `test:db`, do not claim it passed; use the production migration checks below and record the local limitation.
+All available commands must pass. If Docker/local Supabase blocks `test:db`, explicitly record that limitation; do not claim it passed.
 
-- [ ] **Step 5: Apply migrations to the connected Sea N Shore Supabase project**
+- [ ] **Step 5: Apply the two versioned migrations to production Supabase**
 
-Target project ref: `rrxyiwajrzcepyvscidh`.
+Target project: `rrxyiwajrzcepyvscidh`.
 
-Apply exactly the two versioned migration SQL files with Supabase migration tooling/connector, in order:
+Apply in order:
 1. `20260902102000_create_feed_core`
 2. `20260902102100_add_feed_media_and_polls`
 
-Then query migration history and table metadata to verify both are present and RLS is enabled on every new social table.
+Verify migration history and RLS on every new table.
 
-- [ ] **Step 6: Run Supabase security and performance advisors**
+- [ ] **Step 6: Regenerate production types and compare**
 
-Review new findings. New feed tables must not produce `RLS Enabled No Policy`. Any `SECURITY DEFINER` warning introduced by this feed work is a release blocker because the new poll RPC is intentionally `SECURITY INVOKER`.
+After production migrations are confirmed, generate types from project `rrxyiwajrzcepyvscidh` and confirm they are materially identical to the local-generated file. Commit only if production generation exposes a legitimate schema difference.
 
-Existing unrelated warnings must be documented separately rather than silently attributed to the feed.
+- [ ] **Step 7: Run Supabase advisors**
 
-- [ ] **Step 7: Merge/push the verified implementation to `main`**
+No new feed table may have `RLS Enabled No Policy`. A new feed `SECURITY DEFINER` warning is a release blocker; feed RPC is intentionally `SECURITY INVOKER`. Document unrelated pre-existing advisor findings separately.
 
-Use a feature branch during implementation. After review and verification, merge without force-pushing over concurrent changes. Vercel is linked to `adityaps70/SEA-N-SHORE-CODEX` and production branch `main`, so the merge should trigger deployment.
+- [ ] **Step 8: Merge verified feature branch to `main` without force-push**
 
-- [ ] **Step 8: Verify the Vercel production deployment**
+Preserve concurrent changes. The Vercel project is linked to `adityaps70/SEA-N-SHORE-CODEX`, production branch `main`.
 
-Confirm:
-- deployment state is Ready;
-- deployed Git SHA matches the merged feed commit;
-- build contains no environment-validation error;
-- server logs show no repeated 4xx/5xx feed RPC/table errors;
-- authenticated `/home` renders the composer and feed through a real member account.
+- [ ] **Step 9: Verify Vercel deployment**
 
-- [ ] **Step 9: Commit final test/polish changes before merge if any**
+Confirm Ready state, deployed SHA equals merged feed SHA, build has no env-validation error, and logs show no repeating feed 4xx/5xx failures. Authenticated `/home` must show composer + real profile rail + real feed/empty state.
+
+- [ ] **Step 10: Commit QA fixes if QA changed files**
 
 ```bash
 git add tests/e2e/home-feed.spec.ts src/features/feed src/app next.config.ts
 git commit -m "test: verify home feed release"
 ```
 
-Use only if this task produced changes not already committed; do not create an empty commit.
+Do not create an empty commit.
 
 ---
 
 ## Plan Self-Review
 
-### Spec coverage
-- Three-column desktop layout: Task 7.
-- Signed-in real profile rail: Task 7.
-- Mobile/tablet behavior: Task 12.
-- Composer: Tasks 8–10.
-- Eight maritime categories: Tasks 4 and 8.
-- Text posts: Tasks 6 and 8.
-- One private image/diagram: Tasks 2 and 9.
-- Technical polls: Tasks 2 and 10.
-- Like: Tasks 1, 6, 8.
-- Comments: Tasks 1, 6, 8.
-- Save: Tasks 1, 6, 8.
-- Share/copy-link without fake count: Task 11.
-- Deterministic Load More: Tasks 5 and 8.
-- No fake content/verification: Global Constraints, Tasks 7, 8, 12.
-- RLS and ownership protection: Tasks 1–3.
-- Existing Sea N Shore visual system: Global Constraints, Tasks 7–12.
-- Accessibility: Tasks 8, 10, 11, 12.
-- Production Supabase + Vercel verification: Task 12.
+**Spec coverage:** three-column layout Task 7; real profile rail Task 7; text/category feed Tasks 4–8; Like/Comment/Save Tasks 1,6,8; image Task 9; poll Task 10; Share Task 11; stable pagination Task 5/8; mobile/accessibility Task 12; RLS Tasks 1–3; production verification Task 12.
 
-### Placeholder scan
-The plan contains no implementation placeholders such as TBD/TODO, no unspecified `add validation` steps, and no references to undefined neighboring interfaces.
+**No-placeholder check:** no TBD/TODO steps, no undefined `add validation/error handling` instructions, and each task names its files, interfaces, commands, and expected behavior.
 
-### Type/signature consistency
-- `FeedCursor` is `{ createdAt: string; id: string }` throughout.
-- `getFeedPage` returns `FeedPage` throughout.
-- `createPollPost` database function is consistently named `create_poll_post` and receives category/body/options.
-- Like/Save mutations consistently use desired boolean state rather than ambiguous toggle semantics.
-- Poll votes consistently use one row per `(post_id, user_id)`.
+**Type consistency:** `FeedCursor` is `{ createdAt, id }`; `FeedPage` is `{ posts, nextCursor }`; Like/Save use desired booleans; poll vote is one row per `(post_id,user_id)`; database RPC is consistently `create_poll_post(category, body, options)`.
+
+**Self-review correction incorporated:** development types are generated with `supabase gen types --local` after local migrations, because the production project does not receive the new migrations until Task 12. Production types are rechecked only after those migrations are applied.
