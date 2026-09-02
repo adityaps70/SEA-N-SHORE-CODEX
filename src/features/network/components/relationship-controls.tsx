@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   acceptConnectionRequest,
@@ -28,11 +28,6 @@ export function RelationshipControls({
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
   const [awaitingRefresh, setAwaitingRefresh] = useState(false)
-
-  useEffect(() => {
-    setRelationship(initialRelationship)
-    setAwaitingRefresh(false)
-  }, [initialRelationship])
 
   function refreshAfterSuccess() {
     setAwaitingRefresh(true)
