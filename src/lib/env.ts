@@ -18,8 +18,12 @@ const cognitoEnvironmentSchema = z.object({
   AWS_COGNITO_CLIENT_ID: z.string().min(10),
 })
 
-export const cognitoEnvironment = cognitoEnvironmentSchema.parse({
-  AWS_COGNITO_REGION: process.env.AWS_COGNITO_REGION,
-  AWS_COGNITO_USER_POOL_ID: process.env.AWS_COGNITO_USER_POOL_ID,
-  AWS_COGNITO_CLIENT_ID: process.env.AWS_COGNITO_CLIENT_ID,
-})
+export type CognitoEnvironment = z.infer<typeof cognitoEnvironmentSchema>
+
+export function getCognitoEnvironment(): CognitoEnvironment {
+  return cognitoEnvironmentSchema.parse({
+    AWS_COGNITO_REGION: process.env.AWS_COGNITO_REGION,
+    AWS_COGNITO_USER_POOL_ID: process.env.AWS_COGNITO_USER_POOL_ID,
+    AWS_COGNITO_CLIENT_ID: process.env.AWS_COGNITO_CLIENT_ID,
+  })
+}
