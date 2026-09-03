@@ -37,6 +37,30 @@ resource "aws_cognito_user_pool_domain" "app" {
   user_pool_id = aws_cognito_user_pool.app.id
 }
 
+resource "aws_cognito_user_pool_client" "web" {
+  name         = "${local.name_prefix}-web"
+  user_pool_id = aws_cognito_user_pool.app.id
+
+  generate_secret               = false
+  prevent_user_existence_errors = "ENABLED"
+
+  explicit_auth_flows = [
+    "ALLOW_USER_PASSWORD_AUTH",
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH",
+  ]
+
+  access_token_validity  = 60
+  id_token_validity      = 60
+  refresh_token_validity = 30
+
+  token_validity_units {
+    access_token  = "minutes"
+    id_token      = "minutes"
+    refresh_token = "days"
+  }
+}
+
 resource "aws_secretsmanager_secret" "google_oauth" {
   name                    = "${local.name_prefix}/google-oauth"
   recovery_window_in_days = 7
