@@ -13,3 +13,9 @@ task_memory                  = 1024
 desired_count                = 1
 min_capacity                 = 1
 max_capacity                 = 4
+
+aurora_engine_version           = "16.3"
+aurora_min_acu                  = 0
+aurora_max_acu                  = 2
+aurora_auto_pause_seconds       = 900
+enable_google_identity_provider = false
