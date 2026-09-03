@@ -41,6 +41,18 @@ variable "github_repository" {
   default     = "adityaps70/SEA-N-SHORE-CODEX"
 }
 
+variable "github_owner_id" {
+  description = "Immutable numeric GitHub owner ID used in OIDC subject claims for repositories created after 2026-07-15."
+  type        = string
+  default     = "167612148"
+}
+
+variable "github_repository_id" {
+  description = "Immutable numeric GitHub repository ID used in OIDC subject claims for repositories created after 2026-07-15."
+  type        = string
+  default     = "1354507962"
+}
+
 variable "github_environment" {
   description = "GitHub Environment allowed to assume the AWS deploy role."
   type        = string
@@ -184,9 +196,7 @@ resource "aws_iam_role" "github_deploy" {
         Condition = {
           StringEquals = {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          }
-          StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:environment:${var.github_environment}"
+            "token.actions.githubusercontent.com:sub" = "repo:${split("/", var.github_repository)[0]}@${var.github_owner_id}/${split("/", var.github_repository)[1]}@${var.github_repository_id}:environment:${var.github_environment}"
           }
         }
       }
