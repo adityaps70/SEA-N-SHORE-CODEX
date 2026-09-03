@@ -4,7 +4,7 @@
 
 **Goal:** Establish a reversible AWS-native foundation for Sea N Shore — source inventory, private Aurora PostgreSQL Serverless v2, Cognito, S3, SES preparation, CloudFront/WAF HTTPS staging, and validation tooling — without cutting the application off Supabase or mutating/deleting any Supabase data.
 
-**Architecture:** Keep the current ECS/Fargate application and Supabase-backed runtime unchanged while adding AWS-native backend infrastructure in parallel. Aurora lives only in private database subnets, Cognito is provisioned but not yet wired into application auth, S3 is private-by-default, CloudFront provides an HTTPS staging edge in front of the existing ALB, and WAF protects the CloudFront distribution. Phase 0 records a reproducible, non-PII source baseline; Phase 1 creates infrastructure only and ends with a no-cutover verification gate.
+**Architecture:** Keep the current ECS/Fargate application and Supabase-backed runtime unchanged while adding AWS-native backend infrastructure in parallel. Aurora lives only in private database subnets, Cognito is provisioned but not yet wired into application auth, S3 is private-by-default, and CloudFront provides an AWS-managed HTTPS staging hostname in front of the current ALB with WAF attached. Phase 0 records a reproducible non-PII source baseline; Phase 1 creates infrastructure only and ends at a no-cutover verification gate.
 
 **Tech Stack:** Terraform 1.10.5, HashiCorp AWS provider `~> 6.0`, AWS ECS/Fargate, Aurora PostgreSQL Serverless v2, Cognito User Pools, S3, SES v2, Secrets Manager, CloudFront, WAF v2, CloudWatch, Node 22, Vitest, Bash, PostgreSQL SQL.
 
@@ -75,7 +75,7 @@ Do not split or refactor the existing `infra/aws/app/main.tf` in this plan. New 
 
 **Interfaces:**
 - Consumes: Terraform JSON plan from `terraform show -json tfplan`.
-- Produces: `node scripts/aws/check-terraform-plan.mjs plan.json`, exit `0` only when no delete/replace action exists and no `aws_rds_cluster_instance` is public.
+- Produces: `node scripts/aws/check-terraform-plan.mjs plan.json`; exit `0` only when no delete/replace action exists and no `aws_rds_cluster_instance` is public.
 
 - [ ] **Step 1: Write the failing Vitest tests for the Terraform plan guard**
 
@@ -85,18 +85,15 @@ Create `scripts/aws/check-terraform-plan.test.mjs`:
 import { describe, expect, it } from 'vitest'
 import { evaluateTerraformPlan } from './check-terraform-plan.mjs'
 
-const base = {
-  format_version: '1.2',
-  resource_changes: [],
-}
+const base = { format_version: '1.2', resource_changes: [] }
 
 describe('evaluateTerraformPlan', () => {
   it('accepts additive and in-place changes', () => {
     const result = evaluateTerraformPlan({
       ...base,
       resource_changes: [
-        { address: 'aws_s3_bucket.media', change: { actions: ['create'], after: {} } },
-        { address: 'aws_ecs_service.web', change: { actions: ['update'], after: {} } },
+        { address: 'aws_s3_bucket.app["media"]', type: 'aws_s3_bucket', change: { actions: ['create'], after: {} } },
+        { address: 'aws_ecs_service.web', type: 'aws_ecs_service', change: { actions: ['update'], after: {} } },
       ],
     })
     expect(result.errors).toEqual([])
@@ -106,8 +103,8 @@ describe('evaluateTerraformPlan', () => {
     const result = evaluateTerraformPlan({
       ...base,
       resource_changes: [
-        { address: 'aws_vpc.app', change: { actions: ['delete'], after: null } },
-        { address: 'aws_lb.app', change: { actions: ['delete', 'create'], after: {} } },
+        { address: 'aws_vpc.app', type: 'aws_vpc', change: { actions: ['delete'], after: null } },
+        { address: 'aws_lb.app', type: 'aws_lb', change: { actions: ['delete', 'create'], after: {} } },
       ],
     })
     expect(result.errors).toEqual([
@@ -136,8 +133,6 @@ describe('evaluateTerraformPlan', () => {
 
 - [ ] **Step 2: Run the tests and verify they fail because the guard does not exist**
 
-Run:
-
 ```bash
 npm test -- scripts/aws/check-terraform-plan.test.mjs
 ```
@@ -165,9 +160,7 @@ export function evaluateTerraformPlan(plan) {
       resource.type === 'aws_rds_cluster_instance' &&
       resource.change?.after?.publicly_accessible === true
     ) {
-      errors.push(
-        `Unsafe RDS instance ${resource.address}: publicly_accessible=true`,
-      )
+      errors.push(`Unsafe RDS instance ${resource.address}: publicly_accessible=true`)
     }
   }
 
@@ -175,13 +168,13 @@ export function evaluateTerraformPlan(plan) {
 }
 
 function main() {
-  const path = process.argv[2]
-  if (!path) {
+  const inputPath = process.argv[2]
+  if (!inputPath) {
     console.error('Usage: node scripts/aws/check-terraform-plan.mjs <plan.json>')
     process.exit(2)
   }
 
-  const plan = JSON.parse(fs.readFileSync(path, 'utf8'))
+  const plan = JSON.parse(fs.readFileSync(inputPath, 'utf8'))
   const { errors } = evaluateTerraformPlan(plan)
   if (errors.length > 0) {
     for (const error of errors) console.error(error)
@@ -206,12 +199,13 @@ Expected: PASS, 3 tests.
 Append exactly:
 
 ```gitignore
-# Terraform local state and secrets
+# Terraform local state, plans, generated plan JSON, and local variables
 **/.terraform/
 **/*.tfstate
 **/*.tfstate.*
 **/*.tfplan
 **/tfplan
+infra/aws/**/plan*.json
 **/terraform.tfvars
 **/terraform.tfvars.json
 crash.log
@@ -223,31 +217,96 @@ artifacts/migration/
 
 Do **not** add `.terraform.lock.hcl` to `.gitignore`.
 
-- [ ] **Step 6: Update infrastructure CI to run on every relevant branch and run the unit guard tests**
+- [ ] **Step 6: Update infrastructure CI to run on every relevant branch and run the guard unit tests**
 
-Change the workflow trigger so `push` has no branch restriction and retains the existing path filter. Keep the `pull_request` target `main`. Add after checkout/setup as an independent job or existing container job:
+Change `.github/workflows/aws-infra-ci.yml` to:
 
 ```yaml
-      - name: Terraform plan guard unit tests
-        run: npm install && npm test -- scripts/aws/check-terraform-plan.test.mjs
+name: AWS Infrastructure CI
+
+on:
+  push:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - infra/aws/**
+      - scripts/aws/**
+      - .github/workflows/aws-*.yml
+  pull_request:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - infra/aws/**
+      - scripts/aws/**
+      - .github/workflows/aws-*.yml
+
+jobs:
+  terraform:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - infra/aws/bootstrap
+          - infra/aws/app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+      - name: Terraform format
+        run: terraform fmt -check -recursive infra/aws
+      - name: Terraform init
+        working-directory: ${{ matrix.directory }}
+        run: terraform init -backend=false
+      - name: Terraform validate
+        working-directory: ${{ matrix.directory }}
+        run: terraform validate
+
+  guard:
+    name: Terraform plan guard tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Run guard tests
+        run: npm test -- scripts/aws/check-terraform-plan.test.mjs
+
+  container:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build production image
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_SITE_URL=http://localhost:3000 \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://sea-n-shore-test.supabase.co \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_test_key_for_ci_only \
+            -t sea-n-shore:ci .
 ```
 
-Keep Terraform `fmt`, `init -backend=false`, and `validate` for both bootstrap and app directories.
-
-- [ ] **Step 7: Generate provider lockfiles with the pinned Terraform version**
-
-Run:
+- [ ] **Step 7: Generate provider lockfiles with Terraform 1.10.5**
 
 ```bash
 export PATH="$HOME/bin:$PATH"
 terraform version
-cd infra/aws/bootstrap && terraform init -backend=false && cd ../../..
-cd infra/aws/app && terraform init -backend=false && cd ../../..
+(cd infra/aws/bootstrap && terraform init -backend=false)
+(cd infra/aws/app && terraform init -backend=false)
 ```
 
-Expected Terraform CLI: `1.10.5`.
-
-Stage both generated `.terraform.lock.hcl` files.
+Expected Terraform CLI: `1.10.5`. Stage both generated `.terraform.lock.hcl` files.
 
 - [ ] **Step 8: Run full local verification**
 
@@ -283,11 +342,11 @@ git commit -m "chore: harden AWS migration safety checks"
 
 **Interfaces:**
 - Consumes: PostgreSQL connection URI supplied only through `SOURCE_DATABASE_URL` in the operator shell.
-- Produces: local `artifacts/migration/source-inventory.txt` and `artifacts/migration/source-integrity.txt`; neither is committed.
+- Produces: local `artifacts/migration/source-inventory.txt`, `source-integrity.txt`, and `SHA256SUMS`; none are committed.
 
-- [ ] **Step 1: Create a read-only inventory query**
+- [ ] **Step 1: Create a read-only source inventory**
 
-Create `scripts/migration/supabase_inventory.sql` with these statements:
+Create `scripts/migration/supabase_inventory.sql`:
 
 ```sql
 \set ON_ERROR_STOP on
@@ -347,8 +406,8 @@ SELECT 'function' AS object_type,
        pg_get_functiondef(p.oid) AS definition
 FROM pg_proc p
 JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public'
-ORDER BY p.proname, arguments;
+WHERE n.nspname IN ('public', 'private')
+ORDER BY n.nspname, p.proname, arguments;
 
 SELECT 'trigger' AS object_type,
        n.nspname AS schema_name,
@@ -381,7 +440,7 @@ COMMIT;
 
 This query does not select password hashes, tokens, emails, phone numbers, or profile free-text data.
 
-- [ ] **Step 2: Create deterministic application-table integrity queries**
+- [ ] **Step 2: Create deterministic application-table counts and relationship digests**
 
 Create `scripts/migration/supabase_integrity.sql`:
 
@@ -389,63 +448,74 @@ Create `scripts/migration/supabase_integrity.sql`:
 \set ON_ERROR_STOP on
 BEGIN TRANSACTION READ ONLY;
 
-WITH target_tables(table_name) AS (
-  VALUES
-    ('profiles'),
-    ('maritime_profiles'),
-    ('posts'),
-    ('post_comments'),
-    ('post_media'),
-    ('post_polls'),
-    ('post_poll_options'),
-    ('post_poll_votes'),
-    ('post_reactions'),
-    ('saved_posts'),
-    ('follows'),
-    ('connections'),
-    ('notifications'),
-    ('profile_skills'),
-    ('user_blocks'),
-    ('user_roles'),
-    ('companies'),
-    ('company_members'),
-    ('audit_events')
+SELECT format(
+  'SELECT %L AS table_name, count(*) AS row_count FROM public.%I;',
+  table_name,
+  table_name
 )
-SELECT t.table_name,
-       (xpath('/row/count/text()', query_to_xml(
-          format('SELECT count(*) AS count FROM public.%I', t.table_name),
-          false, true, ''
-       )))[1]::text::bigint AS row_count
-FROM target_tables t
-ORDER BY t.table_name;
+FROM (VALUES
+  ('audit_events'),
+  ('companies'),
+  ('company_members'),
+  ('connections'),
+  ('follows'),
+  ('maritime_profiles'),
+  ('notifications'),
+  ('post_comments'),
+  ('post_media'),
+  ('post_poll_options'),
+  ('post_poll_votes'),
+  ('post_polls'),
+  ('post_reactions'),
+  ('posts'),
+  ('profile_skills'),
+  ('profiles'),
+  ('saved_posts'),
+  ('user_blocks'),
+  ('user_roles')
+) AS tables(table_name)
+ORDER BY table_name
+\gexec
 
 SELECT 'profiles' AS relation,
        count(*) AS row_count,
        md5(coalesce(string_agg(id::text, ',' ORDER BY id), '')) AS key_digest
 FROM public.profiles
 UNION ALL
-SELECT 'posts', count(*), md5(coalesce(string_agg(id::text || ':' || author_id::text, ',' ORDER BY id), ''))
+SELECT 'posts',
+       count(*),
+       md5(coalesce(string_agg(id::text || ':' || author_id::text, ',' ORDER BY id), ''))
 FROM public.posts
 UNION ALL
-SELECT 'follows', count(*), md5(coalesce(string_agg(follower_id::text || ':' || following_id::text, ',' ORDER BY follower_id, following_id), ''))
+SELECT 'follows',
+       count(*),
+       md5(coalesce(string_agg(follower_id::text || ':' || following_id::text, ',' ORDER BY follower_id, following_id), ''))
 FROM public.follows
 UNION ALL
-SELECT 'connections', count(*), md5(coalesce(string_agg(id::text || ':' || user_low_id::text || ':' || user_high_id::text || ':' || coalesce(requested_by::text, '') || ':' || status::text, ',' ORDER BY id), ''))
+SELECT 'connections',
+       count(*),
+       md5(coalesce(string_agg(id::text || ':' || user_low_id::text || ':' || user_high_id::text || ':' || requested_by::text || ':' || status::text, ',' ORDER BY id), ''))
 FROM public.connections
 UNION ALL
-SELECT 'notifications', count(*), md5(coalesce(string_agg(id::text || ':' || recipient_id::text || ':' || coalesce(actor_id::text, ''), ',' ORDER BY id), ''))
+SELECT 'notifications',
+       count(*),
+       md5(coalesce(string_agg(id::text || ':' || recipient_id::text || ':' || coalesce(actor_id::text, '') || ':' || notification_type::text, ',' ORDER BY id), ''))
 FROM public.notifications
 UNION ALL
-SELECT 'post_reactions', count(*), md5(coalesce(string_agg(post_id::text || ':' || user_id::text || ':' || reaction::text, ',' ORDER BY post_id, user_id), ''))
+SELECT 'post_reactions',
+       count(*),
+       md5(coalesce(string_agg(post_id::text || ':' || user_id::text || ':' || reaction_type::text, ',' ORDER BY post_id, user_id), ''))
 FROM public.post_reactions
 UNION ALL
-SELECT 'user_roles', count(*), md5(coalesce(string_agg(user_id::text || ':' || role::text, ',' ORDER BY user_id, role), ''))
+SELECT 'user_roles',
+       count(*),
+       md5(coalesce(string_agg(user_id::text || ':' || role::text, ',' ORDER BY user_id, role), ''))
 FROM public.user_roles;
 
 COMMIT;
 ```
 
-If live schema inspection shows a column name differs (`status`, `reaction`, or `role`), fix the SQL to the exact live column before running; do not weaken or omit the digest.
+These column names match the checked-in schema migrations: `connections.status`, `notifications.notification_type`, `post_reactions.reaction_type`, and `user_roles.role`.
 
 - [ ] **Step 3: Create the baseline capture shell script**
 
@@ -480,26 +550,25 @@ chmod 700 scripts/migration/capture_source_baseline.sh
 
 - [ ] **Step 4: Add the Phase 0/1 operator runbook**
 
-Create `docs/migration/aws-native-phase-0-1-runbook.md` with these non-negotiable sections and commands:
+Create `docs/migration/aws-native-phase-0-1-runbook.md`:
 
 ```markdown
 # AWS-Native Phase 0 + Phase 1 Runbook
 
 ## Safety
-Supabase remains live and writable. This runbook never deletes or changes Supabase.
+Supabase remains live and writable. Phase 0/1 never deletes or changes Supabase.
 
 ## Source baseline
-Export `SOURCE_DATABASE_URL` only in the operator shell, run:
+In the operator terminal, set `SOURCE_DATABASE_URL` through an approved secret channel and run:
 
 ```bash
 ./scripts/migration/capture_source_baseline.sh
 ```
 
-Expected sanity before migration work: approximately 7 profiles, 11 posts, 7 follows, 6 connections, and 10 notifications. Live query output is authoritative.
+Known pre-plan sanity is approximately 7 profiles, 11 posts, 7 follows, 6 connections, and 10 notifications; the live query is authoritative.
 
 ## Terraform state
-Use the existing remote state bucket and key:
-`sea-n-shore/staging/terraform.tfstate` in `ap-south-1`.
+Use the existing state bucket `sea-n-shore-310356785722-ap-south-1-tfstate`, key `sea-n-shore/staging/terraform.tfstate`, region `ap-south-1`, with `use_lockfile=true`.
 
 ## Plan safety
 Always run:
@@ -510,25 +579,26 @@ terraform show -json tfplan > plan.json
 node ../../../scripts/aws/check-terraform-plan.mjs plan.json
 ```
 
-Do not apply if the guard fails or if the plan proposes replacement of existing VPC, ALB, ECS cluster, ECS service, ECR repository, or IAM/OIDC bootstrap resources.
+Do not apply if the guard fails or if the human-readable plan replaces the existing VPC, ALB, ECS cluster/service, ECR repository, or IAM/OIDC bootstrap resources.
 
-## Supabase rollback
-No rollback action is required during Phase 0/1 because the application remains Supabase-backed. Destroy only newly added Phase 1 resources if rollback is explicitly approved.
+## Rollback
+No application rollback is required during Phase 0/1 because the runtime remains Supabase-backed. Destroy only newly added Phase 1 resources after explicit approval.
 ```
 
-- [ ] **Step 5: Run the baseline against the current Supabase source**
-
-Use a database URI obtained through the operator's Supabase dashboard/approved secret channel. Do not paste it into chat or commit it.
+- [ ] **Step 5: Run the baseline without putting the connection URI in command history**
 
 ```bash
-SOURCE_DATABASE_URL='postgresql://...from-approved-secret-channel...' \
-  ./scripts/migration/capture_source_baseline.sh
+read -r -s -p 'Supabase PostgreSQL connection URI: ' SOURCE_DATABASE_URL
+printf '\n'
+export SOURCE_DATABASE_URL
+./scripts/migration/capture_source_baseline.sh
+unset SOURCE_DATABASE_URL
 cat artifacts/migration/source-integrity.txt
 ```
 
-Expected: read-only queries complete. Current live counts should be in the same order of magnitude as the known sanity counts; investigate any unexpected zero/missing table before proceeding.
+Expected: read-only queries complete. Investigate any missing expected table before proceeding.
 
-- [ ] **Step 6: Commit only scripts and runbook, never baseline output**
+- [ ] **Step 6: Commit scripts and runbook only**
 
 ```bash
 git add scripts/migration docs/migration/aws-native-phase-0-1-runbook.md
@@ -589,15 +659,13 @@ variable "aurora_auto_pause_seconds" {
 }
 
 variable "enable_google_identity_provider" {
-  description = "Enable the Cognito Google identity provider after the Google OAuth secret has been populated in Secrets Manager."
+  description = "Enable Cognito Google federation after the Google OAuth JSON secret has been populated in Secrets Manager."
   type        = bool
   default     = false
 }
 ```
 
-- [ ] **Step 2: Discover and verify the exact Aurora 16.x engine version in Mumbai before setting tfvars**
-
-Run:
+- [ ] **Step 2: Discover and verify the exact Aurora 16.x engine version in Mumbai**
 
 ```bash
 AURORA_ENGINE_VERSION="$(
@@ -611,18 +679,18 @@ AURORA_ENGINE_VERSION="$(
 test -n "$AURORA_ENGINE_VERSION"
 printf 'Selected Aurora PostgreSQL version: %s\n' "$AURORA_ENGINE_VERSION"
 
-aws rds describe-orderable-db-instance-options \
-  --region ap-south-1 \
-  --engine aurora-postgresql \
-  --engine-version "$AURORA_ENGINE_VERSION" \
-  --db-instance-class db.serverless \
-  --query 'length(OrderableDBInstanceOptions)' \
-  --output text
-```
+ORDERABLE_COUNT="$(
+  aws rds describe-orderable-db-instance-options \
+    --region ap-south-1 \
+    --engine aurora-postgresql \
+    --engine-version "$AURORA_ENGINE_VERSION" \
+    --db-instance-class db.serverless \
+    --query 'length(OrderableDBInstanceOptions)' \
+    --output text
+)"
 
-Expected final output: integer greater than `0`. Because the selected version is PostgreSQL 16.x and current AWS support for scale-to-zero requires 16.3 or later, also verify:
+test "$ORDERABLE_COUNT" -gt 0
 
-```bash
 python3 - "$AURORA_ENGINE_VERSION" <<'PY'
 import sys
 major, minor, *_ = map(int, sys.argv[1].split('.'))
@@ -630,11 +698,11 @@ assert (major, minor) >= (16, 3), sys.argv[1]
 PY
 ```
 
-Write the resulting exact version only into the local untracked `infra/aws/app/terraform.tfvars`.
+Write the resulting exact value into local untracked `infra/aws/app/terraform.tfvars` as `aurora_engine_version`.
 
 - [ ] **Step 3: Add isolated private DB subnets**
 
-Create `infra/aws/app/network-private.tf` with:
+Create `infra/aws/app/network-private.tf`:
 
 ```hcl
 resource "aws_subnet" "private_db_a" {
@@ -700,7 +768,7 @@ resource "aws_security_group" "aurora" {
 
 There is intentionally no internet route on `aws_route_table.private_db`.
 
-- [ ] **Step 4: Add Aurora with AWS-managed master password**
+- [ ] **Step 4: Add Aurora with an RDS-managed master password**
 
 Create `infra/aws/app/database.tf`:
 
@@ -748,28 +816,26 @@ resource "aws_rds_cluster_instance" "aurora_writer" {
   instance_class     = "db.serverless"
   engine             = aws_rds_cluster.aurora.engine
   engine_version     = aws_rds_cluster.aurora.engine_version
-
   publicly_accessible = false
-
   tags = local.common_tags
 }
 ```
 
 Do not grant the ECS task role access to the RDS master secret in this phase.
 
-- [ ] **Step 5: Extend `terraform.tfvars.example` with safe Phase 1 values**
+- [ ] **Step 5: Extend `terraform.tfvars.example`**
 
 Append:
 
 ```hcl
-aurora_engine_version          = "16.3" # operator must replace with the exact verified 16.x version before apply
-aurora_min_acu                 = 0
-aurora_max_acu                 = 2
-aurora_auto_pause_seconds      = 900
+aurora_engine_version           = "16.3"
+aurora_min_acu                  = 0
+aurora_max_acu                  = 2
+aurora_auto_pause_seconds       = 900
 enable_google_identity_provider = false
 ```
 
-The example's `16.3` is documentation-only; the operator must use the discovery command before staging apply.
+The committed example uses the minimum supported 16.x auto-pause baseline for documentation; the staging operator must use Step 2 to select the exact currently orderable 16.x version before apply.
 
 - [ ] **Step 6: Format, validate, plan, and run the safety guard**
 
@@ -782,7 +848,7 @@ terraform show -json tfplan > plan.json
 node ../../../scripts/aws/check-terraform-plan.mjs plan.json
 ```
 
-Expected: guard passes; existing VPC/ALB/ECS resources show no delete/replace actions; new DB subnets, DB subnet group, Aurora SG, cluster, and one `db.serverless` instance are additive.
+Expected: no delete/replace actions; new DB subnets, DB subnet group, Aurora SG, cluster, and one `db.serverless` instance are additive.
 
 - [ ] **Step 7: Commit**
 
@@ -800,66 +866,79 @@ git commit -m "feat: add private Aurora staging foundation"
 - Create: `infra/aws/app/storage.tf`
 
 **Interfaces:**
-- Consumes: `data.aws_caller_identity.current`, `local.name_prefix`, `local.common_tags`.
-- Produces: three private/versioned/encrypted buckets: media, private documents, migration backup.
+- Consumes: `data.aws_caller_identity.current`, `var.project_name`, `var.environment`, `local.common_tags`.
+- Produces: three private/versioned/encrypted buckets keyed as `media`, `private_documents`, `migration_backup`.
 
-- [ ] **Step 1: Add the three S3 buckets**
+- [ ] **Step 1: Add complete private S3 resources using `for_each`**
 
-Create `infra/aws/app/storage.tf` using this pattern for each bucket:
+Create `infra/aws/app/storage.tf`:
 
 ```hcl
 locals {
-  media_bucket_name     = "${var.project_name}-${var.environment}-${data.aws_caller_identity.current.account_id}-media"
-  documents_bucket_name = "${var.project_name}-${var.environment}-${data.aws_caller_identity.current.account_id}-private"
-  migration_bucket_name = "${var.project_name}-${var.environment}-${data.aws_caller_identity.current.account_id}-migration"
+  storage_bucket_names = {
+    media             = "${var.project_name}-${var.environment}-${data.aws_caller_identity.current.account_id}-media"
+    private_documents = "${var.project_name}-${var.environment}-${data.aws_caller_identity.current.account_id}-private"
+    migration_backup  = "${var.project_name}-${var.environment}-${data.aws_caller_identity.current.account_id}-migration"
+  }
 }
 
-resource "aws_s3_bucket" "media" {
-  bucket        = local.media_bucket_name
+resource "aws_s3_bucket" "app" {
+  for_each      = local.storage_bucket_names
+  bucket        = each.value
   force_destroy = false
-  tags          = local.common_tags
+  tags          = merge(local.common_tags, { Purpose = each.key })
 }
 
-resource "aws_s3_bucket" "private_documents" {
-  bucket        = local.documents_bucket_name
-  force_destroy = false
-  tags          = local.common_tags
-}
-
-resource "aws_s3_bucket" "migration_backup" {
-  bucket        = local.migration_bucket_name
-  force_destroy = false
-  tags          = local.common_tags
-}
-```
-
-For **each** bucket add:
-
-```hcl
-resource "aws_s3_bucket_public_access_block" "..." {
-  bucket                  = aws_s3_bucket....id
+resource "aws_s3_bucket_public_access_block" "app" {
+  for_each                = aws_s3_bucket.app
+  bucket                  = each.value.id
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
 
-resource "aws_s3_bucket_versioning" "..." {
-  bucket = aws_s3_bucket....id
-  versioning_configuration { status = "Enabled" }
+resource "aws_s3_bucket_versioning" "app" {
+  for_each = aws_s3_bucket.app
+  bucket   = each.value.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
 }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "..." {
-  bucket = aws_s3_bucket....id
+resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
+  for_each = aws_s3_bucket.app
+  bucket   = each.value.id
+
   rule {
-    apply_server_side_encryption_by_default { sse_algorithm = "AES256" }
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
   }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "migration_backup" {
+  bucket = aws_s3_bucket.app["migration_backup"].id
+
+  rule {
+    id     = "abort-incomplete-multipart"
+    status = "Enabled"
+
+    filter {}
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.app]
 }
 ```
 
-For `migration_backup` additionally add a lifecycle rule that aborts incomplete multipart uploads after 7 days but does **not** expire completed backup objects.
+No bucket policy grants public read access.
 
-- [ ] **Step 2: Validate no bucket is public**
+- [ ] **Step 2: Validate and inspect public-access settings**
 
 ```bash
 terraform fmt
@@ -867,9 +946,10 @@ terraform validate
 terraform plan -out=tfplan
 terraform show -json tfplan > plan.json
 node ../../../scripts/aws/check-terraform-plan.mjs plan.json
+terraform show tfplan
 ```
 
-Inspect plan and verify every new `aws_s3_bucket_public_access_block` has all four flags set `true`.
+Expected: all three public-access-block resources set all four flags to `true`.
 
 - [ ] **Step 3: Commit**
 
@@ -887,8 +967,8 @@ git commit -m "feat: add private AWS storage foundation"
 - Create: `infra/aws/app/edge.tf`
 
 **Interfaces:**
-- Consumes: existing `aws_lb.app.dns_name` and AWS account configuration.
-- Produces: `https://<distribution>.cloudfront.net` staging edge, AWS-managed TLS certificate, WAF common rule set, per-IP rate limit.
+- Consumes: existing `aws_lb.app.dns_name`.
+- Produces: an AWS-managed `cloudfront.net` HTTPS staging hostname and a CloudFront-scope WAF.
 
 - [ ] **Step 1: Add the `us-east-1` provider alias for CloudFront-scope WAF**
 
@@ -901,9 +981,9 @@ provider "aws" {
 }
 ```
 
-- [ ] **Step 2: Add CloudFront managed policy lookups**
+- [ ] **Step 2: Add CloudFront managed policy lookups and WAF**
 
-At the top of `infra/aws/app/edge.tf`:
+Create `infra/aws/app/edge.tf` starting with:
 
 ```hcl
 data "aws_cloudfront_cache_policy" "caching_disabled" {
@@ -913,11 +993,7 @@ data "aws_cloudfront_cache_policy" "caching_disabled" {
 data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
   name = "Managed-AllViewerExceptHostHeader"
 }
-```
 
-- [ ] **Step 3: Add the CloudFront-scope WAF**
-
-```hcl
 resource "aws_wafv2_web_acl" "edge" {
   provider = aws.us_east_1
   name     = "${local.name_prefix}-edge"
@@ -974,7 +1050,9 @@ resource "aws_wafv2_web_acl" "edge" {
 }
 ```
 
-- [ ] **Step 4: Add CloudFront in front of the current ALB without changing the app URL yet**
+- [ ] **Step 3: Add CloudFront in front of the existing ALB**
+
+Append to `infra/aws/app/edge.tf`:
 
 ```hcl
 resource "aws_cloudfront_distribution" "app" {
@@ -1001,27 +1079,27 @@ resource "aws_cloudfront_distribution" "app" {
     allowed_methods        = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods         = ["GET", "HEAD"]
     compress               = true
-
     cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
   }
 
   restrictions {
-    geo_restriction { restriction_type = "none" }
+    geo_restriction {
+      restriction_type = "none"
+    }
   }
 
   viewer_certificate {
     cloudfront_default_certificate = true
-    minimum_protocol_version       = "TLSv1.2_2021"
   }
 
   tags = local.common_tags
 }
 ```
 
-Do not change `site_url`, Supabase redirects, or ECS environment variables in Phase 1.
+Do not change `site_url`, Supabase redirects, or ECS environment variables in Phase 1. Browser-to-CloudFront is HTTPS; CloudFront-to-ALB remains HTTP until a custom certificate/domain is separately approved.
 
-- [ ] **Step 5: Validate and commit**
+- [ ] **Step 4: Validate and commit**
 
 ```bash
 terraform fmt
@@ -1043,7 +1121,7 @@ git commit -m "feat: add CloudFront and WAF staging edge"
 
 **Interfaces:**
 - Consumes: `aws_cloudfront_distribution.app.domain_name`, `var.enable_google_identity_provider`.
-- Produces: Cognito user pool, app client, Cognito domain, Google OAuth secret container, optional Google identity provider.
+- Produces: Cognito user pool, app client, Cognito domain, Secrets Manager Google OAuth secret container, and optional Google identity provider.
 
 - [ ] **Step 1: Create Cognito user pool and domain**
 
@@ -1090,7 +1168,9 @@ resource "aws_cognito_user_pool_domain" "app" {
 }
 ```
 
-- [ ] **Step 2: Create the Secrets Manager container for Google OAuth credentials**
+- [ ] **Step 2: Create the Secrets Manager container and conditional Google IdP**
+
+Append:
 
 ```hcl
 resource "aws_secretsmanager_secret" "google_oauth" {
@@ -1109,13 +1189,7 @@ locals {
     ? jsondecode(data.aws_secretsmanager_secret_version.google_oauth[0].secret_string)
     : {}
 }
-```
 
-The secret value, when supplied by the operator, must be JSON with exactly `client_id` and `client_secret` keys. It is never committed.
-
-- [ ] **Step 3: Add conditional Google federation**
-
-```hcl
 resource "aws_cognito_identity_provider" "google" {
   count         = var.enable_google_identity_provider ? 1 : 0
   user_pool_id  = aws_cognito_user_pool.app.id
@@ -1136,7 +1210,11 @@ resource "aws_cognito_identity_provider" "google" {
 }
 ```
 
-- [ ] **Step 4: Add an app client that supports Cognito now and Google when enabled**
+The Secrets Manager value must be JSON with exactly `client_id` and `client_secret` keys. Terraform state is sensitive and remains in the existing private/versioned state bucket; never expose state publicly.
+
+- [ ] **Step 3: Add an app client for email/password and OAuth code flow**
+
+Append:
 
 ```hcl
 resource "aws_cognito_user_pool_client" "web" {
@@ -1155,16 +1233,10 @@ resource "aws_cognito_user_pool_client" "web" {
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  supported_identity_providers         = var.enable_google_identity_provider ? ["COGNITO", "Google"] : ["COGNITO"]
 
-  supported_identity_providers = var.enable_google_identity_provider ? ["COGNITO", "Google"] : ["COGNITO"]
-
-  callback_urls = [
-    "https://${aws_cloudfront_distribution.app.domain_name}/auth/callback",
-  ]
-
-  logout_urls = [
-    "https://${aws_cloudfront_distribution.app.domain_name}/auth/sign-in",
-  ]
+  callback_urls = ["https://${aws_cloudfront_distribution.app.domain_name}/auth/callback"]
+  logout_urls   = ["https://${aws_cloudfront_distribution.app.domain_name}/auth/sign-in"]
 
   access_token_validity  = 60
   id_token_validity      = 60
@@ -1180,27 +1252,28 @@ resource "aws_cognito_user_pool_client" "web" {
 }
 ```
 
-- [ ] **Step 5: First Terraform plan must leave Google disabled**
+- [ ] **Step 4: First plan with Google disabled**
 
-Keep local `terraform.tfvars`:
+Keep local untracked tfvars:
 
 ```hcl
 enable_google_identity_provider = false
 ```
 
-Run validate and plan guard. This must create Cognito without requiring any Google secret.
+Run `terraform validate`, `terraform plan`, JSON conversion, and the plan guard. The plan must not require a Google secret.
 
-- [ ] **Step 6: After the first infrastructure apply, populate the Google secret locally and enable federation**
+- [ ] **Step 5: After the first apply, populate the Google secret without exposing it**
 
-Use the Cognito-domain output from Task 8 to configure the existing Google OAuth application's authorized redirect URI as:
+First output the Cognito redirect URI:
 
-```text
-https://<cognito-domain-prefix>.auth.ap-south-1.amazoncognito.com/oauth2/idpresponse
+```bash
+terraform output -raw cognito_google_redirect_uri
+printf '\n'
 ```
 
-Do not remove existing production Google redirect URIs.
+Add exactly that URI to the existing Google OAuth application's authorized redirect URIs without removing any production redirect URI.
 
-In the operator shell only:
+Then in the operator shell:
 
 ```bash
 read -r -p 'Google OAuth client ID: ' GOOGLE_CLIENT_ID
@@ -1221,15 +1294,9 @@ aws secretsmanager put-secret-value \
 unset GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET SECRET_JSON
 ```
 
-Then set only the local untracked tfvars flag:
+Set local tfvars `enable_google_identity_provider = true`, then plan again and run the guard before apply.
 
-```hcl
-enable_google_identity_provider = true
-```
-
-Re-run plan and apply. Never print `data.aws_secretsmanager_secret_version.google_oauth.secret_string`.
-
-- [ ] **Step 7: Commit Terraform only**
+- [ ] **Step 6: Commit Terraform only**
 
 ```bash
 git add infra/aws/app/auth.tf
@@ -1246,9 +1313,9 @@ git commit -m "feat: add Cognito authentication foundation"
 
 **Interfaces:**
 - Consumes: Phase 1 resources.
-- Produces: SES configuration set, safe non-secret outputs required by later phases and operator verification.
+- Produces: SES configuration set and non-secret operator outputs; the RDS master secret ARN output is marked sensitive.
 
-- [ ] **Step 1: Add SES v2 configuration set without touching the production domain**
+- [ ] **Step 1: Add SES v2 preparation without touching `seaandshore.in`**
 
 Create `infra/aws/app/email.tf`:
 
@@ -1270,9 +1337,9 @@ resource "aws_sesv2_configuration_set" "transactional" {
 }
 ```
 
-Do not create an SES domain identity in this phase.
+Do not create a domain identity or production sender in this phase.
 
-- [ ] **Step 2: Add safe outputs**
+- [ ] **Step 2: Add AWS-native outputs**
 
 Create `infra/aws/app/aws-native-outputs.tf`:
 
@@ -1291,15 +1358,15 @@ output "aurora_master_secret_arn" {
 }
 
 output "media_bucket_name" {
-  value = aws_s3_bucket.media.bucket
+  value = aws_s3_bucket.app["media"].bucket
 }
 
 output "private_documents_bucket_name" {
-  value = aws_s3_bucket.private_documents.bucket
+  value = aws_s3_bucket.app["private_documents"].bucket
 }
 
 output "migration_backup_bucket_name" {
-  value = aws_s3_bucket.migration_backup.bucket
+  value = aws_s3_bucket.app["migration_backup"].bucket
 }
 
 output "staging_cloudfront_domain" {
@@ -1335,7 +1402,7 @@ output "ses_configuration_set_name" {
 }
 ```
 
-Do not output secret values or database passwords.
+Do not output database passwords or OAuth secret values.
 
 - [ ] **Step 3: Validate and commit**
 
@@ -1352,18 +1419,16 @@ git commit -m "feat: add AWS email prep and migration outputs"
 
 ---
 
-### Task 8: Phase 1 Apply, Backup Upload, Verification, and Stop Gate
+### Task 8: Apply, Backup Upload, Verification, and Phase 1 Stop Gate
 
 **Files:**
-- Modify: `docs/migration/aws-native-phase-0-1-runbook.md` only if execution reveals a verified command/output nuance; do not record secrets.
+- Modify: `docs/migration/aws-native-phase-0-1-runbook.md` only if verified execution reveals a command nuance; never record secrets.
 
 **Interfaces:**
 - Consumes: committed Phase 0/1 Terraform and source baseline artifacts.
-- Produces: live AWS foundation and a completed verification record. Does **not** cut over app auth or database access.
+- Produces: live AWS foundation and completed verification evidence. Does not cut over application auth or data access.
 
-- [ ] **Step 1: Reconcile the EC2 working copy safely before applying**
-
-The EC2 repo currently contains local Terraform artifacts and may have code divergence. Preserve local configuration first:
+- [ ] **Step 1: Reconcile the EC2 working copy without losing local Terraform configuration**
 
 ```bash
 cd ~/SEA-N-SHORE-CODEX
@@ -1373,10 +1438,12 @@ cp -f infra/aws/bootstrap/terraform.tfvars "$HOME/sea-n-shore-local-config-backu
 cp -f infra/aws/bootstrap/backend.tf "$HOME/sea-n-shore-local-config-backup/bootstrap.backend.tf" 2>/dev/null || true
 
 git fetch origin
+git diff -- Dockerfile origin/main -- Dockerfile
+git diff origin/main -- infra/aws/bootstrap/main.tf
 git status --short
 ```
 
-Do not run `git clean -fdx`. Do not delete remote Terraform state. Resolve any tracked local changes by comparing them with `origin/main` before reset/checkout.
+The Dockerfile diff should be empty because the cache-permission fix is already on remote `main`. If `infra/aws/bootstrap/main.tf` differs, inspect the diff and preserve any legitimate AWS-state-affecting change before resetting tracked code. Do not run `git clean -fdx`.
 
 - [ ] **Step 2: Initialize the app stack against the existing remote state**
 
@@ -1394,7 +1461,7 @@ terraform validate
 terraform state list
 ```
 
-Expected: existing VPC, ALB, ECS, IAM, autoscaling, and log resources are present in state before Phase 1 additions.
+Expected: existing VPC, ALB, ECS, IAM, autoscaling, and log resources are already present before Phase 1 additions.
 
 - [ ] **Step 3: Create and inspect the complete plan before apply**
 
@@ -1405,9 +1472,9 @@ node ../../../scripts/aws/check-terraform-plan.mjs plan.json
 terraform show tfplan
 ```
 
-Stop if any existing resource is deleted/replaced or if the plan modifies Supabase configuration, current ECS image, current `site_url`, production DNS, or existing auth redirects.
+Stop if any existing resource is deleted/replaced or if the plan modifies current Supabase runtime configuration, the running ECS image, current `site_url`, production DNS, or existing Supabase auth redirects.
 
-- [ ] **Step 4: Apply Phase 1 foundation with Google disabled first**
+- [ ] **Step 4: Apply Phase 1 with Google disabled first**
 
 ```bash
 terraform apply tfplan
@@ -1415,9 +1482,9 @@ terraform apply tfplan
 
 Expected: additive creation of private DB network, Aurora, S3 buckets, CloudFront, WAF, Cognito base, Google secret container, SES configuration set, and outputs. Current ECS service remains stable.
 
-- [ ] **Step 5: Upload the Phase 0 baseline evidence to the private migration bucket**
+- [ ] **Step 5: Upload Phase 0 evidence to the private migration bucket**
 
-From repo root:
+From repository root:
 
 ```bash
 MIGRATION_BUCKET="$(cd infra/aws/app && terraform output -raw migration_backup_bucket_name)"
@@ -1432,21 +1499,18 @@ aws s3 cp artifacts/migration/source-integrity.txt \
 aws s3 cp artifacts/migration/SHA256SUMS \
   "s3://${MIGRATION_BUCKET}/phase-0/${STAMP}/SHA256SUMS" \
   --sse AES256
-```
 
-Verify:
-
-```bash
 aws s3 ls "s3://${MIGRATION_BUCKET}/phase-0/${STAMP}/"
 ```
 
-- [ ] **Step 6: Verify private Aurora network posture**
+Expected: exactly three baseline evidence objects.
+
+- [ ] **Step 6: Verify private Aurora posture**
 
 ```bash
-CLUSTER_ID="sea-n-shore-staging-aurora"
 aws rds describe-db-clusters \
   --region ap-south-1 \
-  --db-cluster-identifier "$CLUSTER_ID" \
+  --db-cluster-identifier sea-n-shore-staging-aurora \
   --query 'DBClusters[0].{Status:Status,Encrypted:StorageEncrypted,DeletionProtection:DeletionProtection,Endpoint:Endpoint}'
 
 aws rds describe-db-instances \
@@ -1457,7 +1521,7 @@ aws rds describe-db-instances \
 
 Expected: cluster `available`, encrypted `true`, deletion protection `true`; writer `available`, `Public=false`, class `db.serverless`.
 
-- [ ] **Step 7: Verify the HTTPS CloudFront edge while the existing ALB remains unchanged**
+- [ ] **Step 7: Verify the HTTPS CloudFront edge**
 
 ```bash
 HTTPS_URL="$(terraform output -raw staging_https_url)"
@@ -1465,9 +1529,9 @@ printf '%s\n' "$HTTPS_URL"
 curl -I "$HTTPS_URL/auth/sign-in"
 ```
 
-Expected: browser-facing HTTPS response `200-399`. The raw ALB URL may remain available during this phase as rollback/testing path.
+Expected: browser-facing HTTPS response `200-399`. The raw ALB URL remains available during Phase 1.
 
-- [ ] **Step 8: Verify Cognito base and then enable Google federation**
+- [ ] **Step 8: Configure and verify Google federation**
 
 ```bash
 aws cognito-idp describe-user-pool \
@@ -1476,9 +1540,10 @@ aws cognito-idp describe-user-pool \
   --query 'UserPool.{Name:Name,DeletionProtection:DeletionProtection,Status:Status}'
 
 terraform output -raw cognito_google_redirect_uri
+printf '\n'
 ```
 
-After the Google OAuth application contains that redirect URI and the Secrets Manager JSON has been populated as described in Task 6, set `enable_google_identity_provider=true`, then:
+After adding that redirect URI in the existing Google OAuth application and storing the OAuth JSON in Secrets Manager as Task 6 specifies, set local `enable_google_identity_provider=true` and run:
 
 ```bash
 terraform plan -out=tfplan-google
@@ -1493,11 +1558,9 @@ aws cognito-idp describe-identity-provider \
   --query 'IdentityProvider.{ProviderName:ProviderName,ProviderType:ProviderType}'
 ```
 
-Expected provider: `Google`, type `Google`.
+Expected: provider name `Google`, provider type `Google`.
 
 - [ ] **Step 9: Verify no application cutover happened**
-
-Check the current ECS task definition environment still contains the Supabase public configuration and the existing `NEXT_PUBLIC_SITE_URL` value:
 
 ```bash
 TASK_DEF="$(terraform output -raw ecs_task_definition_family)"
@@ -1508,7 +1571,7 @@ aws ecs describe-task-definition \
   --output table
 ```
 
-Expected: current Supabase URL/publishable configuration still exists; no Aurora secret/database endpoint or Cognito setting has been injected into the running application yet.
+Expected: existing `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, and current `NEXT_PUBLIC_SITE_URL` remain. No Aurora endpoint/secret or Cognito runtime setting is injected into the running app yet.
 
 - [ ] **Step 10: Verify the current ECS service remains healthy**
 
@@ -1522,7 +1585,7 @@ aws ecs describe-services \
 
 Expected: `ACTIVE`, desired `1`, running `1`, pending `0`, rollout state `COMPLETED`.
 
-- [ ] **Step 11: Run repository CI checks one final time**
+- [ ] **Step 11: Run repository verification one final time**
 
 ```bash
 npm run lint
@@ -1537,21 +1600,11 @@ Expected: all green.
 
 - [ ] **Step 12: Stop at the Phase 1 gate**
 
-Do **not**:
+Do **not** migrate application rows into Aurora, create Cognito mappings for existing users, rewrite Next.js auth, alter `NEXT_PUBLIC_SUPABASE_*`, change production DNS, disable Supabase writes, or remove Supabase data/RLS/RPC/storage. Those actions belong to later plans.
 
-- migrate application rows into Aurora yet,
-- create Cognito mappings for the existing 7 users yet,
-- modify the Next.js auth implementation yet,
-- alter `NEXT_PUBLIC_SUPABASE_*` values yet,
-- change production DNS,
-- disable Supabase writes,
-- remove any Supabase data, auth account, RLS policy, RPC, or storage bucket.
+- [ ] **Step 13: Commit only verified runbook corrections if execution required them**
 
-Phase 2 starts only after this checklist is reviewed and the live AWS foundation is confirmed healthy.
-
-- [ ] **Step 13: Commit any runbook-only corrections discovered during verified execution**
-
-If no correction is required, make no commit. If a command had to be corrected, commit only the verified documentation change:
+If the checked-in runbook remains accurate, make no documentation commit. If a command required a verified correction:
 
 ```bash
 git add docs/migration/aws-native-phase-0-1-runbook.md
@@ -1562,24 +1615,22 @@ git commit -m "docs: record verified AWS foundation procedure"
 
 ## Phase 0 + Phase 1 Acceptance Checklist
 
-Before declaring this plan complete, all of the following must be true:
-
-- [ ] Supabase is still the live application source of truth and has not been mutated by migration work.
-- [ ] Source inventory and integrity evidence was captured and backed up privately to S3.
-- [ ] Existing Sea N Shore app UUIDs were not changed.
+- [ ] Supabase is still the live application source of truth and was not mutated by migration work.
+- [ ] Source inventory/integrity evidence was captured and backed up privately to S3.
+- [ ] Existing Sea N Shore application UUIDs were not changed.
 - [ ] Existing VPC, ALB, ECS service, ECR repository, and OIDC deployment path were not replaced.
-- [ ] Aurora PostgreSQL Serverless v2 is encrypted, private, and reachable only from the ECS security group on port 5432.
+- [ ] Aurora PostgreSQL Serverless v2 is encrypted, private, and accepts port 5432 only from the ECS security group.
 - [ ] Aurora master password is RDS-managed in Secrets Manager and is not exposed to the running application.
-- [ ] S3 media, document, and migration buckets have public access blocked, versioning enabled, and server-side encryption enabled.
-- [ ] CloudFront provides a working AWS-managed HTTPS staging URL without modifying `seaandshore.in` DNS.
-- [ ] WAF is associated with CloudFront and has the common AWS managed rule set plus the approved per-IP rate limit.
+- [ ] S3 media/document/migration buckets have public access blocked, versioning enabled, and server-side encryption enabled.
+- [ ] CloudFront provides a working AWS-managed HTTPS staging URL without changing `seaandshore.in` DNS.
+- [ ] WAF is attached to CloudFront with `AWSManagedRulesCommonRuleSet` and the 2,000 requests / 5 minute per-IP rate rule.
 - [ ] Cognito user pool/app client/domain exist with email/password capability.
-- [ ] Google federation is either successfully enabled after the secret is populated, or the explicit blocker is the operator's Google OAuth credential/console step — never a hidden Terraform/app failure.
-- [ ] SES configuration set exists, but no production sender/domain cutover has occurred.
+- [ ] Google federation works through Cognito after the operator's Google credential step.
+- [ ] SES configuration set exists, but no production sender/domain cutover occurred.
 - [ ] Current ECS service remains healthy and still uses the existing Supabase runtime configuration.
 - [ ] Terraform plan guard reports no destructive actions.
 - [ ] Repository lint, typecheck, tests, Terraform fmt, and Terraform validate all pass.
 
 ## Rollback for This Plan
 
-Because the running app remains Supabase-backed, application rollback is unnecessary in Phase 0/1. If AWS-native foundation resources need to be removed, first disable Cognito deletion protection and Aurora deletion protection **only after explicit approval**, then destroy only the newly introduced Phase 1 resources. Do not destroy the existing VPC/ALB/ECS/ECR/OIDC resources and do not touch Supabase.
+Because the running app remains Supabase-backed, application rollback is unnecessary in Phase 0/1. If the AWS-native foundation must be removed, first obtain explicit approval, disable Cognito and Aurora deletion protection deliberately, and destroy only the resources introduced by this plan. Do not destroy the existing VPC/ALB/ECS/ECR/OIDC resources and do not touch Supabase.
