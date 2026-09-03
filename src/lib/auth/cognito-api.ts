@@ -15,6 +15,11 @@ export type CognitoPrincipal = {
   emailVerified: boolean
 }
 
+export type CognitoSignUpResult = {
+  userSub: string
+  userConfirmed: boolean
+}
+
 type CognitoConfig = {
   region: string
   clientId: string
@@ -36,6 +41,11 @@ type CognitoAuthenticationResponse = {
 
 type CognitoGetUserResponse = {
   UserAttributes?: Array<{ Name?: string; Value?: string }>
+}
+
+type CognitoSignUpResponse = {
+  UserSub?: string
+  UserConfirmed?: boolean
 }
 
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
@@ -68,17 +78,25 @@ export class CognitoApiError extends Error {
   }
 }
 
-function mapAuthenticationResult(response: CognitoAuthenticationResponse): CognitoSignInResult {
+function mapAuthenticationTokens(response: CognitoAuthenticationResponse): CognitoAuthenticationResult {
   const authentication = response.AuthenticationResult
-  if (authentication?.AccessToken && typeof authentication.ExpiresIn === 'number') {
+  if (!authentication?.AccessToken || typeof authentication.ExpiresIn !== 'number') {
+    throw new CognitoApiError('UnexpectedResponse')
+  }
+
+  return {
+    accessToken: authentication.AccessToken,
+    ...(authentication.IdToken ? { idToken: authentication.IdToken } : {}),
+    ...(authentication.RefreshToken ? { refreshToken: authentication.RefreshToken } : {}),
+    expiresIn: authentication.ExpiresIn,
+  }
+}
+
+function mapSignInResult(response: CognitoAuthenticationResponse): CognitoSignInResult {
+  if (response.AuthenticationResult) {
     return {
       kind: 'authenticated',
-      authentication: {
-        accessToken: authentication.AccessToken,
-        ...(authentication.IdToken ? { idToken: authentication.IdToken } : {}),
-        ...(authentication.RefreshToken ? { refreshToken: authentication.RefreshToken } : {}),
-        expiresIn: authentication.ExpiresIn,
-      },
+      authentication: mapAuthenticationTokens(response),
     }
   }
 
@@ -141,7 +159,37 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
         },
       })
 
-      return mapAuthenticationResult(response)
+      return mapSignInResult(response)
+    },
+
+    async respondToNewPassword(input: {
+      username: string
+      newPassword: string
+      session: string
+    }): Promise<CognitoAuthenticationResult> {
+      const response = await request<CognitoAuthenticationResponse>('RespondToAuthChallenge', {
+        ChallengeName: 'NEW_PASSWORD_REQUIRED',
+        ClientId: config.clientId,
+        Session: input.session,
+        ChallengeResponses: {
+          USERNAME: input.username,
+          NEW_PASSWORD: input.newPassword,
+        },
+      })
+
+      return mapAuthenticationTokens(response)
+    },
+
+    async refresh(refreshToken: string): Promise<CognitoAuthenticationResult> {
+      const response = await request<CognitoAuthenticationResponse>('InitiateAuth', {
+        AuthFlow: 'REFRESH_TOKEN_AUTH',
+        ClientId: config.clientId,
+        AuthParameters: {
+          REFRESH_TOKEN: refreshToken,
+        },
+      })
+
+      return mapAuthenticationTokens(response)
     },
 
     async getUser(accessToken: string): Promise<CognitoPrincipal> {
@@ -159,6 +207,63 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
         email: attributes.get('email') ?? null,
         emailVerified: attributes.get('email_verified') === 'true',
       }
+    },
+
+    async signUp(input: {
+      username: string
+      password: string
+      fullName: string
+    }): Promise<CognitoSignUpResult> {
+      const response = await request<CognitoSignUpResponse>('SignUp', {
+        ClientId: config.clientId,
+        Username: input.username,
+        Password: input.password,
+        UserAttributes: [
+          { Name: 'email', Value: input.username },
+          { Name: 'name', Value: input.fullName },
+        ],
+      })
+
+      if (!response.UserSub) throw new CognitoApiError('UnexpectedResponse')
+
+      return {
+        userSub: response.UserSub,
+        userConfirmed: response.UserConfirmed === true,
+      }
+    },
+
+    async confirmSignUp(input: { username: string; code: string }): Promise<void> {
+      await request('ConfirmSignUp', {
+        ClientId: config.clientId,
+        Username: input.username,
+        ConfirmationCode: input.code,
+      })
+    },
+
+    async forgotPassword(username: string): Promise<void> {
+      await request('ForgotPassword', {
+        ClientId: config.clientId,
+        Username: username,
+      })
+    },
+
+    async confirmForgotPassword(input: {
+      username: string
+      code: string
+      newPassword: string
+    }): Promise<void> {
+      await request('ConfirmForgotPassword', {
+        ClientId: config.clientId,
+        Username: input.username,
+        ConfirmationCode: input.code,
+        Password: input.newPassword,
+      })
+    },
+
+    async globalSignOut(accessToken: string): Promise<void> {
+      await request('GlobalSignOut', {
+        AccessToken: accessToken,
+      })
     },
   }
 }
