@@ -2,11 +2,11 @@ name: AWS Infrastructure CI
 
 on:
   push:
-    branches: [infra/aws-migration]
     paths:
       - Dockerfile
       - .dockerignore
       - infra/aws/**
+      - scripts/aws/**
       - .github/workflows/aws-*.yml
   pull_request:
     branches: [main]
@@ -14,6 +14,7 @@ on:
       - Dockerfile
       - .dockerignore
       - infra/aws/**
+      - scripts/aws/**
       - .github/workflows/aws-*.yml
 
 jobs:
@@ -29,22 +30,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.10.5
-
       - name: Terraform format
         run: terraform fmt -check -recursive infra/aws
-
       - name: Terraform init
         working-directory: ${{ matrix.directory }}
         run: terraform init -backend=false
-
       - name: Terraform validate
         working-directory: ${{ matrix.directory }}
         run: terraform validate
+
+  guard:
+    name: Terraform plan guard tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Run guard tests
+        run: npm test -- scripts/aws/check-terraform-plan.test.mjs
 
   container:
     name: Docker build
@@ -52,7 +64,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Build production image
         run: |
           docker build \
