@@ -117,6 +117,163 @@ describe('createCognitoApi', () => {
     })
   })
 
+  it('refreshes authentication using REFRESH_TOKEN_AUTH', async () => {
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('x-amz-target')).toBe(
+        'AWSCognitoIdentityProviderService.InitiateAuth',
+      )
+      expect(requestBody(init)).toEqual({
+        AuthFlow: 'REFRESH_TOKEN_AUTH',
+        ClientId: config.clientId,
+        AuthParameters: { REFRESH_TOKEN: 'refresh-token' },
+      })
+      return jsonResponse({
+        AuthenticationResult: {
+          AccessToken: 'new-access-token',
+          IdToken: 'new-id-token',
+          ExpiresIn: 3600,
+        },
+      })
+    })
+
+    const api = createCognitoApi(config, transport)
+    await expect(api.refresh('refresh-token')).resolves.toEqual({
+      accessToken: 'new-access-token',
+      idToken: 'new-id-token',
+      expiresIn: 3600,
+    })
+  })
+
+  it('completes NEW_PASSWORD_REQUIRED using RespondToAuthChallenge', async () => {
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('x-amz-target')).toBe(
+        'AWSCognitoIdentityProviderService.RespondToAuthChallenge',
+      )
+      expect(requestBody(init)).toEqual({
+        ChallengeName: 'NEW_PASSWORD_REQUIRED',
+        ClientId: config.clientId,
+        Session: 'opaque-session',
+        ChallengeResponses: {
+          USERNAME: 'captain@example.com',
+          NEW_PASSWORD: 'NewPassword12345',
+        },
+      })
+      return jsonResponse({
+        AuthenticationResult: {
+          AccessToken: 'access-token',
+          IdToken: 'id-token',
+          RefreshToken: 'refresh-token',
+          ExpiresIn: 3600,
+        },
+      })
+    })
+
+    const api = createCognitoApi(config, transport)
+    await expect(
+      api.respondToNewPassword({
+        username: 'captain@example.com',
+        newPassword: 'NewPassword12345',
+        session: 'opaque-session',
+      }),
+    ).resolves.toEqual({
+      accessToken: 'access-token',
+      idToken: 'id-token',
+      refreshToken: 'refresh-token',
+      expiresIn: 3600,
+    })
+  })
+
+  it('supports sign-up and confirmation', async () => {
+    const operations: string[] = []
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const target = new Headers(init?.headers).get('x-amz-target') ?? ''
+      operations.push(target)
+      if (target.endsWith('.SignUp')) {
+        expect(requestBody(init)).toEqual({
+          ClientId: config.clientId,
+          Username: 'new@example.com',
+          Password: 'ExamplePassword123',
+          UserAttributes: [
+            { Name: 'email', Value: 'new@example.com' },
+            { Name: 'name', Value: 'New Mariner' },
+          ],
+        })
+        return jsonResponse({ UserSub: 'new-sub', UserConfirmed: false })
+      }
+      expect(requestBody(init)).toEqual({
+        ClientId: config.clientId,
+        Username: 'new@example.com',
+        ConfirmationCode: '123456',
+      })
+      return jsonResponse({})
+    })
+
+    const api = createCognitoApi(config, transport)
+    await expect(
+      api.signUp({
+        username: 'new@example.com',
+        password: 'ExamplePassword123',
+        fullName: 'New Mariner',
+      }),
+    ).resolves.toEqual({ userSub: 'new-sub', userConfirmed: false })
+    await expect(
+      api.confirmSignUp({ username: 'new@example.com', code: '123456' }),
+    ).resolves.toBeUndefined()
+    expect(operations).toEqual([
+      'AWSCognitoIdentityProviderService.SignUp',
+      'AWSCognitoIdentityProviderService.ConfirmSignUp',
+    ])
+  })
+
+  it('supports forgot-password and confirm-forgot-password', async () => {
+    const operations: string[] = []
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const target = new Headers(init?.headers).get('x-amz-target') ?? ''
+      operations.push(target)
+      if (target.endsWith('.ForgotPassword')) {
+        expect(requestBody(init)).toEqual({
+          ClientId: config.clientId,
+          Username: 'captain@example.com',
+        })
+      } else {
+        expect(requestBody(init)).toEqual({
+          ClientId: config.clientId,
+          Username: 'captain@example.com',
+          ConfirmationCode: '654321',
+          Password: 'ResetPassword12345',
+        })
+      }
+      return jsonResponse({})
+    })
+
+    const api = createCognitoApi(config, transport)
+    await expect(api.forgotPassword('captain@example.com')).resolves.toBeUndefined()
+    await expect(
+      api.confirmForgotPassword({
+        username: 'captain@example.com',
+        code: '654321',
+        newPassword: 'ResetPassword12345',
+      }),
+    ).resolves.toBeUndefined()
+    expect(operations).toEqual([
+      'AWSCognitoIdentityProviderService.ForgotPassword',
+      'AWSCognitoIdentityProviderService.ConfirmForgotPassword',
+    ])
+  })
+
+  it('globally signs out an access token', async () => {
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('x-amz-target')).toBe(
+        'AWSCognitoIdentityProviderService.GlobalSignOut',
+      )
+      expect(requestBody(init)).toEqual({ AccessToken: 'access-token' })
+      return jsonResponse({})
+    })
+
+    const api = createCognitoApi(config, transport)
+    await expect(api.globalSignOut('access-token')).resolves.toBeUndefined()
+  })
+
   it('throws CognitoApiError containing only the AWS error code and a safe message', async () => {
     const transport = vi.fn(async () =>
       jsonResponse(
