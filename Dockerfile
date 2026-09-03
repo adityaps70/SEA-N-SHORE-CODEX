@@ -30,7 +30,12 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 COPY --from=builder /app ./
-RUN npm prune --omit=dev && npm cache clean --force && rm -rf .next/cache
+
+RUN npm prune --omit=dev \
+    && npm cache clean --force \
+    && rm -rf .next/cache \
+    && mkdir -p .next/cache \
+    && chown -R node:node /app/.next
 
 USER node
 EXPOSE 3000
