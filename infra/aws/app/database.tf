@@ -12,6 +12,7 @@ resource "aws_rds_cluster" "aurora" {
   master_username    = "sns_cluster_admin"
 
   manage_master_user_password = true
+  enable_http_endpoint        = true
   storage_encrypted           = true
   db_subnet_group_name        = aws_db_subnet_group.aurora.name
   vpc_security_group_ids      = [aws_security_group.aurora.id]
