@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'scripts/aws/**/*.test.mjs'],
   },
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
 })
