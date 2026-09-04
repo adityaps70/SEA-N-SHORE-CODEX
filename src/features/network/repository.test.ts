@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 
+type QueryCall = [text: string, values?: readonly unknown[]]
+
 const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
 const TARGET_ID = '22222222-2222-4222-8222-222222222222'
 const CONNECTION_ID = '33333333-3333-4333-8333-333333333333'
+
+function callsOf(query: { mock: { calls: unknown[] } }): QueryCall[] {
+  return query.mock.calls as unknown as QueryCall[]
+}
 
 describe('Aurora network repository', () => {
   it('loads viewer follows and connections through permanent profile UUIDs', async () => {
@@ -48,7 +54,7 @@ describe('Aurora network repository', () => {
     await expect(repository.isPairBlocked(VIEWER_ID, TARGET_ID)).resolves.toBe(true)
 
     expect(query).toHaveBeenNthCalledWith(1, expect.stringContaining("p.account_status = 'active'"), [VIEWER_ID])
-    const blockSql = String(query.mock.calls[1]?.[0])
+    const blockSql = String(callsOf(query)[1]?.[0])
     expect(blockSql).toContain('from public.user_blocks')
     expect(blockSql).toContain('blocker_id = $1 and blocked_id = $2')
     expect(blockSql).toContain('blocker_id = $2 and blocked_id = $1')
@@ -118,11 +124,12 @@ describe('Aurora network repository', () => {
     await repository.deletePairRelationships(VIEWER_ID, TARGET_ID)
 
     const [low, high] = [VIEWER_ID, TARGET_ID].sort()
-    expect(String(query.mock.calls[0]?.[0])).toContain('delete from public.follows')
-    expect(query.mock.calls[0]?.[1]).toEqual([VIEWER_ID, TARGET_ID])
-    expect(String(query.mock.calls[1]?.[0])).toContain('delete from public.notifications')
-    expect(query.mock.calls[1]?.[1]).toEqual([low, high])
-    expect(String(query.mock.calls[2]?.[0])).toContain('delete from public.connections')
-    expect(query.mock.calls[2]?.[1]).toEqual([low, high])
+    const calls = callsOf(query)
+    expect(String(calls[0]?.[0])).toContain('delete from public.follows')
+    expect(calls[0]?.[1]).toEqual([VIEWER_ID, TARGET_ID])
+    expect(String(calls[1]?.[0])).toContain('delete from public.notifications')
+    expect(calls[1]?.[1]).toEqual([low, high])
+    expect(String(calls[2]?.[0])).toContain('delete from public.connections')
+    expect(calls[2]?.[1]).toEqual([low, high])
   })
 })
