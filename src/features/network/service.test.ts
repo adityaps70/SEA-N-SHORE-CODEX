@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import type { NetworkRepository } from './repository'
 
 const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
 const TARGET_ID = '22222222-2222-4222-8222-222222222222'
@@ -18,7 +19,7 @@ function connection(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function repository(overrides: Record<string, unknown> = {}) {
+function makeRepository(overrides: Record<string, unknown> = {}) {
   return {
     isMemberReady: vi.fn(async () => true),
     isPairBlocked: vi.fn(async () => false),
@@ -39,13 +40,17 @@ function repository(overrides: Record<string, unknown> = {}) {
   }
 }
 
-async function service(repo = repository()) {
+async function service(repo = makeRepository()) {
   const { createNetworkService } = await import('./service')
-  const withTransaction = vi.fn(async (fn: (repository: ReturnType<typeof repository>) => Promise<unknown>) => fn(repo))
+  const transactionSpy = vi.fn()
+  const withTransaction = async <T>(fn: (networkRepository: NetworkRepository) => Promise<T>) => {
+    transactionSpy()
+    return fn(repo as unknown as NetworkRepository)
+  }
   return {
     service: createNetworkService({ withTransaction }),
     repository: repo,
-    withTransaction,
+    transactionSpy,
   }
 }
 
@@ -61,14 +66,14 @@ describe('network authorization service', () => {
     await expectCode(context.service.sendConnectionRequest(VIEWER_ID, VIEWER_ID), 'network_self_interaction')
     await expectCode(context.service.block(VIEWER_ID, VIEWER_ID), 'network_self_interaction')
 
-    expect(context.withTransaction).not.toHaveBeenCalled()
+    expect(context.transactionSpy).not.toHaveBeenCalled()
   })
 
   it('rejects follow and connection creation when either member is unavailable or the pair is blocked', async () => {
-    const unavailable = await service(repository({ isMemberReady: vi.fn(async (id: string) => id !== TARGET_ID) }))
+    const unavailable = await service(makeRepository({ isMemberReady: vi.fn(async (id: string) => id !== TARGET_ID) }))
     await expectCode(unavailable.service.follow(VIEWER_ID, TARGET_ID), 'network_interaction_unavailable')
 
-    const blocked = await service(repository({ isPairBlocked: vi.fn(async () => true) }))
+    const blocked = await service(makeRepository({ isPairBlocked: vi.fn(async () => true) }))
     await expectCode(blocked.service.sendConnectionRequest(VIEWER_ID, TARGET_ID), 'network_interaction_unavailable')
   })
 
@@ -81,16 +86,16 @@ describe('network authorization service', () => {
       type: 'new_follower',
     })
 
-    const existing = await service(repository({ insertFollow: vi.fn(async () => false) }))
+    const existing = await service(makeRepository({ insertFollow: vi.fn(async () => false) }))
     await expect(existing.service.follow(VIEWER_ID, TARGET_ID)).resolves.toBe(false)
     expect(existing.repository.createNotification).not.toHaveBeenCalled()
   })
 
   it('preserves connection duplicate and already-connected error semantics', async () => {
-    const pending = await service(repository({ findConnectionByPair: vi.fn(async () => connection()) }))
+    const pending = await service(makeRepository({ findConnectionByPair: vi.fn(async () => connection()) }))
     await expectCode(pending.service.sendConnectionRequest(VIEWER_ID, TARGET_ID), 'network_request_exists')
 
-    const accepted = await service(repository({
+    const accepted = await service(makeRepository({
       findConnectionByPair: vi.fn(async () => connection({ status: 'accepted' })),
     }))
     await expectCode(accepted.service.sendConnectionRequest(VIEWER_ID, TARGET_ID), 'network_already_connected')
@@ -107,21 +112,21 @@ describe('network authorization service', () => {
       type: 'connection_request',
       connectionId: CONNECTION_ID,
     })
-    expect(context.withTransaction).toHaveBeenCalledTimes(1)
+    expect(context.transactionSpy).toHaveBeenCalledTimes(1)
   })
 
   it('allows only the requester to cancel a pending connection request', async () => {
-    const allowed = await service(repository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
+    const allowed = await service(makeRepository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
     await expect(allowed.service.cancelConnectionRequest(VIEWER_ID, CONNECTION_ID)).resolves.toBe(true)
     expect(allowed.repository.deleteConnectionRequestNotification).toHaveBeenCalledWith(CONNECTION_ID)
     expect(allowed.repository.deleteConnection).toHaveBeenCalledWith(CONNECTION_ID)
 
-    const denied = await service(repository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
+    const denied = await service(makeRepository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
     await expectCode(denied.service.cancelConnectionRequest(TARGET_ID, CONNECTION_ID), 'network_action_not_allowed')
   })
 
   it('allows only the recipient to accept or decline a pending request', async () => {
-    const accept = await service(repository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
+    const accept = await service(makeRepository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
     await expect(accept.service.acceptConnectionRequest(TARGET_ID, CONNECTION_ID)).resolves.toBe(true)
     expect(accept.repository.acceptConnection).toHaveBeenCalledWith(CONNECTION_ID)
     expect(accept.repository.insertMutualFollows).toHaveBeenCalledWith(TARGET_ID, VIEWER_ID)
@@ -132,16 +137,16 @@ describe('network authorization service', () => {
       connectionId: CONNECTION_ID,
     })
 
-    const requesterAccept = await service(repository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
+    const requesterAccept = await service(makeRepository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
     await expectCode(requesterAccept.service.acceptConnectionRequest(VIEWER_ID, CONNECTION_ID), 'network_action_not_allowed')
 
-    const decline = await service(repository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
+    const decline = await service(makeRepository({ findConnectionByIdForUpdate: vi.fn(async () => connection()) }))
     await expect(decline.service.declineConnectionRequest(TARGET_ID, CONNECTION_ID)).resolves.toBe(true)
     expect(decline.repository.deleteConnection).toHaveBeenCalledWith(CONNECTION_ID)
   })
 
   it('rechecks readiness and blocking before accepting a connection', async () => {
-    const blocked = await service(repository({
+    const blocked = await service(makeRepository({
       findConnectionByIdForUpdate: vi.fn(async () => connection()),
       isPairBlocked: vi.fn(async () => true),
     }))
@@ -150,10 +155,10 @@ describe('network authorization service', () => {
 
   it('allows either member to remove an accepted connection but no outsider', async () => {
     const accepted = connection({ status: 'accepted' })
-    const member = await service(repository({ findConnectionByIdForUpdate: vi.fn(async () => accepted) }))
+    const member = await service(makeRepository({ findConnectionByIdForUpdate: vi.fn(async () => accepted) }))
     await expect(member.service.removeConnection(TARGET_ID, CONNECTION_ID)).resolves.toBe(true)
 
-    const outsider = await service(repository({ findConnectionByIdForUpdate: vi.fn(async () => accepted) }))
+    const outsider = await service(makeRepository({ findConnectionByIdForUpdate: vi.fn(async () => accepted) }))
     await expectCode(outsider.service.removeConnection(THIRD_ID, CONNECTION_ID), 'network_action_not_allowed')
   })
 
