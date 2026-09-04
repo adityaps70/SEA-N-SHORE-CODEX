@@ -289,7 +289,7 @@ describe('createCognitoApi', () => {
 
     await expect(
       api.signIn({ username: 'captain@example.com', password: 'WrongPassword123' }),
-    ).rejects.toMatchObject<CognitoApiError>({
+    ).rejects.toMatchObject({
       name: 'CognitoApiError',
       code: 'NotAuthorizedException',
       message: 'Cognito request was not authorized.',
