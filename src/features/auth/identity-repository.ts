@@ -5,10 +5,10 @@ type IdentityRow = QueryResultRow & {
   profile_id: string
 }
 
-type QueryRows = <T extends QueryResultRow = QueryResultRow>(
+type IdentityQuery = (
   text: string,
   values?: readonly unknown[],
-) => Promise<T[]>
+) => Promise<IdentityRow[]>
 
 export class IdentityMappingError extends Error {
   constructor() {
@@ -17,12 +17,13 @@ export class IdentityMappingError extends Error {
   }
 }
 
-export function createIdentityRepository(input: { query?: QueryRows } = {}) {
-  const queryRows = input.query ?? databaseQuery
+export function createIdentityRepository(input: { query?: IdentityQuery } = {}) {
+  const queryRows: IdentityQuery = input.query ?? ((text, values) =>
+    databaseQuery<IdentityRow>(text, values))
 
   return {
     async resolveProfileIdForCognitoSub(sub: string): Promise<string | null> {
-      const rows = await queryRows<IdentityRow>(
+      const rows = await queryRows(
         `select profile_id
          from public.identity_accounts
          where provider = $1
