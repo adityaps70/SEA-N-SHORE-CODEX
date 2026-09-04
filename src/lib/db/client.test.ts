@@ -1,3 +1,4 @@
+import type { QueryResultRow } from 'pg'
 import { describe, expect, it, vi } from 'vitest'
 import type { DatabaseEnvironment } from './config'
 
@@ -10,19 +11,21 @@ const environment: DatabaseEnvironment = {
   ssl: true,
 }
 
-type FakeQueryResult = { rows: Array<Record<string, unknown>> }
-
 function createFakePool() {
-  const transactionQuery = vi.fn(async (text: string): Promise<FakeQueryResult> => {
+  const transactionQuery = vi.fn(async <T extends QueryResultRow = QueryResultRow>(
+    text: string,
+  ): Promise<{ rows: T[] }> => {
     if (text === 'select profile_id from identity_accounts') {
-      return { rows: [{ profile_id: 'profile-1' }] }
+      return { rows: [{ profile_id: 'profile-1' }] as unknown as T[] }
     }
     return { rows: [] }
   })
 
   const release = vi.fn()
   const connect = vi.fn(async () => ({ query: transactionQuery, release }))
-  const query = vi.fn(async () => ({ rows: [{ id: 'row-1' }] }))
+  const query = vi.fn(async <T extends QueryResultRow = QueryResultRow>(): Promise<{ rows: T[] }> => ({
+    rows: [{ id: 'row-1' }] as unknown as T[],
+  }))
 
   return { pool: { query, connect }, query, connect, transactionQuery, release }
 }
@@ -61,7 +64,9 @@ describe('Aurora database client', () => {
     const database = createDatabaseClient({ environment, poolFactory })
 
     const result = await database.withTransaction(async (client) => {
-      const response = await client.query('select profile_id from identity_accounts')
+      const response = await client.query<{ profile_id: string }>(
+        'select profile_id from identity_accounts',
+      )
       return response.rows[0]?.profile_id
     })
 
