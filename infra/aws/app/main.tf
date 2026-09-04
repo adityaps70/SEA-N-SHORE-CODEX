@@ -402,6 +402,9 @@ resource "aws_ecs_task_definition" "web" {
         { name = "NEXT_PUBLIC_SITE_URL", value = var.site_url },
         { name = "NEXT_PUBLIC_SUPABASE_URL", value = var.supabase_url },
         { name = "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", value = var.supabase_publishable_key },
+        { name = "AWS_COGNITO_REGION", value = var.aws_region },
+        { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.app.id },
+        { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
         { name = "NODE_ENV", value = "production" },
         { name = "PORT", value = "3000" },
         { name = "HOSTNAME", value = "0.0.0.0" }
@@ -488,7 +491,7 @@ resource "aws_appautoscaling_target" "web" {
   min_capacity       = var.min_capacity
   resource_id        = "service/${aws_ecs_cluster.app.name}/${aws_ecs_service.web.name}"
   scalable_dimension = "ecs:service:DesiredCount"
-  service_namespace  = "ecs"
+  service_namespace = "ecs"
 }
 
 resource "aws_appautoscaling_policy" "cpu" {
@@ -496,7 +499,7 @@ resource "aws_appautoscaling_policy" "cpu" {
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.web.resource_id
   scalable_dimension = aws_appautoscaling_target.web.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.web.service_namespace
+  service_namespace = aws_appautoscaling_target.web.service_namespace
 
   target_tracking_scaling_policy_configuration {
     target_value       = 60
