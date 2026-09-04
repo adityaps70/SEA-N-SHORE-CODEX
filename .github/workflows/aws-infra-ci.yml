@@ -20,6 +20,15 @@ on:
       - .github/workflows/aws-*.yml
 
 jobs:
+  remote-execution-contract:
+    name: GitHub SSM execution contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify remote execution security contract
+        run: node --test scripts/aws/remote-execution-config.test.mjs
+
   terraform:
     name: Terraform validate
     runs-on: ubuntu-latest
