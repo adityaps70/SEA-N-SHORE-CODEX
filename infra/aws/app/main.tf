@@ -405,9 +405,24 @@ resource "aws_ecs_task_definition" "web" {
         { name = "AWS_COGNITO_REGION", value = var.aws_region },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.app.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
+        { name = "AURORA_HOST", value = aws_rds_cluster.aurora.endpoint },
+        { name = "AURORA_PORT", value = tostring(aws_rds_cluster.aurora.port) },
+        { name = "AURORA_DATABASE", value = aws_rds_cluster.aurora.database_name },
+        { name = "AURORA_SSL", value = "true" },
         { name = "NODE_ENV", value = "production" },
         { name = "PORT", value = "3000" },
         { name = "HOSTNAME", value = "0.0.0.0" }
+      ]
+
+      secrets = [
+        {
+          name      = "AURORA_USER"
+          valueFrom = "${local.aurora_master_secret_arn}:username::"
+        },
+        {
+          name      = "AURORA_PASSWORD"
+          valueFrom = "${local.aurora_master_secret_arn}:password::"
+        }
       ]
 
       logConfiguration = {
@@ -438,6 +453,8 @@ resource "aws_ecs_task_definition" "web" {
       stopTimeout            = 30
     }
   ])
+
+  depends_on = [aws_iam_role_policy.ecs_execution_aurora_secret]
 
   tags = local.common_tags
 }
