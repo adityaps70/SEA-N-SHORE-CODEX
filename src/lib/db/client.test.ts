@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { describe, expect, it, vi } from 'vitest'
+import type { DatabaseQueryClient } from './client'
 import type { DatabaseEnvironment } from './config'
 
 const environment: DatabaseEnvironment = {
@@ -22,12 +23,21 @@ function createFakePool() {
   })
 
   const release = vi.fn()
-  const connect = vi.fn(async () => ({ query: transactionQuery, release }))
+  const transactionClient = {
+    query: transactionQuery as unknown as DatabaseQueryClient['query'],
+    release,
+  }
+  const connect = vi.fn(async () => transactionClient)
   const query = vi.fn(async <T extends QueryResultRow = QueryResultRow>(): Promise<{ rows: T[] }> => ({
     rows: [{ id: 'row-1' }] as unknown as T[],
   }))
 
-  return { pool: { query, connect }, query, connect, transactionQuery, release }
+  const pool = {
+    query: query as unknown as DatabaseQueryClient['query'],
+    connect,
+  }
+
+  return { pool, query, connect, transactionQuery, release }
 }
 
 describe('Aurora database client', () => {
