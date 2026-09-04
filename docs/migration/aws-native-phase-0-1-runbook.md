@@ -28,3 +28,30 @@ Do not apply if the guard fails or if the human-readable plan replaces the exist
 
 ## Rollback
 No application rollback is required during Phase 0/1 because the runtime remains Supabase-backed. Destroy only newly added Phase 1 resources after explicit approval.
+
+## Phase 3 Cognito checkpoint
+Phase 3 adds Cognito authentication primitives in parallel with the existing Supabase runtime. The live application remains Supabase-backed until the Aurora repository and server-side authorization layer are ready to cut over together.
+
+Before applying ECS runtime configuration changes, verify the Cognito auth unit suite:
+
+```bash
+./node_modules/.bin/vitest run \
+  src/lib/auth/cognito-api.test.ts \
+  src/lib/auth/cognito-cookies.test.ts \
+  src/lib/auth/cognito-session.test.ts \
+  src/features/auth/cognito-actions.test.ts
+```
+
+Expected current checkpoint: all four files pass. Cognito tokens, passwords, challenge sessions, database credentials, and OAuth secrets must never be printed or committed.
+
+The ECS task definition may receive only these non-secret Cognito identifiers during Phase 3:
+
+```text
+AWS_COGNITO_REGION
+AWS_COGNITO_USER_POOL_ID
+AWS_COGNITO_CLIENT_ID
+```
+
+Do not add an auth-provider cutover flag, remove Supabase environment variables, alter `src/proxy.ts`, or switch protected application pages to Cognito during Phase 3.
+
+If a Cognito staging verification fails, stop the new Cognito path and leave the existing Supabase auth/session path active. Do not delete or pause Supabase until the final Aurora cutover and rollback window have completed.
