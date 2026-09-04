@@ -3,7 +3,8 @@
 FROM node:22-bookworm-slim AS dependencies
 WORKDIR /app
 COPY package.json ./
-RUN npm install
+RUN npm install -g npm@11.6.0 \
+    && npm install
 
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
@@ -31,7 +32,8 @@ ENV HOSTNAME=0.0.0.0
 
 COPY --from=builder /app ./
 
-RUN npm prune --omit=dev \
+RUN npm install -g npm@11.6.0 \
+    && npm prune --omit=dev \
     && npm cache clean --force \
     && rm -rf .next/cache \
     && mkdir -p .next/cache \
