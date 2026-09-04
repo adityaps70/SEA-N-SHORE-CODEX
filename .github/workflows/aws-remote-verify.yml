@@ -1,0 +1,146 @@
+name: AWS Remote Verify
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - src/**
+      - scripts/aws/**
+      - infra/aws/**
+      - package.json
+      - package-lock.json
+      - vitest.config.ts
+      - tsconfig.json
+      - .github/workflows/aws-remote-verify.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: aws-remote-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-on-bootstrap:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+
+    steps:
+      - name: Validate staging OIDC configuration
+        run: |
+          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}" || (echo "Missing staging variable AWS_ROLE_TO_ASSUME" && exit 1)
+          test -n "$AWS_REGION" || (echo "Missing staging variable AWS_REGION" && exit 1)
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Discover bootstrap instance
+        id: instance
+        run: |
+          INSTANCE_IDS=$(aws ec2 describe-instances \
+            --region "$AWS_REGION" \
+            --filters \
+              "Name=tag:Name,Values=sea-n-shore-bootstrap" \
+              "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output json)
+
+          COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
+          if [ "$COUNT" -ne 1 ]; then
+            echo "Expected exactly one running sea-n-shore-bootstrap instance; found $COUNT." >&2
+            exit 1
+          fi
+
+          INSTANCE_ID=$(jq -r '.[0]' <<<"$INSTANCE_IDS")
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "Bootstrap instance resolved."
+
+      - name: Send repository-controlled verification through SSM
+        id: command
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        run: |
+          jq -n \
+            --arg sha "$TRIGGER_SHA" \
+            '{commands:[
+              "set -euo pipefail",
+              "cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1",
+              "git fetch origin feat/aws-native-phase-0-1",
+              ("git cat-file -e " + $sha + "^{commit}"),
+              ("git reset --hard " + $sha),
+              "bash scripts/aws/remote-verify.sh"
+            ]}' > /tmp/ssm-parameters.json
+
+          COMMAND_ID=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Sea N Shore remote verify $TRIGGER_SHA" \
+            --timeout-seconds 1800 \
+            --parameters file:///tmp/ssm-parameters.json \
+            --query 'Command.CommandId' \
+            --output text)
+
+          test -n "$COMMAND_ID" || (echo "SSM did not return a command ID." >&2 && exit 1)
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "SSM verification command submitted."
+
+      - name: Wait for SSM verification and surface logs
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          COMMAND_ID: ${{ steps.command.outputs.command_id }}
+        run: |
+          STATUS="Pending"
+          for attempt in $(seq 1 180); do
+            STATUS=$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query Status \
+              --output text 2>/dev/null || echo Pending)
+
+            case "$STATUS" in
+              Pending|InProgress|Delayed)
+                sleep 5
+                ;;
+              *)
+                break
+                ;;
+            esac
+          done
+
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --output json > /tmp/ssm-result.json
+
+          echo "=== AWS SSM STDOUT ==="
+          jq -r '.StandardOutputContent // empty' /tmp/ssm-result.json
+
+          STDERR_CONTENT=$(jq -r '.StandardErrorContent // empty' /tmp/ssm-result.json)
+          if [ -n "$STDERR_CONTENT" ]; then
+            echo "=== AWS SSM STDERR ===" >&2
+            printf '%s\n' "$STDERR_CONTENT" >&2
+          fi
+
+          FINAL_STATUS=$(jq -r '.Status' /tmp/ssm-result.json)
+          echo "SSM final status: $FINAL_STATUS"
+
+          if [ "$FINAL_STATUS" != "Success" ]; then
+            exit 1
+          fi
+
+          echo "### AWS remote verification passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Target: \`sea-n-shore-bootstrap\`" >> "$GITHUB_STEP_SUMMARY"
