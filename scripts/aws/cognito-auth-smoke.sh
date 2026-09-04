@@ -15,13 +15,14 @@ AUTH_JSON=""
 CHALLENGE_SESSION=""
 ACCESS_TOKEN=""
 SUBJECT=""
+MAPPING_JSON=""
 
 umask 077
 TMP_DIR="$(mktemp -d)"
 
 cleanup() {
   rm -rf "$TMP_DIR"
-  unset EMAIL PASSWORD NEW_PASSWORD CONFIRM_PASSWORD AUTH_JSON CHALLENGE_SESSION ACCESS_TOKEN SUBJECT
+  unset EMAIL PASSWORD NEW_PASSWORD CONFIRM_PASSWORD AUTH_JSON CHALLENGE_SESSION ACCESS_TOKEN SUBJECT MAPPING_JSON
 }
 trap cleanup EXIT INT TERM
 
@@ -135,20 +136,17 @@ SECRET_ARN="$(aws rds describe-db-clusters \
 [[ -n "$CLUSTER_ARN" && "$CLUSTER_ARN" != "None" ]] || fail "Aurora cluster ARN was not found."
 [[ -n "$SECRET_ARN" && "$SECRET_ARN" != "None" ]] || fail "Aurora master secret ARN was not found."
 
-jq -n --arg subject "$SUBJECT" '[{name:"subject",value:{stringValue:$subject}}]' > "$TMP_DIR/sql-params.json"
-
 if ! MAPPING_JSON="$(aws rds-data execute-statement \
   --region "$AWS_REGION" \
   --resource-arn "$CLUSTER_ARN" \
   --secret-arn "$SECRET_ARN" \
   --database "$AURORA_DATABASE" \
-  --sql "select count(*)::bigint from identity_accounts where provider = 'cognito' and provider_subject = :subject" \
-  --parameters "file://$TMP_DIR/sql-params.json" \
+  --sql "select provider_subject from identity_accounts where provider = 'cognito'" \
   --output json 2>"$TMP_DIR/rds-data.err")"; then
   fail "Aurora identity mapping verification failed."
 fi
 
-MAPPING_COUNT="$(jq -r '.records[0][0].longValue // 0' <<<"$MAPPING_JSON")"
+MAPPING_COUNT="$(jq --arg subject "$SUBJECT" '[.records[]?[0].stringValue // empty | select(. == $subject)] | length' <<<"$MAPPING_JSON")"
 [[ "$MAPPING_COUNT" == "1" ]] || fail "Cognito identity mapping was not exactly one row."
 
 printf 'identity mapping: 1\n'
