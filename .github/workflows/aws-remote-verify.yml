@@ -73,12 +73,7 @@ jobs:
           jq -n \
             --arg sha "$TRIGGER_SHA" \
             '{commands:[
-              "set -euo pipefail",
-              "cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1",
-              "git fetch origin feat/aws-native-phase-0-1",
-              ("git cat-file -e " + $sha + "^{commit}"),
-              ("git reset --hard " + $sha),
-              "bash scripts/aws/remote-verify.sh"
+              ("runuser -u ssm-user -- bash -lc '\''set -euo pipefail; cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1; git fetch origin feat/aws-native-phase-0-1; git cat-file -e " + $sha + "^{commit}; git reset --hard " + $sha + "; bash scripts/aws/remote-verify.sh'\''")
             ]}' > /tmp/ssm-parameters.json
 
           COMMAND_ID=$(aws ssm send-command \
