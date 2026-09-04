@@ -55,3 +55,39 @@ AWS_COGNITO_CLIENT_ID
 Do not add an auth-provider cutover flag, remove Supabase environment variables, alter `src/proxy.ts`, or switch protected application pages to Cognito during Phase 3.
 
 If a Cognito staging verification fails, stop the new Cognito path and leave the existing Supabase auth/session path active. Do not delete or pause Supabase until the final Aurora cutover and rollback window have completed.
+
+## Phase 4 Aurora application runtime checkpoint
+Phase 4 introduces the Aurora PostgreSQL application client in parallel with the current Supabase data path. Adding the database client or ECS runtime values does not itself route any protected feature to Aurora.
+
+The server-only Aurora runtime contract is:
+
+```text
+AURORA_HOST
+AURORA_PORT
+AURORA_DATABASE
+AURORA_USER
+AURORA_PASSWORD
+AURORA_SSL
+```
+
+`AURORA_HOST`, `AURORA_PORT`, `AURORA_DATABASE`, and `AURORA_SSL` are ordinary ECS environment values sourced from Terraform-managed Aurora resources. `AURORA_USER` and `AURORA_PASSWORD` are ECS secrets sourced directly from the RDS-managed Secrets Manager secret; their values must never be copied into Terraform variables, GitHub variables, build arguments, logs, or source files.
+
+The ECS execution role receives only `secretsmanager:GetSecretValue` for the single Aurora managed-master secret. The application task role does not require Secrets Manager access because ECS injects these values before the container starts.
+
+The Node database client uses a lazy bounded `pg` pool and parameterized queries. Transactions must use `BEGIN`, `COMMIT`, `ROLLBACK`, and always release the checked-out client. The browser must never receive database credentials or a direct Aurora connection path.
+
+Before any live ECS revision receives the Aurora runtime contract, require all of the following to pass:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+terraform -chdir=infra/aws/bootstrap validate
+terraform -chdir=infra/aws/app validate
+```
+
+CI and Docker use npm 11.6.0 because npm 10.9.8 on Node 22 has reproduced the `Cannot read properties of null (reading 'edgesOut')` resolver failure. Do not bypass verification with `--force` or `--legacy-peer-deps`.
+
+Do not apply a full Terraform plan while the unrelated CloudFront account-verification blocker is present. If the reviewed plan contains CloudFront creation or other unrelated changes, deploy the ECS task-definition revision independently and retain the preceding Supabase-backed revision for immediate rollback.
+
+Until Phase 4 protected feature cutover is verified, keep the existing Supabase environment variables and Supabase application path intact. If Aurora runtime verification fails, redeploy the prior ECS task-definition revision; no Supabase source data should be deleted or modified as part of this rollback.
