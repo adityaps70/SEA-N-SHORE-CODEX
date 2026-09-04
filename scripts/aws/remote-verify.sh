@@ -14,8 +14,23 @@ export PATH="$HOME/bin:$PATH"
 command -v node >/dev/null 2>&1 || { echo "Node.js is required." >&2; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm is required." >&2; exit 1; }
 command -v terraform >/dev/null 2>&1 || { echo "Terraform is required." >&2; exit 1; }
+
+if [[ ! -x ./node_modules/.bin/vitest ]] || [[ ! -d ./node_modules/pg ]]; then
+  echo "=== DEPENDENCY SYNC ==="
+  npx -y npm@11.6.0 install \
+    --include=dev \
+    --no-audit \
+    --no-fund \
+    --package-lock=false
+fi
+
 [[ -x ./node_modules/.bin/vitest ]] || {
-  echo "node_modules is missing. Reinstall with the approved npm 11.6.0 workflow before remote verification." >&2
+  echo "Vitest is unavailable after dependency sync." >&2
+  exit 1
+}
+
+[[ -d ./node_modules/pg ]] || {
+  echo "PostgreSQL driver is unavailable after dependency sync." >&2
   exit 1
 }
 
