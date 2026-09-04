@@ -22,8 +22,8 @@ afterEach(() => {
 })
 
 async function loadConfig() {
-  const module = await import('./config')
-  return module.getDatabaseEnvironment()
+  const configModule = await import('./config')
+  return configModule.getDatabaseEnvironment()
 }
 
 describe('getDatabaseEnvironment', () => {
