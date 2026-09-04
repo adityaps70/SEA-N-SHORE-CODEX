@@ -25,7 +25,7 @@ test('GitHub remote execution stays scoped to the bootstrap instance and reposit
   assert.match(terraform, /sea-n-shore-bootstrap/)
 
   assert.match(workflow, /environment:\s*staging/)
-  assert.match(workflow, /Name=sea-n-shore-bootstrap/)
+  assert.match(workflow, /Name=tag:Name,Values=sea-n-shore-bootstrap/)
   assert.match(workflow, /AWS-RunShellScript/)
   assert.match(workflow, /bash scripts\/aws\/remote-verify\.sh/)
   assert.match(workflow, /git reset --hard/)
