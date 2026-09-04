@@ -1,6 +1,10 @@
-import { requireUser } from '@/features/auth/queries'
-import { getNetworkProfiles, getOwnProfile, getPublicProfilesByIds } from '@/features/profiles/queries'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import {
+  getAwsNetworkProfiles,
+  getAwsOwnProfile,
+  getAwsPublicProfilesByIds,
+} from '@/features/profiles/aws-queries'
+import { networkRepository } from './repository'
 import { scoreRecommendation } from './recommendations'
 import type {
   NetworkConnectionRow,
@@ -46,32 +50,16 @@ function counterpartyId(viewerId: string, row: NetworkConnectionRow) {
 }
 
 async function loadViewerGraph(viewerId: string) {
-  const supabase = await createServerSupabaseClient()
-  const [follows, connections] = await Promise.all([
-    supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', viewerId),
-    supabase
-      .from('connections')
-      .select('id,user_low_id,user_high_id,requested_by,status,created_at,updated_at')
-      .or(`user_low_id.eq.${viewerId},user_high_id.eq.${viewerId}`)
-      .order('updated_at', { ascending: false }),
-  ])
-
-  if (follows.error || connections.error) {
+  try {
+    return await networkRepository.loadViewerGraph(viewerId)
+  } catch {
     throw new Error('Unable to load your professional relationships.')
-  }
-
-  return {
-    followedIds: new Set((follows.data ?? []).map((row) => row.following_id)),
-    connections: (connections.data ?? []) as NetworkConnectionRow[],
   }
 }
 
 function withRelationship(
   viewerId: string,
-  profiles: Awaited<ReturnType<typeof getPublicProfilesByIds>>,
+  profiles: Awaited<ReturnType<typeof getAwsPublicProfilesByIds>>,
   followedIds: ReadonlySet<string>,
   connections: readonly NetworkConnectionRow[],
 ): NetworkProfile[] {
@@ -82,19 +70,19 @@ function withRelationship(
 }
 
 export async function getRelationshipState(targetId: string): Promise<RelationshipState> {
-  const user = await requireUser()
+  const user = await requireAwsUser()
   const graph = await loadViewerGraph(user.id)
   return relationshipFromRows(user.id, targetId, graph.followedIds, graph.connections)
 }
 
 export async function getNetworkHub(tab: NetworkTab): Promise<NetworkHubData> {
-  const user = await requireUser()
+  const user = await requireAwsUser()
   const graph = await loadViewerGraph(user.id)
   const pending = graph.connections.filter((connection) => connection.status === 'pending')
   const incomingRequestCount = pending.filter((connection) => connection.requested_by !== user.id).length
 
   if (tab === 'discover') {
-    const [viewer, candidates] = await Promise.all([getOwnProfile(), getNetworkProfiles(60)])
+    const [viewer, candidates] = await Promise.all([getAwsOwnProfile(), getAwsNetworkProfiles(60)])
     if (!viewer) throw new Error('Complete your professional profile to discover the network.')
 
     const ranked = candidates
@@ -123,7 +111,7 @@ export async function getNetworkHub(tab: NetworkTab): Promise<NetworkHubData> {
   if (tab === 'connections') {
     const accepted = graph.connections.filter((connection) => connection.status === 'accepted')
     const ids = accepted.map((connection) => counterpartyId(user.id, connection))
-    const profiles = await getPublicProfilesByIds(ids)
+    const profiles = await getAwsPublicProfilesByIds(ids)
     return {
       tab,
       profiles: withRelationship(user.id, profiles, graph.followedIds, graph.connections),
@@ -135,7 +123,7 @@ export async function getNetworkHub(tab: NetworkTab): Promise<NetworkHubData> {
 
   if (tab === 'following') {
     const ids = [...graph.followedIds]
-    const profiles = await getPublicProfilesByIds(ids)
+    const profiles = await getAwsPublicProfilesByIds(ids)
     return {
       tab,
       profiles: withRelationship(user.id, profiles, graph.followedIds, graph.connections),
@@ -150,8 +138,8 @@ export async function getNetworkHub(tab: NetworkTab): Promise<NetworkHubData> {
   const receivedIds = receivedConnections.map((connection) => counterpartyId(user.id, connection))
   const sentIds = sentConnections.map((connection) => counterpartyId(user.id, connection))
   const [receivedProfiles, sentProfiles] = await Promise.all([
-    getPublicProfilesByIds(receivedIds),
-    getPublicProfilesByIds(sentIds),
+    getAwsPublicProfilesByIds(receivedIds),
+    getAwsPublicProfilesByIds(sentIds),
   ])
 
   return {
@@ -169,7 +157,7 @@ export async function getPeopleYouMayKnow(limit = 4): Promise<NetworkProfile[]> 
 }
 
 export async function getPreferredFeedAuthorIds(): Promise<Set<string>> {
-  const user = await requireUser()
+  const user = await requireAwsUser()
   const graph = await loadViewerGraph(user.id)
   const preferred = new Set(graph.followedIds)
 
