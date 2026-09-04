@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CognitoApiError } from '@/lib/auth/cognito-api'
+import { CognitoApiError, type CognitoSignInResult } from '@/lib/auth/cognito-api'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { createCognitoAuthActions } from './cognito-actions'
 
@@ -24,8 +24,8 @@ function fakeCookies(initial: Record<string, string> = {}) {
 
 function fakeApi() {
   return {
-    signIn: vi.fn(async () => ({
-      kind: 'authenticated' as const,
+    signIn: vi.fn(async (): Promise<CognitoSignInResult> => ({
+      kind: 'authenticated',
       authentication: { accessToken: 'a1', refreshToken: 'r1', expiresIn: 3600 },
     })),
     respondToNewPassword: vi.fn(async () => ({
