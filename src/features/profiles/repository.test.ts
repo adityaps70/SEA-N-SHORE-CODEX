@@ -24,9 +24,15 @@ type ProfileQueryRow = {
   profile_skills: Array<{ skill: string }>
 }
 
+type QueryCall = [text: string, values?: readonly unknown[]]
+
 const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
 const PROFILE_A_ID = '22222222-2222-4222-8222-222222222222'
 const PROFILE_B_ID = '33333333-3333-4333-8333-333333333333'
+
+function callsOf(query: { mock: { calls: unknown[] } }): QueryCall[] {
+  return query.mock.calls as unknown as QueryCall[]
+}
 
 function profileRow(overrides: Partial<ProfileQueryRow> = {}): ProfileQueryRow {
   return {
@@ -111,7 +117,7 @@ describe('Aurora profile repository', () => {
       rank: 'Master',
     })
 
-    const sql = String(query.mock.calls[0]?.[0])
+    const sql = String(callsOf(query)[0]?.[0])
     expect(sql).toContain("p.account_status = 'active'")
     expect(sql).toContain('p.onboarding_completed_at is not null')
     expect(sql).toContain('from public.user_blocks')
@@ -127,7 +133,7 @@ describe('Aurora profile repository', () => {
 
     await repository.getPublicProfileBySlug({ slug: 'captain-ananya-rao' })
 
-    const sql = String(query.mock.calls[0]?.[0])
+    const sql = String(callsOf(query)[0]?.[0])
     expect(sql).not.toContain('from public.user_blocks')
     expect(query).toHaveBeenCalledWith(expect.any(String), ['captain-ananya-rao'])
   })
@@ -155,7 +161,7 @@ describe('Aurora profile repository', () => {
       expect.stringContaining('p.id = any($1::uuid[])'),
       [[PROFILE_A_ID, missingId, PROFILE_B_ID], VIEWER_ID],
     )
-    expect(String(query.mock.calls[0]?.[0])).toContain('from public.user_blocks')
+    expect(String(callsOf(query)[0]?.[0])).toContain('from public.user_blocks')
   })
 
   it('returns an empty list without querying Aurora when no profile IDs need hydration', async () => {
@@ -176,7 +182,7 @@ describe('Aurora profile repository', () => {
 
     await repository.getDiscoveryCandidates({ viewerProfileId: VIEWER_ID, limit: 18 })
 
-    const sql = String(query.mock.calls[0]?.[0])
+    const sql = String(callsOf(query)[0]?.[0])
     expect(sql).toContain('p.id <> $1')
     expect(sql).toContain("p.account_status = 'active'")
     expect(sql).toContain('p.onboarding_completed_at is not null')
@@ -195,8 +201,8 @@ describe('Aurora profile repository', () => {
     await repository.getDiscoveryCandidates({ viewerProfileId: VIEWER_ID, limit: 0 })
     await repository.getDiscoveryCandidates({ viewerProfileId: VIEWER_ID, limit: 500 })
 
-    expect(query.mock.calls[0]?.[1]).toEqual([VIEWER_ID, 1])
-    expect(query.mock.calls[1]?.[1]).toEqual([VIEWER_ID, 60])
+    expect(callsOf(query)[0]?.[1]).toEqual([VIEWER_ID, 1])
+    expect(callsOf(query)[1]?.[1]).toEqual([VIEWER_ID, 60])
   })
 
   it('fails closed when a public row is missing a valid slug or profile type', async () => {
