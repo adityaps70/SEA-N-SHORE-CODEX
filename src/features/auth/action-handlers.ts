@@ -5,30 +5,13 @@ export type AuthActionState = CognitoAuthActionState
 
 type CognitoActions = ReturnType<typeof createCognitoAuthActions>
 type Redirect = (path: string) => void
-type ProfileProgress = { onboardingCompletedAt: string | null }
 
-const PROFILE_ROUTING_ERROR = 'We signed you in, but could not load your profile. Please try again.'
+const POST_SIGN_IN_PATH = '/auth/post-sign-in'
 
 export function createAuthActionHandlers(input: {
   getActions: () => Promise<CognitoActions>
-  getProfileProgress: () => Promise<ProfileProgress>
   redirect: Redirect
 }) {
-  async function routeAuthenticatedUser(): Promise<AuthActionState | null> {
-    let profile: ProfileProgress
-    try {
-      profile = await input.getProfileProgress()
-    } catch (error) {
-      console.error('Post-auth profile routing failed', {
-        name: error instanceof Error ? error.name : 'UnknownError',
-      })
-      return { error: PROFILE_ROUTING_ERROR }
-    }
-
-    input.redirect(profile.onboardingCompletedAt ? '/home' : '/onboarding')
-    return null
-  }
-
   return {
     async signIn(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
       const actions = await input.getActions()
@@ -37,10 +20,7 @@ export function createAuthActionHandlers(input: {
         input.redirect('/auth/update-password?mode=new-password')
         return result
       }
-      if (result.message === 'Signed in.') {
-        const routingError = await routeAuthenticatedUser()
-        if (routingError) return routingError
-      }
+      if (result.message === 'Signed in.') input.redirect(POST_SIGN_IN_PATH)
       return result
     },
 
@@ -75,10 +55,7 @@ export function createAuthActionHandlers(input: {
       const actions = await input.getActions()
       if (formData.get('mode') === 'new-password') {
         const result = await actions.completeNewPassword(state, formData)
-        if (result.message === 'Password updated.') {
-          const routingError = await routeAuthenticatedUser()
-          if (routingError) return routingError
-        }
+        if (result.message === 'Password updated.') input.redirect(POST_SIGN_IN_PATH)
         return result
       }
 
