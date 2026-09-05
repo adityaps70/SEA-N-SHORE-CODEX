@@ -17,6 +17,12 @@ export type FeedRowsLookup = {
   limit: number
 }
 
+export type FeedMediaInput = {
+  storagePath: string
+  mimeType: string
+  altText: string | null
+}
+
 const FEED_ROW_SELECT = `
   select
     p.id,
@@ -136,9 +142,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
   }
 
   async function getViewerState(viewerProfileId: string, postIds: string[]): Promise<FeedViewerState> {
-    if (!postIds.length) {
-      return { likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() }
-    }
+    if (!postIds.length) return { likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() }
+
     const liked = await queryRows(
       `select post_id from public.post_reactions where user_id = $1 and post_id = any($2::uuid[])`,
       [viewerProfileId, postIds],
@@ -237,6 +242,14 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     )
   }
 
+  async function insertPostMedia(postId: string, media: FeedMediaInput) {
+    await queryRows(
+      `insert into public.post_media (post_id, storage_path, mime_type, alt_text)
+       values ($1, $2, $3, $4)`,
+      [postId, media.storagePath, media.mimeType, media.altText],
+    )
+  }
+
   async function insertPollPost(input: { id: string; authorId: string; category: PostCategory; body: string }) {
     await queryRows(
       `insert into public.posts (id, author_id, category, body, post_type)
@@ -314,6 +327,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     isMemberReady,
     getInteractablePost,
     insertStandardPost,
+    insertPostMedia,
     insertPollPost,
     insertPollOption,
     setLiked,
