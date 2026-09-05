@@ -1,0 +1,48 @@
+name: AWS Live Error Diagnostic
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-live-error-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  recent-app-errors:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 5
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      LOG_GROUP: /ecs/sea-n-shore-staging/web
+
+    steps:
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Read recent application error logs
+        run: |
+          set -euo pipefail
+          START_MS="$(( $(date +%s) * 1000 - 30 * 60 * 1000 ))"
+          aws logs filter-log-events \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP" \
+            --start-time "$START_MS" \
+            --limit 300 \
+            --output json > /tmp/events.json
+
+          echo "=== RECENT SEA N SHORE APPLICATION ERRORS ==="
+          jq -r '.events[].message' /tmp/events.json \
+            | grep -Ei 'error|exception|digest|failed|failure|typeerror|referenceerror|database|cognito|relation|column|permission|unauthorized|forbidden' \
+            | tail -n 120 \
+            | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+            | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[redacted-uuid]/g' \
+            || true
