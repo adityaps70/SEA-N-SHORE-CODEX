@@ -23,7 +23,6 @@ concurrency:
   group: aws-remote-verify-${{ github.ref }}
   cancel-in-progress: true
 
-# Post-deploy Phase 4 health probe marker.
 jobs:
   staging-http-health:
     runs-on: ubuntu-latest
@@ -65,6 +64,58 @@ jobs:
           echo "### Phase 4 staging runtime health passed" >> "$GITHUB_STEP_SUMMARY"
           echo "- Aurora query: passed" >> "$GITHUB_STEP_SUMMARY"
           echo "- Identity mappings: present" >> "$GITHUB_STEP_SUMMARY"
+
+  staging-runtime-shape:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 5
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
+      ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+
+    steps:
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Verify Aurora runtime variable names only
+        run: |
+          test -n "$ECS_TASK_DEFINITION" || (echo "Missing staging variable ECS_TASK_DEFINITION" >&2 && exit 1)
+          test -n "$ECS_CONTAINER_NAME" || (echo "Missing staging variable ECS_CONTAINER_NAME" >&2 && exit 1)
+
+          aws ecs describe-task-definition \
+            --task-definition "$ECS_TASK_DEFINITION" \
+            --query taskDefinition \
+            --output json > /tmp/task-definition.json
+
+          jq --arg NAME "$ECS_CONTAINER_NAME" '
+            .containerDefinitions[]
+            | select(.name == $NAME)
+            | {
+                environmentNames: [(.environment // [])[].name] | sort,
+                secretNames: [(.secrets // [])[].name] | sort
+              }
+          ' /tmp/task-definition.json > /tmp/runtime-shape.json
+
+          echo "=== ECS AURORA RUNTIME SHAPE ==="
+          jq . /tmp/runtime-shape.json
+
+          for name in AURORA_HOST AURORA_PORT AURORA_DATABASE AURORA_SSL; do
+            jq -e --arg name "$name" '.environmentNames | index($name) != null' /tmp/runtime-shape.json >/dev/null || {
+              echo "Missing ECS environment variable name: $name" >&2
+              exit 1
+            }
+          done
+
+          for name in AURORA_USER AURORA_PASSWORD; do
+            jq -e --arg name "$name" '.secretNames | index($name) != null' /tmp/runtime-shape.json >/dev/null || {
+              echo "Missing ECS secret name: $name" >&2
+              exit 1
+            }
+          done
 
   verify-on-bootstrap:
     runs-on: ubuntu-latest
