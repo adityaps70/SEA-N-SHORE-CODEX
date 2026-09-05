@@ -66,6 +66,23 @@ describe('Cognito cookie primitives', () => {
     expect(cognitoCookieOptions('https://localhost:3000').secure).toBe(true)
   })
 
+  it('allows non-local HTTP only with an explicit staging transport opt-in', () => {
+    expect(() => cognitoCookieOptions('http://staging.example.com')).toThrow(
+      'Cognito cookies require HTTPS outside local development.',
+    )
+
+    expect(
+      cognitoCookieOptions('http://staging.example.com', {
+        allowInsecureHttp: true,
+      }),
+    ).toMatchObject({
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: false,
+      path: '/',
+    })
+  })
+
   it('stores access and refresh credentials with bounded lifetimes', () => {
     const fake = createFakeCookieStore()
     const cookies = createCognitoCookieManager(fake.store, 'https://staging.example.com')
