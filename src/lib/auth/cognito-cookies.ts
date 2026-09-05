@@ -19,16 +19,24 @@ type CookieStore = {
   delete(name: string): void
 }
 
+type CognitoCookiePolicy = {
+  allowInsecureHttp?: boolean
+}
+
 const REFRESH_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 const CHALLENGE_MAX_AGE_SECONDS = 10 * 60
 
-export function cognitoCookieOptions(siteUrl: string): CookieOptions {
+export function cognitoCookieOptions(
+  siteUrl: string,
+  policy: CognitoCookiePolicy = {},
+): CookieOptions {
   const url = new URL(siteUrl)
   const isLocalDevelopment =
     url.protocol === 'http:' &&
     (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1')
+  const isExplicitlyAllowedHttp = url.protocol === 'http:' && policy.allowInsecureHttp === true
 
-  if (url.protocol !== 'https:' && !isLocalDevelopment) {
+  if (url.protocol !== 'https:' && !isLocalDevelopment && !isExplicitlyAllowedHttp) {
     throw new Error('Cognito cookies require HTTPS outside local development.')
   }
 
@@ -40,8 +48,12 @@ export function cognitoCookieOptions(siteUrl: string): CookieOptions {
   }
 }
 
-export function createCognitoCookieManager(store: CookieStore, siteUrl: string) {
-  const baseOptions = cognitoCookieOptions(siteUrl)
+export function createCognitoCookieManager(
+  store: CookieStore,
+  siteUrl: string,
+  policy: CognitoCookiePolicy = {},
+) {
+  const baseOptions = cognitoCookieOptions(siteUrl, policy)
 
   return {
     setAuthentication(input: {
