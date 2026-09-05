@@ -71,7 +71,7 @@ const FEED_ROW_SELECT = `
 
 function visibilitySql() {
   return `
-    and exists (
+    exists (
       select 1 from public.profiles viewer
       where viewer.id = $1
         and viewer.account_status = 'active'
@@ -128,7 +128,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       `${FEED_ROW_SELECT}
        where p.id = $2
          and p.deleted_at is null
-         ${visibilitySql()}
+         and ${visibilitySql()}
        limit 1`,
       [viewerProfileId, postId],
     ) as FeedRow[]
