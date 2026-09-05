@@ -102,7 +102,31 @@ Code-complete Cognito/Aurora cutover checkpoint before the final staging smoke w
 645a8c2ce5b59b84aebdbda72e61962d2c8e068d
 ```
 
-AWS Infrastructure CI run `33955408326` completed successfully for that exact SHA. The gate included lint, TypeScript, the full Vitest suite, Terraform validation for both app and bootstrap, Terraform plan guard tests, the GitHub SSM execution contract, and a production Docker build. Do not treat a later commit as verified until the same gate passes on that later exact SHA.
+AWS Infrastructure CI run `33955408326` completed successfully for that exact SHA. The gate included lint, TypeScript, the full Vitest suite, Terraform validation for both app and bootstrap, Terraform plan guard tests, the GitHub SSM execution contract, and a production Docker build. Do not treat a later code-changing commit as verified until the same gate passes on that later exact SHA.
+
+### Staging deployment record
+
+`AWS Staging Deploy` run `33957677252` completed successfully from branch `feat/aws-native-phase-0-1` at commit `a6b559f5d2a207964444d2251b89ab643b3a59d6`. That commit only added the Phase 4 verification documentation on top of the verified application SHA above.
+
+The deployment produced and pushed this immutable ECR image:
+
+```text
+310356785722.dkr.ecr.ap-south-1.amazonaws.com/sea-n-shore:a6b559f5d2a207964444d2251b89ab643b3a59d6-33957677252
+```
+
+Image digest:
+
+```text
+sha256:8e97d15bbe4168bc24406328146ec6112bf905c6c5fac7dd17418b28480b1795
+```
+
+The ECS service `sea-n-shore-staging-web` in cluster `sea-n-shore-staging` was updated to task definition:
+
+```text
+arn:aws:ecs:ap-south-1:310356785722:task-definition/sea-n-shore-staging-web:5
+```
+
+The GitHub workflow waited for `aws ecs wait services-stable` and completed successfully. Deployment stability is therefore verified; real-user application smoke and post-smoke CloudWatch/Aurora evidence remain separate gates.
 
 ### Remaining Supabase references after protected cutover
 
@@ -113,8 +137,6 @@ Remaining references must be classified rather than assumed to be active protect
 - `src/lib/supabase/*` may remain for rollback, legacy callback support, generated database types, and the temporary storage adapter. These files must not be imported by protected application data/auth flows except the explicitly classified Phase 5 storage path above.
 
 ### Final staging verification required before declaring Phase 4 complete
-
-Deploy the exact verification candidate through the repository's `AWS Staging Deploy` workflow with `deploy_to_ecs=true`. Record both the new ECS task-definition revision and the immediately preceding Supabase-backed revision before smoke testing.
 
 Using a real migrated Cognito user, verify in staging:
 
