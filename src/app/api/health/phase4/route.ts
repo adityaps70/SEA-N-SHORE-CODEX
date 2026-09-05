@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   try {
     const health = await checkPhase4DatabaseHealth()
-    const ok = health.database && health.identityMappings
+    const ok = health.database && health.identityMappings && health.contentNetwork
     const response = NextResponse.json(
       { status: ok ? 'ok' : 'degraded', ...health },
       { status: ok ? 200 : 503 },
@@ -19,6 +19,7 @@ export async function GET() {
         status: 'unavailable',
         database: false,
         identityMappings: false,
+        contentNetwork: false,
         reason: classifyDatabaseFailure(error),
       },
       { status: 503 },
