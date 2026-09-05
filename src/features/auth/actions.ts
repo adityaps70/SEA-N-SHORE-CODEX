@@ -1,88 +1,125 @@
 'use server'
 
-import { redirect } from 'next/navigation'
-import { z } from 'zod'
-import { publicEnvironment } from '@/lib/env'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
-import { resetPasswordSchema, signInSchema, signUpSchema } from './schemas'
+import { cookies } from 'next/headers'
+import { redirect as nextRedirect } from 'next/navigation'
+import { createCognitoApi } from '@/lib/auth/cognito-api'
+import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
+import { getOnboardingProfileFromAurora } from '@/features/profiles/onboarding-repository'
+import { requireAwsUser } from './aws-queries'
+import {
+  createCognitoAuthActions,
+  type CognitoAuthActionState,
+} from './cognito-actions'
 
-export type AuthActionState = { error?: string; message?: string }
+export type AuthActionState = CognitoAuthActionState
 
-const existingAccountErrorCodes = new Set(['email_exists', 'user_already_exists', 'identity_already_exists'])
-const signupSuccessState = { message: 'Check your email to continue.' }
+type CognitoActions = ReturnType<typeof createCognitoAuthActions>
+type Redirect = (path: string) => void
 
-export async function signUp(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const parsed = signUpSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check your details.' }
+type ProfileProgress = { onboardingCompletedAt: string | null }
 
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: {
-      data: { full_name: parsed.data.fullName },
-      emailRedirectTo: `${publicEnvironment.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/onboarding`,
+export function createAuthActionHandlers(input: {
+  getActions: () => Promise<CognitoActions>
+  getProfileProgress: () => Promise<ProfileProgress>
+  redirect: Redirect
+}) {
+  async function routeAuthenticatedUser() {
+    const profile = await input.getProfileProgress()
+    input.redirect(profile.onboardingCompletedAt ? '/home' : '/onboarding')
+  }
+
+  return {
+    async signIn(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+      const actions = await input.getActions()
+      const result = await actions.signIn(state, formData)
+      if (result.next === 'new-password') {
+        input.redirect('/auth/update-password?mode=new-password')
+        return result
+      }
+      if (result.message === 'Signed in.') await routeAuthenticatedUser()
+      return result
     },
+
+    async signUp(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+      const actions = await input.getActions()
+      const result = await actions.signUp(state, formData)
+      if (result.message === 'Check your email to continue.') {
+        const email = String(formData.get('email') ?? '').trim().toLowerCase()
+        input.redirect(`/auth/sign-up?confirm=1&email=${encodeURIComponent(email)}`)
+      }
+      return result
+    },
+
+    async confirmSignUp(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+      const actions = await input.getActions()
+      const result = await actions.confirmSignUp(state, formData)
+      if (result.message === 'Email confirmed.') input.redirect('/auth/sign-in')
+      return result
+    },
+
+    async requestPasswordReset(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+      const actions = await input.getActions()
+      const result = await actions.requestPasswordReset(state, formData)
+      if (result.next === 'confirm-reset') {
+        const email = String(formData.get('email') ?? '').trim().toLowerCase()
+        input.redirect(`/auth/update-password?mode=confirm-reset&email=${encodeURIComponent(email)}`)
+      }
+      return result
+    },
+
+    async updatePassword(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+      const actions = await input.getActions()
+      const mode = formData.get('mode')
+      if (mode === 'new-password') {
+        const result = await actions.completeNewPassword(state, formData)
+        if (result.message === 'Password updated.') await routeAuthenticatedUser()
+        return result
+      }
+
+      const result = await actions.confirmPasswordReset(state, formData)
+      if (result.message === 'Password updated. You can sign in now.') input.redirect('/auth/sign-in')
+      return result
+    },
+
+    async signOut() {
+      const actions = await input.getActions()
+      await actions.signOut()
+      input.redirect('/')
+    },
+  }
+}
+
+async function getProductionActions(): Promise<CognitoActions> {
+  const cookieStore = await cookies()
+  const environment = getCognitoEnvironment()
+  const api = createCognitoApi({
+    region: environment.AWS_COGNITO_REGION,
+    clientId: environment.AWS_COGNITO_CLIENT_ID,
   })
 
-  if (!error || existingAccountErrorCodes.has(error.code ?? '')) return signupSuccessState
-  return { error: 'We could not create your account. Please try again.' }
-}
-
-export async function signIn(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const parsed = signInSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return { error: 'Enter a valid email and password.' }
-
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase.auth.signInWithPassword(parsed.data)
-  if (error) return { error: 'Email or password is incorrect.' }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('onboarding_completed_at')
-    .eq('id', data.user.id)
-    .maybeSingle()
-
-  if (profileError) return { error: 'We could not finish signing you in. Please try again.' }
-  redirect(profile?.onboarding_completed_at ? '/home' : '/onboarding')
-}
-
-export async function signInWithGoogle() {
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: `${publicEnvironment.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/onboarding` },
+  return createCognitoAuthActions({
+    api,
+    cookieStore: cookieStore as unknown as Parameters<typeof createCognitoAuthActions>[0]['cookieStore'],
+    siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
   })
-  if (error || !data.url) redirect('/auth/sign-in?error=oauth')
-  redirect(data.url)
 }
 
-export async function requestPasswordReset(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const parsed = resetPasswordSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return { error: 'Enter a valid email address.' }
-
-  const supabase = await createServerSupabaseClient()
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${publicEnvironment.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/auth/update-password`,
-  })
-  return { message: 'If the account exists, a reset link is on its way.' }
+async function getProfileProgress(): Promise<ProfileProgress> {
+  const user = await requireAwsUser()
+  const profile = await getOnboardingProfileFromAurora(user.id)
+  if (!profile) throw new Error('Unable to load profile progress.')
+  return { onboardingCompletedAt: profile.onboardingCompletedAt }
 }
 
-export async function updatePassword(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const password = formData.get('password')
-  const passwordConfirmation = formData.get('passwordConfirmation')
-  const parsed = z.string().min(12).max(72).safeParse(password)
-  if (!parsed.success) return { error: 'Use at least 12 characters.' }
-  if (password !== passwordConfirmation) return { error: 'Passwords do not match.' }
+const handlers = createAuthActionHandlers({
+  getActions: getProductionActions,
+  getProfileProgress,
+  redirect: nextRedirect,
+})
 
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase.auth.updateUser({ password: parsed.data })
-  if (error) return { error: 'The password could not be updated. Request a new reset link.' }
-  redirect('/home')
-}
-
-export async function signOut() {
-  const supabase = await createServerSupabaseClient()
-  await supabase.auth.signOut()
-  redirect('/')
-}
+export const signIn = handlers.signIn
+export const signUp = handlers.signUp
+export const confirmSignUp = handlers.confirmSignUp
+export const requestPasswordReset = handlers.requestPasswordReset
+export const updatePassword = handlers.updatePassword
+export const signOut = handlers.signOut
