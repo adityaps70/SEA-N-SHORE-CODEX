@@ -22,6 +22,22 @@ describe('production Cognito auth action routing', () => {
     expect(redirect).toHaveBeenCalledWith('/home')
   })
 
+  it('preserves Next redirect control flow after successful profile resolution', async () => {
+    const nextRedirect = new Error('NEXT_REDIRECT')
+    const redirect = vi.fn(() => {
+      throw nextRedirect
+    })
+    const handlers = createAuthActionHandlers({
+      getActions: async () => ({ signIn: vi.fn(async () => ({ message: 'Signed in.' })) } as never),
+      getProfileProgress: async () => ({ onboardingCompletedAt: '2026-09-05T00:00:00.000Z' }),
+      redirect,
+    })
+
+    await expect(
+      handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' })),
+    ).rejects.toBe(nextRedirect)
+  })
+
   it('routes an incomplete profile to onboarding after sign-in', async () => {
     const redirect = vi.fn()
     const handlers = createAuthActionHandlers({
