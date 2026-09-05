@@ -4,6 +4,7 @@ import { query as databaseQuery } from './client'
 type HealthRow = QueryResultRow & {
   database_ok: number
   identity_mappings_ok: boolean
+  content_network_ok: boolean
 }
 
 type HealthQuery = (
@@ -14,6 +15,7 @@ type HealthQuery = (
 export type Phase4DatabaseHealth = {
   database: boolean
   identityMappings: boolean
+  contentNetwork: boolean
 }
 
 export type DatabaseFailureReason =
@@ -74,7 +76,20 @@ export function createPhase4DatabaseHealthCheck(input: { query?: HealthQuery } =
            select count(*) = 7
            from public.identity_accounts
            where provider = $1
-         ) as identity_mappings_ok`,
+         ) as identity_mappings_ok,
+         (
+           to_regclass('public.posts') is not null
+           and to_regclass('public.post_reactions') is not null
+           and to_regclass('public.post_comments') is not null
+           and to_regclass('public.saved_posts') is not null
+           and to_regclass('public.post_media') is not null
+           and to_regclass('public.post_polls') is not null
+           and to_regclass('public.post_poll_options') is not null
+           and to_regclass('public.post_poll_votes') is not null
+           and to_regclass('public.follows') is not null
+           and to_regclass('public.connections') is not null
+           and to_regclass('public.user_blocks') is not null
+         ) as content_network_ok`,
       ['cognito'],
     )
 
@@ -82,6 +97,7 @@ export function createPhase4DatabaseHealthCheck(input: { query?: HealthQuery } =
     return {
       database: row?.database_ok === 1,
       identityMappings: row?.identity_mappings_ok === true,
+      contentNetwork: row?.content_network_ok === true,
     }
   }
 }
