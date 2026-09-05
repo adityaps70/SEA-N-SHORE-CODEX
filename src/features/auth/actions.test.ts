@@ -34,6 +34,22 @@ describe('production Cognito auth action routing', () => {
     expect(redirect).toHaveBeenCalledWith('/onboarding')
   })
 
+  it('returns a controlled error when post-auth profile resolution fails', async () => {
+    const redirect = vi.fn()
+    const handlers = createAuthActionHandlers({
+      getActions: async () => ({ signIn: vi.fn(async () => ({ message: 'Signed in.' })) } as never),
+      getProfileProgress: async () => {
+        throw new Error('database unavailable')
+      },
+      redirect,
+    })
+
+    await expect(
+      handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' })),
+    ).resolves.toEqual({ error: 'We signed you in, but could not load your profile. Please try again.' })
+    expect(redirect).not.toHaveBeenCalled()
+  })
+
   it('routes NEW_PASSWORD_REQUIRED to the existing update-password surface', async () => {
     const redirect = vi.fn()
     const handlers = createAuthActionHandlers({
