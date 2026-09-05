@@ -20,7 +20,7 @@ jobs:
       SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
 
     steps:
-      - name: Probe public staging routes
+      - name: Probe public staging routes and current Next assets
         run: |
           set -euo pipefail
           test -n "$SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" >&2 && exit 1)
@@ -35,8 +35,17 @@ jobs:
               "${SITE_URL%/}${path}")
             content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{print $2}' "$headers" | tr -d '\r' | tail -n 1)
             echo "ROUTE $path => HTTP $status content-type=${content_type:-unknown} bytes=$(wc -c < "$body")"
-            if [ "$status" -ge 500 ]; then
-              echo "SERVER_ERROR_ROUTE=$path"
-              grep -Eo 'digest[^,}<]{0,120}|ERROR[[:space:]]+[0-9]+' "$body" | head -n 10 || true
-            fi
+            test "$status" -lt 500
           done
+
+          curl --show-error --silent --max-time 45 "${SITE_URL%/}/" > /tmp/root.html
+          grep -Eo '/_next/static/[^"'"'"' ]+' /tmp/root.html | sed 's/&amp;/\&/g' | sort -u | head -n 40 > /tmp/assets.txt || true
+          test -s /tmp/assets.txt || { echo "No Next static assets found in root HTML" >&2; exit 1; }
+
+          failed=0
+          while IFS= read -r asset; do
+            status=$(curl --show-error --silent --max-time 30 --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${asset}")
+            echo "ASSET $asset => HTTP $status"
+            if [ "$status" != "200" ]; then failed=1; fi
+          done < /tmp/assets.txt
+          test "$failed" = "0"
