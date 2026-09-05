@@ -4,6 +4,7 @@ import type { OnboardingInput } from './schemas'
 const actorId = '11111111-1111-4111-8111-111111111111'
 
 type Repository = {
+  getOnboardingProfile: (profileId: string) => Promise<{ fullName: string; onboardingCompletedAt: string | null } | null>
   lockOnboardingProfile: (profileId: string) => Promise<boolean>
   updateProfile: (profileId: string, input: OnboardingInput) => Promise<void>
   upsertMaritimeProfile: (profileId: string, input: OnboardingInput) => Promise<void>
@@ -35,6 +36,7 @@ function seafarerInput(): OnboardingInput {
 
 function makeRepository(overrides: Partial<Repository> = {}): Repository {
   return {
+    getOnboardingProfile: vi.fn(async () => null),
     lockOnboardingProfile: vi.fn(async () => true),
     updateProfile: vi.fn(async () => undefined),
     upsertMaritimeProfile: vi.fn(async () => undefined),
