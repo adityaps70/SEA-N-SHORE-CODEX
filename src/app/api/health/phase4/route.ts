@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { checkPhase4DatabaseHealth } from '@/lib/db/health'
+import { checkPhase4DatabaseHealth, classifyDatabaseFailure } from '@/lib/db/health'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,9 +13,14 @@ export async function GET() {
     )
     response.headers.set('Cache-Control', 'private, no-store')
     return response
-  } catch {
+  } catch (error) {
     const response = NextResponse.json(
-      { status: 'unavailable', database: false, identityMappings: false },
+      {
+        status: 'unavailable',
+        database: false,
+        identityMappings: false,
+        reason: classifyDatabaseFailure(error),
+      },
       { status: 503 },
     )
     response.headers.set('Cache-Control', 'private, no-store')
