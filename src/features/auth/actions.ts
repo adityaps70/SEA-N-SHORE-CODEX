@@ -6,88 +6,13 @@ import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
 import { getOnboardingProfileFromAurora } from '@/features/profiles/onboarding-repository'
 import { requireAwsUser } from './aws-queries'
-import {
-  createCognitoAuthActions,
-  type CognitoAuthActionState,
-} from './cognito-actions'
+import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
+import { createCognitoAuthActions } from './cognito-actions'
 
-export type AuthActionState = CognitoAuthActionState
+export type { AuthActionState } from './action-handlers'
 
 type CognitoActions = ReturnType<typeof createCognitoAuthActions>
-type Redirect = (path: string) => void
-
 type ProfileProgress = { onboardingCompletedAt: string | null }
-
-export function createAuthActionHandlers(input: {
-  getActions: () => Promise<CognitoActions>
-  getProfileProgress: () => Promise<ProfileProgress>
-  redirect: Redirect
-}) {
-  async function routeAuthenticatedUser() {
-    const profile = await input.getProfileProgress()
-    input.redirect(profile.onboardingCompletedAt ? '/home' : '/onboarding')
-  }
-
-  return {
-    async signIn(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
-      const actions = await input.getActions()
-      const result = await actions.signIn(state, formData)
-      if (result.next === 'new-password') {
-        input.redirect('/auth/update-password?mode=new-password')
-        return result
-      }
-      if (result.message === 'Signed in.') await routeAuthenticatedUser()
-      return result
-    },
-
-    async signUp(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
-      const actions = await input.getActions()
-      const result = await actions.signUp(state, formData)
-      if (result.message === 'Check your email to continue.') {
-        const email = String(formData.get('email') ?? '').trim().toLowerCase()
-        input.redirect(`/auth/sign-up?confirm=1&email=${encodeURIComponent(email)}`)
-      }
-      return result
-    },
-
-    async confirmSignUp(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
-      const actions = await input.getActions()
-      const result = await actions.confirmSignUp(state, formData)
-      if (result.message === 'Email confirmed.') input.redirect('/auth/sign-in')
-      return result
-    },
-
-    async requestPasswordReset(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
-      const actions = await input.getActions()
-      const result = await actions.requestPasswordReset(state, formData)
-      if (result.next === 'confirm-reset') {
-        const email = String(formData.get('email') ?? '').trim().toLowerCase()
-        input.redirect(`/auth/update-password?mode=confirm-reset&email=${encodeURIComponent(email)}`)
-      }
-      return result
-    },
-
-    async updatePassword(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
-      const actions = await input.getActions()
-      const mode = formData.get('mode')
-      if (mode === 'new-password') {
-        const result = await actions.completeNewPassword(state, formData)
-        if (result.message === 'Password updated.') await routeAuthenticatedUser()
-        return result
-      }
-
-      const result = await actions.confirmPasswordReset(state, formData)
-      if (result.message === 'Password updated. You can sign in now.') input.redirect('/auth/sign-in')
-      return result
-    },
-
-    async signOut() {
-      const actions = await input.getActions()
-      await actions.signOut()
-      input.redirect('/')
-    },
-  }
-}
 
 async function getProductionActions(): Promise<CognitoActions> {
   const cookieStore = await cookies()
@@ -117,9 +42,26 @@ const handlers = createAuthActionHandlers({
   redirect: nextRedirect,
 })
 
-export const signIn = handlers.signIn
-export const signUp = handlers.signUp
-export const confirmSignUp = handlers.confirmSignUp
-export const requestPasswordReset = handlers.requestPasswordReset
-export const updatePassword = handlers.updatePassword
-export const signOut = handlers.signOut
+export async function signIn(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.signIn(state, formData)
+}
+
+export async function signUp(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.signUp(state, formData)
+}
+
+export async function confirmSignUp(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.confirmSignUp(state, formData)
+}
+
+export async function requestPasswordReset(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.requestPasswordReset(state, formData)
+}
+
+export async function updatePassword(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.updatePassword(state, formData)
+}
+
+export async function signOut(): Promise<void> {
+  return handlers.signOut()
+}
