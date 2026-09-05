@@ -9,7 +9,7 @@ import type { FeedCursor, FeedPage, FeedPost, FeedRequest } from './types'
 
 type RequireUser = () => Promise<AwsVerifiedUser>
 type ResolveMediaUrls = (paths: string[]) => Promise<Map<string, string>>
-type GetPreferredAuthorIds = () => Promise<string[]>
+type GetPreferredAuthorIds = () => Promise<Iterable<string>>
 
 export function buildFeedCursorFilter(cursor: FeedCursor) {
   return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
