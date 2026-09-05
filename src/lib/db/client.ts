@@ -33,7 +33,7 @@ function poolConfig(environment: DatabaseEnvironment): PoolConfig {
     ssl: environment.ssl,
     max: 4,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 30_000,
     allowExitOnIdle: true,
   }
 }
