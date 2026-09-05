@@ -2,21 +2,13 @@ import { redirect } from 'next/navigation'
 import { RouteLine } from '@/components/brand/route-line'
 import { Wordmark } from '@/components/brand/wordmark'
 import { Card } from '@/components/ui/card'
-import { requireUser } from '@/features/auth/queries'
 import { OnboardingForm } from '@/features/profiles/components/onboarding-form'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { getOwnOnboardingProfile } from '@/features/profiles/queries'
 
 export default async function OnboardingPage() {
-  const user = await requireUser()
-  const supabase = await createServerSupabaseClient()
-  const { data: profile, error } = await supabase
-    .from('profiles')
-    .select('full_name, onboarding_completed_at')
-    .eq('id', user.id)
-    .maybeSingle()
+  const profile = await getOwnOnboardingProfile()
 
-  if (error || !profile) throw new Error('Unable to load your profile.')
-  if (profile.onboarding_completed_at) redirect('/home')
+  if (profile.onboardingCompletedAt) redirect('/home')
 
   return (
     <main id="main-content" className="min-h-screen bg-mist-50 px-4 py-6 sm:py-10">
@@ -32,7 +24,7 @@ export default async function OnboardingPage() {
           <p className="mt-5 max-w-2xl text-base leading-7 text-muted sm:text-lg">Tell people where you have been, what you know, and where you want to go next.</p>
         </header>
         <Card className="border border-mist-100 p-5 sm:p-8 lg:p-10">
-          <OnboardingForm initialFullName={profile.full_name} />
+          <OnboardingForm initialFullName={profile.fullName} />
         </Card>
       </div>
     </main>
