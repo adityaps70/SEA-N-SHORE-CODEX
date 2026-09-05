@@ -41,6 +41,28 @@ describe('AWS auth queries', () => {
     })
   })
 
+  it('reuses one verified-user lookup across repeated authenticated reads in a request', async () => {
+    const getPrincipal = vi.fn(async () => principal)
+    const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
+    let cached: Promise<unknown> | null = null
+    const cacheVerifiedUser = <T>(loader: () => Promise<T>) => () => {
+      cached ??= loader()
+      return cached as Promise<T>
+    }
+    const { createAwsAuthQueries } = await import('./aws-queries')
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, cacheVerifiedUser })
+
+    await Promise.all([
+      queries.requireAwsUser(),
+      queries.requireAwsUser(),
+      queries.getAwsVerifiedUser(),
+      queries.requireAwsUser(),
+    ])
+
+    expect(getPrincipal).toHaveBeenCalledTimes(1)
+    expect(resolveProfileId).toHaveBeenCalledTimes(1)
+  })
+
   it('fails safely when an authenticated AWS user is required but unavailable', async () => {
     const getPrincipal = vi.fn(async () => null)
     const resolveProfileId = vi.fn(async () => null)
