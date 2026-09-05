@@ -40,6 +40,15 @@ test('GitHub remote execution stays scoped to the bootstrap instance and reposit
   assert.match(workflow, /\.identityMappings == true/)
   assert.doesNotMatch(workflow, /identityMappingsPresent/)
 
+  assert.match(workflow, /staging-runtime-shape:/)
+  assert.match(workflow, /aws ecs describe-task-definition/)
+  assert.match(workflow, /AURORA_HOST/)
+  assert.match(workflow, /AURORA_PORT/)
+  assert.match(workflow, /AURORA_DATABASE/)
+  assert.match(workflow, /AURORA_SSL/)
+  assert.match(workflow, /AURORA_USER/)
+  assert.match(workflow, /AURORA_PASSWORD/)
+
   assert.match(verifier, /set -euo pipefail/)
   assert.match(verifier, /npm run lint/)
   assert.match(verifier, /npm run typecheck/)
