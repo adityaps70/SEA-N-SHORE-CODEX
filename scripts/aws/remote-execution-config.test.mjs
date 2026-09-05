@@ -76,3 +76,20 @@ test('Aurora ECS bootstrap never reads or prints the managed database secret val
   assert.doesNotMatch(bootstrap, /SecretString/)
   assert.doesNotMatch(bootstrap, /AURORA_PASSWORD=.*aws/)
 })
+
+test('staging deploy always restores the Aurora runtime contract without reading database secrets', () => {
+  const deploy = text('.github/workflows/aws-staging-deploy.yml')
+
+  assert.match(deploy, /AURORA_HOST:\s*\$\{\{ vars\.AURORA_HOST \}\}/)
+  assert.match(deploy, /AURORA_PORT:\s*\$\{\{ vars\.AURORA_PORT \}\}/)
+  assert.match(deploy, /AURORA_DATABASE:\s*\$\{\{ vars\.AURORA_DATABASE \}\}/)
+  assert.match(deploy, /AURORA_SECRET_ARN:\s*\$\{\{ vars\.AURORA_SECRET_ARN \}\}/)
+  assert.match(deploy, /\{\"name\":\"AURORA_SSL\",\"value\":\"true\"\}/)
+  assert.match(deploy, /\{\"name\":\"AURORA_USER\",\"valueFrom\":\$AURORA_USER_SECRET\}/)
+  assert.match(deploy, /\{\"name\":\"AURORA_PASSWORD\",\"valueFrom\":\$AURORA_PASSWORD_SECRET\}/)
+  assert.match(deploy, /:username::/)
+  assert.match(deploy, /:password::/)
+
+  assert.doesNotMatch(deploy, /secretsmanager get-secret-value/)
+  assert.doesNotMatch(deploy, /SecretString/)
+})
