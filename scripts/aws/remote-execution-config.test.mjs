@@ -56,6 +56,19 @@ test('GitHub remote execution stays scoped to the bootstrap instance and reposit
   assert.match(verifier, /vitest run/)
 })
 
+test('staging health requires the Home content and network schema', () => {
+  const workflow = text('.github/workflows/aws-remote-verify.yml')
+
+  assert.match(workflow, /\.contentNetwork == true/)
+})
+
+test('Phase 4 health route degrades when the Home content and network schema is unavailable', () => {
+  const route = text('src/app/api/health/phase4/route.ts')
+
+  assert.match(route, /health\.database\s*&&\s*health\.identityMappings\s*&&\s*health\.contentNetwork/)
+  assert.match(route, /contentNetwork:\s*false/)
+})
+
 test('Aurora ECS bootstrap never reads or prints the managed database secret value', () => {
   const bootstrap = text('scripts/aws/bootstrap-ecs-aurora-runtime.sh')
 
