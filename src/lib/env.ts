@@ -16,6 +16,10 @@ const cognitoEnvironmentSchema = z.object({
   AWS_COGNITO_REGION: z.string().min(1),
   AWS_COGNITO_USER_POOL_ID: z.string().regex(/^[\w-]+_[0-9A-Za-z]+$/),
   AWS_COGNITO_CLIENT_ID: z.string().min(10),
+  AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 })
 
 export type CognitoEnvironment = z.infer<typeof cognitoEnvironmentSchema>
@@ -25,5 +29,7 @@ export function getCognitoEnvironment(): CognitoEnvironment {
     AWS_COGNITO_REGION: process.env.AWS_COGNITO_REGION,
     AWS_COGNITO_USER_POOL_ID: process.env.AWS_COGNITO_USER_POOL_ID,
     AWS_COGNITO_CLIENT_ID: process.env.AWS_COGNITO_CLIENT_ID,
+    AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES:
+      process.env.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
   })
 }
