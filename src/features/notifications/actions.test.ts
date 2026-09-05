@@ -1,45 +1,80 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
+import { requireAwsUser } from '@/features/auth/aws-queries'
 import { markAllNotificationsRead, markNotificationRead } from './actions'
+import {
+  markAllNotificationsReadInAurora,
+  markNotificationReadInAurora,
+} from './repository'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('@/features/auth/queries', () => ({
-  requireUser: vi.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111' })),
+vi.mock('@/features/auth/aws-queries', () => ({
+  requireAwsUser: vi.fn(async () => ({
+    id: '11111111-1111-4111-8111-111111111111',
+    cognitoSub: 'cognito-sub-123',
+    email: 'member@example.com',
+  })),
 }))
-vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient: vi.fn() }))
+vi.mock('./repository', () => ({
+  markNotificationReadInAurora: vi.fn(async () => true),
+  markAllNotificationsReadInAurora: vi.fn(async () => undefined),
+}))
 
-const mockedCreateServerSupabaseClient = vi.mocked(createServerSupabaseClient)
+const USER_ID = '11111111-1111-4111-8111-111111111111'
+const NOTIFICATION_ID = '22222222-2222-4222-8222-222222222222'
 
-describe('notification actions', () => {
+const mockedRequireAwsUser = vi.mocked(requireAwsUser)
+const mockedMarkRead = vi.mocked(markNotificationReadInAurora)
+const mockedMarkAllRead = vi.mocked(markAllNotificationsReadInAurora)
+const mockedRevalidatePath = vi.mocked(revalidatePath)
+
+describe('Aurora notification actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockedRequireAwsUser.mockResolvedValue({
+      id: USER_ID,
+      cognitoSub: 'cognito-sub-123',
+      email: 'member@example.com',
+    })
+    mockedMarkRead.mockResolvedValue(true)
+    mockedMarkAllRead.mockResolvedValue(undefined)
   })
 
-  it('rejects an invalid notification id before creating Supabase', async () => {
-    expect(await markNotificationRead('not-a-uuid')).toEqual({ ok: false, error: 'Invalid notification.' })
-    expect(mockedCreateServerSupabaseClient).not.toHaveBeenCalled()
+  it('rejects invalid notification ids before authentication or persistence', async () => {
+    await expect(markNotificationRead('not-a-uuid')).resolves.toEqual({
+      ok: false,
+      error: 'Invalid notification.',
+    })
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
+    expect(mockedMarkRead).not.toHaveBeenCalled()
   })
 
-  it('marks only the signed-in recipient notification as read', async () => {
-    const recipientEq = vi.fn(async () => ({ error: null }))
-    const idEq = vi.fn(() => ({ eq: recipientEq }))
-    const update = vi.fn(() => ({ eq: idEq }))
-    mockedCreateServerSupabaseClient.mockResolvedValue({ from: vi.fn(() => ({ update })) } as never)
-
-    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-    expect(await markNotificationRead(id)).toEqual({ ok: true })
-    expect(idEq).toHaveBeenCalledWith('id', id)
-    expect(recipientEq).toHaveBeenCalledWith('recipient_id', '11111111-1111-4111-8111-111111111111')
+  it('marks one notification read using the permanent profile UUID', async () => {
+    await expect(markNotificationRead(NOTIFICATION_ID)).resolves.toEqual({ ok: true })
+    expect(mockedMarkRead).toHaveBeenCalledWith(USER_ID, NOTIFICATION_ID)
+    expect(mockedMarkRead).not.toHaveBeenCalledWith('cognito-sub-123', NOTIFICATION_ID)
   })
 
-  it('marks only unread notifications belonging to the signed-in recipient', async () => {
-    const isUnread = vi.fn(async () => ({ error: null }))
-    const recipientEq = vi.fn(() => ({ is: isUnread }))
-    const update = vi.fn(() => ({ eq: recipientEq }))
-    mockedCreateServerSupabaseClient.mockResolvedValue({ from: vi.fn(() => ({ update })) } as never)
+  it('fails closed when the notification is not owned by the authenticated recipient', async () => {
+    mockedMarkRead.mockResolvedValue(false)
 
-    expect(await markAllNotificationsRead()).toEqual({ ok: true })
-    expect(recipientEq).toHaveBeenCalledWith('recipient_id', '11111111-1111-4111-8111-111111111111')
-    expect(isUnread).toHaveBeenCalledWith('read_at', null)
+    await expect(markNotificationRead(NOTIFICATION_ID)).resolves.toEqual({
+      ok: false,
+      error: 'We could not update this notification.',
+    })
+    expect(mockedRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('marks all notifications read only for the permanent recipient UUID', async () => {
+    await expect(markAllNotificationsRead()).resolves.toEqual({ ok: true })
+    expect(mockedMarkAllRead).toHaveBeenCalledWith(USER_ID)
+  })
+
+  it('preserves notification surface revalidation after successful writes', async () => {
+    await markNotificationRead(NOTIFICATION_ID)
+
+    expect(mockedRevalidatePath).toHaveBeenCalledWith('/notifications')
+    expect(mockedRevalidatePath).toHaveBeenCalledWith('/home')
+    expect(mockedRevalidatePath).toHaveBeenCalledWith('/network')
   })
 })
