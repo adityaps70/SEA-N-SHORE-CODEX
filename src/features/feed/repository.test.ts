@@ -5,8 +5,10 @@ const viewerId = '11111111-1111-4111-8111-111111111111'
 const authorId = '22222222-2222-4222-8222-222222222222'
 const postId = '33333333-3333-4333-8333-333333333333'
 
-function callsOf(query: { mock: { calls: unknown[] } }) {
-  return query.mock.calls as unknown as Array<[string, readonly unknown[]?]>
+type QueryCall = [text: string, values?: readonly unknown[]]
+
+function callsOf(query: { mock: { calls: unknown[] } }): QueryCall[] {
+  return query.mock.calls as unknown as QueryCall[]
 }
 
 describe('feed repository', () => {
@@ -29,6 +31,7 @@ describe('feed repository', () => {
     expect(sql).toMatch(/user_blocks/i)
     expect(sql).toMatch(/order by p\.created_at desc, p\.id desc/i)
     expect(sql).toMatch(/limit \$5/i)
+    expect(sql).not.toMatch(/\band\s+and\b/i)
     expect(values).toEqual([viewerId, 'safety_lessons', '2026-09-05T06:00:00.000Z', postId, 21])
   })
 
