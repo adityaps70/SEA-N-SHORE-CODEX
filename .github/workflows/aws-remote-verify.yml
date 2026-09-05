@@ -36,7 +36,7 @@ jobs:
         run: |
           test -n "$SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" >&2 && exit 1)
           HEALTH_URL="${SITE_URL%/}/api/health/phase4"
-          HTTP_STATUS=$(curl --show-error --silent --max-time 20 --output /tmp/phase4-health.json --write-out '%{http_code}' "$HEALTH_URL")
+          HTTP_STATUS=$(curl --show-error --silent --max-time 45 --output /tmp/phase4-health.json --write-out '%{http_code}' "$HEALTH_URL")
           echo "=== PHASE 4 STAGING HEALTH ==="
           echo "HTTP status: $HTTP_STATUS"
           jq . /tmp/phase4-health.json
