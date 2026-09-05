@@ -45,6 +45,19 @@ jobs:
           jq -e '.identityMappings == true' /tmp/phase4-health.json >/dev/null || { echo "Expected migrated identity mappings are not visible to the running application." >&2; exit 1; }
           jq -e '.contentNetwork == true' /tmp/phase4-health.json >/dev/null || { echo "Expected Home content/network schema is not available to the running application." >&2; exit 1; }
 
+          HOME_HEALTH_URL="${SITE_URL%/}/api/health/home"
+          HOME_HTTP_STATUS=$(curl --show-error --silent --max-time 45 --output /tmp/home-health.json --write-out '%{http_code}' "$HOME_HEALTH_URL")
+          echo "=== HOME RUNTIME STAGING HEALTH ==="
+          echo "HTTP status: $HOME_HTTP_STATUS"
+          jq . /tmp/home-health.json
+          test "$HOME_HTTP_STATUS" = "200" || { echo "Home runtime health endpoint returned HTTP $HOME_HTTP_STATUS." >&2; exit 1; }
+          jq -e '.profile == true' /tmp/home-health.json >/dev/null || { echo "Home profile loader failed." >&2; exit 1; }
+          jq -e '.network == true' /tmp/home-health.json >/dev/null || { echo "Home network graph loader failed." >&2; exit 1; }
+          jq -e '.discovery == true' /tmp/home-health.json >/dev/null || { echo "Home people discovery loader failed." >&2; exit 1; }
+          jq -e '.feed == true' /tmp/home-health.json >/dev/null || { echo "Home feed query failed." >&2; exit 1; }
+          jq -e '.hydration == true' /tmp/home-health.json >/dev/null || { echo "Home feed hydration failed." >&2; exit 1; }
+          jq -e '.media == true' /tmp/home-health.json >/dev/null || { echo "Home media adapter failed." >&2; exit 1; }
+
   staging-runtime-shape:
     runs-on: ubuntu-latest
     environment: staging
