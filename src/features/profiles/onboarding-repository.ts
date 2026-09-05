@@ -1,5 +1,5 @@
 import type { QueryResultRow } from 'pg'
-import type { DatabaseQueryClient } from '@/lib/db/client'
+import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import type { OnboardingInput } from './schemas'
 
 type OnboardingQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
@@ -10,10 +10,36 @@ type AvailabilityRow = QueryResultRow & {
   onboarding_completed_at: string | null
 }
 
+type OnboardingProfileRow = QueryResultRow & {
+  full_name: string
+  onboarding_completed_at: string | null
+}
+
 type ReturningIdRow = QueryResultRow & { id: string }
+
+export type OnboardingProfile = {
+  fullName: string
+  onboardingCompletedAt: string | null
+}
 
 export function createOnboardingRepository(input: { query: OnboardingQuery }) {
   const query = input.query
+
+  async function getOnboardingProfile(profileId: string): Promise<OnboardingProfile | null> {
+    const rows = await query(
+      `select full_name, onboarding_completed_at
+       from public.profiles
+       where id = $1
+         and account_status = 'active'
+       limit 1`,
+      [profileId],
+    ) as OnboardingProfileRow[]
+    const row = rows[0]
+    return row ? {
+      fullName: row.full_name,
+      onboardingCompletedAt: row.onboarding_completed_at,
+    } : null
+  }
 
   async function lockOnboardingProfile(profileId: string) {
     const rows = await query(
@@ -113,6 +139,7 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
   }
 
   return {
+    getOnboardingProfile,
     lockOnboardingProfile,
     updateProfile,
     upsertMaritimeProfile,
@@ -129,3 +156,9 @@ export function createOnboardingRepositoryForClient(client: DatabaseQueryClient)
     query: async (text, values) => (await client.query(text, values)).rows,
   })
 }
+
+const onboardingRepository = createOnboardingRepository({
+  query: async (text, values) => databaseQuery(text, values),
+})
+
+export const getOnboardingProfileFromAurora = onboardingRepository.getOnboardingProfile
