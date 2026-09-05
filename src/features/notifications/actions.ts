@@ -2,8 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { requireUser } from '@/features/auth/queries'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import {
+  markAllNotificationsReadInAurora,
+  markNotificationReadInAurora,
+} from './repository'
 
 export type NotificationActionResult = { ok: true } | { ok: false; error: string }
 
@@ -19,29 +22,28 @@ export async function markNotificationRead(id: string): Promise<NotificationActi
   const parsed = notificationIdSchema.safeParse(id)
   if (!parsed.success) return { ok: false, error: 'Invalid notification.' }
 
-  const user = await requireUser()
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase
-    .from('notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('id', parsed.data)
-    .eq('recipient_id', user.id)
+  const user = await requireAwsUser()
 
-  if (error) return { ok: false, error: 'We could not update this notification.' }
+  try {
+    const updated = await markNotificationReadInAurora(user.id, parsed.data)
+    if (!updated) return { ok: false, error: 'We could not update this notification.' }
+  } catch {
+    return { ok: false, error: 'We could not update this notification.' }
+  }
+
   revalidateNotificationSurfaces()
   return { ok: true }
 }
 
 export async function markAllNotificationsRead(): Promise<NotificationActionResult> {
-  const user = await requireUser()
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase
-    .from('notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('recipient_id', user.id)
-    .is('read_at', null)
+  const user = await requireAwsUser()
 
-  if (error) return { ok: false, error: 'We could not mark your notifications as read.' }
+  try {
+    await markAllNotificationsReadInAurora(user.id)
+  } catch {
+    return { ok: false, error: 'We could not mark your notifications as read.' }
+  }
+
   revalidateNotificationSurfaces()
   return { ok: true }
 }
