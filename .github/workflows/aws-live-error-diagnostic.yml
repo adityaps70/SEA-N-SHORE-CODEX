@@ -12,6 +12,27 @@ permissions:
   contents: read
 
 jobs:
+  html-rsc-probe:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 5
+    env:
+      SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+
+    steps:
+      - name: Inspect sign-in HTML for embedded Next errors
+        run: |
+          set -euo pipefail
+          URL="${SITE_URL%/}/auth/sign-in?rev=11"
+          curl --show-error --silent --max-time 45 --dump-header /tmp/headers.txt --output /tmp/sign-in.html "$URL"
+          echo "=== RESPONSE HEADERS ==="
+          grep -Ei '^(HTTP/|content-type:|cache-control:|x-|vary:)' /tmp/headers.txt || true
+          echo "=== EXPECTED CONTENT ==="
+          grep -o 'Welcome back' /tmp/sign-in.html | head -n 5 || true
+          echo "=== NEXT ERROR MARKERS ==="
+          grep -Eio '177625583|digest[^<,}]{0,160}|This page couldn[^<]{0,120}|A server error occurred[^<]{0,120}|NEXT_REDIRECT|\$RX|\$RC|\$RE' /tmp/sign-in.html | head -n 80 || true
+          echo "HTML_BYTES $(wc -c < /tmp/sign-in.html)"
+
   browser-sign-in-probe:
     runs-on: ubuntu-latest
     environment: staging
