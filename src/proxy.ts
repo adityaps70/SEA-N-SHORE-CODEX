@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server'
-import { updateSession } from '@/lib/supabase/proxy'
+import { updateCognitoRouteSession } from '@/lib/auth/cognito-proxy'
 
 export async function proxy(request: NextRequest) {
-  return updateSession(request)
+  return updateCognitoRouteSession(request)
 }
 
 export const config = {
