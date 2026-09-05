@@ -90,7 +90,7 @@ describe('Aurora feed queries', () => {
       limit: 2,
     })
     expect(repository.getViewerState).toHaveBeenCalledWith(viewerId, [rows[0].id])
-    expect(page.posts[0].viewer.hasLiked).toBe(true)
+    expect(page.posts[0].viewerLiked).toBe(true)
     expect(page.nextCursor).toEqual({ createdAt: rows[0].created_at, id: rows[0].id })
   })
 
