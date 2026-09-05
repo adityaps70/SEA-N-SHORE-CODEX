@@ -29,6 +29,7 @@ test('GitHub remote execution stays scoped to the bootstrap instance and reposit
   assert.match(workflow, /AWS-RunShellScript/)
   assert.match(workflow, /bash scripts\/aws\/remote-verify\.sh/)
   assert.match(workflow, /git reset --hard/)
+  assert.match(workflow, /verify-on-bootstrap:\s*\n\s*if:\s*\$\{\{\s*false\s*\}\}/)
 
   assert.doesNotMatch(workflow, /inputs:\s*[\s\S]*?command\s*:/)
   assert.doesNotMatch(workflow, /\$\{\{\s*inputs\.command\s*\}\}/)
