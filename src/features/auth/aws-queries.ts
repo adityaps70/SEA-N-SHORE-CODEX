@@ -14,6 +14,7 @@ export type AwsVerifiedUser = {
 
 type GetPrincipal = () => Promise<CognitoPrincipal | null>
 type ResolveProfileId = (sub: string) => Promise<string | null>
+type CacheVerifiedUser = <T>(loader: () => Promise<T>) => () => Promise<T>
 
 export class AwsAuthenticationRequiredError extends Error {
   constructor() {
@@ -25,8 +26,9 @@ export class AwsAuthenticationRequiredError extends Error {
 export function createAwsAuthQueries(input: {
   getPrincipal: GetPrincipal
   resolveProfileId: ResolveProfileId
+  cacheVerifiedUser?: CacheVerifiedUser
 }) {
-  async function getAwsVerifiedUser(): Promise<AwsVerifiedUser | null> {
+  async function loadAwsVerifiedUser(): Promise<AwsVerifiedUser | null> {
     const principal = await input.getPrincipal()
     if (!principal?.sub) return null
 
@@ -39,6 +41,10 @@ export function createAwsAuthQueries(input: {
       email: principal.email,
     }
   }
+
+  const getAwsVerifiedUser = input.cacheVerifiedUser
+    ? input.cacheVerifiedUser(loadAwsVerifiedUser)
+    : loadAwsVerifiedUser
 
   async function requireAwsUser(): Promise<AwsVerifiedUser> {
     const user = await getAwsVerifiedUser()
@@ -71,7 +77,8 @@ async function getServerCognitoPrincipal(): Promise<CognitoPrincipal | null> {
 const productionQueries = createAwsAuthQueries({
   getPrincipal: getServerCognitoPrincipal,
   resolveProfileId: resolveProfileIdForCognitoSub,
+  cacheVerifiedUser: (loader) => cache(loader),
 })
 
-export const getAwsVerifiedUser = cache(productionQueries.getAwsVerifiedUser)
+export const getAwsVerifiedUser = productionQueries.getAwsVerifiedUser
 export const requireAwsUser = productionQueries.requireAwsUser
