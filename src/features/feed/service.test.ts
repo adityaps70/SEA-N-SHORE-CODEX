@@ -11,6 +11,7 @@ function repository(overrides: Partial<FeedRepository> = {}) {
     isMemberReady: vi.fn(async () => true),
     getInteractablePost: vi.fn(async () => ({ id: postId, authorId, postType: 'standard' as const })),
     insertStandardPost: vi.fn(async () => undefined),
+    insertPostMedia: vi.fn(async () => undefined),
     insertPollPost: vi.fn(async () => undefined),
     insertPollOption: vi.fn(async () => undefined),
     setLiked: vi.fn(async () => undefined),
@@ -39,6 +40,35 @@ describe('feed service authorization', () => {
       body: 'Bridge resource management lesson.',
     })).rejects.toThrow('feed_interaction_unavailable')
     expect(repo.insertStandardPost).not.toHaveBeenCalled()
+  })
+
+  it('persists standard post media metadata in the same transaction using a caller-provided post id', async () => {
+    const repo = repository()
+    const service = await serviceFor(repo)
+    const mediaPostId = '55555555-5555-4555-8555-555555555555'
+
+    await expect(service.createStandardPost(viewerId, {
+      id: mediaPostId,
+      category: 'learning',
+      body: 'Mooring station setup.',
+      media: {
+        storagePath: `${viewerId}/${mediaPostId}/image.webp`,
+        mimeType: 'image/webp',
+        altText: 'Mooring station layout',
+      },
+    })).resolves.toBe(mediaPostId)
+
+    expect(repo.insertStandardPost).toHaveBeenCalledWith({
+      id: mediaPostId,
+      authorId: viewerId,
+      category: 'learning',
+      body: 'Mooring station setup.',
+    })
+    expect(repo.insertPostMedia).toHaveBeenCalledWith(mediaPostId, {
+      storagePath: `${viewerId}/${mediaPostId}/image.webp`,
+      mimeType: 'image/webp',
+      altText: 'Mooring station layout',
+    })
   })
 
   it('creates polls transactionally with trimmed case-insensitive distinct options in first-seen order', async () => {
