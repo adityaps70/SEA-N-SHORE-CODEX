@@ -69,6 +69,23 @@ test('Phase 4 health route degrades when the Home content and network schema is 
   assert.match(route, /contentNetwork:\s*false/)
 })
 
+test('staging verifies the real Home runtime stages without exposing user data or raw errors', () => {
+  const workflow = text('.github/workflows/aws-remote-verify.yml')
+  assert.match(workflow, /\/api\/health\/home/)
+  assert.match(workflow, /\.profile == true/)
+  assert.match(workflow, /\.network == true/)
+  assert.match(workflow, /\.discovery == true/)
+  assert.match(workflow, /\.feed == true/)
+  assert.match(workflow, /\.hydration == true/)
+  assert.match(workflow, /\.media == true/)
+
+  const route = text('src/app/api/health/home/route.ts')
+  for (const stage of ['profile', 'network', 'discovery', 'feed', 'hydration', 'media']) {
+    assert.match(route, new RegExp(`${stage}:`))
+  }
+  assert.doesNotMatch(route, /error\.message|error\.stack|profile_id|provider_subject|email/)
+})
+
 test('Aurora ECS bootstrap never reads or prints the managed database secret value', () => {
   const bootstrap = text('scripts/aws/bootstrap-ecs-aurora-runtime.sh')
 
