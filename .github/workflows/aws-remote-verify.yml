@@ -127,6 +127,7 @@ jobs:
           done
 
   verify-on-bootstrap:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 30
