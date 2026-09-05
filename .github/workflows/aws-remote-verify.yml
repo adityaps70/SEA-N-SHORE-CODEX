@@ -43,6 +43,7 @@ jobs:
           test "$HTTP_STATUS" = "200" || { echo "Phase 4 staging health endpoint returned HTTP $HTTP_STATUS." >&2; exit 1; }
           jq -e '.database == true' /tmp/phase4-health.json >/dev/null || { echo "Aurora runtime health check failed." >&2; exit 1; }
           jq -e '.identityMappings == true' /tmp/phase4-health.json >/dev/null || { echo "Expected migrated identity mappings are not visible to the running application." >&2; exit 1; }
+          jq -e '.contentNetwork == true' /tmp/phase4-health.json >/dev/null || { echo "Expected Home content/network schema is not available to the running application." >&2; exit 1; }
 
   staging-runtime-shape:
     runs-on: ubuntu-latest
