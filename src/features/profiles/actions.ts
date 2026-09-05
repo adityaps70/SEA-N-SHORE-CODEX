@@ -1,8 +1,8 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { requireUser } from '@/features/auth/queries'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { completeOnboardingWithAurora } from './onboarding-service'
 import { onboardingSchema } from './schemas'
 import { PROFILE_TYPES, type ProfileType } from './types'
 
@@ -84,6 +84,10 @@ function failureState(
   }
 }
 
+function isUniqueViolation(error: unknown) {
+  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === '23505')
+}
+
 export async function completeOnboarding(
   previousState: ProfileActionState,
   formData: FormData,
@@ -95,34 +99,17 @@ export async function completeOnboarding(
     })
   }
 
-  await requireUser()
+  const user = await requireAwsUser()
   const data = parsed.data
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase.rpc('complete_onboarding', {
-    p_profile_type: data.profileType,
-    p_full_name: data.fullName,
-    p_slug: data.slug,
-    p_location: data.location ?? '',
-    p_headline: data.headline,
-    p_summary: data.summary,
-    p_contact_visibility: data.contactVisibility,
-    p_skills: data.skills,
-    p_rank: data.rank,
-    p_current_company: data.currentCompany,
-    p_current_vessel: data.currentVessel,
-    p_sailing_experience_years: data.sailingExperienceYears,
-    p_vessel_types: data.vesselTypes,
-    p_trading_areas: data.tradingAreas,
-    p_shore_career_preference: data.shoreCareerPreference,
-    p_availability: data.availability,
-  })
 
-  if (error?.code === '23505') {
-    return failureState(previousState, formData, {
-      fieldErrors: { slug: ['That profile address is already in use.'] },
-    })
-  }
-  if (error) {
+  try {
+    await completeOnboardingWithAurora(user.id, data)
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return failureState(previousState, formData, {
+        fieldErrors: { slug: ['That profile address is already in use.'] },
+      })
+    }
     return failureState(previousState, formData, {
       error: 'We could not save your profile. Your entries are still here; please try again.',
     })
