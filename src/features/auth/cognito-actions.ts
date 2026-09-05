@@ -98,8 +98,11 @@ export function createCognitoAuthActions(input: {
   api: CognitoActionsApi
   cookieStore: CookieStore
   siteUrl: string
+  allowInsecureHttpCookies?: boolean
 }) {
-  const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl)
+  const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl, {
+    allowInsecureHttp: input.allowInsecureHttpCookies === true,
+  })
 
   return {
     async signIn(
