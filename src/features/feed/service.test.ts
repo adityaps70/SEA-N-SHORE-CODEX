@@ -25,7 +25,7 @@ function repository(overrides: Partial<FeedRepository> = {}) {
 function serviceFor(repo: FeedRepository) {
   return import('./service').then(({ createFeedService }) => createFeedService({
     createId: () => postId,
-    withTransaction: async (fn) => fn(repo),
+    withTransaction: async <T>(fn: (repository: FeedRepository) => Promise<T>) => fn(repo),
   }))
 }
 
