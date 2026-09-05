@@ -16,6 +16,53 @@ export type Phase4DatabaseHealth = {
   identityMappings: boolean
 }
 
+export type DatabaseFailureReason =
+  | 'configuration'
+  | 'dns'
+  | 'timeout'
+  | 'network'
+  | 'tls'
+  | 'authentication'
+  | 'database'
+  | 'schema'
+  | 'unknown'
+
+type SafeDatabaseErrorShape = {
+  code?: unknown
+  name?: unknown
+}
+
+const TLS_ERROR_CODES = new Set([
+  'CERT_HAS_EXPIRED',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'ERR_TLS_CERT_ALTNAME_INVALID',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'UNABLE_TO_GET_ISSUER_CERT',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+])
+
+export function classifyDatabaseFailure(error: unknown): DatabaseFailureReason {
+  if (!error || typeof error !== 'object') return 'unknown'
+
+  const candidate = error as SafeDatabaseErrorShape
+  const code = typeof candidate.code === 'string' ? candidate.code : ''
+  const name = typeof candidate.name === 'string' ? candidate.name : ''
+
+  if (name === 'ZodError') return 'configuration'
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns'
+  if (code === 'ETIMEDOUT') return 'timeout'
+  if (code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'EHOSTUNREACH' || code === 'ENETUNREACH') {
+    return 'network'
+  }
+  if (TLS_ERROR_CODES.has(code) || code.startsWith('ERR_SSL_') || code.startsWith('ERR_TLS_')) return 'tls'
+  if (code === '28P01' || code === '28000') return 'authentication'
+  if (code === '3D000') return 'database'
+  if (code === '42P01' || code === '42703' || code === '3F000') return 'schema'
+
+  return 'unknown'
+}
+
 export function createPhase4DatabaseHealthCheck(input: { query?: HealthQuery } = {}) {
   const queryRows: HealthQuery = input.query ?? ((text, values) => databaseQuery<HealthRow>(text, values))
 
