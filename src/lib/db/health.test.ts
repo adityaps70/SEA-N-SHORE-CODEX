@@ -3,7 +3,7 @@ import { classifyDatabaseFailure, createPhase4DatabaseHealthCheck } from './heal
 
 describe('Phase 4 database health', () => {
   it('reports healthy only when Aurora, identity mappings, and the Home content/network schema are present', async () => {
-    const query = vi.fn(async () => [{
+    const query = vi.fn(async (_text: string, _values?: readonly unknown[]) => [{
       database_ok: 1,
       identity_mappings_ok: true,
       content_network_ok: true,
@@ -37,7 +37,7 @@ describe('Phase 4 database health', () => {
 
   it('reports an identity migration problem without exposing row data', async () => {
     const check = createPhase4DatabaseHealthCheck({
-      query: vi.fn(async () => [{
+      query: vi.fn(async (_text: string, _values?: readonly unknown[]) => [{
         database_ok: 1,
         identity_mappings_ok: false,
         content_network_ok: true,
@@ -53,7 +53,7 @@ describe('Phase 4 database health', () => {
 
   it('reports a missing Home schema without exposing table contents or user data', async () => {
     const check = createPhase4DatabaseHealthCheck({
-      query: vi.fn(async () => [{
+      query: vi.fn(async (_text: string, _values?: readonly unknown[]) => [{
         database_ok: 1,
         identity_mappings_ok: true,
         content_network_ok: false,
