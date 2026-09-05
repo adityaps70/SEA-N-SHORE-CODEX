@@ -26,6 +26,7 @@ async function getProductionActions(): Promise<CognitoActions> {
     api,
     cookieStore: cookieStore as unknown as Parameters<typeof createCognitoAuthActions>[0]['cookieStore'],
     siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+    allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
   })
 }
 
