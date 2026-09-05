@@ -15,16 +15,18 @@ export function createAuthActionHandlers(input: {
   redirect: Redirect
 }) {
   async function routeAuthenticatedUser(): Promise<AuthActionState | null> {
+    let profile: ProfileProgress
     try {
-      const profile = await input.getProfileProgress()
-      input.redirect(profile.onboardingCompletedAt ? '/home' : '/onboarding')
-      return null
+      profile = await input.getProfileProgress()
     } catch (error) {
       console.error('Post-auth profile routing failed', {
         name: error instanceof Error ? error.name : 'UnknownError',
       })
       return { error: PROFILE_ROUTING_ERROR }
     }
+
+    input.redirect(profile.onboardingCompletedAt ? '/home' : '/onboarding')
+    return null
   }
 
   return {
