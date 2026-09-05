@@ -1,29 +1,18 @@
 import Link from "next/link";
 import { Wordmark } from "@/components/brand/wordmark";
 import { AuthForm } from "@/features/auth/components/auth-form";
-import { signIn, signInWithGoogle } from "@/features/auth/actions";
+import { signIn } from "@/features/auth/actions";
 
 export default function SignInPage() {
   return (
     <AuthPage>
-      <AuthForm
-        mode="sign-in"
-        action={signIn}
-        googleAction={signInWithGoogle}
-      />
+      <AuthForm mode="sign-in" action={signIn} />
       <p className="mt-6 text-sm text-muted">
         New to Sea N Shore?{" "}
-        <Link href="/auth/sign-up" className="font-semibold text-ocean-700">
-          Create your profile
-        </Link>
+        <Link href="/auth/sign-up" className="font-semibold text-ocean-700">Create your profile</Link>
       </p>
       <p className="mt-3 text-sm">
-        <Link
-          href="/auth/forgot-password"
-          className="font-semibold text-ocean-700"
-        >
-          Forgot password?
-        </Link>
+        <Link href="/auth/forgot-password" className="font-semibold text-ocean-700">Forgot password?</Link>
       </p>
     </AuthPage>
   );
