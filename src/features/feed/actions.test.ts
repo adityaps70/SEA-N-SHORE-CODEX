@@ -17,13 +17,17 @@ import {
 } from './actions'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('@/features/auth/aws-queries', () => ({
-  requireAwsUser: vi.fn(async () => ({
+vi.mock('@/features/auth/aws-queries', () => {
+  const user = {
     id: '11111111-1111-4111-8111-111111111111',
     cognitoSub: 'cognito-subject-not-an-app-id',
     email: 'viewer@example.com',
-  })),
-}))
+  }
+  return {
+    requireAwsUser: vi.fn(async () => user),
+    getAwsVerifiedUser: vi.fn(async () => user),
+  }
+})
 vi.mock('./service', () => ({
   createStandardPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   createPollPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
