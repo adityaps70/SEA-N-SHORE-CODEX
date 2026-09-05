@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createAuthActionHandlers, type AuthActionState } from './actions'
+import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 
 const form = (entries: Record<string, string>) => {
   const data = new FormData()
