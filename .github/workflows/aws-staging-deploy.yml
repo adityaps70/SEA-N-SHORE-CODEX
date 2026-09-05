@@ -27,6 +27,10 @@ jobs:
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      AURORA_HOST: ${{ vars.AURORA_HOST }}
+      AURORA_PORT: ${{ vars.AURORA_PORT }}
+      AURORA_DATABASE: ${{ vars.AURORA_DATABASE }}
+      AURORA_SECRET_ARN: ${{ vars.AURORA_SECRET_ARN }}
 
     steps:
       - name: Checkout
@@ -80,12 +84,19 @@ jobs:
           test -n "$ECS_SERVICE" || (echo "Missing staging variable ECS_SERVICE" && exit 1)
           test -n "$ECS_TASK_DEFINITION" || (echo "Missing staging variable ECS_TASK_DEFINITION" && exit 1)
           test -n "$ECS_CONTAINER_NAME" || (echo "Missing staging variable ECS_CONTAINER_NAME" && exit 1)
+          test -n "$AURORA_HOST" || (echo "Missing staging variable AURORA_HOST" && exit 1)
+          test -n "$AURORA_PORT" || (echo "Missing staging variable AURORA_PORT" && exit 1)
+          test -n "$AURORA_DATABASE" || (echo "Missing staging variable AURORA_DATABASE" && exit 1)
+          test -n "$AURORA_SECRET_ARN" || (echo "Missing staging variable AURORA_SECRET_ARN" && exit 1)
 
       - name: Create new ECS task definition revision
         if: ${{ inputs.deploy_to_ecs }}
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
+          AURORA_USER_SECRET="${AURORA_SECRET_ARN}:username::"
+          AURORA_PASSWORD_SECRET="${AURORA_SECRET_ARN}:password::"
+
           aws ecs describe-task-definition \
             --task-definition "$ECS_TASK_DEFINITION" \
             --query taskDefinition \
@@ -97,6 +108,11 @@ jobs:
             --arg SITE "$NEXT_PUBLIC_SITE_URL" \
             --arg SUPABASE_URL "$NEXT_PUBLIC_SUPABASE_URL" \
             --arg SUPABASE_KEY "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
+            --arg AURORA_HOST "$AURORA_HOST" \
+            --arg AURORA_PORT "$AURORA_PORT" \
+            --arg AURORA_DATABASE "$AURORA_DATABASE" \
+            --arg AURORA_USER_SECRET "$AURORA_USER_SECRET" \
+            --arg AURORA_PASSWORD_SECRET "$AURORA_PASSWORD_SECRET" \
             '
             del(
               .taskDefinitionArn,
@@ -116,11 +132,30 @@ jobs:
                             .name != "NEXT_PUBLIC_SITE_URL"
                             and .name != "NEXT_PUBLIC_SUPABASE_URL"
                             and .name != "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+                            and .name != "AURORA_HOST"
+                            and .name != "AURORA_PORT"
+                            and .name != "AURORA_DATABASE"
+                            and .name != "AURORA_SSL"
                           )))
                       + [
                           {"name":"NEXT_PUBLIC_SITE_URL","value":$SITE},
                           {"name":"NEXT_PUBLIC_SUPABASE_URL","value":$SUPABASE_URL},
-                          {"name":"NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY","value":$SUPABASE_KEY}
+                          {"name":"NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY","value":$SUPABASE_KEY},
+                          {"name":"AURORA_HOST","value":$AURORA_HOST},
+                          {"name":"AURORA_PORT","value":$AURORA_PORT},
+                          {"name":"AURORA_DATABASE","value":$AURORA_DATABASE},
+                          {"name":"AURORA_SSL","value":"true"}
+                        ]
+                    )
+                  | .secrets = (
+                      ((.secrets // [])
+                        | map(select(
+                            .name != "AURORA_USER"
+                            and .name != "AURORA_PASSWORD"
+                          )))
+                      + [
+                          {"name":"AURORA_USER","valueFrom":$AURORA_USER_SECRET},
+                          {"name":"AURORA_PASSWORD","valueFrom":$AURORA_PASSWORD_SECRET}
                         ]
                     )
                 else . end
