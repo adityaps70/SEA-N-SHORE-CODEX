@@ -80,10 +80,11 @@ test('Aurora ECS bootstrap never reads or prints the managed database secret val
 test('staging deploy always restores the Aurora runtime contract without reading database secrets', () => {
   const deploy = text('.github/workflows/aws-staging-deploy.yml')
 
-  assert.match(deploy, /AURORA_HOST:\s*\$\{\{ vars\.AURORA_HOST \}\}/)
-  assert.match(deploy, /AURORA_PORT:\s*\$\{\{ vars\.AURORA_PORT \}\}/)
-  assert.match(deploy, /AURORA_DATABASE:\s*\$\{\{ vars\.AURORA_DATABASE \}\}/)
-  assert.match(deploy, /AURORA_SECRET_ARN:\s*\$\{\{ vars\.AURORA_SECRET_ARN \}\}/)
+  assert.match(deploy, /AURORA_HOST:\s*sea-n-shore-staging-aurora\.cluster-cvaiukw021g5\.ap-south-1\.rds\.amazonaws\.com/)
+  assert.match(deploy, /AURORA_PORT:\s*["']?5432["']?/)
+  assert.match(deploy, /AURORA_DATABASE:\s*sea_n_shore/)
+  assert.match(deploy, /AURORA_SECRET_ARN:\s*arn:aws:secretsmanager:ap-south-1:310356785722:secret:rds!cluster-7bd593b0-cb50-4dbb-9e93-6e7bbb6d3fc1-mL7X5H/)
+  assert.doesNotMatch(deploy, /vars\.AURORA_(HOST|PORT|DATABASE|SECRET_ARN)/)
   assert.match(deploy, /\{\"name\":\"AURORA_SSL\",\"value\":\"true\"\}/)
   assert.match(deploy, /\{\"name\":\"AURORA_USER\",\"valueFrom\":\$AURORA_USER_SECRET\}/)
   assert.match(deploy, /\{\"name\":\"AURORA_PASSWORD\",\"valueFrom\":\$AURORA_PASSWORD_SECRET\}/)
