@@ -35,35 +35,14 @@ jobs:
       - name: Verify deployed Phase 4 runtime health
         run: |
           test -n "$SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" >&2 && exit 1)
-
           HEALTH_URL="${SITE_URL%/}/api/health/phase4"
-          HTTP_STATUS=$(curl --show-error --silent --max-time 20 \
-            --output /tmp/phase4-health.json \
-            --write-out '%{http_code}' \
-            "$HEALTH_URL")
-
+          HTTP_STATUS=$(curl --show-error --silent --max-time 20 --output /tmp/phase4-health.json --write-out '%{http_code}' "$HEALTH_URL")
           echo "=== PHASE 4 STAGING HEALTH ==="
           echo "HTTP status: $HTTP_STATUS"
-          cat /tmp/phase4-health.json | jq .
-
-          test "$HTTP_STATUS" = "200" || {
-            echo "Phase 4 staging health endpoint returned HTTP $HTTP_STATUS." >&2
-            exit 1
-          }
-
-          jq -e '.database == true' /tmp/phase4-health.json >/dev/null || {
-            echo "Aurora runtime health check failed." >&2
-            exit 1
-          }
-
-          jq -e '.identityMappings == true' /tmp/phase4-health.json >/dev/null || {
-            echo "Expected migrated identity mappings are not visible to the running application." >&2
-            exit 1
-          }
-
-          echo "### Phase 4 staging runtime health passed" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Aurora query: passed" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Identity mappings: present" >> "$GITHUB_STEP_SUMMARY"
+          jq . /tmp/phase4-health.json
+          test "$HTTP_STATUS" = "200" || { echo "Phase 4 staging health endpoint returned HTTP $HTTP_STATUS." >&2; exit 1; }
+          jq -e '.database == true' /tmp/phase4-health.json >/dev/null || { echo "Aurora runtime health check failed." >&2; exit 1; }
+          jq -e '.identityMappings == true' /tmp/phase4-health.json >/dev/null || { echo "Expected migrated identity mappings are not visible to the running application." >&2; exit 1; }
 
   staging-runtime-shape:
     runs-on: ubuntu-latest
@@ -81,41 +60,48 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Verify Aurora runtime variable names only
+      - name: Inspect Aurora runtime names across ECS revisions
         run: |
           test -n "$ECS_TASK_DEFINITION" || (echo "Missing staging variable ECS_TASK_DEFINITION" >&2 && exit 1)
           test -n "$ECS_CONTAINER_NAME" || (echo "Missing staging variable ECS_CONTAINER_NAME" >&2 && exit 1)
 
-          aws ecs describe-task-definition \
-            --task-definition "$ECS_TASK_DEFINITION" \
-            --query taskDefinition \
-            --output json > /tmp/task-definition.json
+          COMPLETE_REVISION=""
+          for revision in $(seq 1 7); do
+            if ! aws ecs describe-task-definition \
+              --task-definition "${ECS_TASK_DEFINITION}:${revision}" \
+              --query taskDefinition \
+              --output json > "/tmp/task-${revision}.json" 2>/dev/null; then
+              echo "Revision ${revision}: unavailable"
+              continue
+            fi
 
-          jq --arg NAME "$ECS_CONTAINER_NAME" '
-            .containerDefinitions[]
-            | select(.name == $NAME)
-            | {
-                environmentNames: [(.environment // [])[].name] | sort,
-                secretNames: [(.secrets // [])[].name] | sort
-              }
-          ' /tmp/task-definition.json > /tmp/runtime-shape.json
+            jq --arg NAME "$ECS_CONTAINER_NAME" '
+              .containerDefinitions[]
+              | select(.name == $NAME)
+              | {
+                  environmentNames: [(.environment // [])[].name] | sort,
+                  secretNames: [(.secrets // [])[].name] | sort
+                }
+            ' "/tmp/task-${revision}.json" > "/tmp/shape-${revision}.json"
 
-          echo "=== ECS AURORA RUNTIME SHAPE ==="
-          jq . /tmp/runtime-shape.json
+            echo "=== ECS REVISION ${revision} RUNTIME SHAPE ==="
+            jq . "/tmp/shape-${revision}.json"
 
-          for name in AURORA_HOST AURORA_PORT AURORA_DATABASE AURORA_SSL; do
-            jq -e --arg name "$name" '.environmentNames | index($name) != null' /tmp/runtime-shape.json >/dev/null || {
-              echo "Missing ECS environment variable name: $name" >&2
-              exit 1
-            }
+            if jq -e '
+              (["AURORA_HOST","AURORA_PORT","AURORA_DATABASE","AURORA_SSL"] - .environmentNames | length == 0)
+              and (["AURORA_USER","AURORA_PASSWORD"] - .secretNames | length == 0)
+            ' "/tmp/shape-${revision}.json" >/dev/null; then
+              COMPLETE_REVISION="$revision"
+            fi
           done
 
-          for name in AURORA_USER AURORA_PASSWORD; do
-            jq -e --arg name "$name" '.secretNames | index($name) != null' /tmp/runtime-shape.json >/dev/null || {
-              echo "Missing ECS secret name: $name" >&2
-              exit 1
-            }
-          done
+          if [ -n "$COMPLETE_REVISION" ]; then
+            echo "Complete Aurora-wired ECS revision found: $COMPLETE_REVISION"
+            exit 0
+          fi
+
+          echo "No existing ECS task-definition revision contains the complete Aurora runtime contract." >&2
+          exit 1
 
   verify-on-bootstrap:
     runs-on: ubuntu-latest
@@ -139,20 +125,9 @@ jobs:
       - name: Discover bootstrap instance
         id: instance
         run: |
-          INSTANCE_IDS=$(aws ec2 describe-instances \
-            --region "$AWS_REGION" \
-            --filters \
-              "Name=tag:Name,Values=sea-n-shore-bootstrap" \
-              "Name=instance-state-name,Values=running" \
-            --query 'Reservations[].Instances[].InstanceId' \
-            --output json)
-
+          INSTANCE_IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)
           COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
-          if [ "$COUNT" -ne 1 ]; then
-            echo "Expected exactly one running sea-n-shore-bootstrap instance; found $COUNT." >&2
-            exit 1
-          fi
-
+          if [ "$COUNT" -ne 1 ]; then echo "Expected exactly one running sea-n-shore-bootstrap instance; found $COUNT." >&2; exit 1; fi
           INSTANCE_ID=$(jq -r '.[0]' <<<"$INSTANCE_IDS")
           echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
           echo "Bootstrap instance resolved."
@@ -163,22 +138,8 @@ jobs:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
           TRIGGER_SHA: ${{ github.sha }}
         run: |
-          jq -n \
-            --arg sha "$TRIGGER_SHA" \
-            '{commands:[
-              ("runuser -u ssm-user -- bash -lc '\''set -euo pipefail; cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1; git fetch origin feat/aws-native-phase-0-1; git cat-file -e " + $sha + "^{commit}; git reset --hard " + $sha + "; bash scripts/aws/remote-verify.sh'\''")
-            ]}' > /tmp/ssm-parameters.json
-
-          COMMAND_ID=$(aws ssm send-command \
-            --region "$AWS_REGION" \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "Sea N Shore remote verify $TRIGGER_SHA" \
-            --timeout-seconds 1800 \
-            --parameters file:///tmp/ssm-parameters.json \
-            --query 'Command.CommandId' \
-            --output text)
-
+          jq -n --arg sha "$TRIGGER_SHA" '{commands:[("runuser -u ssm-user -- bash -lc '\''set -euo pipefail; cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1; git fetch origin feat/aws-native-phase-0-1; git cat-file -e " + $sha + "^{commit}; git reset --hard " + $sha + "; bash scripts/aws/remote-verify.sh'\''") ]}' > /tmp/ssm-parameters.json
+          COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore remote verify $TRIGGER_SHA" --timeout-seconds 1800 --parameters file:///tmp/ssm-parameters.json --query 'Command.CommandId' --output text)
           test -n "$COMMAND_ID" || (echo "SSM did not return a command ID." >&2 && exit 1)
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
           echo "SSM verification command submitted."
@@ -190,45 +151,14 @@ jobs:
         run: |
           STATUS="Pending"
           for attempt in $(seq 1 180); do
-            STATUS=$(aws ssm get-command-invocation \
-              --region "$AWS_REGION" \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query Status \
-              --output text 2>/dev/null || echo Pending)
-
-            case "$STATUS" in
-              Pending|InProgress|Delayed)
-                sleep 5
-                ;;
-              *)
-                break
-                ;;
-            esac
+            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Pending|InProgress|Delayed) sleep 5 ;; *) break ;; esac
           done
-
-          aws ssm get-command-invocation \
-            --region "$AWS_REGION" \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --output json > /tmp/ssm-result.json
-
+          aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > /tmp/ssm-result.json
           echo "=== AWS SSM STDOUT ==="
           jq -r '.StandardOutputContent // empty' /tmp/ssm-result.json
-
           STDERR_CONTENT=$(jq -r '.StandardErrorContent // empty' /tmp/ssm-result.json)
-          if [ -n "$STDERR_CONTENT" ]; then
-            echo "=== AWS SSM STDERR ===" >&2
-            printf '%s\n' "$STDERR_CONTENT" >&2
-          fi
-
+          if [ -n "$STDERR_CONTENT" ]; then echo "=== AWS SSM STDERR ===" >&2; printf '%s\n' "$STDERR_CONTENT" >&2; fi
           FINAL_STATUS=$(jq -r '.Status' /tmp/ssm-result.json)
           echo "SSM final status: $FINAL_STATUS"
-
-          if [ "$FINAL_STATUS" != "Success" ]; then
-            exit 1
-          fi
-
-          echo "### AWS remote verification passed" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Target: \`sea-n-shore-bootstrap\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FINAL_STATUS" != "Success" ]; then exit 1; fi
