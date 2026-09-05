@@ -17,6 +17,7 @@ vi.mock('../actions', () => ({
 afterEach(() => {
   cleanup()
   refresh.mockClear()
+  vi.unstubAllGlobals()
 })
 
 const profile: OwnProfile = {
@@ -58,5 +59,11 @@ describe('PostComposer', () => {
     expect(screen.getByLabelText('Poll option 1')).toBeInTheDocument()
     expect(screen.getByLabelText('Poll option 2')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add option' })).toBeInTheDocument()
+  })
+
+  it('renders safely when randomUUID is unavailable on an insecure HTTP origin', () => {
+    vi.stubGlobal('crypto', { randomUUID: undefined })
+
+    expect(() => render(<PostComposer profile={profile} />)).not.toThrow()
   })
 })
