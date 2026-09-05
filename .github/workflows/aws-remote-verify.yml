@@ -50,6 +50,8 @@ jobs:
     timeout-minutes: 5
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
       ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
       ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
 
@@ -60,48 +62,69 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Inspect Aurora runtime names across ECS revisions
+      - name: Inspect live ECS rollout and Aurora runtime shape
         run: |
+          test -n "$ECS_CLUSTER" || (echo "Missing staging variable ECS_CLUSTER" >&2 && exit 1)
+          test -n "$ECS_SERVICE" || (echo "Missing staging variable ECS_SERVICE" >&2 && exit 1)
           test -n "$ECS_TASK_DEFINITION" || (echo "Missing staging variable ECS_TASK_DEFINITION" >&2 && exit 1)
           test -n "$ECS_CONTAINER_NAME" || (echo "Missing staging variable ECS_CONTAINER_NAME" >&2 && exit 1)
 
-          COMPLETE_REVISION=""
-          for revision in $(seq 1 7); do
-            if ! aws ecs describe-task-definition \
-              --task-definition "${ECS_TASK_DEFINITION}:${revision}" \
-              --query taskDefinition \
-              --output json > "/tmp/task-${revision}.json" 2>/dev/null; then
-              echo "Revision ${revision}: unavailable"
-              continue
-            fi
+          aws ecs describe-services \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --output json > /tmp/service.json
 
-            jq --arg NAME "$ECS_CONTAINER_NAME" '
-              .containerDefinitions[]
-              | select(.name == $NAME)
-              | {
-                  environmentNames: [(.environment // [])[].name] | sort,
-                  secretNames: [(.secrets // [])[].name] | sort
-                }
-            ' "/tmp/task-${revision}.json" > "/tmp/shape-${revision}.json"
+          echo "=== ECS SERVICE ROLLOUT ==="
+          jq '.services[0] | {
+            taskDefinition,
+            desiredCount,
+            runningCount,
+            pendingCount,
+            deployments: [.deployments[] | {
+              status,
+              rolloutState,
+              taskDefinition,
+              desiredCount,
+              runningCount,
+              pendingCount,
+              failedTasks,
+              rolloutStateReason
+            }],
+            recentEvents: [.events[0:8][] | {createdAt, message}]
+          }' /tmp/service.json
 
-            echo "=== ECS REVISION ${revision} RUNTIME SHAPE ==="
-            jq . "/tmp/shape-${revision}.json"
+          aws ecs describe-task-definition \
+            --region "$AWS_REGION" \
+            --task-definition "$ECS_TASK_DEFINITION" \
+            --query taskDefinition \
+            --output json > /tmp/task-definition.json
 
-            if jq -e '
-              (["AURORA_HOST","AURORA_PORT","AURORA_DATABASE","AURORA_SSL"] - .environmentNames | length == 0)
-              and (["AURORA_USER","AURORA_PASSWORD"] - .secretNames | length == 0)
-            ' "/tmp/shape-${revision}.json" >/dev/null; then
-              COMPLETE_REVISION="$revision"
-            fi
+          jq --arg NAME "$ECS_CONTAINER_NAME" '
+            .containerDefinitions[]
+            | select(.name == $NAME)
+            | {
+                environmentNames: [(.environment // [])[].name] | sort,
+                secretNames: [(.secrets // [])[].name] | sort
+              }
+          ' /tmp/task-definition.json > /tmp/runtime-shape.json
+
+          echo "=== LATEST ECS AURORA RUNTIME SHAPE ==="
+          jq . /tmp/runtime-shape.json
+
+          for name in AURORA_HOST AURORA_PORT AURORA_DATABASE AURORA_SSL; do
+            jq -e --arg name "$name" '.environmentNames | index($name) != null' /tmp/runtime-shape.json >/dev/null || {
+              echo "Missing ECS environment variable name: $name" >&2
+              exit 1
+            }
           done
 
-          if [ -n "$COMPLETE_REVISION" ]; then
-            echo "Complete Aurora-wired ECS revision found: $COMPLETE_REVISION"
-            exit 0
-          fi
-
-          echo "No existing ECS task-definition revision contains the complete Aurora runtime contract." >&2
-          exit 1
+          for name in AURORA_USER AURORA_PASSWORD; do
+            jq -e --arg name "$name" '.secretNames | index($name) != null' /tmp/runtime-shape.json >/dev/null || {
+              echo "Missing ECS secret name: $name" >&2
+              exit 1
+            }
+          done
 
   verify-on-bootstrap:
     runs-on: ubuntu-latest
