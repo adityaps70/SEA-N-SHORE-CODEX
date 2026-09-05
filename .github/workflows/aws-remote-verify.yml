@@ -23,6 +23,7 @@ concurrency:
   group: aws-remote-verify-${{ github.ref }}
   cancel-in-progress: true
 
+# Post-deploy Phase 4 health probe marker.
 jobs:
   staging-http-health:
     runs-on: ubuntu-latest
