@@ -54,6 +54,20 @@ describe('Aurora database client', () => {
     expect(fake.query).toHaveBeenCalledWith('select id from profiles where id = $1', ['profile-1'])
   })
 
+  it('allows Aurora Serverless v2 enough time to resume while keeping TLS enabled', async () => {
+    const fake = createFakePool()
+    const poolFactory = vi.fn(() => fake.pool)
+    const { createDatabaseClient } = await import('./client')
+    const database = createDatabaseClient({ environment, poolFactory })
+
+    await database.query('select 1')
+
+    expect(poolFactory).toHaveBeenCalledWith(expect.objectContaining({
+      ssl: true,
+      connectionTimeoutMillis: 30_000,
+    }))
+  })
+
   it('creates the pool only once for repeated queries', async () => {
     const fake = createFakePool()
     const poolFactory = vi.fn(() => fake.pool)
