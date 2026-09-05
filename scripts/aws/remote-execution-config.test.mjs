@@ -37,7 +37,8 @@ test('GitHub remote execution stays scoped to the bootstrap instance and reposit
   assert.match(workflow, /NEXT_PUBLIC_SITE_URL/)
   assert.match(workflow, /\/api\/health\/phase4/)
   assert.match(workflow, /\.database == true/)
-  assert.match(workflow, /\.identityMappingsPresent == true/)
+  assert.match(workflow, /\.identityMappings == true/)
+  assert.doesNotMatch(workflow, /identityMappingsPresent/)
 
   assert.match(verifier, /set -euo pipefail/)
   assert.match(verifier, /npm run lint/)
