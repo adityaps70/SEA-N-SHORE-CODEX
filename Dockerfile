@@ -29,10 +29,13 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV NODE_EXTRA_CA_CERTS=/app/certs/ap-south-1-bundle.pem
 
 COPY --from=builder /app ./
 
-RUN npm install -g npm@11.6.0 \
+RUN mkdir -p /app/certs \
+    && node -e "const https=require('https');const fs=require('fs');const url='https://truststore.pki.rds.amazonaws.com/ap-south-1/ap-south-1-bundle.pem';const request=https.get(url,{timeout:10000},response=>{if(response.statusCode!==200){throw new Error('RDS CA download failed with HTTP '+response.statusCode)}const chunks=[];response.on('data',chunk=>chunks.push(chunk));response.on('end',()=>{const body=Buffer.concat(chunks);if(!body.toString('utf8').includes('-----BEGIN CERTIFICATE-----')){throw new Error('RDS CA download did not contain a PEM certificate')}fs.writeFileSync('/app/certs/ap-south-1-bundle.pem',body,{mode:0o644})})});request.on('timeout',()=>request.destroy(new Error('RDS CA download timed out')));request.on('error',error=>{console.error(error);process.exit(1)})" \
+    && npm install -g npm@11.6.0 \
     && npm prune --omit=dev \
     && npm cache clean --force \
     && rm -rf .next/cache \
