@@ -4,15 +4,12 @@ import { cookies } from 'next/headers'
 import { redirect as nextRedirect } from 'next/navigation'
 import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
-import { getOnboardingProfileFromAurora } from '@/features/profiles/onboarding-repository'
-import { requireAwsUser } from './aws-queries'
 import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 import { createCognitoAuthActions } from './cognito-actions'
 
 export type { AuthActionState } from './action-handlers'
 
 type CognitoActions = ReturnType<typeof createCognitoAuthActions>
-type ProfileProgress = { onboardingCompletedAt: string | null }
 
 async function getProductionActions(): Promise<CognitoActions> {
   const cookieStore = await cookies()
@@ -30,16 +27,8 @@ async function getProductionActions(): Promise<CognitoActions> {
   })
 }
 
-async function getProfileProgress(): Promise<ProfileProgress> {
-  const user = await requireAwsUser()
-  const profile = await getOnboardingProfileFromAurora(user.id)
-  if (!profile) throw new Error('Unable to load profile progress.')
-  return { onboardingCompletedAt: profile.onboardingCompletedAt }
-}
-
 const handlers = createAuthActionHandlers({
   getActions: getProductionActions,
-  getProfileProgress,
   redirect: nextRedirect,
 })
 
