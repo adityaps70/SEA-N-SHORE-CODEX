@@ -88,6 +88,11 @@ test('staging deploy always restores the Aurora runtime contract without reading
   assert.match(deploy, /\{\"name\":\"AURORA_SSL\",\"value\":\"true\"\}/)
   assert.match(deploy, /\{\"name\":\"AURORA_USER\",\"valueFrom\":\$AURORA_USER_SECRET\}/)
   assert.match(deploy, /\{\"name\":\"AURORA_PASSWORD\",\"valueFrom\":\$AURORA_PASSWORD_SECRET\}/)
+  assert.match(deploy, /AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES/)
+  assert.match(
+    deploy,
+    /\{\"name\":\"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES\",\"value\":\"true\"\}/,
+  )
   assert.match(deploy, /:username::/)
   assert.match(deploy, /:password::/)
 
