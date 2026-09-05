@@ -54,3 +54,25 @@ test('GitHub remote execution stays scoped to the bootstrap instance and reposit
   assert.match(verifier, /npm run typecheck/)
   assert.match(verifier, /vitest run/)
 })
+
+test('Aurora ECS bootstrap never reads or prints the managed database secret value', () => {
+  const bootstrap = text('scripts/aws/bootstrap-ecs-aurora-runtime.sh')
+
+  assert.match(bootstrap, /set -euo pipefail/)
+  assert.match(bootstrap, /AURORA_HOST/)
+  assert.match(bootstrap, /AURORA_DATABASE/)
+  assert.match(bootstrap, /AURORA_SECRET_ARN/)
+  assert.match(bootstrap, /iam put-role-policy/)
+  assert.match(bootstrap, /secretsmanager:GetSecretValue/)
+  assert.match(bootstrap, /AURORA_USER/)
+  assert.match(bootstrap, /:username::/)
+  assert.match(bootstrap, /AURORA_PASSWORD/)
+  assert.match(bootstrap, /:password::/)
+  assert.match(bootstrap, /ecs register-task-definition/)
+  assert.match(bootstrap, /ecs update-service/)
+  assert.match(bootstrap, /ecs wait services-stable/)
+
+  assert.doesNotMatch(bootstrap, /secretsmanager get-secret-value/)
+  assert.doesNotMatch(bootstrap, /SecretString/)
+  assert.doesNotMatch(bootstrap, /AURORA_PASSWORD=.*aws/)
+})
