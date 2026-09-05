@@ -91,3 +91,48 @@ CI and Docker use npm 11.6.0 because npm 10.9.8 on Node 22 has reproduced the `C
 Do not apply a full Terraform plan while the unrelated CloudFront account-verification blocker is present. If the reviewed plan contains CloudFront creation or other unrelated changes, deploy the ECS task-definition revision independently and retain the preceding Supabase-backed revision for immediate rollback.
 
 Until Phase 4 protected feature cutover is verified, keep the existing Supabase environment variables and Supabase application path intact. If Aurora runtime verification fails, redeploy the prior ECS task-definition revision; no Supabase source data should be deleted or modified as part of this rollback.
+
+## Phase 4 verification gate
+
+Current verification candidate branch: `feat/aws-native-phase-0-1`.
+
+Code-complete Cognito/Aurora cutover checkpoint before the final staging smoke was commit:
+
+```text
+645a8c2ce5b59b84aebdbda72e61962d2c8e068d
+```
+
+AWS Infrastructure CI run `33955408326` completed successfully for that exact SHA. The gate included lint, TypeScript, the full Vitest suite, Terraform validation for both app and bootstrap, Terraform plan guard tests, the GitHub SSM execution contract, and a production Docker build. Do not treat a later commit as verified until the same gate passes on that later exact SHA.
+
+### Remaining Supabase references after protected cutover
+
+Remaining references must be classified rather than assumed to be active protected-data dependencies:
+
+- `src/features/feed/media.ts` uses the existing Supabase **Storage** bucket only. It does not read/write application rows or call Supabase RPCs. This is an intentional Phase 5 storage dependency and must be replaced by S3 before Supabase storage/session removal.
+- `src/app/auth/callback/route.ts` remains as a dormant rollback/legacy Supabase OAuth callback. Current Cognito email/password authentication does not route protected user journeys through it, and Google sign-in remains hidden until Cognito federation is enabled. Do not use this route as evidence that protected application sessions still depend on Supabase.
+- `src/lib/supabase/*` may remain for rollback, legacy callback support, generated database types, and the temporary storage adapter. These files must not be imported by protected application data/auth flows except the explicitly classified Phase 5 storage path above.
+
+### Final staging verification required before declaring Phase 4 complete
+
+Deploy the exact verification candidate through the repository's `AWS Staging Deploy` workflow with `deploy_to_ecs=true`. Record both the new ECS task-definition revision and the immediately preceding Supabase-backed revision before smoke testing.
+
+Using a real migrated Cognito user, verify in staging:
+
+1. sign in and resolve the permanent Sea N Shore profile UUID through `identity_accounts`;
+2. Home feed read;
+3. profile read and update;
+4. follow and unfollow;
+5. connection request, accept/decline/remove lifecycle;
+6. notification read/mark-read;
+7. supported post create/like/save/comment/vote mutations;
+8. sign out, then confirm protected routes reject the cleared Cognito session.
+
+For each mutation, confirm the corresponding Aurora row change directly and confirm no Supabase database/RPC write is required.
+
+Run negative authorization checks for cross-user notification mutation, connection ownership, blocked interactions, and post/profile ownership. The automated repository/service suite must remain green, but the staging smoke is still required to prove the deployed application composition.
+
+After the smoke, review CloudWatch application logs for repeating 5xx, Cognito authorization, identity mapping, Aurora connection, transaction, or SQL errors. Phase 4 is complete only when the live staging journey passes and the deployed application no longer depends on Supabase DB/RLS/RPC/session behavior.
+
+### Rollback
+
+If any staging smoke or authorization check fails, immediately redeploy the recorded previous ECS task definition/image. Do not modify DNS, delete Supabase data, remove Supabase infrastructure, or perform final delta sync as part of Phase 4 rollback.
