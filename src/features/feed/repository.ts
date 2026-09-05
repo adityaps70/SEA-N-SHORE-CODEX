@@ -7,7 +7,6 @@ type FeedQuery = (text: string, values?: readonly unknown[]) => Promise<QueryRes
 
 type FeedRow = QueryResultRow & FeedPostRow
 type CommentRow = QueryResultRow & FeedCommentRow
-type PostIdRow = QueryResultRow & { id: string }
 type PostInteractionRow = QueryResultRow & { id: string; author_id: string; post_type: 'standard' | 'poll' }
 type PostStateRow = QueryResultRow & { post_id: string; option_id?: string }
 
