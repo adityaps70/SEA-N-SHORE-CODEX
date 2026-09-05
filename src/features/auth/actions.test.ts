@@ -8,84 +8,40 @@ const form = (entries: Record<string, string>) => {
 }
 
 describe('production Cognito auth action routing', () => {
-  it('routes a successful sign-in by Aurora onboarding state', async () => {
+  it('crosses a fresh request boundary after successful sign-in', async () => {
     const redirect = vi.fn()
     const signIn = vi.fn(async (): Promise<AuthActionState> => ({ message: 'Signed in.' }))
     const handlers = createAuthActionHandlers({
       getActions: async () => ({ signIn } as never),
-      getProfileProgress: async () => ({ onboardingCompletedAt: '2026-09-05T00:00:00.000Z' }),
       redirect,
     })
 
     await handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' }))
 
-    expect(redirect).toHaveBeenCalledWith('/home')
-  })
-
-  it('crosses a fresh request boundary before post-sign-in profile routing', async () => {
-    const redirect = vi.fn()
-    const getProfileProgress = vi.fn(async () => ({ onboardingCompletedAt: '2026-09-05T00:00:00.000Z' }))
-    const handlers = createAuthActionHandlers({
-      getActions: async () => ({ signIn: vi.fn(async () => ({ message: 'Signed in.' })) } as never),
-      getProfileProgress,
-      redirect,
-    })
-
-    await handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' }))
-
-    expect(getProfileProgress).not.toHaveBeenCalled()
+    expect(signIn).toHaveBeenCalledTimes(1)
     expect(redirect).toHaveBeenCalledWith('/auth/post-sign-in')
   })
 
-  it('preserves Next redirect control flow after successful profile resolution', async () => {
+  it('preserves Next redirect control flow after successful sign-in', async () => {
     const nextRedirect = new Error('NEXT_REDIRECT')
     const redirect = vi.fn(() => {
       throw nextRedirect
     })
     const handlers = createAuthActionHandlers({
       getActions: async () => ({ signIn: vi.fn(async () => ({ message: 'Signed in.' })) } as never),
-      getProfileProgress: async () => ({ onboardingCompletedAt: '2026-09-05T00:00:00.000Z' }),
       redirect,
     })
 
     await expect(
       handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' })),
     ).rejects.toBe(nextRedirect)
-  })
-
-  it('routes an incomplete profile to onboarding after sign-in', async () => {
-    const redirect = vi.fn()
-    const handlers = createAuthActionHandlers({
-      getActions: async () => ({ signIn: vi.fn(async () => ({ message: 'Signed in.' })) } as never),
-      getProfileProgress: async () => ({ onboardingCompletedAt: null }),
-      redirect,
-    })
-
-    await handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' }))
-    expect(redirect).toHaveBeenCalledWith('/onboarding')
-  })
-
-  it('returns a controlled error when post-auth profile resolution fails', async () => {
-    const redirect = vi.fn()
-    const handlers = createAuthActionHandlers({
-      getActions: async () => ({ signIn: vi.fn(async () => ({ message: 'Signed in.' })) } as never),
-      getProfileProgress: async () => {
-        throw new Error('database unavailable')
-      },
-      redirect,
-    })
-
-    await expect(
-      handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' })),
-    ).resolves.toEqual({ error: 'We signed you in, but could not load your profile. Please try again.' })
-    expect(redirect).not.toHaveBeenCalled()
+    expect(redirect).toHaveBeenCalledWith('/auth/post-sign-in')
   })
 
   it('routes NEW_PASSWORD_REQUIRED to the existing update-password surface', async () => {
     const redirect = vi.fn()
     const handlers = createAuthActionHandlers({
       getActions: async () => ({ signIn: vi.fn(async () => ({ next: 'new-password' })) } as never),
-      getProfileProgress: vi.fn(),
       redirect,
     })
 
@@ -93,11 +49,26 @@ describe('production Cognito auth action routing', () => {
     expect(redirect).toHaveBeenCalledWith('/auth/update-password?mode=new-password')
   })
 
+  it('crosses the same fresh request boundary after NEW_PASSWORD_REQUIRED completion', async () => {
+    const redirect = vi.fn()
+    const handlers = createAuthActionHandlers({
+      getActions: async () => ({
+        completeNewPassword: vi.fn(async () => ({ message: 'Password updated.' })),
+      } as never),
+      redirect,
+    })
+
+    await handlers.updatePassword(
+      {},
+      form({ mode: 'new-password', password: 'new-very-secure-password' }),
+    )
+    expect(redirect).toHaveBeenCalledWith('/auth/post-sign-in')
+  })
+
   it('routes sign-up to confirmation without exposing whether an account pre-existed', async () => {
     const redirect = vi.fn()
     const handlers = createAuthActionHandlers({
       getActions: async () => ({ signUp: vi.fn(async () => ({ message: 'Check your email to continue.' })) } as never),
-      getProfileProgress: vi.fn(),
       redirect,
     })
 
@@ -109,7 +80,6 @@ describe('production Cognito auth action routing', () => {
     const redirect = vi.fn()
     const handlers = createAuthActionHandlers({
       getActions: async () => ({ requestPasswordReset: vi.fn(async () => ({ next: 'confirm-reset' })) } as never),
-      getProfileProgress: vi.fn(),
       redirect,
     })
 
@@ -122,7 +92,6 @@ describe('production Cognito auth action routing', () => {
     const signOut = vi.fn(async () => undefined)
     const handlers = createAuthActionHandlers({
       getActions: async () => ({ signOut } as never),
-      getProfileProgress: vi.fn(),
       redirect,
     })
 
