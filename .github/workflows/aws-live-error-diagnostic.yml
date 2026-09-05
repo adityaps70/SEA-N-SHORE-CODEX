@@ -9,40 +9,34 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
-  recent-app-errors:
+  public-http-probe:
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 5
     env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      LOG_GROUP: /ecs/sea-n-shore-staging/web
+      SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
 
     steps:
-      - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: Read recent application error logs
+      - name: Probe public staging routes
         run: |
           set -euo pipefail
-          START_MS="$(( $(date +%s) * 1000 - 30 * 60 * 1000 ))"
-          aws logs filter-log-events \
-            --region "$AWS_REGION" \
-            --log-group-name "$LOG_GROUP" \
-            --start-time "$START_MS" \
-            --limit 300 \
-            --output json > /tmp/events.json
+          test -n "$SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" >&2 && exit 1)
 
-          echo "=== RECENT SEA N SHORE APPLICATION ERRORS ==="
-          jq -r '.events[].message' /tmp/events.json \
-            | grep -Ei 'error|exception|digest|failed|failure|typeerror|referenceerror|database|cognito|relation|column|permission|unauthorized|forbidden' \
-            | tail -n 120 \
-            | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
-            | sed -E 's/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/[redacted-uuid]/g' \
-            || true
+          for path in / /auth/sign-in /auth/sign-up /api/health/phase4; do
+            body="/tmp/body-$(echo "$path" | tr '/?' '__').txt"
+            headers="/tmp/headers-$(echo "$path" | tr '/?' '__').txt"
+            status=$(curl --show-error --silent --max-time 45 \
+              --dump-header "$headers" \
+              --output "$body" \
+              --write-out '%{http_code}' \
+              "${SITE_URL%/}${path}")
+            content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{print $2}' "$headers" | tr -d '\r' | tail -n 1)
+            echo "ROUTE $path => HTTP $status content-type=${content_type:-unknown} bytes=$(wc -c < "$body")"
+            if [ "$status" -ge 500 ]; then
+              echo "SERVER_ERROR_ROUTE=$path"
+              grep -Eo 'digest[^,}<]{0,120}|ERROR[[:space:]]+[0-9]+' "$body" | head -n 10 || true
+            fi
+          done
