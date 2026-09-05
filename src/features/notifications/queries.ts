@@ -1,15 +1,7 @@
-import { requireUser } from '@/features/auth/queries'
-import { getPublicProfilesByIds } from '@/features/profiles/queries'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { getAwsPublicProfilesByIds } from '@/features/profiles/aws-queries'
+import { createNotificationRepository, type NotificationRow } from './repository'
 import type { NetworkNotification, NetworkNotificationType, NotificationChrome } from './types'
-
-type NotificationRow = {
-  id: string
-  actor_id: string | null
-  notification_type: NetworkNotificationType
-  created_at: string
-  read_at: string | null
-}
 
 const copyByType: Record<NetworkNotificationType, string> = {
   connection_request: 'sent you a connection request',
@@ -17,35 +9,24 @@ const copyByType: Record<NetworkNotificationType, string> = {
   new_follower: 'started following you',
 }
 
-async function loadNotificationData(limit: number) {
-  const user = await requireUser()
-  const supabase = await createServerSupabaseClient()
-  const safeLimit = Math.min(Math.max(limit, 1), 50)
+type NotificationRepository = Pick<
+  ReturnType<typeof createNotificationRepository>,
+  'listRecent' | 'countUnread'
+>
 
-  const [rowsResult, unreadResult] = await Promise.all([
-    supabase
-      .from('notifications')
-      .select('id,actor_id,notification_type,created_at,read_at')
-      .eq('recipient_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(safeLimit),
-    supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('recipient_id', user.id)
-      .is('read_at', null),
-  ])
+type ProfileSummary = {
+  id: string
+  slug: string
+  fullName: string
+}
 
-  if (rowsResult.error || unreadResult.error) {
-    throw new Error('Unable to load notifications.')
-  }
+type RequireUser = () => Promise<{ id: string }>
+type GetProfiles = (ids: string[]) => Promise<ProfileSummary[]>
 
-  const rows = (rowsResult.data ?? []) as NotificationRow[]
-  const actorIds = [...new Set(rows.flatMap((row) => row.actor_id ? [row.actor_id] : []))]
-  const profiles = actorIds.length ? await getPublicProfilesByIds(actorIds) : []
+function mapNotifications(rows: readonly NotificationRow[], profiles: readonly ProfileSummary[]) {
   const profilesById = new Map(profiles.map((profile) => [profile.id, profile]))
 
-  const notifications: NetworkNotification[] = rows.map((row) => {
+  return rows.map((row): NetworkNotification => {
     const profile = row.actor_id ? profilesById.get(row.actor_id) : undefined
     const actor = profile ? { id: profile.id, slug: profile.slug, fullName: profile.fullName } : null
     const actorName = actor?.fullName ?? 'A maritime professional'
@@ -65,16 +46,44 @@ async function loadNotificationData(limit: number) {
       destination,
     }
   })
-
-  return { notifications, unreadCount: unreadResult.count ?? 0 }
 }
 
-export async function getNotifications(limit = 50): Promise<NetworkNotification[]> {
-  const { notifications } = await loadNotificationData(limit)
-  return notifications
+export function createNotificationQueries(input: {
+  requireUser: RequireUser
+  repository: NotificationRepository
+  getProfiles: GetProfiles
+}) {
+  async function loadNotifications(limit: number): Promise<NetworkNotification[]> {
+    const user = await input.requireUser()
+    const rows = await input.repository.listRecent(user.id, limit)
+    const actorIds = [...new Set(rows.flatMap((row) => row.actor_id ? [row.actor_id] : []))]
+    const profiles = actorIds.length ? await input.getProfiles(actorIds) : []
+    return mapNotifications(rows, profiles)
+  }
+
+  async function getNotifications(limit = 50): Promise<NetworkNotification[]> {
+    return loadNotifications(limit)
+  }
+
+  async function getNotificationChrome(): Promise<NotificationChrome> {
+    const user = await input.requireUser()
+    const [rows, unreadCount] = await Promise.all([
+      input.repository.listRecent(user.id, 8),
+      input.repository.countUnread(user.id),
+    ])
+    const actorIds = [...new Set(rows.flatMap((row) => row.actor_id ? [row.actor_id] : []))]
+    const profiles = actorIds.length ? await input.getProfiles(actorIds) : []
+    return { recent: mapNotifications(rows, profiles), unreadCount }
+  }
+
+  return { getNotifications, getNotificationChrome }
 }
 
-export async function getNotificationChrome(): Promise<NotificationChrome> {
-  const { notifications, unreadCount } = await loadNotificationData(8)
-  return { recent: notifications, unreadCount }
-}
+const productionQueries = createNotificationQueries({
+  requireUser: requireAwsUser,
+  repository: createNotificationRepository(),
+  getProfiles: getAwsPublicProfilesByIds,
+})
+
+export const getNotifications = productionQueries.getNotifications
+export const getNotificationChrome = productionQueries.getNotificationChrome
