@@ -12,40 +12,73 @@ permissions:
   contents: read
 
 jobs:
-  public-http-probe:
+  browser-sign-in-probe:
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
 
     steps:
-      - name: Probe public staging routes and current Next assets
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Reproduce live sign-in page in browser
         run: |
-          set -euo pipefail
-          test -n "$SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" >&2 && exit 1)
+          node --input-type=module <<'NODE'
+          import { chromium } from '@playwright/test'
 
-          for path in / /auth/sign-in /auth/sign-up /api/health/phase4; do
-            body="/tmp/body-$(echo "$path" | tr '/?' '__').txt"
-            headers="/tmp/headers-$(echo "$path" | tr '/?' '__').txt"
-            status=$(curl --show-error --silent --max-time 45 \
-              --dump-header "$headers" \
-              --output "$body" \
-              --write-out '%{http_code}' \
-              "${SITE_URL%/}${path}")
-            content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/{print $2}' "$headers" | tr -d '\r' | tail -n 1)
-            echo "ROUTE $path => HTTP $status content-type=${content_type:-unknown} bytes=$(wc -c < "$body")"
-            test "$status" -lt 500
-          done
+          const siteUrl = process.env.SITE_URL
+          if (!siteUrl) throw new Error('Missing staging variable NEXT_PUBLIC_SITE_URL')
 
-          curl --show-error --silent --max-time 45 "${SITE_URL%/}/" > /tmp/root.html
-          grep -Eo '/_next/static/[^"'"'"' ]+' /tmp/root.html | sed 's/&amp;/\&/g' | sort -u | head -n 40 > /tmp/assets.txt || true
-          test -s /tmp/assets.txt || { echo "No Next static assets found in root HTML" >&2; exit 1; }
+          const browser = await chromium.launch()
+          const context = await browser.newContext()
+          const page = await context.newPage()
+          const diagnostics = []
 
-          failed=0
-          while IFS= read -r asset; do
-            status=$(curl --show-error --silent --max-time 30 --output /dev/null --write-out '%{http_code}' "${SITE_URL%/}${asset}")
-            echo "ASSET $asset => HTTP $status"
-            if [ "$status" != "200" ]; then failed=1; fi
-          done < /tmp/assets.txt
-          test "$failed" = "0"
+          page.on('pageerror', (error) => diagnostics.push(`PAGEERROR ${error.name}: ${error.message}`))
+          page.on('console', (message) => {
+            if (message.type() === 'error') diagnostics.push(`CONSOLE_ERROR ${message.text()}`)
+          })
+          page.on('requestfailed', (request) => {
+            diagnostics.push(`REQUEST_FAILED ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+          })
+          page.on('response', (response) => {
+            if (response.status() >= 400) diagnostics.push(`HTTP_${response.status()} ${response.url()}`)
+          })
+
+          const response = await page.goto(`${siteUrl.replace(/\/$/, '')}/auth/sign-in?rev=11`, {
+            waitUntil: 'networkidle',
+            timeout: 60000,
+          })
+
+          console.log(`NAV_STATUS ${response?.status() ?? 'none'}`)
+          console.log(`TITLE ${await page.title()}`)
+          const text = (await page.locator('body').innerText()).replace(/\s+/g, ' ').trim()
+          console.log(`BODY_TEXT ${text.slice(0, 1000)}`)
+
+          for (const line of diagnostics) console.log(line)
+
+          const hasExpectedForm = await page.getByRole('heading', { name: 'Welcome back' }).count()
+          const hasServerError = /This page couldn.?t load|A server error occurred/i.test(text)
+          console.log(`EXPECTED_FORM_COUNT ${hasExpectedForm}`)
+          console.log(`SERVER_ERROR_PAGE ${hasServerError}`)
+
+          await browser.close()
+
+          if (hasExpectedForm !== 1 || hasServerError || diagnostics.some((line) => line.startsWith('PAGEERROR '))) {
+            process.exit(1)
+          }
+          NODE
