@@ -94,3 +94,12 @@ test('staging deploy always restores the Aurora runtime contract without reading
   assert.doesNotMatch(deploy, /secretsmanager get-secret-value/)
   assert.doesNotMatch(deploy, /SecretString/)
 })
+
+test('production image trusts the official Mumbai RDS CA without disabling TLS verification', () => {
+  const dockerfile = text('Dockerfile')
+
+  assert.match(dockerfile, /https:\/\/truststore\.pki\.rds\.amazonaws\.com\/ap-south-1\/ap-south-1-bundle\.pem/)
+  assert.match(dockerfile, /NODE_EXTRA_CA_CERTS=\/app\/certs\/ap-south-1-bundle\.pem/)
+  assert.doesNotMatch(dockerfile, /rejectUnauthorized\s*:\s*false/)
+  assert.doesNotMatch(dockerfile, /NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*0/)
+})
