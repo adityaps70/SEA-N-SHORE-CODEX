@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { withTransaction as databaseTransaction } from '@/lib/db/client'
 import {
   createFeedRepositoryForClient,
+  type FeedMediaInput,
   type FeedRepository,
 } from './repository'
 import type { PostCategory } from './types'
@@ -9,11 +10,13 @@ import type { PostCategory } from './types'
 type FeedTransaction = <T>(fn: (repository: FeedRepository) => Promise<T>) => Promise<T>
 
 type StandardPostInput = {
+  id?: string
   category: PostCategory
   body: string
+  media?: FeedMediaInput
 }
 
-type PollPostInput = StandardPostInput & {
+type PollPostInput = Omit<StandardPostInput, 'id' | 'media'> & {
   pollOptions: string[]
 }
 
@@ -22,16 +25,10 @@ function serviceError(code: string): never {
 }
 
 async function assertMemberReady(repository: FeedRepository, profileId: string) {
-  if (!await repository.isMemberReady(profileId)) {
-    serviceError('feed_interaction_unavailable')
-  }
+  if (!await repository.isMemberReady(profileId)) serviceError('feed_interaction_unavailable')
 }
 
-async function assertInteractablePost(
-  repository: FeedRepository,
-  viewerProfileId: string,
-  postId: string,
-) {
+async function assertInteractablePost(repository: FeedRepository, viewerProfileId: string, postId: string) {
   const post = await repository.getInteractablePost({ viewerProfileId, postId })
   if (!post) serviceError('feed_interaction_unavailable')
   return post
@@ -40,7 +37,6 @@ async function assertInteractablePost(
 function normalizePollOptions(options: string[]) {
   const seen = new Set<string>()
   const normalized: string[] = []
-
   for (const rawOption of options) {
     const option = rawOption.trim()
     if (option.length < 1 || option.length > 120) continue
@@ -49,10 +45,7 @@ function normalizePollOptions(options: string[]) {
     seen.add(key)
     normalized.push(option)
   }
-
-  if (normalized.length < 2 || normalized.length > 6) {
-    serviceError('feed_poll_options_invalid')
-  }
+  if (normalized.length < 2 || normalized.length > 6) serviceError('feed_poll_options_invalid')
   return normalized
 }
 
@@ -65,13 +58,14 @@ export function createFeedService(input: {
   async function createStandardPost(actorId: string, post: StandardPostInput) {
     return input.withTransaction(async (repository) => {
       await assertMemberReady(repository, actorId)
-      const id = createId()
+      const id = post.id ?? createId()
       await repository.insertStandardPost({
         id,
         authorId: actorId,
         category: post.category,
         body: post.body.trim(),
       })
+      if (post.media) await repository.insertPostMedia(id, post.media)
       return id
     })
   }
@@ -122,22 +116,13 @@ export function createFeedService(input: {
     return input.withTransaction(async (repository) => {
       const post = await assertInteractablePost(repository, actorId, postId)
       if (post.postType !== 'poll') serviceError('feed_poll_option_unavailable')
-      if (!await repository.pollOptionBelongsToPost(postId, optionId)) {
-        serviceError('feed_poll_option_unavailable')
-      }
+      if (!await repository.pollOptionBelongsToPost(postId, optionId)) serviceError('feed_poll_option_unavailable')
       await repository.setPollVote(actorId, postId, optionId)
       return true
     })
   }
 
-  return {
-    createStandardPost,
-    createPollPost,
-    setLiked,
-    setSaved,
-    addComment,
-    setPollVote,
-  }
+  return { createStandardPost, createPollPost, setLiked, setSaved, addComment, setPollVote }
 }
 
 const productionService = createFeedService({
