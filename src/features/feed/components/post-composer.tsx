@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useRef, useState } from 'react'
+import { useActionState, useId, useRef, useState } from 'react'
 import { BarChart3, ImagePlus, Send } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
@@ -16,19 +16,21 @@ function initials(name: string) {
 
 type PollField = { id: string; value: string }
 
-function newPollFields(values: string[] = ['', '']): PollField[] {
+function newPollFields(prefix: string, values: string[] = ['', '']): PollField[] {
   const source = values.length >= 2 ? values.slice(0, 6) : ['', '']
-  return source.map((value) => ({ id: crypto.randomUUID(), value }))
+  return source.map((value, index) => ({ id: `${prefix}-${index + 1}`, value }))
 }
 
 export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile; defaultCategory?: PostCategory }) {
   const router = useRouter()
+  const pollIdPrefix = useId()
+  const nextPollFieldNumber = useRef(3)
   const formRef = useRef<HTMLFormElement>(null)
   const mediaRef = useRef<HTMLInputElement>(null)
   const [body, setBody] = useState('')
   const [category, setCategory] = useState<PostCategory>(defaultCategory ?? 'technical_discussion')
   const [mode, setMode] = useState<'standard' | 'poll'>('standard')
-  const [pollFields, setPollFields] = useState<PollField[]>(() => newPollFields())
+  const [pollFields, setPollFields] = useState<PollField[]>(() => newPollFields(pollIdPrefix))
   const [mediaName, setMediaName] = useState<string | null>(null)
 
   const [state, formAction, pending] = useActionState(async (previousState: PostComposerState, formData: FormData) => {
@@ -37,7 +39,8 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
       formRef.current?.reset()
       setBody('')
       setMode('standard')
-      setPollFields(newPollFields())
+      nextPollFieldNumber.current = 3
+      setPollFields(newPollFields(pollIdPrefix))
       setMediaName(null)
       router.refresh()
     }
@@ -50,6 +53,14 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
       if (mediaRef.current) mediaRef.current.value = ''
       setMediaName(null)
     }
+  }
+
+  function addPollField() {
+    setPollFields((current) => {
+      const id = `${pollIdPrefix}-${nextPollFieldNumber.current}`
+      nextPollFieldNumber.current += 1
+      return [...current, { id, value: '' }]
+    })
   }
 
   return (
@@ -121,7 +132,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
             <button
               type="button"
               disabled={pollFields.length >= 6}
-              onClick={() => setPollFields((current) => [...current, { id: crypto.randomUUID(), value: '' }])}
+              onClick={addPollField}
               className="mt-3 min-h-10 rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-ocean-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Add option
