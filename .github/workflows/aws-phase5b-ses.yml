@@ -1,0 +1,106 @@
+name: AWS Phase 5B SES
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/aws-native-phase-0-1]
+    paths:
+      - .github/workflows/aws-phase5b-ses.yml
+      - scripts/aws/phase5b-action.txt
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+jobs:
+  phase5b:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      AWS_REGION: ap-south-1
+      EXPECTED_ACCOUNT_ID: "310356785722"
+      SES_DOMAIN: seaandshore.in
+      SES_FROM_ADDRESS: no-reply@seaandshore.in
+      SES_FROM_DISPLAY_NAME: Sea N Shore
+      SES_CONFIGURATION_SET: sea-n-shore-staging-transactional
+      COGNITO_USER_POOL_NAME: sea-n-shore-staging-users
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Read bounded Phase 5B action
+        id: action
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "feat/aws-native-phase-0-1"
+          PHASE5B_ACTION="$(tr -d '[:space:]' < scripts/aws/phase5b-action.txt)"
+          case "$PHASE5B_ACTION" in
+            discover|ensure-identity|verify-ready|cutover|verify-cutover|rollback-cognito) ;;
+            *) echo "Unsupported Phase 5B action: $PHASE5B_ACTION" >&2; exit 2 ;;
+          esac
+          echo "value=$PHASE5B_ACTION" >> "$GITHUB_OUTPUT"
+          echo "PHASE5B_ACTION=$PHASE5B_ACTION"
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == "completed" ]]; then
+              [[ "$CONCLUSION" == "success" ]] || {
+                echo "Exact-head AWS Infrastructure CI is not green." >&2
+                exit 1
+              }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Validate staging OIDC configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${{ vars.AWS_ROLE_TO_ASSUME }}" || {
+            echo "Missing staging variable AWS_ROLE_TO_ASSUME" >&2
+            exit 1
+          }
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Run Phase 5B bounded action
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x scripts/aws/phase5b-ses-readiness.sh scripts/aws/phase5b-ses-cutover.sh
+          scripts/aws/phase5b-ses-cutover.sh "${{ steps.action.outputs.value }}"
+
+      - name: Preserve Cognito rollback capture
+        if: steps.action.outputs.value == 'cutover'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase5b-cognito-rollback-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            /tmp/phase5b-user-pool-before.json
+            /tmp/phase5b-email-before.json
+          if-no-files-found: error
+          retention-days: 14
