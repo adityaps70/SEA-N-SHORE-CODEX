@@ -405,6 +405,7 @@ resource "aws_ecs_task_definition" "web" {
         { name = "AWS_COGNITO_REGION", value = var.aws_region },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.app.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
+        { name = "AWS_MEDIA_BUCKET", value = aws_s3_bucket.app["media"].bucket },
         { name = "AURORA_HOST", value = aws_rds_cluster.aurora.endpoint },
         { name = "AURORA_PORT", value = tostring(aws_rds_cluster.aurora.port) },
         { name = "AURORA_DATABASE", value = aws_rds_cluster.aurora.database_name },
@@ -454,7 +455,10 @@ resource "aws_ecs_task_definition" "web" {
     }
   ])
 
-  depends_on = [aws_iam_role_policy.ecs_execution_aurora_secret]
+  depends_on = [
+    aws_iam_role_policy.ecs_execution_aurora_secret,
+    aws_iam_role_policy.ecs_task_media
+  ]
 
   tags = local.common_tags
 }
