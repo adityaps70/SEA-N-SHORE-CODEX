@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { getAwsOwnProfile } from './aws-queries'
 import { completeOnboardingWithAurora } from './onboarding-service'
-import { completeOnboarding } from './actions'
+import { updateProfileWithAurora } from './profile-edit-service'
+import { completeOnboarding, updateProfile } from './actions'
 
 vi.mock('next/navigation', () => ({
   redirect: vi.fn((path: string) => {
@@ -15,13 +17,41 @@ vi.mock('@/features/auth/aws-queries', () => ({
     email: 'viewer@example.com',
   })),
 }))
+vi.mock('./aws-queries', () => ({
+  getAwsOwnProfile: vi.fn(async () => ({
+    id: '11111111-1111-4111-8111-111111111111',
+    slug: 'captain-example',
+    profileType: 'seafarer',
+    fullName: 'Captain Example',
+    avatarPath: null,
+    location: 'Mumbai',
+    headline: 'Master Mariner',
+    summary: 'Experienced maritime professional focused on safe tanker operations.',
+    rank: 'Master',
+    currentCompany: 'Example Shipping',
+    currentVessel: 'MV Example',
+    sailingExperienceYears: 18,
+    vesselTypes: ['Oil Tanker'],
+    tradingAreas: ['Worldwide'],
+    shoreCareerPreference: false,
+    availability: 'Open to mentoring',
+    skills: ['Navigation'],
+    contactVisibility: 'members',
+    onboardingCompletedAt: '2026-09-01T00:00:00.000Z',
+  })),
+}))
 vi.mock('./onboarding-service', () => ({
   completeOnboardingWithAurora: vi.fn(async () => true),
+}))
+vi.mock('./profile-edit-service', () => ({
+  updateProfileWithAurora: vi.fn(async () => true),
 }))
 
 const viewerId = '11111111-1111-4111-8111-111111111111'
 const mockedRequireAwsUser = vi.mocked(requireAwsUser)
+const mockedGetOwnProfile = vi.mocked(getAwsOwnProfile)
 const mockedCompleteOnboarding = vi.mocked(completeOnboardingWithAurora)
+const mockedUpdateProfile = vi.mocked(updateProfileWithAurora)
 
 function validForm() {
   const formData = new FormData()
@@ -86,5 +116,43 @@ describe('profile onboarding action', () => {
     const result = await completeOnboarding({}, validForm())
 
     expect(result.error).toBe('We could not save your profile. Your entries are still here; please try again.')
+  })
+})
+
+describe('completed profile update action', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('validates before loading the current profile or mutating Aurora', async () => {
+    const formData = validForm()
+    formData.set('slug', 'not a valid slug!')
+
+    const result = await updateProfile({}, formData)
+
+    expect(result.fieldErrors?.slug).toBeTruthy()
+    expect(mockedGetOwnProfile).not.toHaveBeenCalled()
+    expect(mockedUpdateProfile).not.toHaveBeenCalled()
+  })
+
+  it('preserves the stored profile type and redirects back to My Profile after save', async () => {
+    const formData = validForm()
+    formData.set('profileType', 'mentor')
+
+    await expect(updateProfile({}, formData)).rejects.toThrow('NEXT_REDIRECT:/profile')
+
+    expect(mockedUpdateProfile).toHaveBeenCalledWith(viewerId, expect.objectContaining({
+      profileType: 'seafarer',
+      fullName: 'Captain Example',
+      slug: 'captain-example',
+      headline: 'Master Mariner and tanker specialist',
+      skills: ['Navigation', 'SIRE 2.0'],
+    }))
+  })
+
+  it('returns the existing safe slug collision message', async () => {
+    mockedUpdateProfile.mockRejectedValueOnce(Object.assign(new Error('duplicate'), { code: '23505' }))
+
+    const result = await updateProfile({}, validForm())
+
+    expect(result.fieldErrors?.slug).toEqual(['That profile address is already in use.'])
   })
 })
