@@ -1,17 +1,21 @@
-import { createServerSupabaseClient } from '@/lib/supabase/server'
-
-const FEED_MEDIA_BUCKET = 'post-media'
+import {
+  createMediaReadUrl,
+  deleteMediaObject,
+  putMediaObject,
+} from '@/lib/aws/storage'
 
 export async function resolveFeedMediaUrls(paths: string[]): Promise<Map<string, string>> {
   if (!paths.length) return new Map()
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase.storage.from(FEED_MEDIA_BUCKET).createSignedUrls(paths, 3600)
-  if (error) return new Map()
 
   const urls = new Map<string, string>()
-  for (const item of data ?? []) {
-    if (item.path && item.signedUrl) urls.set(item.path, item.signedUrl)
-  }
+  await Promise.all(paths.map(async (path) => {
+    try {
+      const signedUrl = await createMediaReadUrl(path)
+      urls.set(path, signedUrl)
+    } catch {
+      // One unavailable object should not prevent the rest of the feed from rendering.
+    }
+  }))
   return urls
 }
 
@@ -22,15 +26,21 @@ export async function uploadFeedImage(input: {
   extension: string
 }): Promise<string> {
   const storagePath = `${input.profileId}/${input.postId}/${crypto.randomUUID()}.${input.extension}`
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase.storage
-    .from(FEED_MEDIA_BUCKET)
-    .upload(storagePath, input.file, { contentType: input.file.type, upsert: false })
-  if (error) throw new Error('feed_media_upload_failed')
+
+  try {
+    const body = new Uint8Array(await input.file.arrayBuffer())
+    await putMediaObject({
+      key: storagePath,
+      body,
+      contentType: input.file.type,
+    })
+  } catch {
+    throw new Error('feed_media_upload_failed')
+  }
+
   return storagePath
 }
 
 export async function removeFeedImage(storagePath: string): Promise<void> {
-  const supabase = await createServerSupabaseClient()
-  await supabase.storage.from(FEED_MEDIA_BUCKET).remove([storagePath])
+  await deleteMediaObject(storagePath)
 }
