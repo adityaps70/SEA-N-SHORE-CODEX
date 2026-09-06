@@ -22,6 +22,8 @@ jobs:
       ECS_SERVICE: sea-n-shore-staging-web
       ECS_CONTAINER_NAME: web
       LOG_GROUP: /ecs/sea-n-shore-staging/web
+      ECS_TASK_ROLE: sea-n-shore-staging-ecs-task
+      ECS_MEDIA_POLICY: sea-n-shore-staging-ecs-task-media
     steps:
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -29,67 +31,37 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Review recent application logs
+      - name: Verify live task and bucket wiring
         run: |
           set -euo pipefail
-          START_MS=$(( ($(date +%s) - 3600) * 1000 ))
-          aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" --output json > /tmp/logs.json
-          echo "RECENT_LOG_EVENTS=$(jq '.events | length' /tmp/logs.json)"
-          echo "=== STRONG ERROR MATCHES ==="
-          jq -r '.events[].message' /tmp/logs.json | grep -Eai 'error|exception|unhandled|fatal|HTTP[[:space:]]+[45][0-9][0-9]|Body exceeded|AccessDenied|ECONN|ETIMEDOUT|upload|publish' | tail -n 60 || true
-
-      - name: Query recent Aurora posts through bootstrap
-        run: |
-          set -euo pipefail
-
           TASK_ARN=$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)
           aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$TASK_ARN" --query taskDefinition --output json > /tmp/task.json
+          echo "LIVE_TASK_ARN=$TASK_ARN"
+          echo "LIVE_TASK_ROLE=$(jq -r '.taskRoleArn' /tmp/task.json)"
+          echo "AWS_MEDIA_BUCKET=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name=="AWS_MEDIA_BUCKET") | .value' /tmp/task.json)"
 
-          HOST=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name=="AURORA_HOST") | .value' /tmp/task.json)
-          PORT=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name=="AURORA_PORT") | .value' /tmp/task.json)
-          DATABASE=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name=="AURORA_DATABASE") | .value' /tmp/task.json)
-          USER_REF=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.secrets // [])[] | select(.name=="AURORA_USER") | .valueFrom' /tmp/task.json)
-          PASSWORD_REF=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.secrets // [])[] | select(.name=="AURORA_PASSWORD") | .valueFrom' /tmp/task.json)
-
-          USER_SECRET_ARN="${USER_REF%:username::}"
-          PASSWORD_SECRET_ARN="${PASSWORD_REF%:password::}"
-          test "$USER_SECRET_ARN" = "$PASSWORD_SECRET_ARN"
-
-          INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].InstanceId' --output text)
-          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
-            echo "BOOTSTRAP_UNAVAILABLE"
+      - name: Inspect live ECS media inline policy
+        run: |
+          set +e
+          aws iam get-role-policy --role-name "$ECS_TASK_ROLE" --policy-name "$ECS_MEDIA_POLICY" --output json > /tmp/policy.json 2>/tmp/policy.err
+          CODE=$?
+          set -e
+          echo "IAM_READ_EXIT=$CODE"
+          if [ "$CODE" -ne 0 ]; then
+            cat /tmp/policy.err
             exit 0
           fi
+          jq '{RoleName,PolicyName,PolicyDocument}' /tmp/policy.json
+          ACTIONS=$(jq -r '.PolicyDocument.Statement[] | select(.Sid=="PostMediaObjects") | .Action[]?' /tmp/policy.json | sort | tr '\n' ' ')
+          RESOURCE=$(jq -r '.PolicyDocument.Statement[] | select(.Sid=="PostMediaObjects") | .Resource' /tmp/policy.json)
+          echo "MEDIA_ACTIONS=$ACTIONS"
+          echo "MEDIA_RESOURCE=$RESOURCE"
 
-          SQL="select p.id, p.created_at, p.post_type::text, p.category::text, char_length(p.body), exists(select 1 from public.post_media m where m.post_id=p.id) from public.posts p where p.created_at >= now() - interval '90 minutes' and p.deleted_at is null order by p.created_at desc, p.id desc limit 20;"
-          REMOTE_COMMAND=$(printf '%s\n' \
-            'set -euo pipefail' \
-            "SECRET_JSON=\$(aws secretsmanager get-secret-value --region '$AWS_REGION' --secret-id '$USER_SECRET_ARN' --query SecretString --output text)" \
-            'export PGUSER=$(printf "%s" "$SECRET_JSON" | jq -r .username)' \
-            'export PGPASSWORD=$(printf "%s" "$SECRET_JSON" | jq -r .password)' \
-            "export PGHOST='$HOST'" \
-            "export PGPORT='$PORT'" \
-            "export PGDATABASE='$DATABASE'" \
-            'export PGSSLMODE=require' \
-            'export PGCONNECT_TIMEOUT=10' \
-            'command -v psql >/dev/null || { echo PSQL_UNAVAILABLE; exit 0; }' \
-            "timeout 20s psql -X -A -F '|' -t -c \"$SQL\" || { code=\$?; echo PSQL_QUERY_EXIT=\$code; exit 0; }")
-
-          jq -n --arg command "$REMOTE_COMMAND" '{commands:[$command]}' > /tmp/ssm-params.json
-          COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore recent post diagnostic" --parameters file:///tmp/ssm-params.json --query 'Command.CommandId' --output text)
-
-          STATUS=Pending
-          for attempt in $(seq 1 20); do
-            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
-            case "$STATUS" in
-              Pending|InProgress|Delayed) sleep 3 ;;
-              *) break ;;
-            esac
-          done
-
-          aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > /tmp/ssm.json
-          echo "SSM_STATUS=$(jq -r '.Status' /tmp/ssm.json)"
-          echo "=== RECENT AURORA POSTS: id|created_at|type|category|body_length|has_media ==="
-          jq -r '.StandardOutputContent' /tmp/ssm.json
-          STDERR=$(jq -r '.StandardErrorContent // empty' /tmp/ssm.json)
-          if [ -n "$STDERR" ]; then printf '%s\n' "$STDERR" | tail -n 20; fi
+      - name: Review post-fix application errors
+        run: |
+          set -euo pipefail
+          START_MS=1788723280000
+          aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" --output json > /tmp/logs.json
+          echo "POST_FIX_LOG_EVENTS=$(jq '.events | length' /tmp/logs.json)"
+          echo "=== POST-FIX STRONG ERROR MATCHES ==="
+          jq -r '.events[].message' /tmp/logs.json | grep -Eai 'error|exception|unhandled|fatal|HTTP[[:space:]]+[45][0-9][0-9]|AccessDenied|ECONN|ETIMEDOUT|upload|publish' | tail -n 80 || true
