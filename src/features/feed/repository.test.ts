@@ -35,6 +35,25 @@ describe('feed repository', () => {
     expect(values).toEqual([viewerId, 'safety_lessons', '2026-09-05T06:00:00.000Z', postId, 21])
   })
 
+  it('loads only the signed-in member saved posts in most-recently-saved order', async () => {
+    const query = vi.fn(async () => [] as FeedPostRow[])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await (repository as unknown as {
+      listSavedRows: (lookup: { viewerProfileId: string; limit: number }) => Promise<FeedPostRow[]>
+    }).listSavedRows({ viewerProfileId: viewerId, limit: 50 })
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/join public\.saved_posts/i)
+    expect(sql).toMatch(/saved\.user_id = \$1/i)
+    expect(sql).toMatch(/p\.deleted_at is null/i)
+    expect(sql).toMatch(/user_blocks/i)
+    expect(sql).toMatch(/order by saved\.created_at desc, p\.id desc/i)
+    expect(sql).toMatch(/limit \$2/i)
+    expect(values).toEqual([viewerId, 50])
+  })
+
   it('hydrates viewer liked, saved and vote state only for the permanent viewer UUID', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce([{ post_id: postId }])
