@@ -69,7 +69,6 @@ jobs:
           for name in AWS_REGION ECR_REPOSITORY ECS_CLUSTER ECS_SERVICE ECS_TASK_DEFINITION ECS_CONTAINER_NAME NEXT_PUBLIC_SITE_URL NEXT_PUBLIC_SUPABASE_URL NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY AWS_MEDIA_BUCKET AURORA_HOST AURORA_PORT AURORA_DATABASE AURORA_SECRET_ARN; do
             test -n "${!name:-}" || { echo "Missing staging value: $name" >&2; exit 1; }
           done
-          aws s3api head-bucket --bucket "$AWS_MEDIA_BUCKET"
           OLD_TASK_ARN=$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)
           echo "OLD_TASK_ARN=$OLD_TASK_ARN" >> "$GITHUB_ENV"
           echo "Rollback task definition: $OLD_TASK_ARN"
