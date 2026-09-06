@@ -43,6 +43,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Verify no protected Supabase runtime dependency
+        run: bash scripts/aws/check-phase4-supabase-runtime.sh
       - name: Use Node 22
         uses: actions/setup-node@v4
         with:
