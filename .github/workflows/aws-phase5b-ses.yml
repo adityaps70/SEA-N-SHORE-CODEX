@@ -38,7 +38,7 @@ jobs:
           test "$GITHUB_REF_NAME" = "feat/aws-native-phase-0-1"
           PHASE5B_ACTION="$(tr -d '[:space:]' < scripts/aws/phase5b-action.txt)"
           case "$PHASE5B_ACTION" in
-            discover|ensure-identity|verify-ready|cutover|verify-cutover|rollback-cognito) ;;
+            discover|ensure-identity|request-production-access|verify-ready|cutover|verify-cutover|rollback-cognito) ;;
             *) echo "Unsupported Phase 5B action: $PHASE5B_ACTION" >&2; exit 2 ;;
           esac
           echo "value=$PHASE5B_ACTION" >> "$GITHUB_OUTPUT"
