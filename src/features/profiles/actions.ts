@@ -130,6 +130,7 @@ export async function updateProfile(
   const preliminary = onboardingSchema.safeParse(rawValues)
   if (!preliminary.success) return validationFailure(previousState, formData, preliminary.error)
 
+  const user = await requireAwsUser()
   const profile = await getAwsOwnProfile()
   if (!profile) {
     return failureState(previousState, formData, {
@@ -141,7 +142,7 @@ export async function updateProfile(
   if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
   try {
-    await updateProfileWithAurora(profile.id, parsed.data)
+    await updateProfileWithAurora(user.id, parsed.data)
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
