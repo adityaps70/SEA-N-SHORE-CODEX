@@ -5,8 +5,9 @@ import type { FeedRepository } from './repository'
 import { buildFeedCursorFilter, feedNextCursor } from './queries'
 
 const viewerId = '11111111-1111-4111-8111-111111111111'
+const connectionId = '22222222-2222-4222-8222-222222222222'
 
-function row(id: string, createdAt: string): FeedPostRow {
+function row(id: string, createdAt: string, authorId = connectionId): FeedPostRow {
   return {
     id,
     category: 'technical_discussion',
@@ -15,9 +16,9 @@ function row(id: string, createdAt: string): FeedPostRow {
     created_at: createdAt,
     updated_at: createdAt,
     profiles: {
-      id: '22222222-2222-4222-8222-222222222222',
-      slug: 'captain-example',
-      full_name: 'Captain Example',
+      id: authorId,
+      slug: authorId === viewerId ? 'viewer' : 'captain-example',
+      full_name: authorId === viewerId ? 'Viewer Example' : 'Captain Example',
       avatar_path: null,
       headline: 'Master Mariner',
       maritime_profiles: { rank: 'Master', current_company: 'Example Shipping' },
@@ -92,6 +93,28 @@ describe('Aurora feed queries', () => {
     expect(repository.getViewerState).toHaveBeenCalledWith(viewerId, [rows[0].id])
     expect(page.posts[0].viewerLiked).toBe(true)
     expect(page.nextCursor).toEqual({ createdAt: rows[0].created_at, id: rows[0].id })
+  })
+
+  it('keeps the viewer newest post ahead of preferred connections in the all feed', async () => {
+    const ownPost = row('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-06T20:30:00.000Z', viewerId)
+    const connectionPost = row('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-09-06T20:29:00.000Z', connectionId)
+    const rows = [ownPost, connectionPost]
+    const repository = {
+      listFeedRows: vi.fn(async () => rows),
+      getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
+      getComments: vi.fn(async () => []),
+    } as unknown as FeedRepository
+    const { createFeedQueries } = await import('./queries')
+    const queries = createFeedQueries({
+      requireUser: async () => ({ id: viewerId, cognitoSub: 'sub', email: null }),
+      repository,
+      getPreferredAuthorIds: vi.fn(async () => [connectionId]),
+      resolveMediaUrls: vi.fn(async () => new Map()),
+    })
+
+    const page = await queries.getFeedPage({ limit: 20 })
+
+    expect(page.posts.map((post) => post.id)).toEqual([ownPost.id, connectionPost.id])
   })
 
   it('loads saved posts through the authenticated viewer and marks them saved after hydration', async () => {
