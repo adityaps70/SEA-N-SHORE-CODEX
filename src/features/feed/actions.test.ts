@@ -30,6 +30,7 @@ vi.mock('@/features/auth/aws-queries', () => {
   }
 })
 vi.mock('./media', () => ({
+  resolveFeedMediaUrls: vi.fn(async () => new Map()),
   uploadFeedImage: vi.fn(async () => '11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/image.jpg'),
   removeFeedImage: vi.fn(async () => undefined),
 }))
