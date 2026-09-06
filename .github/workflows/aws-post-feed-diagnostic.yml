@@ -22,8 +22,6 @@ jobs:
       ECS_SERVICE: sea-n-shore-staging-web
       ECS_CONTAINER_NAME: web
       LOG_GROUP: /ecs/sea-n-shore-staging/web
-      ECS_TASK_ROLE: sea-n-shore-staging-ecs-task
-      ECS_MEDIA_POLICY: sea-n-shore-staging-ecs-task-media
     steps:
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -40,28 +38,13 @@ jobs:
           echo "LIVE_TASK_ROLE=$(jq -r '.taskRoleArn' /tmp/task.json)"
           echo "AWS_MEDIA_BUCKET=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name=="AWS_MEDIA_BUCKET") | .value' /tmp/task.json)"
 
-      - name: Inspect live ECS media inline policy
-        run: |
-          set +e
-          aws iam get-role-policy --role-name "$ECS_TASK_ROLE" --policy-name "$ECS_MEDIA_POLICY" --output json > /tmp/policy.json 2>/tmp/policy.err
-          CODE=$?
-          set -e
-          echo "IAM_READ_EXIT=$CODE"
-          if [ "$CODE" -ne 0 ]; then
-            cat /tmp/policy.err
-            exit 0
-          fi
-          jq '{RoleName,PolicyName,PolicyDocument}' /tmp/policy.json
-          ACTIONS=$(jq -r '.PolicyDocument.Statement[] | select(.Sid=="PostMediaObjects") | .Action[]?' /tmp/policy.json | sort | tr '\n' ' ')
-          RESOURCE=$(jq -r '.PolicyDocument.Statement[] | select(.Sid=="PostMediaObjects") | .Resource' /tmp/policy.json)
-          echo "MEDIA_ACTIONS=$ACTIONS"
-          echo "MEDIA_RESOURCE=$RESOURCE"
-
-      - name: Review post-fix application errors
+      - name: Review recent publication events
         run: |
           set -euo pipefail
-          START_MS=1788723280000
+          START_MS=$(( ($(date +%s) - 1800) * 1000 ))
           aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" --output json > /tmp/logs.json
-          echo "POST_FIX_LOG_EVENTS=$(jq '.events | length' /tmp/logs.json)"
-          echo "=== POST-FIX STRONG ERROR MATCHES ==="
-          jq -r '.events[].message' /tmp/logs.json | grep -Eai 'error|exception|unhandled|fatal|HTTP[[:space:]]+[45][0-9][0-9]|AccessDenied|ECONN|ETIMEDOUT|upload|publish' | tail -n 80 || true
+          echo "RECENT_LOG_EVENTS=$(jq '.events | length' /tmp/logs.json)"
+          echo "=== FEED PUBLICATION EVENTS ==="
+          jq -r '.events[].message' /tmp/logs.json | grep -E '\[feed_(publish|media)_' | tail -n 50 || true
+          echo "=== RELATED ERROR EVENTS ==="
+          jq -r '.events[].message' /tmp/logs.json | grep -Eai 'AccessDenied|NoSuchKey|SignatureDoesNotMatch|feed_media|feed_publish|HTTP[[:space:]]+[45][0-9][0-9]|image|s3' | tail -n 80 || true
