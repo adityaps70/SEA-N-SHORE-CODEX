@@ -33,6 +33,13 @@ account_id() {
   aws sts get-caller-identity --query Account --output text
 }
 
+ses_production_access() {
+  aws sesv2 get-account \
+    --region "$AWS_REGION" \
+    --query 'ProductionAccessEnabled' \
+    --output text
+}
+
 verify_account() {
   local actual
   actual="$(account_id)"
@@ -191,6 +198,13 @@ ensure_cognito_policy() {
 
 verify_ready() {
   local pool_id="$1"
+  local production_access
+  production_access="$(ses_production_access)"
+  if [[ "$production_access" != "True" && "$production_access" != "true" ]]; then
+    echo "PHASE5B_NOT_READY=ProductionAccessEnabled" >&2
+    exit 1
+  fi
+
   "$READINESS_SCRIPT" --require-cutover-ready
 
   aws sesv2 get-configuration-set \
