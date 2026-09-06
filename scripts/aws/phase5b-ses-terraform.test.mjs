@@ -7,6 +7,7 @@ const emailTf = fs.readFileSync(new URL('infra/aws/app/email.tf', repoRoot), 'ut
 const authTf = fs.readFileSync(new URL('infra/aws/app/auth.tf', repoRoot), 'utf8')
 const varsTf = fs.readFileSync(new URL('infra/aws/app/aws-native-variables.tf', repoRoot), 'utf8')
 const tfvarsExample = fs.readFileSync(new URL('infra/aws/app/terraform.tfvars.example', repoRoot), 'utf8')
+const bootstrapTf = fs.readFileSync(new URL('infra/aws/bootstrap/main.tf', repoRoot), 'utf8')
 
 test('Phase 5B defines the approved SES domain identity with 2048-bit Easy DKIM', () => {
   assert.match(emailTf, /resource "aws_sesv2_email_identity" "transactional_domain"/)
@@ -23,6 +24,12 @@ test('Phase 5B grants only Cognito-scoped SES sending authorization', () => {
   assert.match(emailTf, /SES:SendRawEmail/)
   assert.match(emailTf, /aws_cognito_user_pool\.app\.arn/)
   assert.doesNotMatch(emailTf, /ses:\*/i)
+})
+
+test('Phase 5B ops role may read SES account state without broad SES administration', () => {
+  assert.match(bootstrapTf, /Sid\s*=\s*"Phase5bSesAccountRead"/)
+  assert.match(bootstrapTf, /"ses:GetAccount"/)
+  assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
 })
 
 test('Phase 5B email variables default to the approved domain and sender with cutover disabled', () => {
