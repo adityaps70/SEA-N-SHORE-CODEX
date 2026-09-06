@@ -7,6 +7,7 @@ import type { NetworkNotification } from '@/features/notifications/types'
 
 const destinations = [
   { href: '/home', label: 'Home' },
+  { href: '/saved', label: 'Saved' },
   { href: '/network', label: 'My Network' },
   { href: '/jobs', label: 'Jobs' },
   { href: '/community', label: 'Community' },
