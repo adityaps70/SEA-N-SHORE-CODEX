@@ -2,7 +2,9 @@
 
 import { redirect } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { getAwsOwnProfile } from './aws-queries'
 import { completeOnboardingWithAurora } from './onboarding-service'
+import { updateProfileWithAurora } from './profile-edit-service'
 import { onboardingSchema } from './schemas'
 import { PROFILE_TYPES, type ProfileType } from './types'
 
@@ -88,16 +90,18 @@ function isUniqueViolation(error: unknown) {
   return Boolean(error && typeof error === 'object' && 'code' in error && error.code === '23505')
 }
 
+function validationFailure(previousState: ProfileActionState, formData: FormData, error: { flatten: () => { fieldErrors: unknown } }) {
+  return failureState(previousState, formData, {
+    fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
+  })
+}
+
 export async function completeOnboarding(
   previousState: ProfileActionState,
   formData: FormData,
 ): Promise<ProfileActionState> {
   const parsed = onboardingSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) {
-    return failureState(previousState, formData, {
-      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
-    })
-  }
+  if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
   const user = await requireAwsUser()
   const data = parsed.data
@@ -116,4 +120,38 @@ export async function completeOnboarding(
   }
 
   redirect(data.profileType === 'company' ? '/company/setup' : '/home')
+}
+
+export async function updateProfile(
+  previousState: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const rawValues = Object.fromEntries(formData)
+  const preliminary = onboardingSchema.safeParse(rawValues)
+  if (!preliminary.success) return validationFailure(previousState, formData, preliminary.error)
+
+  const profile = await getAwsOwnProfile()
+  if (!profile) {
+    return failureState(previousState, formData, {
+      error: 'We could not load your profile. Please refresh and try again.',
+    })
+  }
+
+  const parsed = onboardingSchema.safeParse({ ...rawValues, profileType: profile.profileType })
+  if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
+
+  try {
+    await updateProfileWithAurora(profile.id, parsed.data)
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return failureState(previousState, formData, {
+        fieldErrors: { slug: ['That profile address is already in use.'] },
+      })
+    }
+    return failureState(previousState, formData, {
+      error: 'We could not save your profile. Your entries are still here; please try again.',
+    })
+  }
+
+  redirect('/profile')
 }
