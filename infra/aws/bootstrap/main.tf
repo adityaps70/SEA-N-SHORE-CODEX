@@ -65,6 +65,12 @@ variable "ecr_repository_name" {
   default     = "sea-n-shore"
 }
 
+variable "phase5b_cognito_user_pool_id" {
+  description = "Exact staging Cognito user pool ID allowed for Phase 5B discovery reads."
+  type        = string
+  default     = "ap-south-1_FKyi5lJsY"
+}
+
 variable "existing_github_oidc_provider_arn" {
   description = "Existing GitHub Actions OIDC provider ARN. Leave blank to create one."
   type        = string
@@ -269,6 +275,12 @@ resource "aws_iam_role_policy" "github_deploy" {
         Effect   = "Allow"
         Action   = ["ses:GetAccount"]
         Resource = "*"
+      },
+      {
+        Sid      = "Phase5bCognitoRead"
+        Effect   = "Allow"
+        Action   = ["cognito-idp:DescribeUserPool"]
+        Resource = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/${var.phase5b_cognito_user_pool_id}"
       },
       {
         Sid      = "DiscoverBootstrapInstance"
