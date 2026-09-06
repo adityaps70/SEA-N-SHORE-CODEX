@@ -9,4 +9,14 @@ describe('Next.js server action upload envelope', () => {
       bodySizeLimit: '6mb',
     })
   })
+
+  it('allows signed reads from the private staging media bucket', () => {
+    expect(nextConfig.images?.remotePatterns).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        protocol: 'https',
+        hostname: 'sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com',
+        pathname: '/**',
+      }),
+    ]))
+  })
 })
