@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 
 const repoRoot = new URL('../../', import.meta.url)
 const emailTf = fs.readFileSync(new URL('infra/aws/app/email.tf', repoRoot), 'utf8')
+const authTf = fs.readFileSync(new URL('infra/aws/app/auth.tf', repoRoot), 'utf8')
 const varsTf = fs.readFileSync(new URL('infra/aws/app/aws-native-variables.tf', repoRoot), 'utf8')
 const tfvarsExample = fs.readFileSync(new URL('infra/aws/app/terraform.tfvars.example', repoRoot), 'utf8')
 
@@ -34,4 +35,28 @@ test('Phase 5B email variables default to the approved domain and sender with cu
   assert.match(tfvarsExample, /ses_from_address\s*=\s*"no-reply@seaandshore\.in"/)
   assert.match(tfvarsExample, /ses_from_display_name\s*=\s*"Sea N Shore"/)
   assert.match(tfvarsExample, /enable_cognito_ses_email\s*=\s*false/)
+})
+
+test('Phase 5B keeps Cognito default delivery until the explicit SES cutover flag is enabled', () => {
+  assert.match(authTf, /email_configuration\s*\{/)
+  assert.match(
+    authTf,
+    /email_sending_account\s*=\s*var\.enable_cognito_ses_email\s*\?\s*"DEVELOPER"\s*:\s*"COGNITO_DEFAULT"/,
+  )
+  assert.match(
+    authTf,
+    /source_arn\s*=\s*var\.enable_cognito_ses_email\s*\?\s*aws_sesv2_email_identity\.transactional_domain\.arn\s*:\s*null/,
+  )
+  assert.match(
+    authTf,
+    /from_email_address\s*=\s*var\.enable_cognito_ses_email\s*\?\s*"\$\{var\.ses_from_display_name\} <\$\{var\.ses_from_address\}>"\s*:\s*null/,
+  )
+  assert.match(
+    authTf,
+    /reply_to_email_address\s*=\s*var\.enable_cognito_ses_email\s*\?\s*var\.ses_from_address\s*:\s*null/,
+  )
+  assert.match(
+    authTf,
+    /configuration_set\s*=\s*var\.enable_cognito_ses_email\s*\?\s*aws_sesv2_configuration_set\.transactional\.configuration_set_name\s*:\s*null/,
+  )
 })
