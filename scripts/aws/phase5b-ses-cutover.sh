@@ -12,6 +12,8 @@ COGNITO_EMAIL_TARGET="EmailSendingAccount=DEVELOPER"
 SES_CONFIGURATION_SET="${SES_CONFIGURATION_SET:-sea-n-shore-staging-transactional}"
 SES_POLICY_NAME="${SES_POLICY_NAME:-sea-n-shore-staging-cognito-sender}"
 COGNITO_USER_POOL_NAME="${COGNITO_USER_POOL_NAME:-sea-n-shore-staging-users}"
+ECS_CLUSTER_NAME="${ECS_CLUSTER_NAME:-sea-n-shore-staging}"
+ECS_SERVICE_NAME="${ECS_SERVICE_NAME:-sea-n-shore-staging-web}"
 READINESS_SCRIPT="${READINESS_SCRIPT:-scripts/aws/phase5b-ses-readiness.sh}"
 BEFORE_POOL_FILE="${PHASE5B_BEFORE_POOL_FILE:-/tmp/phase5b-user-pool-before.json}"
 BEFORE_EMAIL_FILE="${PHASE5B_BEFORE_EMAIL_FILE:-/tmp/phase5b-email-before.json}"
@@ -53,17 +55,33 @@ verify_account() {
   fi
 }
 
+resolve_pool_id_from_ecs() {
+  local task_definition_arn
+  task_definition_arn="$(aws ecs describe-services \
+    --region "$AWS_REGION" \
+    --cluster "$ECS_CLUSTER_NAME" \
+    --services "$ECS_SERVICE_NAME" \
+    --query 'services[0].taskDefinition' \
+    --output text)"
+
+  if [[ -z "$task_definition_arn" || "$task_definition_arn" == "None" ]]; then
+    return 1
+  fi
+
+  aws ecs describe-task-definition \
+    --region "$AWS_REGION" \
+    --task-definition "$task_definition_arn" \
+    --output json \
+    | jq -r '[.taskDefinition.containerDefinitions[].environment[]? | select(.name == "AWS_COGNITO_USER_POOL_ID") | .value][0] // empty'
+}
+
 resolve_pool_id() {
   if [[ -n "${COGNITO_USER_POOL_ID:-}" ]]; then
     printf '%s\n' "$COGNITO_USER_POOL_ID"
     return
   fi
 
-  aws cognito-idp list-user-pools \
-    --region "$AWS_REGION" \
-    --max-results 60 \
-    --query "UserPools[?Name=='${COGNITO_USER_POOL_NAME}'].Id | [0]" \
-    --output text
+  resolve_pool_id_from_ecs
 }
 
 identity_arn() {
@@ -367,6 +385,7 @@ main() {
     echo "PHASE5B_COGNITO_POOL_NOT_FOUND" >&2
     exit 1
   fi
+  export COGNITO_USER_POOL_ID="$pool_id"
 
   case "$action" in
     discover)
