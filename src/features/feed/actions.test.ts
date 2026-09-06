@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { removeFeedImage, uploadFeedImage } from './media'
 import {
   addPostCommentWithAurora,
   createPollPostWithAurora,
@@ -28,6 +29,10 @@ vi.mock('@/features/auth/aws-queries', () => {
     getAwsVerifiedUser: vi.fn(async () => user),
   }
 })
+vi.mock('./media', () => ({
+  uploadFeedImage: vi.fn(async () => '11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/image.jpg'),
+  removeFeedImage: vi.fn(async () => undefined),
+}))
 vi.mock('./service', () => ({
   createStandardPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   createPollPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
@@ -40,7 +45,10 @@ vi.mock('./service', () => ({
 const viewerId = '11111111-1111-4111-8111-111111111111'
 const postId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const optionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const storagePath = `${viewerId}/${postId}/image.jpg`
 const mockedRequireAwsUser = vi.mocked(requireAwsUser)
+const mockedUploadFeedImage = vi.mocked(uploadFeedImage)
+const mockedRemoveFeedImage = vi.mocked(removeFeedImage)
 const mockedCreateStandardPost = vi.mocked(createStandardPostWithAurora)
 const mockedCreatePollPost = vi.mocked(createPollPostWithAurora)
 const mockedSetLiked = vi.mocked(setPostLikedWithAurora)
@@ -53,6 +61,12 @@ function basePostForm() {
   formData.set('category', 'technical_discussion')
   formData.set('mode', 'standard')
   formData.set('body', 'A useful maritime technical lesson.')
+  return formData
+}
+
+function postFormWithImage() {
+  const formData = basePostForm()
+  formData.set('media', new File(['image'], 'diagram.jpg', { type: 'image/jpeg' }))
   return formData
 }
 
@@ -118,6 +132,30 @@ describe('feed actions', () => {
       category: 'technical_discussion',
       body: 'A useful maritime technical lesson.',
     })
+  })
+
+  it('uploads media for the permanent profile and removes it when Aurora post creation fails', async () => {
+    mockedCreateStandardPost.mockRejectedValueOnce(new Error('post_create_failed'))
+
+    const state = await createPost({}, postFormWithImage())
+
+    expect(mockedUploadFeedImage).toHaveBeenCalledWith(expect.objectContaining({
+      profileId: viewerId,
+      file: expect.any(File),
+      extension: 'jpg',
+    }))
+    expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
+    expect(state.error).toBe('We could not attach your image, so the post was not published.')
+  })
+
+  it('keeps the original publication error when compensating media cleanup also fails', async () => {
+    mockedCreateStandardPost.mockRejectedValueOnce(new Error('post_create_failed'))
+    mockedRemoveFeedImage.mockRejectedValueOnce(new Error('s3_delete_failed'))
+
+    const state = await createPost({}, postFormWithImage())
+
+    expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
+    expect(state.error).toBe('We could not attach your image, so the post was not published.')
   })
 
   it('creates a poll through Aurora using normalized options and the permanent profile UUID', async () => {
