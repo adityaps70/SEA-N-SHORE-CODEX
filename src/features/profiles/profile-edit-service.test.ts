@@ -4,6 +4,24 @@ import { createProfileEditService } from './profile-edit-service'
 
 const actorId = '11111111-1111-4111-8111-111111111111'
 
+type RepositoryDouble = {
+  updateCompletedProfile: ReturnType<typeof vi.fn>
+  upsertMaritimeProfile: ReturnType<typeof vi.fn>
+  deleteMaritimeProfile: ReturnType<typeof vi.fn>
+  replaceSkills: ReturnType<typeof vi.fn>
+}
+
+type TransactionCallback = (repository: RepositoryDouble) => Promise<unknown>
+
+function repositoryDouble(updateResult = true): RepositoryDouble {
+  return {
+    updateCompletedProfile: vi.fn(async () => updateResult),
+    upsertMaritimeProfile: vi.fn(async () => undefined),
+    deleteMaritimeProfile: vi.fn(async () => undefined),
+    replaceSkills: vi.fn(async () => undefined),
+  }
+}
+
 function input(profileType: OnboardingInput['profileType'] = 'seafarer'): OnboardingInput {
   return {
     profileType,
@@ -27,13 +45,8 @@ function input(profileType: OnboardingInput['profileType'] = 'seafarer'): Onboar
 
 describe('completed profile edit service', () => {
   it('updates a completed maritime profile and skills in one transaction', async () => {
-    const repository = {
-      updateCompletedProfile: vi.fn(async () => true),
-      upsertMaritimeProfile: vi.fn(async () => undefined),
-      deleteMaritimeProfile: vi.fn(async () => undefined),
-      replaceSkills: vi.fn(async () => undefined),
-    }
-    const withTransaction = vi.fn(async (fn: (repository: typeof repository) => Promise<unknown>) => fn(repository))
+    const repository = repositoryDouble()
+    const withTransaction = vi.fn(async (fn: TransactionCallback) => fn(repository))
     const service = createProfileEditService({ withTransaction })
     const data = input()
 
@@ -46,14 +59,9 @@ describe('completed profile edit service', () => {
   })
 
   it('removes stale maritime details when the stored profile type is non-maritime', async () => {
-    const repository = {
-      updateCompletedProfile: vi.fn(async () => true),
-      upsertMaritimeProfile: vi.fn(async () => undefined),
-      deleteMaritimeProfile: vi.fn(async () => undefined),
-      replaceSkills: vi.fn(async () => undefined),
-    }
+    const repository = repositoryDouble()
     const service = createProfileEditService({
-      withTransaction: async (fn) => fn(repository),
+      withTransaction: async (fn: TransactionCallback) => fn(repository),
     })
     const data = input('mentor')
 
@@ -64,14 +72,9 @@ describe('completed profile edit service', () => {
   })
 
   it('fails closed when the actor is not an active completed profile', async () => {
-    const repository = {
-      updateCompletedProfile: vi.fn(async () => false),
-      upsertMaritimeProfile: vi.fn(async () => undefined),
-      deleteMaritimeProfile: vi.fn(async () => undefined),
-      replaceSkills: vi.fn(async () => undefined),
-    }
+    const repository = repositoryDouble(false)
     const service = createProfileEditService({
-      withTransaction: async (fn) => fn(repository),
+      withTransaction: async (fn: TransactionCallback) => fn(repository),
     })
 
     await expect(service.updateProfile(actorId, input())).rejects.toThrow('profile_edit_unavailable')
