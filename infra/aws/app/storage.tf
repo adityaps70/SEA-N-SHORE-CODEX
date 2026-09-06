@@ -50,6 +50,27 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "app" {
   }
 }
 
+resource "aws_iam_role_policy" "ecs_task_media" {
+  name = "${local.name_prefix}-ecs-task-media"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "PostMediaObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.app["media"].arn}/*"
+      }
+    ]
+  })
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "migration_backup" {
   bucket = aws_s3_bucket.app["migration_backup"].id
 
