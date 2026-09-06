@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const send = vi.fn<(command: unknown) => Promise<unknown>>(async () => ({}))
-const getSignedUrl = vi.fn<(
-  client: unknown,
-  command: unknown,
-  options: { expiresIn: number },
-) => Promise<string>>(async () => 'https://signed.example/media')
+const { send, getSignedUrl } = vi.hoisted(() => ({
+  send: vi.fn<(command: unknown) => Promise<unknown>>(async () => ({})),
+  getSignedUrl: vi.fn<(
+    client: unknown,
+    command: unknown,
+    options: { expiresIn: number },
+  ) => Promise<string>>(async () => 'https://signed.example/media'),
+}))
 
 vi.mock('@aws-sdk/client-s3', () => {
   class Command {
