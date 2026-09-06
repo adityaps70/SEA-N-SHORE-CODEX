@@ -32,6 +32,21 @@ test('Phase 5B ops role may read SES account state without broad SES administrat
   assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
 })
 
+test('Phase 5B ops role may read only the approved SES identity and configuration set', () => {
+  assert.match(bootstrapTf, /Sid\s*=\s*"Phase5bSesResourceRead"/)
+  assert.match(bootstrapTf, /"ses:GetEmailIdentity"/)
+  assert.match(bootstrapTf, /"ses:GetConfigurationSet"/)
+  assert.match(
+    bootstrapTf,
+    /arn:aws:ses:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:identity\/seaandshore\.in/,
+  )
+  assert.match(
+    bootstrapTf,
+    /arn:aws:ses:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:configuration-set\/sea-n-shore-staging-transactional/,
+  )
+  assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
+})
+
 test('Phase 5B ops role may describe only the discovered staging Cognito user pool', () => {
   assert.match(
     bootstrapTf,
