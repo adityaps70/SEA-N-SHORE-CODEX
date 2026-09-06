@@ -277,6 +277,18 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "*"
       },
       {
+        Sid    = "Phase5bSesResourceRead"
+        Effect = "Allow"
+        Action = [
+          "ses:GetEmailIdentity",
+          "ses:GetConfigurationSet"
+        ]
+        Resource = [
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seaandshore.in",
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
+        ]
+      },
+      {
         Sid      = "Phase5bCognitoRead"
         Effect   = "Allow"
         Action   = ["cognito-idp:DescribeUserPool"]
@@ -338,7 +350,7 @@ resource "aws_budgets_budget" "monthly" {
   notification {
     comparison_operator        = "GREATER_THAN"
     threshold                  = 100
-    threshold_type             = "PERCENTAGE"
+    threshold_type             = "ACTUAL"
     notification_type          = "ACTUAL"
     subscriber_email_addresses = [var.billing_email]
   }
