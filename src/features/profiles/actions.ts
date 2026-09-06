@@ -126,10 +126,6 @@ export async function updateProfile(
   previousState: ProfileActionState,
   formData: FormData,
 ): Promise<ProfileActionState> {
-  const rawValues = Object.fromEntries(formData)
-  const preliminary = onboardingSchema.safeParse(rawValues)
-  if (!preliminary.success) return validationFailure(previousState, formData, preliminary.error)
-
   const user = await requireAwsUser()
   const profile = await getAwsOwnProfile()
   if (!profile) {
@@ -138,6 +134,7 @@ export async function updateProfile(
     })
   }
 
+  const rawValues = Object.fromEntries(formData)
   const parsed = onboardingSchema.safeParse({ ...rawValues, profileType: profile.profileType })
   if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
