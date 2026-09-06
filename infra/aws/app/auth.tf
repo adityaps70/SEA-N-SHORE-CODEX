@@ -29,6 +29,14 @@ resource "aws_cognito_user_pool" "app" {
     attributes_require_verification_before_update = ["email"]
   }
 
+  email_configuration {
+    email_sending_account  = var.enable_cognito_ses_email ? "DEVELOPER" : "COGNITO_DEFAULT"
+    source_arn             = var.enable_cognito_ses_email ? aws_sesv2_email_identity.transactional_domain.arn : null
+    from_email_address     = var.enable_cognito_ses_email ? "${var.ses_from_display_name} <${var.ses_from_address}>" : null
+    reply_to_email_address = var.enable_cognito_ses_email ? var.ses_from_address : null
+    configuration_set      = var.enable_cognito_ses_email ? aws_sesv2_configuration_set.transactional.configuration_set_name : null
+  }
+
   tags = local.common_tags
 }
 
