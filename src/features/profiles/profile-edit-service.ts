@@ -5,7 +5,7 @@ import {
 } from './onboarding-repository'
 import type { OnboardingInput } from './schemas'
 
-type ProfileEditRepository = Pick<
+export type ProfileEditRepository = Pick<
   OnboardingRepository,
   'updateCompletedProfile' | 'upsertMaritimeProfile' | 'deleteMaritimeProfile' | 'replaceSkills'
 >
