@@ -21,6 +21,11 @@ const nextConfig: NextConfig = {
         hostname: 'rrxyiwajrzcepyvscidh.supabase.co',
         pathname: '/storage/v1/object/sign/post-media/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com',
+        pathname: '/**',
+      },
     ],
   },
   async headers() {
