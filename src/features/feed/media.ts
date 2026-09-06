@@ -19,6 +19,11 @@ export async function resolveFeedMediaUrls(paths: string[]): Promise<Map<string,
   return urls
 }
 
+function safeErrorName(error: unknown): string {
+  const name = error instanceof Error ? error.name : ''
+  return /^[A-Za-z0-9_.-]{1,80}$/.test(name) ? name : 'UnknownError'
+}
+
 export async function uploadFeedImage(input: {
   profileId: string
   postId: string
@@ -34,7 +39,10 @@ export async function uploadFeedImage(input: {
       body,
       contentType: input.file.type,
     })
-  } catch {
+  } catch (error) {
+    console.error('[feed_media_upload_failed]', {
+      errorName: safeErrorName(error),
+    })
     throw new Error('feed_media_upload_failed')
   }
 
