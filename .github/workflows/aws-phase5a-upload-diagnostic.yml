@@ -1,0 +1,49 @@
+name: AWS Phase 5A Upload Diagnostic
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-phase5a-upload-diagnostic.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      LOG_GROUP: /ecs/sea-n-shore-staging/web
+    steps:
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Capture recent upload failure logs
+        run: |
+          set -euo pipefail
+          START_MS=$(( ( $(date +%s) - 3600 ) * 1000 ))
+          aws logs filter-log-events \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP" \
+            --start-time "$START_MS" \
+            --output json > /tmp/events.json
+
+          echo "=== RECENT APPLICATION LOGS ==="
+          jq -r '.events[].message' /tmp/events.json \
+            | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+            | tail -n 250
+
+          echo "=== ERROR-LIKE EVENTS ==="
+          jq -r '.events[].message' /tmp/events.json \
+            | grep -Eai '527308963|error|exception|AccessDenied|S3|PutObject|Body exceeded|request entity|payload|server action|failed' \
+            | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+            | tail -n 100 \
+            || true
