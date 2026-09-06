@@ -15,11 +15,17 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
+      ECS_CLUSTER: sea-n-shore-staging
+      ECS_SERVICE: sea-n-shore-staging-web
+      ECS_CONTAINER_NAME: web
       LOG_GROUP: /ecs/sea-n-shore-staging/web
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -29,10 +35,63 @@ jobs:
       - name: Review recent application logs
         run: |
           set -euo pipefail
-          START_MS=$(( ($(date +%s) - 1800) * 1000 ))
+          START_MS=$(( ($(date +%s) - 3600) * 1000 ))
           aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" --output json > /tmp/logs.json
           echo "RECENT_LOG_EVENTS=$(jq '.events | length' /tmp/logs.json)"
-          echo "=== RECENT APPLICATION MESSAGES ==="
-          jq -r '.events[].message' /tmp/logs.json | tail -n 120
           echo "=== STRONG ERROR MATCHES ==="
           jq -r '.events[].message' /tmp/logs.json | grep -Eai 'error|exception|unhandled|fatal|HTTP[[:space:]]+[45][0-9][0-9]|Body exceeded|AccessDenied|ECONN|ETIMEDOUT|upload|publish' | tail -n 60 || true
+
+      - name: Query recent Aurora posts through bootstrap
+        run: |
+          set -euo pipefail
+
+          TASK_ARN=$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)
+          aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$TASK_ARN" --query taskDefinition --output json > /tmp/task.json
+
+          HOST=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name=="AURORA_HOST") | .value' /tmp/task.json)
+          PORT=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name=="AURORA_PORT") | .value' /tmp/task.json)
+          DATABASE=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name=="AURORA_DATABASE") | .value' /tmp/task.json)
+          USER_REF=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.secrets // [])[] | select(.name=="AURORA_USER") | .valueFrom' /tmp/task.json)
+          PASSWORD_REF=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name==$NAME) | (.secrets // [])[] | select(.name=="AURORA_PASSWORD") | .valueFrom' /tmp/task.json)
+
+          USER_SECRET_ARN="${USER_REF%:username::}"
+          PASSWORD_SECRET_ARN="${PASSWORD_REF%:password::}"
+          test "$USER_SECRET_ARN" = "$PASSWORD_SECRET_ARN"
+
+          INSTANCE_ID=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" = "None" ]; then
+            echo "BOOTSTRAP_UNAVAILABLE"
+            exit 0
+          fi
+
+          SCRIPT_B64=$(base64 -w0 scripts/aws/query-recent-posts.mjs)
+          REMOTE_COMMAND=$(printf '%s\n' \
+            'set -euo pipefail' \
+            'cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1' \
+            "printf '%s' '$SCRIPT_B64' | base64 -d > .tmp-query-recent-posts.mjs" \
+            "SECRET_JSON=\$(aws secretsmanager get-secret-value --region '$AWS_REGION' --secret-id '$USER_SECRET_ARN' --query SecretString --output text)" \
+            "export AURORA_HOST='$HOST'" \
+            "export AURORA_PORT='$PORT'" \
+            "export AURORA_DATABASE='$DATABASE'" \
+            'export AURORA_USER=$(printf "%s" "$SECRET_JSON" | jq -r .username)' \
+            'export AURORA_PASSWORD=$(printf "%s" "$SECRET_JSON" | jq -r .password)' \
+            'node .tmp-query-recent-posts.mjs' \
+            'rm -f .tmp-query-recent-posts.mjs')
+
+          jq -n --arg command "$REMOTE_COMMAND" '{commands:[$command]}' > /tmp/ssm-params.json
+          COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore recent post diagnostic" --parameters file:///tmp/ssm-params.json --query 'Command.CommandId' --output text)
+
+          STATUS=Pending
+          for attempt in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in
+              Pending|InProgress|Delayed) sleep 3 ;;
+              *) break ;;
+            esac
+          done
+
+          aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > /tmp/ssm.json
+          echo "SSM_STATUS=$(jq -r '.Status' /tmp/ssm.json)"
+          jq -r '.StandardOutputContent' /tmp/ssm.json
+          STDERR=$(jq -r '.StandardErrorContent // empty' /tmp/ssm.json)
+          if [ -n "$STDERR" ]; then printf '%s\n' "$STDERR" | tail -n 20; fi
