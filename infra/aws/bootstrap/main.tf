@@ -256,6 +256,15 @@ resource "aws_iam_role_policy" "github_deploy" {
         ]
       },
       {
+        Sid      = "ReviewStagingApplicationLogs"
+        Effect   = "Allow"
+        Action   = ["logs:FilterLogEvents"]
+        Resource = [
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}/web",
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}/web:*"
+        ]
+      },
+      {
         Sid      = "DiscoverBootstrapInstance"
         Effect   = "Allow"
         Action   = ["ec2:DescribeInstances"]
