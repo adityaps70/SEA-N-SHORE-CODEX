@@ -5,7 +5,12 @@ import {
 } from './onboarding-repository'
 import type { OnboardingInput } from './schemas'
 
-type OnboardingTransaction = <T>(fn: (repository: OnboardingRepository) => Promise<T>) => Promise<T>
+type OnboardingServiceRepository = Pick<
+  OnboardingRepository,
+  'lockOnboardingProfile' | 'updateProfile' | 'upsertMaritimeProfile' | 'deleteMaritimeProfile' | 'replaceSkills' | 'finalizeOnboarding'
+>
+
+type OnboardingTransaction = <T>(fn: (repository: OnboardingServiceRepository) => Promise<T>) => Promise<T>
 
 function serviceError(code: string): never {
   throw new Error(code)
