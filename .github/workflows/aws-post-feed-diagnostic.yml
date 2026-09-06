@@ -1,0 +1,138 @@
+name: AWS Post Feed Diagnostic
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-post-feed-diagnostic.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+      LOG_GROUP: /ecs/sea-n-shore-staging/web
+
+    steps:
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Review recent application logs
+        run: |
+          set -euo pipefail
+          START_MS=$(( ($(date +%s) - 1800) * 1000 ))
+          aws logs filter-log-events \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP" \
+            --start-time "$START_MS" \
+            --output json > /tmp/logs.json
+          echo "RECENT_LOG_EVENTS=$(jq '.events | length' /tmp/logs.json)"
+          echo "=== RECENT STRONG ERRORS ==="
+          jq -r '.events[].message' /tmp/logs.json \
+            | grep -Eai 'error|exception|unhandled|fatal|HTTP[[:space:]]+[45][0-9][0-9]|Body exceeded|AccessDenied|ECONN|ETIMEDOUT|upload|publish' \
+            | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+            | tail -n 40 || true
+
+      - name: Resolve live Aurora connection references
+        id: runtime
+        run: |
+          set -euo pipefail
+          TASK_ARN=$(aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)
+          aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$TASK_ARN" --query taskDefinition --output json > /tmp/task.json
+          jq --arg NAME "$ECS_CONTAINER_NAME" -r '
+            .containerDefinitions[] | select(.name==$NAME) |
+            ((.environment // [])[] | select(.name=="AURORA_HOST") | "AURORA_HOST=" + .value),
+            ((.environment // [])[] | select(.name=="AURORA_PORT") | "AURORA_PORT=" + .value),
+            ((.environment // [])[] | select(.name=="AURORA_DATABASE") | "AURORA_DATABASE=" + .value),
+            ((.secrets // [])[] | select(.name=="AURORA_USER") | "AURORA_USER_REF=" + .valueFrom),
+            ((.secrets // [])[] | select(.name=="AURORA_PASSWORD") | "AURORA_PASSWORD_REF=" + .valueFrom)
+          ' /tmp/task.json > /tmp/runtime.env
+          cat /tmp/runtime.env >> "$GITHUB_ENV"
+          echo "LIVE_TASK_ARN=$TASK_ARN"
+
+      - name: Inspect recent Aurora post commits through bootstrap
+        run: |
+          set -euo pipefail
+          INSTANCE_ID=$(aws ec2 describe-instances \
+            --region "$AWS_REGION" \
+            --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          test -n "$INSTANCE_ID" && test "$INSTANCE_ID" != "None" || { echo "BOOTSTRAP_UNAVAILABLE"; exit 0; }
+
+          USER_SECRET_ARN="${AURORA_USER_REF%:username::}"
+          PASSWORD_SECRET_ARN="${AURORA_PASSWORD_REF%:password::}"
+          test "$USER_SECRET_ARN" = "$PASSWORD_SECRET_ARN" || { echo "AURORA_SECRET_REFERENCE_MISMATCH"; exit 0; }
+
+          COMMAND=$(cat <<EOF
+set -euo pipefail
+cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1
+SECRET_JSON=\$(aws secretsmanager get-secret-value --region '$AWS_REGION' --secret-id '$USER_SECRET_ARN' --query SecretString --output text 2>/dev/null || true)
+if [ -z "\$SECRET_JSON" ] || [ "\$SECRET_JSON" = "None" ]; then echo BOOTSTRAP_SECRET_READ_UNAVAILABLE; exit 0; fi
+export AURORA_HOST='$AURORA_HOST'
+export AURORA_PORT='$AURORA_PORT'
+export AURORA_DATABASE='$AURORA_DATABASE'
+export AURORA_USER=\$(jq -r '.username' <<<"\$SECRET_JSON")
+export AURORA_PASSWORD=\$(jq -r '.password' <<<"\$SECRET_JSON")
+export AURORA_SSL=true
+node --input-type=module <<'NODE'
+import pg from 'pg';
+const { Client } = pg;
+const client = new Client({
+  host: process.env.AURORA_HOST,
+  port: Number(process.env.AURORA_PORT),
+  database: process.env.AURORA_DATABASE,
+  user: process.env.AURORA_USER,
+  password: process.env.AURORA_PASSWORD,
+  ssl: { rejectUnauthorized: false },
+});
+await client.connect();
+const result = await client.query(`
+  select p.id,
+         p.created_at,
+         p.category::text as category,
+         length(p.body) as body_length,
+         exists(select 1 from public.post_media pm where pm.post_id = p.id) as has_media
+    from public.posts p
+   where p.created_at >= now() - interval '30 minutes'
+     and p.deleted_at is null
+   order by p.created_at desc
+   limit 10
+`);
+console.log('RECENT_AURORA_POST_COUNT=' + result.rows.length);
+for (const row of result.rows) {
+  console.log(JSON.stringify(row));
+}
+await client.end();
+NODE
+EOF
+)
+          jq -n --arg command "$COMMAND" '{commands:[$command]}' > /tmp/ssm-params.json
+          COMMAND_ID=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Sea N Shore post feed diagnostic" \
+            --parameters file:///tmp/ssm-params.json \
+            --query 'Command.CommandId' --output text)
+          for attempt in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Pending|InProgress|Delayed) sleep 3 ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > /tmp/ssm.json || true
+          echo "SSM_STATUS=$(jq -r '.Status // "unknown"' /tmp/ssm.json)"
+          jq -r '.StandardOutputContent // empty' /tmp/ssm.json
+          STDERR=$(jq -r '.StandardErrorContent // empty' /tmp/ssm.json)
+          if [ -n "$STDERR" ]; then echo "$STDERR" | tail -n 20; fi
