@@ -15,7 +15,7 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 10
+    timeout-minutes: 5
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       ECS_CLUSTER: sea-n-shore-staging
@@ -71,14 +71,15 @@ jobs:
             "export PGPORT='$PORT'" \
             "export PGDATABASE='$DATABASE'" \
             'export PGSSLMODE=require' \
+            'export PGCONNECT_TIMEOUT=10' \
             'command -v psql >/dev/null || { echo PSQL_UNAVAILABLE; exit 0; }' \
-            "psql -X -A -F '|' -t -c \"$SQL\"")
+            "timeout 20s psql -X -A -F '|' -t -c \"$SQL\" || { code=\$?; echo PSQL_QUERY_EXIT=\$code; exit 0; }")
 
           jq -n --arg command "$REMOTE_COMMAND" '{commands:[$command]}' > /tmp/ssm-params.json
           COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore recent post diagnostic" --parameters file:///tmp/ssm-params.json --query 'Command.CommandId' --output text)
 
           STATUS=Pending
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 20); do
             STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
             case "$STATUS" in
               Pending|InProgress|Delayed) sleep 3 ;;
