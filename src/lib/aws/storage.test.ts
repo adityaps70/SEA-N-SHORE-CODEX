@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const send = vi.fn(async () => ({}))
-const getSignedUrl = vi.fn(async () => 'https://signed.example/media')
+const send = vi.fn<(command: unknown) => Promise<unknown>>(async () => ({}))
+const getSignedUrl = vi.fn<(
+  client: unknown,
+  command: unknown,
+  options: { expiresIn: number },
+) => Promise<string>>(async () => 'https://signed.example/media')
 
 vi.mock('@aws-sdk/client-s3', () => {
   class Command {
@@ -56,7 +60,7 @@ describe('AWS media storage boundary', () => {
     })
 
     expect(send).toHaveBeenCalledTimes(1)
-    const command = send.mock.calls[0]?.[0] as { input: Record<string, unknown> }
+    const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
     expect(command.input).toMatchObject({
       Bucket: mediaBucket,
       Key: 'profile/post/image.jpg',
@@ -69,8 +73,8 @@ describe('AWS media storage boundary', () => {
 
     expect(url).toBe('https://signed.example/media')
     expect(getSignedUrl).toHaveBeenCalledTimes(1)
-    expect(getSignedUrl.mock.calls[0]?.[2]).toEqual({ expiresIn: 3600 })
-    const command = getSignedUrl.mock.calls[0]?.[1] as { input: Record<string, unknown> }
+    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 3600 })
+    const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
     expect(command.input).toMatchObject({ Bucket: mediaBucket, Key: 'profile/post/image.jpg' })
   })
 
@@ -78,7 +82,7 @@ describe('AWS media storage boundary', () => {
     await deleteMediaObject('profile/post/image.jpg')
 
     expect(send).toHaveBeenCalledTimes(1)
-    const command = send.mock.calls[0]?.[0] as { input: Record<string, unknown> }
+    const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
     expect(command.input).toMatchObject({ Bucket: mediaBucket, Key: 'profile/post/image.jpg' })
   })
 })
