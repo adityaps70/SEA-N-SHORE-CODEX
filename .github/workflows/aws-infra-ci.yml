@@ -42,6 +42,8 @@ jobs:
         run: node --test scripts/aws/phase5b-ses-readiness.test.mjs
       - name: Verify Phase 5B SES Terraform contract
         run: node --test scripts/aws/phase5b-ses-terraform.test.mjs
+      - name: Verify Phase 5B SES cutover contract
+        run: node --test scripts/aws/phase5b-ses-cutover.test.mjs
 
   application:
     name: Application verify
