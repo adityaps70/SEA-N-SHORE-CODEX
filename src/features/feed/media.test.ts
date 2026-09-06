@@ -47,7 +47,12 @@ describe('feed media adapter', () => {
 
   it('uploads through S3 while preserving the existing storage key shape and MIME type', async () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue(randomId)
-    const file = new File(['image-bytes'], 'diagram.jpg', { type: 'image/jpeg' })
+    const bytes = new TextEncoder().encode('image-bytes')
+    const arrayBuffer = vi.fn(async () => bytes.buffer)
+    const file = {
+      type: 'image/jpeg',
+      arrayBuffer,
+    } as unknown as File
 
     const storagePath = await uploadFeedImage({
       profileId,
@@ -56,6 +61,7 @@ describe('feed media adapter', () => {
       extension: 'jpg',
     })
 
+    expect(arrayBuffer).toHaveBeenCalledTimes(1)
     expect(storagePath).toBe(`${profileId}/${postId}/${randomId}.jpg`)
     expect(putMediaObject).toHaveBeenCalledTimes(1)
     expect(putMediaObject).toHaveBeenCalledWith({
