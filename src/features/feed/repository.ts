@@ -129,6 +129,20 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return rows as FeedPostRow[]
   }
 
+  async function listSavedRows(lookup: { viewerProfileId: string; limit: number }): Promise<FeedPostRow[]> {
+    const rows = await queryRows(
+      `${FEED_ROW_SELECT}
+       join public.saved_posts saved on saved.post_id = p.id
+       where saved.user_id = $1
+         and p.deleted_at is null
+         and ${visibilitySql()}
+       order by saved.created_at desc, p.id desc
+       limit $2`,
+      [lookup.viewerProfileId, lookup.limit],
+    ) as FeedRow[]
+    return rows as FeedPostRow[]
+  }
+
   async function getPostRow(viewerProfileId: string, postId: string): Promise<FeedPostRow | null> {
     const rows = await queryRows(
       `${FEED_ROW_SELECT}
@@ -321,6 +335,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
 
   return {
     listFeedRows,
+    listSavedRows,
     getPostRow,
     getViewerState,
     getComments,
