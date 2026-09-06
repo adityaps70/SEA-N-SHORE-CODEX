@@ -28,6 +28,7 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
       AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "true"
+      AWS_MEDIA_BUCKET: sea-n-shore-staging-310356785722-media
       AURORA_HOST: sea-n-shore-staging-aurora.cluster-cvaiukw021g5.ap-south-1.rds.amazonaws.com
       AURORA_PORT: "5432"
       AURORA_DATABASE: sea_n_shore
@@ -85,6 +86,7 @@ jobs:
           test -n "$ECS_SERVICE" || (echo "Missing staging variable ECS_SERVICE" && exit 1)
           test -n "$ECS_TASK_DEFINITION" || (echo "Missing staging variable ECS_TASK_DEFINITION" && exit 1)
           test -n "$ECS_CONTAINER_NAME" || (echo "Missing staging variable ECS_CONTAINER_NAME" && exit 1)
+          test -n "$AWS_MEDIA_BUCKET" || (echo "Missing staging metadata AWS_MEDIA_BUCKET" && exit 1)
           test -n "$AURORA_HOST" || (echo "Missing staging metadata AURORA_HOST" && exit 1)
           test -n "$AURORA_PORT" || (echo "Missing staging metadata AURORA_PORT" && exit 1)
           test -n "$AURORA_DATABASE" || (echo "Missing staging metadata AURORA_DATABASE" && exit 1)
@@ -110,6 +112,7 @@ jobs:
             --arg SUPABASE_URL "$NEXT_PUBLIC_SUPABASE_URL" \
             --arg SUPABASE_KEY "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
             --arg ALLOW_INSECURE_HTTP_COOKIES "$AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES" \
+            --arg AWS_MEDIA_BUCKET "$AWS_MEDIA_BUCKET" \
             --arg AURORA_HOST "$AURORA_HOST" \
             --arg AURORA_PORT "$AURORA_PORT" \
             --arg AURORA_DATABASE "$AURORA_DATABASE" \
@@ -135,6 +138,7 @@ jobs:
                             and .name != "NEXT_PUBLIC_SUPABASE_URL"
                             and .name != "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
                             and .name != "AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES"
+                            and .name != "AWS_MEDIA_BUCKET"
                             and .name != "AURORA_HOST"
                             and .name != "AURORA_PORT"
                             and .name != "AURORA_DATABASE"
@@ -145,6 +149,7 @@ jobs:
                           {"name":"NEXT_PUBLIC_SUPABASE_URL","value":$SUPABASE_URL},
                           {"name":"NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY","value":$SUPABASE_KEY},
                           {"name":"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES","value":"true"},
+                          {"name":"AWS_MEDIA_BUCKET","value":$AWS_MEDIA_BUCKET},
                           {"name":"AURORA_HOST","value":$AURORA_HOST},
                           {"name":"AURORA_PORT","value":$AURORA_PORT},
                           {"name":"AURORA_DATABASE","value":$AURORA_DATABASE},
