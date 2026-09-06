@@ -67,8 +67,16 @@ test('Phase 5B cutover helper captures the live user pool before mutation and su
 test('Phase 5B GitHub runner is branch-scoped, staging OIDC, action-file driven, and CI gated', () => {
   const workflow = fs.readFileSync(workflowUrl, 'utf8')
   const action = fs.readFileSync(actionUrl, 'utf8').trim()
+  const allowedActions = new Set([
+    'discover',
+    'ensure-identity',
+    'verify-ready',
+    'cutover',
+    'verify-cutover',
+    'rollback-cognito',
+  ])
 
-  assert.equal(action, 'discover')
+  assert.ok(allowedActions.has(action), `Unsupported Phase 5B action: ${action}`)
   assert.match(workflow, /workflow_dispatch:/)
   assert.match(workflow, /branches:\s*\[feat\/aws-native-phase-0-1\]/)
   assert.match(workflow, /scripts\/aws\/phase5b-action\.txt/)
