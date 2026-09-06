@@ -122,14 +122,16 @@ describe('profile onboarding action', () => {
 describe('completed profile update action', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('validates before loading the current profile or mutating Aurora', async () => {
+  it('authenticates and loads the stored profile before validating editable fields', async () => {
     const formData = validForm()
     formData.set('slug', 'not a valid slug!')
 
     const result = await updateProfile({}, formData)
 
     expect(result.fieldErrors?.slug).toBeTruthy()
-    expect(mockedGetOwnProfile).not.toHaveBeenCalled()
+    expect(mockedRequireAwsUser).toHaveBeenCalledTimes(1)
+    expect(mockedGetOwnProfile).toHaveBeenCalledTimes(1)
+    expect(mockedRequireAwsUser.mock.invocationCallOrder[0]).toBeLessThan(mockedGetOwnProfile.mock.invocationCallOrder[0])
     expect(mockedUpdateProfile).not.toHaveBeenCalled()
   })
 
