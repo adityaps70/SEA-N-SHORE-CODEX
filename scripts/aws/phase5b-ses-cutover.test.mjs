@@ -12,6 +12,7 @@ test('Phase 5B cutover helper exposes only the approved bounded operations', () 
 
   assert.match(script, /discover/)
   assert.match(script, /ensure-identity/)
+  assert.match(script, /request-production-access/)
   assert.match(script, /verify-ready/)
   assert.match(script, /cutover/)
   assert.match(script, /verify-cutover/)
@@ -24,6 +25,17 @@ test('Phase 5B cutover helper exposes only the approved bounded operations', () 
   assert.match(script, /cognito-idp update-user-pool/)
   assert.match(script, /EmailSendingAccount=DEVELOPER/)
   assert.doesNotMatch(script, /delete-user-pool|delete-email-identity|ses:\*/i)
+})
+
+test('Phase 5B production access request is transactional and fixed to the Sea N Shore website', () => {
+  const script = fs.readFileSync(scriptUrl, 'utf8')
+  assert.match(script, /sesv2 put-account-details/)
+  assert.match(script, /--mail-type TRANSACTIONAL/)
+  assert.match(script, /--website-url "https:\/\/seaandshore\.in"/)
+  assert.match(script, /--contact-language EN/)
+  assert.match(script, /--production-access-enabled/)
+  assert.match(script, /signup verification and password reset/i)
+  assert.doesNotMatch(script, /MARKETING/)
 })
 
 test('Phase 5B ensure-identity does not rewrite an existing SES configuration set', () => {
@@ -70,6 +82,7 @@ test('Phase 5B GitHub runner is branch-scoped, staging OIDC, action-file driven,
   const allowedActions = new Set([
     'discover',
     'ensure-identity',
+    'request-production-access',
     'verify-ready',
     'cutover',
     'verify-cutover',
@@ -77,6 +90,7 @@ test('Phase 5B GitHub runner is branch-scoped, staging OIDC, action-file driven,
   ])
 
   assert.ok(allowedActions.has(action), `Unsupported Phase 5B action: ${action}`)
+  assert.match(workflow, /request-production-access/)
   assert.match(workflow, /workflow_dispatch:/)
   assert.match(workflow, /branches:\s*\[feat\/aws-native-phase-0-1\]/)
   assert.match(workflow, /scripts\/aws\/phase5b-action\.txt/)
