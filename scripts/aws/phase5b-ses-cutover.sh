@@ -94,29 +94,18 @@ user_pool_arn() {
 }
 
 ensure_configuration_set() {
-  if ! aws sesv2 get-configuration-set \
+  if aws sesv2 get-configuration-set \
     --region "$AWS_REGION" \
     --configuration-set-name "$SES_CONFIGURATION_SET" >/dev/null 2>&1; then
-    aws sesv2 create-configuration-set \
-      --region "$AWS_REGION" \
-      --configuration-set-name "$SES_CONFIGURATION_SET" \
-      --sending-options SendingEnabled=true \
-      --reputation-options ReputationMetricsEnabled=true \
-      --suppression-options SuppressedReasons=BOUNCE,COMPLAINT >/dev/null
+    return
   fi
 
-  aws sesv2 put-configuration-set-sending-options \
+  aws sesv2 create-configuration-set \
     --region "$AWS_REGION" \
     --configuration-set-name "$SES_CONFIGURATION_SET" \
-    --sending-enabled >/dev/null
-  aws sesv2 put-configuration-set-reputation-options \
-    --region "$AWS_REGION" \
-    --configuration-set-name "$SES_CONFIGURATION_SET" \
-    --reputation-metrics-enabled >/dev/null
-  aws sesv2 put-configuration-set-suppression-options \
-    --region "$AWS_REGION" \
-    --configuration-set-name "$SES_CONFIGURATION_SET" \
-    --suppressed-reasons BOUNCE COMPLAINT >/dev/null
+    --sending-options SendingEnabled=true \
+    --reputation-options ReputationMetricsEnabled=true \
+    --suppression-options SuppressedReasons=BOUNCE,COMPLAINT >/dev/null
 }
 
 print_identity_state() {
