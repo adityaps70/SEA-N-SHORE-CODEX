@@ -195,6 +195,7 @@ export async function setPostSaved(postId: string, saved: boolean): Promise<Feed
     return { ok: false, error: 'We could not update your saved posts.' }
   }
   revalidatePath('/home')
+  revalidatePath('/saved')
   return { ok: true }
 }
 
