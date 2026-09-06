@@ -1,25 +1,22 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { OnboardingInput } from './schemas'
-import { createProfileEditService } from './profile-edit-service'
+import {
+  createProfileEditService,
+  type ProfileEditRepository,
+} from './profile-edit-service'
 
 const actorId = '11111111-1111-4111-8111-111111111111'
 
-type RepositoryDouble = {
-  updateCompletedProfile: ReturnType<typeof vi.fn>
-  upsertMaritimeProfile: ReturnType<typeof vi.fn>
-  deleteMaritimeProfile: ReturnType<typeof vi.fn>
-  replaceSkills: ReturnType<typeof vi.fn>
+function repositoryDouble(updateResult = true): ProfileEditRepository {
+  const updateCompletedProfile: ProfileEditRepository['updateCompletedProfile'] = vi.fn(async () => updateResult)
+  const upsertMaritimeProfile: ProfileEditRepository['upsertMaritimeProfile'] = vi.fn(async () => undefined)
+  const deleteMaritimeProfile: ProfileEditRepository['deleteMaritimeProfile'] = vi.fn(async () => undefined)
+  const replaceSkills: ProfileEditRepository['replaceSkills'] = vi.fn(async () => undefined)
+  return { updateCompletedProfile, upsertMaritimeProfile, deleteMaritimeProfile, replaceSkills }
 }
 
-type TransactionCallback = (repository: RepositoryDouble) => Promise<unknown>
-
-function repositoryDouble(updateResult = true): RepositoryDouble {
-  return {
-    updateCompletedProfile: vi.fn(async () => updateResult),
-    upsertMaritimeProfile: vi.fn(async () => undefined),
-    deleteMaritimeProfile: vi.fn(async () => undefined),
-    replaceSkills: vi.fn(async () => undefined),
-  }
+function withRepository(repository: ProfileEditRepository) {
+  return async <T>(fn: (repository: ProfileEditRepository) => Promise<T>): Promise<T> => fn(repository)
 }
 
 function input(profileType: OnboardingInput['profileType'] = 'seafarer'): OnboardingInput {
@@ -46,39 +43,34 @@ function input(profileType: OnboardingInput['profileType'] = 'seafarer'): Onboar
 describe('completed profile edit service', () => {
   it('updates a completed maritime profile and skills in one transaction', async () => {
     const repository = repositoryDouble()
-    const withTransaction = vi.fn(async (fn: TransactionCallback) => fn(repository))
-    const service = createProfileEditService({ withTransaction })
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
     const data = input()
 
     await expect(service.updateProfile(actorId, data)).resolves.toBe(true)
 
-    expect(repository.updateCompletedProfile).toHaveBeenCalledWith(actorId, data)
-    expect(repository.upsertMaritimeProfile).toHaveBeenCalledWith(actorId, data)
-    expect(repository.deleteMaritimeProfile).not.toHaveBeenCalled()
-    expect(repository.replaceSkills).toHaveBeenCalledWith(actorId, data.skills)
+    expect(vi.mocked(repository.updateCompletedProfile)).toHaveBeenCalledWith(actorId, data)
+    expect(vi.mocked(repository.upsertMaritimeProfile)).toHaveBeenCalledWith(actorId, data)
+    expect(vi.mocked(repository.deleteMaritimeProfile)).not.toHaveBeenCalled()
+    expect(vi.mocked(repository.replaceSkills)).toHaveBeenCalledWith(actorId, data.skills)
   })
 
   it('removes stale maritime details when the stored profile type is non-maritime', async () => {
     const repository = repositoryDouble()
-    const service = createProfileEditService({
-      withTransaction: async (fn: TransactionCallback) => fn(repository),
-    })
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
     const data = input('mentor')
 
     await service.updateProfile(actorId, data)
 
-    expect(repository.deleteMaritimeProfile).toHaveBeenCalledWith(actorId)
-    expect(repository.upsertMaritimeProfile).not.toHaveBeenCalled()
+    expect(vi.mocked(repository.deleteMaritimeProfile)).toHaveBeenCalledWith(actorId)
+    expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
   })
 
   it('fails closed when the actor is not an active completed profile', async () => {
     const repository = repositoryDouble(false)
-    const service = createProfileEditService({
-      withTransaction: async (fn: TransactionCallback) => fn(repository),
-    })
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
 
     await expect(service.updateProfile(actorId, input())).rejects.toThrow('profile_edit_unavailable')
-    expect(repository.upsertMaritimeProfile).not.toHaveBeenCalled()
-    expect(repository.replaceSkills).not.toHaveBeenCalled()
+    expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
+    expect(vi.mocked(repository.replaceSkills)).not.toHaveBeenCalled()
   })
 })
