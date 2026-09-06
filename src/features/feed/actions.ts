@@ -141,7 +141,11 @@ export async function createPost(
         },
       })
     } catch {
-      await removeFeedImage(storagePath)
+      try {
+        await removeFeedImage(storagePath)
+      } catch {
+        // Cleanup is compensating and must not mask the original post-publication failure.
+      }
       return { error: 'We could not attach your image, so the post was not published.', values: safePostValues(formData) }
     }
   } else {
