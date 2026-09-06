@@ -131,6 +131,27 @@ test('staging deploy always restores the Aurora runtime contract without reading
   assert.doesNotMatch(deploy, /SecretString/)
 })
 
+test('Phase 5A keeps ECS post-media S3 access private, least-privilege, and stable across deploys', () => {
+  const storageTerraform = text('infra/aws/app/storage.tf')
+  const mainTerraform = text('infra/aws/app/main.tf')
+  const deploy = text('.github/workflows/aws-staging-deploy.yml')
+
+  for (const action of ['s3:GetObject', 's3:PutObject', 's3:DeleteObject']) {
+    assert.match(storageTerraform, new RegExp(action.replace(':', '\\:')))
+  }
+  assert.match(storageTerraform, /aws_s3_bucket\.app\["media"\]\.arn/)
+  assert.doesNotMatch(storageTerraform, /["']s3:\*["']/)
+
+  assert.match(mainTerraform, /name\s*=\s*"AWS_MEDIA_BUCKET"/)
+  assert.match(mainTerraform, /aws_s3_bucket\.app\["media"\]\.bucket/)
+
+  assert.match(deploy, /AWS_MEDIA_BUCKET:\s*sea-n-shore-staging-310356785722-media/)
+  assert.match(deploy, /test -n "\$AWS_MEDIA_BUCKET"/)
+  assert.match(deploy, /--arg AWS_MEDIA_BUCKET "\$AWS_MEDIA_BUCKET"/)
+  assert.match(deploy, /\.name != "AWS_MEDIA_BUCKET"/)
+  assert.match(deploy, /\{\"name\":\"AWS_MEDIA_BUCKET\",\"value\":\$AWS_MEDIA_BUCKET\}/)
+})
+
 test('production image trusts the official Mumbai RDS CA without disabling TLS verification', () => {
   const dockerfile = text('Dockerfile')
 
