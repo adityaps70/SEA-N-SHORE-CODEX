@@ -40,6 +40,8 @@ jobs:
         run: node --test scripts/aws/migrate-post-media-to-s3.test.mjs
       - name: Verify Phase 5B SES readiness contract
         run: node --test scripts/aws/phase5b-ses-readiness.test.mjs
+      - name: Verify Phase 5B SES Terraform contract
+        run: node --test scripts/aws/phase5b-ses-terraform.test.mjs
 
   application:
     name: Application verify
