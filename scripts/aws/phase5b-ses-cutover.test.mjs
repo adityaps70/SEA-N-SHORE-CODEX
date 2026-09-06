@@ -25,6 +25,15 @@ test('Phase 5B cutover helper exposes only the approved bounded operations', () 
   assert.doesNotMatch(script, /delete-user-pool|delete-email-identity|ses:\*/i)
 })
 
+test('Phase 5B resolves the exact Cognito pool from live ECS instead of listing user pools', () => {
+  const script = fs.readFileSync(scriptUrl, 'utf8')
+
+  assert.match(script, /ecs describe-services/)
+  assert.match(script, /ecs describe-task-definition/)
+  assert.match(script, /AWS_COGNITO_USER_POOL_ID/)
+  assert.doesNotMatch(script, /cognito-idp list-user-pools/)
+})
+
 test('Phase 5B cutover helper captures the live user pool before mutation and supports exact rollback', () => {
   const script = fs.readFileSync(scriptUrl, 'utf8')
 
