@@ -19,7 +19,7 @@ vi.mock('@/features/auth/aws-queries', () => ({
 }))
 vi.mock('./aws-queries', () => ({
   getAwsOwnProfile: vi.fn(async () => ({
-    id: '11111111-1111-4111-8111-111111111111',
+    id: '22222222-2222-4222-8222-222222222222',
     slug: 'captain-example',
     profileType: 'seafarer',
     fullName: 'Captain Example',
@@ -139,6 +139,7 @@ describe('completed profile update action', () => {
 
     await expect(updateProfile({}, formData)).rejects.toThrow('NEXT_REDIRECT:/profile')
 
+    expect(mockedRequireAwsUser).toHaveBeenCalledTimes(1)
     expect(mockedUpdateProfile).toHaveBeenCalledWith(viewerId, expect.objectContaining({
       profileType: 'seafarer',
       fullName: 'Captain Example',
