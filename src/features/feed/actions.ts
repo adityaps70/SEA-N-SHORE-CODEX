@@ -49,6 +49,11 @@ function isAllowedImageMime(value: string): value is AllowedImageMime {
   return value in extensionByMime
 }
 
+function safeErrorCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+  return /^[a-z][a-z0-9_]{0,79}$/.test(message) ? message : 'unknown_error'
+}
+
 function postInputFromFormData(formData: FormData) {
   const mode: 'standard' | 'poll' = formData.get('mode') === 'poll' ? 'poll' : 'standard'
   return {
@@ -107,12 +112,18 @@ export async function createPost(
 
   if (data.mode === 'poll') {
     try {
-      await createPollPostWithAurora(user.id, {
+      const postId = await createPollPostWithAurora(user.id, {
         category: data.category,
         body: data.body,
         pollOptions: data.pollOptions,
       })
-    } catch {
+      console.info('[feed_publish_success]', { postId, hasMedia: false })
+    } catch (error) {
+      console.error('[feed_publish_failed]', {
+        stage: 'aurora_create',
+        hasMedia: false,
+        errorCode: safeErrorCode(error),
+      })
       return { error: 'We could not publish your poll. Your entries are still here.', values: safePostValues(formData) }
     }
   } else if (media.media && media.extension) {
@@ -125,7 +136,13 @@ export async function createPost(
         file: media.media,
         extension: media.extension,
       })
-    } catch {
+    } catch (error) {
+      console.error('[feed_publish_failed]', {
+        stage: 'media_upload',
+        postId,
+        hasMedia: true,
+        errorCode: safeErrorCode(error),
+      })
       return { error: 'We could not upload your image. Your post was not published.', values: safePostValues(formData) }
     }
 
@@ -140,7 +157,14 @@ export async function createPost(
           altText: media.altText,
         },
       })
-    } catch {
+      console.info('[feed_publish_success]', { postId, hasMedia: true })
+    } catch (error) {
+      console.error('[feed_publish_failed]', {
+        stage: 'aurora_create',
+        postId,
+        hasMedia: true,
+        errorCode: safeErrorCode(error),
+      })
       try {
         await removeFeedImage(storagePath)
       } catch {
@@ -150,11 +174,17 @@ export async function createPost(
     }
   } else {
     try {
-      await createStandardPostWithAurora(user.id, {
+      const postId = await createStandardPostWithAurora(user.id, {
         category: data.category,
         body: data.body,
       })
-    } catch {
+      console.info('[feed_publish_success]', { postId, hasMedia: false })
+    } catch (error) {
+      console.error('[feed_publish_failed]', {
+        stage: 'aurora_create',
+        hasMedia: false,
+        errorCode: safeErrorCode(error),
+      })
       return { error: 'We could not publish your post. Your entries are still here.', values: safePostValues(formData) }
     }
   }
