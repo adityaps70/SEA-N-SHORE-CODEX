@@ -47,6 +47,16 @@ test('Phase 5B ops role may read only the approved SES identity and configuratio
   assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
 })
 
+test('Phase 5B ops role may create only the approved SES domain identity', () => {
+  assert.match(bootstrapTf, /Sid\s*=\s*"Phase5bSesIdentityCreate"/)
+  assert.match(bootstrapTf, /"ses:CreateEmailIdentity"/)
+  assert.match(
+    bootstrapTf,
+    /arn:aws:ses:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:identity\/seaandshore\.in/,
+  )
+  assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
+})
+
 test('Phase 5B ops role may describe only the discovered staging Cognito user pool', () => {
   assert.match(
     bootstrapTf,
