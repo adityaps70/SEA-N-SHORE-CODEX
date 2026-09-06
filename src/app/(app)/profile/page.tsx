@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowUpRight, Eye, LockKeyhole } from 'lucide-react'
+import { ArrowUpRight, Eye, LockKeyhole, Pencil } from 'lucide-react'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
@@ -22,6 +22,13 @@ export default async function OwnProfilePage() {
             <LockKeyhole aria-hidden="true" className="size-4" />
             Contact: {profile.contactVisibility}
           </span>
+          <Link
+            href="/profile/edit"
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-500"
+          >
+            <Pencil aria-hidden="true" className="size-4" />
+            Edit Profile
+          </Link>
           <Link
             href={`/people/${profile.slug}`}
             className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-ocean-700"
