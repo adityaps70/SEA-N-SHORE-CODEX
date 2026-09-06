@@ -43,6 +43,7 @@ describe('feed media adapter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     createMediaReadUrl.mockImplementation(async (key) => `https://s3.example/${key}`)
+    putMediaObject.mockResolvedValue(undefined)
   })
 
   it('uploads through S3 while preserving the existing storage key shape and MIME type', async () => {
@@ -69,6 +70,33 @@ describe('feed media adapter', () => {
       body: expect.any(Uint8Array),
       contentType: 'image/jpeg',
     })
+  })
+
+  it('logs only the AWS error class when an S3 upload fails', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(randomId)
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const denied = new Error('sensitive provider detail that must not be logged')
+    denied.name = 'AccessDenied'
+    putMediaObject.mockRejectedValueOnce(denied)
+    const file = {
+      type: 'image/jpeg',
+      arrayBuffer: vi.fn(async () => new TextEncoder().encode('image-bytes').buffer),
+    } as unknown as File
+
+    await expect(uploadFeedImage({
+      profileId,
+      postId,
+      file,
+      extension: 'jpg',
+    })).rejects.toThrow('feed_media_upload_failed')
+
+    expect(errorSpy).toHaveBeenCalledWith('[feed_media_upload_failed]', {
+      errorName: 'AccessDenied',
+    })
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('sensitive provider detail')
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(profileId)
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(postId)
+    errorSpy.mockRestore()
   })
 
   it('resolves readable S3 keys independently so one failed key does not fail the feed', async () => {
