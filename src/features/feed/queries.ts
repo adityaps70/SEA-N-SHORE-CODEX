@@ -85,6 +85,12 @@ export function createFeedQueries(input: {
     return { posts, nextCursor }
   }
 
+  async function getSavedPosts(): Promise<FeedPost[]> {
+    const user = await input.requireUser()
+    const rows = await input.repository.listSavedRows({ viewerProfileId: user.id, limit: 50 })
+    return hydratePosts(rows, user.id)
+  }
+
   async function getPostById(id: string): Promise<FeedPost | null> {
     const user = await input.requireUser()
     const row = await input.repository.getPostRow(user.id, id)
@@ -93,7 +99,7 @@ export function createFeedQueries(input: {
     return post ?? null
   }
 
-  return { getFeedPage, getPostById }
+  return { getFeedPage, getSavedPosts, getPostById }
 }
 
 const productionQueries = createFeedQueries({
@@ -104,4 +110,5 @@ const productionQueries = createFeedQueries({
 })
 
 export const getFeedPage = productionQueries.getFeedPage
+export const getSavedPosts = productionQueries.getSavedPosts
 export const getPostById = productionQueries.getPostById
