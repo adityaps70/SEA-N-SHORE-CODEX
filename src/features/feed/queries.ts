@@ -80,6 +80,7 @@ export function createFeedQueries(input: {
     const pageRows = rows.slice(0, parsed.limit)
     const nextCursor = feedNextCursor(pageRows, hasMore)
     const preferredAuthorIds = new Set(await input.getPreferredAuthorIds())
+    preferredAuthorIds.add(user.id)
     const displayRows = prioritizeRecentFeedRows(pageRows, preferredAuthorIds, feedRowAuthorId)
     const posts = await hydratePosts(displayRows, user.id)
     return { posts, nextCursor }
