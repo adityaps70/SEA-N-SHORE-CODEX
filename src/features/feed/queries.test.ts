@@ -94,6 +94,39 @@ describe('Aurora feed queries', () => {
     expect(page.nextCursor).toEqual({ createdAt: rows[0].created_at, id: rows[0].id })
   })
 
+  it('loads saved posts through the authenticated viewer and marks them saved after hydration', async () => {
+    const savedRow = row('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-05T07:00:00.000Z')
+    const listSavedRows = vi.fn(async () => [savedRow])
+    const repository = {
+      listSavedRows,
+      getViewerState: vi.fn(async () => ({
+        likedPostIds: new Set<string>(),
+        savedPostIds: new Set([savedRow.id]),
+        pollVotes: new Map<string, string>(),
+      })),
+      getComments: vi.fn(async () => []),
+    } as unknown as FeedRepository
+    const requireUser = vi.fn(async (): Promise<AwsVerifiedUser> => ({
+      id: viewerId,
+      cognitoSub: 'cognito-subject-not-an-app-id',
+      email: 'viewer@example.com',
+    }))
+    const { createFeedQueries } = await import('./queries')
+    const queries = createFeedQueries({
+      requireUser,
+      repository,
+      getPreferredAuthorIds: vi.fn(async () => []),
+      resolveMediaUrls: vi.fn(async () => new Map()),
+    })
+
+    const posts = await (queries as unknown as { getSavedPosts: (limit?: number) => Promise<unknown[]> }).getSavedPosts()
+
+    expect(requireUser).toHaveBeenCalledTimes(1)
+    expect(listSavedRows).toHaveBeenCalledWith({ viewerProfileId: viewerId, limit: 50 })
+    expect(repository.getViewerState).toHaveBeenCalledWith(viewerId, [savedRow.id])
+    expect(posts[0]).toMatchObject({ id: savedRow.id, viewerSaved: true })
+  })
+
   it('loads one post through the same viewer-scoped repository path', async () => {
     const post = row('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-05T07:00:00.000Z')
     const repository = {
