@@ -67,6 +67,10 @@ echo "=== REMOTE EXECUTION CONTRACT ==="
 node --test scripts/aws/remote-execution-config.test.mjs
 
 echo
+echo "=== PHASE 4 SUPABASE RUNTIME AUDIT ==="
+bash scripts/aws/check-phase4-supabase-runtime.sh
+
+echo
 echo "=== LINT ==="
 npm run lint
 
