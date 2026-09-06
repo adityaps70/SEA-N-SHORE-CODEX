@@ -3,6 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 const scriptUrl = new URL('./phase5b-ses-cutover.sh', import.meta.url)
+const readinessUrl = new URL('./phase5b-ses-readiness.sh', import.meta.url)
 const workflowUrl = new URL('../../.github/workflows/aws-phase5b-ses.yml', import.meta.url)
 const actionUrl = new URL('./phase5b-action.txt', import.meta.url)
 
@@ -27,11 +28,14 @@ test('Phase 5B cutover helper exposes only the approved bounded operations', () 
 
 test('Phase 5B resolves the exact Cognito pool from live ECS instead of listing user pools', () => {
   const script = fs.readFileSync(scriptUrl, 'utf8')
+  const readiness = fs.readFileSync(readinessUrl, 'utf8')
 
-  assert.match(script, /ecs describe-services/)
-  assert.match(script, /ecs describe-task-definition/)
-  assert.match(script, /AWS_COGNITO_USER_POOL_ID/)
-  assert.doesNotMatch(script, /cognito-idp list-user-pools/)
+  for (const source of [script, readiness]) {
+    assert.match(source, /ecs describe-services/)
+    assert.match(source, /ecs describe-task-definition/)
+    assert.match(source, /AWS_COGNITO_USER_POOL_ID/)
+    assert.doesNotMatch(source, /cognito-idp list-user-pools/)
+  }
 })
 
 test('Phase 5B cutover helper captures the live user pool before mutation and supports exact rollback', () => {
