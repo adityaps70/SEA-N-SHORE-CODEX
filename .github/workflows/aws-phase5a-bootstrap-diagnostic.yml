@@ -57,7 +57,7 @@ jobs:
               "echo '=== DIAGNOSTIC COMPLETE ==='"
             ]
           }
-JSON
+          JSON
           COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore Phase 5A credential diagnostic" --timeout-seconds 300 --parameters file:///tmp/commands.json --query 'Command.CommandId' --output text)
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
 
