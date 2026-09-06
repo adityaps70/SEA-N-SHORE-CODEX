@@ -265,6 +265,12 @@ resource "aws_iam_role_policy" "github_deploy" {
         ]
       },
       {
+        Sid      = "Phase5bSesAccountRead"
+        Effect   = "Allow"
+        Action   = ["ses:GetAccount"]
+        Resource = "*"
+      },
+      {
         Sid      = "DiscoverBootstrapInstance"
         Effect   = "Allow"
         Action   = ["ec2:DescribeInstances"]
