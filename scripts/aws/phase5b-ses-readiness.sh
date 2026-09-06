@@ -4,6 +4,8 @@ set -euo pipefail
 AWS_REGION="${AWS_REGION:-ap-south-1}"
 SES_DOMAIN="${SES_DOMAIN:-seaandshore.in}"
 COGNITO_USER_POOL_NAME="${COGNITO_USER_POOL_NAME:-sea-n-shore-staging-users}"
+ECS_CLUSTER_NAME="${ECS_CLUSTER_NAME:-sea-n-shore-staging}"
+ECS_SERVICE_NAME="${ECS_SERVICE_NAME:-sea-n-shore-staging-web}"
 REQUIRE_READY=false
 
 if [[ "${1:-}" == "--require-cutover-ready" ]]; then
@@ -12,6 +14,26 @@ elif [[ -n "${1:-}" ]]; then
   echo "usage: $0 [--require-cutover-ready]" >&2
   exit 2
 fi
+
+resolve_pool_id_from_ecs() {
+  local task_definition_arn
+  task_definition_arn="$(aws ecs describe-services \
+    --region "$AWS_REGION" \
+    --cluster "$ECS_CLUSTER_NAME" \
+    --services "$ECS_SERVICE_NAME" \
+    --query 'services[0].taskDefinition' \
+    --output text)"
+
+  if [[ -z "$task_definition_arn" || "$task_definition_arn" == "None" ]]; then
+    return 1
+  fi
+
+  aws ecs describe-task-definition \
+    --region "$AWS_REGION" \
+    --task-definition "$task_definition_arn" \
+    --output json \
+    | jq -r '[.taskDefinition.containerDefinitions[].environment[]? | select(.name == "AWS_COGNITO_USER_POOL_ID") | .value][0] // empty'
+}
 
 aws sts get-caller-identity >/dev/null
 
@@ -54,11 +76,7 @@ fi
 
 pool_id="${COGNITO_USER_POOL_ID:-}"
 if [[ -z "$pool_id" ]]; then
-  pool_id="$(aws cognito-idp list-user-pools \
-    --region "$AWS_REGION" \
-    --max-results 60 \
-    --query "UserPools[?Name=='${COGNITO_USER_POOL_NAME}'].Id | [0]" \
-    --output text)"
+  pool_id="$(resolve_pool_id_from_ecs || true)"
 fi
 
 if [[ -z "$pool_id" || "$pool_id" == "None" ]]; then
