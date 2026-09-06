@@ -1,4 +1,4 @@
-name: AWS Publish Diagnostic Deploy
+name: AWS Feed Display Fix Deploy
 
 on:
   push:
@@ -148,7 +148,7 @@ jobs:
 
       - name: Record deployment summary
         run: |
-          echo "### Publish diagnostic staging deployment" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Feed display fix staging deployment" >> "$GITHUB_STEP_SUMMARY"
           echo "- SHA: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- New task: \`$NEW_TASK_ARN\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Rollback task: \`$OLD_TASK_ARN\`" >> "$GITHUB_STEP_SUMMARY"
