@@ -26,6 +26,20 @@ test('Phase 5B cutover helper exposes only the approved bounded operations', () 
   assert.doesNotMatch(script, /delete-user-pool|delete-email-identity|ses:\*/i)
 })
 
+test('Phase 5B ensure-identity does not rewrite an existing SES configuration set', () => {
+  const script = fs.readFileSync(scriptUrl, 'utf8')
+
+  const start = script.indexOf('ensure_configuration_set()')
+  const end = script.indexOf('\n}\n\nprint_identity_state()', start)
+  assert.ok(start >= 0 && end > start)
+  const ensureConfigurationSet = script.slice(start, end)
+
+  assert.match(ensureConfigurationSet, /sesv2 get-configuration-set/)
+  assert.match(ensureConfigurationSet, /return/)
+  assert.match(ensureConfigurationSet, /sesv2 create-configuration-set/)
+  assert.doesNotMatch(ensureConfigurationSet, /put-configuration-set-/)
+})
+
 test('Phase 5B resolves the exact Cognito pool from live ECS instead of listing user pools', () => {
   const script = fs.readFileSync(scriptUrl, 'utf8')
   const readiness = fs.readFileSync(readinessUrl, 'utf8')
