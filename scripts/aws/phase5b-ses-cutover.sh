@@ -23,7 +23,7 @@ POLICY_FILE="/tmp/phase5b-cognito-ses-policy.json"
 IDENTITY_FILE="/tmp/phase5b-ses-identity.json"
 
 usage() {
-  echo "usage: $0 {discover|ensure-identity|verify-ready|cutover|verify-cutover|rollback-cognito}" >&2
+  echo "usage: $0 {discover|ensure-identity|request-production-access|verify-ready|cutover|verify-cutover|rollback-cognito}" >&2
 }
 
 require_tools() {
@@ -165,6 +165,27 @@ ensure_identity() {
 
   print_identity_state || true
   echo "PHASE5B_SES_IDENTITY_ENSURED"
+}
+
+request_production_access() {
+  local current use_case
+  current="$(ses_production_access)"
+  if [[ "$current" == "True" || "$current" == "true" ]]; then
+    echo "PHASE5B_SES_PRODUCTION_ACCESS_ALREADY_ENABLED"
+    return
+  fi
+
+  use_case="Sea N Shore uses Amazon SES only for user-initiated transactional authentication emails from Amazon Cognito, including account signup verification and password reset codes. Emails are sent only when a user registers or requests password recovery; no purchased lists, cold outreach, or marketing campaigns are used. Bounces and complaints will be monitored through Amazon SES."
+
+  aws sesv2 put-account-details \
+    --region "$AWS_REGION" \
+    --mail-type TRANSACTIONAL \
+    --website-url "https://seaandshore.in" \
+    --contact-language EN \
+    --use-case-description "$use_case" \
+    --production-access-enabled >/dev/null
+
+  echo "PHASE5B_SES_PRODUCTION_ACCESS_REQUESTED"
 }
 
 write_cognito_policy() {
@@ -382,6 +403,9 @@ main() {
       ;;
     ensure-identity)
       ensure_identity
+      ;;
+    request-production-access)
+      request_production_access
       ;;
     verify-ready)
       verify_ready "$pool_id"
