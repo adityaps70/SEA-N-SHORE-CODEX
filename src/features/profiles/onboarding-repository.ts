@@ -80,6 +80,33 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     )
   }
 
+  async function updateCompletedProfile(profileId: string, data: OnboardingInput) {
+    const rows = await query(
+      `update public.profiles
+       set full_name = $2,
+           slug = $3,
+           location = $4,
+           headline = $5,
+           summary = $6,
+           contact_visibility = $7,
+           updated_at = now()
+       where id = $1
+         and account_status = 'active'
+         and onboarding_completed_at is not null
+       returning id`,
+      [
+        profileId,
+        data.fullName,
+        data.slug,
+        data.location ?? null,
+        data.headline,
+        data.summary,
+        data.contactVisibility,
+      ],
+    ) as ReturningIdRow[]
+    return rows.length === 1 && rows[0]?.id === profileId
+  }
+
   async function upsertMaritimeProfile(profileId: string, data: OnboardingInput) {
     await query(
       `insert into public.maritime_profiles (
@@ -142,6 +169,7 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     getOnboardingProfile,
     lockOnboardingProfile,
     updateProfile,
+    updateCompletedProfile,
     upsertMaritimeProfile,
     deleteMaritimeProfile,
     replaceSkills,
