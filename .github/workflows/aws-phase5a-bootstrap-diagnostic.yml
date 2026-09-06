@@ -45,7 +45,7 @@ jobs:
               "CLUSTER_JSON=$(aws rds describe-db-clusters --region ap-south-1 --db-cluster-identifier sea-n-shore-staging-aurora --output json)",
               "CLUSTER_ARN=$(jq -r '.DBClusters[0].DBClusterArn' <<<\"$CLUSTER_JSON\")",
               "SECRET_ARN=$(jq -r '.DBClusters[0].MasterUserSecret.SecretArn' <<<\"$CLUSTER_JSON\")",
-              "RESULT=$(aws rds-data execute-statement --region ap-south-1 --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"select count(*)::bigint, coalesce(min(storage_path),'') from public.post_media\" --output json)",
+              "RESULT=''; for attempt in $(seq 1 12); do if RESULT=$(aws rds-data execute-statement --region ap-south-1 --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"select count(*)::bigint, coalesce(min(storage_path),'') from public.post_media\" --output json 2>/tmp/rds.err); then break; fi; if grep -q 'DatabaseResumingException' /tmp/rds.err; then echo AURORA_RESUMING_ATTEMPT=$attempt; sleep 10; else cat /tmp/rds.err >&2; exit 1; fi; done; test -n \"$RESULT\"",
               "COUNT=$(jq -r '.records[0][0].longValue // 0' <<<\"$RESULT\")",
               "SAMPLE=$(jq -r '.records[0][1].stringValue // empty' <<<\"$RESULT\")",
               "echo POST_MEDIA_COUNT=$COUNT",
