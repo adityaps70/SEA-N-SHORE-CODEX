@@ -31,3 +31,27 @@ variable "enable_google_identity_provider" {
   type        = bool
   default     = false
 }
+
+variable "ses_domain" {
+  description = "SES domain identity used for transactional email."
+  type        = string
+  default     = "seaandshore.in"
+}
+
+variable "ses_from_address" {
+  description = "Approved transactional FROM address."
+  type        = string
+  default     = "no-reply@seaandshore.in"
+}
+
+variable "ses_from_display_name" {
+  description = "Display name for transactional email."
+  type        = string
+  default     = "Sea N Shore"
+}
+
+variable "enable_cognito_ses_email" {
+  description = "Switch Cognito from default email delivery to verified SES after readiness gates pass."
+  type        = bool
+  default     = false
+}
