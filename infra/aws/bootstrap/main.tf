@@ -289,6 +289,12 @@ resource "aws_iam_role_policy" "github_deploy" {
         ]
       },
       {
+        Sid      = "Phase5bSesIdentityCreate"
+        Effect   = "Allow"
+        Action   = ["ses:CreateEmailIdentity"]
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seaandshore.in"
+      },
+      {
         Sid      = "Phase5bCognitoRead"
         Effect   = "Allow"
         Action   = ["cognito-idp:DescribeUserPool"]
