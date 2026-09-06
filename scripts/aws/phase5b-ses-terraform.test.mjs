@@ -32,6 +32,12 @@ test('Phase 5B ops role may read SES account state without broad SES administrat
   assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
 })
 
+test('Phase 5B ops role may request SES production access without broad SES administration', () => {
+  assert.match(bootstrapTf, /Sid\s*=\s*"Phase5bSesProductionAccess"/)
+  assert.match(bootstrapTf, /"ses:PutAccountDetails"/)
+  assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
+})
+
 test('Phase 5B ops role may read only the approved SES identity and configuration set', () => {
   assert.match(bootstrapTf, /Sid\s*=\s*"Phase5bSesResourceRead"/)
   assert.match(bootstrapTf, /"ses:GetEmailIdentity"/)
