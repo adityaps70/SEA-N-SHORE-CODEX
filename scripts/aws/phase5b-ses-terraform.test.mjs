@@ -32,6 +32,20 @@ test('Phase 5B ops role may read SES account state without broad SES administrat
   assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
 })
 
+test('Phase 5B ops role may describe only the discovered staging Cognito user pool', () => {
+  assert.match(
+    bootstrapTf,
+    /variable "phase5b_cognito_user_pool_id"[\s\S]*default\s*=\s*"ap-south-1_FKyi5lJsY"/,
+  )
+  assert.match(bootstrapTf, /Sid\s*=\s*"Phase5bCognitoRead"/)
+  assert.match(bootstrapTf, /"cognito-idp:DescribeUserPool"/)
+  assert.match(
+    bootstrapTf,
+    /arn:aws:cognito-idp:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:userpool\/\$\{var\.phase5b_cognito_user_pool_id\}/,
+  )
+  assert.doesNotMatch(bootstrapTf, /"cognito-idp:\*"/i)
+})
+
 test('Phase 5B email variables default to the approved domain and sender with cutover disabled', () => {
   assert.match(varsTf, /variable "ses_domain"[\s\S]*default\s*=\s*"seaandshore\.in"/)
   assert.match(varsTf, /variable "ses_from_address"[\s\S]*default\s*=\s*"no-reply@seaandshore\.in"/)
