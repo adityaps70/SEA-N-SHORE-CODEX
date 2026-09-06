@@ -7,6 +7,8 @@ SES_DOMAIN="${SES_DOMAIN:-seaandshore.in}"
 SES_FROM_ADDRESS="${SES_FROM_ADDRESS:-no-reply@seaandshore.in}"
 SES_FROM_DISPLAY_NAME="${SES_FROM_DISPLAY_NAME:-Sea N Shore}"
 SES_FROM="${SES_FROM_DISPLAY_NAME} <${SES_FROM_ADDRESS}>"
+APPROVED_SES_FROM="Sea N Shore <no-reply@seaandshore.in>"
+COGNITO_EMAIL_TARGET="EmailSendingAccount=DEVELOPER"
 SES_CONFIGURATION_SET="${SES_CONFIGURATION_SET:-sea-n-shore-staging-transactional}"
 SES_POLICY_NAME="${SES_POLICY_NAME:-sea-n-shore-staging-cognito-sender}"
 COGNITO_USER_POOL_NAME="${COGNITO_USER_POOL_NAME:-sea-n-shore-staging-users}"
@@ -36,6 +38,10 @@ verify_account() {
   actual="$(account_id)"
   if [[ "$actual" != "$EXPECTED_ACCOUNT_ID" ]]; then
     echo "PHASE5B_WRONG_ACCOUNT=$actual" >&2
+    exit 1
+  fi
+  if [[ "$SES_FROM" != "$APPROVED_SES_FROM" ]]; then
+    echo "PHASE5B_UNAPPROVED_SENDER" >&2
     exit 1
   fi
 }
@@ -243,6 +249,7 @@ build_update_request() {
 
 write_developer_email_configuration() {
   local pool_id="$1"
+  echo "COGNITO_TARGET=$COGNITO_EMAIL_TARGET"
   jq -n \
     --arg poolId "$pool_id" \
     --arg sourceArn "$(identity_arn)" \
