@@ -126,6 +126,7 @@ describe('feed actions', () => {
   })
 
   it('creates a standard post through Aurora using the permanent profile UUID', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     const state = await createPost({}, basePostForm())
 
     expect(state).toEqual({ ok: true })
@@ -133,9 +134,17 @@ describe('feed actions', () => {
       category: 'technical_discussion',
       body: 'A useful maritime technical lesson.',
     })
+    expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', expect.objectContaining({
+      postId: expect.any(String),
+      hasMedia: false,
+    }))
+    expect(JSON.stringify(infoSpy.mock.calls)).not.toContain('A useful maritime technical lesson.')
+    expect(JSON.stringify(infoSpy.mock.calls)).not.toContain(viewerId)
+    infoSpy.mockRestore()
   })
 
   it('uploads media for the permanent profile and removes it when Aurora post creation fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockedCreateStandardPost.mockRejectedValueOnce(new Error('post_create_failed'))
 
     const state = await createPost({}, postFormWithImage())
@@ -147,6 +156,15 @@ describe('feed actions', () => {
     }))
     expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
     expect(state.error).toBe('We could not attach your image, so the post was not published.')
+    expect(errorSpy).toHaveBeenCalledWith('[feed_publish_failed]', expect.objectContaining({
+      stage: 'aurora_create',
+      postId: expect.any(String),
+      hasMedia: true,
+      errorCode: 'post_create_failed',
+    }))
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('A useful maritime technical lesson.')
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(viewerId)
+    errorSpy.mockRestore()
   })
 
   it('keeps the original publication error when compensating media cleanup also fails', async () => {
