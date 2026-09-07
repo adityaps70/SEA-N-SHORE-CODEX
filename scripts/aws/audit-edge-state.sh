@@ -178,6 +178,27 @@ done < <(jq -r '.[] | . as $resource | .instances[]? | [$resource.type, $resourc
 
 echo
 [[ "$LIVE_CHECK_FAILED" == 0 ]] || { echo "Edge audit incomplete: live checks failed." >&2; exit 1; }
+echo "=== ORIGIN HTTPS READINESS (READ ONLY) ==="
+aws elbv2 describe-load-balancers --names sea-n-shore-staging-alb --region "$STATE_REGION" --output json > "$EVIDENCE_DIR/alb.json"
+jq -e '.LoadBalancers | length == 1' "$EVIDENCE_DIR/alb.json" >/dev/null
+jq '.LoadBalancers[] | {LoadBalancerArn,DNSName,State,SecurityGroups}' "$EVIDENCE_DIR/alb.json"
+ALB_ARN="$(jq -r '.LoadBalancers[0].LoadBalancerArn' "$EVIDENCE_DIR/alb.json")"
+aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --region "$STATE_REGION" --output json | jq '[.Listeners[] | {ListenerArn,Port,Protocol,SslPolicy,Certificates,DefaultActions}]'
+while IFS= read -r group_id; do
+  aws ec2 describe-security-groups --group-ids "$group_id" --region "$STATE_REGION" --output json | jq '[.SecurityGroups[] | {GroupId,IpPermissions,IpPermissionsEgress}]'
+done < <(jq -r '.LoadBalancers[0].SecurityGroups[]' "$EVIDENCE_DIR/alb.json")
+# Include all certificate statuses and common key types, including pending DNS validation.
+aws acm list-certificates --region "$STATE_REGION" --includes keyTypes=RSA_1024,RSA_2048,RSA_3072,RSA_4096,EC_prime256v1,EC_secp384r1,EC_secp521r1 --output json > "$EVIDENCE_DIR/certificates.json"
+while IFS= read -r certificate_arn; do
+  aws acm describe-certificate --certificate-arn "$certificate_arn" --region "$STATE_REGION" --output json | jq '.Certificate | {CertificateArn,DomainName,SubjectAlternativeNames,Status,NotAfter,InUseBy,DomainValidationOptions}'
+done < <(jq -r '.CertificateSummaryList[].CertificateArn' "$EVIDENCE_DIR/certificates.json")
+echo "ACM_CERTIFICATE_COUNT=$(jq '.CertificateSummaryList | length' "$EVIDENCE_DIR/certificates.json")"
+aws route53 list-hosted-zones --output json | jq '[.HostedZones[] | {Id,Name,Config}]'
+aws cloudfront get-distribution --id EF1K45UVP11XZ --output json | jq '.Distribution | {Id,Status,Origins:.DistributionConfig.Origins,Aliases:.DistributionConfig.Aliases}'
+# Only resource identities/protocol fields from state; never dump raw state or secrets.
+jq '[.resources[] | select(.mode == "managed" and (.type | test("^aws_(lb_listener|acm_certificate|route53_record)$"))) | {type,name,instances:[.instances[] | {id:.attributes.id,port:.attributes.port,protocol:.attributes.protocol,certificate_arn:.attributes.certificate_arn}]}]' "$STATE_JSON"
+echo "ORIGIN HTTPS READINESS INVENTORY COMPLETE"
+
 echo "=== BOOTSTRAP TERRAFORM CAPACITY ==="
 df -h /tmp "$HOME"
 for provider_root in "$HOME/SEA-N-SHORE-CODEX" "$HOME/.terraform.d"; do
