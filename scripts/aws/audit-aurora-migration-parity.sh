@@ -72,4 +72,8 @@ echo "AURORA_KEYS_CONNECTIONS=$(sql_scalar "SELECT coalesce(json_agg(key_hash OR
 echo "AURORA_KEYS_USER_BLOCKS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(blocker_id::text || ':' || blocked_id::text) AS key_hash FROM public.user_blocks) q")"
 echo "AURORA_KEYS_NOTIFICATIONS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.notifications) q")"
 
+# PII-safe semantic tokens distinguish genuine migration loss from rows recreated under a new UUID.
+echo "AURORA_CONNECTION_SEMANTICS=$(sql_scalar "SELECT coalesce(json_agg(json_build_object('id_hash', md5(id::text), 'low_hash', md5(user_low_id::text), 'high_hash', md5(user_high_id::text), 'requested_hash', md5(requested_by::text), 'status', status::text, 'responded', responded_at IS NOT NULL) ORDER BY id)::text, '[]') FROM public.connections")"
+echo "AURORA_NOTIFICATION_SEMANTICS=$(sql_scalar "SELECT coalesce(json_agg(json_build_object('id_hash', md5(id::text), 'recipient_hash', md5(recipient_id::text), 'actor_hash', CASE WHEN actor_id IS NULL THEN NULL ELSE md5(actor_id::text) END, 'type', notification_type::text, 'connection_hash', CASE WHEN connection_id IS NULL THEN NULL ELSE md5(connection_id::text) END, 'read', read_at IS NOT NULL) ORDER BY id)::text, '[]') FROM public.notifications")"
+
 echo "AURORA_MIGRATION_PARITY_AUDIT_COMPLETE=true"
