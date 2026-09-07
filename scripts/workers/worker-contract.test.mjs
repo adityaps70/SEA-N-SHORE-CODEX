@@ -19,6 +19,12 @@ test('workers stop gracefully on ECS termination', () => {
   assert.match(consumer, /process\.on\('SIGTERM'/)
 })
 
+test('notification worker defaults safely to shadow and validates active mode explicitly', () => {
+  assert.match(consumer, /SOCIAL_NOTIFICATION_MODE \?\? 'shadow'/)
+  assert.match(consumer, /configuredMode !== 'shadow' && configuredMode !== 'active'/)
+  assert.match(consumer, /createProductionNotificationEventConsumer\(mode\)/)
+})
+
 test('notification worker long-polls and deletes only after successful consumption', () => {
   assert.match(consumer, /WaitTimeSeconds:\s*20/)
   assert.match(consumer, /VisibilityTimeout:\s*60/)
