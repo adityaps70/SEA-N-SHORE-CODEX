@@ -1,0 +1,145 @@
+name: AWS Edge State Audit
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-edge-state-audit.yml
+      - scripts/aws/audit-edge-state.sh
+      - infra/aws/app/**
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+jobs:
+  edge-state-audit:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      AWS_REGION: ap-south-1
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == "completed" ]]; then
+              [[ "$CONCLUSION" == "success" ]] || {
+                echo "Exact-head AWS Infrastructure CI is not green." >&2
+                exit 1
+              }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Discover bootstrap instance
+        id: instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTANCE_IDS=$(aws ec2 describe-instances \
+            --region "$AWS_REGION" \
+            --filters \
+              "Name=tag:Name,Values=sea-n-shore-bootstrap" \
+              "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output json)
+          COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
+          if [[ "$COUNT" -ne 1 ]]; then
+            echo "Expected exactly one running sea-n-shore-bootstrap instance; found $COUNT." >&2
+            exit 1
+          fi
+          INSTANCE_ID=$(jq -r '.[0]' <<<"$INSTANCE_IDS")
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "Bootstrap instance resolved."
+
+      - name: Send repository-controlled read-only audit through SSM
+        id: command
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n --arg sha "$TRIGGER_SHA" '{commands:[("runuser -u ssm-user -- bash -lc '\''set -euo pipefail; cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1; git fetch origin feat/aws-native-phase-0-1; git cat-file -e " + $sha + "^{commit}; git reset --hard " + $sha + "; bash scripts/aws/audit-edge-state.sh'\''") ]}' > /tmp/ssm-parameters.json
+          COMMAND_ID=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Sea N Shore edge state audit $TRIGGER_SHA" \
+            --timeout-seconds 900 \
+            --parameters file:///tmp/ssm-parameters.json \
+            --query 'Command.CommandId' \
+            --output text)
+          test -n "$COMMAND_ID" || { echo "SSM did not return a command ID." >&2; exit 1; }
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "SSM read-only audit submitted."
+
+      - name: Wait for audit and surface evidence
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          COMMAND_ID: ${{ steps.command.outputs.command_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS="Pending"
+          for attempt in $(seq 1 180); do
+            STATUS=$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query Status \
+              --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in
+              Pending|InProgress|Delayed) sleep 5 ;;
+              *) break ;;
+            esac
+          done
+
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --output json > /tmp/ssm-result.json
+
+          echo "=== AWS EDGE STATE AUDIT STDOUT ==="
+          jq -r '.StandardOutputContent // empty' /tmp/ssm-result.json
+
+          STDERR_CONTENT=$(jq -r '.StandardErrorContent // empty' /tmp/ssm-result.json)
+          if [[ -n "$STDERR_CONTENT" ]]; then
+            echo "=== AWS EDGE STATE AUDIT STDERR ===" >&2
+            printf '%s\n' "$STDERR_CONTENT" >&2
+          fi
+
+          FINAL_STATUS=$(jq -r '.Status' /tmp/ssm-result.json)
+          echo "SSM final status: $FINAL_STATUS"
+          [[ "$FINAL_STATUS" == "Success" ]] || exit 1
