@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Anchor, MapPin, Pencil, Ship, TimerReset } from 'lucide-react'
@@ -27,11 +28,13 @@ export function ProfileHeader({
   actions,
   editHref,
   mediaControls,
+  avatarControls,
 }: {
   profile: PublicProfile
   actions?: ReactNode
   editHref?: string
   mediaControls?: ReactNode
+  avatarControls?: ReactNode
 }) {
   return (
     <section className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
@@ -49,16 +52,19 @@ export function ProfileHeader({
       <div className="px-5 pb-6 sm:px-8 sm:pb-8">
         <div className="-mt-12 flex flex-col gap-5 sm:-mt-14 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex min-w-0 items-end gap-4">
-            <div className="relative grid size-24 shrink-0 place-items-center overflow-hidden rounded-2xl border-4 border-white bg-mist-100 text-xl font-semibold text-navy-950 shadow-sm sm:size-28 sm:text-2xl">
-              {profile.avatarUrl ? (
-                <img
-                  src={profile.avatarUrl}
-                  alt={`${profile.fullName} profile photo`}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                initials(profile.fullName)
-              )}
+            <div className="relative shrink-0">
+              <div className="grid size-24 place-items-center overflow-hidden rounded-2xl border-4 border-white bg-mist-100 text-xl font-semibold text-navy-950 shadow-sm sm:size-28 sm:text-2xl">
+                {profile.avatarUrl ? (
+                  <img
+                    src={profile.avatarUrl}
+                    alt={`${profile.fullName} profile photo`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  initials(profile.fullName)
+                )}
+              </div>
+              {avatarControls ? <div className="absolute -bottom-1 -right-1 z-10">{avatarControls}</div> : null}
             </div>
             <div className="min-w-0 pb-1">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-mist-50 px-2.5 py-1 text-xs font-semibold text-ocean-700">
