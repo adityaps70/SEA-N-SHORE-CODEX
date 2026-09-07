@@ -10,6 +10,8 @@ export type NotificationRow = QueryResultRow & {
   read_at: string | null
 }
 
+export type NotificationEventMode = 'shadow' | 'active'
+
 type CountRow = QueryResultRow & { unread_count: string | number }
 type IdRow = QueryResultRow & { id: string }
 type ReceiptRow = QueryResultRow & { event_id: string }
@@ -77,23 +79,28 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
 
 export function createNotificationEventRepositoryForClient(client: DatabaseQueryClient) {
   return {
-    async createNotificationFromEvent(input: {
+    async processNotificationEvent(input: {
       eventId: string
+      mode: NotificationEventMode
       recipientId: string
       actorId: string
       type: NetworkNotificationType
       connectionId?: string
     }) {
       const receipt = await client.query<ReceiptRow>(
-        `insert into public.notification_event_receipts (event_id)
-         values ($1)
+        `insert into public.notification_event_receipts (event_id, processing_mode)
+         values ($1, $2)
          on conflict do nothing
          returning event_id`,
-        [input.eventId],
+        [input.eventId, input.mode],
       )
 
       if (!receipt.rows[0]?.event_id) {
-        return { created: false, notificationId: null }
+        return { processed: false, created: false, notificationId: null }
+      }
+
+      if (input.mode === 'shadow') {
+        return { processed: true, created: false, notificationId: null }
       }
 
       const notification = await client.query<IdRow>(
@@ -114,7 +121,7 @@ export function createNotificationEventRepositoryForClient(client: DatabaseQuery
         [input.eventId, notificationId],
       )
 
-      return { created: true, notificationId }
+      return { processed: true, created: true, notificationId }
     },
   }
 }
