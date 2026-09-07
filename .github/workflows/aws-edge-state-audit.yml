@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/aws-edge-state-audit.yml
       - scripts/aws/audit-edge-state.sh
+      - scripts/aws/check-phase4-supabase-runtime.sh
       - infra/aws/app/**
   workflow_dispatch:
 

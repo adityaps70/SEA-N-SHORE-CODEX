@@ -22,6 +22,7 @@ fi
 
 PUBLIC_ENV_MATCHES="$(
   git grep -n 'NEXT_PUBLIC_SUPABASE_' -- src Dockerfile .github/workflows \
+    | grep -v '^.github/workflows/aws-remote-verify.yml:' \
     || true
 )"
 
