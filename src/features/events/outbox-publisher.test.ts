@@ -22,11 +22,12 @@ function row() {
 }
 
 function transactionWith(rows = [row()]) {
-  const query = vi.fn(async (sql: string) => {
+  const query = vi.fn<DatabaseQueryClient['query']>(async (sql: string) => {
     if (sql.includes('select id, aggregate_type')) return { rows }
     return { rows: [] }
   })
-  const withTransaction = async <T>(fn: (client: DatabaseQueryClient) => Promise<T>) => fn({ query } as unknown as DatabaseQueryClient)
+  const withTransaction = async <T>(fn: (client: DatabaseQueryClient) => Promise<T>) =>
+    fn({ query } as unknown as DatabaseQueryClient)
   return { query, withTransaction }
 }
 
