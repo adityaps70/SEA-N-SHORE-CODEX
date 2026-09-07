@@ -54,23 +54,25 @@ terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   > "$WORK_DIR/plan.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/aurora.tfplan" > "$WORK_DIR/plan.json"
 
-# Fail closed unless this is exactly one in-place Aurora cluster update and the
-# only known before/after value difference is backup_retention_period 1 -> 7.
+# Terraform includes dependency resources with explicit ["no-op"] actions in a
+# targeted plan. Ignore those, but fail closed unless the only actual change is
+# an in-place Aurora backup_retention_period update from 1 to 7.
 jq -e '
-  (.resource_changes | length) == 1 and
-  .resource_changes[0].address == "aws_rds_cluster.aurora" and
-  .resource_changes[0].change.actions == ["update"] and
-  .resource_changes[0].change.before.backup_retention_period == 1 and
-  .resource_changes[0].change.after.backup_retention_period == 7 and
-  ((.resource_changes[0].change.before | del(.backup_retention_period)) ==
-   (.resource_changes[0].change.after | del(.backup_retention_period)))
+  ([.resource_changes[] | select(.change.actions != ["no-op"])]) as $changes |
+  ($changes | length) == 1 and
+  $changes[0].address == "aws_rds_cluster.aurora" and
+  $changes[0].change.actions == ["update"] and
+  $changes[0].change.before.backup_retention_period == 1 and
+  $changes[0].change.after.backup_retention_period == 7 and
+  (($changes[0].change.before | del(.backup_retention_period)) ==
+   ($changes[0].change.after | del(.backup_retention_period)))
 ' "$WORK_DIR/plan.json" >/dev/null || {
-  echo "Aurora retention plan contains unexpected changes; refusing." >&2
-  jq '[.resource_changes[] | {address, actions: .change.actions, before_retention: .change.before.backup_retention_period, after_retention: .change.after.backup_retention_period}]' "$WORK_DIR/plan.json" >&2
+  echo "Aurora retention plan contains unexpected actual changes; refusing." >&2
+  jq '[.resource_changes[] | select(.change.actions != ["no-op"]) | {address, actions: .change.actions, before_retention: .change.before.backup_retention_period, after_retention: .change.after.backup_retention_period}]' "$WORK_DIR/plan.json" >&2
   exit 1
 }
 
-jq '[.resource_changes[] | {address, actions: .change.actions, before_retention: .change.before.backup_retention_period, after_retention: .change.after.backup_retention_period}]' "$WORK_DIR/plan.json"
+jq '[.resource_changes[] | select(.change.actions != ["no-op"]) | {address, actions: .change.actions, before_retention: .change.before.backup_retention_period, after_retention: .change.after.backup_retention_period}]' "$WORK_DIR/plan.json"
 echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/aurora.tfplan" | cut -d' ' -f1)"
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
 echo "AURORA_BACKUP_RETENTION_PLAN_VERIFIED=1_TO_7_ONLY"
