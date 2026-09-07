@@ -7,6 +7,10 @@ const profile: PublicProfile = {
   id: '11111111-1111-4111-8111-111111111111',
   slug: 'member-a',
   profileType: 'seafarer',
+  identityRoot: 'professional',
+  primaryIdentity: 'Chief Engineer',
+  primaryIdentityFamily: 'Sea-going · Engine',
+  secondaryIdentities: ['Mentor', 'ISM Auditor'],
   fullName: 'Member A',
   avatarPath: 'profiles/member-a/avatar.webp',
   avatarUrl: 'https://media.example/avatar.webp',
@@ -36,6 +40,14 @@ describe('ProfileHeader', () => {
     expect(screen.getByRole('img', { name: 'Member A cover photo' })).toHaveAttribute('src', profile.coverUrl)
     expect(screen.getByText('Chief Officer | Tankers')).toBeInTheDocument()
     expect(screen.getByText('Available now')).toBeInTheDocument()
+  })
+
+  it('prefers the exact onboarding identity and shows additional capacities', () => {
+    render(<ProfileHeader profile={profile} />)
+    expect(screen.getByText('Chief Engineer')).toBeInTheDocument()
+    expect(screen.getByText('Mentor')).toBeInTheDocument()
+    expect(screen.getByText('ISM Auditor')).toBeInTheDocument()
+    expect(screen.queryByText('Seafarer')).not.toBeInTheDocument()
   })
 
   it('renders section edit and optional action slots for the owner', () => {
