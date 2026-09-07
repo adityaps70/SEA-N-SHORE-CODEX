@@ -46,6 +46,8 @@ jobs:
         run: node --test scripts/migration/reconcile-postgres.test.mjs
       - name: Verify storage reconciliation contract
         run: node --test scripts/migration/reconcile-storage.test.mjs
+      - name: Verify identity reconciliation contract
+        run: node --test scripts/migration/reconcile-identities.test.mjs
       - name: Verify Phase 5B SES readiness contract
         run: node --test scripts/aws/phase5b-ses-readiness.test.mjs
       - name: Verify Phase 5B SES Terraform contract
