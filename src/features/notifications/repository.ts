@@ -1,5 +1,5 @@
 import type { QueryResultRow } from 'pg'
-import { query as databaseQuery } from '@/lib/db/client'
+import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import type { NetworkNotificationType } from './types'
 
 export type NotificationRow = QueryResultRow & {
@@ -12,6 +12,7 @@ export type NotificationRow = QueryResultRow & {
 
 type CountRow = QueryResultRow & { unread_count: string | number }
 type IdRow = QueryResultRow & { id: string }
+type ReceiptRow = QueryResultRow & { event_id: string }
 
 type NotificationQuery = (
   text: string,
@@ -73,6 +74,52 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
     },
   }
 }
+
+export function createNotificationEventRepositoryForClient(client: DatabaseQueryClient) {
+  return {
+    async createNotificationFromEvent(input: {
+      eventId: string
+      recipientId: string
+      actorId: string
+      type: NetworkNotificationType
+      connectionId?: string
+    }) {
+      const receipt = await client.query<ReceiptRow>(
+        `insert into public.notification_event_receipts (event_id)
+         values ($1)
+         on conflict do nothing
+         returning event_id`,
+        [input.eventId],
+      )
+
+      if (!receipt.rows[0]?.event_id) {
+        return { created: false, notificationId: null }
+      }
+
+      const notification = await client.query<IdRow>(
+        `insert into public.notifications (
+           recipient_id, actor_id, notification_type, connection_id
+         ) values ($1, $2, $3, $4)
+         returning id`,
+        [input.recipientId, input.actorId, input.type, input.connectionId ?? null],
+      )
+      const notificationId = notification.rows[0]?.id
+      if (!notificationId) throw new Error('notification_event_insert_failed')
+
+      await client.query(
+        `update public.notification_event_receipts
+         set notification_id = $2,
+             processed_at = now()
+         where event_id = $1`,
+        [input.eventId, notificationId],
+      )
+
+      return { created: true, notificationId }
+    },
+  }
+}
+
+export type NotificationEventRepository = ReturnType<typeof createNotificationEventRepositoryForClient>
 
 const repository = createNotificationRepository()
 
