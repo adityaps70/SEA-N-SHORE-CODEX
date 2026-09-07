@@ -1,0 +1,231 @@
+name: AWS Phase 5 Auth Cleanup Deploy
+
+on:
+  push:
+    branches: [feat/aws-native-phase-0-1]
+    paths:
+      - .github/workflows/aws-phase5-auth-cleanup-deploy.yml
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 40
+    env:
+      AWS_REGION: ap-south-1
+      EXPECTED_ACCOUNT_ID: "310356785722"
+      ECS_CLUSTER: sea-n-shore-staging
+      ECS_SERVICE: sea-n-shore-staging-web
+      ECS_CONTAINER_NAME: web
+      ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      LOG_GROUP: /ecs/sea-n-shore-staging/web
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 120); do
+            JSON="$(curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == "completed" ]]; then
+              [[ "$CONCLUSION" == "success" ]] || exit 1
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate staging target and capture rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT" == "$EXPECTED_ACCOUNT_ID" ]]
+          test -n "$ECR_REPOSITORY"
+          test -n "$NEXT_PUBLIC_SITE_URL"
+          OLD_TASK_ARN="$(aws ecs describe-services \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+          test -n "$OLD_TASK_ARN"
+          echo "OLD_TASK_ARN=$OLD_TASK_ARN" >> "$GITHUB_ENV"
+          echo "DEPLOY_START_MS=$(( $(date +%s) * 1000 ))" >> "$GITHUB_ENV"
+          echo "Rollback task: $OLD_TASK_ARN"
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push immutable image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_TAG="${GITHUB_SHA}-${GITHUB_RUN_ID}"
+          IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_URI=$IMAGE_URI" >> "$GITHUB_ENV"
+
+      - name: Register clean task definition
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs describe-task-definition \
+            --region "$AWS_REGION" \
+            --task-definition "$OLD_TASK_ARN" \
+            --query taskDefinition \
+            --output json > /tmp/task-current.json
+
+          jq \
+            --arg IMAGE "$IMAGE_URI" \
+            --arg NAME "$ECS_CONTAINER_NAME" \
+            '
+            del(
+              .taskDefinitionArn,
+              .revision,
+              .status,
+              .requiresAttributes,
+              .compatibilities,
+              .registeredAt,
+              .registeredBy
+            )
+            | .containerDefinitions |= map(
+                if .name == $NAME then
+                  .image = $IMAGE
+                  | .environment = ((.environment // []) | map(select(((.name | startswith("NEXT_PUBLIC_" + "SUPABASE_")) | not))))
+                else . end
+              )
+            ' /tmp/task-current.json > /tmp/task-new.json
+
+          NEW_TASK_ARN="$(aws ecs register-task-definition \
+            --region "$AWS_REGION" \
+            --cli-input-json file:///tmp/task-new.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+          test -n "$NEW_TASK_ARN"
+          echo "NEW_TASK_ARN=$NEW_TASK_ARN" >> "$GITHUB_ENV"
+          echo "New task: $NEW_TASK_ARN"
+
+      - name: Deploy and wait for ECS stability
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$NEW_TASK_ARN" \
+            --force-new-deployment >/dev/null
+          aws ecs wait services-stable \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+
+      - name: Verify live runtime and Supabase removal
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs describe-services \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --output json > /tmp/service.json
+          test "$(jq -r '.services[0].taskDefinition' /tmp/service.json)" = "$NEW_TASK_ARN"
+          test "$(jq -r '.services[0].desiredCount' /tmp/service.json)" = "1"
+          test "$(jq -r '.services[0].runningCount' /tmp/service.json)" = "1"
+          test "$(jq -r '.services[0].pendingCount' /tmp/service.json)" = "0"
+          test "$(jq -r '.services[0].deployments[0].rolloutState' /tmp/service.json)" = "COMPLETED"
+          test "$(jq -r '.services[0].deployments[0].failedTasks' /tmp/service.json)" = "0"
+
+          aws ecs describe-task-definition \
+            --region "$AWS_REGION" \
+            --task-definition "$NEW_TASK_ARN" \
+            --query taskDefinition \
+            --output json > /tmp/live-task.json
+          LEGACY_COUNT="$(jq --arg NAME "$ECS_CONTAINER_NAME" '[.containerDefinitions[] | select(.name==$NAME) | (.environment // [])[] | select(.name | startswith("NEXT_PUBLIC_" + "SUPABASE_"))] | length' /tmp/live-task.json)"
+          echo "LIVE_LEGACY_SUPABASE_ENV_COUNT=$LEGACY_COUNT"
+          test "$LEGACY_COUNT" = "0"
+
+      - name: Verify staging HTTP health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for endpoint in /api/health/phase4 /api/health/home; do
+            ok=false
+            for attempt in $(seq 1 20); do
+              if BODY="$(curl -fsS --max-time 15 "${NEXT_PUBLIC_SITE_URL%/}$endpoint")"; then
+                echo "$endpoint => $BODY"
+                ok=true
+                break
+              fi
+              sleep 5
+            done
+            test "$ok" = true
+          done
+
+      - name: Review post-deploy CloudWatch errors
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 10
+          aws logs filter-log-events \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP" \
+            --start-time "$DEPLOY_START_MS" \
+            --output json > /tmp/cloudwatch.json
+          MATCHES="$(jq -r '.events[].message' /tmp/cloudwatch.json | grep -Eai '(^|[^[:alpha:]])(exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|AccessDenied|password authentication failed|HTTP[[:space:]]+5[0-9][0-9])([^[:alpha:]]|$)' || true)"
+          MATCH_COUNT="$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l | tr -d ' ')"
+          echo "POST_DEPLOY_STRONG_ERROR_MATCHES=$MATCH_COUNT"
+          test "$MATCH_COUNT" = "0" || { printf '%s\n' "$MATCHES" | head -n 20 >&2; exit 1; }
+
+      - name: Roll back on deployment failure
+        if: ${{ failure() && env.OLD_TASK_ARN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --task-definition "$OLD_TASK_ARN" \
+            --force-new-deployment >/dev/null
+          aws ecs wait services-stable \
+            --region "$AWS_REGION" \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE"
+          echo "ROLLED_BACK_TO=$OLD_TASK_ARN"
