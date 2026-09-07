@@ -7,8 +7,13 @@ function profileRow() {
     id: '22222222-2222-4222-8222-222222222222',
     slug: 'captain-ananya-rao',
     profile_type: 'seafarer',
+    identity_root: 'professional',
+    primary_identity: 'Master',
+    primary_identity_family: 'Sea-going · Deck',
+    secondary_identities: ['Mentor'],
     full_name: 'Captain Ananya Rao',
     avatar_path: null,
+    cover_path: null,
     location: 'Mumbai, India',
     headline: 'Master Mariner',
     summary: 'Tanker professional',
@@ -27,7 +32,7 @@ function profileRow() {
 }
 
 describe('Aurora professional search', () => {
-  it('searches all tokens in Aurora while keeping self and block exclusion', async () => {
+  it('searches exact identities and all existing professional tokens while keeping self and block exclusion', async () => {
     const query = vi.fn(async () => [profileRow()])
     const { createProfileRepository } = await import('./repository')
     const repository = createProfileRepository({ query })
@@ -39,12 +44,16 @@ describe('Aurora professional search', () => {
     })
 
     expect(result).toHaveLength(1)
+    expect(result[0]).toMatchObject({ primaryIdentity: 'Master', secondaryIdentities: ['Mentor'] })
     const [sql, values] = query.mock.calls[0] as unknown as [string, readonly unknown[]]
     expect(sql).toContain('p.id <> $1')
     expect(sql).toContain('from public.user_blocks')
     expect(sql).toContain('like all($2::text[])')
     expect(sql).toContain('limit $3')
     expect(sql).toContain('string_agg(ps_search.skill')
+    expect(sql).toContain('p.primary_identity')
+    expect(sql).toContain('p.primary_identity_family')
+    expect(sql).toContain("array_to_string(p.secondary_identities, ' ')")
     expect(values).toEqual([VIEWER_ID, ['%master%', '%tanker%'], 30])
   })
 
