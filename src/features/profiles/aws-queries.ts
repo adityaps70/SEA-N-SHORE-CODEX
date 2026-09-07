@@ -43,10 +43,11 @@ export function createAwsProfileQueries(input: {
 
   async function getAwsNetworkProfiles(limit = 18, searchQuery = '') {
     const user = await input.requireUser()
+    const normalizedSearch = searchQuery.trim()
     return input.repository.getDiscoveryCandidates({
       viewerProfileId: user.id,
       limit,
-      searchQuery,
+      ...(normalizedSearch ? { searchQuery: normalizedSearch } : {}),
     })
   }
 
