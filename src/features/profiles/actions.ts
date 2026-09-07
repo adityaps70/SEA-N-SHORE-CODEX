@@ -119,7 +119,9 @@ export async function completeOnboarding(
     })
   }
 
-  redirect(data.profileType === 'company' ? '/company/setup' : '/home')
+  // Company-specific setup is not implemented yet. Keep every completed profile
+  // on an existing authenticated surface instead of redirecting companies to a 404.
+  redirect('/home')
 }
 
 export async function updateProfile(
