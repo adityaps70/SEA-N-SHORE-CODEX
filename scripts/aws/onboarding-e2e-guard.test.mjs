@@ -70,3 +70,16 @@ test('run-once performs disposable public sign-up browser journeys and guarded c
   assert.match(browserScript, /\/profile/)
   assert.match(browserScript, /\/profile\/edit/)
 })
+
+test('signup diagnostics ignore the empty Next.js route announcer and cleanup audits only completed journeys', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.match(browserScript, /locator\('p\[role="alert"\]'\)/)
+  assert.match(browserScript, /locator\('p\[role="status"\]'\)/)
+  assert.doesNotMatch(browserScript, /getByRole\('alert'\)/)
+  assert.match(workflow, /id:\s*journeys/)
+  assert.match(workflow, /AUDIT_EXPECTED/)
+  assert.match(workflow, /steps\.journeys\.outcome/)
+  assert.match(workflow, /ONBOARDING_E2E_CLEANUP_VERIFIED=true/)
+})
