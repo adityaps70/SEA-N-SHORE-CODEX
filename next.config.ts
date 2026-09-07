@@ -13,7 +13,10 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '6mb',
-      allowedOrigins: getServerActionAllowedOrigins(process.env.NEXT_PUBLIC_SITE_URL),
+      allowedOrigins: getServerActionAllowedOrigins(
+        process.env.NEXT_PUBLIC_SITE_URL,
+        process.env.SERVER_ACTION_ALLOWED_ORIGINS,
+      ),
     },
   },
   images: {
