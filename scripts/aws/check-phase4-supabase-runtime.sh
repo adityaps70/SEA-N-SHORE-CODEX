@@ -32,7 +32,7 @@ if [[ -n "$PACKAGE_MATCHES" ]]; then
 fi
 
 PUBLIC_ENV_MATCHES="$(
-  git grep -n 'NEXT_PUBLIC_SUPABASE_' -- src Dockerfile .github/workflows \
+  git grep -n 'NEXT_PUBLIC_SUPABASE_' -- src Dockerfile .env.example .github/workflows \
     | grep -v '^.github/workflows/aws-remote-verify.yml:' \
     || true
 )"
@@ -40,6 +40,17 @@ PUBLIC_ENV_MATCHES="$(
 if [[ -n "$PUBLIC_ENV_MATCHES" ]]; then
   echo "Legacy NEXT_PUBLIC_SUPABASE build/runtime wiring detected:" >&2
   printf '%s\n' "$PUBLIC_ENV_MATCHES" >&2
+  exit 1
+fi
+
+SUPABASE_BUILD_CONFIG_MATCHES="$(
+  git grep -nEi 'supabase\.co|@supabase/|NEXT_PUBLIC_SUPABASE_' -- .env.example next.config.ts Dockerfile package.json \
+    || true
+)"
+
+if [[ -n "$SUPABASE_BUILD_CONFIG_MATCHES" ]]; then
+  echo "Supabase-specific application/build configuration detected:" >&2
+  printf '%s\n' "$SUPABASE_BUILD_CONFIG_MATCHES" >&2
   exit 1
 fi
 
@@ -55,7 +66,7 @@ if [[ -n "$TERRAFORM_APP_MATCHES" ]]; then
 fi
 
 VERCEL_RUNTIME_MATCHES="$(
-  git grep -nEi '(@vercel/|VERCEL_URL|VERCEL_ENV|vercel\.json|\.vercel/)' -- src Dockerfile infra/aws .github/workflows package.json next.config.ts \
+  git grep -nEi '(@vercel/|VERCEL_URL|VERCEL_ENV|vercel\.json|\.vercel/)' -- src Dockerfile .env.example infra/aws .github/workflows package.json next.config.ts \
     | grep -v '^.github/workflows/aws-remote-verify.yml:' \
     || true
 )"
@@ -67,5 +78,5 @@ if [[ -n "$VERCEL_RUNTIME_MATCHES" ]]; then
 fi
 
 echo "AWS APPLICATION INDEPENDENCE AUDIT PASSED"
-echo "No application runtime flow, helper module, package dependency, public env wiring, app Terraform definition, or Vercel-specific build/runtime dependency is active in the AWS branch."
+echo "No application runtime flow, helper module, package dependency, public env wiring, build configuration, app Terraform definition, or Vercel-specific build/runtime dependency is active in the AWS branch."
 echo "Legacy Supabase schema/tests and migration scripts may remain temporarily as source evidence for final delta/orphan reconciliation."
