@@ -9,6 +9,7 @@ AWS_REGION="${AWS_REGION:-ap-south-1}"
 STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"
 STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 APP_DIR="$PWD/infra/aws/app"
+IMAGE_TAG_FILE="scripts/aws/social-events-image-tag.txt"
 
 [[ "${SOCIAL_EVENTS_INFRA_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "SOCIAL_EVENTS_INFRA_EXPECTED_SHA must be an exact commit SHA." >&2
@@ -16,11 +17,22 @@ APP_DIR="$PWD/infra/aws/app"
 }
 [[ "$(git rev-parse HEAD)" == "$SOCIAL_EVENTS_INFRA_EXPECTED_SHA" ]]
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
-git diff --quiet HEAD -- infra/aws/app scripts/aws/social-events-infra.sh scripts/aws/social-events-infra-action.txt
+git diff --quiet HEAD -- infra/aws/app scripts/aws/social-events-infra.sh scripts/aws/social-events-infra-action.txt "$IMAGE_TAG_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
 ACTION="$(tr -d '[:space:]' < scripts/aws/social-events-infra-action.txt)"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported social event infrastructure action." >&2; exit 1 ;; esac
+
+IMAGE_TAG="$(tr -d '[:space:]' < "$IMAGE_TAG_FILE")"
+[[ "$IMAGE_TAG" =~ ^social-[0-9a-f]{40}$ ]] || {
+  echo "Pinned social worker image tag must be social-<40 hex SHA>." >&2
+  exit 1
+}
+IMAGE_SOURCE_SHA="${IMAGE_TAG#social-}"
+git merge-base --is-ancestor "$IMAGE_SOURCE_SHA" HEAD || {
+  echo "Pinned social worker image SHA is not an ancestor of the infrastructure commit." >&2
+  exit 1
+}
 
 WORK_DIR="$(mktemp -d "$PWD/.social-events-infra.XXXXXXXX")"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
@@ -28,9 +40,9 @@ trap 'rm -rf -- "$WORK_DIR"' EXIT
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_REGION" "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null
 
-python3 - "$WORK_DIR/state.json" "$WORK_DIR/variables.json" "$SOCIAL_EVENTS_INFRA_EXPECTED_SHA" <<'PY'
+python3 - "$WORK_DIR/state.json" "$WORK_DIR/variables.json" "$IMAGE_TAG" <<'PY'
 import json, sys
-state_path, output_path, sha = sys.argv[1:]
+state_path, output_path, image_tag = sys.argv[1:]
 with open(state_path) as f:
     state=json.load(f)
 resources=state['resources']
@@ -43,7 +55,7 @@ containers=json.loads(web_task['container_definitions'])
 web=next(c for c in containers if c['name']=='web')
 site=next(e['value'] for e in web['environment'] if e['name']=='NEXT_PUBLIC_SITE_URL')
 values={
-  'image_tag':'social-'+sha,
+  'image_tag':image_tag,
   'site_url':site,
   'aurora_engine_version':attrs('aws_rds_cluster','aurora')['engine_version'],
   'social_worker_desired_count':1,
@@ -134,7 +146,7 @@ PY
 jq '[.resource_changes[] | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}]' "$WORK_DIR/plan.json"
 echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/social-events.tfplan" | cut -d' ' -f1)"
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
-echo "SOCIAL_EVENTS_IMAGE_TAG=social-${SOCIAL_EVENTS_INFRA_EXPECTED_SHA}"
+echo "SOCIAL_EVENTS_IMAGE_TAG=$IMAGE_TAG"
 
 echo "SOCIAL_EVENTS_INFRA_PLAN_VERIFIED=CREATE_ONLY"
 if [[ "$ACTION" == "plan" ]]; then
@@ -144,7 +156,6 @@ fi
 
 [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SOCIAL_EVENTS_INFRA_EXPECTED_SHA" ]]
 [[ "$(aws s3api get-bucket-versioning --bucket "$STATE_BUCKET" --query Status --output text)" == Enabled ]]
-IMAGE_TAG="social-${SOCIAL_EVENTS_INFRA_EXPECTED_SHA}"
 aws ecr describe-images --region "$AWS_REGION" --repository-name sea-n-shore --image-ids "imageTag=$IMAGE_TAG" >/dev/null
 
 echo "STATE_BACKUP_VERSION=$(jq -r '.VersionId' "$WORK_DIR/object.json")"
