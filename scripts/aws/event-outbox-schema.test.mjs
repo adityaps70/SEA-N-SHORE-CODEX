@@ -12,4 +12,6 @@ test('event outbox migration defines durable publishing and idempotency tables',
   assert.match(sql, /where published_at is null/i)
   assert.match(sql, /create table if not exists public\.notification_event_receipts/i)
   assert.match(sql, /event_id uuid primary key/i)
+  assert.match(sql, /processing_mode text not null/i)
+  assert.match(sql, /processing_mode in \('shadow', 'active'\)/i)
 })
