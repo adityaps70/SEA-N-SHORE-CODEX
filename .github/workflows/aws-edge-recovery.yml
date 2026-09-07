@@ -23,7 +23,7 @@ jobs:
     if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       AWS_REGION: ap-south-1
 
@@ -109,7 +109,7 @@ jobs:
           export EDGE_AUDIT_EXPECTED_SHA={sha}
           bash scripts/aws/edge-recovery.sh
           """
-          print(json.dumps({"commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          print(json.dumps({"executionTimeout": ["1800"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
           PYTHON
           COMMAND_ID=$(aws ssm send-command \
             --region "$AWS_REGION" \
