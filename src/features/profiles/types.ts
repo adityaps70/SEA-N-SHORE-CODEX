@@ -17,6 +17,9 @@ export type PublicProfile = {
   profileType: ProfileType
   fullName: string
   avatarPath: string | null
+  avatarUrl: string | null
+  coverPath: string | null
+  coverUrl: string | null
   location: string | null
   headline: string | null
   summary: string | null
@@ -42,6 +45,7 @@ export type PublicProfileRow = {
   profile_type: ProfileType
   full_name: string
   avatar_path: string | null
+  cover_path: string | null
   location: string | null
   headline: string | null
   summary: string | null
