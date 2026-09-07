@@ -1,0 +1,121 @@
+name: AWS Origin TLS Certificate
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - infra/aws/app/origin_tls.tf
+      - scripts/aws/origin-tls-certificate.sh
+      - scripts/aws/origin-tls-certificate-action.txt
+      - .github/workflows/aws-origin-tls-certificate.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-origin-tls-certificate
+  cancel-in-progress: false
+
+jobs:
+  origin-tls-certificate:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+    env:
+      AWS_REGION: ap-south-1
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == "completed" ]]; then
+              [[ "$CONCLUSION" == "success" ]] || { echo "Exact-head AWS Infrastructure CI is not green." >&2; exit 1; }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Discover bootstrap instance
+        id: instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTANCE_IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)
+          COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
+          [[ "$COUNT" -eq 1 ]] || { echo "Expected exactly one running bootstrap; found $COUNT." >&2; exit 1; }
+          echo "instance_id=$(jq -r '.[0]' <<<"$INSTANCE_IDS")" >> "$GITHUB_OUTPUT"
+
+      - name: Send bounded origin certificate operation through SSM
+        id: command
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          python3 - "$TRIGGER_SHA" > /tmp/ssm-parameters.json <<'PYTHON'
+          import json, shlex, sys
+          sha = sys.argv[1]
+          script = f"""set -euo pipefail
+          umask 077
+          WORK_DIR=$(mktemp -d /var/tmp/sea-n-shore-origin-cert.XXXXXXXX)
+          trap 'rm -rf -- "$WORK_DIR"' EXIT
+          git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$WORK_DIR/repo"
+          cd "$WORK_DIR/repo"
+          git checkout --quiet --detach {sha}
+          test "$(git rev-parse HEAD)" = "{sha}"
+          export ORIGIN_CERT_EXPECTED_SHA={sha}
+          bash scripts/aws/origin-tls-certificate.sh
+          """
+          print(json.dumps({"executionTimeout": ["1800"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          PYTHON
+          COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore origin TLS cert $TRIGGER_SHA" --timeout-seconds 1800 --parameters file:///tmp/ssm-parameters.json --query 'Command.CommandId' --output text)
+          test -n "$COMMAND_ID"
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait and surface bounded plan/apply evidence
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          COMMAND_ID: ${{ steps.command.outputs.command_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS=Pending
+          for attempt in $(seq 1 360); do
+            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Pending|InProgress|Delayed) sleep 5 ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > /tmp/result.json
+          echo "=== ORIGIN TLS CERTIFICATE STDOUT ==="
+          jq -r '.StandardOutputContent // empty' /tmp/result.json
+          STDERR_CONTENT=$(jq -r '.StandardErrorContent // empty' /tmp/result.json)
+          [[ -z "$STDERR_CONTENT" ]] || { echo "=== ORIGIN TLS CERTIFICATE STDERR ===" >&2; printf '%s\n' "$STDERR_CONTENT" >&2; }
+          FINAL_STATUS=$(jq -r '.Status' /tmp/result.json)
+          echo "SSM final status: $FINAL_STATUS"
+          [[ "$FINAL_STATUS" == Success ]]
