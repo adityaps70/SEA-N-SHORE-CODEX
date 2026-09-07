@@ -24,16 +24,23 @@ test('staging deploy supports an explicit exact-head push trigger without weaken
   assert.match(workflow, /IMAGE_TAG="\$\{GITHUB_SHA\}-\$\{GITHUB_RUN_ID\}"/)
 })
 
-test('staging deploy verifies the exact task revision and immutable image after ECS stabilizes', () => {
+test('staging deploy verifies exact completed service revision and its immutable task-definition image without ListTasks permission', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
 
   assert.match(workflow, /Verify exact ECS deployment/)
   assert.match(workflow, /describe-services/)
-  assert.match(workflow, /list-tasks/)
-  assert.match(workflow, /describe-tasks/)
+  assert.doesNotMatch(workflow, /aws ecs list-tasks/)
+  assert.doesNotMatch(workflow, /aws ecs describe-tasks/)
+  assert.match(workflow, /aws ecs describe-task-definition/)
   assert.match(workflow, /NEW_TASK_ARN/)
   assert.match(workflow, /steps\.image\.outputs\.uri/)
   assert.match(workflow, /EXPECTED_IMAGE_URI/)
+  assert.match(workflow, /DEPLOYMENT_COUNT/)
+  assert.match(workflow, /PRIMARY_TASK_ARN/)
+  assert.match(workflow, /PRIMARY_ROLLOUT_STATE/)
+  assert.match(workflow, /COMPLETED/)
+  assert.match(workflow, /failedTasks/)
+  assert.match(workflow, /TASK_DEF_IMAGE/)
   assert.match(workflow, /desiredCount/)
   assert.match(workflow, /runningCount/)
 })
