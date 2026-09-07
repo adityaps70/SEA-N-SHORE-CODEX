@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { PutEventsCommand } from '@aws-sdk/client-eventbridge'
 import { createEventBridgePublisher } from './eventbridge'
 import type { DomainEvent } from '@/features/events/types'
 
@@ -18,18 +19,19 @@ const event: DomainEvent = {
 
 describe('EventBridge publisher', () => {
   it('maps accepted and rejected entries back to outbox event ids', async () => {
-    const sender = {
-      send: vi.fn(async () => ({ Entries: [{ EventId: 'aws-event' }] })),
-    }
-    const publisher = createEventBridgePublisher({ busName: 'social-events', sender })
+    const send = vi.fn<(command: PutEventsCommand) => Promise<{ Entries: Array<{ EventId: string }> }>>(
+      async () => ({ Entries: [{ EventId: 'aws-event' }] }),
+    )
+    const publisher = createEventBridgePublisher({ busName: 'social-events', sender: { send } })
 
     await expect(publisher.publish([event])).resolves.toEqual({
       successfulIds: [event.id],
       failures: [],
     })
 
-    const command = sender.send.mock.calls[0]![0]
-    expect(command.input.Entries?.[0]).toMatchObject({
+    const command = send.mock.calls[0]?.[0]
+    expect(command).toBeDefined()
+    expect(command?.input.Entries?.[0]).toMatchObject({
       EventBusName: 'social-events',
       Source: 'sea-n-shore.social',
       DetailType: 'user.followed',
@@ -38,10 +40,12 @@ describe('EventBridge publisher', () => {
   })
 
   it('returns a bounded failure description for rejected entries', async () => {
-    const sender = {
-      send: vi.fn(async () => ({ Entries: [{ ErrorCode: 'InternalFailure', ErrorMessage: 'retry me' }] })),
-    }
-    const publisher = createEventBridgePublisher({ busName: 'social-events', sender })
+    const publisher = createEventBridgePublisher({
+      busName: 'social-events',
+      sender: {
+        send: vi.fn(async () => ({ Entries: [{ ErrorCode: 'InternalFailure', ErrorMessage: 'retry me' }] })),
+      },
+    })
 
     await expect(publisher.publish([event])).resolves.toEqual({
       successfulIds: [],
