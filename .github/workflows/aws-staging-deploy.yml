@@ -291,27 +291,34 @@ jobs:
           SERVICE_JSON="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json)"
           FAILURE_COUNT="$(jq '.failures | length' <<<"$SERVICE_JSON")"
           [[ "$FAILURE_COUNT" -eq 0 ]]
+
           CURRENT_TASK_ARN="$(jq -r '.services[0].taskDefinition' <<<"$SERVICE_JSON")"
           DESIRED_COUNT="$(jq -r '.services[0].desiredCount' <<<"$SERVICE_JSON")"
           RUNNING_COUNT="$(jq -r '.services[0].runningCount' <<<"$SERVICE_JSON")"
           PENDING_COUNT="$(jq -r '.services[0].pendingCount' <<<"$SERVICE_JSON")"
+          DEPLOYMENT_COUNT="$(jq '.services[0].deployments | length' <<<"$SERVICE_JSON")"
+          PRIMARY_TASK_ARN="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].taskDefinition // empty' <<<"$SERVICE_JSON")"
+          PRIMARY_ROLLOUT_STATE="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].rolloutState // empty' <<<"$SERVICE_JSON")"
+          PRIMARY_DESIRED_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].desiredCount // -1' <<<"$SERVICE_JSON")"
+          PRIMARY_RUNNING_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].runningCount // -1' <<<"$SERVICE_JSON")"
+          PRIMARY_PENDING_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].pendingCount // -1' <<<"$SERVICE_JSON")"
+          PRIMARY_FAILED_TASKS="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].failedTasks // -1' <<<"$SERVICE_JSON")"
+
           [[ "$CURRENT_TASK_ARN" == "$NEW_TASK_ARN" ]]
           [[ "$DESIRED_COUNT" -eq 1 && "$RUNNING_COUNT" -eq 1 && "$PENDING_COUNT" -eq 0 ]]
+          [[ "$DEPLOYMENT_COUNT" -eq 1 ]]
+          [[ "$PRIMARY_TASK_ARN" == "$NEW_TASK_ARN" ]]
+          [[ "$PRIMARY_ROLLOUT_STATE" == "COMPLETED" ]]
+          [[ "$PRIMARY_DESIRED_COUNT" -eq 1 && "$PRIMARY_RUNNING_COUNT" -eq 1 && "$PRIMARY_PENDING_COUNT" -eq 0 && "$PRIMARY_FAILED_TASKS" -eq 0 ]]
 
-          TASKS_JSON="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name "$ECS_SERVICE" --desired-status RUNNING --output json)"
-          TASK_COUNT="$(jq '.taskArns | length' <<<"$TASKS_JSON")"
-          [[ "$TASK_COUNT" -eq 1 ]]
-          LIVE_TASK_ARN="$(jq -r '.taskArns[0]' <<<"$TASKS_JSON")"
-          TASK_JSON="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$LIVE_TASK_ARN" --output json)"
-          LIVE_TASK_DEF="$(jq -r '.tasks[0].taskDefinitionArn' <<<"$TASK_JSON")"
-          LIVE_STATUS="$(jq -r '.tasks[0].lastStatus' <<<"$TASK_JSON")"
-          LIVE_IMAGE="$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.tasks[0].containers[] | select(.name == $NAME) | .image' <<<"$TASK_JSON")"
-          [[ "$LIVE_TASK_DEF" == "$NEW_TASK_ARN" ]]
-          [[ "$LIVE_STATUS" == "RUNNING" ]]
-          [[ "$LIVE_IMAGE" == "$EXPECTED_IMAGE_URI" ]]
+          TASK_DEF_JSON="$(aws ecs describe-task-definition --task-definition "$NEW_TASK_ARN" --query taskDefinition --output json)"
+          TASK_DEF_IMAGE="$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name == $NAME) | .image // empty' <<<"$TASK_DEF_JSON")"
+          [[ -n "$TASK_DEF_IMAGE" ]]
+          [[ "$TASK_DEF_IMAGE" == "$EXPECTED_IMAGE_URI" ]]
 
           echo "### ECS staging deployment verified" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Task definition: \`$NEW_TASK_ARN\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Image: \`$EXPECTED_IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- rolloutState: \`$PRIMARY_ROLLOUT_STATE\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- desiredCount/runningCount/pendingCount: \`$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT\`" >> "$GITHUB_STEP_SUMMARY"
