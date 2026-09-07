@@ -37,3 +37,13 @@ test('staging deploy verifies the exact task revision and immutable image after 
   assert.match(workflow, /desiredCount/)
   assert.match(workflow, /runningCount/)
 })
+
+test('staging image verification uses docker push digest evidence without requiring ecr DescribeImages permission', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.doesNotMatch(workflow, /aws ecr describe-images/)
+  assert.match(workflow, /PUSH_OUTPUT=.*docker push/)
+  assert.match(workflow, /IMAGE_DIGEST/)
+  assert.match(workflow, /sha256:\[0-9a-f\]\{64\}/)
+  assert.match(workflow, /digest=\$IMAGE_DIGEST/)
+})
