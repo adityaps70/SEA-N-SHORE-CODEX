@@ -1,4 +1,4 @@
-import { UsersRound } from 'lucide-react'
+import { Search, UsersRound } from 'lucide-react'
 import { ConnectionRequestCard } from '@/features/network/components/connection-request-card'
 import { NetworkProfileCard } from '@/features/network/components/network-profile-card'
 import { NetworkTabs } from '@/features/network/components/network-tabs'
@@ -32,11 +32,12 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 export default async function NetworkPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; q?: string }>
 }) {
-  const { tab: tabValue } = await searchParams
+  const { tab: tabValue, q: rawQuery } = await searchParams
   const tab = parseNetworkTab(tabValue)
-  const hub = await getNetworkHub(tab)
+  const query = typeof rawQuery === 'string' ? rawQuery.trim().slice(0, 100) : ''
+  const hub = await getNetworkHub(tab, tab === 'discover' ? query : '')
 
   return (
     <section className="py-2 sm:py-5">
@@ -45,7 +46,7 @@ export default async function NetworkPage({
           <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-navy-950 text-white">
             <UsersRound aria-hidden="true" className="size-5" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Maritime network</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em] text-navy-950">People worth knowing at sea and ashore.</h1>
             <p className="mt-2 max-w-2xl leading-7 text-muted">
@@ -53,6 +54,21 @@ export default async function NetworkPage({
             </p>
           </div>
         </div>
+
+        <form action="/network" method="get" role="search" className="relative mt-6 max-w-2xl">
+          <input type="hidden" name="tab" value="discover" />
+          <label htmlFor="network-search" className="sr-only">Search maritime professionals</label>
+          <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          <input
+            id="network-search"
+            name="q"
+            type="search"
+            defaultValue={query}
+            maxLength={100}
+            placeholder="Search by name, rank, company, location, vessel type or skill"
+            className="min-h-12 w-full rounded-xl border border-mist-100 bg-mist-50 py-3 pl-11 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-700 focus:bg-white"
+          />
+        </form>
       </div>
 
       <NetworkTabs active={tab} incomingRequestCount={hub.incomingRequestCount} />
@@ -89,9 +105,16 @@ export default async function NetworkPage({
           </section>
         </div>
       ) : hub.profiles.length ? (
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {hub.profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
+        <div className="mt-5">
+          {tab === 'discover' && query ? (
+            <p className="mb-3 text-sm text-muted">{hub.profiles.length} result{hub.profiles.length === 1 ? '' : 's'} for <span className="font-semibold text-navy-950">“{query}”</span></p>
+          ) : null}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {hub.profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
+          </div>
         </div>
+      ) : tab === 'discover' && query ? (
+        <EmptyState title={`No professionals found for “${query}”.`} body="Try a name, rank, company, location, vessel type, trading area, or professional skill." />
       ) : (
         <EmptyState title={emptyCopy[tab].title} body={emptyCopy[tab].body} />
       )}
