@@ -49,17 +49,6 @@ variable "site_url" {
   type        = string
 }
 
-variable "supabase_url" {
-  description = "Current Supabase project URL."
-  type        = string
-}
-
-variable "supabase_publishable_key" {
-  description = "Current Supabase publishable key. This is public browser configuration, not a service-role secret."
-  type        = string
-  sensitive   = true
-}
-
 variable "certificate_arn" {
   description = "Optional ACM certificate ARN for HTTPS. Leave blank for initial ALB HTTP staging."
   type        = string
@@ -247,7 +236,6 @@ resource "aws_lb_target_group" "app" {
   protocol    = "HTTP"
   target_type = "ip"
   vpc_id      = aws_vpc.app.id
-
   deregistration_delay = 30
 
   health_check {
@@ -400,8 +388,6 @@ resource "aws_ecs_task_definition" "web" {
 
       environment = [
         { name = "NEXT_PUBLIC_SITE_URL", value = var.site_url },
-        { name = "NEXT_PUBLIC_SUPABASE_URL", value = var.supabase_url },
-        { name = "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", value = var.supabase_publishable_key },
         { name = "AWS_COGNITO_REGION", value = var.aws_region },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.app.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
