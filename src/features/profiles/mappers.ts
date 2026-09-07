@@ -10,7 +10,7 @@ export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
     fullName: row.full_name,
     avatarPath: row.avatar_path,
     avatarUrl: null,
-    coverPath: row.cover_path,
+    coverPath: row.cover_path ?? null,
     coverUrl: null,
     location: row.location,
     headline: row.headline,
