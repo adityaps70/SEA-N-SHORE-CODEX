@@ -5,7 +5,7 @@ describe('profile media service', () => {
   it('stores the new object, updates the path, then removes the old object', async () => {
     const putObject = vi.fn(async () => undefined)
     const replaceMediaPath = vi.fn(async () => 'profiles/u/old.webp')
-    const deleteObject = vi.fn(async () => undefined)
+    const deleteObject = vi.fn(async (_key: string) => undefined)
     const service = createProfileMediaService({ putObject, replaceMediaPath, deleteObject })
 
     await service.upload('11111111-1111-4111-8111-111111111111', 'avatar', {
@@ -22,7 +22,7 @@ describe('profile media service', () => {
   it('removes a newly uploaded object when the database update fails', async () => {
     const putObject = vi.fn(async () => undefined)
     const replaceMediaPath = vi.fn(async () => { throw new Error('db') })
-    const deleteObject = vi.fn(async () => undefined)
+    const deleteObject = vi.fn(async (_key: string) => undefined)
     const service = createProfileMediaService({ putObject, replaceMediaPath, deleteObject })
 
     await expect(service.upload('11111111-1111-4111-8111-111111111111', 'cover', {
