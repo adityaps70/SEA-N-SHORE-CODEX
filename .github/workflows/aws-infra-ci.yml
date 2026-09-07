@@ -73,17 +73,17 @@ jobs:
       - name: Verify social event Terraform contract
         run: node --test scripts/aws/social-events-terraform.test.mjs
       - name: Verify social infrastructure plan classifier
-        run: node --test scripts/aws/check-social-plan.test.mjs
+        run: node --test scripts/aws/social-events-plan-classifier.test.mjs
       - name: Verify social event parity runtime audit contract
-        run: node --test scripts/aws/social-event-parity.test.mjs
+        run: node --test scripts/aws/audit-social-event-parity.test.mjs
       - name: Verify Aurora migration semantic audit contract
-        run: node --test scripts/aws/aurora-migration-semantic-audit.test.mjs
+        run: node --test scripts/aws/audit-aurora-migration-parity.test.mjs
       - name: Verify Aurora identity parity audit contract
-        run: node --test scripts/aws/aurora-identity-parity.test.mjs
+        run: node --test scripts/aws/audit-aurora-data-parity.test.mjs
       - name: Verify origin TLS certificate state selector contract
-        run: node --test scripts/aws/origin-tls-certificate-state.test.mjs
+        run: node --test scripts/aws/origin-tls-certificate.test.mjs
       - name: Verify social worker contract
-        run: node --test scripts/workers/social-event-worker.test.mjs
+        run: node --test scripts/workers/worker-contract.test.mjs
 
   application:
     name: Application verify
@@ -104,48 +104,34 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
       - name: Test
-        run: npm test -- --run
+        run: npm test
 
-  docker:
-    name: Docker build
+  terraform:
+    name: Terraform validate
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Build production image
-        run: docker build --build-arg NEXT_PUBLIC_SITE_URL=https://staging.example.com -t sea-n-shore-ci:${GITHUB_SHA} .
-
-  terraform-app:
-    name: Terraform validate (infra/aws/app)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-      - name: Terraform format
-        run: terraform -chdir=infra/aws/app fmt -check -recursive
-      - name: Terraform init
-        run: terraform -chdir=infra/aws/app init -backend=false
-      - name: Terraform validate
-        run: terraform -chdir=infra/aws/app validate
-
-  terraform-bootstrap:
-    name: Terraform validate (infra/aws/bootstrap)
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        directory:
+          - infra/aws/bootstrap
+          - infra/aws/app
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
       - name: Terraform format
-        run: terraform -chdir=infra/aws/bootstrap fmt -check -recursive
+        run: terraform fmt -check -recursive infra/aws
       - name: Terraform init
-        run: terraform -chdir=infra/aws/bootstrap init -backend=false
+        working-directory: ${{ matrix.directory }}
+        run: terraform init -backend=false
       - name: Terraform validate
-        run: terraform -chdir=infra/aws/bootstrap validate
+        working-directory: ${{ matrix.directory }}
+        run: terraform validate
 
-  terraform-guard:
+  guard:
     name: Terraform plan guard tests
     runs-on: ubuntu-latest
     steps:
@@ -158,4 +144,16 @@ jobs:
       - name: Install dependencies with known-good npm
         run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
       - name: Run guard tests
-        run: npm test -- --run scripts/aws/check-edge-plan.test.ts scripts/aws/check-social-plan.test.ts
+        run: npm test -- scripts/aws/check-terraform-plan.test.mjs
+
+  container:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build production image
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_SITE_URL=http://localhost:3000 \
+            -t sea-n-shore:ci .
