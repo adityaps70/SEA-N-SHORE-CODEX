@@ -8,6 +8,7 @@ on:
       - src/**
       - infra/aws/**
       - scripts/aws/**
+      - scripts/migration/**
       - vitest.config.ts
       - tsconfig.json
       - package.json
@@ -21,6 +22,7 @@ on:
       - src/**
       - infra/aws/**
       - scripts/aws/**
+      - scripts/migration/**
       - vitest.config.ts
       - tsconfig.json
       - package.json
@@ -40,6 +42,10 @@ jobs:
         run: node --test scripts/aws/remote-execution-config.test.mjs
       - name: Verify post media migration contract
         run: node --test scripts/aws/migrate-post-media-to-s3.test.mjs
+      - name: Verify database reconciliation contract
+        run: node --test scripts/migration/reconcile-postgres.test.mjs
+      - name: Verify storage reconciliation contract
+        run: node --test scripts/migration/reconcile-storage.test.mjs
       - name: Verify Phase 5B SES readiness contract
         run: node --test scripts/aws/phase5b-ses-readiness.test.mjs
       - name: Verify Phase 5B SES Terraform contract
@@ -53,7 +59,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Verify no protected Supabase runtime dependency
+      - name: Verify AWS application independence
         run: bash scripts/aws/check-phase4-supabase-runtime.sh
       - name: Use Node 22
         uses: actions/setup-node@v4
