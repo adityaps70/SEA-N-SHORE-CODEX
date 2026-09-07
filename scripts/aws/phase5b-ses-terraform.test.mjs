@@ -8,9 +8,9 @@ const authTf = fs.readFileSync(new URL('infra/aws/app/auth.tf', repoRoot), 'utf8
 const varsTf = fs.readFileSync(new URL('infra/aws/app/aws-native-variables.tf', repoRoot), 'utf8')
 const tfvarsExample = fs.readFileSync(new URL('infra/aws/app/terraform.tfvars.example', repoRoot), 'utf8')
 const bootstrapTf = fs.readFileSync(new URL('infra/aws/bootstrap/main.tf', repoRoot), 'utf8')
-const productionAccessTf = fs.readFileSync(
-  new URL('infra/aws/bootstrap/phase5b-ses-production-access.tf', repoRoot),
-  'utf8',
+const productionAccessPolicyUrl = new URL(
+  'infra/aws/bootstrap/phase5b-ses-production-access.tf',
+  repoRoot,
 )
 
 test('Phase 5B defines the approved SES domain identity with 2048-bit Easy DKIM', () => {
@@ -36,11 +36,9 @@ test('Phase 5B ops role may read SES account state without broad SES administrat
   assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
 })
 
-test('Phase 5B ops role may request SES production access without broad SES administration', () => {
-  assert.match(productionAccessTf, /Sid\s*=\s*"Phase5bSesProductionAccess"/)
-  assert.match(productionAccessTf, /"ses:PutAccountDetails"/)
-  assert.match(productionAccessTf, /Resource\s*=\s*"\*"/)
-  assert.doesNotMatch(productionAccessTf, /"ses:\*"/i)
+test('Phase 5B removes SES production-access write permission after the request is submitted', () => {
+  assert.equal(fs.existsSync(productionAccessPolicyUrl), false)
+  assert.doesNotMatch(bootstrapTf, /ses:PutAccountDetails/)
 })
 
 test('Phase 5B ops role may read only the approved SES identity and configuration set', () => {
