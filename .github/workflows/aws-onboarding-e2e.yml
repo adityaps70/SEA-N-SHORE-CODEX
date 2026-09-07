@@ -7,6 +7,7 @@ on:
     paths:
       - scripts/aws/onboarding-e2e-action.txt
       - scripts/aws/onboarding-e2e-guard.test.mjs
+      - scripts/aws/onboarding-staging-e2e.mjs
       - .github/workflows/aws-onboarding-e2e.yml
   workflow_dispatch:
 
@@ -24,10 +25,11 @@ jobs:
     if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       AWS_REGION: ap-south-1
       COGNITO_POOL_NAME: sea-n-shore-staging-users
+      SITE_URL: https://d3prih0q6jofyr.cloudfront.net
 
     steps:
       - name: Checkout exact branch head
@@ -43,9 +45,15 @@ jobs:
           case "$ACTION" in
             plan)
               echo "run_probe=false" >> "$GITHUB_OUTPUT"
+              echo "run_e2e=false" >> "$GITHUB_OUTPUT"
               ;;
             probe)
               echo "run_probe=true" >> "$GITHUB_OUTPUT"
+              echo "run_e2e=false" >> "$GITHUB_OUTPUT"
+              ;;
+            run-once)
+              echo "run_probe=false" >> "$GITHUB_OUTPUT"
+              echo "run_e2e=true" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "Unsupported onboarding E2E action: $ACTION" >&2
@@ -54,7 +62,7 @@ jobs:
           esac
 
       - name: Wait for exact-head AWS Infrastructure CI
-        if: steps.action.outputs.run_probe == 'true'
+        if: steps.action.outputs.run_probe == 'true' || steps.action.outputs.run_e2e == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -75,26 +83,26 @@ jobs:
           echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
           exit 1
 
-      - name: Guard probe against a moved branch
-        if: github.event_name == 'push' && steps.action.outputs.run_probe == 'true'
+      - name: Guard execution against a moved branch
+        if: github.event_name == 'push' && (steps.action.outputs.run_probe == 'true' || steps.action.outputs.run_e2e == 'true')
         shell: bash
         run: |
           set -euo pipefail
           REMOTE_HEAD="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
           [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || {
-            echo "Branch moved after this probe started; refusing stale execution." >&2
+            echo "Branch moved after this onboarding E2E started; refusing stale execution." >&2
             exit 1
           }
 
       - name: Configure AWS credentials with GitHub OIDC
-        if: steps.action.outputs.run_probe == 'true'
+        if: steps.action.outputs.run_probe == 'true' || steps.action.outputs.run_e2e == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
 
       - name: Discover bootstrap instance
-        if: steps.action.outputs.run_probe == 'true'
+        if: steps.action.outputs.run_probe == 'true' || steps.action.outputs.run_e2e == 'true'
         id: instance
         shell: bash
         run: |
@@ -166,3 +174,198 @@ jobs:
           FINAL_STATUS=$(jq -r '.Status' /tmp/onboarding-e2e-probe-result.json)
           [[ "$FINAL_STATUS" == Success ]]
           jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-probe-result.json | grep -q '^COGNITO_ADMIN_PROBE_AVAILABLE=true$'
+
+      - name: Use Node 22 for staging browser E2E
+        if: steps.action.outputs.run_e2e == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install browser E2E dependencies
+        if: steps.action.outputs.run_e2e == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
+          npx playwright install --with-deps chromium
+
+      - name: Generate disposable onboarding identities
+        if: steps.action.outputs.run_e2e == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFESSIONAL_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-professional@example.com"
+          CUSTOM_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-custom@example.com"
+          ORGANISATION_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-organisation@example.com"
+          PROFESSIONAL_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Professional9"
+          CUSTOM_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Custom9"
+          ORGANISATION_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Organisation9"
+          for SECRET_VALUE in "$PROFESSIONAL_PASSWORD" "$CUSTOM_PASSWORD" "$ORGANISATION_PASSWORD"; do echo "::add-mask::$SECRET_VALUE"; done
+          {
+            echo "E2E_PROFESSIONAL_EMAIL=$PROFESSIONAL_EMAIL"
+            echo "E2E_CUSTOM_EMAIL=$CUSTOM_EMAIL"
+            echo "E2E_ORGANISATION_EMAIL=$ORGANISATION_EMAIL"
+            echo "E2E_PROFESSIONAL_PASSWORD=$PROFESSIONAL_PASSWORD"
+            echo "E2E_CUSTOM_PASSWORD=$CUSTOM_PASSWORD"
+            echo "E2E_ORGANISATION_PASSWORD=$ORGANISATION_PASSWORD"
+            echo "E2E_PROFESSIONAL_NAME=E2E Professional ${GITHUB_RUN_ID}"
+            echo "E2E_CUSTOM_NAME=E2E Custom ${GITHUB_RUN_ID}"
+            echo "E2E_ORGANISATION_NAME=E2E Organisation ${GITHUB_RUN_ID}"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify public sign-up UI creates three disposable users
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: signup
+        shell: bash
+        run: node scripts/aws/onboarding-staging-e2e.mjs
+
+      - name: Confirm disposable sign-ups through staging bootstrap
+        if: steps.action.outputs.run_e2e == 'true'
+        id: confirm
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$COGNITO_POOL_NAME" "$E2E_PROFESSIONAL_EMAIL" "$E2E_CUSTOM_EMAIL" "$E2E_ORGANISATION_EMAIL" > /tmp/onboarding-e2e-confirm.json <<'PYTHON'
+          import json, shlex, sys
+          pool_name, *emails = sys.argv[1:]
+          for email in emails:
+              if not email.startswith('sea-n-shore-e2e-') or not email.endswith('@example.com'):
+                  raise SystemExit('Unsafe disposable Cognito username')
+          quoted = ' '.join(shlex.quote(x) for x in emails)
+          script = f"""set -euo pipefail
+          AWS_REGION=ap-south-1
+          POOL_NAME={shlex.quote(pool_name)}
+          POOL_ID=$(aws cognito-idp list-user-pools --region \"$AWS_REGION\" --max-results 60 --query \"UserPools[?Name=='$POOL_NAME'].Id | [0]\" --output text)
+          [[ -n \"$POOL_ID\" && \"$POOL_ID\" != \"None\" ]]
+          for EMAIL in {quoted}; do
+            [[ \"$EMAIL\" == sea-n-shore-e2e-* && \"$EMAIL\" == *@example.com ]]
+            aws cognito-idp admin-confirm-sign-up --region \"$AWS_REGION\" --user-pool-id \"$POOL_ID\" --username \"$EMAIL\"
+          done
+          echo 'ONBOARDING_E2E_ADMIN_CONFIRM_VERIFIED=true'
+          """
+          print(json.dumps({"executionTimeout": ["300"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          PYTHON
+          COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore onboarding E2E confirm ${GITHUB_SHA}" --timeout-seconds 300 --parameters file:///tmp/onboarding-e2e-confirm.json --query 'Command.CommandId' --output text)
+          test -n "$COMMAND_ID"
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for disposable sign-up confirmation
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          COMMAND_ID: ${{ steps.confirm.outputs.command_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Pending|InProgress|Delayed) sleep 5 ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > /tmp/onboarding-e2e-confirm-result.json
+          jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-confirm-result.json
+          [[ "$(jq -r '.Status' /tmp/onboarding-e2e-confirm-result.json)" == Success ]]
+          jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-confirm-result.json | grep -q '^ONBOARDING_E2E_ADMIN_CONFIRM_VERIFIED=true$'
+
+      - name: Run staging sign-in and onboarding browser journeys
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: journeys
+        shell: bash
+        run: node scripts/aws/onboarding-staging-e2e.mjs
+
+      - name: Audit persistence and clean disposable identities through SSM
+        if: always() && steps.action.outputs.run_e2e == 'true' && steps.instance.outputs.instance_id != ''
+        id: cleanup
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$COGNITO_POOL_NAME" "$E2E_PROFESSIONAL_EMAIL" "$E2E_CUSTOM_EMAIL" "$E2E_ORGANISATION_EMAIL" > /tmp/onboarding-e2e-cleanup.json <<'PYTHON'
+          import json, shlex, sys
+          pool_name, professional, custom, organisation = sys.argv[1:]
+          emails = [professional, custom, organisation]
+          for email in emails:
+              if not email.startswith('sea-n-shore-e2e-') or not email.endswith('@example.com'):
+                  raise SystemExit('Unsafe disposable identity cleanup target')
+          args = ' '.join(shlex.quote(x) for x in emails)
+          script = f"""set -euo pipefail
+          AWS_REGION=ap-south-1
+          POOL_NAME={shlex.quote(pool_name)}
+          PROFESSIONAL={shlex.quote(professional)}
+          CUSTOM={shlex.quote(custom)}
+          ORGANISATION={shlex.quote(organisation)}
+          for EMAIL in {args}; do [[ \"$EMAIL\" == sea-n-shore-e2e-* && \"$EMAIL\" == *@example.com ]]; done
+
+          POOL_ID=$(aws cognito-idp list-user-pools --region \"$AWS_REGION\" --max-results 60 --query \"UserPools[?Name=='$POOL_NAME'].Id | [0]\" --output text)
+          CLUSTER_JSON=$(aws rds describe-db-clusters --region \"$AWS_REGION\" --db-cluster-identifier sea-n-shore-staging-aurora --output json)
+          CLUSTER_ARN=$(jq -r '.DBClusters[0].DBClusterArn // empty' <<<\"$CLUSTER_JSON\")
+          SECRET_ARN=$(jq -r '.DBClusters[0].MasterUserSecret.SecretArn // empty' <<<\"$CLUSTER_JSON\")
+          [[ \"$CLUSTER_ARN\" == 'arn:aws:rds:ap-south-1:310356785722:cluster:sea-n-shore-staging-aurora' ]]
+          [[ -n \"$SECRET_ARN\" ]]
+
+          read_profile() {{
+            local EMAIL=\"$1\"
+            local SQL=\"SELECT coalesce(p.identity_root,''), coalesce(p.primary_identity,''), coalesce(p.primary_identity_family,''), coalesce(array_to_string(p.secondary_identities,','),''), coalesce(p.profile_type::text,''), coalesce(mp.current_company,''), CASE WHEN mp.user_id IS NULL THEN 'true' ELSE 'false' END, CASE WHEN p.onboarding_completed_at IS NOT NULL THEN 'true' ELSE 'false' END FROM public.identity_accounts ia JOIN public.profiles p ON p.id=ia.profile_id LEFT JOIN public.maritime_profiles mp ON mp.user_id=p.id WHERE ia.provider='cognito' AND ia.email='$EMAIL'\"
+            aws rds-data execute-statement --region \"$AWS_REGION\" --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"$SQL\" --output json | jq -r '.records[0] | map(.stringValue // "") | @tsv'
+          }}
+
+          AUDIT_OK=true
+          PROFESSIONAL_ROW=$(read_profile \"$PROFESSIONAL\" || true)
+          CUSTOM_ROW=$(read_profile \"$CUSTOM\" || true)
+          ORGANISATION_ROW=$(read_profile \"$ORGANISATION\" || true)
+          [[ \"$PROFESSIONAL_ROW\" == $'professional\\tMaster\\tSea-going · Deck\\tMentor\\tseafarer\\tE2E Shipping\\tfalse\\ttrue' ]] || AUDIT_OK=false
+          [[ \"$CUSTOM_ROW\" == $'professional\\tHydrographic Survey Expedition Lead\\tCustom identity\\t\\tmaritime_professional\\tE2E Hydro\\tfalse\\ttrue' ]] || AUDIT_OK=false
+          [[ \"$ORGANISATION_ROW\" == $'organisation\\tShipowner\\tShipping & Ship Management\\t\\tcompany\\t\\ttrue\\ttrue' ]] || AUDIT_OK=false
+          if [[ \"$AUDIT_OK\" == true ]]; then echo 'ONBOARDING_E2E_PERSISTENCE_VERIFIED=true'; else echo 'ONBOARDING_E2E_PERSISTENCE_VERIFIED=false' >&2; fi
+
+          DELETE_SQL=\"DELETE FROM public.profiles WHERE id IN (SELECT profile_id FROM public.identity_accounts WHERE provider='cognito' AND email IN ('$PROFESSIONAL','$CUSTOM','$ORGANISATION'))\"
+          aws rds-data execute-statement --region \"$AWS_REGION\" --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"$DELETE_SQL\" >/dev/null
+          COUNT_SQL=\"SELECT count(*)::text FROM public.identity_accounts WHERE provider='cognito' AND email IN ('$PROFESSIONAL','$CUSTOM','$ORGANISATION')\"
+          LEFT_COUNT=$(aws rds-data execute-statement --region \"$AWS_REGION\" --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"$COUNT_SQL\" --output json | jq -r '.records[0][0].stringValue')
+          [[ \"$LEFT_COUNT\" == 0 ]]
+
+          for EMAIL in {args}; do
+            set +e
+            GET_OUTPUT=$(aws cognito-idp admin-get-user --region \"$AWS_REGION\" --user-pool-id \"$POOL_ID\" --username \"$EMAIL\" 2>&1)
+            GET_STATUS=$?
+            set -e
+            if [[ $GET_STATUS -eq 0 ]]; then
+              aws cognito-idp admin-delete-user --region \"$AWS_REGION\" --user-pool-id \"$POOL_ID\" --username \"$EMAIL\"
+            elif ! grep -q 'UserNotFoundException' <<<\"$GET_OUTPUT\"; then
+              printf '%s\\n' \"$GET_OUTPUT\" >&2
+              exit 1
+            fi
+          done
+          echo 'ONBOARDING_E2E_CLEANUP_VERIFIED=true'
+          [[ \"$AUDIT_OK\" == true ]]
+          """
+          print(json.dumps({"executionTimeout": ["600"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          PYTHON
+          COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore onboarding E2E audit cleanup ${GITHUB_SHA}" --timeout-seconds 600 --parameters file:///tmp/onboarding-e2e-cleanup.json --query 'Command.CommandId' --output text)
+          test -n "$COMMAND_ID"
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait and surface persistence and cleanup evidence
+        if: always() && steps.action.outputs.run_e2e == 'true' && steps.cleanup.outputs.command_id != ''
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          COMMAND_ID: ${{ steps.cleanup.outputs.command_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Pending|InProgress|Delayed) sleep 5 ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > /tmp/onboarding-e2e-cleanup-result.json
+          echo "=== ONBOARDING E2E PERSISTENCE/CLEANUP STDOUT ==="
+          jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-cleanup-result.json
+          STDERR_CONTENT=$(jq -r '.StandardErrorContent // empty' /tmp/onboarding-e2e-cleanup-result.json)
+          [[ -z "$STDERR_CONTENT" ]] || { echo "=== ONBOARDING E2E PERSISTENCE/CLEANUP STDERR ===" >&2; printf '%s\n' "$STDERR_CONTENT" >&2; }
+          [[ "$(jq -r '.Status' /tmp/onboarding-e2e-cleanup-result.json)" == Success ]]
+          jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-cleanup-result.json | grep -q '^ONBOARDING_E2E_PERSISTENCE_VERIFIED=true$'
+          jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-cleanup-result.json | grep -q '^ONBOARDING_E2E_CLEANUP_VERIFIED=true$'
