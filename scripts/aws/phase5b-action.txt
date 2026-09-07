@@ -1,1 +1,1 @@
-discover
+request-production-access
