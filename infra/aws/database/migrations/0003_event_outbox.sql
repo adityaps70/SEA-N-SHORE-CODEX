@@ -17,6 +17,7 @@ create index if not exists event_outbox_unpublished_idx
 
 create table if not exists public.notification_event_receipts (
   event_id uuid primary key,
+  processing_mode text not null check (processing_mode in ('shadow', 'active')),
   notification_id uuid,
   processed_at timestamptz not null default now()
 );
