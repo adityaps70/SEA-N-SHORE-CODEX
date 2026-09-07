@@ -140,6 +140,53 @@ jobs:
             }
           done
 
+          if jq -e '.environmentNames[] | select(startswith("NEXT_PUBLIC_SUPABASE_"))' /tmp/runtime-shape.json >/dev/null; then
+            echo "Legacy NEXT_PUBLIC_SUPABASE_* environment variable detected in the live task definition." >&2
+            exit 1
+          fi
+          echo "No legacy Supabase env vars are present in task definition $ECS_TASK_DEFINITION."
+
+      - name: Review recent CloudWatch strong runtime errors
+        run: |
+          set -euo pipefail
+          LOG_GROUP=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '
+            .containerDefinitions[]
+            | select(.name == $NAME)
+            | .logConfiguration.options["awslogs-group"] // empty
+          ' /tmp/task-definition.json)
+          test -n "$LOG_GROUP" || { echo "Missing CloudWatch log group on live ECS task definition." >&2; exit 1; }
+
+          START_MS=$(( ( $(date +%s) - 7200 ) * 1000 ))
+          aws logs filter-log-events \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP" \
+            --start-time "$START_MS" \
+            --output json > /tmp/remote-verify-cloudwatch.json
+
+          TOTAL=$(jq '.events | length' /tmp/remote-verify-cloudwatch.json)
+          MATCHES=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
+            | grep -Eai '(^|[^[:alpha:]])(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|password authentication failed|database[^[:cntrl:]]*(failed|error)|auth[^[:cntrl:]]*(failed|error)|HTTP[[:space:]]+5[0-9][0-9])([^[:alpha:]]|$)' \
+            || true)
+          MATCH_COUNT=$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l | tr -d ' ')
+
+          echo "=== REMOTE VERIFY CLOUDWATCH REVIEW ==="
+          echo "CLOUDWATCH_EVENTS_REVIEWED=$TOTAL"
+          echo "STRONG_RUNTIME_ERROR_MATCHES=$MATCH_COUNT"
+
+          if [ "$MATCH_COUNT" -gt 1 ]; then
+            echo "Repeating runtime error signatures detected in the last two hours." >&2
+            printf '%s\n' "$MATCHES" \
+              | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+              | head -n 10 >&2
+            exit 1
+          fi
+
+          if [ "$MATCH_COUNT" -eq 1 ]; then
+            echo "One non-repeating runtime error signature was observed; no repeating error pattern was detected."
+          else
+            echo "No strong runtime error signatures were observed."
+          fi
+
   verify-on-bootstrap:
     if: ${{ false }}
     runs-on: ubuntu-latest
