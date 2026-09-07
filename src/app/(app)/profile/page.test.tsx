@@ -43,10 +43,10 @@ vi.mock('@/features/profiles/components/maritime-profile-card', () => ({
 }))
 
 describe('My Profile page', () => {
-  it('provides an Edit Profile link for the signed-in owner', async () => {
+  it('provides an Edit all link for the signed-in owner', async () => {
     render(await OwnProfilePage())
 
-    const editLink = screen.getByRole('link', { name: /edit profile/i })
+    const editLink = screen.getByRole('link', { name: /edit all/i })
     expect(editLink).toHaveAttribute('href', '/profile/edit')
   })
 })
