@@ -55,4 +55,6 @@ test('profile identity migration runner is exact-head, staging-only, plan-first 
   assert.match(workflow, /PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA/)
   assert.match(workflow, /AWS-RunShellScript/)
   assert.match(workflow, /sea-n-shore-bootstrap/)
+  assert.match(workflow, /print\(json\.dumps\(\{"executionTimeout": \["1200"\], "commands": \[/)
+  assert.doesNotMatch(workflow, /json\.dumps\(\{\{/)
 })
