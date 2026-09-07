@@ -53,4 +53,23 @@ echo "AURORA_DIGEST_CONNECTIONS=$(sql_scalar "SELECT md5(coalesce(string_agg(id:
 echo "AURORA_DIGEST_NOTIFICATIONS=$(sql_scalar "SELECT md5(coalesce(string_agg(id::text || ':' || recipient_id::text || ':' || coalesce(actor_id::text, '') || ':' || notification_type::text, ',' ORDER BY id), '')) FROM public.notifications")"
 echo "AURORA_DIGEST_POST_REACTIONS=$(sql_scalar "SELECT md5(coalesce(string_agg(post_id::text || ':' || user_id::text || ':' || reaction_type::text, ',' ORDER BY post_id, user_id), '')) FROM public.post_reactions")"
 
+# Hashed stable-key sets prove source containment without exposing raw UUIDs or user data.
+echo "AURORA_KEYS_PROFILES=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.profiles) q")"
+echo "AURORA_KEYS_COMPANIES=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.companies) q")"
+echo "AURORA_KEYS_COMPANY_MEMBERS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(company_id::text || ':' || user_id::text) AS key_hash FROM public.company_members) q")"
+echo "AURORA_KEYS_MARITIME_PROFILES=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(user_id::text) AS key_hash FROM public.maritime_profiles) q")"
+echo "AURORA_KEYS_PROFILE_SKILLS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(user_id::text || ':' || skill::text) AS key_hash FROM public.profile_skills) q")"
+echo "AURORA_KEYS_POSTS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.posts) q")"
+echo "AURORA_KEYS_POST_REACTIONS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(post_id::text || ':' || user_id::text) AS key_hash FROM public.post_reactions) q")"
+echo "AURORA_KEYS_POST_COMMENTS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.post_comments) q")"
+echo "AURORA_KEYS_SAVED_POSTS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(post_id::text || ':' || user_id::text) AS key_hash FROM public.saved_posts) q")"
+echo "AURORA_KEYS_POST_MEDIA=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.post_media) q")"
+echo "AURORA_KEYS_POST_POLLS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(post_id::text) AS key_hash FROM public.post_polls) q")"
+echo "AURORA_KEYS_POST_POLL_OPTIONS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.post_poll_options) q")"
+echo "AURORA_KEYS_POST_POLL_VOTES=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(post_id::text || ':' || user_id::text) AS key_hash FROM public.post_poll_votes) q")"
+echo "AURORA_KEYS_FOLLOWS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(follower_id::text || ':' || following_id::text) AS key_hash FROM public.follows) q")"
+echo "AURORA_KEYS_CONNECTIONS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.connections) q")"
+echo "AURORA_KEYS_USER_BLOCKS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(blocker_id::text || ':' || blocked_id::text) AS key_hash FROM public.user_blocks) q")"
+echo "AURORA_KEYS_NOTIFICATIONS=$(sql_scalar "SELECT coalesce(json_agg(key_hash ORDER BY key_hash)::text, '[]') FROM (SELECT md5(id::text) AS key_hash FROM public.notifications) q")"
+
 echo "AURORA_MIGRATION_PARITY_AUDIT_COMPLETE=true"
