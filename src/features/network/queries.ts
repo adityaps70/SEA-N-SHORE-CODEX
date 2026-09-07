@@ -107,7 +107,11 @@ export async function getNetworkHub(tab: NetworkTab, searchQuery = ''): Promise<
   const incomingRequestCount = pending.filter((connection) => connection.requested_by !== user.id).length
 
   if (tab === 'discover') {
-    const [viewer, candidates] = await Promise.all([getAwsOwnProfile(), getAwsNetworkProfiles(60)])
+    const normalizedSearch = searchQuery.trim()
+    const [viewer, candidates] = await Promise.all([
+      getAwsOwnProfile(),
+      getAwsNetworkProfiles(60, normalizedSearch),
+    ])
     if (!viewer) throw new Error('Complete your professional profile to discover the network.')
 
     const ranked = candidates
@@ -119,8 +123,8 @@ export async function getNetworkHub(tab: NetworkTab, searchQuery = ''): Promise<
         score: scoreRecommendation(viewer, profile),
         index,
       }))
-      .filter(({ profile }) => profile.relationship.connection.kind !== 'connected')
-      .filter(({ profile }) => matchesNetworkSearch(profile, searchQuery))
+      .filter(({ profile }) => normalizedSearch.length > 0 || profile.relationship.connection.kind !== 'connected')
+      .filter(({ profile }) => matchesNetworkSearch(profile, normalizedSearch))
       .sort((left, right) => right.score - left.score || left.index - right.index)
       .slice(0, 30)
       .map(({ profile }) => profile)
