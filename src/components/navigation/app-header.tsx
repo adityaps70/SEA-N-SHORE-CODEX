@@ -38,13 +38,16 @@ export function AppHeader({
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-2">
-          <form role="search" className="relative">
-            <label htmlFor="global-search" className="sr-only">Search Sea N Shore</label>
+          <form action="/network" method="get" role="search" className="relative">
+            <input type="hidden" name="tab" value="discover" />
+            <label htmlFor="global-search" className="sr-only">Search maritime professionals</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <input
               id="global-search"
+              name="q"
               type="search"
-              placeholder="Search"
+              maxLength={100}
+              placeholder="Search people"
               className="min-h-10 w-32 rounded-lg bg-mist-50 py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted lg:w-44"
             />
           </form>
