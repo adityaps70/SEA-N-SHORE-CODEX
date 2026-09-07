@@ -24,6 +24,15 @@ test('staging deploy supports an explicit exact-head push trigger without weaken
   assert.match(workflow, /IMAGE_TAG="\$\{GITHUB_SHA\}-\$\{GITHUB_RUN_ID\}"/)
 })
 
+test('staging deploy builds with the exact CloudFront Server Action origin without replacing the ALB site URL', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*https:\/\/d3prih0q6jofyr\.cloudfront\.net/)
+  assert.match(workflow, /--build-arg SERVER_ACTION_ALLOWED_ORIGINS="\$SERVER_ACTION_ALLOWED_ORIGINS"/)
+  assert.match(workflow, /--build-arg NEXT_PUBLIC_SITE_URL="\$NEXT_PUBLIC_SITE_URL"/)
+  assert.doesNotMatch(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*['"]?\*/)
+})
+
 test('staging deploy verifies exact completed service revision and its immutable task-definition image without ListTasks permission', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
 
