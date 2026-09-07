@@ -36,6 +36,9 @@ export function ProfileHeader({
   mediaControls?: ReactNode
   avatarControls?: ReactNode
 }) {
+  const identityLabel = profile.primaryIdentity ?? profileTypeLabels[profile.profileType]
+  const secondaryIdentities = profile.secondaryIdentities ?? []
+
   return (
     <section className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
       <div className="relative h-36 overflow-hidden bg-[linear-gradient(115deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))] sm:h-48">
@@ -69,7 +72,7 @@ export function ProfileHeader({
             <div className="min-w-0 pb-1">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-mist-50 px-2.5 py-1 text-xs font-semibold text-ocean-700">
                 <Anchor aria-hidden="true" className="size-3.5" />
-                {profileTypeLabels[profile.profileType]}
+                {identityLabel}
               </span>
               <div className="mt-2 flex min-w-0 items-center gap-2">
                 <h1 className="truncate text-3xl font-semibold tracking-[-.035em] text-navy-950 sm:text-4xl">
@@ -85,6 +88,15 @@ export function ProfileHeader({
                   </Link>
                 ) : null}
               </div>
+              {secondaryIdentities.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {secondaryIdentities.map((identity) => (
+                    <span key={identity} className="rounded-full bg-ocean-50 px-2.5 py-1 text-xs font-medium text-ocean-800">
+                      {identity}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-col items-start gap-3 sm:items-end">
