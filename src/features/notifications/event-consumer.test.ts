@@ -3,13 +3,17 @@ import { createNotificationEventConsumer } from './event-consumer'
 import type { NotificationEventRepository } from './repository'
 import type { DomainEvent } from '@/features/events/types'
 
-function consumer() {
+function consumer(mode: 'shadow' | 'active' = 'shadow') {
   const repository = {
-    createNotificationFromEvent: vi.fn(async () => ({ created: true, notificationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' })),
+    processNotificationEvent: vi.fn(async () => ({
+      processed: true,
+      created: mode === 'active',
+      notificationId: mode === 'active' ? 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' : null,
+    })),
   }
   const withTransaction = async <T>(fn: (repo: NotificationEventRepository) => Promise<T>) =>
     fn(repository as unknown as NotificationEventRepository)
-  return { consumer: createNotificationEventConsumer({ withTransaction }), repository }
+  return { consumer: createNotificationEventConsumer({ mode, withTransaction }), repository }
 }
 
 const base = {
@@ -18,20 +22,22 @@ const base = {
   occurredAt: '2026-09-07T12:00:00.000Z',
 }
 
+const followedEvent: DomainEvent = {
+  ...base,
+  aggregateType: 'profile',
+  aggregateId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  eventType: 'user.followed',
+  payload: {
+    eventType: 'user.followed',
+    actorId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    targetId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  },
+}
+
 describe('notification event consumer', () => {
   it.each([
     [
-      {
-        ...base,
-        aggregateType: 'profile' as const,
-        aggregateId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        eventType: 'user.followed' as const,
-        payload: {
-          eventType: 'user.followed' as const,
-          actorId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-          targetId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-        },
-      },
+      followedEvent,
       'new_follower',
     ],
     [
@@ -65,34 +71,47 @@ describe('notification event consumer', () => {
       },
       'connection_accepted',
     ],
-  ])('maps %s to notification type %s', async (event, expectedType) => {
-    const context = consumer()
+  ])('maps %s to notification type %s while preserving the configured mode', async (event, expectedType) => {
+    const context = consumer('shadow')
     await context.consumer.consume(event as DomainEvent)
-    expect(context.repository.createNotificationFromEvent).toHaveBeenCalledWith(expect.objectContaining({
+    expect(context.repository.processNotificationEvent).toHaveBeenCalledWith(expect.objectContaining({
       eventId: base.id,
       type: expectedType,
+      mode: 'shadow',
     }))
   })
 
-  it('propagates the repository duplicate no-op result as success', async () => {
+  it('keeps shadow processing receipt-only', async () => {
+    const context = consumer('shadow')
+    await expect(context.consumer.consume(followedEvent)).resolves.toEqual({
+      processed: true,
+      created: false,
+      notificationId: null,
+    })
+  })
+
+  it('allows active mode to create notifications after cutover', async () => {
+    const context = consumer('active')
+    await expect(context.consumer.consume(followedEvent)).resolves.toEqual({
+      processed: true,
+      created: true,
+      notificationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    })
+    expect(context.repository.processNotificationEvent).toHaveBeenCalledWith(expect.objectContaining({ mode: 'active' }))
+  })
+
+  it('propagates duplicate event receipts as a successful no-op', async () => {
     const repository = {
-      createNotificationFromEvent: vi.fn(async () => ({ created: false, notificationId: null })),
+      processNotificationEvent: vi.fn(async () => ({ processed: false, created: false, notificationId: null })),
     }
     const withTransaction = async <T>(fn: (repo: NotificationEventRepository) => Promise<T>) =>
       fn(repository as unknown as NotificationEventRepository)
-    const eventConsumer = createNotificationEventConsumer({ withTransaction })
-    const event: DomainEvent = {
-      ...base,
-      aggregateType: 'profile',
-      aggregateId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      eventType: 'user.followed',
-      payload: {
-        eventType: 'user.followed',
-        actorId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-        targetId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      },
-    }
+    const eventConsumer = createNotificationEventConsumer({ mode: 'shadow', withTransaction })
 
-    await expect(eventConsumer.consume(event)).resolves.toEqual({ created: false, notificationId: null })
+    await expect(eventConsumer.consume(followedEvent)).resolves.toEqual({
+      processed: false,
+      created: false,
+      notificationId: null,
+    })
   })
 })
