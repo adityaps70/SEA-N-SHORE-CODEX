@@ -18,6 +18,7 @@ permissions:
 
 jobs:
   edge-state-audit:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 20
@@ -91,7 +92,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          jq -n --arg sha "$TRIGGER_SHA" '{commands:[("runuser -u ssm-user -- bash -lc '\''set -euo pipefail; cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1; git fetch origin feat/aws-native-phase-0-1; git cat-file -e " + $sha + "^{commit}; git reset --hard " + $sha + "; bash scripts/aws/audit-edge-state.sh'\''") ]}' > /tmp/ssm-parameters.json
+          [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          python3 - "$TRIGGER_SHA" > /tmp/ssm-parameters.json <<'PYTHON'
+          import json, shlex, sys
+          sha = sys.argv[1]
+          script = f"""set -euo pipefail
+          umask 077
+          AUDIT_DIR=$(mktemp -d /tmp/sea-n-shore-edge-audit.XXXXXXXX)
+          trap 'rm -rf -- "$AUDIT_DIR"' EXIT
+          git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$AUDIT_DIR/repo"
+          cd "$AUDIT_DIR/repo"
+          git checkout --quiet --detach {sha}
+          test "$(git rev-parse HEAD)" = "{sha}"
+          export EDGE_AUDIT_EXPECTED_SHA={sha}
+          bash scripts/aws/audit-edge-state.sh
+          """
+          print(json.dumps({"commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          PYTHON
           COMMAND_ID=$(aws ssm send-command \
             --region "$AWS_REGION" \
             --instance-ids "$INSTANCE_ID" \

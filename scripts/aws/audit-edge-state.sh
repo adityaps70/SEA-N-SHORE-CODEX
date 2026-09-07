@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-EXPECTED_WORKTREE="/home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1"
-CURRENT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-
-[[ "$CURRENT_ROOT" == "$EXPECTED_WORKTREE" ]] || {
-  echo "Edge state audit must run from the AWS migration worktree." >&2
+EXPECTED_SHA="${EDGE_AUDIT_EXPECTED_SHA:-}"
+[[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "EDGE_AUDIT_EXPECTED_SHA must be an exact commit SHA." >&2
+  exit 1
+}
+CURRENT_ROOT="$(git rev-parse --show-toplevel)"
+[[ "$PWD" == "$CURRENT_ROOT" && "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]] || {
+  echo "Audit checkout does not match the expected root and commit." >&2
+  exit 1
+}
+[[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]] || {
+  echo "Unexpected audit repository." >&2
+  exit 1
+}
+git diff --quiet HEAD -- scripts/aws/audit-edge-state.sh infra/aws/app || {
+  echo "Audit code/config differs from the pinned commit." >&2
   exit 1
 }
 
