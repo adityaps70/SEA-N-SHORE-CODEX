@@ -95,6 +95,26 @@ for table in "${SOURCE_COMPATIBLE_TABLES[@]}"; do
 done
 echo "AURORA_TARGET_KEY_INVENTORY_COMPLETE=true"
 
+# Semantic parity for generated-ID records. These hashes intentionally exclude
+# generated IDs so a source row can be proven preserved even when migration or
+# AWS-native writes regenerated the primary key. PII is not emitted.
+CONNECTION_SEMANTIC_SQL="SELECT md5(array_to_string(array[user_low_id::text,user_high_id::text,requested_by::text,status::text,created_at::text], chr(31))) AS semantic_hash FROM public.connections ORDER BY semantic_hash"
+RESPONSE="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$CONNECTION_SEMANTIC_SQL" --output json)"
+while IFS= read -r semantic_hash; do
+  [[ -z "$semantic_hash" ]] && continue
+  [[ "$semantic_hash" =~ ^[0-9a-f]{32}$ ]] || { echo "Unexpected connection semantic hash" >&2; exit 1; }
+  echo "AURORA_CONNECTION_SEMANTIC_HASH=$semantic_hash"
+done < <(jq -r '.records[]?[0].stringValue // empty' <<<"$RESPONSE")
+
+NOTIFICATION_SEMANTIC_SQL="SELECT md5(array_to_string(array[recipient_id::text,coalesce(actor_id::text,''),notification_type::text,created_at::text], chr(31))) AS semantic_hash FROM public.notifications ORDER BY semantic_hash"
+RESPONSE="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$NOTIFICATION_SEMANTIC_SQL" --output json)"
+while IFS= read -r semantic_hash; do
+  [[ -z "$semantic_hash" ]] && continue
+  [[ "$semantic_hash" =~ ^[0-9a-f]{32}$ ]] || { echo "Unexpected notification semantic hash" >&2; exit 1; }
+  echo "AURORA_NOTIFICATION_SEMANTIC_HASH=$semantic_hash"
+done < <(jq -r '.records[]?[0].stringValue // empty' <<<"$RESPONSE")
+echo "AURORA_SEMANTIC_INVENTORY_COMPLETE=true"
+
 # PII-safe identity evidence. Raw emails are held only in temporary JSON files
 # with umask 077 and are never printed. Output uses 16-char SHA-256 email tokens.
 TMP_IDENTITY_DIR="$(mktemp -d)"
