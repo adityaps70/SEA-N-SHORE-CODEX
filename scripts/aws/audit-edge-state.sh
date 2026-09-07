@@ -34,9 +34,11 @@ STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"
 STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 STATE_REGION="ap-south-1"
 EXPECTED_ACCOUNT_ID="310356785722"
-STATE_JSON="$(mktemp)"
-EDGE_JSON="$(mktemp)"
-trap 'rm -f "$STATE_JSON" "$EDGE_JSON" /tmp/edge-cloudfront.json /tmp/edge-waf.json /tmp/edge-live-error.txt' EXIT
+umask 077
+EVIDENCE_DIR="$(mktemp -d)"
+STATE_JSON="$EVIDENCE_DIR/state.json"
+EDGE_JSON="$EVIDENCE_DIR/edge.json"
+trap 'rm -rf -- "$EVIDENCE_DIR"' EXIT
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 [[ "$ACCOUNT_ID" == "$EXPECTED_ACCOUNT_ID" ]] || {
@@ -79,7 +81,8 @@ jq '[
             id: (.attributes.id // null),
             arn: (.attributes.arn // null),
             name: (.attributes.name // null),
-            domain_name: (.attributes.domain_name // null)
+            domain_name: (.attributes.domain_name // null),
+            scope: (.attributes.scope // null)
           }
       ]
     }
@@ -124,23 +127,29 @@ else
 fi
 
 echo
+echo "=== LIVE EDGE INVENTORY ==="
+aws cloudfront list-distributions --output json | jq '[.DistributionList.Items[]? | {Id, DomainName, Status, Enabled, WebACLId, Aliases, Origins: [.Origins.Items[]? | {Id, DomainName}]}]'
+aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 --output json | jq '.WebACLs'
 echo "=== LIVE EDGE RESOURCE CHECK ==="
+LIVE_CHECK_FAILED=0
 while IFS=$'\t' read -r type state_name id live_name; do
   [[ -n "$type" && -n "$id" && "$id" != "null" ]] || continue
 
   case "$type" in
     aws_cloudfront_distribution)
-      if aws cloudfront get-distribution --id "$id" --output json > /tmp/edge-cloudfront.json 2>/tmp/edge-live-error.txt; then
+      if aws cloudfront get-distribution --id "$id" --output json > "$EVIDENCE_DIR/edge-cloudfront.json" 2>"$EVIDENCE_DIR/edge-live-error.txt"; then
         jq -r --arg address "aws_cloudfront_distribution.$state_name" '
-          "\($address) LIVE=true id=\(.Distribution.Id) status=\(.Distribution.Status) enabled=\(.Distribution.DistributionConfig.Enabled) domain=\(.Distribution.DomainName) web_acl_id=\(.Distribution.DistributionConfig.WebACLId // \"\")"
-        ' /tmp/edge-cloudfront.json
+          "\($address) LIVE=true id=\(.Distribution.Id) status=\(.Distribution.Status) enabled=\(.Distribution.DistributionConfig.Enabled) domain=\(.Distribution.DomainName) web_acl_id=\(.Distribution.DistributionConfig.WebACLId // "")"
+        ' "$EVIDENCE_DIR/edge-cloudfront.json"
       else
-        ERROR_TEXT="$(tr '\n' ' ' < /tmp/edge-live-error.txt | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
+        LIVE_CHECK_FAILED=1
+        ERROR_TEXT="$(tr '\n' ' ' < "$EVIDENCE_DIR/edge-live-error.txt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
         echo "aws_cloudfront_distribution.$state_name LIVE_QUERY_FAILED id=$id error=$ERROR_TEXT"
       fi
       ;;
     aws_wafv2_web_acl)
       if [[ -z "$live_name" || "$live_name" == "null" ]]; then
+        LIVE_CHECK_FAILED=1
         echo "aws_wafv2_web_acl.$state_name LIVE_QUERY_SKIPPED id=$id reason=missing-name-in-state"
         continue
       fi
@@ -149,20 +158,24 @@ while IFS=$'\t' read -r type state_name id live_name; do
         --region us-east-1 \
         --name "$live_name" \
         --id "$id" \
-        --output json > /tmp/edge-waf.json 2>/tmp/edge-live-error.txt; then
+        --output json > "$EVIDENCE_DIR/edge-waf.json" 2>"$EVIDENCE_DIR/edge-live-error.txt"; then
         jq -r --arg address "aws_wafv2_web_acl.$state_name" '
           "\($address) LIVE=true id=\(.WebACL.Id) name=\(.WebACL.Name) arn=\(.WebACL.ARN)"
-        ' /tmp/edge-waf.json
+        ' "$EVIDENCE_DIR/edge-waf.json"
+        jq '.WebACL | {Name, DefaultAction, Rules, VisibilityConfig}' "$EVIDENCE_DIR/edge-waf.json"
       else
-        ERROR_TEXT="$(tr '\n' ' ' < /tmp/edge-live-error.txt | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
+        LIVE_CHECK_FAILED=1
+        ERROR_TEXT="$(tr '\n' ' ' < "$EVIDENCE_DIR/edge-live-error.txt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
         echo "aws_wafv2_web_acl.$state_name LIVE_QUERY_FAILED id=$id name=$live_name error=$ERROR_TEXT"
       fi
       ;;
     *)
+      LIVE_CHECK_FAILED=1
       echo "$type.$state_name LIVE_QUERY_SKIPPED id=$id reason=unsupported-edge-type"
       ;;
   esac
 done < <(jq -r '.[] | . as $resource | .instances[]? | [$resource.type, $resource.name, (.id // ""), (.name // "")] | @tsv' "$EDGE_JSON")
 
 echo
+[[ "$LIVE_CHECK_FAILED" == 0 ]] || { echo "Edge audit incomplete: live checks failed." >&2; exit 1; }
 echo "EDGE TERRAFORM STATE AUDIT PASSED (READ ONLY)"
