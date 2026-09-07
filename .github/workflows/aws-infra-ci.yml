@@ -46,6 +46,8 @@ jobs:
         run: node --test scripts/aws/remote-execution-config.test.mjs
       - name: Verify staging deploy guard contract
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
+      - name: Verify onboarding e2e guard contract
+        run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
       - name: Verify post media migration contract
         run: node --test scripts/aws/migrate-post-media-to-s3.test.mjs
       - name: Verify database reconciliation contract
