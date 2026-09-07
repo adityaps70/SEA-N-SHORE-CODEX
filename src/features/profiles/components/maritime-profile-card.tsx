@@ -1,10 +1,11 @@
-import { BriefcaseBusiness, Compass, Gauge, Ship, Waves } from 'lucide-react'
+import Link from 'next/link'
+import { BriefcaseBusiness, Compass, Gauge, Pencil, Ship, Waves } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { PublicProfile } from '../types'
 
 type Detail = { label: string; value: string; icon: typeof Ship }
 
-export function MaritimeProfileCard({ profile }: { profile: PublicProfile }) {
+export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
   const details: Detail[] = [
     profile.rank ? { label: 'Rank', value: profile.rank, icon: Gauge } : null,
     profile.currentVessel ? { label: 'Current vessel', value: profile.currentVessel, icon: Ship } : null,
@@ -28,9 +29,20 @@ export function MaritimeProfileCard({ profile }: { profile: PublicProfile }) {
           <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Professional record</p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight text-navy-950">Maritime experience</h2>
         </div>
-        {profile.shoreCareerPreference ? (
-          <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-semibold text-ocean-700">Open to shore career</span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {profile.shoreCareerPreference ? (
+            <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-semibold text-ocean-700">Open to shore career</span>
+          ) : null}
+          {editHref ? (
+            <Link
+              href={editHref}
+              aria-label="Edit Professional Record"
+              className="inline-flex size-9 items-center justify-center rounded-full border border-mist-100 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
+            >
+              <Pencil aria-hidden="true" className="size-4" />
+            </Link>
+          ) : null}
+        </div>
       </div>
 
       <dl className="mt-6 grid gap-3 sm:grid-cols-2">
