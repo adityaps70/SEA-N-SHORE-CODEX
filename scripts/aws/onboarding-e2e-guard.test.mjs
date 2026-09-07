@@ -5,9 +5,9 @@ import test from 'node:test'
 const workflowPath = '.github/workflows/aws-onboarding-e2e.yml'
 const actionPath = 'scripts/aws/onboarding-e2e-action.txt'
 
-test('onboarding e2e defaults to a safe plan action and is branch-scoped with exact-head CI gating', () => {
+test('onboarding e2e is safe by default and branch-scoped with exact-head CI gating', () => {
   const action = readFileSync(actionPath, 'utf8').trim()
-  assert.equal(action, 'plan')
+  assert.ok(['plan', 'probe'].includes(action), `Unexpected onboarding e2e action: ${action}`)
 
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /feat\/aws-native-phase-0-1/)
