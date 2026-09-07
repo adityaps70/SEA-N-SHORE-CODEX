@@ -35,7 +35,7 @@ function actionFor(kind: ProfileMediaKind) {
 }
 
 function removeActionFor(kind: ProfileMediaKind) {
-  return async function removeAction(): Promise<void> {
+  return async function removeAction(_formData: FormData): Promise<void> {
     const user = await requireAwsUser()
     await removeProfileMedia(user.id, kind)
     revalidatePath('/profile')
