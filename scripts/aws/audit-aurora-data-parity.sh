@@ -83,4 +83,54 @@ for table in "${TABLES[@]}"; do
 done
 
 printf '%s\n' "$RESULTS" | jq -S '.'
+
+# Source-key parity is checked independently from row counts because AWS may
+# legitimately contain additional rows created after the original Supabase
+# migration. Hash only primary/composite keys; no profile content or PII is
+# emitted. Expressions mirror reconciliation-manifest.json exactly.
+declare -A KEY_EXPRESSIONS=(
+  [profiles]='id::text'
+  [companies]='id::text'
+  [company_members]='company_id::text,user_id::text'
+  [maritime_profiles]='user_id::text'
+  [profile_skills]='user_id::text,skill::text'
+  [posts]='id::text'
+  [post_reactions]='post_id::text,user_id::text'
+  [post_comments]='id::text'
+  [saved_posts]='post_id::text,user_id::text'
+  [post_media]='id::text'
+  [post_polls]='post_id::text'
+  [post_poll_options]='id::text'
+  [post_poll_votes]='post_id::text,user_id::text'
+  [follows]='follower_id::text,following_id::text'
+  [connections]='id::text'
+  [user_blocks]='blocker_id::text,blocked_id::text'
+  [notifications]='id::text'
+)
+
+SOURCE_COMPATIBLE_TABLES=(
+  profiles companies company_members maritime_profiles profile_skills posts
+  post_reactions post_comments saved_posts post_media post_polls
+  post_poll_options post_poll_votes follows connections user_blocks notifications
+)
+
+for table in "${SOURCE_COMPATIBLE_TABLES[@]}"; do
+  expression="${KEY_EXPRESSIONS[$table]}"
+  SQL="SELECT md5(array_to_string(array[${expression}], chr(31))) AS key_hash FROM public.${table} ORDER BY key_hash"
+  RESPONSE="$(aws rds-data execute-statement \
+    --region "$AWS_REGION" \
+    --resource-arn "$CLUSTER_ARN" \
+    --secret-arn "$SECRET_ARN" \
+    --database "$DATABASE_NAME" \
+    --sql "$SQL" \
+    --output json)"
+
+  while IFS= read -r key_hash; do
+    [[ -z "$key_hash" ]] && continue
+    [[ "$key_hash" =~ ^[0-9a-f]{32}$ ]] || { echo "Unexpected key hash format for $table" >&2; exit 1; }
+    echo "AURORA_KEY_HASH_${table^^}=$key_hash"
+  done < <(jq -r '.records[]?[0].stringValue // empty' <<<"$RESPONSE")
+done
+
+echo "AURORA_TARGET_KEY_INVENTORY_COMPLETE=true"
 echo "AURORA_TARGET_INVENTORY_COMPLETE=true"
