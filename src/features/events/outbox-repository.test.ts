@@ -18,7 +18,7 @@ const EVENT = {
 
 describe('event outbox repository', () => {
   it('enqueues an unpublished event with a JSON payload', async () => {
-    const query = vi.fn(async () => ({ rows: [] }))
+    const query = vi.fn<DatabaseQueryClient['query']>(async () => ({ rows: [] }))
     const repository = createOutboxRepositoryForClient({ query } as DatabaseQueryClient)
 
     await repository.enqueue(EVENT)
