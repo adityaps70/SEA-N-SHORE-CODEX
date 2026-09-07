@@ -22,7 +22,7 @@ function row() {
 }
 
 function transactionWith(rows = [row()]) {
-  const query = vi.fn<DatabaseQueryClient['query']>(async (sql: string) => {
+  const query = vi.fn(async (sql: string, _values?: readonly unknown[]) => {
     if (sql.includes('select id, aggregate_type')) return { rows }
     return { rows: [] }
   })
