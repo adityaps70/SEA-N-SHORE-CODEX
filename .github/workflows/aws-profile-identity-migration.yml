@@ -8,6 +8,7 @@ on:
       - infra/aws/database/migrations/0005_profile_identity.sql
       - scripts/aws/profile-identity-migration.sh
       - scripts/aws/profile-identity-migration-action.txt
+      - scripts/aws/profile-identity-schema.test.mjs
       - .github/workflows/aws-profile-identity-migration.yml
   workflow_dispatch:
 
