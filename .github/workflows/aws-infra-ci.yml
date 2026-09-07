@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Verify edge recovery plan guard
+        run: python3 scripts/aws/check-edge-plan.test.py
       - name: Verify remote execution security contract
         run: node --test scripts/aws/remote-execution-config.test.mjs
       - name: Verify post media migration contract

@@ -124,7 +124,7 @@ fi
 
 echo
 echo "=== LIVE EDGE INVENTORY ==="
-aws cloudfront list-distributions --output json > "$EVIDENCE_DIR/distributions.json"
+aws cloudfront list-distributions --no-paginate --output json > "$EVIDENCE_DIR/distributions.json"
 if [[ ! -s "$EVIDENCE_DIR/distributions.json" ]]; then
   echo "CLOUDFRONT_LIST_EMPTY_RESPONSE=true"
 else
