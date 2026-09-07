@@ -58,6 +58,28 @@ terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   > "$WORK_DIR/plan.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/origin-cert.tfplan" > "$WORK_DIR/plan.json"
 
+CHANGE_COUNT="$(jq '[.resource_changes[] | select(.change.actions != ["no-op"])] | length' "$WORK_DIR/plan.json")"
+echo "ORIGIN_TLS_CERT_ACTUAL_CHANGE_COUNT=$CHANGE_COUNT"
+
+surface_existing_certificate() {
+  local cert_arn status
+  cert_arn="$(terraform -chdir="$APP_DIR" output -raw origin_tls_certificate_arn)"
+  [[ "$cert_arn" == arn:aws:acm:ap-south-1:310356785722:certificate/* ]]
+  aws acm describe-certificate --region "$AWS_REGION" --certificate-arn "$cert_arn" --output json > "$WORK_DIR/cert.json"
+  [[ "$(jq -r '.Certificate.DomainName' "$WORK_DIR/cert.json")" == "$EXPECTED_HOSTNAME" ]]
+  status="$(jq -r '.Certificate.Status' "$WORK_DIR/cert.json")"
+  echo "ORIGIN_ACM_CERTIFICATE_ARN=$cert_arn"
+  echo "ORIGIN_ACM_CERTIFICATE_STATUS=$status"
+  jq -r '.Certificate.DomainValidationOptions[] | select(.ResourceRecord != null) | "ORIGIN_ACM_DNS_RECORD=" + .ResourceRecord.Type + "|" + .ResourceRecord.Name + "|" + .ResourceRecord.Value' "$WORK_DIR/cert.json"
+}
+
+if [[ "$CHANGE_COUNT" == "0" ]]; then
+  echo "ORIGIN_TLS_CERT_PLAN_VERIFIED=NO_CHANGES"
+  surface_existing_certificate
+  echo "ORIGIN_TLS_CERT_ALREADY_PROVISIONED"
+  exit 0
+fi
+
 jq -e --arg hostname "$EXPECTED_HOSTNAME" '
   ([.resource_changes[] | select(.change.actions != ["no-op"])]) as $changes |
   ($changes | length) == 1 and
@@ -88,15 +110,7 @@ jq -e '.VersionId != null' "$WORK_DIR/object.json" >/dev/null
 
 echo "APPLYING_SAVED_ORIGIN_CERTIFICATE_ONLY_PLAN"
 terraform -chdir="$APP_DIR" apply -input=false -no-color "$WORK_DIR/origin-cert.tfplan" > "$WORK_DIR/apply.log"
-
-CERT_ARN="$(terraform -chdir="$APP_DIR" output -raw origin_tls_certificate_arn)"
-[[ "$CERT_ARN" == arn:aws:acm:ap-south-1:310356785722:certificate/* ]]
-aws acm describe-certificate --region "$AWS_REGION" --certificate-arn "$CERT_ARN" --output json > "$WORK_DIR/cert.json"
-[[ "$(jq -r '.Certificate.DomainName' "$WORK_DIR/cert.json")" == "$EXPECTED_HOSTNAME" ]]
-STATUS="$(jq -r '.Certificate.Status' "$WORK_DIR/cert.json")"
-echo "ORIGIN_ACM_CERTIFICATE_ARN=$CERT_ARN"
-echo "ORIGIN_ACM_CERTIFICATE_STATUS=$STATUS"
-jq -r '.Certificate.DomainValidationOptions[] | select(.ResourceRecord != null) | "ORIGIN_ACM_DNS_RECORD=" + .ResourceRecord.Type + "|" + .ResourceRecord.Name + "|" + .ResourceRecord.Value' "$WORK_DIR/cert.json"
+surface_existing_certificate
 terraform -chdir="$APP_DIR" state pull > "$WORK_DIR/state-after.json"
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$WORK_DIR/state-after.json")"
 echo "ORIGIN_TLS_CERTIFICATE_REQUEST_APPLY_VERIFIED"
