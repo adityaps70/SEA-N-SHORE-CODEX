@@ -10,11 +10,16 @@ export const PROFILE_TYPES = [
 
 export type ProfileType = (typeof PROFILE_TYPES)[number]
 export type ContactVisibility = 'private' | 'members' | 'public'
+export type IdentityRoot = 'professional' | 'organisation'
 
 export type PublicProfile = {
   id: string
   slug: string
   profileType: ProfileType
+  identityRoot?: IdentityRoot | null
+  primaryIdentity?: string | null
+  primaryIdentityFamily?: string | null
+  secondaryIdentities?: string[]
   fullName: string
   avatarPath: string | null
   avatarUrl?: string | null
@@ -43,6 +48,10 @@ export type PublicProfileRow = {
   id: string
   slug: string
   profile_type: ProfileType
+  identity_root?: IdentityRoot | null
+  primary_identity?: string | null
+  primary_identity_family?: string | null
+  secondary_identities?: string[] | null
   full_name: string
   avatar_path: string | null
   cover_path?: string | null
