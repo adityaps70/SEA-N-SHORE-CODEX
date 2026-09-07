@@ -23,7 +23,7 @@ export function createAwsProfileQueries(input: {
   const mediaRepository = input.mediaRepository ?? profileMediaRepository
   const createReadUrl = input.createReadUrl ?? createMediaReadUrl
 
-  async function hydrateProfiles(profiles: PublicProfile[]): Promise<PublicProfile[]> {
+  async function hydrateProfiles<T extends PublicProfile>(profiles: T[]): Promise<T[]> {
     if (!profiles.length) return profiles
     const pathsById = await mediaRepository.getMediaPaths(profiles.map((profile) => profile.id))
 
@@ -39,7 +39,7 @@ export function createAwsProfileQueries(input: {
     }))
   }
 
-  async function hydrateOne(profile: PublicProfile | null) {
+  async function hydrateOne<T extends PublicProfile>(profile: T | null): Promise<T | null> {
     if (!profile) return null
     return (await hydrateProfiles([profile]))[0] ?? null
   }
