@@ -1,4 +1,5 @@
 name: AWS Edge Recovery
+# Origin TLS readiness audit: revalidate the current edge baseline in plan-only mode.
 # Saved-plan application remains disabled while the repository action is plan.
 
 on:
