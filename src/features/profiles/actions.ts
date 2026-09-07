@@ -3,13 +3,18 @@
 import { redirect } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAwsOwnProfile } from './aws-queries'
-import { completeOnboardingWithAurora } from './onboarding-service'
+import { completeActivationWithAurora, completeOnboardingWithAurora } from './onboarding-service'
 import { updateProfileWithAurora } from './profile-edit-service'
-import { onboardingSchema } from './schemas'
+import { onboardingActivationSchema, onboardingSchema } from './schemas'
+import { IDENTITY_ROOTS } from './identity-catalog'
 import { PROFILE_TYPES, type ProfileType } from './types'
 
 export type OnboardingFormValues = {
   profileType?: ProfileType
+  identityRoot?: 'professional' | 'organisation'
+  primaryIdentity?: string
+  primaryIdentityFamily?: string
+  secondaryIdentities?: string
   fullName?: string
   slug?: string
   location?: string
@@ -35,7 +40,11 @@ export type ProfileActionState = {
 }
 
 const boundedTextFields = {
-  fullName: 120,
+  identityRoot: 20,
+  primaryIdentity: 120,
+  primaryIdentityFamily: 120,
+  secondaryIdentities: 1600,
+  fullName: 160,
   slug: 80,
   location: 120,
   headline: 160,
@@ -60,15 +69,17 @@ function captureSafeValues(formData: FormData): OnboardingFormValues {
     shoreCareerPreference: ['on', 'true'].includes(String(formData.get('shoreCareerPreference') ?? '')),
   }
   const profileType = PROFILE_TYPES.find((value) => value === formData.get('profileType'))
+  const identityRoot = IDENTITY_ROOTS.find((value) => value === formData.get('identityRoot'))
   const contactVisibility = (['private', 'members', 'public'] as const)
     .find((value) => value === formData.get('contactVisibility'))
 
   if (profileType) values.profileType = profileType
+  if (identityRoot) values.identityRoot = identityRoot
   if (contactVisibility) values.contactVisibility = contactVisibility
 
   for (const [name, maximum] of Object.entries(boundedTextFields)) {
     const value = readBoundedText(formData, name, maximum)
-    if (value !== undefined) values[name as keyof typeof boundedTextFields] = value
+    if (value !== undefined) values[name as keyof typeof boundedTextFields] = value as never
   }
 
   return values
@@ -119,8 +130,31 @@ export async function completeOnboarding(
     })
   }
 
-  // Company-specific setup is not implemented yet. Keep every completed profile
-  // on an existing authenticated surface instead of redirecting companies to a 404.
+  redirect('/home')
+}
+
+export async function completeActivation(
+  previousState: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const parsed = onboardingActivationSchema.safeParse(Object.fromEntries(formData))
+  if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
+
+  const user = await requireAwsUser()
+
+  try {
+    await completeActivationWithAurora(user.id, parsed.data)
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return failureState(previousState, formData, {
+        fieldErrors: { slug: ['That profile address is already in use.'] },
+      })
+    }
+    return failureState(previousState, formData, {
+      error: 'We could not save your profile. Your entries are still here; please try again.',
+    })
+  }
+
   redirect('/home')
 }
 
