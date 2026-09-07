@@ -42,7 +42,18 @@ async function signUp(user) {
   await page.getByLabel('Email').fill(user.email)
   await page.getByLabel('Password').fill(user.password)
   await page.getByRole('button', { name: 'Create account' }).click()
-  await page.waitForURL((url) => url.pathname === '/auth/sign-up' && url.searchParams.get('confirm') === '1', { timeout: 20_000 })
+
+  const outcome = await Promise.race([
+    page.waitForURL((url) => url.pathname === '/auth/sign-up' && url.searchParams.get('confirm') === '1', { timeout: 30_000 }).then(() => ({ kind: 'confirm' })),
+    page.getByRole('alert').waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'error', text: await page.getByRole('alert').innerText() })),
+    page.getByRole('status').waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'status', text: await page.getByRole('status').innerText() })),
+  ]).catch(() => null)
+
+  if (!outcome || outcome.kind !== 'confirm') {
+    const safeText = outcome?.text?.trim() || 'no rendered auth status'
+    throw new Error(`Public sign-up did not reach confirmation. path=${new URL(page.url()).pathname} state=${outcome?.kind ?? 'timeout'} text=${safeText}`)
+  }
+
   await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible()
   await context.close()
 }
