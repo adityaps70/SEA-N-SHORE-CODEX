@@ -33,11 +33,10 @@ export function FeedList({ initialPage, category }: { initialPage: FeedPage; cat
     return (
       <div className="rounded-[var(--radius-card)] border border-dashed border-mist-100 bg-white px-5 py-12 text-center shadow-[var(--shadow-card)]">
         <p className="text-lg font-semibold text-navy-950">The maritime feed is ready for its first conversation.</p>
-        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Publish a professional update above, discover people in the network, or explore Sea N Shore communities.</p>
+        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Publish a professional update above or discover relevant maritime professionals in the network.</p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           <a href="#feed-composer" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">Publish an update</a>
           <Link href="/network" className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-900">Explore Network</Link>
-          <Link href="/community" className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-900">Visit Community</Link>
         </div>
       </div>
     )
