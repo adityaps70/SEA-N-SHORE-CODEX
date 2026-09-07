@@ -124,7 +124,12 @@ fi
 
 echo
 echo "=== LIVE EDGE INVENTORY ==="
-aws cloudfront list-distributions --output json | jq '[.DistributionList.Items[]? | {Id, DomainName, Status, Enabled, WebACLId, Aliases, Origins: [.Origins.Items[]? | {Id, DomainName}]}]'
+aws cloudfront list-distributions --output json > "$EVIDENCE_DIR/distributions.json"
+if [[ ! -s "$EVIDENCE_DIR/distributions.json" ]]; then
+  echo "CLOUDFRONT_LIST_EMPTY_RESPONSE=true"
+else
+  jq -e '[.DistributionList.Items[]? | {Id, DomainName, Status, Enabled, WebACLId, Aliases, Origins: [.Origins.Items[]? | {Id, DomainName}]}]' "$EVIDENCE_DIR/distributions.json"
+fi
 aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 --output json | jq '.WebACLs'
 echo "=== LIVE EDGE RESOURCE CHECK ==="
 LIVE_CHECK_FAILED=0
@@ -174,4 +179,11 @@ done < <(jq -r '.[] | . as $resource | .instances[]? | [$resource.type, $resourc
 
 echo
 [[ "$LIVE_CHECK_FAILED" == 0 ]] || { echo "Edge audit incomplete: live checks failed." >&2; exit 1; }
+echo "=== BOOTSTRAP TERRAFORM CAPACITY ==="
+df -h /tmp "$HOME"
+for provider_root in "$HOME/SEA-N-SHORE-CODEX" "$HOME/.terraform.d"; do
+  if [[ -d "$provider_root" ]]; then
+    find "$provider_root" -maxdepth 12 -type f -name 'terraform-provider-aws*' -printf '%p %s bytes\n'
+  fi
+done
 echo "EDGE TERRAFORM STATE AUDIT PASSED (READ ONLY)"
