@@ -22,7 +22,7 @@ git diff --quiet HEAD -- scripts/aws/audit-edge-state.sh infra/aws/app || {
 
 export PATH="$HOME/bin:$PATH"
 
-for command_name in aws terraform jq grep; do
+for command_name in aws jq grep; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "$command_name is required." >&2
     exit 1
@@ -51,17 +51,13 @@ git rev-parse --verify HEAD
 
 echo
 echo "=== TERRAFORM REMOTE BACKEND READ ==="
-terraform -chdir="$APP_DIR" init \
-  -reconfigure \
-  -input=false \
-  -no-color \
-  -backend-config="bucket=$STATE_BUCKET" \
-  -backend-config="key=$STATE_KEY" \
-  -backend-config="region=$STATE_REGION" \
-  -backend-config="use_lockfile=true" \
-  >/dev/null
-
-terraform -chdir="$APP_DIR" state pull > "$STATE_JSON"
+aws s3api get-object \
+  --bucket "$STATE_BUCKET" \
+  --key "$STATE_KEY" \
+  --region "$STATE_REGION" \
+  "$STATE_JSON" > "$EVIDENCE_DIR/state-object.json"
+jq -e '.version == 4 and (.resources | type == "array") and (.lineage | type == "string")' "$STATE_JSON" >/dev/null
+echo "STATE_OBJECT_VERSION=$(jq -r '.VersionId // "unversioned"' "$EVIDENCE_DIR/state-object.json")"
 
 echo "STATE_SERIAL=$(jq -r '.serial' "$STATE_JSON")"
 echo "STATE_LINEAGE=$(jq -r '.lineage' "$STATE_JSON")"
@@ -111,8 +107,8 @@ echo "CONFIG_HAS_EDGE_TF=$CONFIG_HAS_EDGE_TF"
 jq . "$EDGE_JSON"
 
 echo
-echo "=== TERRAFORM PROVIDERS ==="
-terraform -chdir="$APP_DIR" providers -no-color || true
+echo "=== TERRAFORM STATE PROVIDER REFERENCES ==="
+jq '[.resources[]?.provider] | unique' "$STATE_JSON"
 
 if [[ "$US_EAST_1_STATE_REFERENCES" -gt 0 && "$CONFIG_HAS_US_EAST_1_ALIAS" == "false" ]]; then
   echo "ORPHANED_PROVIDER_ALIAS_STATE=true"
