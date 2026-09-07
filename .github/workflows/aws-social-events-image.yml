@@ -1,0 +1,84 @@
+name: AWS Social Events Image
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - Dockerfile
+      - package.json
+      - src/features/events/**
+      - src/features/notifications/**
+      - src/lib/aws/eventbridge.ts
+      - scripts/workers/**
+      - .github/workflows/aws-social-events-image.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-social-events-image
+  cancel-in-progress: false
+
+jobs:
+  build-push:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 30
+    env:
+      AWS_REGION: ap-south-1
+      ECR_REPOSITORY: sea-n-shore
+      NEXT_PUBLIC_SITE_URL: https://d3prih0q6jofyr.cloudfront.net
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == "completed" ]]; then
+              [[ "$CONCLUSION" == "success" ]] || { echo "Exact-head AWS Infrastructure CI is not green." >&2; exit 1; }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push immutable social worker image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_TAG="social-${GITHUB_SHA}"
+          IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+          docker build --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          aws ecr describe-images --region "$AWS_REGION" --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$IMAGE_TAG" >/dev/null
+          echo "SOCIAL_EVENTS_IMAGE_TAG=$IMAGE_TAG"
+          echo "SOCIAL_EVENTS_IMAGE_PUSH_VERIFIED=true"
