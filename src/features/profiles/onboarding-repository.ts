@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
-import type { OnboardingInput } from './schemas'
+import type { OnboardingActivationInput, OnboardingInput } from './schemas'
+import type { ProfileType } from './types'
 
 type OnboardingQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -80,6 +81,43 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     )
   }
 
+  async function updateActivationProfile(
+    profileId: string,
+    data: OnboardingActivationInput,
+    profileType: ProfileType,
+  ) {
+    await query(
+      `update public.profiles
+       set profile_type = $2,
+           identity_root = $3,
+           primary_identity = $4,
+           primary_identity_family = $5,
+           secondary_identities = $6::text[],
+           full_name = $7,
+           slug = $8,
+           location = $9,
+           headline = $10,
+           contact_visibility = $11,
+           updated_at = now()
+       where id = $1
+         and account_status = 'active'
+         and onboarding_completed_at is null`,
+      [
+        profileId,
+        profileType,
+        data.identityRoot,
+        data.primaryIdentity,
+        data.primaryIdentityFamily,
+        data.secondaryIdentities,
+        data.fullName,
+        data.slug,
+        data.location ?? null,
+        data.headline,
+        data.contactVisibility,
+      ],
+    )
+  }
+
   async function updateCompletedProfile(profileId: string, data: OnboardingInput) {
     const rows = await query(
       `update public.profiles
@@ -137,6 +175,18 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     )
   }
 
+  async function upsertActivationMaritimeProfile(profileId: string, currentCompany?: string) {
+    await query(
+      `insert into public.maritime_profiles (
+         user_id, current_company, vessel_types, trading_areas, shore_career_preference, updated_at
+       ) values ($1, $2, '{}'::text[], '{}'::text[], false, now())
+       on conflict (user_id) do update set
+         current_company = excluded.current_company,
+         updated_at = now()`,
+      [profileId, currentCompany ?? null],
+    )
+  }
+
   async function deleteMaritimeProfile(profileId: string) {
     await query(`delete from public.maritime_profiles where user_id = $1`, [profileId])
   }
@@ -169,8 +219,10 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     getOnboardingProfile,
     lockOnboardingProfile,
     updateProfile,
+    updateActivationProfile,
     updateCompletedProfile,
     upsertMaritimeProfile,
+    upsertActivationMaritimeProfile,
     deleteMaritimeProfile,
     replaceSkills,
     finalizeOnboarding,
