@@ -17,9 +17,9 @@ export type PublicProfile = {
   profileType: ProfileType
   fullName: string
   avatarPath: string | null
-  avatarUrl: string | null
-  coverPath: string | null
-  coverUrl: string | null
+  avatarUrl?: string | null
+  coverPath?: string | null
+  coverUrl?: string | null
   location: string | null
   headline: string | null
   summary: string | null
