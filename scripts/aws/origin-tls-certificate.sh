@@ -30,18 +30,20 @@ python3 - "$WORK_DIR/state.json" "$WORK_DIR/variables.json" <<'PY'
 import json, sys
 with open(sys.argv[1]) as f: state=json.load(f)
 resources=state['resources']
-def attrs(kind):
-    matches=[r for r in resources if r['type']==kind and r['mode']=='managed']
-    assert len(matches)==1, 'Expected exactly one '+kind
-    return matches[0]['instances'][0]['attributes']
-task=attrs('aws_ecs_task_definition')
+def attrs(kind, name):
+    matches=[r for r in resources if r['type']==kind and r['name']==name and r['mode']=='managed']
+    assert len(matches)==1, f'Expected exactly one {kind}.{name}'
+    instances=matches[0].get('instances', [])
+    assert len(instances)==1, f'Expected exactly one instance for {kind}.{name}'
+    return instances[0]['attributes']
+task=attrs('aws_ecs_task_definition', 'web')
 containers=json.loads(task['container_definitions'])
 web=next(c for c in containers if c['name']=='web')
 site=next(e['value'] for e in web['environment'] if e['name']=='NEXT_PUBLIC_SITE_URL')
 values={
   'image_tag':web['image'].rsplit(':',1)[-1],
   'site_url':site,
-  'aurora_engine_version':attrs('aws_rds_cluster')['engine_version']
+  'aurora_engine_version':attrs('aws_rds_cluster', 'aurora')['engine_version']
 }
 with open(sys.argv[2],'w') as f: json.dump(values,f)
 PY
