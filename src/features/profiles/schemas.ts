@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { findIdentityOption, IDENTITY_ROOTS } from './identity-catalog'
 import { PROFILE_TYPES } from './types'
 
 const normalizeTerms = (value: unknown) => {
@@ -29,6 +30,15 @@ const optionalText = (maximum: number) =>
     },
     z.string().max(maximum).optional(),
   )
+
+const slugSchema = z.preprocess(
+  (value) => typeof value === 'string' ? value.trim().toLocaleLowerCase('en') : value,
+  z
+    .string()
+    .min(1, 'Choose a profile address.')
+    .max(80)
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use letters, numbers, and single hyphens.'),
+)
 
 const sailingExperienceSchema = z.preprocess(
   (value) => {
@@ -62,14 +72,7 @@ const onboardingFieldsSchema = z
   .object({
     profileType: z.enum(PROFILE_TYPES, { error: 'Choose the professional profile that fits you best.' }),
     fullName: z.string().trim().min(2, 'Add your full name.').max(120),
-    slug: z.preprocess(
-      (value) => typeof value === 'string' ? value.trim().toLocaleLowerCase('en') : value,
-      z
-        .string()
-        .min(1, 'Choose a profile address.')
-        .max(80)
-        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use letters, numbers, and single hyphens.'),
-    ),
+    slug: slugSchema,
     location: optionalText(120),
     headline: z.string().trim().min(4, 'Add a professional headline.').max(160),
     summary: z.string().trim().min(20, 'Write at least 20 characters.').max(2000),
@@ -96,3 +99,57 @@ const onboardingFieldsSchema = z
 export const onboardingSchema = z.preprocess(discardIrrelevantMaritimeValues, onboardingFieldsSchema)
 
 export type OnboardingInput = z.infer<typeof onboardingSchema>
+
+const secondaryIdentitySchema = z.preprocess(
+  (value) => {
+    if (Array.isArray(value)) return value
+    if (typeof value !== 'string' || value.trim() === '') return []
+    try {
+      const parsed: unknown = JSON.parse(value)
+      return parsed
+    } catch {
+      return value
+    }
+  },
+  z.array(z.string().trim().min(2).max(120)).max(10, 'Add no more than 10 additional identities.'),
+).transform((values) => {
+  const seen = new Set<string>()
+  return values.filter((value) => {
+    const key = value.toLocaleLowerCase('en')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+})
+
+const activationFieldsSchema = z.object({
+  identityRoot: z.enum(IDENTITY_ROOTS, { error: 'Choose Professional or Organisation.' }),
+  primaryIdentity: z.string().trim().min(2, 'Choose your exact maritime identity.').max(120),
+  primaryIdentityFamily: z.string().trim().min(2).max(120),
+  secondaryIdentities: secondaryIdentitySchema,
+  fullName: z.string().trim().min(2, 'Add your name.').max(160),
+  slug: slugSchema,
+  location: optionalText(120),
+  currentCompany: optionalText(160),
+  headline: optionalText(160),
+  contactVisibility: z.enum(['private', 'members', 'public']).default('members'),
+})
+
+export const onboardingActivationSchema = activationFieldsSchema
+  .superRefine((data, context) => {
+    if (data.primaryIdentityFamily === 'Custom identity') return
+    const option = findIdentityOption(data.identityRoot, data.primaryIdentity)
+    if (!option || option.family !== data.primaryIdentityFamily) {
+      context.addIssue({
+        code: 'custom',
+        path: ['primaryIdentity'],
+        message: 'Choose an identity from the maritime list or use a custom identity.',
+      })
+    }
+  })
+  .transform((data) => ({
+    ...data,
+    headline: data.headline ?? data.primaryIdentity,
+  }))
+
+export type OnboardingActivationInput = z.infer<typeof onboardingActivationSchema>
