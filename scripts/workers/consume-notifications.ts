@@ -1,9 +1,17 @@
 import { DeleteMessageCommand, ReceiveMessageCommand, SQSClient } from '@aws-sdk/client-sqs'
-import { consumeNotificationEvent } from '../../src/features/notifications/event-consumer'
+import { createProductionNotificationEventConsumer } from '../../src/features/notifications/event-consumer'
+import type { NotificationEventMode } from '../../src/features/notifications/repository'
 import { parseDomainEvent } from '../../src/features/events/validation'
 
 const queueUrl = process.env.SOCIAL_NOTIFICATION_QUEUE_URL
 if (!queueUrl) throw new Error('SOCIAL_NOTIFICATION_QUEUE_URL is required')
+
+const configuredMode = process.env.SOCIAL_NOTIFICATION_MODE ?? 'shadow'
+if (configuredMode !== 'shadow' && configuredMode !== 'active') {
+  throw new Error('SOCIAL_NOTIFICATION_MODE must be shadow or active')
+}
+const mode: NotificationEventMode = configuredMode
+const consumer = createProductionNotificationEventConsumer(mode)
 
 const sqs = new SQSClient({})
 let stopping = false
@@ -14,10 +22,12 @@ async function processMessage(body: string) {
   const envelope = JSON.parse(body) as { source?: unknown; detail?: unknown }
   if (envelope.source !== 'sea-n-shore.social') throw new Error('notification_event_invalid_source')
   const event = parseDomainEvent(envelope.detail)
-  const result = await consumeNotificationEvent(event)
+  const result = await consumer.consume(event)
   console.info('[social_notification_processed]', {
     eventId: event.id,
     eventType: event.eventType,
+    mode,
+    processed: result.processed,
     created: result.created,
   })
 }
