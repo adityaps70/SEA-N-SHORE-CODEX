@@ -29,3 +29,30 @@ test('exact identity migration supports lightweight activation without breaking 
 
   assert.doesNotMatch(sql, /drop\s+(table|column)|truncate\s|delete\s|update\s|insert\s/i)
 })
+
+test('profile identity migration runner is exact-head, staging-only, plan-first and fail-closed', () => {
+  const runner = readFileSync('scripts/aws/profile-identity-migration.sh', 'utf8')
+  const workflow = readFileSync('.github/workflows/aws-profile-identity-migration.yml', 'utf8')
+  const action = readFileSync('scripts/aws/profile-identity-migration-action.txt', 'utf8').trim()
+
+  assert.equal(action, 'plan')
+  assert.match(runner, /PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA/)
+  assert.match(runner, /git rev-parse HEAD/)
+  assert.match(runner, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(runner, /310356785722/)
+  assert.match(runner, /sea-n-shore-staging-aurora/)
+  assert.match(runner, /case "\$ACTION" in plan\|apply-once/)
+  assert.match(runner, /begin-transaction/)
+  assert.match(runner, /rollback-transaction/)
+  assert.match(runner, /commit-transaction/)
+  assert.match(runner, /PROFILE_IDENTITY_MIGRATION_APPLY_VERIFIED=true/)
+  assert.doesNotMatch(runner, /drop\s+(table|column)|truncate\s|delete\s+from|update\s+public\.|insert\s+into/i)
+
+  assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
+  assert.match(workflow, /environment:\s*staging/)
+  assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+  assert.match(workflow, /Exact-head AWS Infrastructure CI is not green/)
+  assert.match(workflow, /PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA/)
+  assert.match(workflow, /AWS-RunShellScript/)
+  assert.match(workflow, /sea-n-shore-bootstrap/)
+})
