@@ -113,6 +113,7 @@ jobs:
       ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
       ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      SERVER_ACTION_ALLOWED_ORIGINS: https://d3prih0q6jofyr.cloudfront.net
       AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "true"
       AWS_MEDIA_BUCKET: sea-n-shore-staging-310356785722-media
       AURORA_HOST: sea-n-shore-staging-aurora.cluster-cvaiukw021g5.ap-south-1.rds.amazonaws.com
@@ -131,6 +132,7 @@ jobs:
           test -n "$AWS_REGION" || (echo "Missing staging variable AWS_REGION" && exit 1)
           test -n "$ECR_REPOSITORY" || (echo "Missing staging variable ECR_REPOSITORY" && exit 1)
           test -n "$NEXT_PUBLIC_SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" && exit 1)
+          test -n "$SERVER_ACTION_ALLOWED_ORIGINS" || (echo "Missing staging Server Action origin" && exit 1)
 
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -153,6 +155,7 @@ jobs:
 
           docker build \
             --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg SERVER_ACTION_ALLOWED_ORIGINS="$SERVER_ACTION_ALLOWED_ORIGINS" \
             -t "$IMAGE_URI" .
 
           PUSH_OUTPUT="$(docker push "$IMAGE_URI" 2>&1)"
