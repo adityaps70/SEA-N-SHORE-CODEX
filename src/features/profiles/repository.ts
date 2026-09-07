@@ -4,6 +4,7 @@ import { mapPublicProfile } from './mappers'
 import {
   PROFILE_TYPES,
   type ContactVisibility,
+  type IdentityRoot,
   type OwnProfile,
   type OwnProfileRow,
   type ProfileType,
@@ -15,8 +16,13 @@ type ProfileRow = QueryResultRow & {
   id: string
   slug: string | null
   profile_type: string | null
+  identity_root?: string | null
+  primary_identity?: string | null
+  primary_identity_family?: string | null
+  secondary_identities?: string[] | null
   full_name: string
   avatar_path: string | null
+  cover_path?: string | null
   location: string | null
   headline: string | null
   summary: string | null
@@ -58,8 +64,13 @@ const PROFILE_SELECT = `
     p.id,
     p.slug,
     p.profile_type::text as profile_type,
+    p.identity_root,
+    p.primary_identity,
+    p.primary_identity_family,
+    p.secondary_identities,
     p.full_name,
     p.avatar_path,
+    p.cover_path,
     p.location,
     p.headline,
     p.summary,
@@ -97,6 +108,10 @@ function isProfileType(value: unknown): value is ProfileType {
   return PROFILE_TYPES.includes(value as ProfileType)
 }
 
+function isIdentityRoot(value: unknown): value is IdentityRoot {
+  return value === 'professional' || value === 'organisation'
+}
+
 function isContactVisibility(value: unknown): value is ContactVisibility {
   return value === 'private' || value === 'members' || value === 'public'
 }
@@ -108,8 +123,13 @@ function normalizePublicRow(row: ProfileRow): PublicProfileRow | null {
     id: row.id,
     slug: row.slug,
     profile_type: row.profile_type,
+    identity_root: row.identity_root == null || isIdentityRoot(row.identity_root) ? row.identity_root : null,
+    primary_identity: row.primary_identity ?? null,
+    primary_identity_family: row.primary_identity_family ?? null,
+    secondary_identities: Array.isArray(row.secondary_identities) ? row.secondary_identities : [],
     full_name: row.full_name,
     avatar_path: row.avatar_path,
+    cover_path: row.cover_path ?? null,
     location: row.location,
     headline: row.headline,
     summary: row.summary,
@@ -271,6 +291,9 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
            p.location,
            p.headline,
            p.summary,
+           p.primary_identity,
+           p.primary_identity_family,
+           array_to_string(p.secondary_identities, ' '),
            mp.rank,
            mp.current_company,
            mp.current_vessel,
