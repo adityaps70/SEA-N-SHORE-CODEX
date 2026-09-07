@@ -1,11 +1,18 @@
+import { randomUUID } from 'node:crypto'
 import { withTransaction as databaseTransaction } from '@/lib/db/client'
+import { createOutboxRepositoryForClient, type OutboxRepository } from '@/features/events/outbox-repository'
 import {
   createNetworkRepositoryForClient,
   type NetworkRepository,
 } from './repository'
 import type { NetworkConnectionRow } from './types'
 
-type NetworkTransaction = <T>(fn: (repository: NetworkRepository) => Promise<T>) => Promise<T>
+type NetworkTransactionContext = {
+  network: NetworkRepository
+  outbox: OutboxRepository
+}
+
+type NetworkTransaction = <T>(fn: (repositories: NetworkTransactionContext) => Promise<T>) => Promise<T>
 
 function serviceError(code: string): never {
   throw new Error(code)
@@ -46,13 +53,30 @@ function duplicateConnectionError(connection: NetworkConnectionRow | null): neve
   serviceError('network_request_exists')
 }
 
+function occurredAt() {
+  return new Date().toISOString()
+}
+
 export function createNetworkService(input: { withTransaction: NetworkTransaction }) {
   async function follow(actorId: string, targetId: string) {
     assertNotSelf(actorId, targetId)
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async ({ network: repository, outbox }) => {
       await assertInteractable(repository, actorId, targetId)
       const created = await repository.insertFollow(actorId, targetId)
       if (created) {
+        await outbox.enqueue({
+          id: randomUUID(),
+          aggregateType: 'profile',
+          aggregateId: targetId,
+          eventType: 'user.followed',
+          schemaVersion: 1,
+          occurredAt: occurredAt(),
+          payload: {
+            eventType: 'user.followed',
+            actorId,
+            targetId,
+          },
+        })
         await repository.createNotification({
           recipientId: targetId,
           actorId,
@@ -65,12 +89,12 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
 
   async function unfollow(actorId: string, targetId: string) {
     assertNotSelf(actorId, targetId)
-    return input.withTransaction((repository) => repository.deleteFollow(actorId, targetId))
+    return input.withTransaction(({ network: repository }) => repository.deleteFollow(actorId, targetId))
   }
 
   async function sendConnectionRequest(actorId: string, targetId: string) {
     assertNotSelf(actorId, targetId)
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async ({ network: repository, outbox }) => {
       await assertInteractable(repository, actorId, targetId)
       const existing = await repository.findConnectionByPair(actorId, targetId)
       if (existing) duplicateConnectionError(existing)
@@ -83,6 +107,20 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
         duplicateConnectionError(await repository.findConnectionByPair(actorId, targetId))
       }
 
+      await outbox.enqueue({
+        id: randomUUID(),
+        aggregateType: 'connection',
+        aggregateId: connectionId,
+        eventType: 'connection.requested',
+        schemaVersion: 1,
+        occurredAt: occurredAt(),
+        payload: {
+          eventType: 'connection.requested',
+          actorId,
+          targetId,
+          connectionId,
+        },
+      })
       await repository.createNotification({
         recipientId: targetId,
         actorId,
@@ -94,7 +132,7 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
   }
 
   async function cancelConnectionRequest(actorId: string, connectionId: string) {
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async ({ network: repository }) => {
       const connection = await repository.findConnectionByIdForUpdate(connectionId)
       if (!connection || connection.status !== 'pending' || connection.requested_by !== actorId) {
         serviceError('network_action_not_allowed')
@@ -106,7 +144,7 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
   }
 
   async function acceptConnectionRequest(actorId: string, connectionId: string) {
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async ({ network: repository, outbox }) => {
       const connection = await repository.findConnectionByIdForUpdate(connectionId)
       if (!connection || connection.status !== 'pending' || connection.requested_by === actorId) {
         serviceError('network_action_not_allowed')
@@ -119,6 +157,21 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
       await repository.acceptConnection(connectionId)
       await repository.insertMutualFollows(actorId, otherId)
       await repository.deleteConnectionRequestNotification(connectionId)
+      await outbox.enqueue({
+        id: randomUUID(),
+        aggregateType: 'connection',
+        aggregateId: connectionId,
+        eventType: 'connection.accepted',
+        schemaVersion: 1,
+        occurredAt: occurredAt(),
+        payload: {
+          eventType: 'connection.accepted',
+          actorId,
+          targetId: connection.requested_by,
+          connectionId,
+          requestedBy: connection.requested_by,
+        },
+      })
       await repository.createNotification({
         recipientId: connection.requested_by,
         actorId,
@@ -130,7 +183,7 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
   }
 
   async function declineConnectionRequest(actorId: string, connectionId: string) {
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async ({ network: repository }) => {
       const connection = await repository.findConnectionByIdForUpdate(connectionId)
       if (!connection || connection.status !== 'pending' || connection.requested_by === actorId) {
         serviceError('network_action_not_allowed')
@@ -143,7 +196,7 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
   }
 
   async function removeConnection(actorId: string, connectionId: string) {
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async ({ network: repository }) => {
       const connection = await repository.findConnectionByIdForUpdate(connectionId)
       if (!connection || connection.status !== 'accepted' || !connectionOtherMember(connection, actorId)) {
         serviceError('network_action_not_allowed')
@@ -154,7 +207,7 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
 
   async function block(actorId: string, targetId: string) {
     assertNotSelf(actorId, targetId)
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async ({ network: repository }) => {
       const actorReady = await repository.isMemberReady(actorId)
       const targetReady = await repository.isMemberReady(targetId)
       if (!actorReady || !targetReady) serviceError('network_interaction_unavailable')
@@ -167,7 +220,7 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
 
   async function unblock(actorId: string, targetId: string) {
     assertNotSelf(actorId, targetId)
-    return input.withTransaction((repository) => repository.deleteBlock(actorId, targetId))
+    return input.withTransaction(({ network: repository }) => repository.deleteBlock(actorId, targetId))
   }
 
   return {
@@ -184,7 +237,10 @@ export function createNetworkService(input: { withTransaction: NetworkTransactio
 }
 
 const productionService = createNetworkService({
-  withTransaction: (fn) => databaseTransaction((client) => fn(createNetworkRepositoryForClient(client))),
+  withTransaction: (fn) => databaseTransaction((client) => fn({
+    network: createNetworkRepositoryForClient(client),
+    outbox: createOutboxRepositoryForClient(client),
+  })),
 })
 
 export const followProfileWithAurora = productionService.follow
