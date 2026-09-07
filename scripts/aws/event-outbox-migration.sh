@@ -101,6 +101,7 @@ trap cleanup EXIT
 
 # Encode each full multiline statement as one base64 line. This avoids Bash
 # line-oriented reads splitting CREATE TABLE bodies into invalid fragments.
+# This plan-only rerun verifies the corrected statement transport end to end.
 python3 - "$MIGRATION_FILE" > /tmp/event-outbox-statements.b64 <<'PY'
 import base64, sys
 sql=open(sys.argv[1], encoding='utf-8').read()
