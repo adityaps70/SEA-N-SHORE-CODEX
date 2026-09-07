@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next'
+import { getServerActionAllowedOrigins } from './src/lib/auth/server-action-origins'
 
 const securityHeaders = [
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
@@ -12,6 +13,7 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: '6mb',
+      allowedOrigins: getServerActionAllowedOrigins(process.env.NEXT_PUBLIC_SITE_URL),
     },
   },
   images: {
