@@ -10,6 +10,7 @@ STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"
 STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 APP_DIR="$PWD/infra/aws/app"
 IMAGE_TAG_FILE="scripts/aws/social-events-image-tag.txt"
+PLAN_CLASSIFIER="scripts/aws/social-events-plan-classifier.mjs"
 
 [[ "${SOCIAL_EVENTS_INFRA_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "SOCIAL_EVENTS_INFRA_EXPECTED_SHA must be an exact commit SHA." >&2
@@ -17,7 +18,7 @@ IMAGE_TAG_FILE="scripts/aws/social-events-image-tag.txt"
 }
 [[ "$(git rev-parse HEAD)" == "$SOCIAL_EVENTS_INFRA_EXPECTED_SHA" ]]
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
-git diff --quiet HEAD -- infra/aws/app scripts/aws/social-events-infra.sh scripts/aws/social-events-infra-action.txt "$IMAGE_TAG_FILE"
+git diff --quiet HEAD -- infra/aws/app scripts/aws/social-events-infra.sh scripts/aws/social-events-infra-action.txt "$IMAGE_TAG_FILE" "$PLAN_CLASSIFIER"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
 ACTION="$(tr -d '[:space:]' < scripts/aws/social-events-infra-action.txt)"
@@ -99,42 +100,25 @@ terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   > "$WORK_DIR/plan.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/social-events.tfplan" > "$WORK_DIR/plan.json"
 
+CLASSIFICATION="$(node "$PLAN_CLASSIFIER" "$WORK_DIR/plan.json" "$ACTION")"
+PLAN_MODE="$(jq -r '.mode' <<<"$CLASSIFICATION")"
+CREATE_COUNT="$(jq -r '.createCount' <<<"$CLASSIFICATION")"
+
+if [[ "$PLAN_MODE" == "steady" ]]; then
+  jq '[.resource_changes[]? | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}]' "$WORK_DIR/plan.json"
+  echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
+  echo "SOCIAL_EVENTS_IMAGE_TAG=$IMAGE_TAG"
+  echo "SOCIAL_EVENTS_CREATE_COUNT=0"
+  echo "SOCIAL_EVENTS_INFRA_STEADY_STATE=true"
+  echo "SOCIAL_EVENTS_INFRA_PLAN_VERIFIED=NO_CHANGES"
+  echo "SOCIAL_EVENTS_INFRA_PLAN_ONLY_NO_APPLY"
+  exit 0
+fi
+
 python3 - "$WORK_DIR/plan.json" <<'PY'
 import json, sys
-allowed={
-'aws_cloudwatch_event_bus.social',
-'aws_sqs_queue.notification_dlq',
-'aws_sqs_queue.notification_events',
-'aws_cloudwatch_event_rule.notification_events',
-'aws_cloudwatch_event_target.notification_queue',
-'aws_sqs_queue_policy.notification_events',
-'aws_iam_role.outbox_worker',
-'aws_iam_role_policy.outbox_worker',
-'aws_iam_role.notification_worker',
-'aws_iam_role_policy.notification_worker',
-'aws_cloudwatch_log_group.outbox_worker',
-'aws_cloudwatch_log_group.notification_worker',
-'aws_ecs_task_definition.outbox_worker',
-'aws_ecs_task_definition.notification_worker',
-'aws_ecs_service.outbox_worker',
-'aws_ecs_service.notification_worker',
-'aws_cloudwatch_metric_alarm.notification_dlq_depth',
-'aws_cloudwatch_metric_alarm.notification_queue_age',
-}
 with open(sys.argv[1]) as f: plan=json.load(f)
 changes=[r for r in plan.get('resource_changes',[]) if r.get('change',{}).get('actions') != ['no-op']]
-if not changes:
-    raise SystemExit('Expected social event infrastructure changes, found none')
-for r in changes:
-    address=r['address']; actions=r['change']['actions']
-    if address not in allowed:
-        raise SystemExit(f'Unexpected actual change outside social event allowlist: {address} {actions}')
-    if actions != ['create']:
-        raise SystemExit(f'Expected create-only social event change: {address} {actions}')
-addresses={r['address'] for r in changes}
-missing=allowed-addresses
-if missing:
-    raise SystemExit('Expected create changes missing from plan: '+', '.join(sorted(missing)))
 notification=next(r for r in changes if r['address']=='aws_ecs_task_definition.notification_worker')
 change=notification['change']
 container_defs=change.get('after',{}).get('container_definitions')
@@ -147,10 +131,10 @@ elif 'SOCIAL_NOTIFICATION_MODE' not in container_defs or 'shadow' not in contain
     raise SystemExit('Notification worker task definition is not locked to shadow mode')
 else:
     print('SOCIAL_NOTIFICATION_SHADOW_PLAN_CHECK=VERIFIED_IN_PLAN')
-print('SOCIAL_EVENTS_PLAN_GUARD=CREATE_ONLY_ALLOWED_RESOURCES')
-print(f'SOCIAL_EVENTS_CREATE_COUNT={len(changes)}')
 PY
 
+echo "SOCIAL_EVENTS_PLAN_GUARD=CREATE_ONLY_ALLOWED_RESOURCES"
+echo "SOCIAL_EVENTS_CREATE_COUNT=$CREATE_COUNT"
 jq '[.resource_changes[] | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}]' "$WORK_DIR/plan.json"
 echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/social-events.tfplan" | cut -d' ' -f1)"
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
