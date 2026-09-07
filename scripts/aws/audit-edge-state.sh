@@ -125,11 +125,10 @@ fi
 echo
 echo "=== LIVE EDGE INVENTORY ==="
 aws cloudfront list-distributions --no-paginate --output json > "$EVIDENCE_DIR/distributions.json"
-if [[ ! -s "$EVIDENCE_DIR/distributions.json" ]]; then
-  echo "CLOUDFRONT_LIST_EMPTY_RESPONSE=true"
-else
-  jq -e '[.DistributionList.Items[]? | {Id, DomainName, Status, Enabled, WebACLId, Aliases, Origins: [.Origins.Items[]? | {Id, DomainName}]}]' "$EVIDENCE_DIR/distributions.json"
-fi
+[[ -s "$EVIDENCE_DIR/distributions.json" ]] || { echo "Empty CloudFront inventory response." >&2; exit 1; }
+jq -e '.DistributionList.IsTruncated == false and (.DistributionList.Quantity | type == "number")' "$EVIDENCE_DIR/distributions.json" >/dev/null
+echo "LIVE_CLOUDFRONT_COUNT=$(jq -r '.DistributionList.Quantity' "$EVIDENCE_DIR/distributions.json")"
+jq '[.DistributionList.Items[]? | {Id, DomainName, Status, Enabled, WebACLId, Aliases, Origins: [.Origins.Items[]? | {Id, DomainName}]}]' "$EVIDENCE_DIR/distributions.json"
 aws wafv2 list-web-acls --scope CLOUDFRONT --region us-east-1 --output json | jq '.WebACLs'
 echo "=== LIVE EDGE RESOURCE CHECK ==="
 LIVE_CHECK_FAILED=0

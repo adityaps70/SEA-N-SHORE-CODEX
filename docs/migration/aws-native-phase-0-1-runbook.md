@@ -88,7 +88,7 @@ terraform -chdir=infra/aws/app validate
 
 CI and Docker use npm 11.6.0 because npm 10.9.8 on Node 22 has reproduced the `Cannot read properties of null (reading 'edgesOut')` resolver failure. Do not bypass verification with `--force` or `--legacy-peer-deps`.
 
-Do not apply a full Terraform plan while the unrelated CloudFront account-verification blocker is present. If the reviewed plan contains CloudFront creation or other unrelated changes, deploy the ECS task-definition revision independently and retain the preceding Supabase-backed revision for immediate rollback.
+AWS Support cleared the CloudFront account-verification blocker on 7 September 2026. The missing WAF configuration/provider alias was restored and the staging CloudFront edge was created using a guarded, saved, targeted plan. See `2026-09-07-edge-recovery.md` for evidence and remaining boundaries. This does not authorize an unrestricted full app apply: review and guard unrelated app drift separately before any such apply.
 
 Until Phase 4 protected feature cutover is verified, keep the existing Supabase environment variables and Supabase application path intact. If Aurora runtime verification fails, redeploy the prior ECS task-definition revision; no Supabase source data should be deleted or modified as part of this rollback.
 
