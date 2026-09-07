@@ -31,6 +31,17 @@ if [[ -n "$PUBLIC_ENV_MATCHES" ]]; then
   exit 1
 fi
 
+TERRAFORM_APP_MATCHES="$(
+  git grep -nE 'supabase_url|supabase_publishable_key|NEXT_PUBLIC_SUPABASE_' -- infra/aws/app \
+    || true
+)"
+
+if [[ -n "$TERRAFORM_APP_MATCHES" ]]; then
+  echo "Legacy Supabase application Terraform wiring detected:" >&2
+  printf '%s\n' "$TERRAFORM_APP_MATCHES" >&2
+  exit 1
+fi
+
 echo "PHASE 5 SUPABASE APPLICATION CLEANUP AUDIT PASSED"
-echo "No application runtime flow, helper module, or build/workflow configuration depends on Supabase."
+echo "No application runtime flow, helper module, build/workflow configuration, or app Terraform definition depends on Supabase."
 echo "Supabase CLI/tooling dependencies may remain temporarily for the final migration delta/orphan audit."
