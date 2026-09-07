@@ -155,18 +155,21 @@ jobs:
             --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
             -t "$IMAGE_URI" .
 
-          docker push "$IMAGE_URI"
-          aws ecr describe-images \
-            --repository-name "$ECR_REPOSITORY" \
-            --image-ids imageTag="$IMAGE_TAG" \
-            --query 'imageDetails[0].imageDigest' \
-            --output text | grep -E '^sha256:[0-9a-f]{64}$'
+          PUSH_OUTPUT="$(docker push "$IMAGE_URI" 2>&1)"
+          printf '%s\n' "$PUSH_OUTPUT"
+          IMAGE_DIGEST="$(printf '%s\n' "$PUSH_OUTPUT" | sed -nE 's/.*digest: (sha256:[0-9a-f]{64}).*/\1/p' | tail -n 1)"
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo "Docker push did not return a valid immutable image digest." >&2
+            exit 1
+          }
 
           echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "digest=$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
           echo "### AWS image pushed" >> "$GITHUB_STEP_SUMMARY"
           echo "- Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Tag: \`$IMAGE_TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Digest: \`$IMAGE_DIGEST\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Repository: \`$ECR_REPOSITORY\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate ECS deployment configuration
