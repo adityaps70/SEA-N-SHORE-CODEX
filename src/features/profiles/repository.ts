@@ -50,6 +50,7 @@ export type PublicProfilesByIdsLookup = PublicProfileLookup & {
 export type DiscoveryCandidateLookup = {
   viewerProfileId: string
   limit: number
+  searchQuery?: string
 }
 
 const PROFILE_SELECT = `
@@ -140,6 +141,15 @@ function requireAtMostOne(rows: readonly ProfileRow[]) {
     throw new Error('Unable to load this professional profile.')
   }
   return rows[0] ?? null
+}
+
+function searchTokens(value?: string) {
+  return (value ?? '')
+    .trim()
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
 }
 
 export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
@@ -251,15 +261,45 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
     lookup: DiscoveryCandidateLookup,
   ): Promise<PublicProfile[]> {
     const limit = Math.min(Math.max(Math.trunc(lookup.limit), 1), 60)
+    const tokens = searchTokens(lookup.searchQuery)
+    const hasSearch = tokens.length > 0
+    const searchSql = hasSearch
+      ? `
+         and lower(concat_ws(' ',
+           p.full_name,
+           p.slug,
+           p.location,
+           p.headline,
+           p.summary,
+           mp.rank,
+           mp.current_company,
+           mp.current_vessel,
+           mp.availability,
+           array_to_string(mp.vessel_types, ' '),
+           array_to_string(mp.trading_areas, ' '),
+           coalesce((
+             select string_agg(ps_search.skill, ' ' order by ps_search.skill)
+             from public.profile_skills ps_search
+             where ps_search.user_id = p.id
+           ), '')
+         )) like all($2::text[])
+       `
+      : ''
+    const limitParameter = hasSearch ? 3 : 2
+    const values: readonly unknown[] = hasSearch
+      ? [lookup.viewerProfileId, tokens.map((token) => `%${token}%`), limit]
+      : [lookup.viewerProfileId, limit]
+
     const rows = await queryRows(
       `${PROFILE_SELECT}
        where p.id <> $1
          and p.account_status = 'active'
          and p.onboarding_completed_at is not null
          ${blockVisibilitySql(1)}
+         ${searchSql}
        order by p.updated_at desc, p.id asc
-       limit $2`,
-      [lookup.viewerProfileId, limit],
+       limit $${limitParameter}`,
+      values,
     )
 
     return mapPublicRows(rows)
