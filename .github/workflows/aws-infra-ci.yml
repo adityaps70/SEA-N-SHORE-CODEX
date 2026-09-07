@@ -68,6 +68,8 @@ jobs:
         run: node --test scripts/aws/audit-aurora-migration-parity.test.mjs
       - name: Verify Aurora identity parity audit contract
         run: node --test scripts/aws/audit-aurora-data-parity.test.mjs
+      - name: Verify origin TLS certificate state selector contract
+        run: node --test scripts/aws/origin-tls-certificate.test.mjs
       - name: Verify social worker contract
         run: node --test scripts/workers/worker-contract.test.mjs
 
