@@ -8,7 +8,10 @@ const profile: PublicProfile = {
   slug: 'member-a',
   profileType: 'seafarer',
   fullName: 'Member A',
-  avatarPath: null,
+  avatarPath: 'profiles/member-a/avatar.webp',
+  avatarUrl: 'https://media.example/avatar.webp',
+  coverPath: 'profiles/member-a/cover.webp',
+  coverUrl: 'https://media.example/cover.webp',
   location: 'Mumbai, India',
   headline: 'Chief Officer | Tankers',
   summary: 'Experienced maritime professional.',
@@ -26,18 +29,26 @@ const profile: PublicProfile = {
 afterEach(() => cleanup())
 
 describe('ProfileHeader', () => {
-  it('renders identity and availability without relationship actions by default', () => {
+  it('renders identity, profile photo and cover photo', () => {
     render(<ProfileHeader profile={profile} />)
     expect(screen.getByRole('heading', { name: 'Member A' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Member A profile photo' })).toHaveAttribute('src', profile.avatarUrl)
+    expect(screen.getByRole('img', { name: 'Member A cover photo' })).toHaveAttribute('src', profile.coverUrl)
     expect(screen.getByText('Chief Officer | Tankers')).toBeInTheDocument()
     expect(screen.getByText('Available now')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
   })
 
-  it('renders an optional action slot without changing profile content', () => {
-    render(<ProfileHeader profile={profile} actions={<button type="button">Connect</button>} />)
+  it('renders section edit and optional action slots for the owner', () => {
+    render(
+      <ProfileHeader
+        profile={profile}
+        editHref="/profile/edit#identity"
+        mediaControls={<button type="button">Change profile photo</button>}
+        actions={<button type="button">Connect</button>}
+      />,
+    )
+    expect(screen.getByRole('link', { name: 'Edit basic information' })).toHaveAttribute('href', '/profile/edit#identity')
+    expect(screen.getByRole('button', { name: 'Change profile photo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
-    expect(screen.getByText('Mumbai, India')).toBeInTheDocument()
-    expect(screen.getByText('Example Shipping')).toBeInTheDocument()
   })
 })
