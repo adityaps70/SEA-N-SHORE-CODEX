@@ -26,7 +26,7 @@ export function ProfileMediaControls({
   const label = kind === 'avatar' ? 'profile photo' : 'cover photo'
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="relative flex items-center gap-2">
       <form action={formAction}>
         <input
           ref={inputRef}
@@ -57,12 +57,14 @@ export function ProfileMediaControls({
         ) : null}
       </form>
 
-      {hasImage && kind === 'cover' ? (
+      {hasImage ? (
         <form action={removeAction}>
           <button
             type="submit"
             aria-label={`Remove ${label}`}
-            className="inline-flex size-10 items-center justify-center rounded-xl border border-white/70 bg-white/95 text-navy-950 shadow-sm hover:text-red-700"
+            className={kind === 'avatar'
+              ? 'inline-flex size-8 items-center justify-center rounded-full border-2 border-white bg-white text-navy-950 shadow-md hover:text-red-700'
+              : 'inline-flex size-10 items-center justify-center rounded-xl border border-white/70 bg-white/95 text-navy-950 shadow-sm hover:text-red-700'}
           >
             <Trash2 aria-hidden="true" className="size-4" />
           </button>
