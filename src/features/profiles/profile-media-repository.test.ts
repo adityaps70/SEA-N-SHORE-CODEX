@@ -3,7 +3,9 @@ import { createProfileMediaRepository } from './profile-media-repository'
 
 describe('profile media repository', () => {
   it('updates only the requested media field and returns the previous key', async () => {
-    const query = vi.fn(async () => ({ rows: [{ previous_path: 'profiles/u/old.webp' }] }))
+    const query = vi.fn(async (_sql: string, _values?: readonly unknown[]) => ({
+      rows: [{ previous_path: 'profiles/u/old.webp' }],
+    }))
     const repository = createProfileMediaRepository({ query } as never)
 
     const previous = await repository.replaceMediaPath(
