@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { ArrowUpRight } from 'lucide-react'
+import { ArrowUpRight, Hammer } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 
 export type SurfaceItem = {
@@ -28,9 +28,15 @@ export function ProductSurface({
     <section className="py-7 sm:py-10">
       <div className="overflow-hidden rounded-[2rem] border border-mist-100 bg-navy-950 px-5 py-8 text-white shadow-[var(--shadow-card)] sm:px-9 sm:py-11">
         <div className="max-w-3xl">
-          <p className="text-xs font-semibold uppercase tracking-[.18em] text-sky-200">
-            {eyebrow}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs font-semibold uppercase tracking-[.18em] text-sky-200">
+              {eyebrow}
+            </p>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.1em] text-slate-100">
+              <Hammer aria-hidden="true" className="size-3" />
+              In development
+            </span>
+          </div>
           <h1 className="mt-4 text-3xl font-semibold tracking-[-.045em] sm:text-5xl">
             {title}
           </h1>
@@ -44,9 +50,13 @@ export function ProductSurface({
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <p className="mt-5 text-sm text-muted">
+        This section is a product preview. The capabilities below are not yet active workflows.
+      </p>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {items.map(({ title: itemTitle, description: itemDescription, meta, icon: Icon }) => (
-          <Card key={itemTitle} className="border border-mist-100 p-6 shadow-none transition-transform duration-200 hover:-translate-y-0.5">
+          <Card key={itemTitle} className="border border-mist-100 p-6 shadow-none">
             <div className="flex size-11 items-center justify-center rounded-2xl bg-mist-50 text-ocean-700">
               <Icon aria-hidden="true" className="size-5" />
             </div>
