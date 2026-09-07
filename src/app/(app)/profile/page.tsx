@@ -4,6 +4,7 @@ import { ArrowUpRight, Eye, LockKeyhole, Pencil } from 'lucide-react'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
+import { ProfileMediaControls } from '@/features/profiles/components/profile-media-controls'
 import { getOwnProfile } from '@/features/profiles/queries'
 
 export default async function OwnProfilePage() {
@@ -27,7 +28,7 @@ export default async function OwnProfilePage() {
             className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-500"
           >
             <Pencil aria-hidden="true" className="size-4" />
-            Edit Profile
+            Edit all
           </Link>
           <Link
             href={`/people/${profile.slug}`}
@@ -40,10 +41,15 @@ export default async function OwnProfilePage() {
         </div>
       </div>
 
-      <ProfileHeader profile={profile} />
+      <ProfileHeader
+        profile={profile}
+        editHref="/profile/edit#identity"
+        mediaControls={<ProfileMediaControls kind="cover" hasImage={Boolean(profile.coverPath)} />}
+        avatarControls={<ProfileMediaControls kind="avatar" hasImage={Boolean(profile.avatarPath)} />}
+      />
       <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
-        <ProfileAbout profile={profile} />
-        <MaritimeProfileCard profile={profile} />
+        <ProfileAbout profile={profile} editHref="/profile/edit#about" />
+        <MaritimeProfileCard profile={profile} editHref="/profile/edit#professional" />
       </div>
     </section>
   )
