@@ -25,8 +25,6 @@ jobs:
       ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
       ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
       AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "true"
       AWS_MEDIA_BUCKET: sea-n-shore-staging-310356785722-media
       AURORA_HOST: sea-n-shore-staging-aurora.cluster-cvaiukw021g5.ap-south-1.rds.amazonaws.com
@@ -44,8 +42,6 @@ jobs:
           test -n "$AWS_REGION" || (echo "Missing staging variable AWS_REGION" && exit 1)
           test -n "$ECR_REPOSITORY" || (echo "Missing staging variable ECR_REPOSITORY" && exit 1)
           test -n "$NEXT_PUBLIC_SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" && exit 1)
-          test -n "$NEXT_PUBLIC_SUPABASE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SUPABASE_URL" && exit 1)
-          test -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" || (echo "Missing staging secret NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" && exit 1)
 
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -67,8 +63,6 @@ jobs:
 
           docker build \
             --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
-            --build-arg NEXT_PUBLIC_SUPABASE_URL="$NEXT_PUBLIC_SUPABASE_URL" \
-            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY="$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
             -t "$IMAGE_URI" .
 
           docker push "$IMAGE_URI"
@@ -109,8 +103,6 @@ jobs:
             --arg IMAGE "$IMAGE_URI" \
             --arg NAME "$ECS_CONTAINER_NAME" \
             --arg SITE "$NEXT_PUBLIC_SITE_URL" \
-            --arg SUPABASE_URL "$NEXT_PUBLIC_SUPABASE_URL" \
-            --arg SUPABASE_KEY "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" \
             --arg ALLOW_INSECURE_HTTP_COOKIES "$AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES" \
             --arg AWS_MEDIA_BUCKET "$AWS_MEDIA_BUCKET" \
             --arg AURORA_HOST "$AURORA_HOST" \
@@ -135,8 +127,7 @@ jobs:
                       ((.environment // [])
                         | map(select(
                             .name != "NEXT_PUBLIC_SITE_URL"
-                            and .name != "NEXT_PUBLIC_SUPABASE_URL"
-                            and .name != "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+                            and ((.name | startswith("NEXT_PUBLIC_" + "SUPABASE_")) | not)
                             and .name != "AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES"
                             and .name != "AWS_MEDIA_BUCKET"
                             and .name != "AURORA_HOST"
@@ -146,8 +137,6 @@ jobs:
                           )))
                       + [
                           {"name":"NEXT_PUBLIC_SITE_URL","value":$SITE},
-                          {"name":"NEXT_PUBLIC_SUPABASE_URL","value":$SUPABASE_URL},
-                          {"name":"NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY","value":$SUPABASE_KEY},
                           {"name":"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES","value":"true"},
                           {"name":"AWS_MEDIA_BUCKET","value":$AWS_MEDIA_BUCKET},
                           {"name":"AURORA_HOST","value":$AURORA_HOST},
