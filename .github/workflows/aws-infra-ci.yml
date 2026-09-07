@@ -60,6 +60,8 @@ jobs:
         run: node --test scripts/aws/event-outbox-schema.test.mjs
       - name: Verify social event Terraform contract
         run: node --test scripts/aws/social-events-terraform.test.mjs
+      - name: Verify social infrastructure plan classifier
+        run: node --test scripts/aws/social-events-plan-classifier.test.mjs
       - name: Verify social worker contract
         run: node --test scripts/workers/worker-contract.test.mjs
 
