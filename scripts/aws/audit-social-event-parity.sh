@@ -13,6 +13,7 @@ DLQ_NAME="sea-n-shore-staging-notification-events-dlq"
 ECS_CLUSTER="sea-n-shore-staging"
 OUTBOX_SERVICE="sea-n-shore-staging-outbox-worker"
 NOTIFICATION_SERVICE="sea-n-shore-staging-notification-worker"
+IMAGE_TAG_FILE="scripts/aws/social-events-image-tag.txt"
 
 [[ "${SOCIAL_EVENT_PARITY_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "SOCIAL_EVENT_PARITY_EXPECTED_SHA must be an exact 40-character commit SHA." >&2
@@ -22,6 +23,9 @@ NOTIFICATION_SERVICE="sea-n-shore-staging-notification-worker"
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
 git diff --quiet HEAD -- scripts/aws infra/aws src/features/events src/features/notifications src/features/network
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+
+EXPECTED_IMAGE_TAG="$(tr -d '[:space:]' < "$IMAGE_TAG_FILE")"
+[[ "$EXPECTED_IMAGE_TAG" =~ ^social-[0-9a-f]{40}$ ]]
 
 echo "READ_ONLY_AUDIT=true"
 
@@ -52,7 +56,84 @@ for service in "$OUTBOX_SERVICE" "$NOTIFICATION_SERVICE"; do
   echo "${normalized}_DESIRED=$desired"
   echo "${normalized}_RUNNING=$running"
   echo "${normalized}_PENDING=$pending"
+  [[ "$desired" == "1" && "$running" == "1" && "$pending" == "0" ]] || {
+    echo "Worker service is not stable: $service desired=$desired running=$running pending=$pending" >&2
+    exit 1
+  }
 done
+
+strong_error_count() {
+  local log_group="$1"
+  local output_file="$2"
+  local start_ms
+  start_ms=$(( ( $(date +%s) - 7200 ) * 1000 ))
+
+  aws logs filter-log-events \
+    --region "$AWS_REGION" \
+    --log-group-name "$log_group" \
+    --start-time "$start_ms" \
+    --output json > "$output_file"
+
+  jq -r '.events[].message' "$output_file" \
+    | grep -Eai '(^|[^[:alpha:]])(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|AccessDenied|password authentication failed|database[^[:cntrl:]]*(failed|error)|HTTP[[:space:]]+5[0-9][0-9])([^[:alpha:]]|$)' \
+    | wc -l \
+    | tr -d ' ' \
+    || true
+}
+
+audit_worker_runtime() {
+  local service="$1"
+  local kind="$2"
+  local task_arn task_json image log_group match_count mode
+
+  task_arn="$(jq -r --arg name "$service" '.services[] | select(.serviceName==$name) | .taskDefinition // empty' <<<"$SERVICES_JSON")"
+  [[ -n "$task_arn" ]]
+
+  task_json="$(aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$task_arn" --query taskDefinition --output json)"
+  image="$(jq -r '.containerDefinitions[0].image // empty' <<<"$task_json")"
+  [[ -n "$image" ]]
+  [[ "$image" == *":$EXPECTED_IMAGE_TAG" ]] || {
+    echo "Unexpected live worker image for $service: $image" >&2
+    exit 1
+  }
+
+  log_group="$(jq -r '.containerDefinitions[0].logConfiguration.options["awslogs-group"] // empty' <<<"$task_json")"
+  [[ -n "$log_group" ]] || {
+    echo "Missing CloudWatch log group for $service" >&2
+    exit 1
+  }
+
+  if [[ "$kind" == "OUTBOX" ]]; then
+    echo "SOCIAL_OUTBOX_WORKER_IMAGE=$image"
+  else
+    echo "SOCIAL_NOTIFICATION_WORKER_IMAGE=$image"
+    mode="$(jq -r '[.containerDefinitions[0].environment[]? | select(.name=="SOCIAL_NOTIFICATION_MODE") | .value][0] // empty' <<<"$task_json")"
+    echo "SOCIAL_NOTIFICATION_MODE=$mode"
+    [[ "$mode" == "shadow" ]] || {
+      echo "Notification worker must remain in shadow mode; found '$mode'." >&2
+      exit 1
+    }
+  fi
+
+  match_count="$(strong_error_count "$log_group" "/tmp/social-${kind,,}-worker-logs.json")"
+  if [[ "$kind" == "OUTBOX" ]]; then
+    echo "SOCIAL_OUTBOX_STRONG_RUNTIME_ERROR_MATCHES=$match_count"
+  else
+    echo "SOCIAL_NOTIFICATION_STRONG_RUNTIME_ERROR_MATCHES=$match_count"
+  fi
+
+  if (( match_count > 1 )); then
+    echo "Repeating strong runtime error signatures detected for $service in the last two hours." >&2
+    jq -r '.events[].message' "/tmp/social-${kind,,}-worker-logs.json" \
+      | grep -Eai '(^|[^[:alpha:]])(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|AccessDenied|password authentication failed|database[^[:cntrl:]]*(failed|error)|HTTP[[:space:]]+5[0-9][0-9])([^[:alpha:]]|$)' \
+      | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+      | head -n 10 >&2
+    exit 1
+  fi
+}
+
+audit_worker_runtime "$OUTBOX_SERVICE" OUTBOX
+audit_worker_runtime "$NOTIFICATION_SERVICE" NOTIFICATION
 
 CLUSTER_JSON="$(aws rds describe-db-clusters --region "$AWS_REGION" --db-cluster-identifier "$CLUSTER_ID" --output json)"
 CLUSTER_ARN="$(jq -r '.DBClusters[0].DBClusterArn // empty' <<<"$CLUSTER_JSON")"
