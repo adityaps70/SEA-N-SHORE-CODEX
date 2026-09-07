@@ -53,7 +53,7 @@ async function signIn(page, user) {
   await page.getByLabel('Password').fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await page.waitForURL((url) => url.pathname === '/onboarding', { timeout: 20_000 })
-  await expect(page.getByRole('heading', { name: /Complete your profile/i })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Set your course in the global shipping community.' })).toBeVisible()
 }
 
 async function completeProfessional(user) {
