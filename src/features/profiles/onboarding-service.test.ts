@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { OnboardingInput } from './schemas'
+import type { OnboardingActivationInput, OnboardingInput } from './schemas'
+import type { ProfileType } from './types'
 
 const actorId = '11111111-1111-4111-8111-111111111111'
 
@@ -7,7 +8,9 @@ type Repository = {
   getOnboardingProfile: (profileId: string) => Promise<{ fullName: string; onboardingCompletedAt: string | null } | null>
   lockOnboardingProfile: (profileId: string) => Promise<boolean>
   updateProfile: (profileId: string, input: OnboardingInput) => Promise<void>
+  updateActivationProfile: (profileId: string, input: OnboardingActivationInput, profileType: ProfileType) => Promise<void>
   upsertMaritimeProfile: (profileId: string, input: OnboardingInput) => Promise<void>
+  upsertActivationMaritimeProfile: (profileId: string, currentCompany?: string) => Promise<void>
   deleteMaritimeProfile: (profileId: string) => Promise<void>
   replaceSkills: (profileId: string, skills: string[]) => Promise<void>
   finalizeOnboarding: (profileId: string) => Promise<boolean>
@@ -39,7 +42,9 @@ function makeRepository(overrides: Partial<Repository> = {}): Repository {
     getOnboardingProfile: vi.fn(async () => null),
     lockOnboardingProfile: vi.fn(async () => true),
     updateProfile: vi.fn(async () => undefined),
+    updateActivationProfile: vi.fn(async () => undefined),
     upsertMaritimeProfile: vi.fn(async () => undefined),
+    upsertActivationMaritimeProfile: vi.fn(async () => undefined),
     deleteMaritimeProfile: vi.fn(async () => undefined),
     replaceSkills: vi.fn(async () => undefined),
     finalizeOnboarding: vi.fn(async () => true),
