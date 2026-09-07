@@ -2,6 +2,7 @@ import { withTransaction as databaseTransaction, type DatabaseQueryClient } from
 import type { DomainEvent } from '@/features/events/types'
 import {
   createNotificationEventRepositoryForClient,
+  type NotificationEventMode,
   type NotificationEventRepository,
 } from './repository'
 
@@ -38,18 +39,25 @@ function notificationInput(event: DomainEvent) {
   }
 }
 
-export function createNotificationEventConsumer(input: { withTransaction: NotificationTransaction }) {
+export function createNotificationEventConsumer(input: {
+  mode: NotificationEventMode
+  withTransaction: NotificationTransaction
+}) {
   return {
     async consume(event: DomainEvent) {
       const mapped = notificationInput(event)
-      return input.withTransaction((repository) => repository.createNotificationFromEvent(mapped))
+      return input.withTransaction((repository) => repository.processNotificationEvent({
+        ...mapped,
+        mode: input.mode,
+      }))
     },
   }
 }
 
-const productionConsumer = createNotificationEventConsumer({
-  withTransaction: (fn) => databaseTransaction((client: DatabaseQueryClient) =>
-    fn(createNotificationEventRepositoryForClient(client))),
-})
-
-export const consumeNotificationEvent = productionConsumer.consume
+export function createProductionNotificationEventConsumer(mode: NotificationEventMode) {
+  return createNotificationEventConsumer({
+    mode,
+    withTransaction: (fn) => databaseTransaction((client: DatabaseQueryClient) =>
+      fn(createNotificationEventRepositoryForClient(client))),
+  })
+}
