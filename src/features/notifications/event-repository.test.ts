@@ -11,7 +11,7 @@ const input = {
 
 describe('notification event repository', () => {
   it('records a shadow receipt without inserting a notification', async () => {
-    const query = vi.fn<DatabaseQueryClient['query']>(async (sql: string) => {
+    const query = vi.fn(async (sql: string, _values?: readonly unknown[]) => {
       if (sql.includes('insert into public.notification_event_receipts')) {
         return { rows: [{ event_id: input.eventId }] }
       }
@@ -33,7 +33,7 @@ describe('notification event repository', () => {
 
   it('creates one notification in active mode and links the receipt', async () => {
     const notificationId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
-    const query = vi.fn<DatabaseQueryClient['query']>(async (sql: string) => {
+    const query = vi.fn(async (sql: string, _values?: readonly unknown[]) => {
       if (sql.includes('insert into public.notification_event_receipts')) return { rows: [{ event_id: input.eventId }] }
       if (sql.includes('insert into public.notifications')) return { rows: [{ id: notificationId }] }
       return { rows: [] }
@@ -51,7 +51,7 @@ describe('notification event repository', () => {
   })
 
   it('treats a duplicate event id as a no-op in either mode', async () => {
-    const query = vi.fn<DatabaseQueryClient['query']>(async () => ({ rows: [] }))
+    const query = vi.fn(async (_sql: string, _values?: readonly unknown[]) => ({ rows: [] }))
     const repository = createNotificationEventRepositoryForClient({ query } as unknown as DatabaseQueryClient)
 
     await expect(repository.processNotificationEvent({ ...input, mode: 'active' })).resolves.toEqual({
