@@ -1,0 +1,135 @@
+name: AWS Phase 5B SES Production Access Cleanup
+
+on:
+  push:
+    branches: [feat/aws-native-phase-0-1]
+    paths:
+      - .github/workflows/aws-phase5b-ses-production-access-cleanup.yml
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      AWS_REGION: ap-south-1
+      EXPECTED_ACCOUNT_ID: "310356785722"
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == "completed" ]]; then
+              [[ "$CONCLUSION" == "success" ]] || exit 1
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Remove temporary SES production-access permission through bootstrap SSM
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT" == "$EXPECTED_ACCOUNT_ID" ]]
+
+          INSTANCE_ID="$(aws ec2 describe-instances \
+            --region "$AWS_REGION" \
+            --filters 'Name=tag:Name,Values=sea-n-shore-bootstrap' 'Name=instance-state-name,Values=running' \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output text)"
+          [[ -n "$INSTANCE_ID" && "$INSTANCE_ID" != "None" && "$INSTANCE_ID" != *$'\t'* ]] || {
+            echo "Expected exactly one running sea-n-shore-bootstrap instance." >&2
+            exit 1
+          }
+
+          REMOTE_SCRIPT=$(cat <<'REMOTE'
+          set -euo pipefail
+          ROLE_NAME="sea-n-shore-staging-github-deploy"
+          POLICY_NAME="sea-n-shore-staging-phase5b-ses-production-access"
+          aws iam delete-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "$POLICY_NAME"
+          if aws iam get-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "$POLICY_NAME" >/tmp/phase5b-policy-after.json 2>/tmp/phase5b-policy-after.err; then
+            echo "PHASE5B_SES_PRODUCTION_ACCESS_PERMISSION_STILL_PRESENT" >&2
+            rm -f /tmp/phase5b-policy-after.json /tmp/phase5b-policy-after.err
+            exit 1
+          fi
+          grep -q 'NoSuchEntity' /tmp/phase5b-policy-after.err
+          rm -f /tmp/phase5b-policy-after.json /tmp/phase5b-policy-after.err
+          echo PHASE5B_SES_PRODUCTION_ACCESS_PERMISSION_REMOVED
+          REMOTE
+          )
+
+          PARAMETERS="$(jq -cn --arg command "$REMOTE_SCRIPT" '{commands:[$command]}')"
+          COMMAND_ID="$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --parameters "$PARAMETERS" \
+            --comment "Sea N Shore Phase 5B remove temporary SES production access IAM" \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          for attempt in $(seq 1 60); do
+            STATUS="$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query Status \
+              --output text 2>/dev/null || true)"
+            case "$STATUS" in
+              Success)
+                aws ssm get-command-invocation \
+                  --region "$AWS_REGION" \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query StandardOutputContent \
+                  --output text
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                aws ssm get-command-invocation \
+                  --region "$AWS_REGION" \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query StandardErrorContent \
+                  --output text >&2 || true
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "Timed out waiting for bootstrap IAM cleanup." >&2
+          exit 1
