@@ -234,7 +234,8 @@ resource "aws_ecs_task_definition" "notification_worker" {
       essential = true
       command   = ["npm", "run", "worker:notifications"]
       environment = concat(local.social_worker_database_environment, [
-        { name = "SOCIAL_NOTIFICATION_QUEUE_URL", value = aws_sqs_queue.notification_events.url }
+        { name = "SOCIAL_NOTIFICATION_QUEUE_URL", value = aws_sqs_queue.notification_events.url },
+        { name = "SOCIAL_NOTIFICATION_MODE", value = "shadow" }
       ])
       secrets = local.social_worker_database_secrets
       logConfiguration = {
