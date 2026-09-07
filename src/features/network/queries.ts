@@ -45,6 +45,31 @@ export function relationshipFromRows(
   }
 }
 
+export function matchesNetworkSearch(profile: NetworkProfile, query: string) {
+  const tokens = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  if (!tokens.length) return true
+
+  const haystack = [
+    profile.fullName,
+    profile.slug,
+    profile.location,
+    profile.headline,
+    profile.summary,
+    profile.rank,
+    profile.currentCompany,
+    profile.currentVessel,
+    profile.availability,
+    ...profile.vesselTypes,
+    ...profile.tradingAreas,
+    ...profile.skills,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLocaleLowerCase()
+
+  return tokens.every((token) => haystack.includes(token))
+}
+
 function counterpartyId(viewerId: string, row: NetworkConnectionRow) {
   return row.user_low_id === viewerId ? row.user_high_id : row.user_low_id
 }
@@ -75,7 +100,7 @@ export async function getRelationshipState(targetId: string): Promise<Relationsh
   return relationshipFromRows(user.id, targetId, graph.followedIds, graph.connections)
 }
 
-export async function getNetworkHub(tab: NetworkTab): Promise<NetworkHubData> {
+export async function getNetworkHub(tab: NetworkTab, searchQuery = ''): Promise<NetworkHubData> {
   const user = await requireAwsUser()
   const graph = await loadViewerGraph(user.id)
   const pending = graph.connections.filter((connection) => connection.status === 'pending')
@@ -95,6 +120,7 @@ export async function getNetworkHub(tab: NetworkTab): Promise<NetworkHubData> {
         index,
       }))
       .filter(({ profile }) => profile.relationship.connection.kind !== 'connected')
+      .filter(({ profile }) => matchesNetworkSearch(profile, searchQuery))
       .sort((left, right) => right.score - left.score || left.index - right.index)
       .slice(0, 30)
       .map(({ profile }) => profile)
