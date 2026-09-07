@@ -7,6 +7,7 @@ on:
     paths:
       - infra/aws/app/database.tf
       - infra/aws/app/storage.tf
+      - scripts/aws/audit-independence-readiness.sh
       - scripts/migration/**
       - docs/migration/**
       - .github/workflows/aws-independence-readiness.yml
@@ -15,75 +16,147 @@ on:
 permissions:
   id-token: write
   contents: read
+  actions: read
 
 jobs:
   live-readiness:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-      ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+      AWS_REGION: ap-south-1
 
     steps:
-      - name: Checkout
+      - name: Checkout exact branch head
         uses: actions/checkout@v4
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == "completed" ]]; then
+              [[ "$CONCLUSION" == "success" ]] || {
+                echo "Exact-head AWS Infrastructure CI is not green." >&2
+                exit 1
+              }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
 
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ap-south-1
 
-      - name: Audit live rollback and restore posture
+      - name: Discover bootstrap instance
+        id: instance
         shell: bash
         run: |
           set -euo pipefail
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          CLUSTER_ID="sea-n-shore-staging-aurora"
-
-          echo "=== AURORA READINESS ==="
-          aws rds describe-db-clusters \
+          INSTANCE_IDS=$(aws ec2 describe-instances \
             --region "$AWS_REGION" \
-            --db-cluster-identifier "$CLUSTER_ID" \
-            --query 'DBClusters[0].{Identifier:DBClusterIdentifier,Status:Status,BackupRetentionPeriod:BackupRetentionPeriod,StorageEncrypted:StorageEncrypted,DeletionProtection:DeletionProtection,LatestRestorableTime:LatestRestorableTime}' \
-            --output json | tee /tmp/aurora-readiness.json
-          jq -e '.Status == "available"' /tmp/aurora-readiness.json >/dev/null
-          jq -e '.StorageEncrypted == true' /tmp/aurora-readiness.json >/dev/null
-          jq -e '.DeletionProtection == true' /tmp/aurora-readiness.json >/dev/null
-          LIVE_RETENTION=$(jq -r '.BackupRetentionPeriod' /tmp/aurora-readiness.json)
-          test "$LIVE_RETENTION" -ge 1
-          echo "LIVE_AURORA_BACKUP_RETENTION_DAYS=$LIVE_RETENTION"
-          echo "TARGET_AURORA_BACKUP_RETENTION_DAYS=7"
+            --filters \
+              "Name=tag:Name,Values=sea-n-shore-bootstrap" \
+              "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output json)
+          COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
+          if [[ "$COUNT" -ne 1 ]]; then
+            echo "Expected exactly one running sea-n-shore-bootstrap instance; found $COUNT." >&2
+            exit 1
+          fi
+          INSTANCE_ID=$(jq -r '.[0]' <<<"$INSTANCE_IDS")
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "Bootstrap instance resolved."
 
-          echo "=== S3 READINESS ==="
-          for PURPOSE in media private migration; do
-            case "$PURPOSE" in
-              media) BUCKET="sea-n-shore-staging-${ACCOUNT_ID}-media" ;;
-              private) BUCKET="sea-n-shore-staging-${ACCOUNT_ID}-private" ;;
-              migration) BUCKET="sea-n-shore-staging-${ACCOUNT_ID}-migration" ;;
+      - name: Send repository-controlled read-only readiness audit through SSM
+        id: command
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          python3 - "$TRIGGER_SHA" > /tmp/ssm-parameters.json <<'PYTHON'
+          import json, shlex, sys
+          sha = sys.argv[1]
+          script = f"""set -euo pipefail
+          umask 077
+          AUDIT_DIR=$(mktemp -d /tmp/sea-n-shore-independence-audit.XXXXXXXX)
+          trap 'rm -rf -- "$AUDIT_DIR"' EXIT
+          git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$AUDIT_DIR/repo"
+          cd "$AUDIT_DIR/repo"
+          git checkout --quiet --detach {sha}
+          test "$(git rev-parse HEAD)" = "{sha}"
+          bash scripts/aws/audit-independence-readiness.sh
+          """
+          print(json.dumps({"commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          PYTHON
+          COMMAND_ID=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Sea N Shore independence readiness $TRIGGER_SHA" \
+            --timeout-seconds 900 \
+            --parameters file:///tmp/ssm-parameters.json \
+            --query 'Command.CommandId' \
+            --output text)
+          test -n "$COMMAND_ID" || { echo "SSM did not return a command ID." >&2; exit 1; }
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "SSM read-only audit submitted."
+
+      - name: Wait for audit and surface evidence
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          COMMAND_ID: ${{ steps.command.outputs.command_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS="Pending"
+          for attempt in $(seq 1 180); do
+            STATUS=$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query Status \
+              --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in
+              Pending|InProgress|Delayed) sleep 5 ;;
+              *) break ;;
             esac
-            STATUS=$(aws s3api get-bucket-versioning --bucket "$BUCKET" --query Status --output text)
-            test "$STATUS" = "Enabled" || { echo "Versioning is not enabled on $BUCKET" >&2; exit 1; }
-            aws s3api get-public-access-block --bucket "$BUCKET" --query 'PublicAccessBlockConfiguration' --output json > "/tmp/${PURPOSE}-pab.json"
-            jq -e '.BlockPublicAcls and .IgnorePublicAcls and .BlockPublicPolicy and .RestrictPublicBuckets' "/tmp/${PURPOSE}-pab.json" >/dev/null
-            aws s3api get-bucket-encryption --bucket "$BUCKET" --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' --output text | grep -Eq 'AES256|aws:kms'
-            echo "$PURPOSE bucket: versioning/encryption/public-access-block verified"
           done
 
-          echo "=== ECS ROLLBACK READINESS ==="
-          aws ecs describe-services --region "$AWS_REGION" --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json > /tmp/service.json
-          CURRENT_TD=$(jq -r '.services[0].taskDefinition' /tmp/service.json)
-          FAMILY=$(aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$CURRENT_TD" --query 'taskDefinition.family' --output text)
-          aws ecs list-task-definitions --region "$AWS_REGION" --family-prefix "$FAMILY" --sort DESC --max-items 5 --output json > /tmp/task-definitions.json
-          REVISION_COUNT=$(jq '.taskDefinitionArns | length' /tmp/task-definitions.json)
-          test "$REVISION_COUNT" -ge 2 || { echo "Fewer than two ECS task revisions are available for rollback." >&2; exit 1; }
-          echo "CURRENT_TASK_DEFINITION=$CURRENT_TD"
-          echo "ROLLBACK_REVISIONS_VISIBLE=$REVISION_COUNT"
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$COMMAND_ID" \
+            --instance-id "$INSTANCE_ID" \
+            --output json > /tmp/ssm-result.json
 
-          echo "=== EXTERNAL DNS BOUNDARY ==="
-          CERT_COUNT=$(aws acm list-certificates --region "$AWS_REGION" --query 'length(CertificateSummaryList)' --output text)
-          echo "MUMBAI_ACM_CERTIFICATE_COUNT=$CERT_COUNT"
-          echo "ORIGIN_TLS_HOSTNAME=origin-staging.seaandshore.in"
-          echo "No DNS, certificate, listener, ECS, database, S3, or CloudFront mutation was performed by this audit."
+          echo "=== AWS INDEPENDENCE READINESS STDOUT ==="
+          jq -r '.StandardOutputContent // empty' /tmp/ssm-result.json
+          STDERR_CONTENT=$(jq -r '.StandardErrorContent // empty' /tmp/ssm-result.json)
+          if [[ -n "$STDERR_CONTENT" ]]; then
+            echo "=== AWS INDEPENDENCE READINESS STDERR ===" >&2
+            printf '%s\n' "$STDERR_CONTENT" >&2
+          fi
+          FINAL_STATUS=$(jq -r '.Status' /tmp/ssm-result.json)
+          echo "SSM final status: $FINAL_STATUS"
+          [[ "$FINAL_STATUS" == "Success" ]] || exit 1
