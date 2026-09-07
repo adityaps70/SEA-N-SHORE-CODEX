@@ -7,7 +7,9 @@ import {
   UsersRound,
 } from "lucide-react";
 import { RouteLine } from "@/components/brand/route-line";
+import { getPublicVisitorActions } from "@/components/navigation/public-visitor-actions";
 import { Card } from "@/components/ui/card";
+import { getVerifiedUser } from "@/features/auth/queries";
 
 const pillars = [
   {
@@ -32,7 +34,10 @@ const pillars = [
   },
 ];
 
-export default function Home() {
+export default async function Home() {
+  const viewer = await getVerifiedUser();
+  const actions = getPublicVisitorActions(Boolean(viewer));
+
   return (
     <main id="main-content">
       <section className="mx-auto grid w-full max-w-7xl gap-12 px-4 py-16 sm:px-6 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:py-24">
@@ -49,17 +54,17 @@ export default function Home() {
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <Link
-              href="/auth/sign-up"
+              href={actions.heroPrimary.href}
               className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ocean-700 px-5 text-sm font-semibold text-white hover:bg-navy-900"
             >
-              Create your professional profile{" "}
+              {actions.heroPrimary.label}{" "}
               <ArrowRight aria-hidden="true" className="size-4" />
             </Link>
             <Link
-              href="/auth/sign-in"
+              href={actions.heroSecondary.href}
               className="inline-flex min-h-12 items-center justify-center rounded-xl border border-navy-900 bg-white px-5 text-sm font-semibold text-navy-900 hover:bg-mist-50"
             >
-              Sign in
+              {actions.heroSecondary.label}
             </Link>
           </div>
         </div>
