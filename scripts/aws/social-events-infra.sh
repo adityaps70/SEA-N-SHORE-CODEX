@@ -136,9 +136,17 @@ missing=allowed-addresses
 if missing:
     raise SystemExit('Expected create changes missing from plan: '+', '.join(sorted(missing)))
 notification=next(r for r in changes if r['address']=='aws_ecs_task_definition.notification_worker')
-container_defs=notification['change']['after']['container_definitions']
-if 'SOCIAL_NOTIFICATION_MODE' not in container_defs or 'shadow' not in container_defs:
+change=notification['change']
+container_defs=change.get('after',{}).get('container_definitions')
+if container_defs is None:
+    unknown=change.get('after_unknown',{}).get('container_definitions')
+    if unknown is not True:
+        raise SystemExit('Notification worker container definitions are absent without Terraform marking them unknown')
+    print('SOCIAL_NOTIFICATION_SHADOW_PLAN_CHECK=DEFERRED_TO_STATIC_CONTRACT')
+elif 'SOCIAL_NOTIFICATION_MODE' not in container_defs or 'shadow' not in container_defs:
     raise SystemExit('Notification worker task definition is not locked to shadow mode')
+else:
+    print('SOCIAL_NOTIFICATION_SHADOW_PLAN_CHECK=VERIFIED_IN_PLAN')
 print('SOCIAL_EVENTS_PLAN_GUARD=CREATE_ONLY_ALLOWED_RESOURCES')
 print(f'SOCIAL_EVENTS_CREATE_COUNT={len(changes)}')
 PY
