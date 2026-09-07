@@ -8,13 +8,101 @@ on:
         required: true
         type: boolean
         default: false
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - scripts/aws/staging-deploy-action.txt
+      - scripts/aws/staging-deploy-guard.test.mjs
+      - .github/workflows/aws-staging-deploy.yml
 
 permissions:
   id-token: write
   contents: read
+  actions: read
 
 jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run_build: ${{ steps.resolve.outputs.run_build }}
+      deploy_to_ecs: ${{ steps.resolve.outputs.deploy_to_ecs }}
+    steps:
+      - name: Checkout exact ref
+        uses: actions/checkout@v4
+
+      - name: Resolve staging deployment action
+        id: resolve
+        env:
+          MANUAL_DEPLOY: ${{ inputs.deploy_to_ecs }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "STAGING_DEPLOY_ACTION=workflow-dispatch" >> "$GITHUB_ENV"
+            echo "run_build=true" >> "$GITHUB_OUTPUT"
+            if [[ "$MANUAL_DEPLOY" == "true" ]]; then
+              echo "deploy_to_ecs=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "deploy_to_ecs=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          [[ "$GITHUB_REF" == "refs/heads/feat/aws-native-phase-0-1" ]]
+          ACTION="$(tr -d '[:space:]' < scripts/aws/staging-deploy-action.txt)"
+          echo "STAGING_DEPLOY_ACTION=$ACTION" >> "$GITHUB_ENV"
+          case "$ACTION" in
+            plan)
+              echo "run_build=false" >> "$GITHUB_OUTPUT"
+              echo "deploy_to_ecs=false" >> "$GITHUB_OUTPUT"
+              ;;
+            deploy-once)
+              echo "run_build=true" >> "$GITHUB_OUTPUT"
+              echo "deploy_to_ecs=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported staging deploy action: $ACTION" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        if: steps.resolve.outputs.run_build == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == "completed" ]]; then
+              [[ "$CONCLUSION" == "success" ]] || { echo "Exact-head AWS Infrastructure CI is not green." >&2; exit 1; }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Guard push deployment against a moved branch
+        if: github.event_name == 'push' && steps.resolve.outputs.deploy_to_ecs == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_HEAD="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
+          [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || {
+            echo "Branch moved after this deploy run started; refusing stale deployment." >&2
+            exit 1
+          }
+
   deploy:
+    needs: gate
+    if: needs.gate.outputs.run_build == 'true'
     runs-on: ubuntu-latest
     environment: staging
     env:
@@ -31,6 +119,7 @@ jobs:
       AURORA_PORT: "5432"
       AURORA_DATABASE: sea_n_shore
       AURORA_SECRET_ARN: arn:aws:secretsmanager:ap-south-1:310356785722:secret:rds!cluster-7bd593b0-cb50-4dbb-9e93-6e7bbb6d3fc1-mL7X5H
+      DEPLOY_TO_ECS: ${{ needs.gate.outputs.deploy_to_ecs }}
 
     steps:
       - name: Checkout
@@ -58,6 +147,7 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
+          set -euo pipefail
           IMAGE_TAG="${GITHUB_SHA}-${GITHUB_RUN_ID}"
           IMAGE_URI="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
 
@@ -66,15 +156,21 @@ jobs:
             -t "$IMAGE_URI" .
 
           docker push "$IMAGE_URI"
+          aws ecr describe-images \
+            --repository-name "$ECR_REPOSITORY" \
+            --image-ids imageTag="$IMAGE_TAG" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text | grep -E '^sha256:[0-9a-f]{64}$'
 
           echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
           echo "uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
           echo "### AWS image pushed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Tag: \`$IMAGE_TAG\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Repository: \`$ECR_REPOSITORY\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate ECS deployment configuration
-        if: ${{ inputs.deploy_to_ecs }}
+        if: env.DEPLOY_TO_ECS == 'true'
         run: |
           test -n "$ECS_CLUSTER" || (echo "Missing staging variable ECS_CLUSTER" && exit 1)
           test -n "$ECS_SERVICE" || (echo "Missing staging variable ECS_SERVICE" && exit 1)
@@ -87,10 +183,11 @@ jobs:
           test -n "$AURORA_SECRET_ARN" || (echo "Missing staging metadata AURORA_SECRET_ARN" && exit 1)
 
       - name: Create new ECS task definition revision
-        if: ${{ inputs.deploy_to_ecs }}
+        if: env.DEPLOY_TO_ECS == 'true'
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
+          set -euo pipefail
           AURORA_USER_SECRET="${AURORA_SECRET_ARN}:username::"
           AURORA_PASSWORD_SECRET="${AURORA_SECRET_ARN}:password::"
 
@@ -165,11 +262,13 @@ jobs:
             --query 'taskDefinition.taskDefinitionArn' \
             --output text)
 
+          [[ "$NEW_TASK_ARN" == arn:aws:ecs:*:310356785722:task-definition/sea-n-shore-staging-web:* ]]
           echo "NEW_TASK_ARN=$NEW_TASK_ARN" >> "$GITHUB_ENV"
 
       - name: Deploy ECS service and wait for stability
-        if: ${{ inputs.deploy_to_ecs }}
+        if: env.DEPLOY_TO_ECS == 'true'
         run: |
+          set -euo pipefail
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
@@ -180,7 +279,36 @@ jobs:
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
 
-          echo "### ECS staging deployment stable" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Cluster: \`$ECS_CLUSTER\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Service: \`$ECS_SERVICE\`" >> "$GITHUB_STEP_SUMMARY"
+      - name: Verify exact ECS deployment
+        if: env.DEPLOY_TO_ECS == 'true'
+        env:
+          EXPECTED_IMAGE_URI: ${{ steps.image.outputs.uri }}
+        run: |
+          set -euo pipefail
+          SERVICE_JSON="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json)"
+          FAILURE_COUNT="$(jq '.failures | length' <<<"$SERVICE_JSON")"
+          [[ "$FAILURE_COUNT" -eq 0 ]]
+          CURRENT_TASK_ARN="$(jq -r '.services[0].taskDefinition' <<<"$SERVICE_JSON")"
+          DESIRED_COUNT="$(jq -r '.services[0].desiredCount' <<<"$SERVICE_JSON")"
+          RUNNING_COUNT="$(jq -r '.services[0].runningCount' <<<"$SERVICE_JSON")"
+          PENDING_COUNT="$(jq -r '.services[0].pendingCount' <<<"$SERVICE_JSON")"
+          [[ "$CURRENT_TASK_ARN" == "$NEW_TASK_ARN" ]]
+          [[ "$DESIRED_COUNT" -eq 1 && "$RUNNING_COUNT" -eq 1 && "$PENDING_COUNT" -eq 0 ]]
+
+          TASKS_JSON="$(aws ecs list-tasks --cluster "$ECS_CLUSTER" --service-name "$ECS_SERVICE" --desired-status RUNNING --output json)"
+          TASK_COUNT="$(jq '.taskArns | length' <<<"$TASKS_JSON")"
+          [[ "$TASK_COUNT" -eq 1 ]]
+          LIVE_TASK_ARN="$(jq -r '.taskArns[0]' <<<"$TASKS_JSON")"
+          TASK_JSON="$(aws ecs describe-tasks --cluster "$ECS_CLUSTER" --tasks "$LIVE_TASK_ARN" --output json)"
+          LIVE_TASK_DEF="$(jq -r '.tasks[0].taskDefinitionArn' <<<"$TASK_JSON")"
+          LIVE_STATUS="$(jq -r '.tasks[0].lastStatus' <<<"$TASK_JSON")"
+          LIVE_IMAGE="$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.tasks[0].containers[] | select(.name == $NAME) | .image' <<<"$TASK_JSON")"
+          [[ "$LIVE_TASK_DEF" == "$NEW_TASK_ARN" ]]
+          [[ "$LIVE_STATUS" == "RUNNING" ]]
+          [[ "$LIVE_IMAGE" == "$EXPECTED_IMAGE_URI" ]]
+
+          echo "### ECS staging deployment verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Task definition: \`$NEW_TASK_ARN\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`$EXPECTED_IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- desiredCount/runningCount/pendingCount: \`$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT\`" >> "$GITHUB_STEP_SUMMARY"
