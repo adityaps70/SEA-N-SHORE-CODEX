@@ -9,6 +9,7 @@ on:
       - infra/aws/**
       - scripts/aws/**
       - scripts/migration/**
+      - scripts/workers/**
       - vitest.config.ts
       - tsconfig.json
       - package.json
@@ -23,6 +24,7 @@ on:
       - infra/aws/**
       - scripts/aws/**
       - scripts/migration/**
+      - scripts/workers/**
       - vitest.config.ts
       - tsconfig.json
       - package.json
@@ -54,6 +56,12 @@ jobs:
         run: node --test scripts/aws/phase5b-ses-terraform.test.mjs
       - name: Verify Phase 5B SES cutover contract
         run: node --test scripts/aws/phase5b-ses-cutover.test.mjs
+      - name: Verify event outbox schema contract
+        run: node --test scripts/aws/event-outbox-schema.test.mjs
+      - name: Verify social event Terraform contract
+        run: node --test scripts/aws/social-events-terraform.test.mjs
+      - name: Verify social worker contract
+        run: node --test scripts/workers/worker-contract.test.mjs
 
   application:
     name: Application verify
