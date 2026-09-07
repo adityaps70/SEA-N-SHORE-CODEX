@@ -1,4 +1,5 @@
 name: AWS Edge Recovery
+# Saved-plan application remains disabled while the repository action is plan.
 
 on:
   push:
@@ -100,8 +101,8 @@ jobs:
           sha = sys.argv[1]
           script = f"""set -euo pipefail
           umask 077
-          AUDIT_DIR=$(mktemp -d /tmp/sea-n-shore-edge-audit.XXXXXXXX)
-          trap 'rm -rf -- "$AUDIT_DIR"' EXIT
+          AUDIT_DIR=$(mktemp -d /var/tmp/sea-n-shore-edge-recovery.XXXXXXXX)
+          trap 'if [[ -f "$AUDIT_DIR/repo/.edge-recovery-preserve" ]]; then echo "PRIVATE_RECOVERY_CHECKOUT=$AUDIT_DIR" >&2; else rm -rf -- "$AUDIT_DIR"; fi' EXIT
           git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$AUDIT_DIR/repo"
           cd "$AUDIT_DIR/repo"
           git checkout --quiet --detach {sha}
