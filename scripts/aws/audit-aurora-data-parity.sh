@@ -80,7 +80,8 @@ RESPONSE="$(aws rds-data execute-statement --region "$AWS_REGION" --resource-arn
 while IFS= read -r h; do [[ -z "$h" ]] || { [[ "$h" =~ ^[0-9a-f]{32}$ ]] || exit 1; echo "AURORA_NOTIFICATION_BUSINESS_HASH=$h"; }; done < <(jq -r '.records[]?[0].stringValue // empty' <<<"$RESPONSE")
 echo "AURORA_BUSINESS_PARITY_INVENTORY_COMPLETE=true"
 
-# PII-safe identity evidence. Raw emails exist only in restrictive temporary files.
+# PII-safe identity evidence. Raw values exist only in restrictive temporary files
+# and are never emitted to GitHub Actions logs.
 TMP_IDENTITY_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$TMP_IDENTITY_DIR"' EXIT
 aws cognito-idp list-users --region "$AWS_REGION" --user-pool-id "$COGNITO_POOL_ID" --output json > "$TMP_IDENTITY_DIR/cognito.json"
@@ -88,32 +89,53 @@ IDENTITY_SQL="SELECT profile_id::text, provider_subject, coalesce(email, '') FRO
 aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$IDENTITY_SQL" --output json > "$TMP_IDENTITY_DIR/accounts.json"
 python3 - "$TMP_IDENTITY_DIR/cognito.json" "$TMP_IDENTITY_DIR/accounts.json" <<'PY'
 import hashlib, json, re, sys
+
 def token(value):
     value=(value or '').strip().lower()
     return hashlib.sha256(value.encode()).hexdigest()[:16] if value else ''
+
 with open(sys.argv[1]) as f: cognito=json.load(f)
 with open(sys.argv[2]) as f: accounts=json.load(f)
+
 cognito_rows=[]
 for user in cognito.get('Users', []):
     attrs={item.get('Name'): item.get('Value','') for item in user.get('Attributes', [])}
-    subject=attrs.get('sub') or user.get('Username',''); email=attrs.get('email','')
+    subject=attrs.get('sub') or user.get('Username','')
+    email=attrs.get('email','')
     if not subject or not email: raise SystemExit('Cognito user missing subject or email')
-    cognito_rows.append((token(email), subject))
+    cognito_rows.append((token(email), token(subject)))
+
 account_rows=[]
 for row in accounts.get('records', []):
-    profile=row[0].get('stringValue',''); subject=row[1].get('stringValue',''); email=row[2].get('stringValue','')
+    profile=row[0].get('stringValue','')
+    subject=row[1].get('stringValue','')
+    email=row[2].get('stringValue','')
     if not profile or not subject or not email: raise SystemExit('Aurora identity row missing profile, subject, or email')
-    account_rows.append((token(email), profile, subject))
+    account_rows.append((token(email), token(profile), token(subject)))
+
 if len({x[0] for x in cognito_rows}) != len(cognito_rows): raise SystemExit('Duplicate Cognito email token')
+if len({x[1] for x in cognito_rows}) != len(cognito_rows): raise SystemExit('Duplicate Cognito subject token')
 if len({x[0] for x in account_rows}) != len(account_rows): raise SystemExit('Duplicate Aurora identity email token')
-if len({x[1] for x in account_rows}) != len(account_rows): raise SystemExit('Duplicate Aurora identity profile')
-print(f'COGNITO_USER_COUNT={len(cognito_rows)}'); print(f'AURORA_IDENTITY_COUNT={len(account_rows)}')
-for email_token, subject in sorted(cognito_rows):
-    if not re.fullmatch(r'[0-9a-f]{16}', email_token): raise SystemExit('Bad Cognito token')
-    print(f'COGNITO_EMAIL_TOKEN={email_token}|{subject}')
-for email_token, profile, subject in sorted(account_rows):
-    if not re.fullmatch(r'[0-9a-f]{16}', email_token): raise SystemExit('Bad Aurora token')
-    print(f'AURORA_IDENTITY_TOKEN={email_token}|{profile}|{subject}')
+if len({x[1] for x in account_rows}) != len(account_rows): raise SystemExit('Duplicate Aurora identity profile token')
+if len({x[2] for x in account_rows}) != len(account_rows): raise SystemExit('Duplicate Aurora provider subject token')
+
+cognito_pairs={(email_token, subject_token) for email_token, subject_token in cognito_rows}
+provider_pairs={(email_token, subject_token) for email_token, _, subject_token in account_rows}
+if cognito_pairs != provider_pairs:
+    raise SystemExit('Cognito and Aurora provider identity mappings differ')
+
+print(f'COGNITO_USER_COUNT={len(cognito_rows)}')
+print(f'AURORA_IDENTITY_COUNT={len(account_rows)}')
+for email_token, subject_token in sorted(cognito_rows):
+    if not re.fullmatch(r'[0-9a-f]{16}', email_token + '') or not re.fullmatch(r'[0-9a-f]{16}', subject_token + ''):
+        raise SystemExit('Bad Cognito token')
+    print(f'COGNITO_IDENTITY_TOKEN={email_token}|{subject_token}')
+for email_token, profile_token, subject_token in sorted(account_rows):
+    if not all(re.fullmatch(r'[0-9a-f]{16}', value) for value in (email_token, profile_token, subject_token)):
+        raise SystemExit('Bad Aurora identity token')
+    print(f'AURORA_PROVIDER_IDENTITY_TOKEN={email_token}|{subject_token}')
+    print(f'AURORA_PROFILE_IDENTITY_TOKEN={profile_token}|{email_token}')
+print('AWS_IDENTITY_MAPPING_MATCH=true')
 PY
 
 echo "AWS_IDENTITY_INVENTORY_COMPLETE=true"
