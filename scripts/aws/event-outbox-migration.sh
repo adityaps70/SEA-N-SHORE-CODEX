@@ -99,13 +99,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-python3 - "$MIGRATION_FILE" > /tmp/event-outbox-statements.json <<'PY'
-import json, sys
+# Encode each full multiline statement as one base64 line. This avoids Bash
+# line-oriented reads splitting CREATE TABLE bodies into invalid fragments.
+python3 - "$MIGRATION_FILE" > /tmp/event-outbox-statements.b64 <<'PY'
+import base64, sys
 sql=open(sys.argv[1], encoding='utf-8').read()
-print(json.dumps([s.strip() for s in sql.split(';') if s.strip()]))
+for statement in (s.strip() for s in sql.split(';')):
+    if statement:
+        print(base64.b64encode(statement.encode('utf-8')).decode('ascii'))
 PY
 
-while IFS= read -r statement; do
+STATEMENT_COUNT=0
+while IFS= read -r encoded_statement; do
+  [[ -n "$encoded_statement" ]] || continue
+  statement="$(printf '%s' "$encoded_statement" | base64 --decode)"
+  [[ "$statement" =~ ^[Cc][Rr][Ee][Aa][Tt][Ee][[:space:]]+(TABLE|table|INDEX|index)[[:space:]]+[Ii][Ff][[:space:]]+[Nn][Oo][Tt][[:space:]]+[Ee][Xx][Ii][Ss][Tt][Ss] ]]
   aws rds-data execute-statement \
     --region "$AWS_REGION" \
     --resource-arn "$CLUSTER_ARN" \
@@ -113,7 +121,9 @@ while IFS= read -r statement; do
     --database "$DATABASE_NAME" \
     --transaction-id "$TX_ID" \
     --sql "$statement" >/dev/null
-done < <(jq -r '.[]' /tmp/event-outbox-statements.json)
+  STATEMENT_COUNT=$((STATEMENT_COUNT + 1))
+done < /tmp/event-outbox-statements.b64
+[[ "$STATEMENT_COUNT" == "3" ]]
 
 aws rds-data commit-transaction \
   --region "$AWS_REGION" \
@@ -126,4 +136,5 @@ TABLE_COUNT_AFTER="$(execute_read "SELECT count(*)::bigint FROM information_sche
 INDEX_COUNT_AFTER="$(execute_read "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname='public' AND indexname='event_outbox_unpublished_idx'" | jq -r '.records[0][0].longValue')"
 MODE_COLUMN_AFTER="$(execute_read "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema='public' AND table_name='notification_event_receipts' AND column_name='processing_mode'" | jq -r '.records[0][0].longValue')"
 [[ "$TABLE_COUNT_AFTER" == "2" && "$INDEX_COUNT_AFTER" == "1" && "$MODE_COLUMN_AFTER" == "1" ]]
+echo "EVENT_OUTBOX_STATEMENT_COUNT_APPLIED=$STATEMENT_COUNT"
 echo "EVENT_OUTBOX_MIGRATION_APPLY_VERIFIED=true"
