@@ -78,7 +78,10 @@ jobs:
           IMAGE_TAG="social-${GITHUB_SHA}"
           IMAGE_URI="${REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
           docker build --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" -t "$IMAGE_URI" .
-          docker push "$IMAGE_URI"
-          aws ecr describe-images --region "$AWS_REGION" --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$IMAGE_TAG" >/dev/null
+          PUSH_OUTPUT="$(docker push "$IMAGE_URI")"
+          printf '%s\n' "$PUSH_OUTPUT"
+          DIGEST="$(awk '/digest: sha256:/ {print $3}' <<<"$PUSH_OUTPUT" | tail -n 1)"
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "Docker push did not return a valid immutable digest." >&2; exit 1; }
           echo "SOCIAL_EVENTS_IMAGE_TAG=$IMAGE_TAG"
+          echo "SOCIAL_EVENTS_IMAGE_DIGEST=$DIGEST"
           echo "SOCIAL_EVENTS_IMAGE_PUSH_VERIFIED=true"
