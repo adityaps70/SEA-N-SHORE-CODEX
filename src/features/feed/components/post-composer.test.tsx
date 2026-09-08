@@ -43,13 +43,13 @@ const profile: OwnProfile = {
 }
 
 describe('PostComposer', () => {
-  it('uses the approved prompt and has no AI copilot control', () => {
+  it('keeps posting controls but removes the visible Topic section', () => {
     render(<PostComposer profile={profile} />)
     expect(screen.getByPlaceholderText('Share a maritime update, technical lesson, or industry insight...')).toBeInTheDocument()
-    expect(screen.getByLabelText('Topic')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Topic')).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Topic$/i)).not.toBeInTheDocument()
     expect(screen.getByText('Photo/Diagram')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Technical Poll' })).toBeInTheDocument()
-    expect(screen.queryByText(/Co-Pilot/i)).not.toBeInTheDocument()
   })
 
   it('opens poll fields and keeps at least two choices', async () => {
@@ -63,7 +63,6 @@ describe('PostComposer', () => {
 
   it('renders safely when randomUUID is unavailable on an insecure HTTP origin', () => {
     vi.stubGlobal('crypto', { randomUUID: undefined })
-
     expect(() => render(<PostComposer profile={profile} />)).not.toThrow()
   })
 })
