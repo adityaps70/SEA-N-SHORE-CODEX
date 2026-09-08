@@ -91,7 +91,7 @@ describe('createCognitoApi', () => {
     })
   })
 
-  it('maps GetUser attributes to sub, email and emailVerified', async () => {
+  it('maps GetUser attributes to sub, email, emailVerified and name', async () => {
     const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).get('x-amz-target')).toBe(
         'AWSCognitoIdentityProviderService.GetUser',
@@ -104,6 +104,7 @@ describe('createCognitoApi', () => {
           { Name: 'sub', Value: 'cognito-sub-123' },
           { Name: 'email', Value: 'captain@example.com' },
           { Name: 'email_verified', Value: 'true' },
+          { Name: 'name', Value: 'Captain Example' },
         ],
       })
     })
@@ -114,6 +115,7 @@ describe('createCognitoApi', () => {
       sub: 'cognito-sub-123',
       email: 'captain@example.com',
       emailVerified: true,
+      name: 'Captain Example',
     })
   })
 
