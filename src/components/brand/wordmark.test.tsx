@@ -15,4 +15,15 @@ describe('Wordmark', () => {
     expect(screen.queryByText('⚓')).not.toBeInTheDocument()
     expect(screen.queryByText('Global maritime network')).not.toBeInTheDocument()
   })
+
+  it('completes the compact logo with the brand text beside the symbol', () => {
+    const { container } = render(<Wordmark compact />)
+
+    const symbol = container.querySelector('img[src="/brand/sea-n-shore-symbol.webp"]')
+    expect(symbol).toBeInTheDocument()
+    expect(symbol).toHaveAttribute('aria-hidden', 'true')
+
+    expect(screen.getByText('SEA N SHORE')).toBeInTheDocument()
+    expect(screen.getByText('Global Shipping Community')).toBeInTheDocument()
+  })
 })
