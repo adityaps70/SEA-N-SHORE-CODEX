@@ -41,6 +41,7 @@ type CognitoActionsApi = {
     password: string
     fullName: string
   }): Promise<{ userSub: string; userConfirmed: boolean }>
+  resendConfirmationCode(username: string): Promise<void>
   confirmSignUp(input: { username: string; code: string }): Promise<void>
   forgotPassword(username: string): Promise<void>
   confirmForgotPassword(input: {
@@ -188,6 +189,11 @@ export function createCognitoAuthActions(input: {
         return { message: 'Check your email to continue.' }
       } catch (error) {
         if (isCognitoError(error) && nonEnumeratingSignupErrorCodes.has(error.code)) {
+          try {
+            await input.api.resendConfirmationCode(parsed.data.email)
+          } catch {
+            // Preserve non-enumerating signup behavior for confirmed or throttled identities.
+          }
           return { message: 'Check your email to continue.' }
         }
         return { error: 'We could not create your account. Please try again.' }
