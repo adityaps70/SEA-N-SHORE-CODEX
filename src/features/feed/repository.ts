@@ -9,6 +9,7 @@ type FeedRow = QueryResultRow & FeedPostRow
 type CommentRow = QueryResultRow & FeedCommentRow
 type PostInteractionRow = QueryResultRow & { id: string; author_id: string; post_type: 'standard' | 'poll' }
 type PostStateRow = QueryResultRow & { post_id: string; option_id?: string }
+type DeletedPostRow = QueryResultRow & { id: string }
 
 export type FeedRowsLookup = {
   viewerProfileId: string
@@ -143,6 +144,19 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return rows as FeedPostRow[]
   }
 
+  async function listAuthorRows(lookup: { viewerProfileId: string; authorProfileId: string; limit: number }): Promise<FeedPostRow[]> {
+    const rows = await queryRows(
+      `${FEED_ROW_SELECT}
+       where p.author_id = $2
+         and p.deleted_at is null
+         and ${visibilitySql()}
+       order by p.created_at desc, p.id desc
+       limit $3`,
+      [lookup.viewerProfileId, lookup.authorProfileId, lookup.limit],
+    ) as FeedRow[]
+    return rows as FeedPostRow[]
+  }
+
   async function getPostRow(viewerProfileId: string, postId: string): Promise<FeedPostRow | null> {
     const rows = await queryRows(
       `${FEED_ROW_SELECT}
@@ -248,6 +262,19 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return row ? { id: row.id, authorId: row.author_id, postType: row.post_type } : null
   }
 
+  async function deleteOwnPost(ownerProfileId: string, postId: string) {
+    const rows = await queryRows(
+      `update public.posts
+       set deleted_at = now(), updated_at = now()
+       where id = $2
+         and author_id = $1
+         and deleted_at is null
+       returning id`,
+      [ownerProfileId, postId],
+    ) as DeletedPostRow[]
+    return rows.length === 1
+  }
+
   async function insertStandardPost(input: { id: string; authorId: string; category: PostCategory; body: string }) {
     await queryRows(
       `insert into public.posts (id, author_id, category, body, post_type)
@@ -336,11 +363,13 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
   return {
     listFeedRows,
     listSavedRows,
+    listAuthorRows,
     getPostRow,
     getViewerState,
     getComments,
     isMemberReady,
     getInteractablePost,
+    deleteOwnPost,
     insertStandardPost,
     insertPostMedia,
     insertPollPost,
