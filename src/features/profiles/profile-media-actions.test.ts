@@ -30,7 +30,11 @@ const mockedRemove = vi.mocked(removeProfileMedia)
 
 function imageForm() {
   const data = new FormData()
-  data.set('image', new File(['photo'], 'photo.jpg', { type: 'image/jpeg' }))
+  const file = new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: async () => new TextEncoder().encode('photo').buffer,
+  })
+  data.set('image', file)
   return data
 }
 
