@@ -82,8 +82,8 @@ export async function buildProfileCvPdf({
   pdf.setAuthor(safePdfText(profile.fullName))
   pdf.setCreator('Sea N Shore Global Shipping Community')
 
-  let page: PDFPage
-  let y: number
+  let page!: PDFPage
+  let y = 0
 
   function addPage() {
     page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
