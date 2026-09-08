@@ -5,6 +5,7 @@ import {
   addPostCommentWithAurora,
   createPollPostWithAurora,
   createStandardPostWithAurora,
+  deletePostWithAurora,
   setPollVoteWithAurora,
   setPostLikedWithAurora,
   setPostSavedWithAurora,
@@ -12,6 +13,7 @@ import {
 import {
   addComment,
   createPost,
+  deletePost,
   setPollVote,
   setPostLiked,
   setPostSaved,
@@ -37,6 +39,7 @@ vi.mock('./media', () => ({
 vi.mock('./service', () => ({
   createStandardPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   createPollPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  deletePostWithAurora: vi.fn(async () => true),
   setPostLikedWithAurora: vi.fn(async () => true),
   setPostSavedWithAurora: vi.fn(async () => true),
   addPostCommentWithAurora: vi.fn(async () => true),
@@ -52,6 +55,7 @@ const mockedUploadFeedImage = vi.mocked(uploadFeedImage)
 const mockedRemoveFeedImage = vi.mocked(removeFeedImage)
 const mockedCreateStandardPost = vi.mocked(createStandardPostWithAurora)
 const mockedCreatePollPost = vi.mocked(createPollPostWithAurora)
+const mockedDeletePost = vi.mocked(deletePostWithAurora)
 const mockedSetLiked = vi.mocked(setPostLikedWithAurora)
 const mockedSetSaved = vi.mocked(setPostSavedWithAurora)
 const mockedAddComment = vi.mocked(addPostCommentWithAurora)
@@ -191,6 +195,11 @@ describe('feed actions', () => {
       body: 'A useful maritime technical lesson.',
       pollOptions: ['Mooring', 'Bridge'],
     })
+  })
+
+  it('routes owner post deletion through the authenticated Aurora service', async () => {
+    expect(await deletePost(postId)).toEqual({ ok: true })
+    expect(mockedDeletePost).toHaveBeenCalledWith(viewerId, postId)
   })
 
   it('routes like and save toggles through the Aurora service with the permanent UUID', async () => {
