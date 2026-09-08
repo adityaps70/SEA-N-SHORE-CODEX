@@ -3,13 +3,16 @@ import { describe, expect, it } from 'vitest'
 import { Wordmark } from './wordmark'
 
 describe('Wordmark', () => {
-  it('matches the Sea N Shore brand treatment from the supplied prototype', () => {
+  it('uses the uploaded Sea N Shore master logo asset', () => {
     render(<Wordmark />)
 
-    expect(screen.getByRole('link', { name: /sea n shore home/i })).toBeInTheDocument()
-    expect(screen.getByText('⚓')).toBeInTheDocument()
-    expect(screen.getByText('Sea N Shore')).toBeInTheDocument()
-    expect(screen.getByText('Global maritime network')).toBeInTheDocument()
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    const link = screen.getByRole('link', { name: /sea n shore home/i })
+    expect(link).toBeInTheDocument()
+
+    const logo = screen.getByRole('img', { name: /sea and shore global shipping community/i })
+    expect(logo).toHaveAttribute('src', '/brand/sea-and-shore-master-logo.svg')
+
+    expect(screen.queryByText('⚓')).not.toBeInTheDocument()
+    expect(screen.queryByText('Global maritime network')).not.toBeInTheDocument()
   })
 })
