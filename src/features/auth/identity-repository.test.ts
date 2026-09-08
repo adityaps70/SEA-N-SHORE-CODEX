@@ -56,13 +56,17 @@ describe('Cognito identity repository', () => {
       .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
       .mockResolvedValueOnce({ rows: [] })
     const client = { query: transactionQuery } as unknown as DatabaseQueryClient
-    const withTransaction = vi.fn(async <T>(fn: (value: DatabaseQueryClient) => Promise<T>) => fn(client))
+    let transactionCalls = 0
+    const withTransaction = async <T>(fn: (value: DatabaseQueryClient) => Promise<T>): Promise<T> => {
+      transactionCalls += 1
+      return fn(client)
+    }
     const { createIdentityRepository } = await import('./identity-repository')
     const repository = createIdentityRepository({ withTransaction })
 
     await expect(repository.provisionProfileForCognitoPrincipal(principal)).resolves.toBe(profileId)
 
-    expect(withTransaction).toHaveBeenCalledTimes(1)
+    expect(transactionCalls).toBe(1)
     expect(transactionQuery).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining('pg_advisory_xact_lock'),
@@ -91,7 +95,7 @@ describe('Cognito identity repository', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
     const client = { query: transactionQuery } as unknown as DatabaseQueryClient
-    const withTransaction = vi.fn(async <T>(fn: (value: DatabaseQueryClient) => Promise<T>) => fn(client))
+    const withTransaction = async <T>(fn: (value: DatabaseQueryClient) => Promise<T>): Promise<T> => fn(client)
     const { createIdentityRepository } = await import('./identity-repository')
     const repository = createIdentityRepository({ withTransaction })
 
