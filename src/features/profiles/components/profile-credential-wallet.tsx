@@ -184,7 +184,12 @@ function CredentialEntry({
           </div>
           <h3 className="mt-3 text-base font-semibold leading-6 text-navy-950 sm:text-lg">{credential.name}</h3>
           <p className="mt-1 text-sm font-medium text-ink">{credential.issuer}</p>
-          {credential.credentialNumber ? <p className="mt-1 text-sm text-muted">Credential no. {credential.credentialNumber}</p> : null}
+          {credential.credentialNumber ? (
+            <div className="mt-1 flex flex-wrap items-baseline gap-1 text-sm text-muted">
+              <span>Credential no.</span>
+              <span className="font-medium text-ink">{credential.credentialNumber}</span>
+            </div>
+          ) : null}
         </div>
 
         {editable ? (
