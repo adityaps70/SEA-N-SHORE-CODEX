@@ -96,8 +96,7 @@ describe('FeedDiscoveryRail', () => {
     render(<FeedDiscoveryRail profile={viewer} suggestions={suggestions} />)
 
     expect(screen.getByRole('heading', { name: 'People you may know' })).toBeInTheDocument()
-    expect(screen.getByText('Master B')).toBeInTheDocument()
-    expect(screen.queryByText('Bluewater Shipping', { selector: 'h2 + div a' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Master B' })).toBeInTheDocument()
 
     expect(screen.getByRole('heading', { name: 'Jobs for you' })).toBeInTheDocument()
     expect(screen.getByText('Chief Officer opportunities')).toBeInTheDocument()
@@ -106,6 +105,7 @@ describe('FeedDiscoveryRail', () => {
     expect(screen.getByRole('link', { name: 'Explore maritime jobs' })).toHaveAttribute('href', '/jobs')
 
     expect(screen.getByRole('heading', { name: 'Organisations to follow' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Bluewater Shipping' })).toHaveLength(1)
     expect(screen.getByRole('link', { name: 'Bluewater Shipping' })).toHaveAttribute('href', '/people/bluewater-shipping')
     expect(screen.getByRole('link', { name: 'Oceanic Lines' })).toHaveAttribute('href', '/network?tab=discover&q=Oceanic%20Lines')
     expect(screen.getAllByRole('button', { name: 'Follow' }).length).toBeGreaterThan(0)
