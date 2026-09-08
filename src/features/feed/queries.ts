@@ -1,7 +1,7 @@
 import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { getPreferredFeedAuthorIds } from '@/features/network/queries'
 import { resolveFeedMediaUrls } from './media'
-import { mapFeedPost, type FeedCommentRow, type FeedPostRow } from './mappers'
+import { feedAuthorAvatarPath, mapFeedPost, type FeedCommentRow, type FeedPostRow } from './mappers'
 import { prioritizeRecentFeedRows } from './ranking'
 import { feedRepository, type FeedRepository } from './repository'
 import { feedRequestSchema } from './schemas'
@@ -43,13 +43,18 @@ export function createFeedQueries(input: {
   async function hydratePosts(rows: FeedPostRow[], viewerId: string): Promise<FeedPost[]> {
     if (!rows.length) return []
     const postIds = rows.map((row) => row.id)
-    const paths = [...new Set(rows.map(mediaPath).filter((path): path is string => Boolean(path)))]
 
-    const [viewer, comments, signedUrls] = await Promise.all([
+    const [viewer, comments] = await Promise.all([
       input.repository.getViewerState(viewerId, postIds),
       input.repository.getComments(postIds),
-      input.resolveMediaUrls(paths),
     ])
+
+    const paths = [...new Set([
+      ...rows.map(mediaPath),
+      ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
+      ...comments.map((comment) => feedAuthorAvatarPath(comment.profiles)),
+    ].filter((path): path is string => Boolean(path)))]
+    const signedUrls = await input.resolveMediaUrls(paths)
 
     const commentsByPost = new Map<string, FeedCommentRow[]>()
     for (const comment of comments) {
@@ -63,6 +68,7 @@ export function createFeedQueries(input: {
       { ...row, post_comments: commentsByPost.get(row.id) ?? [] },
       viewer,
       signedUrls,
+      viewerId,
     ))
   }
 
@@ -92,6 +98,16 @@ export function createFeedQueries(input: {
     return hydratePosts(rows, user.id)
   }
 
+  async function getPostsByAuthor(authorProfileId: string): Promise<FeedPost[]> {
+    const user = await input.requireUser()
+    const rows = await input.repository.listAuthorRows({
+      viewerProfileId: user.id,
+      authorProfileId,
+      limit: 30,
+    })
+    return hydratePosts(rows, user.id)
+  }
+
   async function getPostById(id: string): Promise<FeedPost | null> {
     const user = await input.requireUser()
     const row = await input.repository.getPostRow(user.id, id)
@@ -100,7 +116,7 @@ export function createFeedQueries(input: {
     return post ?? null
   }
 
-  return { getFeedPage, getSavedPosts, getPostById }
+  return { getFeedPage, getSavedPosts, getPostsByAuthor, getPostById }
 }
 
 const productionQueries = createFeedQueries({
@@ -112,4 +128,5 @@ const productionQueries = createFeedQueries({
 
 export const getFeedPage = productionQueries.getFeedPage
 export const getSavedPosts = productionQueries.getSavedPosts
+export const getPostsByAuthor = productionQueries.getPostsByAuthor
 export const getPostById = productionQueries.getPostById
