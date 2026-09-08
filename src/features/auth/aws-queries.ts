@@ -4,7 +4,10 @@ import type { CognitoPrincipal } from '@/lib/auth/cognito-api'
 import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { getCognitoEnvironment } from '@/lib/env'
-import { resolveProfileIdForCognitoSub } from './identity-repository'
+import {
+  provisionProfileForCognitoPrincipal,
+  resolveProfileIdForCognitoSub,
+} from './identity-repository'
 
 export type AwsVerifiedUser = {
   id: string
@@ -14,6 +17,7 @@ export type AwsVerifiedUser = {
 
 type GetPrincipal = () => Promise<CognitoPrincipal | null>
 type ResolveProfileId = (sub: string) => Promise<string | null>
+type ProvisionProfileId = (principal: CognitoPrincipal) => Promise<string>
 type CacheVerifiedUser = <T>(loader: () => Promise<T>) => () => Promise<T>
 
 export class AwsAuthenticationRequiredError extends Error {
@@ -26,14 +30,15 @@ export class AwsAuthenticationRequiredError extends Error {
 export function createAwsAuthQueries(input: {
   getPrincipal: GetPrincipal
   resolveProfileId: ResolveProfileId
+  provisionProfileId: ProvisionProfileId
   cacheVerifiedUser?: CacheVerifiedUser
 }) {
   async function loadAwsVerifiedUser(): Promise<AwsVerifiedUser | null> {
     const principal = await input.getPrincipal()
     if (!principal?.sub) return null
 
-    const profileId = await input.resolveProfileId(principal.sub)
-    if (!profileId) return null
+    const existingProfileId = await input.resolveProfileId(principal.sub)
+    const profileId = existingProfileId ?? await input.provisionProfileId(principal)
 
     return {
       id: profileId,
@@ -77,6 +82,7 @@ async function getServerCognitoPrincipal(): Promise<CognitoPrincipal | null> {
 const productionQueries = createAwsAuthQueries({
   getPrincipal: getServerCognitoPrincipal,
   resolveProfileId: resolveProfileIdForCognitoSub,
+  provisionProfileId: provisionProfileForCognitoPrincipal,
   cacheVerifiedUser: (loader) => cache(loader),
 })
 
