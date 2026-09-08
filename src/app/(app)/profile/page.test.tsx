@@ -8,6 +8,10 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
+vi.mock('@/features/feed/queries', () => ({
+  getPostsByAuthor: vi.fn(async () => []),
+}))
+
 vi.mock('@/features/profiles/queries', () => ({
   getOwnProfile: vi.fn(async () => ({
     id: '11111111-1111-4111-8111-111111111111',
@@ -62,5 +66,6 @@ describe('My Profile page', () => {
     expect(screen.queryByRole('link', { name: /edit all/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/contact:/i)).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /view public profile/i })).toHaveAttribute('href', '/people/captain-example')
+    expect(screen.getByRole('heading', { name: 'Posts & activity' })).toBeInTheDocument()
   })
 })
