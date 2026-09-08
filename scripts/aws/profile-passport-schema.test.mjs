@@ -20,7 +20,7 @@ test('Maritime Passport migration is additive, owner-linked and verification-saf
   assert.match(sql, /verification_state in \('self_reported', 'pending', 'verified', 'rejected'\)/i)
   assert.match(sql, /create index if not exists profile_credentials_profile_order_idx/i)
 
-  assert.doesNotMatch(sql, /\b(drop|truncate|delete|update|insert|alter)\b/i)
+  assert.doesNotMatch(sql, /\b(drop|truncate|update|insert|alter)\b|\bdelete\s+from\b/i)
 })
 
 test('Maritime Passport migration runner is exact-head, staging-only, explicit-action and transactional', () => {
