@@ -7,6 +7,13 @@ import type { ProfileMediaKind } from './profile-media-repository'
 
 export type ProfileMediaActionState = { error?: string; success?: boolean }
 
+function revalidateProfileMedia() {
+  revalidatePath('/profile')
+  revalidatePath('/people/[slug]', 'page')
+  revalidatePath('/home')
+  revalidatePath('/network')
+}
+
 function actionFor(kind: ProfileMediaKind) {
   return async function uploadAction(
     _previousState: ProfileMediaActionState,
@@ -28,19 +35,22 @@ function actionFor(kind: ProfileMediaKind) {
       return { error: error instanceof Error ? error.message : 'Unable to upload image.' }
     }
 
-    revalidatePath('/profile')
-    revalidatePath('/people/[slug]', 'page')
+    revalidateProfileMedia()
     return { success: true }
   }
 }
 
 function removeActionFor(kind: ProfileMediaKind) {
-  return async function removeAction(formData: FormData): Promise<void> {
+  return async function removeAction(formData: FormData): Promise<ProfileMediaActionState> {
     void formData
     const user = await requireAwsUser()
-    await removeProfileMedia(user.id, kind)
-    revalidatePath('/profile')
-    revalidatePath('/people/[slug]', 'page')
+    try {
+      await removeProfileMedia(user.id, kind)
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Unable to remove image.' }
+    }
+    revalidateProfileMedia()
+    return { success: true }
   }
 }
 
