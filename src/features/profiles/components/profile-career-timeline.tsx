@@ -1,7 +1,6 @@
 'use client'
 
 import { useActionState, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   Anchor,
   BriefcaseBusiness,
@@ -59,7 +58,6 @@ function ExperienceEditor({
   record?: ProfileExperienceRecord
   onClose: () => void
 }) {
-  const router = useRouter()
   const [track, setTrack] = useState<ProfileExperienceTrack>(record?.track ?? 'sea_service')
 
   async function submit(previousState: ProfilePortfolioActionState, formData: FormData) {
@@ -67,10 +65,7 @@ function ExperienceEditor({
       ? await updateProfileExperience(record.id, previousState, formData)
       : await createProfileExperience(previousState, formData)
 
-    if (nextState.success) {
-      onClose()
-      router.refresh()
-    }
+    if (nextState.success) onClose()
     return nextState
   }
 
@@ -205,7 +200,6 @@ function ExperienceEntry({
   editable: boolean
   onEdit: () => void
 }) {
-  const router = useRouter()
   const [deleting, startDelete] = useTransition()
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const period = periodLabel(record)
@@ -215,11 +209,7 @@ function ExperienceEntry({
     setDeleteError(null)
     startDelete(async () => {
       const result = await deleteProfileExperience(record.id)
-      if (!result.success) {
-        setDeleteError(result.error ?? 'We could not delete this experience.')
-        return
-      }
-      router.refresh()
+      if (!result.success) setDeleteError(result.error ?? 'We could not delete this experience.')
     })
   }
 
