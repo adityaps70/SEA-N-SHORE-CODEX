@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 const PROFILE_ID = '11111111-1111-4111-8111-111111111111'
 const EXPERIENCE_ID = '44444444-4444-4444-8444-444444444444'
+const CREDENTIAL_ID = '55555555-5555-4555-8555-555555555555'
 
 type QueryCall = [text: string, values?: readonly unknown[]]
 
@@ -23,6 +24,15 @@ const seaExperienceInput = {
   cargoExperience: ['Crude Oil'],
   engineExperience: [],
   tradingAreas: ['Worldwide'],
+}
+
+const credentialInput = {
+  name: 'Certificate of Competency - Master',
+  issuer: 'DG Shipping India',
+  credentialNumber: 'COC-12345',
+  issuedOn: '2023-04-12',
+  expiresOn: '2028-04-11',
+  noExpiry: false,
 }
 
 describe('profile portfolio repository', () => {
@@ -180,5 +190,44 @@ describe('profile portfolio repository', () => {
     expect(String(sql)).toContain('where id = $1')
     expect(String(sql)).toContain('and profile_id = $2')
     expect(values).toEqual([EXPERIENCE_ID, PROFILE_ID])
+  })
+
+  it('creates new credentials as self-reported under the authenticated profile id', async () => {
+    const query = vi.fn().mockResolvedValue([{ id: CREDENTIAL_ID }])
+    const { createProfilePortfolioRepository } = await import('./profile-portfolio-repository')
+
+    await expect(createProfilePortfolioRepository({ query }).createProfileCredential(PROFILE_ID, credentialInput)).resolves.toBe(CREDENTIAL_ID)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('insert into public.profile_credentials')
+    expect(String(sql)).toContain("'self_reported'")
+    expect(values?.[0]).toBe(PROFILE_ID)
+    expect(values).not.toContain('verified')
+  })
+
+  it('updates only member-editable credential fields and preserves server-controlled verification state', async () => {
+    const query = vi.fn().mockResolvedValue([{ id: CREDENTIAL_ID }])
+    const { createProfilePortfolioRepository } = await import('./profile-portfolio-repository')
+
+    await expect(createProfilePortfolioRepository({ query }).updateProfileCredential(PROFILE_ID, CREDENTIAL_ID, credentialInput)).resolves.toBe(true)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('where id = $1')
+    expect(String(sql)).toContain('and profile_id = $2')
+    expect(String(sql)).not.toContain('verification_state =')
+    expect(values?.slice(0, 2)).toEqual([CREDENTIAL_ID, PROFILE_ID])
+  })
+
+  it('deletes a credential only when both record id and owner profile id match', async () => {
+    const query = vi.fn().mockResolvedValue([{ id: CREDENTIAL_ID }])
+    const { createProfilePortfolioRepository } = await import('./profile-portfolio-repository')
+
+    await expect(createProfilePortfolioRepository({ query }).deleteProfileCredential(PROFILE_ID, CREDENTIAL_ID)).resolves.toBe(true)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('delete from public.profile_credentials')
+    expect(String(sql)).toContain('where id = $1')
+    expect(String(sql)).toContain('and profile_id = $2')
+    expect(values).toEqual([CREDENTIAL_ID, PROFILE_ID])
   })
 })
