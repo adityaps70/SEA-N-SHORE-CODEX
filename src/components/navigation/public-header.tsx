@@ -10,7 +10,7 @@ export async function PublicHeader() {
   return (
     <header className="border-b border-mist-100 bg-white">
       <div className="mx-auto flex min-h-18 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Wordmark />
+        <Wordmark compact />
         <nav
           aria-label="Public navigation"
           className="flex items-center gap-2 sm:gap-5"
