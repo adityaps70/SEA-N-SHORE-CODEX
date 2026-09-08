@@ -1,38 +1,7 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import type { NetworkProfile } from '@/features/network/types'
-import type { OwnProfile } from '@/features/profiles/types'
 import { FeedDiscoveryRail } from './feed-discovery-rail'
-
-vi.mock('@/features/network/components/relationship-controls', () => ({
-  RelationshipControls: () => <button type="button">Follow</button>,
-}))
-
-const viewer: OwnProfile = {
-  id: '11111111-1111-4111-8111-111111111111',
-  slug: 'chief-officer-a',
-  profileType: 'seafarer',
-  identityRoot: 'professional',
-  primaryIdentity: 'Master',
-  primaryIdentityFamily: 'deck',
-  secondaryIdentities: ['Mentor'],
-  fullName: 'Chief Officer A',
-  avatarPath: null,
-  location: 'Mumbai, India',
-  headline: 'Chief Officer | Tankers',
-  summary: null,
-  rank: 'Chief Officer',
-  currentCompany: 'Viewer Shipping',
-  currentVessel: null,
-  sailingExperienceYears: 8,
-  vesselTypes: ['Oil Tanker'],
-  tradingAreas: [],
-  shoreCareerPreference: true,
-  availability: 'Available in 30 days',
-  skills: [],
-  contactVisibility: 'members',
-  onboardingCompletedAt: '2026-09-02T10:00:00.000Z',
-}
 
 const suggestions: NetworkProfile[] = [
   {
@@ -47,7 +16,7 @@ const suggestions: NetworkProfile[] = [
     avatarPath: null,
     location: 'Goa, India',
     headline: 'Master Mariner',
-    summary: null,
+    summary: 'Tanker master with international sailing experience.',
     rank: 'Master',
     currentCompany: 'Oceanic Lines',
     currentVessel: null,
@@ -92,24 +61,14 @@ const suggestions: NetworkProfile[] = [
 ]
 
 describe('FeedDiscoveryRail', () => {
-  it('shows people, profile-based job signals, and organisations without inventing vacancies', () => {
-    render(<FeedDiscoveryRail profile={viewer} suggestions={suggestions} />)
+  it('shows only compact people suggestions on the home right rail', () => {
+    render(<FeedDiscoveryRail suggestions={suggestions} />)
 
     expect(screen.getByRole('heading', { name: 'People you may know' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Master B' })).toBeInTheDocument()
-
-    expect(screen.getByRole('heading', { name: 'Jobs for you' })).toBeInTheDocument()
-    expect(screen.getByText('Chief Officer opportunities')).toBeInTheDocument()
-    expect(screen.getByText('Oil Tanker opportunities')).toBeInTheDocument()
-    expect(screen.getByText('Shore career pathways')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Explore maritime jobs' })).toHaveAttribute('href', '/jobs')
-
-    expect(screen.getByRole('heading', { name: 'Organisations to follow' })).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: 'Bluewater Shipping' })).toHaveLength(1)
-    expect(screen.getByRole('link', { name: 'Bluewater Shipping' })).toHaveAttribute('href', '/people/bluewater-shipping')
-    expect(screen.getByRole('link', { name: 'Oceanic Lines' })).toHaveAttribute('href', '/network?tab=discover&q=Oceanic%20Lines')
-    expect(screen.getAllByRole('button', { name: 'Follow' }).length).toBeGreaterThan(0)
-
-    expect(screen.queryByRole('heading', { name: 'Join the conversation' })).not.toBeInTheDocument()
+    expect(screen.getByText('Master B')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /View profile/i })).toHaveAttribute('href', '/people/master-b')
+    expect(screen.queryByRole('heading', { name: 'Jobs for you' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Organisations to follow' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Bluewater Shipping')).not.toBeInTheDocument()
   })
 })
