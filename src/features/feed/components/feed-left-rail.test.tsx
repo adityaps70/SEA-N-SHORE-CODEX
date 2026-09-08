@@ -26,7 +26,7 @@ const profile: OwnProfile = {
 }
 
 describe('FeedLeftRail', () => {
-  it('places quick actions and personal shortcuts below maritime identity', () => {
+  it('keeps only maritime identity and quick actions, including Saved', () => {
     render(<FeedLeftRail profile={profile} />)
 
     expect(screen.getByText('Member A')).toBeInTheDocument()
@@ -35,9 +35,8 @@ describe('FeedLeftRail', () => {
     expect(screen.getByRole('link', { name: /Ask community/i })).toHaveAttribute('href', '/community')
     expect(screen.getByRole('link', { name: /Find a job/i })).toHaveAttribute('href', '/jobs')
     expect(screen.getByRole('link', { name: /Find people/i })).toHaveAttribute('href', '/network')
-    expect(screen.getByRole('heading', { name: 'Personal shortcuts' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /My network/i })).toHaveAttribute('href', '/network')
-    expect(screen.getByRole('link', { name: /Saved/i })).toHaveAttribute('href', '/saved')
-    expect(screen.getByRole('link', { name: /My profile/i })).toHaveAttribute('href', '/profile')
+    expect(screen.getByRole('link', { name: /^Saved$/i })).toHaveAttribute('href', '/saved')
+    expect(screen.queryByText('Complete your profile')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Personal shortcuts' })).not.toBeInTheDocument()
   })
 })
