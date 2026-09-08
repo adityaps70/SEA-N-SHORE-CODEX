@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useState } from 'react'
 import { BriefcaseBusiness, Compass, Gauge, Pencil, Ship, TimerReset, Waves } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { updateProfileProfessionalSection, type ProfileInlineActionState } from '../profile-inline-actions'
@@ -20,15 +20,19 @@ function FieldError({ state, name }: { state: ProfileInlineActionState; name: st
 export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
-  const [state, formAction, pending] = useActionState(updateProfileProfessionalSection, initialState)
+
+  async function submitProfessional(previousState: ProfileInlineActionState, formData: FormData) {
+    const nextState = await updateProfileProfessionalSection(previousState, formData)
+    if (nextState.success) {
+      setEditing(false)
+      router.refresh()
+    }
+    return nextState
+  }
+
+  const [state, formAction, pending] = useActionState(submitProfessional, initialState)
   const editable = Boolean(editHref)
   const availabilityLabel = profileAvailabilityLabel(profile.availability)
-
-  useEffect(() => {
-    if (!state.success) return
-    setEditing(false)
-    router.refresh()
-  }, [router, state.revision, state.success])
 
   const details: Detail[] = [
     profile.rank ? { label: 'Rank', value: profile.rank, icon: Gauge } : null,
