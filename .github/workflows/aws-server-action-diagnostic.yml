@@ -1,0 +1,69 @@
+name: AWS Server Action Diagnostic
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-server-action-diagnostic.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  server-action-log-context:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 5
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
+      ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+
+    steps:
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Read recent Server Action rejection context
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$AWS_REGION"
+          test -n "$ECS_TASK_DEFINITION"
+          test -n "$ECS_CONTAINER_NAME"
+
+          aws ecs describe-task-definition \
+            --region "$AWS_REGION" \
+            --task-definition "$ECS_TASK_DEFINITION" \
+            --query taskDefinition \
+            --output json > /tmp/task-definition.json
+
+          LOG_GROUP=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '
+            .containerDefinitions[]
+            | select(.name == $NAME)
+            | .logConfiguration.options["awslogs-group"] // empty
+          ' /tmp/task-definition.json)
+          test -n "$LOG_GROUP"
+
+          START_MS=$(( ( $(date +%s) - 7200 ) * 1000 ))
+          aws logs filter-log-events \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP" \
+            --start-time "$START_MS" \
+            --output json > /tmp/server-action-events.json
+
+          echo "=== SERVER ACTION REJECTION CONTEXT ==="
+          jq -r '.events[] | [.timestamp, .message] | @tsv' /tmp/server-action-events.json \
+            | grep -Eai 'x-forwarded-host|host.*does not match.*origin|Invalid Server Actions request|Server Reference ID did not match' \
+            | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+            | tail -n 20 > /tmp/server-action-context.txt || true
+
+          cat /tmp/server-action-context.txt
+          test -s /tmp/server-action-context.txt || {
+            echo "No Server Action rejection context found in the last two hours." >&2
+            exit 1
+          }
