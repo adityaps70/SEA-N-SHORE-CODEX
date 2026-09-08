@@ -70,7 +70,11 @@ function countRelation(value: Array<{ count: number }> | { count: number } | nul
   return value?.count ?? 0
 }
 
-function mapAuthor(row: AuthorRow | AuthorRow[] | null): FeedAuthor {
+export function feedAuthorAvatarPath(row: AuthorRow | AuthorRow[] | null | undefined) {
+  return firstOrNull(row)?.avatar_path ?? null
+}
+
+function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, string>): FeedAuthor {
   const author = firstOrNull(row)
   if (!author || !author.slug) throw new Error('Feed author is missing a completed professional identity.')
   const maritime = firstOrNull(author.maritime_profiles)
@@ -79,18 +83,19 @@ function mapAuthor(row: AuthorRow | AuthorRow[] | null): FeedAuthor {
     slug: author.slug,
     fullName: author.full_name,
     avatarPath: author.avatar_path,
+    avatarUrl: author.avatar_path ? signedUrls.get(author.avatar_path) ?? null : null,
     headline: author.headline,
     rank: maritime?.rank ?? null,
     currentCompany: maritime?.current_company ?? null,
   }
 }
 
-function mapComment(row: FeedCommentRow): FeedComment {
+function mapComment(row: FeedCommentRow, signedUrls: Map<string, string>): FeedComment {
   return {
     id: row.id,
     body: row.body,
     createdAt: row.created_at,
-    author: mapAuthor(row.profiles),
+    author: mapAuthor(row.profiles, signedUrls),
   }
 }
 
@@ -98,6 +103,7 @@ export function mapFeedPost(
   row: FeedPostRow,
   viewer: FeedViewerState,
   signedUrls: Map<string, string> = new Map(),
+  viewerProfileId = '',
 ): FeedPost {
   const media = firstOrNull(row.post_media)
   const poll = firstOrNull(row.post_polls)
@@ -110,7 +116,8 @@ export function mapFeedPost(
       voteCount: countRelation(option.post_poll_votes),
     }))
   const totalVotes = options.reduce((total, option) => total + option.voteCount, 0)
-  const comments = (row.post_comments ?? []).map(mapComment)
+  const author = mapAuthor(row.profiles, signedUrls)
+  const comments = (row.post_comments ?? []).map((comment) => mapComment(comment, signedUrls))
 
   return {
     id: row.id,
@@ -119,7 +126,7 @@ export function mapFeedPost(
     postType: row.post_type,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    author: mapAuthor(row.profiles),
+    author,
     media: media
       ? {
           storagePath: media.storage_path,
@@ -139,6 +146,7 @@ export function mapFeedPost(
     commentCount: countRelation(row.post_comment_count) || comments.length,
     viewerLiked: viewer.likedPostIds.has(row.id),
     viewerSaved: viewer.savedPostIds.has(row.id),
+    viewerOwns: Boolean(viewerProfileId) && author.id === viewerProfileId,
     comments,
   }
 }
