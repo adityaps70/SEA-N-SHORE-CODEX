@@ -58,6 +58,39 @@ jobs:
           jq -e '.hydration == true' /tmp/home-health.json >/dev/null || { echo "Home feed hydration failed." >&2; exit 1; }
           jq -e '.media == true' /tmp/home-health.json >/dev/null || { echo "Home media adapter failed." >&2; exit 1; }
 
+      - name: Verify Sea N Shore logo asset delivery
+        run: |
+          set -euo pipefail
+          ASSET_PATH="/brand/sea-n-shore-compact-lockup.webp"
+          CLOUDFRONT_URL="https://d3prih0q6jofyr.cloudfront.net"
+
+          verify_asset() {
+            local label="$1"
+            local base="$2"
+            local body="/tmp/logo-${label}.webp"
+            local headers="/tmp/logo-${label}.headers"
+            local status
+            status=$(curl --show-error --silent --max-time 45 -D "$headers" -o "$body" --write-out '%{http_code}' "${base%/}${ASSET_PATH}")
+            local bytes
+            bytes=$(wc -c < "$body" | tr -d ' ')
+            local content_type
+            content_type=$(awk 'BEGIN{IGNORECASE=1} /^content-type:/ {gsub("\r",""); print $2}' "$headers" | tail -n 1)
+            local cache
+            cache=$(awk 'BEGIN{IGNORECASE=1} /^x-cache:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$headers" | tail -n 1)
+
+            echo "=== ${label} LOGO ASSET ==="
+            echo "status=$status"
+            echo "content_type=${content_type:-unknown}"
+            echo "bytes=$bytes"
+            echo "x_cache=${cache:-n/a}"
+
+            test "$status" = "200" || { echo "${label} logo asset returned HTTP $status." >&2; exit 1; }
+            test "$bytes" -gt 1000 || { echo "${label} logo asset body is unexpectedly small ($bytes bytes)." >&2; exit 1; }
+          }
+
+          verify_asset alb "$SITE_URL"
+          verify_asset cloudfront "$CLOUDFRONT_URL"
+
   staging-runtime-shape:
     runs-on: ubuntu-latest
     environment: staging
