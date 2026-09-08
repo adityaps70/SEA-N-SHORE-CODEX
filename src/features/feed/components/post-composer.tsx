@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import type { OwnProfile } from '@/features/profiles/types'
 import { createPost, type PostComposerState } from '../actions'
-import { POST_CATEGORIES, POST_CATEGORY_LABELS, type PostCategory } from '../types'
+import type { PostCategory } from '../types'
 
 const initialState: PostComposerState = {}
 
@@ -28,7 +28,6 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   const formRef = useRef<HTMLFormElement>(null)
   const mediaRef = useRef<HTMLInputElement>(null)
   const [body, setBody] = useState('')
-  const [category, setCategory] = useState<PostCategory>(defaultCategory ?? 'technical_discussion')
   const [mode, setMode] = useState<'standard' | 'poll'>('standard')
   const [pollFields, setPollFields] = useState<PollField[]>(() => newPollFields(pollIdPrefix))
   const [mediaName, setMediaName] = useState<string | null>(null)
@@ -67,6 +66,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
     <Card className="border border-mist-100 p-4 sm:p-5">
       <form ref={formRef} action={formAction} className="space-y-4">
         <input type="hidden" name="mode" value={mode} />
+        <input type="hidden" name="category" value={defaultCategory ?? 'technical_discussion'} />
         <div className="flex items-start gap-3">
           <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
             {initials(profile.fullName)}
@@ -85,19 +85,6 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
             />
             {state.fieldErrors?.body ? <p id="feed-body-error" className="mt-1 text-sm text-red-700">{state.fieldErrors.body[0]}</p> : null}
           </div>
-        </div>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <label className="text-xs font-semibold uppercase tracking-[.12em] text-muted" htmlFor="feed-category">Topic</label>
-          <select
-            id="feed-category"
-            name="category"
-            value={category}
-            onChange={(event) => setCategory(event.target.value as PostCategory)}
-            className="min-h-10 rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-900"
-          >
-            {POST_CATEGORIES.map((value) => <option key={value} value={value}>{POST_CATEGORY_LABELS[value]}</option>)}
-          </select>
         </div>
 
         {mode === 'poll' ? (
