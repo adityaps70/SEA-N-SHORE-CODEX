@@ -54,6 +54,15 @@ test('staging deploy verifies exact completed service revision and its immutable
   assert.match(workflow, /runningCount/)
 })
 
+test('staging deploy waits for ECS rolloutState COMPLETED before exact verification', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /for attempt in \$\(seq 1 30\)/)
+  assert.match(workflow, /PRIMARY_ROLLOUT_STATE/)
+  assert.match(workflow, /sleep 5/)
+  assert.match(workflow, /Timed out waiting for exact ECS deployment completion/)
+})
+
 test('staging image verification uses docker push digest evidence without requiring ecr DescribeImages permission', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
 
