@@ -1,5 +1,5 @@
 import { query as defaultQuery } from '@/lib/db/client'
-import type { ProfileExperienceInput } from './profile-portfolio-schemas'
+import type { ProfileCredentialInput, ProfileExperienceInput } from './profile-portfolio-schemas'
 import {
   credentialVerificationStates,
   profileExperienceTracks,
@@ -115,6 +115,17 @@ function experienceValues(data: ProfileExperienceInput) {
   ] as const
 }
 
+function credentialValues(data: ProfileCredentialInput) {
+  return [
+    data.name,
+    data.issuer,
+    data.credentialNumber,
+    data.issuedOn,
+    data.expiresOn,
+    data.noExpiry,
+  ] as const
+}
+
 export function createProfilePortfolioRepository({ query = defaultQuery }: { query?: QueryFn } = {}) {
   return {
     async getProfilePortfolio(profileId: string): Promise<ProfilePortfolio> {
@@ -220,6 +231,52 @@ export function createProfilePortfolioRepository({ query = defaultQuery }: { que
       )
       return rows[0]?.id === experienceId
     },
+
+    async createProfileCredential(profileId: string, data: ProfileCredentialInput): Promise<string> {
+      const rows = await query<ReturningIdRow>(
+        `insert into public.profile_credentials (
+          profile_id, name, issuer, credential_number, issued_on, expires_on,
+          no_expiry, verification_state, updated_at
+        ) values (
+          $1, $2, $3, $4, $5::date, $6::date,
+          $7, 'self_reported', now()
+        )
+        returning id`,
+        [profileId, ...credentialValues(data)],
+      )
+      const id = rows[0]?.id
+      if (!id) throw new Error('profile_credential_create_failed')
+      return id
+    },
+
+    async updateProfileCredential(profileId: string, credentialId: string, data: ProfileCredentialInput): Promise<boolean> {
+      const rows = await query<ReturningIdRow>(
+        `update public.profile_credentials
+         set name = $3,
+             issuer = $4,
+             credential_number = $5,
+             issued_on = $6::date,
+             expires_on = $7::date,
+             no_expiry = $8,
+             updated_at = now()
+         where id = $1
+           and profile_id = $2
+         returning id`,
+        [credentialId, profileId, ...credentialValues(data)],
+      )
+      return rows[0]?.id === credentialId
+    },
+
+    async deleteProfileCredential(profileId: string, credentialId: string): Promise<boolean> {
+      const rows = await query<ReturningIdRow>(
+        `delete from public.profile_credentials
+         where id = $1
+           and profile_id = $2
+         returning id`,
+        [credentialId, profileId],
+      )
+      return rows[0]?.id === credentialId
+    },
   }
 }
 
@@ -239,4 +296,16 @@ export function updateProfileExperienceRecord(profileId: string, experienceId: s
 
 export function deleteProfileExperienceRecord(profileId: string, experienceId: string) {
   return profilePortfolioRepository.deleteProfileExperience(profileId, experienceId)
+}
+
+export function createProfileCredentialRecord(profileId: string, data: ProfileCredentialInput) {
+  return profilePortfolioRepository.createProfileCredential(profileId, data)
+}
+
+export function updateProfileCredentialRecord(profileId: string, credentialId: string, data: ProfileCredentialInput) {
+  return profilePortfolioRepository.updateProfileCredential(profileId, credentialId, data)
+}
+
+export function deleteProfileCredentialRecord(profileId: string, credentialId: string) {
+  return profilePortfolioRepository.deleteProfileCredential(profileId, credentialId)
 }
