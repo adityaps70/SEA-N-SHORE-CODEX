@@ -25,7 +25,7 @@ export function AppHeader({
   return (
     <header className="hidden border-b border-mist-100 bg-white md:block">
       <div className="mx-auto flex min-h-18 w-full max-w-7xl items-center gap-6 px-4">
-        <Wordmark />
+        <Wordmark compact />
         <nav aria-label="Primary" className="flex items-center gap-1">
           {destinations.map(({ href, label }) => (
             <Link
