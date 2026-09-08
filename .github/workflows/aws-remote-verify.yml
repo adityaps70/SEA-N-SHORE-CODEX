@@ -67,7 +67,7 @@ jobs:
           verify_asset() {
             local label="$1"
             local base="$2"
-            local body="/tmp/logo-${label}.webp"
+            local body="/tmp/logo-${label}.svg"
             local headers="/tmp/logo-${label}.headers"
             local status
             status=$(curl --show-error --silent --max-time 45 -D "$headers" -o "$body" --write-out '%{http_code}' "${base%/}${ASSET_PATH}")
@@ -85,6 +85,7 @@ jobs:
             echo "x_cache=${cache:-n/a}"
 
             test "$status" = "200" || { echo "${label} logo asset returned HTTP $status." >&2; exit 1; }
+            test "$content_type" = "image/svg+xml" || { echo "${label} logo asset returned unexpected content type ${content_type:-unknown}." >&2; exit 1; }
             test "$bytes" -gt 1000 || { echo "${label} logo asset body is unexpectedly small ($bytes bytes)." >&2; exit 1; }
           }
 
