@@ -9,6 +9,7 @@ on:
       - src/components/navigation/**
       - public/brand/**
       - scripts/aws/verify-staging-logo-browser.mjs
+      - scripts/aws/staging-deploy-action.txt
       - .github/workflows/aws-logo-browser-verify.yml
   workflow_dispatch:
 
