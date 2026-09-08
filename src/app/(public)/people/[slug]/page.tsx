@@ -5,6 +5,7 @@ import { getRelationshipState } from '@/features/network/queries'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileCareerTimeline } from '@/features/profiles/components/profile-career-timeline'
+import { ProfileCredentialWallet } from '@/features/profiles/components/profile-credential-wallet'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { ProfilePassportOverview } from '@/features/profiles/components/profile-passport-overview'
 import { getProfilePortfolioById } from '@/features/profiles/profile-portfolio-queries'
@@ -43,6 +44,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       </div>
 
       <ProfileCareerTimeline experiences={portfolio.experiences} />
+      <ProfileCredentialWallet credentials={portfolio.credentials} />
 
       <p className="px-1 text-center text-xs leading-5 text-muted">
         Sea N Shore professional profiles are member-provided. Verification badges will appear only after the formal evidence review workflow is enabled.
