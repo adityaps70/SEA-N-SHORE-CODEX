@@ -88,6 +88,14 @@ export function createFeedService(input: {
     })
   }
 
+  async function deletePost(actorId: string, postId: string) {
+    return input.withTransaction(async (repository) => {
+      await assertMemberReady(repository, actorId)
+      if (!await repository.deleteOwnPost(actorId, postId)) serviceError('feed_post_delete_forbidden')
+      return true
+    })
+  }
+
   async function setLiked(actorId: string, postId: string, liked: boolean) {
     return input.withTransaction(async (repository) => {
       await assertInteractablePost(repository, actorId, postId)
@@ -122,7 +130,7 @@ export function createFeedService(input: {
     })
   }
 
-  return { createStandardPost, createPollPost, setLiked, setSaved, addComment, setPollVote }
+  return { createStandardPost, createPollPost, deletePost, setLiked, setSaved, addComment, setPollVote }
 }
 
 const productionService = createFeedService({
@@ -131,6 +139,7 @@ const productionService = createFeedService({
 
 export const createStandardPostWithAurora = productionService.createStandardPost
 export const createPollPostWithAurora = productionService.createPollPost
+export const deletePostWithAurora = productionService.deletePost
 export const setPostLikedWithAurora = productionService.setLiked
 export const setPostSavedWithAurora = productionService.setSaved
 export const addPostCommentWithAurora = productionService.addComment
