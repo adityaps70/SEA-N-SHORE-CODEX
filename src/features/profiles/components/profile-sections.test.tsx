@@ -1,8 +1,12 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PublicProfile } from '../types'
 import { MaritimeProfileCard } from './maritime-profile-card'
 import { ProfileAbout } from './profile-about'
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}))
 
 const profile = {
   id: '11111111-1111-4111-8111-111111111111',
