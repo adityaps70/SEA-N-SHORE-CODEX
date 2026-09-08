@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowUpRight, Eye, LockKeyhole, Pencil } from 'lucide-react'
+import { ArrowUpRight, Eye } from 'lucide-react'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
@@ -18,38 +18,26 @@ export default async function OwnProfilePage() {
           <p className="text-sm font-semibold uppercase tracking-[.14em] text-ocean-700">Professional identity</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-navy-950">My profile</h1>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <span className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-muted">
-            <LockKeyhole aria-hidden="true" className="size-4" />
-            Contact: {profile.contactVisibility}
-          </span>
-          <Link
-            href="/profile/edit"
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-500"
-          >
-            <Pencil aria-hidden="true" className="size-4" />
-            Edit all
-          </Link>
-          <Link
-            href={`/people/${profile.slug}`}
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-ocean-700"
-          >
-            <Eye aria-hidden="true" className="size-4" />
-            View public profile
-            <ArrowUpRight aria-hidden="true" className="size-4" />
-          </Link>
-        </div>
+        <Link
+          href={`/people/${profile.slug}`}
+          className="inline-flex min-h-10 w-fit items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-ocean-700"
+        >
+          <Eye aria-hidden="true" className="size-4" />
+          View public profile
+          <ArrowUpRight aria-hidden="true" className="size-4" />
+        </Link>
       </div>
 
       <ProfileHeader
         profile={profile}
-        editHref="/profile/edit#identity"
+        editHref="inline"
+        contactVisibility={profile.contactVisibility}
         mediaControls={<ProfileMediaControls kind="cover" hasImage={Boolean(profile.coverPath)} />}
         avatarControls={<ProfileMediaControls kind="avatar" hasImage={Boolean(profile.avatarPath)} />}
       />
       <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
-        <ProfileAbout profile={profile} editHref="/profile/edit#about" />
-        <MaritimeProfileCard profile={profile} editHref="/profile/edit#professional" />
+        <ProfileAbout profile={profile} editHref="inline" />
+        <MaritimeProfileCard profile={profile} editHref="inline" />
       </div>
     </section>
   )
