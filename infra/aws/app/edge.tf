@@ -19,6 +19,17 @@ resource "aws_wafv2_web_acl" "edge" {
       managed_rule_group_statement {
         name        = "AWSManagedRulesCommonRuleSet"
         vendor_name = "AWS"
+
+        # Profile photos and cover images are submitted as authenticated Next.js
+        # Server Action multipart bodies. Keep the managed rule visible in metrics,
+        # but let the application's 6 MB action limit and 5 MB image validator make
+        # the allow/reject decision for legitimate uploads.
+        rule_action_override {
+          name = "SizeRestrictions_BODY"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 
