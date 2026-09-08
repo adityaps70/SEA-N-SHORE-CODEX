@@ -52,6 +52,7 @@ type CognitoActionsApi = {
   globalSignOut(accessToken: string): Promise<void>
 }
 
+const emailSchema = z.string().trim().toLowerCase().email().max(254)
 const codeSchema = z.string().trim().min(1)
 const passwordSchema = z.string().min(12).max(72)
 
@@ -61,12 +62,12 @@ const newPasswordSchema = z.object({
 })
 
 const confirmationSchema = z.object({
-  email: z.string().trim().toLowerCase().email().max(254),
+  email: emailSchema,
   code: codeSchema,
 })
 
 const confirmResetSchema = z.object({
-  email: z.string().trim().toLowerCase().email().max(254),
+  email: emailSchema,
   code: codeSchema,
   password: passwordSchema,
   passwordConfirmation: z.string(),
@@ -197,6 +198,24 @@ export function createCognitoAuthActions(input: {
           return { message: 'Check your email to continue.' }
         }
         return { error: 'We could not create your account. Please try again.' }
+      }
+    },
+
+    async resendConfirmationCode(
+      _state: CognitoAuthActionState,
+      formData: FormData,
+    ): Promise<CognitoAuthActionState> {
+      const parsed = emailSchema.safeParse(formData.get('email'))
+      if (!parsed.success) return { error: 'Enter a valid email address.' }
+
+      try {
+        await input.api.resendConfirmationCode(parsed.data)
+        return { message: 'Confirmation code sent.' }
+      } catch (error) {
+        if (isCognitoError(error) && (error.code === 'LimitExceededException' || error.code === 'TooManyRequestsException')) {
+          return { error: 'Too many confirmation requests. Please try again later.' }
+        }
+        return { error: 'We could not resend the confirmation code. Please check the email address or try again.' }
       }
     },
 
