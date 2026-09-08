@@ -18,11 +18,11 @@ describe('Wordmark', () => {
     expect(screen.queryByText('Global maritime network')).not.toBeInTheDocument()
   })
 
-  it('uses a cropped original-artwork compact lockup', () => {
+  it('uses the newly uploaded horizontal Sea and Shore logo in compact headers', () => {
     render(<Wordmark compact />)
 
     const logo = screen.getByRole('img', { name: /sea and shore global shipping community/i })
-    expect(logo).toHaveAttribute('src', '/brand/sea-n-shore-compact-lockup.webp')
+    expect(logo).toHaveAttribute('src', '/brand/sea-and-shore-header-logo.svg')
     expect(screen.queryByText('SEA N SHORE')).not.toBeInTheDocument()
     expect(screen.queryByText('Global Shipping Community')).not.toBeInTheDocument()
   })
