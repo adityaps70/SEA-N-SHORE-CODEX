@@ -54,6 +54,7 @@ function createFakeApi(overrides: Partial<{
           sub: 'cognito-sub-123',
           email: 'captain@example.com',
           emailVerified: true,
+          name: 'Captain Example',
         })),
     ),
     refresh: vi.fn(
@@ -95,6 +96,7 @@ describe('Cognito server session verification', () => {
       sub: 'cognito-sub-123',
       email: 'captain@example.com',
       emailVerified: true,
+      name: 'Captain Example',
     })
     expect(api.getUser).toHaveBeenCalledWith('access-token')
   })
@@ -165,6 +167,7 @@ describe('Cognito server session verification', () => {
         sub: '',
         email: 'captain@example.com',
         emailVerified: true,
+        name: 'Captain Example',
       }),
     })
     const sessions = createCognitoSessionManager({
