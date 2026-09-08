@@ -94,7 +94,7 @@ jobs:
           export PROFILE_PASSPORT_MIGRATION_EXPECTED_SHA={sha}
           bash scripts/aws/profile-passport-migration.sh
           """
-          print(json.dumps({{"executionTimeout": ["1200"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}}))
+          print(json.dumps({"executionTimeout": ["1200"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
           PYTHON
           COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore Maritime Passport migration $TRIGGER_SHA" --timeout-seconds 1200 --parameters file:///tmp/ssm-parameters.json --query 'Command.CommandId' --output text)
           test -n "$COMMAND_ID"
