@@ -74,6 +74,8 @@ jobs:
         run: node --test scripts/aws/profile-media-schema.test.mjs
       - name: Verify exact profile identity schema contract
         run: node --test scripts/aws/profile-identity-schema.test.mjs
+      - name: Verify Maritime Passport schema contract
+        run: node --test scripts/aws/profile-passport-schema.test.mjs
       - name: Verify social event Terraform contract
         run: node --test scripts/aws/social-events-terraform.test.mjs
       - name: Verify social infrastructure plan classifier
