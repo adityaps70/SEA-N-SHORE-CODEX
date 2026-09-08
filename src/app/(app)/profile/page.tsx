@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileCareerTimeline } from '@/features/profiles/components/profile-career-timeline'
+import { ProfileCredentialWallet } from '@/features/profiles/components/profile-credential-wallet'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { ProfileMediaControls } from '@/features/profiles/components/profile-media-controls'
 import { ProfilePassportOverview } from '@/features/profiles/components/profile-passport-overview'
@@ -45,6 +46,7 @@ export default async function OwnProfilePage() {
       </div>
 
       <ProfileCareerTimeline experiences={portfolio.experiences} editable />
+      <ProfileCredentialWallet credentials={portfolio.credentials} editable />
     </section>
   )
 }
