@@ -65,6 +65,35 @@ def _normalize_waf_without_allowed_override(waf, require_override):
     return normalized
 
 
+def _diff_paths(before, after, path='$'):
+    """Return compact structural differences for a failed guard; never relax validation."""
+    if type(before) is not type(after):
+        return [f'{path}: type {type(before).__name__} -> {type(after).__name__}']
+    if isinstance(before, dict):
+        diffs = []
+        for key in sorted(set(before) | set(after)):
+            child = f'{path}.{key}'
+            if key not in before:
+                diffs.append(f'{child}: added={after[key]!r}')
+            elif key not in after:
+                diffs.append(f'{child}: removed={before[key]!r}')
+            else:
+                diffs.extend(_diff_paths(before[key], after[key], child))
+            if len(diffs) >= 20:
+                return diffs[:20]
+        return diffs
+    if isinstance(before, list):
+        if len(before) != len(after):
+            return [f'{path}: length {len(before)} -> {len(after)}']
+        diffs = []
+        for index, (left, right) in enumerate(zip(before, after)):
+            diffs.extend(_diff_paths(left, right, f'{path}[{index}]'))
+            if len(diffs) >= 20:
+                return diffs[:20]
+        return diffs
+    return [] if before == after else [f'{path}: {before!r} -> {after!r}']
+
+
 def _validate_waf_update(change):
     before = change.get('before')
     after = change.get('after')
@@ -74,7 +103,15 @@ def _validate_waf_update(change):
         return False
     normalized_before = _normalize_waf_without_allowed_override(before, False)
     normalized_after = _normalize_waf_without_allowed_override(after, True)
-    return normalized_before is not None and normalized_after is not None and normalized_before == normalized_after
+    if normalized_before is None or normalized_after is None:
+        return False
+    if normalized_before != normalized_after:
+        print('WAF_NORMALIZED_DIFF_BEGIN', file=sys.stderr)
+        for difference in _diff_paths(normalized_before, normalized_after):
+            print(difference, file=sys.stderr)
+        print('WAF_NORMALIZED_DIFF_END', file=sys.stderr)
+        return False
+    return True
 
 
 def validate(plan, origin):
