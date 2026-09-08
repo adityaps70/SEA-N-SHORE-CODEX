@@ -234,6 +234,13 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
       }
     },
 
+    async resendConfirmationCode(username: string): Promise<void> {
+      await request('ResendConfirmationCode', {
+        ClientId: config.clientId,
+        Username: username,
+      })
+    },
+
     async confirmSignUp(input: { username: string; code: string }): Promise<void> {
       await request('ConfirmSignUp', {
         ClientId: config.clientId,
