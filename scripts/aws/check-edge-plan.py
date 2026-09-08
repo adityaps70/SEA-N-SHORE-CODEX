@@ -65,6 +65,25 @@ def _normalize_waf_without_allowed_override(waf, require_override):
     return normalized
 
 
+def _diagnose_override_shape(label, waf):
+    print(f'WAF_OVERRIDE_SHAPE_{label}_BEGIN', file=sys.stderr)
+    if not isinstance(waf, dict):
+        print(f'waf_type={type(waf).__name__}', file=sys.stderr)
+        print(f'WAF_OVERRIDE_SHAPE_{label}_END', file=sys.stderr)
+        return
+    rules = waf.get('rule', [])
+    print('rule_names=' + repr([rule.get('name') for rule in rules if isinstance(rule, dict)]), file=sys.stderr)
+    group = _managed_common_statement(waf)
+    if group is None:
+        common = [rule for rule in rules if isinstance(rule, dict) and rule.get('name') == 'AWSManagedRulesCommonRuleSet']
+        print('managed_common_rule=' + repr(common[:1]), file=sys.stderr)
+    else:
+        print('group_name=' + repr(group.get('name')), file=sys.stderr)
+        print('vendor_name=' + repr(group.get('vendor_name')), file=sys.stderr)
+        print('rule_action_override=' + repr(group.get('rule_action_override', [])), file=sys.stderr)
+    print(f'WAF_OVERRIDE_SHAPE_{label}_END', file=sys.stderr)
+
+
 def _diff_paths(before, after, path='$'):
     """Return compact structural differences for a failed guard; never relax validation."""
     if type(before) is not type(after):
@@ -103,6 +122,10 @@ def _validate_waf_update(change):
         return False
     normalized_before = _normalize_waf_without_allowed_override(before, False)
     normalized_after = _normalize_waf_without_allowed_override(after, True)
+    if normalized_before is None:
+        _diagnose_override_shape('BEFORE', before)
+    if normalized_after is None:
+        _diagnose_override_shape('AFTER', after)
     if normalized_before is None or normalized_after is None:
         return False
     if normalized_before != normalized_after:
