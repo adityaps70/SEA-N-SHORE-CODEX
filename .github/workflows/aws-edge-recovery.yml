@@ -9,6 +9,11 @@ on:
     paths:
       - .github/workflows/aws-edge-recovery.yml
       - scripts/aws/edge-recovery-action.txt
+      - scripts/aws/edge-recovery.sh
+      - scripts/aws/check-edge-plan.py
+      - scripts/aws/check-edge-plan.test.py
+      - scripts/aws/server-action-edge-header.test.mjs
+      - infra/aws/app/edge.tf
   workflow_dispatch:
 
 permissions:
