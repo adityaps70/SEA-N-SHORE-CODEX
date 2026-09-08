@@ -3,7 +3,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useState } from 'react'
 import { Anchor, MapPin, Pencil, Ship, TimerReset } from 'lucide-react'
 import { updateProfileIdentitySection, type ProfileInlineActionState } from '../profile-inline-actions'
 import { profileAvailabilityLabel } from '../profile-availability'
@@ -52,17 +52,20 @@ export function ProfileHeader({
 }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
-  const [state, formAction, pending] = useActionState(updateProfileIdentitySection, initialState)
+
+  async function submitIdentity(previousState: ProfileInlineActionState, formData: FormData) {
+    const nextState = await updateProfileIdentitySection(previousState, formData)
+    if (nextState.success) {
+      setEditing(false)
+      router.refresh()
+    }
+    return nextState
+  }
+
+  const [state, formAction, pending] = useActionState(submitIdentity, initialState)
   const identityLabel = profile.primaryIdentity ?? profileTypeLabels[profile.profileType]
   const secondaryIdentities = profile.secondaryIdentities ?? []
   const availabilityLabel = profileAvailabilityLabel(profile.availability)
-
-  useEffect(() => {
-    if (!state.success) return
-    setEditing(false)
-    router.refresh()
-  }, [router, state.revision, state.success])
-
   const inputClass = 'mt-1 min-h-10 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500'
   const labelClass = 'block text-sm font-semibold text-navy-950'
 
