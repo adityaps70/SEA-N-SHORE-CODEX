@@ -44,6 +44,16 @@ export async function confirmSignUp(state: AuthActionState, formData: FormData):
   return handlers.confirmSignUp(state, formData)
 }
 
+export async function resendConfirmationCode(formData: FormData): Promise<void> {
+  const actions = await getProductionActions()
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
+  const result = await actions.resendConfirmationCode({}, formData)
+  const params = new URLSearchParams({ confirm: '1', email })
+  if (result.message === 'Confirmation code sent.') params.set('resent', '1')
+  else params.set('resendError', '1')
+  nextRedirect(`/auth/sign-up?${params.toString()}`)
+}
+
 export async function requestPasswordReset(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
   return handlers.requestPasswordReset(state, formData)
 }
