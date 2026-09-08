@@ -1,11 +1,28 @@
 import { describe, expect, it, vi } from 'vitest'
 
 const PROFILE_ID = '11111111-1111-4111-8111-111111111111'
+const EXPERIENCE_ID = '44444444-4444-4444-8444-444444444444'
 
 type QueryCall = [text: string, values?: readonly unknown[]]
 
 function callsOf(query: { mock: { calls: unknown[] } }): QueryCall[] {
   return query.mock.calls as unknown as QueryCall[]
+}
+
+const seaExperienceInput = {
+  track: 'sea_service' as const,
+  title: 'Master',
+  organization: 'Oceanic Shipping',
+  vessel: 'MT Horizon',
+  vesselType: 'Oil Tanker',
+  location: null,
+  startedOn: '2024-01-01',
+  endedOn: null,
+  isCurrent: true,
+  description: 'Command responsibility on worldwide tanker trades.',
+  cargoExperience: ['Crude Oil'],
+  engineExperience: [],
+  tradingAreas: ['Worldwide'],
 }
 
 describe('profile portfolio repository', () => {
@@ -126,5 +143,42 @@ describe('profile portfolio repository', () => {
       credentials: [],
     })
     expect(query).toHaveBeenCalledTimes(2)
+  })
+
+  it('creates a career record under the authenticated profile id', async () => {
+    const query = vi.fn().mockResolvedValue([{ id: EXPERIENCE_ID }])
+    const { createProfilePortfolioRepository } = await import('./profile-portfolio-repository')
+
+    await expect(createProfilePortfolioRepository({ query }).createProfileExperience(PROFILE_ID, seaExperienceInput)).resolves.toBe(EXPERIENCE_ID)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('insert into public.profile_experiences')
+    expect(values?.[0]).toBe(PROFILE_ID)
+    expect(values).toContain('MT Horizon')
+  })
+
+  it('updates a career record only when both record id and owner profile id match', async () => {
+    const query = vi.fn().mockResolvedValue([{ id: EXPERIENCE_ID }])
+    const { createProfilePortfolioRepository } = await import('./profile-portfolio-repository')
+
+    await expect(createProfilePortfolioRepository({ query }).updateProfileExperience(PROFILE_ID, EXPERIENCE_ID, seaExperienceInput)).resolves.toBe(true)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('where id = $1')
+    expect(String(sql)).toContain('and profile_id = $2')
+    expect(values?.slice(0, 2)).toEqual([EXPERIENCE_ID, PROFILE_ID])
+  })
+
+  it('deletes a career record only when both record id and owner profile id match', async () => {
+    const query = vi.fn().mockResolvedValue([{ id: EXPERIENCE_ID }])
+    const { createProfilePortfolioRepository } = await import('./profile-portfolio-repository')
+
+    await expect(createProfilePortfolioRepository({ query }).deleteProfileExperience(PROFILE_ID, EXPERIENCE_ID)).resolves.toBe(true)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('delete from public.profile_experiences')
+    expect(String(sql)).toContain('where id = $1')
+    expect(String(sql)).toContain('and profile_id = $2')
+    expect(values).toEqual([EXPERIENCE_ID, PROFILE_ID])
   })
 })
