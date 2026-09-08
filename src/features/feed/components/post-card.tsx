@@ -2,10 +2,10 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { Bookmark, Heart, MessageCircle } from 'lucide-react'
+import { Bookmark, Heart, MessageCircle, Trash2 } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
-import { setPostLiked, setPostSaved } from '../actions'
+import { deletePost, setPostLiked, setPostSaved } from '../actions'
 import { POST_CATEGORY_LABELS, type FeedPost } from '../types'
 import { CommentThread } from './comment-thread'
 import { PollCard } from './poll-card'
@@ -30,6 +30,7 @@ export function PostCard({ post, detail = false }: { post: FeedPost; detail?: bo
   const [saved, setSaved] = useState(post.viewerSaved)
   const [likeCount, setLikeCount] = useState(post.likeCount)
   const [commentsOpen, setCommentsOpen] = useState(detail)
+  const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
 
@@ -64,12 +65,34 @@ export function PostCard({ post, detail = false }: { post: FeedPost; detail?: bo
     })
   }
 
+  function removePost() {
+    if (pending || !window.confirm('Delete this post? This will remove it from the feed and your profile.')) return
+    setError('')
+    startTransition(async () => {
+      const result = await deletePost(post.id)
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
+      setDeleted(true)
+    })
+  }
+
+  if (deleted) return null
+
   return (
     <Card className="overflow-hidden border border-mist-100">
       <article aria-labelledby={`post-author-${post.id}`}>
         <header className="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
-          <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
-            {initials(post.author.fullName)}
+          <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
+            {post.author.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={post.author.avatarUrl}
+                alt={`${post.author.fullName}'s profile photo`}
+                className="h-full w-full object-cover"
+              />
+            ) : initials(post.author.fullName)}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -87,6 +110,17 @@ export function PostCard({ post, detail = false }: { post: FeedPost; detail?: bo
               {relativeTime(post.createdAt)}
             </time>
           </div>
+          {post.viewerOwns ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={removePost}
+              aria-label="Delete post"
+              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+            >
+              <Trash2 aria-hidden="true" className="size-4" />
+            </button>
+          ) : null}
         </header>
 
         <div className="px-4 pb-4 pt-4 sm:px-5">
