@@ -32,6 +32,7 @@ export type FeedAuthor = {
   slug: string
   fullName: string
   avatarPath: string | null
+  avatarUrl?: string | null
   headline: string | null
   rank: string | null
   currentCompany: string | null
@@ -78,6 +79,7 @@ export type FeedPost = {
   commentCount: number
   viewerLiked: boolean
   viewerSaved: boolean
+  viewerOwns?: boolean
   comments: FeedComment[]
 }
 
