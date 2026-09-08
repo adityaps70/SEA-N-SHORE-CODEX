@@ -16,6 +16,7 @@ test('CloudWatch runtime review starts from the live PRIMARY deployment instead 
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
   assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
   assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
+  assert.match(workflow, /test "\$content_type" = "image\/svg\+xml"/)
 })
 
 test('staging deployment verification polls until ECS reports rolloutState COMPLETED', () => {
