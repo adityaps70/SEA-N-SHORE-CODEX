@@ -13,9 +13,9 @@ export function Wordmark({ compact = false }: WordmarkProps) {
     >
       {/* eslint-disable-next-line @next/next/no-img-element -- exact uploaded brand artwork is part of the Wordmark contract */}
       <img
-        src={compact ? '/brand/sea-n-shore-compact-lockup.webp' : '/brand/sea-and-shore-master-logo.svg'}
+        src={compact ? '/brand/sea-and-shore-header-logo.svg' : '/brand/sea-and-shore-master-logo.svg'}
         alt="Sea and Shore Global Shipping Community"
-        className={compact ? 'h-11 w-auto max-w-[230px] object-contain sm:max-w-[270px]' : 'h-24 w-auto max-w-full object-contain'}
+        className={compact ? 'h-11 w-auto max-w-[250px] object-contain sm:max-w-[300px]' : 'h-24 w-auto max-w-full object-contain'}
       />
     </Link>
   )
