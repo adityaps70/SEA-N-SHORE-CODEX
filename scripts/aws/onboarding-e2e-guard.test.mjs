@@ -62,6 +62,8 @@ test('run-once performs disposable public sign-up browser journeys and guarded c
   assert.match(browserScript, /Master — Sea-going · Deck/)
   assert.match(browserScript, /Search additional identities/)
   assert.match(browserScript, /Mentor/)
+  assert.match(browserScript, /getByRole\('button', \{ name: 'Remove Mentor' \}\)/)
+  assert.doesNotMatch(browserScript, /getByText\('Mentor', \{ exact: true \}\)\.toBeVisible/)
   assert.match(browserScript, /Custom maritime identity/)
   assert.match(browserScript, /Search organisation identities/)
   assert.match(browserScript, /Shipowner — Shipping & Ship Management/)
