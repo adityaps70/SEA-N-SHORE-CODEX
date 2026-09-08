@@ -104,7 +104,7 @@ async function completeProfessional(user) {
 
   await page.getByLabel('Search additional identities').fill('Mentor')
   await page.locator('button').filter({ hasText: /^MentorProfessional Capacities$/ }).click()
-  await expect(page.getByText('Mentor', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Remove Mentor' })).toBeVisible()
 
   const slug = `sea-n-shore-e2e-professional-${process.env.GITHUB_RUN_ID}`
   await page.getByLabel('Profile address').fill('Bad Slug!!')
