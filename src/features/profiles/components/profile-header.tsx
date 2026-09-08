@@ -1,8 +1,13 @@
+'use client'
+
 /* eslint-disable @next/next/no-img-element */
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import { Anchor, MapPin, Pencil, Ship, TimerReset } from 'lucide-react'
-import type { PublicProfile } from '../types'
+import { updateProfileIdentitySection, type ProfileInlineActionState } from '../profile-inline-actions'
+import { profileAvailabilityLabel } from '../profile-availability'
+import type { ContactVisibility, PublicProfile } from '../types'
 
 const profileTypeLabels: Record<PublicProfile['profileType'], string> = {
   seafarer: 'Seafarer',
@@ -14,6 +19,8 @@ const profileTypeLabels: Record<PublicProfile['profileType'], string> = {
   service_provider: 'Maritime Service Provider',
 }
 
+const initialState: ProfileInlineActionState = {}
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -23,21 +30,41 @@ function initials(name: string) {
     .join('')
 }
 
+function FieldError({ state, name }: { state: ProfileInlineActionState; name: string }) {
+  const message = state.fieldErrors?.[name]?.[0]
+  return message ? <p className="mt-1 text-xs font-medium text-red-700">{message}</p> : null
+}
+
 export function ProfileHeader({
   profile,
   actions,
   editHref,
   mediaControls,
   avatarControls,
+  contactVisibility = 'members',
 }: {
   profile: PublicProfile
   actions?: ReactNode
   editHref?: string
   mediaControls?: ReactNode
   avatarControls?: ReactNode
+  contactVisibility?: ContactVisibility
 }) {
+  const router = useRouter()
+  const [editing, setEditing] = useState(false)
+  const [state, formAction, pending] = useActionState(updateProfileIdentitySection, initialState)
   const identityLabel = profile.primaryIdentity ?? profileTypeLabels[profile.profileType]
   const secondaryIdentities = profile.secondaryIdentities ?? []
+  const availabilityLabel = profileAvailabilityLabel(profile.availability)
+
+  useEffect(() => {
+    if (!state.success) return
+    setEditing(false)
+    router.refresh()
+  }, [router, state.revision, state.success])
+
+  const inputClass = 'mt-1 min-h-10 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500'
+  const labelClass = 'block text-sm font-semibold text-navy-950'
 
   return (
     <section className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
@@ -79,13 +106,14 @@ export function ProfileHeader({
                   {profile.fullName}
                 </h1>
                 {editHref ? (
-                  <Link
-                    href={editHref}
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
                     aria-label="Edit basic information"
                     className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-mist-100 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
                   >
                     <Pencil aria-hidden="true" className="size-4" />
-                  </Link>
+                  </button>
                 ) : null}
               </div>
               {secondaryIdentities.length ? (
@@ -100,34 +128,86 @@ export function ProfileHeader({
             </div>
           </div>
           <div className="flex flex-col items-start gap-3 sm:items-end">
-            {profile.availability ? (
+            {availabilityLabel ? (
               <span className="inline-flex w-fit items-center gap-2 rounded-xl border border-mist-100 bg-mist-50 px-3 py-2 text-sm font-medium text-navy-900">
                 <TimerReset aria-hidden="true" className="size-4 text-teal-500" />
-                {profile.availability}
+                {availabilityLabel}
               </span>
             ) : null}
             {actions ? <div className="w-full sm:w-auto">{actions}</div> : null}
           </div>
         </div>
 
-        {profile.headline ? (
-          <p className="mt-5 max-w-3xl text-lg font-medium leading-7 text-ink">{profile.headline}</p>
-        ) : null}
+        {editing ? (
+          <form action={formAction} className="mt-6 rounded-2xl border border-ocean-100 bg-ocean-50/40 p-4 sm:p-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className={labelClass}>
+                Full name
+                <input name="fullName" required maxLength={120} defaultValue={profile.fullName} className={inputClass} />
+                <FieldError state={state} name="fullName" />
+              </label>
+              <label className={labelClass}>
+                Profile address
+                <input name="slug" required maxLength={80} defaultValue={profile.slug} className={inputClass} />
+                <FieldError state={state} name="slug" />
+              </label>
+              <label className={labelClass}>
+                Location
+                <input name="location" maxLength={120} defaultValue={profile.location ?? ''} className={inputClass} />
+                <FieldError state={state} name="location" />
+              </label>
+              <label className={labelClass}>
+                Headline
+                <input name="headline" required maxLength={160} defaultValue={profile.headline ?? ''} className={inputClass} />
+                <FieldError state={state} name="headline" />
+              </label>
+              <label className={labelClass}>
+                Current company
+                <input name="currentCompany" maxLength={160} defaultValue={profile.currentCompany ?? ''} className={inputClass} />
+                <FieldError state={state} name="currentCompany" />
+              </label>
+              <label className={labelClass}>
+                Contact visibility
+                <select name="contactVisibility" defaultValue={contactVisibility} className={inputClass}>
+                  <option value="private">Private</option>
+                  <option value="members">Members only</option>
+                  <option value="public">Public</option>
+                </select>
+                <FieldError state={state} name="contactVisibility" />
+              </label>
+            </div>
+            {state.error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" onClick={() => setEditing(false)} className="min-h-10 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950">
+                Cancel
+              </button>
+              <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60">
+                {pending ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            {profile.headline ? (
+              <p className="mt-5 max-w-3xl text-lg font-medium leading-7 text-ink">{profile.headline}</p>
+            ) : null}
 
-        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
-          {profile.location ? (
-            <span className="inline-flex items-center gap-1.5">
-              <MapPin aria-hidden="true" className="size-4" />
-              {profile.location}
-            </span>
-          ) : null}
-          {profile.currentCompany ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Ship aria-hidden="true" className="size-4" />
-              {profile.currentCompany}
-            </span>
-          ) : null}
-        </div>
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
+              {profile.location ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin aria-hidden="true" className="size-4" />
+                  {profile.location}
+                </span>
+              ) : null}
+              {profile.currentCompany ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Ship aria-hidden="true" className="size-4" />
+                  {profile.currentCompany}
+                </span>
+              ) : null}
+            </div>
+          </>
+        )}
       </div>
     </section>
   )
