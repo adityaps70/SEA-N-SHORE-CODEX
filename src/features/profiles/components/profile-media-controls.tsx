@@ -1,7 +1,8 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { Camera, Trash2 } from 'lucide-react'
-import { useActionState, useRef } from 'react'
+import { useActionState, useEffect, useRef } from 'react'
 import {
   removeAvatarAction,
   removeCoverAction,
@@ -19,11 +20,18 @@ export function ProfileMediaControls({
   kind: 'avatar' | 'cover'
   hasImage: boolean
 }) {
+  const router = useRouter()
   const uploadAction = kind === 'avatar' ? uploadAvatarAction : uploadCoverAction
   const removeAction = kind === 'avatar' ? removeAvatarAction : removeCoverAction
   const [state, formAction, pending] = useActionState(uploadAction, initialState)
   const inputRef = useRef<HTMLInputElement>(null)
   const label = kind === 'avatar' ? 'profile photo' : 'cover photo'
+
+  useEffect(() => {
+    if (!state.success) return
+    if (inputRef.current) inputRef.current.value = ''
+    router.refresh()
+  }, [router, state.success])
 
   return (
     <div className="relative flex items-center gap-2">
