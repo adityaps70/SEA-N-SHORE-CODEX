@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation'
+import { getPostsByAuthor } from '@/features/feed/queries'
+import { ProfilePostsSection } from '@/features/feed/components/profile-posts-section'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileCareerTimeline } from '@/features/profiles/components/profile-career-timeline'
@@ -16,6 +18,7 @@ export default async function OwnProfilePage() {
     getOwnProfilePortfolio(),
   ])
   if (!profile) redirect('/onboarding')
+  const posts = await getPostsByAuthor(profile.id)
 
   return (
     <section className="grid gap-5 py-2 sm:py-5">
@@ -47,6 +50,7 @@ export default async function OwnProfilePage() {
 
       <ProfileCareerTimeline experiences={portfolio.experiences} editable />
       <ProfileCredentialWallet credentials={portfolio.credentials} editable />
+      <ProfilePostsSection posts={posts} ownerName={profile.fullName} />
     </section>
   )
 }
