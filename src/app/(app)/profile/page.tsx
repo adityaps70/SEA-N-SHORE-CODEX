@@ -1,14 +1,19 @@
 import { redirect } from 'next/navigation'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
+import { ProfileCareerTimeline } from '@/features/profiles/components/profile-career-timeline'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { ProfileMediaControls } from '@/features/profiles/components/profile-media-controls'
 import { ProfilePassportOverview } from '@/features/profiles/components/profile-passport-overview'
 import { ProfilePassportToolbar } from '@/features/profiles/components/profile-passport-toolbar'
+import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
 
 export default async function OwnProfilePage() {
-  const profile = await getOwnProfile()
+  const [profile, portfolio] = await Promise.all([
+    getOwnProfile(),
+    getOwnProfilePortfolio(),
+  ])
   if (!profile) redirect('/onboarding')
 
   return (
@@ -38,6 +43,8 @@ export default async function OwnProfilePage() {
         <ProfileAbout profile={profile} editHref="inline" />
         <MaritimeProfileCard profile={profile} editHref="inline" />
       </div>
+
+      <ProfileCareerTimeline experiences={portfolio.experiences} editable />
     </section>
   )
 }
