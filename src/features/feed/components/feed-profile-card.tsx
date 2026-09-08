@@ -15,6 +15,9 @@ function initials(name: string) {
 
 export function FeedProfileCard({ profile, compact = false }: { profile: OwnProfile; compact?: boolean }) {
   const completion = calculateProfileCompletion(profile)
+  const profileAction = completion < 100
+    ? { href: '/profile/edit', label: 'Complete profile' }
+    : { href: '/profile', label: 'View profile' }
 
   if (compact) {
     return (
@@ -27,8 +30,8 @@ export function FeedProfileCard({ profile, compact = false }: { profile: OwnProf
             <p className="truncate font-semibold text-navy-950">{profile.fullName}</p>
             <p className="truncate text-sm text-muted">{profile.headline ?? profile.rank ?? 'Maritime professional'}</p>
           </div>
-          <Link href="/profile" className="shrink-0 text-sm font-semibold text-ocean-700 hover:text-navy-950">
-            Profile
+          <Link href={profileAction.href} className="shrink-0 text-sm font-semibold text-ocean-700 hover:text-navy-950">
+            {profileAction.label}
           </Link>
         </div>
       </Card>
@@ -89,8 +92,8 @@ export function FeedProfileCard({ profile, compact = false }: { profile: OwnProf
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-mist-100" role="progressbar" aria-label="Profile completeness" aria-valuemin={0} aria-valuemax={100} aria-valuenow={completion}>
           <div className="h-full rounded-full bg-ocean-700" style={{ width: `${completion}%` }} />
         </div>
-        <Link href="/profile" className="mt-4 flex min-h-10 items-center justify-center rounded-xl border border-mist-100 text-sm font-semibold text-navy-900 hover:border-ocean-500 hover:text-ocean-700">
-          View profile
+        <Link href={profileAction.href} className="mt-4 flex min-h-10 items-center justify-center rounded-xl border border-mist-100 text-sm font-semibold text-navy-900 hover:border-ocean-500 hover:text-ocean-700">
+          {profileAction.label}
         </Link>
       </div>
     </Card>
