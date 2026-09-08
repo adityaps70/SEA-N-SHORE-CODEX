@@ -4,8 +4,10 @@ import { RelationshipControls } from '@/features/network/components/relationship
 import { getRelationshipState } from '@/features/network/queries'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
+import { ProfileCareerTimeline } from '@/features/profiles/components/profile-career-timeline'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { ProfilePassportOverview } from '@/features/profiles/components/profile-passport-overview'
+import { getProfilePortfolioById } from '@/features/profiles/profile-portfolio-queries'
 import { getPublicProfileBySlug } from '@/features/profiles/queries'
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -16,9 +18,10 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   ])
   if (!profile) notFound()
 
-  const relationship = viewer && viewer.id !== profile.id
-    ? await getRelationshipState(profile.id)
-    : null
+  const [relationship, portfolio] = await Promise.all([
+    viewer && viewer.id !== profile.id ? getRelationshipState(profile.id) : null,
+    getProfilePortfolioById(profile.id),
+  ])
   const relationshipKey = relationship
     ? `${relationship.following ? 1 : 0}:${relationship.connection.kind}:${relationship.connection.connectionId ?? ''}`
     : ''
@@ -38,6 +41,9 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         <ProfileAbout profile={profile} />
         <MaritimeProfileCard profile={profile} />
       </div>
+
+      <ProfileCareerTimeline experiences={portfolio.experiences} />
+
       <p className="px-1 text-center text-xs leading-5 text-muted">
         Sea N Shore professional profiles are member-provided. Verification badges will appear only after the formal evidence review workflow is enabled.
       </p>
