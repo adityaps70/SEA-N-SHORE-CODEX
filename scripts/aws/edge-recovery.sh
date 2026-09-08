@@ -19,7 +19,7 @@ STATE_KEY=sea-n-shore/staging/terraform.tfstate
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region ap-south-1 "$RECOVERY_DIR/state.json" > "$RECOVERY_DIR/object.json"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$RECOVERY_DIR/state.json" >/dev/null
 jq -e '[.resources[] | select(.type == "aws_wafv2_web_acl" and .name == "edge") | .instances[].attributes.id] == ["3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0"]' "$RECOVERY_DIR/state.json" >/dev/null
-# A first creation requires zero live distributions; verification requires the tracked ID.
+# A first creation requires zero live distributions; an existing edge must match the tracked ID.
 aws cloudfront list-distributions --no-paginate --output json > "$RECOVERY_DIR/distributions.json"
 [[ -s "$RECOVERY_DIR/distributions.json" ]]
 jq -e '.DistributionList.IsTruncated == false' "$RECOVERY_DIR/distributions.json" >/dev/null
@@ -28,8 +28,8 @@ if [[ -z "$STATE_CF_ID" ]]; then
   jq -e '.DistributionList.Quantity == 0' "$RECOVERY_DIR/distributions.json" >/dev/null
   echo 'LIVE_CLOUDFRONT_DISTRIBUTIONS=0'
 else
-  [[ "$ACTION" == plan ]] || { echo 'One-time creation already recorded; refusing apply.' >&2; exit 1; }
   jq -e --arg id "$STATE_CF_ID" '.DistributionList.Quantity == 1 and .DistributionList.Items[0].Id == $id' "$RECOVERY_DIR/distributions.json" >/dev/null
+  echo "LIVE_CLOUDFRONT_DISTRIBUTION=$STATE_CF_ID"
 fi
 ORIGIN="$(aws elbv2 describe-load-balancers --names sea-n-shore-staging-alb --region ap-south-1 --query 'LoadBalancers[0].DNSName' --output text)"
 [[ "$ORIGIN" == sea-n-shore-staging-alb-*.ap-south-1.elb.amazonaws.com ]]
@@ -74,7 +74,24 @@ if [[ "$ACTION" == plan ]]; then
   echo 'EDGE_RECOVERY_PLAN_VERIFIED_NO_APPLY'
   exit 0
 fi
-# Apply only the exact saved plan just checked, with state locking and versioned rollback evidence.
+# Apply only the exact saved plan just checked. Existing edge repair must be an in-place CloudFront update.
+if [[ -n "$STATE_CF_ID" ]]; then
+  jq -e '[.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] | sort_by(.address) == [
+    {"address":"aws_cloudfront_distribution.app","actions":["update"]},
+    {"address":"aws_wafv2_web_acl.edge","actions":["no-op"]}
+  ]' "$RECOVERY_DIR/plan.json" >/dev/null || {
+    echo 'Existing edge apply must contain exactly CloudFront update plus WAF no-op.' >&2
+    exit 1
+  }
+else
+  jq -e '[.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] | sort_by(.address) == [
+    {"address":"aws_cloudfront_distribution.app","actions":["create"]},
+    {"address":"aws_wafv2_web_acl.edge","actions":["no-op"]}
+  ]' "$RECOVERY_DIR/plan.json" >/dev/null || {
+    echo 'First edge apply must contain exactly CloudFront create plus WAF no-op.' >&2
+    exit 1
+  }
+fi
 [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$EDGE_AUDIT_EXPECTED_SHA" ]]
 [[ "$(aws s3api get-bucket-versioning --bucket "$STATE_BUCKET" --query Status --output text)" == Enabled ]]
 echo "STATE_BACKUP_VERSION=$(jq -r '.VersionId' "$RECOVERY_DIR/object.json")"
@@ -93,10 +110,12 @@ fi
 terraform -chdir="$APP_DIR" state pull > "$RECOVERY_DIR/state-after.json"
 CF_ID="$(jq -r '.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "app") | .instances[0].attributes.id' "$RECOVERY_DIR/state-after.json")"
 [[ -n "$CF_ID" && "$CF_ID" != null ]]
+if [[ -n "$STATE_CF_ID" ]]; then [[ "$CF_ID" == "$STATE_CF_ID" ]]; fi
 aws cloudfront get-distribution --id "$CF_ID" > "$RECOVERY_DIR/live.json"
 jq -e '.Distribution | .Status == "Deployed" and .DistributionConfig.Enabled == true and .DistributionConfig.Aliases.Quantity == 0 and .DistributionConfig.ViewerCertificate.CloudFrontDefaultCertificate == true and .DistributionConfig.WebACLId == "arn:aws:wafv2:us-east-1:310356785722:global/webacl/sea-n-shore-staging-edge/3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0"' "$RECOVERY_DIR/live.json" >/dev/null
 DOMAIN="$(jq -r '.Distribution.DomainName' "$RECOVERY_DIR/live.json")"
-[[ "$DOMAIN" =~ ^[a-z0-9]+\.cloudfront\.net$ ]]
+[[ "$DOMAIN" == "d3prih0q6jofyr.cloudfront.net" ]]
+jq -e --arg domain "$DOMAIN" '.Distribution.DistributionConfig.Origins | .Quantity == 1 and .Items[0].CustomHeaders.Quantity == 1 and .Items[0].CustomHeaders.Items[0].HeaderName == "X-Forwarded-Host" and .Items[0].CustomHeaders.Items[0].HeaderValue == $domain' "$RECOVERY_DIR/live.json" >/dev/null
 for endpoint in phase4 home; do
   curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 --max-time 45 "https://$DOMAIN/api/health/$endpoint" > "$RECOVERY_DIR/$endpoint.json"
 done
@@ -109,6 +128,6 @@ jq -e --slurpfile before "$RECOVERY_DIR/ecs-before.json" '.services[0] | .taskDe
 echo "CLOUDFRONT_ID=$CF_ID"
 echo "CLOUDFRONT_HTTPS_URL=https://$DOMAIN"
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$RECOVERY_DIR/state-after.json")"
-echo 'EDGE_HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; ECS_UNCHANGED_AND_HEALTHY'
+echo 'EDGE_FORWARDED_HOST_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; ECS_UNCHANGED_AND_HEALTHY'
 PRESERVE_RECOVERY=false
 rm -f .edge-recovery-preserve
