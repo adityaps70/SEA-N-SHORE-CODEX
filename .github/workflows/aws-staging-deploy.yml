@@ -291,21 +291,45 @@ jobs:
           EXPECTED_IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
           set -euo pipefail
-          SERVICE_JSON="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json)"
-          FAILURE_COUNT="$(jq '.failures | length' <<<"$SERVICE_JSON")"
-          [[ "$FAILURE_COUNT" -eq 0 ]]
+          for attempt in $(seq 1 30); do
+            SERVICE_JSON="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --output json)"
+            FAILURE_COUNT="$(jq '.failures | length' <<<"$SERVICE_JSON")"
+            [[ "$FAILURE_COUNT" -eq 0 ]]
 
-          CURRENT_TASK_ARN="$(jq -r '.services[0].taskDefinition' <<<"$SERVICE_JSON")"
-          DESIRED_COUNT="$(jq -r '.services[0].desiredCount' <<<"$SERVICE_JSON")"
-          RUNNING_COUNT="$(jq -r '.services[0].runningCount' <<<"$SERVICE_JSON")"
-          PENDING_COUNT="$(jq -r '.services[0].pendingCount' <<<"$SERVICE_JSON")"
-          DEPLOYMENT_COUNT="$(jq '.services[0].deployments | length' <<<"$SERVICE_JSON")"
-          PRIMARY_TASK_ARN="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].taskDefinition // empty' <<<"$SERVICE_JSON")"
-          PRIMARY_ROLLOUT_STATE="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].rolloutState // empty' <<<"$SERVICE_JSON")"
-          PRIMARY_DESIRED_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].desiredCount // -1' <<<"$SERVICE_JSON")"
-          PRIMARY_RUNNING_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].runningCount // -1' <<<"$SERVICE_JSON")"
-          PRIMARY_PENDING_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].pendingCount // -1' <<<"$SERVICE_JSON")"
-          PRIMARY_FAILED_TASKS="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].failedTasks // -1' <<<"$SERVICE_JSON")"
+            CURRENT_TASK_ARN="$(jq -r '.services[0].taskDefinition' <<<"$SERVICE_JSON")"
+            DESIRED_COUNT="$(jq -r '.services[0].desiredCount' <<<"$SERVICE_JSON")"
+            RUNNING_COUNT="$(jq -r '.services[0].runningCount' <<<"$SERVICE_JSON")"
+            PENDING_COUNT="$(jq -r '.services[0].pendingCount' <<<"$SERVICE_JSON")"
+            DEPLOYMENT_COUNT="$(jq '.services[0].deployments | length' <<<"$SERVICE_JSON")"
+            PRIMARY_TASK_ARN="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].taskDefinition // empty' <<<"$SERVICE_JSON")"
+            PRIMARY_ROLLOUT_STATE="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].rolloutState // empty' <<<"$SERVICE_JSON")"
+            PRIMARY_DESIRED_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].desiredCount // -1' <<<"$SERVICE_JSON")"
+            PRIMARY_RUNNING_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].runningCount // -1' <<<"$SERVICE_JSON")"
+            PRIMARY_PENDING_COUNT="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].pendingCount // -1' <<<"$SERVICE_JSON")"
+            PRIMARY_FAILED_TASKS="$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].failedTasks // -1' <<<"$SERVICE_JSON")"
+
+            echo "exact ECS deployment state attempt=$attempt rolloutState=${PRIMARY_ROLLOUT_STATE:-missing} deployments=$DEPLOYMENT_COUNT counts=$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT"
+
+            if [[ "$CURRENT_TASK_ARN" == "$NEW_TASK_ARN" \
+              && "$DESIRED_COUNT" -eq 1 \
+              && "$RUNNING_COUNT" -eq 1 \
+              && "$PENDING_COUNT" -eq 0 \
+              && "$DEPLOYMENT_COUNT" -eq 1 \
+              && "$PRIMARY_TASK_ARN" == "$NEW_TASK_ARN" \
+              && "$PRIMARY_ROLLOUT_STATE" == "COMPLETED" \
+              && "$PRIMARY_DESIRED_COUNT" -eq 1 \
+              && "$PRIMARY_RUNNING_COUNT" -eq 1 \
+              && "$PRIMARY_PENDING_COUNT" -eq 0 \
+              && "$PRIMARY_FAILED_TASKS" -eq 0 ]]; then
+              break
+            fi
+
+            if [[ "$attempt" -eq 30 ]]; then
+              echo "Timed out waiting for exact ECS deployment completion." >&2
+              exit 1
+            fi
+            sleep 5
+          done
 
           [[ "$CURRENT_TASK_ARN" == "$NEW_TASK_ARN" ]]
           [[ "$DESIRED_COUNT" -eq 1 && "$RUNNING_COUNT" -eq 1 && "$PENDING_COUNT" -eq 0 ]]
