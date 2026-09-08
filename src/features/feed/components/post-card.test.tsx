@@ -4,6 +4,7 @@ import type { FeedPost } from '../types'
 import { PostCard } from './post-card'
 
 vi.mock('../actions', () => ({
+  deletePost: vi.fn(async () => ({ ok: true })),
   setPostLiked: vi.fn(async () => ({ ok: true })),
   setPostSaved: vi.fn(async () => ({ ok: true })),
   setPollVote: vi.fn(async () => ({ ok: true })),
