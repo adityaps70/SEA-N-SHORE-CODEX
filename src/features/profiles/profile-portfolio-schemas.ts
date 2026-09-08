@@ -39,7 +39,7 @@ const termsSchema = z.preprocess(
   z.array(z.string().min(1).max(100)).max(30),
 )
 
-const currentSchema = z.preprocess(
+const checkboxSchema = z.preprocess(
   (value) => value === true || value === 'true' || value === 'on',
   z.boolean(),
 )
@@ -53,7 +53,7 @@ const baseExperienceSchema = z.object({
   location: nullableText(160),
   startedOn: nullableDate,
   endedOn: nullableDate,
-  isCurrent: currentSchema,
+  isCurrent: checkboxSchema,
   description: nullableText(4000),
   cargoExperience: termsSchema,
   engineExperience: termsSchema,
@@ -89,6 +89,28 @@ export const profileExperienceInputSchema = baseExperienceSchema
     }
   })
 
+const baseCredentialSchema = z.object({
+  name: z.string().trim().min(2, 'Add the certificate or CoC name.').max(180),
+  issuer: z.string().trim().min(2, 'Add the issuing authority.').max(180),
+  credentialNumber: nullableText(180),
+  issuedOn: nullableDate,
+  expiresOn: nullableDate,
+  noExpiry: checkboxSchema,
+})
+
+export const profileCredentialInputSchema = baseCredentialSchema
+  .superRefine((data, context) => {
+    if (data.issuedOn && data.expiresOn && data.expiresOn < data.issuedOn) {
+      context.addIssue({ code: 'custom', path: ['expiresOn'], message: 'Expiry date cannot be before the issue date.' })
+    }
+  })
+  .transform((data) => ({
+    ...data,
+    expiresOn: data.noExpiry ? null : data.expiresOn,
+  }))
+
 export const profileExperienceIdSchema = z.string().uuid()
+export const profileCredentialIdSchema = z.string().uuid()
 
 export type ProfileExperienceInput = z.infer<typeof profileExperienceInputSchema>
+export type ProfileCredentialInput = z.infer<typeof profileCredentialInputSchema>
