@@ -42,7 +42,8 @@ def _is_size_body_count_override(value):
     if len(actions) != 1:
         return False
     action = actions[0]
-    if action.get('count') != [{}]:
+    count = action.get('count')
+    if count not in ([{}], [{'custom_request_handling': []}]):
         return False
     for name, setting in action.items():
         if name != 'count' and setting not in (None, [], {}):
