@@ -10,6 +10,7 @@ import {
   addPostCommentWithAurora,
   createPollPostWithAurora,
   createStandardPostWithAurora,
+  deletePostWithAurora,
   setPollVoteWithAurora,
   setPostLikedWithAurora,
   setPostSavedWithAurora,
@@ -190,6 +191,7 @@ export async function createPost(
   }
 
   revalidatePath('/home')
+  revalidatePath('/profile')
   return { ok: true }
 }
 
@@ -205,6 +207,23 @@ export async function loadFeedPage(input: FeedRequest) {
 }
 
 const postIdSchema = z.string().uuid()
+
+export async function deletePost(postId: string): Promise<FeedActionResult> {
+  const parsedId = postIdSchema.safeParse(postId)
+  if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
+  const user = await requireAwsUser()
+  try {
+    await deletePostWithAurora(user.id, parsedId.data)
+  } catch {
+    return { ok: false, error: 'We could not delete this post.' }
+  }
+  revalidatePath('/home')
+  revalidatePath('/saved')
+  revalidatePath('/profile')
+  revalidatePath('/people/[slug]', 'page')
+  revalidatePath('/posts/[id]', 'page')
+  return { ok: true }
+}
 
 export async function setPostLiked(postId: string, liked: boolean): Promise<FeedActionResult> {
   const parsedId = postIdSchema.safeParse(postId)
