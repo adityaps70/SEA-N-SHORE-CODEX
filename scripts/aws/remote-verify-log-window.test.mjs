@@ -11,3 +11,8 @@ test('CloudWatch runtime review starts from the live PRIMARY deployment instead 
   assert.match(workflow, /START_MS=.*PRIMARY_DEPLOYMENT_START_SECONDS/)
   assert.doesNotMatch(workflow, /date \+%s\) - 7200/)
 })
+
+test('remote logo verification follows the compact header asset used by Wordmark', () => {
+  assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
+  assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
+})
