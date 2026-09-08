@@ -4,11 +4,19 @@ import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAwsOwnProfile } from './aws-queries'
 import {
+  createProfileCredentialRecord,
   createProfileExperienceRecord,
+  deleteProfileCredentialRecord,
   deleteProfileExperienceRecord,
+  updateProfileCredentialRecord,
   updateProfileExperienceRecord,
 } from './profile-portfolio-repository'
-import { profileExperienceIdSchema, profileExperienceInputSchema } from './profile-portfolio-schemas'
+import {
+  profileCredentialIdSchema,
+  profileCredentialInputSchema,
+  profileExperienceIdSchema,
+  profileExperienceInputSchema,
+} from './profile-portfolio-schemas'
 
 export type ProfilePortfolioActionState = {
   error?: string
@@ -101,6 +109,76 @@ export async function deleteProfileExperience(experienceId: string): Promise<{ s
     if (!deleted) return { success: false, error: 'That career record is no longer available.' }
   } catch {
     return { success: false, error: 'We could not delete this experience. Please try again.' }
+  }
+
+  revalidateProfile(profile.slug)
+  return { success: true }
+}
+
+export async function createProfileCredential(
+  previousState: ProfilePortfolioActionState,
+  formData: FormData,
+): Promise<ProfilePortfolioActionState> {
+  const user = await requireAwsUser()
+  const profile = await getAwsOwnProfile()
+  if (!profile) return failure(previousState, 'We could not load your profile. Please refresh and try again.')
+
+  const parsed = profileCredentialInputSchema.safeParse(Object.fromEntries(formData))
+  if (!parsed.success) {
+    return validationFailure(previousState, parsed.error.flatten().fieldErrors as Record<string, string[]>)
+  }
+
+  try {
+    await createProfileCredentialRecord(user.id, parsed.data)
+  } catch {
+    return failure(previousState, 'We could not add this credential. Please try again.')
+  }
+
+  revalidateProfile(profile.slug)
+  return success(previousState)
+}
+
+export async function updateProfileCredential(
+  credentialId: string,
+  previousState: ProfilePortfolioActionState,
+  formData: FormData,
+): Promise<ProfilePortfolioActionState> {
+  const user = await requireAwsUser()
+  const profile = await getAwsOwnProfile()
+  if (!profile) return failure(previousState, 'We could not load your profile. Please refresh and try again.')
+
+  const id = profileCredentialIdSchema.safeParse(credentialId)
+  if (!id.success) return failure(previousState, 'That credential is invalid.')
+
+  const parsed = profileCredentialInputSchema.safeParse(Object.fromEntries(formData))
+  if (!parsed.success) {
+    return validationFailure(previousState, parsed.error.flatten().fieldErrors as Record<string, string[]>)
+  }
+
+  try {
+    const updated = await updateProfileCredentialRecord(user.id, id.data, parsed.data)
+    if (!updated) return failure(previousState, 'That credential is no longer available.')
+  } catch {
+    return failure(previousState, 'We could not save this credential. Please try again.')
+  }
+
+  revalidateProfile(profile.slug)
+  return success(previousState)
+}
+
+export async function deleteProfileCredential(credentialId: string): Promise<{ success: boolean; error?: string }> {
+  const user = await requireAwsUser()
+  const profile = await getAwsOwnProfile()
+  if (!profile) return { success: false, error: 'We could not load your profile.' }
+
+  const id = profileCredentialIdSchema.safeParse(credentialId)
+  if (!id.success) return { success: false, error: 'That credential is invalid.' }
+
+  try {
+    const deleted = await deleteProfileCredentialRecord(user.id, id.data)
+    if (!deleted) return { success: false, error: 'That credential is no longer available.' }
+  } catch {
+    return { success: false, error: 'We could not delete this credential. Please try again.' }
   }
 
   revalidateProfile(profile.slug)
