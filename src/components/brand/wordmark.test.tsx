@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { Wordmark } from './wordmark'
+
+afterEach(() => cleanup())
 
 describe('Wordmark', () => {
   it('uses the uploaded Sea N Shore master logo asset', () => {
