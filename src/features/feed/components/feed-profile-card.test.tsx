@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { FeedProfileCard } from './feed-profile-card'
 import type { OwnProfile } from '@/features/profiles/types'
 
@@ -30,6 +30,8 @@ const incompleteProfile: OwnProfile = {
   summary: null,
   skills: [],
 }
+
+afterEach(() => cleanup())
 
 describe('FeedProfileCard', () => {
   it('shows View profile only when profile completion is 100%', () => {
