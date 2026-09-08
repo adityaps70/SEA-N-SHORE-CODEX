@@ -37,6 +37,26 @@ const browser = await chromium.launch()
 async function signUp(user) {
   const context = await browser.newContext()
   const page = await context.newPage()
+  const postObservations = []
+  const requestFailures = []
+  const consoleErrors = []
+  const startedAt = Date.now()
+
+  page.on('response', (response) => {
+    const request = response.request()
+    if (request.method() === 'POST' && response.url().startsWith(siteUrl)) {
+      postObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
+    }
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().startsWith(siteUrl)) {
+      requestFailures.push({ method: request.method(), url: request.url(), failure: request.failure()?.errorText ?? 'unknown' })
+    }
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
+  })
+
   await page.goto(`${siteUrl}/auth/sign-up`, { waitUntil: 'networkidle' })
   await page.getByLabel('Full name').fill(user.fullName)
   await page.getByLabel('Email').fill(user.email)
@@ -53,7 +73,10 @@ async function signUp(user) {
 
   if (!outcome || outcome.kind !== 'confirm') {
     const safeText = outcome?.text?.trim() || 'no rendered auth status'
-    throw new Error(`Public sign-up did not reach confirmation. path=${new URL(page.url()).pathname} state=${outcome?.kind ?? 'timeout'} text=${safeText}`)
+    const posts = postObservations.length ? JSON.stringify(postObservations) : 'none'
+    const failures = requestFailures.length ? JSON.stringify(requestFailures) : 'none'
+    const consoles = consoleErrors.length ? JSON.stringify(consoleErrors) : 'none'
+    throw new Error(`Public sign-up did not reach confirmation. path=${new URL(page.url()).pathname} state=${outcome?.kind ?? 'timeout'} text=${safeText} posts=${posts} requestFailures=${failures} consoleErrors=${consoles}`)
   }
 
   await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible()
