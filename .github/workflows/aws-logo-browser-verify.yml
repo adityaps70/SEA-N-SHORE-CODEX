@@ -37,7 +37,7 @@ jobs:
           npm install
 
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Verify live logo render
         run: node scripts/aws/verify-staging-logo-browser.mjs
