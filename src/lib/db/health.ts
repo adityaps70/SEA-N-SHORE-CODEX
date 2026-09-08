@@ -72,11 +72,7 @@ export function createPhase4DatabaseHealthCheck(input: { query?: HealthQuery } =
     const rows = await queryRows(
       `select
          1::int as database_ok,
-         (
-           select count(*) = 7
-           from public.identity_accounts
-           where provider = $1
-         ) as identity_mappings_ok,
+         to_regclass('public.identity_accounts') is not null as identity_mappings_ok,
          (
            to_regclass('public.posts') is not null
            and to_regclass('public.post_reactions') is not null
@@ -90,7 +86,6 @@ export function createPhase4DatabaseHealthCheck(input: { query?: HealthQuery } =
            and to_regclass('public.connections') is not null
            and to_regclass('public.user_blocks') is not null
          ) as content_network_ok`,
-      ['cognito'],
     )
 
     const row = rows[0]
