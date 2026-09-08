@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { classifyDatabaseFailure, createPhase4DatabaseHealthCheck } from './health'
 
 describe('Phase 4 database health', () => {
-  it('reports healthy only when Aurora, identity mappings, and the Home content/network schema are present', async () => {
+  it('reports healthy when Aurora, the identity mapping schema, and the Home content/network schema are present regardless of user count', async () => {
     const query = vi.fn(async (text: string, values?: readonly unknown[]) => {
       void text
       void values
@@ -20,7 +20,8 @@ describe('Phase 4 database health', () => {
       contentNetwork: true,
     })
     const sql = query.mock.calls[0]?.[0] ?? ''
-    expect(sql).toContain('public.identity_accounts')
+    expect(sql).toContain("to_regclass('public.identity_accounts')")
+    expect(sql).not.toMatch(/count\s*\(\s*\*\s*\)\s*=\s*7/i)
     for (const table of [
       'public.posts',
       'public.post_reactions',
@@ -36,7 +37,7 @@ describe('Phase 4 database health', () => {
     ]) {
       expect(sql).toContain(table)
     }
-    expect(query).toHaveBeenCalledWith(expect.any(String), ['cognito'])
+    expect(query).toHaveBeenCalledWith(expect.any(String), undefined)
   })
 
   it('reports an identity migration problem without exposing row data', async () => {
