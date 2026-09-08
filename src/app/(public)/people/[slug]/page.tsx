@@ -5,6 +5,7 @@ import { getRelationshipState } from '@/features/network/queries'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
+import { ProfilePassportOverview } from '@/features/profiles/components/profile-passport-overview'
 import { getPublicProfileBySlug } from '@/features/profiles/queries'
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -30,6 +31,9 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           <RelationshipControls key={relationshipKey} profileId={profile.id} initialRelationship={relationship} />
         ) : undefined}
       />
+
+      <ProfilePassportOverview profile={profile} />
+
       <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
         <ProfileAbout profile={profile} />
         <MaritimeProfileCard profile={profile} />
