@@ -75,21 +75,30 @@ if [[ "$ACTION" == plan ]]; then
   echo 'EDGE_RECOVERY_PLAN_VERIFIED_NO_APPLY'
   exit 0
 fi
-# Apply only the exact saved plan just checked. Existing edge repair must be an in-place CloudFront update.
+# Apply only the exact saved plan just checked. For an existing edge, only bounded
+# in-place CloudFront and WAF updates/no-ops are allowed, and at least one must change.
 if [[ -n "$STATE_CF_ID" ]]; then
-  jq -e '[.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] | sort_by(.address) == [
-    {"address":"aws_cloudfront_distribution.app","actions":["update"]},
-    {"address":"aws_wafv2_web_acl.edge","actions":["no-op"]}
-  ]' "$RECOVERY_DIR/plan.json" >/dev/null || {
-    echo 'Existing edge apply must contain exactly CloudFront update plus WAF no-op.' >&2
+  jq -e '
+    [.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] as $changes
+    | ($changes | length) == 2
+      and ([ $changes[].address ] | sort) == ["aws_cloudfront_distribution.app", "aws_wafv2_web_acl.edge"]
+      and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions as $cf | ($cf == ["no-op"] or $cf == ["update"]))
+      and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
+      and (([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["update"])
+        or ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions == ["update"]))
+  ' "$RECOVERY_DIR/plan.json" >/dev/null || {
+    echo 'Existing edge apply must contain only bounded CloudFront/WAF in-place changes.' >&2
     exit 1
   }
 else
-  jq -e '[.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] | sort_by(.address) == [
-    {"address":"aws_cloudfront_distribution.app","actions":["create"]},
-    {"address":"aws_wafv2_web_acl.edge","actions":["no-op"]}
-  ]' "$RECOVERY_DIR/plan.json" >/dev/null || {
-    echo 'First edge apply must contain exactly CloudFront create plus WAF no-op.' >&2
+  jq -e '
+    [.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] as $changes
+    | ($changes | length) == 2
+      and ([ $changes[].address ] | sort) == ["aws_cloudfront_distribution.app", "aws_wafv2_web_acl.edge"]
+      and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["create"])
+      and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
+  ' "$RECOVERY_DIR/plan.json" >/dev/null || {
+    echo 'First edge apply must contain CloudFront create plus bounded WAF update/no-op.' >&2
     exit 1
   }
 fi
@@ -117,6 +126,20 @@ jq -e '.Distribution | .Status == "Deployed" and .DistributionConfig.Enabled == 
 DOMAIN="$(jq -r '.Distribution.DomainName' "$RECOVERY_DIR/live.json")"
 [[ "$DOMAIN" == "d3prih0q6jofyr.cloudfront.net" ]]
 jq -e --arg domain "$DOMAIN" '.Distribution.DistributionConfig.Origins | .Quantity == 1 and .Items[0].CustomHeaders.Quantity == 1 and .Items[0].CustomHeaders.Items[0].HeaderName == "X-Forwarded-Host" and .Items[0].CustomHeaders.Items[0].HeaderValue == $domain' "$RECOVERY_DIR/live.json" >/dev/null
+
+aws wafv2 get-web-acl \
+  --scope CLOUDFRONT \
+  --region us-east-1 \
+  --name sea-n-shore-staging-edge \
+  --id 3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0 \
+  --output json > "$RECOVERY_DIR/live-waf.json"
+jq -e '
+  [.WebACL.Rules[] | select(.Name == "AWSManagedRulesCommonRuleSet")] as $rules
+  | ($rules | length) == 1
+    and ($rules[0].Statement.ManagedRuleGroupStatement.RuleActionOverrides
+      | any(.Name == "SizeRestrictions_BODY" and (.ActionToUse.Count != null)))
+' "$RECOVERY_DIR/live-waf.json" >/dev/null
+
 for endpoint in phase4 home; do
   curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 --max-time 45 "https://$DOMAIN/api/health/$endpoint" > "$RECOVERY_DIR/$endpoint.json"
 done
@@ -129,6 +152,6 @@ jq -e --slurpfile before "$RECOVERY_DIR/ecs-before.json" '.services[0] | .taskDe
 echo "CLOUDFRONT_ID=$CF_ID"
 echo "CLOUDFRONT_HTTPS_URL=https://$DOMAIN"
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$RECOVERY_DIR/state-after.json")"
-echo 'EDGE_FORWARDED_HOST_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; ECS_UNCHANGED_AND_HEALTHY'
+echo 'EDGE_FORWARDED_HOST_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; ECS_UNCHANGED_AND_HEALTHY'
 PRESERVE_RECOVERY=false
 rm -f .edge-recovery-preserve
