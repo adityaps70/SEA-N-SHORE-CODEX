@@ -83,14 +83,23 @@ try {
   if (!state.complete || state.naturalWidth <= 0 || state.naturalHeight <= 0) {
     throw new Error('Logo image did not decode in Chromium')
   }
-  if (state.rect.width < 20 || state.rect.height < 20) {
-    throw new Error(`Logo has non-visible rendered dimensions ${state.rect.width}x${state.rect.height}`)
+
+  const naturalAspectRatio = state.naturalWidth / state.naturalHeight
+  const renderedAspectRatio = state.rect.width / state.rect.height
+  console.log(`LOGO_NATURAL_ASPECT_RATIO=${naturalAspectRatio.toFixed(3)}`)
+  console.log(`LOGO_RENDERED_ASPECT_RATIO=${renderedAspectRatio.toFixed(3)}`)
+
+  if (naturalAspectRatio < 4.5) {
+    throw new Error(`Compact logo asset is not the required horizontal lockup: intrinsic ${state.naturalWidth}x${state.naturalHeight}`)
+  }
+  if (state.rect.width < 180 || state.rect.height < 35 || renderedAspectRatio < 4.5) {
+    throw new Error(`Compact logo is not visibly rendered as a horizontal lockup: ${state.rect.width}x${state.rect.height}`)
   }
   if (state.style.display === 'none' || state.style.visibility === 'hidden' || Number(state.style.opacity) === 0) {
     throw new Error(`Logo is hidden by computed style ${JSON.stringify(state.style)}`)
   }
 
-  console.log('LOGO_BROWSER_RENDER=visible')
+  console.log('LOGO_BROWSER_RENDER=visible-horizontal-lockup')
 } finally {
   await browser.close()
 }
