@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getVerifiedUser } from '@/features/auth/queries'
+import { ProfilePostsSection } from '@/features/feed/components/profile-posts-section'
+import { getPostsByAuthor } from '@/features/feed/queries'
 import { RelationshipControls } from '@/features/network/components/relationship-controls'
 import { getRelationshipState } from '@/features/network/queries'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
@@ -19,9 +21,10 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   ])
   if (!profile) notFound()
 
-  const [relationship, portfolio] = await Promise.all([
+  const [relationship, portfolio, posts] = await Promise.all([
     viewer && viewer.id !== profile.id ? getRelationshipState(profile.id) : null,
     getProfilePortfolioById(profile.id),
+    viewer ? getPostsByAuthor(profile.id) : Promise.resolve(null),
   ])
   const relationshipKey = relationship
     ? `${relationship.following ? 1 : 0}:${relationship.connection.kind}:${relationship.connection.connectionId ?? ''}`
@@ -45,6 +48,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
 
       <ProfileCareerTimeline experiences={portfolio.experiences} />
       <ProfileCredentialWallet credentials={portfolio.credentials} />
+      {posts ? <ProfilePostsSection posts={posts} ownerName={profile.fullName} /> : null}
 
       <p className="px-1 text-center text-xs leading-5 text-muted">
         Sea N Shore professional profiles are member-provided. Verification badges will appear only after the formal evidence review workflow is enabled.
