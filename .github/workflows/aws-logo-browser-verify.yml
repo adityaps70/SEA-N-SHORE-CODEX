@@ -1,0 +1,52 @@
+name: AWS Logo Browser Verify
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - src/components/brand/**
+      - src/components/navigation/**
+      - public/brand/**
+      - scripts/aws/verify-staging-logo-browser.mjs
+      - .github/workflows/aws-logo-browser-verify.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chromium-render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      STAGING_URL: https://d3prih0q6jofyr.cloudfront.net
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: |
+          npm install -g npm@11.6.0
+          npm install
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify live logo render
+        run: node scripts/aws/verify-staging-logo-browser.mjs
+
+      - name: Upload header screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sea-n-shore-logo-browser
+          path: /tmp/sea-n-shore-logo-browser.png
+          if-no-files-found: warn
+          retention-days: 3
