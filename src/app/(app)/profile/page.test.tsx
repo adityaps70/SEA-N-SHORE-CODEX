@@ -51,6 +51,9 @@ vi.mock('@/features/profiles/components/profile-media-controls', () => ({
 vi.mock('@/features/profiles/components/profile-career-timeline', () => ({
   ProfileCareerTimeline: () => <div>Career timeline</div>,
 }))
+vi.mock('@/features/profiles/components/profile-credential-wallet', () => ({
+  ProfileCredentialWallet: () => <div>Certification wallet</div>,
+}))
 
 describe('My Profile page', () => {
   it('keeps profile editing inline and removes developer-style privacy controls from the page header', async () => {
