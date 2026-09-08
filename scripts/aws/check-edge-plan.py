@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Allow only a bounded staging CloudFront edge create/update/no-op."""
+"""Allow only bounded staging CloudFront and profile-upload WAF changes."""
+import copy
 import json
 import sys
 
@@ -11,10 +12,70 @@ EXPECTED_CUSTOM_HEADERS = [{'name': 'X-Forwarded-Host', 'value': FORWARDED_HOST}
 WAF_ID = '3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0'
 WAF_ARN = 'arn:aws:wafv2:us-east-1:310356785722:global/webacl/sea-n-shore-staging-edge/' + WAF_ID
 
+
 def has_unknown(value):
     if isinstance(value, dict): return any(has_unknown(v) for v in value.values())
     if isinstance(value, list): return any(has_unknown(v) for v in value)
     return value is True
+
+
+def _managed_common_statement(waf):
+    rules = [rule for rule in waf.get('rule', []) if rule.get('name') == 'AWSManagedRulesCommonRuleSet']
+    if len(rules) != 1:
+        return None
+    statements = rules[0].get('statement', [])
+    if len(statements) != 1:
+        return None
+    groups = statements[0].get('managed_rule_group_statement', [])
+    if len(groups) != 1:
+        return None
+    group = groups[0]
+    if group.get('name') != 'AWSManagedRulesCommonRuleSet' or group.get('vendor_name') != 'AWS':
+        return None
+    return group
+
+
+def _is_size_body_count_override(value):
+    if value.get('name') != 'SizeRestrictions_BODY':
+        return False
+    actions = value.get('action_to_use', [])
+    if len(actions) != 1:
+        return False
+    action = actions[0]
+    if action.get('count') != [{}]:
+        return False
+    for name, setting in action.items():
+        if name != 'count' and setting not in (None, [], {}):
+            return False
+    return True
+
+
+def _normalize_waf_without_allowed_override(waf, require_override):
+    normalized = copy.deepcopy(waf)
+    group = _managed_common_statement(normalized)
+    if group is None:
+        return None
+    overrides = group.get('rule_action_override', []) or []
+    allowed = [override for override in overrides if _is_size_body_count_override(override)]
+    if require_override and len(allowed) != 1:
+        return None
+    if any(not _is_size_body_count_override(override) for override in overrides):
+        return None
+    group.pop('rule_action_override', None)
+    return normalized
+
+
+def _validate_waf_update(change):
+    before = change.get('before')
+    after = change.get('after')
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return False
+    if before.get('id') != WAF_ID or after.get('id') != WAF_ID:
+        return False
+    normalized_before = _normalize_waf_without_allowed_override(before, False)
+    normalized_after = _normalize_waf_without_allowed_override(after, True)
+    return normalized_before is not None and normalized_after is not None and normalized_before == normalized_after
+
 
 def validate(plan, origin):
     errors = []
@@ -25,11 +86,22 @@ def validate(plan, origin):
             if actions not in [['read'], ['no-op']]: errors.append('Invalid data action: ' + address)
         elif address == 'aws_cloudfront_distribution.app':
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('CloudFront must be create/update/no-op')
+        elif address == 'aws_wafv2_web_acl.edge':
+            if actions not in [['update'], ['no-op']]: errors.append('WAF must be update/no-op')
         elif actions != ['no-op']:
             errors.append('Forbidden infrastructure change: ' + address)
+
     waf = changes.get('aws_wafv2_web_acl.edge', {}).get('change', {})
-    if waf.get('actions') != ['no-op'] or waf.get('after', {}).get('id') != WAF_ID:
-        errors.append('Existing WAF must be unchanged')
+    waf_actions = waf.get('actions')
+    if waf_actions == ['no-op']:
+        if waf.get('after', {}).get('id') != WAF_ID:
+            errors.append('Existing WAF identity mismatch')
+    elif waf_actions == ['update']:
+        if not _validate_waf_update(waf):
+            errors.append('WAF update must only add SizeRestrictions_BODY Count override')
+    else:
+        errors.append('Existing WAF must be present')
+
     cf_change = changes.get('aws_cloudfront_distribution.app', {}).get('change', {})
     cf = cf_change.get('after', {})
     unknown = cf_change.get('after_unknown', {})
@@ -66,10 +138,11 @@ def validate(plan, origin):
     if cf.get('ordered_cache_behavior') or cf.get('custom_error_response'): errors.append('Unexpected cache/error override')
     return errors
 
+
 if __name__ == '__main__':
     with open(sys.argv[1]) as f: plan = json.load(f)
     errors = validate(plan, sys.argv[2])
     if errors:
         print('\n'.join(errors), file=sys.stderr)
         sys.exit(1)
-    print('EDGE_PLAN_GUARD_PASSED: existing WAF unchanged; only bounded staging CloudFront create/update/no-op with exact forwarded host allowed')
+    print('EDGE_PLAN_GUARD_PASSED: only bounded staging CloudFront changes and exact SizeRestrictions_BODY Count override allowed')
