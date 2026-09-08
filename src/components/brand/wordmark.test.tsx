@@ -16,14 +16,12 @@ describe('Wordmark', () => {
     expect(screen.queryByText('Global maritime network')).not.toBeInTheDocument()
   })
 
-  it('completes the compact logo with the brand text beside the symbol', () => {
-    const { container } = render(<Wordmark compact />)
+  it('uses a cropped original-artwork compact lockup', () => {
+    render(<Wordmark compact />)
 
-    const symbol = container.querySelector('img[src="/brand/sea-n-shore-symbol.webp"]')
-    expect(symbol).toBeInTheDocument()
-    expect(symbol).toHaveAttribute('aria-hidden', 'true')
-
-    expect(screen.getByText('SEA N SHORE')).toBeInTheDocument()
-    expect(screen.getByText('Global Shipping Community')).toBeInTheDocument()
+    const logo = screen.getByRole('img', { name: /sea and shore global shipping community/i })
+    expect(logo).toHaveAttribute('src', '/brand/sea-n-shore-compact-lockup.webp')
+    expect(screen.queryByText('SEA N SHORE')).not.toBeInTheDocument()
+    expect(screen.queryByText('Global Shipping Community')).not.toBeInTheDocument()
   })
 })
