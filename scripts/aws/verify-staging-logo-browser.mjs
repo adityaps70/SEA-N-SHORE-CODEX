@@ -1,7 +1,7 @@
 import { chromium } from '@playwright/test'
 
 const url = process.env.STAGING_URL || 'https://d3prih0q6jofyr.cloudfront.net'
-const assetPath = '/brand/sea-n-shore-compact-lockup.webp'
+const assetPath = '/brand/sea-and-shore-header-logo.svg'
 
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage({ viewport: { width: 1536, height: 1024 } })
@@ -89,17 +89,17 @@ try {
   console.log(`LOGO_NATURAL_ASPECT_RATIO=${naturalAspectRatio.toFixed(3)}`)
   console.log(`LOGO_RENDERED_ASPECT_RATIO=${renderedAspectRatio.toFixed(3)}`)
 
-  if (naturalAspectRatio < 4.5) {
-    throw new Error(`Compact logo asset is not the required horizontal lockup: intrinsic ${state.naturalWidth}x${state.naturalHeight}`)
+  if (naturalAspectRatio < 2.8) {
+    throw new Error(`Header logo asset is not the required horizontal Sea and Shore lockup: intrinsic ${state.naturalWidth}x${state.naturalHeight}`)
   }
-  if (state.rect.width < 180 || state.rect.height < 35 || renderedAspectRatio < 4.5) {
-    throw new Error(`Compact logo is not visibly rendered as a horizontal lockup: ${state.rect.width}x${state.rect.height}`)
+  if (state.rect.width < 130 || state.rect.height < 35 || renderedAspectRatio < 2.8) {
+    throw new Error(`Header logo is not visibly rendered as a horizontal lockup: ${state.rect.width}x${state.rect.height}`)
   }
   if (state.style.display === 'none' || state.style.visibility === 'hidden' || Number(state.style.opacity) === 0) {
     throw new Error(`Logo is hidden by computed style ${JSON.stringify(state.style)}`)
   }
 
-  console.log('LOGO_BROWSER_RENDER=visible-horizontal-lockup')
+  console.log('LOGO_BROWSER_RENDER=visible-uploaded-sea-and-shore-lockup')
 } finally {
   await browser.close()
 }
