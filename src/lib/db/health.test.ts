@@ -37,7 +37,7 @@ describe('Phase 4 database health', () => {
     ]) {
       expect(sql).toContain(table)
     }
-    expect(query).toHaveBeenCalledWith(expect.any(String), undefined)
+    expect(query).toHaveBeenCalledWith(expect.any(String))
   })
 
   it('reports an identity migration problem without exposing row data', async () => {
