@@ -32,6 +32,7 @@ function fakeApi() {
       accessToken: 'a2', refreshToken: 'r2', expiresIn: 3600,
     })),
     signUp: vi.fn(async () => ({ userSub: 'sub1', userConfirmed: false })),
+    resendConfirmationCode: vi.fn(async () => undefined),
     confirmSignUp: vi.fn(async () => undefined),
     forgotPassword: vi.fn(async () => undefined),
     confirmForgotPassword: vi.fn(async () => undefined),
@@ -123,7 +124,7 @@ describe('Cognito auth actions', () => {
     expect(cookies.values.get(COGNITO_COOKIE_NAMES.access)).toBe('a2')
   })
 
-  it('keeps sign-up non-enumerating for an existing username', async () => {
+  it('resends confirmation when sign-up is retried for an existing unconfirmed username', async () => {
     const api = fakeApi()
     api.signUp.mockRejectedValueOnce(new CognitoApiError('UsernameExistsException'))
     const { actions } = setup(api)
@@ -133,6 +134,7 @@ describe('Cognito auth actions', () => {
         form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1' }),
       ),
     ).resolves.toEqual({ message: 'Check your email to continue.' })
+    expect(api.resendConfirmationCode).toHaveBeenCalledWith('new@example.com')
   })
 
   it('keeps forgot-password non-enumerating for a missing user', async () => {
