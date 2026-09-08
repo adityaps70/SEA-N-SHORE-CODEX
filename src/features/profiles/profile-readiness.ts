@@ -69,6 +69,6 @@ export function getProfileReadiness(profile: PublicProfile): ProfileReadiness {
     score: total === 0 ? 100 : Math.round((completed / total) * 100),
     completed,
     total,
-    nextSteps: checks.filter((check) => !check.complete).map((check) => check.guidance).slice(0, 4),
+    nextSteps: checks.filter((check) => !check.complete).map((check) => check.guidance),
   }
 }
