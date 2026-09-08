@@ -13,6 +13,7 @@ export type CognitoPrincipal = {
   sub: string
   email: string | null
   emailVerified: boolean
+  name: string | null
 }
 
 export type CognitoSignUpResult = {
@@ -206,6 +207,7 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
         sub: attributes.get('sub') ?? '',
         email: attributes.get('email') ?? null,
         emailVerified: attributes.get('email_verified') === 'true',
+        name: attributes.get('name') ?? null,
       }
     },
 
