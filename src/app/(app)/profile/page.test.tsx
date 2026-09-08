@@ -25,7 +25,7 @@ vi.mock('@/features/profiles/queries', () => ({
     vesselTypes: ['Oil Tanker'],
     tradingAreas: ['Worldwide'],
     shoreCareerPreference: false,
-    availability: 'Open to mentoring',
+    availability: 'YES',
     skills: ['Navigation'],
     contactVisibility: 'members',
     onboardingCompletedAt: '2026-09-01T00:00:00.000Z',
@@ -41,12 +41,16 @@ vi.mock('@/features/profiles/components/profile-about', () => ({
 vi.mock('@/features/profiles/components/maritime-profile-card', () => ({
   MaritimeProfileCard: () => <div>Maritime profile</div>,
 }))
+vi.mock('@/features/profiles/components/profile-media-controls', () => ({
+  ProfileMediaControls: () => <button type="button">Media control</button>,
+}))
 
 describe('My Profile page', () => {
-  it('provides an Edit all link for the signed-in owner', async () => {
+  it('keeps profile editing inline and removes developer-style privacy controls from the page header', async () => {
     render(await OwnProfilePage())
 
-    const editLink = screen.getByRole('link', { name: /edit all/i })
-    expect(editLink).toHaveAttribute('href', '/profile/edit')
+    expect(screen.queryByRole('link', { name: /edit all/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/contact:/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /view public profile/i })).toHaveAttribute('href', '/people/captain-example')
   })
 })
