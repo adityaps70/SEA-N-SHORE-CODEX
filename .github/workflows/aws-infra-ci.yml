@@ -48,6 +48,8 @@ jobs:
         run: python3 scripts/aws/server-action-edge-header.test.py
       - name: Verify remote execution security contract
         run: node --test scripts/aws/remote-execution-config.test.mjs
+      - name: Verify remote runtime log window contract
+        run: node --test scripts/aws/remote-verify-log-window.test.mjs
       - name: Verify staging deploy guard contract
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
       - name: Verify onboarding e2e guard contract
