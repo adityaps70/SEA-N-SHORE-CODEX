@@ -87,6 +87,11 @@ resource "aws_cloudfront_distribution" "app" {
     domain_name = data.aws_lb.edge_origin.dns_name
     origin_id   = "sea-n-shore-staging-alb"
 
+    custom_header {
+      name  = "X-Forwarded-Host"
+      value = "d3prih0q6jofyr.cloudfront.net"
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443
