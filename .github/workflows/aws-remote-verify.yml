@@ -103,6 +103,7 @@ jobs:
               runningCount,
               pendingCount,
               failedTasks,
+              createdAt,
               rolloutStateReason
             }],
             recentEvents: [.events[0:8][] | {createdAt, message}]
@@ -146,7 +147,7 @@ jobs:
           fi
           echo "No legacy Supabase env vars are present in task definition $ECS_TASK_DEFINITION."
 
-      - name: Review recent CloudWatch strong runtime errors
+      - name: Review current deployment CloudWatch strong runtime errors
         run: |
           set -euo pipefail
           LOG_GROUP=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '
@@ -156,7 +157,11 @@ jobs:
           ' /tmp/task-definition.json)
           test -n "$LOG_GROUP" || { echo "Missing CloudWatch log group on live ECS task definition." >&2; exit 1; }
 
-          START_MS=$(( ( $(date +%s) - 7200 ) * 1000 ))
+          PRIMARY_DEPLOYMENT_CREATED_AT=$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].createdAt // empty' /tmp/service.json)
+          test -n "$PRIMARY_DEPLOYMENT_CREATED_AT" || { echo "Missing PRIMARY ECS deployment createdAt timestamp." >&2; exit 1; }
+          PRIMARY_DEPLOYMENT_START_SECONDS=$(date -d "$PRIMARY_DEPLOYMENT_CREATED_AT" +%s)
+          START_MS=$(( ( PRIMARY_DEPLOYMENT_START_SECONDS - 30 ) * 1000 ))
+
           aws logs filter-log-events \
             --region "$AWS_REGION" \
             --log-group-name "$LOG_GROUP" \
@@ -170,11 +175,12 @@ jobs:
           MATCH_COUNT=$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l | tr -d ' ')
 
           echo "=== REMOTE VERIFY CLOUDWATCH REVIEW ==="
+          echo "PRIMARY_DEPLOYMENT_CREATED_AT=$PRIMARY_DEPLOYMENT_CREATED_AT"
           echo "CLOUDWATCH_EVENTS_REVIEWED=$TOTAL"
           echo "STRONG_RUNTIME_ERROR_MATCHES=$MATCH_COUNT"
 
           if [ "$MATCH_COUNT" -gt 1 ]; then
-            echo "Repeating runtime error signatures detected in the last two hours." >&2
+            echo "Repeating runtime error signatures detected in the current PRIMARY deployment." >&2
             printf '%s\n' "$MATCHES" \
               | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
               | head -n 10 >&2
@@ -182,9 +188,9 @@ jobs:
           fi
 
           if [ "$MATCH_COUNT" -eq 1 ]; then
-            echo "One non-repeating runtime error signature was observed; no repeating error pattern was detected."
+            echo "One non-repeating runtime error signature was observed in the current PRIMARY deployment; no repeating error pattern was detected."
           else
-            echo "No strong runtime error signatures were observed."
+            echo "No strong runtime error signatures were observed in the current PRIMARY deployment."
           fi
 
   verify-on-bootstrap:
