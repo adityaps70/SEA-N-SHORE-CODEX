@@ -61,7 +61,7 @@ jobs:
       - name: Verify Sea N Shore logo delivery and page markup
         run: |
           set -euo pipefail
-          ASSET_PATH="/brand/sea-n-shore-compact-lockup.webp"
+          ASSET_PATH="/brand/sea-and-shore-header-logo.svg"
           CLOUDFRONT_URL="https://d3prih0q6jofyr.cloudfront.net"
 
           verify_asset() {
