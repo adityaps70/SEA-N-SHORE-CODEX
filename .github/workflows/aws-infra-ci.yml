@@ -44,6 +44,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Verify edge recovery plan guard
         run: python3 scripts/aws/check-edge-plan.test.py
+      - name: Verify Server Action edge header contract
+        run: python3 scripts/aws/server-action-edge-header.test.py
       - name: Verify remote execution security contract
         run: node --test scripts/aws/remote-execution-config.test.mjs
       - name: Verify staging deploy guard contract
