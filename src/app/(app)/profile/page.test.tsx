@@ -32,6 +32,10 @@ vi.mock('@/features/profiles/queries', () => ({
   })),
 }))
 
+vi.mock('@/features/profiles/profile-portfolio-queries', () => ({
+  getOwnProfilePortfolio: vi.fn(async () => ({ experiences: [], credentials: [] })),
+}))
+
 vi.mock('@/features/profiles/components/profile-header', () => ({
   ProfileHeader: () => <div>Profile header</div>,
 }))
@@ -43,6 +47,9 @@ vi.mock('@/features/profiles/components/maritime-profile-card', () => ({
 }))
 vi.mock('@/features/profiles/components/profile-media-controls', () => ({
   ProfileMediaControls: () => <button type="button">Media control</button>,
+}))
+vi.mock('@/features/profiles/components/profile-career-timeline', () => ({
+  ProfileCareerTimeline: () => <div>Career timeline</div>,
 }))
 
 describe('My Profile page', () => {
