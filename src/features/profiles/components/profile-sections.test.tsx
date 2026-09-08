@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PublicProfile } from '../types'
 import { MaritimeProfileCard } from './maritime-profile-card'
@@ -23,20 +23,29 @@ const profile = {
   vesselTypes: ['Oil Tanker'],
   tradingAreas: ['Worldwide'],
   shoreCareerPreference: true,
-  availability: 'Available now',
+  availability: 'YES',
   skills: ['SIRE 2.0'],
 } satisfies PublicProfile
 
 afterEach(() => cleanup())
 
 describe('own profile section controls', () => {
-  it('gives About its own edit link', () => {
+  it('edits About in place', () => {
     render(<ProfileAbout profile={profile} editHref="/profile/edit#about" />)
-    expect(screen.getByRole('link', { name: 'Edit About' })).toHaveAttribute('href', '/profile/edit#about')
+    const edit = screen.getByRole('button', { name: 'Edit About' })
+    fireEvent.click(edit)
+    expect(screen.getByRole('textbox', { name: 'About' })).toHaveValue(profile.summary)
+    expect(screen.getByRole('textbox', { name: 'Skills' })).toHaveValue('SIRE 2.0')
   })
 
-  it('gives Professional Record its own edit link', () => {
+  it('edits Professional Record in place with Onboard and Ashore availability only', () => {
     render(<MaritimeProfileCard profile={profile} editHref="/profile/edit#professional" />)
-    expect(screen.getByRole('link', { name: 'Edit Professional Record' })).toHaveAttribute('href', '/profile/edit#professional')
+    const edit = screen.getByRole('button', { name: 'Edit Professional Record' })
+    fireEvent.click(edit)
+    const availability = screen.getByRole('combobox', { name: 'Availability' })
+    expect(availability).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Onboard' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Ashore' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'YES' })).not.toBeInTheDocument()
   })
 })
