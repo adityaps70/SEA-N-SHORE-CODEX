@@ -39,6 +39,20 @@ class EdgePlanTests(unittest.TestCase):
         ]}
         self.assertEqual(guard.validate(plan,'alb.example.amazonaws.com'),[])
 
+        provider_expanded=copy.deepcopy(plan)
+        provider_expanded['resource_changes'][0]['change']['after']['rule'][0]['statement'][0]['managed_rule_group_statement'][0]['rule_action_override'][0]['action_to_use']=[{
+            'allow': [],
+            'block': [],
+            'captcha': [],
+            'challenge': [],
+            'count': [{'custom_request_handling': []}],
+        }]
+        self.assertEqual(guard.validate(provider_expanded,'alb.example.amazonaws.com'),[])
+
+        unsafe_count=copy.deepcopy(provider_expanded)
+        unsafe_count['resource_changes'][0]['change']['after']['rule'][0]['statement'][0]['managed_rule_group_statement'][0]['rule_action_override'][0]['action_to_use'][0]['count']=[{'custom_request_handling':[{'insert_header':[{'name':'X-Test','value':'unsafe'}]}]}]
+        self.assertTrue(guard.validate(unsafe_count,'alb.example.amazonaws.com'))
+
         wrong_action=copy.deepcopy(plan)
         wrong_action['resource_changes'][0]['change']['after']['rule'][0]['statement'][0]['managed_rule_group_statement'][0]['rule_action_override'][0]['action_to_use']=[{'allow':[{}]}]
         self.assertTrue(guard.validate(wrong_action,'alb.example.amazonaws.com'))
