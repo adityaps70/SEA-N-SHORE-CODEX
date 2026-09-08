@@ -41,7 +41,7 @@ export const profileIdentitySectionSchema = z.object({
   slug: z
     .string()
     .trim()
-    .toLocaleLowerCase('en')
+    .toLowerCase()
     .min(1, 'Choose a profile address.')
     .max(80)
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use letters, numbers, and single hyphens.'),
