@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { updateProfileAboutSection, type ProfileInlineActionState } from '../profile-inline-actions'
@@ -17,14 +17,18 @@ function FieldError({ state, name }: { state: ProfileInlineActionState; name: st
 export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
-  const [state, formAction, pending] = useActionState(updateProfileAboutSection, initialState)
-  const editable = Boolean(editHref)
 
-  useEffect(() => {
-    if (!state.success) return
-    setEditing(false)
-    router.refresh()
-  }, [router, state.revision, state.success])
+  async function submitAbout(previousState: ProfileInlineActionState, formData: FormData) {
+    const nextState = await updateProfileAboutSection(previousState, formData)
+    if (nextState.success) {
+      setEditing(false)
+      router.refresh()
+    }
+    return nextState
+  }
+
+  const [state, formAction, pending] = useActionState(submitAbout, initialState)
+  const editable = Boolean(editHref)
 
   if (!editable && !profile.summary && profile.skills.length === 0) return null
 
