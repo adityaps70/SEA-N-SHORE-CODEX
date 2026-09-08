@@ -1,10 +1,10 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowUpRight, Eye } from 'lucide-react'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { ProfileMediaControls } from '@/features/profiles/components/profile-media-controls'
+import { ProfilePassportOverview } from '@/features/profiles/components/profile-passport-overview'
+import { ProfilePassportToolbar } from '@/features/profiles/components/profile-passport-toolbar'
 import { getOwnProfile } from '@/features/profiles/queries'
 
 export default async function OwnProfilePage() {
@@ -13,19 +13,15 @@ export default async function OwnProfilePage() {
 
   return (
     <section className="grid gap-5 py-2 sm:py-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[.14em] text-ocean-700">Professional identity</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-navy-950">My profile</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-navy-950 sm:text-3xl">My Maritime Passport</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+            Keep one maritime career profile ready for the community, employers and recruiters.
+          </p>
         </div>
-        <Link
-          href={`/people/${profile.slug}`}
-          className="inline-flex min-h-10 w-fit items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-ocean-700"
-        >
-          <Eye aria-hidden="true" className="size-4" />
-          View public profile
-          <ArrowUpRight aria-hidden="true" className="size-4" />
-        </Link>
+        <ProfilePassportToolbar slug={profile.slug} />
       </div>
 
       <ProfileHeader
@@ -35,6 +31,9 @@ export default async function OwnProfilePage() {
         mediaControls={<ProfileMediaControls kind="cover" hasImage={Boolean(profile.coverPath)} />}
         avatarControls={<ProfileMediaControls kind="avatar" hasImage={Boolean(profile.avatarPath)} />}
       />
+
+      <ProfilePassportOverview profile={profile} showReadiness />
+
       <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
         <ProfileAbout profile={profile} editHref="inline" />
         <MaritimeProfileCard profile={profile} editHref="inline" />
