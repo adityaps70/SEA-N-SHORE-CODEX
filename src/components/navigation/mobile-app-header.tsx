@@ -6,7 +6,7 @@ export function MobileAppHeader({ unreadCount }: { unreadCount: number }) {
   return (
     <header className="border-b border-mist-100 bg-white md:hidden">
       <div className="flex min-h-14 items-center justify-between gap-3 px-4">
-        <Wordmark />
+        <Wordmark compact />
         <div className="flex items-center gap-1">
           <Link
             href="/saved"
