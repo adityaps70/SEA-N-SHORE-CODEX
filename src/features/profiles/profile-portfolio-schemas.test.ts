@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { profileExperienceInputSchema } from './profile-portfolio-schemas'
+import { profileCredentialInputSchema, profileExperienceInputSchema } from './profile-portfolio-schemas'
 
 describe('profileExperienceInputSchema', () => {
   it('normalizes a sea-service record with maritime specialist fields', () => {
@@ -64,6 +64,56 @@ describe('profileExperienceInputSchema', () => {
       startedOn: '2025-05-10',
       endedOn: '2025-05-01',
       description: '',
+    })).toThrow()
+  })
+})
+
+describe('profileCredentialInputSchema', () => {
+  it('normalizes a CoC record and ignores any client-supplied verification state', () => {
+    const parsed = profileCredentialInputSchema.parse({
+      name: 'Certificate of Competency - Master',
+      issuer: 'DG Shipping India',
+      credentialNumber: ' COC-12345 ',
+      issuedOn: '2023-04-12',
+      expiresOn: '2028-04-11',
+      noExpiry: '',
+      verificationState: 'verified',
+    })
+
+    expect(parsed).toEqual({
+      name: 'Certificate of Competency - Master',
+      issuer: 'DG Shipping India',
+      credentialNumber: 'COC-12345',
+      issuedOn: '2023-04-12',
+      expiresOn: '2028-04-11',
+      noExpiry: false,
+    })
+    expect('verificationState' in parsed).toBe(false)
+  })
+
+  it('clears the expiry date when the member marks a certificate as no-expiry', () => {
+    const parsed = profileCredentialInputSchema.parse({
+      name: 'GMDSS General Operator Certificate',
+      issuer: 'Maritime Authority',
+      credentialNumber: '',
+      issuedOn: '',
+      expiresOn: '2030-01-01',
+      noExpiry: 'on',
+    })
+
+    expect(parsed.noExpiry).toBe(true)
+    expect(parsed.expiresOn).toBeNull()
+    expect(parsed.credentialNumber).toBeNull()
+    expect(parsed.issuedOn).toBeNull()
+  })
+
+  it('rejects an expiry date before the issue date', () => {
+    expect(() => profileCredentialInputSchema.parse({
+      name: 'Advanced Oil Tanker Training',
+      issuer: 'Approved Training Institute',
+      issuedOn: '2027-01-10',
+      expiresOn: '2026-01-10',
+      noExpiry: '',
     })).toThrow()
   })
 })
