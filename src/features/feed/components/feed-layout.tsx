@@ -33,8 +33,8 @@ export function FeedLayout({
       </main>
 
       <aside className="hidden xl:block">
-        <div className="sticky top-6">
-          <FeedDiscoveryRail category={category} suggestions={suggestions} />
+        <div className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pb-4 pr-1">
+          <FeedDiscoveryRail profile={profile} category={category} suggestions={suggestions} />
         </div>
       </aside>
     </section>
