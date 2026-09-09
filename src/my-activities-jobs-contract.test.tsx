@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { AppHeader } from '@/components/navigation/app-header'
 
 vi.mock('next/navigation', () => ({
+  redirect: vi.fn(),
   useRouter: () => ({
     refresh: vi.fn(),
     push: vi.fn(),
