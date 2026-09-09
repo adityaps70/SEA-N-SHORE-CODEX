@@ -301,6 +301,15 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/${var.phase5b_cognito_user_pool_id}"
       },
       {
+        Sid    = "ManageStagingMediaCors"
+        Effect = "Allow"
+        Action = [
+          "s3:PutBucketCORS",
+          "s3:GetBucketCORS"
+        ]
+        Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-media"
+      },
+      {
         Sid      = "DiscoverBootstrapInstance"
         Effect   = "Allow"
         Action   = ["ec2:DescribeInstances"]
