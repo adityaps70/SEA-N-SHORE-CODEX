@@ -49,9 +49,6 @@ export default async function NetworkPage({
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Maritime network</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em] text-navy-950">People worth knowing at sea and ashore.</h1>
-            <p className="mt-2 max-w-2xl leading-7 text-muted">
-              Build professional relationships across ships, shore offices, training, recruitment, mentoring, and the wider maritime ecosystem.
-            </p>
           </div>
         </div>
 
