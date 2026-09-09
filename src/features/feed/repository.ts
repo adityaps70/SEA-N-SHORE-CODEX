@@ -144,20 +144,27 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return rows as FeedPostRow[]
   }
 
-  async function listAuthorRows(lookup: { viewerProfileId: string; authorProfileId: string; limit: number }): Promise<FeedPostRow[]> {
+  async function listAuthorRows(lookup: { viewerProfileId: string; authorProfileId: string; limit?: number }): Promise<FeedPostRow[]> {
+    const values: unknown[] = [lookup.viewerProfileId, lookup.authorProfileId]
+    const limitSql = lookup.limit === undefined ? '' : ' limit $3'
+    if (lookup.limit !== undefined) values.push(lookup.limit)
+
     const rows = await queryRows(
       `${FEED_ROW_SELECT}
        where p.author_id = $2
          and p.deleted_at is null
          and ${visibilitySql()}
-       order by p.created_at desc, p.id desc
-       limit $3`,
-      [lookup.viewerProfileId, lookup.authorProfileId, lookup.limit],
+       order by p.created_at desc, p.id desc${limitSql}`,
+      values,
     ) as FeedRow[]
     return rows as FeedPostRow[]
   }
 
-  async function listCommentedRows(lookup: { viewerProfileId: string; limit: number }): Promise<FeedPostRow[]> {
+  async function listCommentedRows(lookup: { viewerProfileId: string; limit?: number }): Promise<FeedPostRow[]> {
+    const values: unknown[] = [lookup.viewerProfileId]
+    const limitSql = lookup.limit === undefined ? '' : ' limit $2'
+    if (lookup.limit !== undefined) values.push(lookup.limit)
+
     const rows = await queryRows(
       `${FEED_ROW_SELECT}
        join (
@@ -169,9 +176,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
        ) viewer_activity on viewer_activity.post_id = p.id
        where p.deleted_at is null
          and ${visibilitySql()}
-       order by viewer_activity.last_commented_at desc, p.id desc
-       limit $2`,
-      [lookup.viewerProfileId, lookup.limit],
+       order by viewer_activity.last_commented_at desc, p.id desc${limitSql}`,
+      values,
     ) as FeedRow[]
     return rows as FeedPostRow[]
   }
