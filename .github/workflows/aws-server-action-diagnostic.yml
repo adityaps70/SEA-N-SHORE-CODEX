@@ -15,7 +15,7 @@ jobs:
   server-action-log-context:
     runs-on: ubuntu-latest
     environment: staging
-    timeout-minutes: 5
+    timeout-minutes: 8
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
@@ -62,33 +62,50 @@ jobs:
             | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
             | tail -n 20 || true
 
-      - name: Read recent CloudFront WAF samples for profile requests
+      - name: Discover bootstrap instance
+        id: instance
         shell: bash
         run: |
           set -euo pipefail
+          IDS=$(aws ec2 describe-instances \
+            --region "$AWS_REGION" \
+            --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' \
+            --output json)
+          [[ "$(jq 'length' <<<"$IDS")" -eq 1 ]]
+          echo "instance_id=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_OUTPUT"
+
+      - name: Send read-only WAF sample query through SSM
+        id: waf
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 > /tmp/waf-diagnostic.json <<'PYTHON'
+          import json, shlex
+          script = r'''set -euo pipefail
           WAF_REGION=us-east-1
           ACL_NAME=sea-n-shore-staging-edge
           ACL_JSON=$(aws wafv2 list-web-acls --scope CLOUDFRONT --region "$WAF_REGION" --output json)
           ACL_ID=$(jq -r --arg NAME "$ACL_NAME" '.WebACLs[] | select(.Name == $NAME) | .Id' <<<"$ACL_JSON" | head -n1)
-          test -n "$ACL_ID" || { echo "Staging CloudFront WAF ACL not found." >&2; exit 1; }
-
-          aws wafv2 get-web-acl --scope CLOUDFRONT --region "$WAF_REGION" --name "$ACL_NAME" --id "$ACL_ID" --output json > /tmp/waf-acl.json
+          [[ -n "$ACL_ID" ]]
+          aws wafv2 get-web-acl --scope CLOUDFRONT --region "$WAF_REGION" --name "$ACL_NAME" --id "$ACL_ID" --output json > /tmp/profile-upload-waf-acl.json
+          ACL_ARN=$(jq -r '.WebACL.ARN' /tmp/profile-upload-waf-acl.json)
           START=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)
           END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-          echo "=== WAF PROFILE REQUEST SAMPLES ==="
-          FOUND=0
+          echo '=== WAF PROFILE REQUEST SAMPLES ==='
           while IFS=$'\t' read -r RULE_NAME METRIC; do
-            test -n "$METRIC" || continue
+            [[ -n "$METRIC" ]] || continue
+            SAFE_NAME=$(tr -cs 'A-Za-z0-9._-' '_' <<<"$RULE_NAME")
             aws wafv2 get-sampled-requests \
               --scope CLOUDFRONT \
               --region "$WAF_REGION" \
-              --web-acl-arn "$(jq -r '.WebACL.ARN' /tmp/waf-acl.json)" \
+              --web-acl-arn "$ACL_ARN" \
               --rule-metric-name "$METRIC" \
               --time-window StartTime="$START",EndTime="$END" \
               --max-items 500 \
-              --output json > "/tmp/waf-${RULE_NAME}.json"
-
+              --output json > "/tmp/profile-waf-${SAFE_NAME}.json"
             jq -r --arg RULE "$RULE_NAME" '
               .SampledRequests[]
               | select(.Request.URI == "/profile" or (.Request.URI | startswith("/profile?")))
@@ -101,10 +118,43 @@ jobs:
                   (.Request.URI // "-")
                 ]
               | @tsv
-            ' "/tmp/waf-${RULE_NAME}.json" | while IFS= read -r LINE; do
-              FOUND=1
-              printf '%s\n' "$LINE"
-            done
-          done < <(jq -r '.WebACL.Rules[] | [.Name, .VisibilityConfig.MetricName] | @tsv' /tmp/waf-acl.json)
+            ' "/tmp/profile-waf-${SAFE_NAME}.json"
+          done < <(jq -r '.WebACL.Rules[] | [.Name, .VisibilityConfig.MetricName] | @tsv' /tmp/profile-upload-waf-acl.json)
+          echo 'WAF_SAMPLE_QUERY_COMPLETE=true'
+          '''
+          print(json.dumps({"executionTimeout": ["300"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          PYTHON
+          COMMAND_ID=$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Sea N Shore profile upload WAF diagnostic" \
+            --timeout-seconds 300 \
+            --parameters file:///tmp/waf-diagnostic.json \
+            --query 'Command.CommandId' \
+            --output text)
+          test -n "$COMMAND_ID"
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
 
-          echo "WAF_SAMPLE_QUERY_COMPLETE=true"
+      - name: Surface read-only WAF evidence
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          COMMAND_ID: ${{ steps.waf.outputs.command_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STATUS=Pending
+          for attempt in $(seq 1 60); do
+            STATUS=$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$STATUS" in Pending|InProgress|Delayed) sleep 5 ;; *) break ;; esac
+          done
+          aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json > /tmp/waf-result.json
+          echo "=== WAF DIAGNOSTIC STDOUT ==="
+          jq -r '.StandardOutputContent // empty' /tmp/waf-result.json
+          STDERR_CONTENT=$(jq -r '.StandardErrorContent // empty' /tmp/waf-result.json)
+          if [[ -n "$STDERR_CONTENT" ]]; then
+            echo "=== WAF DIAGNOSTIC STDERR ===" >&2
+            printf '%s\n' "$STDERR_CONTENT" >&2
+          fi
+          [[ "$(jq -r '.Status' /tmp/waf-result.json)" == Success ]]
+          jq -r '.StandardOutputContent // empty' /tmp/waf-result.json | grep -q '^WAF_SAMPLE_QUERY_COMPLETE=true$'
