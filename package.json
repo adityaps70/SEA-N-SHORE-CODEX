@@ -55,5 +55,8 @@
     "typescript": "^5",
     "vite": "6.4.3",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "@aws-sdk/credential-provider-login": "3.972.77"
   }
 }
