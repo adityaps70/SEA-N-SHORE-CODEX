@@ -8,6 +8,7 @@ import {
 } from './media'
 import {
   addPostCommentWithAurora,
+  assertPendingMediaDiscardableWithAurora,
   createPollPostWithAurora,
   createStandardPostWithAurora,
   deletePostWithAurora,
@@ -20,6 +21,7 @@ import {
   createPost,
   createPostMediaUpload,
   deletePost,
+  discardPendingPostMedia,
   setPollVote,
   setPostLiked,
   setPostSaved,
@@ -52,6 +54,7 @@ vi.mock('./media', () => ({
 }))
 vi.mock('./service', () => ({
   createStandardPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  assertPendingMediaDiscardableWithAurora: vi.fn(async () => true),
   createPollPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   deletePostWithAurora: vi.fn(async () => true),
   setPostLikedWithAurora: vi.fn(async () => true),
@@ -61,6 +64,7 @@ vi.mock('./service', () => ({
 }))
 
 const viewerId = '11111111-1111-4111-8111-111111111111'
+const otherViewerId = '22222222-2222-4222-8222-222222222222'
 const postId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const optionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const objectId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
@@ -71,6 +75,7 @@ const mockedVerifyPendingPostMedia = vi.mocked(verifyPendingPostMedia)
 const mockedUploadFeedImage = vi.mocked(uploadFeedImage)
 const mockedRemoveFeedImage = vi.mocked(removeFeedImage)
 const mockedCreateStandardPost = vi.mocked(createStandardPostWithAurora)
+const mockedAssertPendingMediaDiscardable = vi.mocked(assertPendingMediaDiscardableWithAurora)
 const mockedCreatePollPost = vi.mocked(createPollPostWithAurora)
 const mockedDeletePost = vi.mocked(deletePostWithAurora)
 const mockedSetLiked = vi.mocked(setPostLikedWithAurora)
@@ -139,6 +144,40 @@ describe('feed actions', () => {
       mimeType: 'image/jpeg',
       size: 1024,
     })
+  })
+
+  it('discards only an authenticated pending object scoped to the current user and post', async () => {
+    await expect(discardPendingPostMedia({
+      postId,
+      storagePath,
+      mimeType: 'image/jpeg',
+    })).resolves.toEqual({ ok: true })
+
+    expect(mockedAssertPendingMediaDiscardable).toHaveBeenCalledWith(viewerId, storagePath)
+    expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
+  })
+
+  it('rejects a pending object path outside the authenticated user scope before deletion', async () => {
+    await expect(discardPendingPostMedia({
+      postId,
+      storagePath: `${otherViewerId}/${postId}/${objectId}.jpg`,
+      mimeType: 'image/jpeg',
+    })).resolves.toEqual({ ok: false, error: 'Invalid media.' })
+
+    expect(mockedAssertPendingMediaDiscardable).not.toHaveBeenCalled()
+    expect(mockedRemoveFeedImage).not.toHaveBeenCalled()
+  })
+
+  it('refuses to delete a pending object once Aurora already references it', async () => {
+    mockedAssertPendingMediaDiscardable.mockRejectedValueOnce(new Error('feed_media_delete_forbidden'))
+
+    await expect(discardPendingPostMedia({
+      postId,
+      storagePath,
+      mimeType: 'image/jpeg',
+    })).resolves.toEqual({ ok: false, error: 'We could not remove this media.' })
+
+    expect(mockedRemoveFeedImage).not.toHaveBeenCalled()
   })
 
   it('rejects media attached to a technical poll before mutation', async () => {
