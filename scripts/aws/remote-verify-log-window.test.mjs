@@ -13,6 +13,18 @@ test('CloudWatch runtime review starts from the live PRIMARY deployment instead 
   assert.doesNotMatch(workflow, /date \+%s\) - 7200/)
 })
 
+test('CloudWatch runtime review ignores only malformed client Server Reference IDs while retaining strong runtime failure detection', () => {
+  assert.match(workflow, /MALFORMED_SERVER_REFERENCE_PATTERN/)
+  assert.match(workflow, /The Server Reference ID did not match the expected format/)
+  assert.match(workflow, /IGNORED_MALFORMED_SERVER_REFERENCE_REQUESTS/)
+  assert.match(workflow, /grep -Ev "\$MALFORMED_SERVER_REFERENCE_PATTERN"/)
+  assert.match(workflow, /ECONNREFUSED/)
+  assert.match(workflow, /ETIMEDOUT/)
+  assert.match(workflow, /password authentication failed/)
+  assert.match(workflow, /HTTP\[\[:space:\]\]\+5/)
+  assert.match(workflow, /Repeating runtime error signatures detected/)
+})
+
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
   assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
   assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
