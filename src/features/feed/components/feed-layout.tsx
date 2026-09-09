@@ -17,7 +17,7 @@ export function FeedLayout({
   return (
     <section className="grid gap-5 py-2 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_300px] xl:gap-6">
       <aside className="hidden lg:block">
-        <div className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pb-4 pr-1">
+        <div className="sticky top-24 pb-4 pr-1">
           <FeedLeftRail profile={profile} />
         </div>
       </aside>
@@ -30,7 +30,7 @@ export function FeedLayout({
       </main>
 
       <aside className="hidden xl:block">
-        <div className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pb-4 pr-1">
+        <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pb-4 pr-1">
           <FeedDiscoveryRail suggestions={suggestions} />
         </div>
       </aside>
