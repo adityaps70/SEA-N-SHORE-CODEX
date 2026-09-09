@@ -49,6 +49,7 @@ jobs:
           ' /tmp/task-definition.json)
           test -n "$LOG_GROUP"
 
+          # Read-only diagnostic window; no application or infrastructure changes.
           START_MS=$(( ( $(date +%s) - 7200 ) * 1000 ))
           aws logs filter-log-events \
             --region "$AWS_REGION" \
