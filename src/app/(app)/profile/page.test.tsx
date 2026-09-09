@@ -9,10 +9,6 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
-vi.mock('@/features/feed/queries', () => ({
-  getPostsByAuthor: vi.fn(async () => []),
-}))
-
 vi.mock('@/features/profiles/queries', () => ({
   getOwnProfile: vi.fn(async () => ({
     id: '11111111-1111-4111-8111-111111111111',
@@ -67,12 +63,6 @@ vi.mock('@/features/profiles/components/profile-credential-wallet', () => ({
 }))
 vi.mock('@/features/profiles/components/profile-passport-toolbar', () => ({
   ProfilePassportToolbar: ({ slug }: { slug: string }) => <a href={`/people/${slug}`}>View public profile</a>,
-}))
-vi.mock('@/features/profiles/components/profile-passport-overview', () => ({
-  ProfilePassportOverview: () => <section>Sea N Shore professional identity</section>,
-}))
-vi.mock('@/features/feed/components/profile-posts-section', () => ({
-  ProfilePostsSection: () => <section><h2>Posts & activity</h2></section>,
 }))
 
 describe('My Profile page', () => {
