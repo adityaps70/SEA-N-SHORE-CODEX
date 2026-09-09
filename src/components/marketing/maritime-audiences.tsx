@@ -13,7 +13,7 @@ export function MaritimeAudiences() {
   return (
     <section className="border-y border-mist-100 bg-white py-16 sm:py-20" aria-labelledby="maritime-audiences-title">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
-        <LandingSectionHeading eyebrow="Across the industry" title="Built for every side of maritime" body="One network should make sense whether you are sailing, transitioning ashore, hiring, training or leading maritime operations." align="center" />
+        <LandingSectionHeading id="maritime-audiences-title" eyebrow="Across the industry" title="Built for every side of maritime" body="One network should make sense whether you are sailing, transitioning ashore, hiring, training or leading maritime operations." align="center" />
         <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {audiences.map(([title, body, Icon]) => <Card key={title} className="border border-mist-100 p-5 shadow-none"><Icon aria-hidden="true" className="size-6 text-teal-500" /><h3 className="mt-5 text-lg font-semibold text-navy-950">{title}</h3><p className="mt-3 text-sm leading-6 text-muted">{body}</p></Card>)}
         </div>
