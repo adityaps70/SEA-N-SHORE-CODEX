@@ -28,13 +28,13 @@ export function PostMedia({
   }
 
   return (
-    <div className="mt-4 flex justify-center overflow-hidden rounded-2xl border border-mist-100 bg-mist-50">
+    <div className="mt-4 w-full overflow-hidden rounded-2xl border border-mist-100 bg-mist-50">
       {/* Signed post media is already access-controlled and should preserve its natural dimensions. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={media.signedUrl}
         alt={media.altText ?? `Image attached to ${authorName}'s post`}
-        className="block h-auto max-h-[80vh] max-w-full object-contain"
+        className="block h-auto w-full object-contain"
       />
     </div>
   )
