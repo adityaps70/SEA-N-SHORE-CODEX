@@ -51,10 +51,12 @@ const experiences: ProfileExperienceRecord[] = [
 afterEach(() => cleanup())
 
 describe('ProfileCareerTimeline', () => {
-  it('renders stored sea and shore career records in a recruiter-readable timeline', () => {
+  it('renders stored sea and shore career records under the simple Experience heading', () => {
     render(<ProfileCareerTimeline experiences={experiences} />)
 
-    expect(screen.getByRole('heading', { name: 'Career timeline' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Experience' })).toBeInTheDocument()
+    expect(screen.queryByText('Professional history')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Sea service, shore roles and maritime training in one chronological professional record/i)).not.toBeInTheDocument()
     expect(screen.getByText('Master')).toBeInTheDocument()
     expect(screen.getByText('MT Horizon')).toBeInTheDocument()
     expect(screen.getByText('Oil Tanker')).toBeInTheDocument()
@@ -94,6 +96,6 @@ describe('ProfileCareerTimeline', () => {
     expect(screen.queryByRole('button', { name: /delete master/i })).not.toBeInTheDocument()
 
     rerender(<ProfileCareerTimeline experiences={[]} />)
-    expect(screen.queryByRole('heading', { name: 'Career timeline' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Experience' })).not.toBeInTheDocument()
   })
 })
