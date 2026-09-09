@@ -20,6 +20,18 @@ const source = files
   .map((file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8'))
   .join('\n')
 
+const labelledSectionIds = [
+  'ecosystem-capabilities-title',
+  'passport-showcase-title',
+  'maritime-audiences-title',
+  'feed-showcase-title',
+  'professional-discovery-title',
+  'opportunities-title',
+  'why-sea-n-shore-title',
+  'ecosystem-journey-title',
+  'final-ecosystem-cta-title',
+]
+
 describe('marketing landing page contract', () => {
   it('positions Sea N Shore as an all-in-one maritime ecosystem', () => {
     expect(source).toContain('The all-in-one professional ecosystem for the maritime industry.')
@@ -62,6 +74,13 @@ describe('marketing landing page contract', () => {
       'DPA / CSO',
     ]) {
       expect(source).toContain(label)
+    }
+  })
+
+  it('gives every aria-labelledby landing section a real heading id', () => {
+    for (const id of labelledSectionIds) {
+      expect(source).toContain(`aria-labelledby=\"${id}\"`)
+      expect(source).toContain(`id=\"${id}\"`)
     }
   })
 
