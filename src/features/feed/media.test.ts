@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const {
   createMediaReadUrl,
+  createMediaUploadUrl,
+  headMediaObject,
   putMediaObject,
   deleteMediaObject,
   createSignedUrls,
@@ -9,6 +11,11 @@ const {
   remove,
 } = vi.hoisted(() => ({
   createMediaReadUrl: vi.fn<(key: string) => Promise<string>>(async (key) => `https://s3.example/${key}`),
+  createMediaUploadUrl: vi.fn<(input: { key: string; contentType: string }) => Promise<string>>(async () => 'https://s3.example/upload'),
+  headMediaObject: vi.fn<(key: string) => Promise<{ contentType: string | null; contentLength: number | null }>>(async () => ({
+    contentType: 'video/mp4',
+    contentLength: 1024,
+  })),
   putMediaObject: vi.fn<(input: { key: string; body: Uint8Array | Buffer; contentType: string }) => Promise<void>>(async () => undefined),
   deleteMediaObject: vi.fn<(key: string) => Promise<void>>(async () => undefined),
   createSignedUrls: vi.fn(async (paths: string[]) => ({
@@ -21,6 +28,8 @@ const {
 
 vi.mock('@/lib/aws/storage', () => ({
   createMediaReadUrl,
+  createMediaUploadUrl,
+  headMediaObject,
   putMediaObject,
   deleteMediaObject,
 }))
@@ -33,17 +42,120 @@ vi.mock('@/lib/supabase/server', () => ({
   })),
 }))
 
-import { removeFeedImage, resolveFeedMediaUrls, uploadFeedImage } from './media'
+import {
+  createPendingPostMediaUpload,
+  removeFeedImage,
+  resolveFeedMediaUrls,
+  uploadFeedImage,
+  verifyPendingPostMedia,
+} from './media'
 
 const profileId = '11111111-1111-4111-8111-111111111111'
+const otherProfileId = '22222222-2222-4222-8222-222222222222'
 const postId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const otherPostId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const randomId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+const videoPath = `${profileId}/${postId}/${randomId}.mp4`
 
 describe('feed media adapter', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     createMediaReadUrl.mockImplementation(async (key) => `https://s3.example/${key}`)
+    createMediaUploadUrl.mockResolvedValue('https://s3.example/upload')
+    headMediaObject.mockResolvedValue({ contentType: 'video/mp4', contentLength: 1024 })
     putMediaObject.mockResolvedValue(undefined)
+  })
+
+  it('creates a server-scoped pending upload with a server-generated post id and object key', async () => {
+    vi.spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce(postId)
+      .mockReturnValueOnce(randomId)
+
+    await expect(createPendingPostMediaUpload({
+      profileId,
+      mimeType: 'video/mp4',
+      size: 1024,
+    })).resolves.toEqual({
+      postId,
+      storagePath: videoPath,
+      mimeType: 'video/mp4',
+      size: 1024,
+      uploadUrl: 'https://s3.example/upload',
+    })
+
+    expect(createMediaUploadUrl).toHaveBeenCalledWith({
+      key: videoPath,
+      contentType: 'video/mp4',
+    })
+  })
+
+  it('verifies the exact owned object MIME and byte length before finalization', async () => {
+    await expect(verifyPendingPostMedia({
+      profileId,
+      postId,
+      storagePath: videoPath,
+      mimeType: 'video/mp4',
+      size: 1024,
+    })).resolves.toBeUndefined()
+
+    expect(headMediaObject).toHaveBeenCalledWith(videoPath)
+  })
+
+  it.each([
+    ['another profile', { profileId: otherProfileId, postId, storagePath: videoPath, mimeType: 'video/mp4' as const, size: 1024 }],
+    ['another post', { profileId, postId: otherPostId, storagePath: videoPath, mimeType: 'video/mp4' as const, size: 1024 }],
+    ['mismatched extension', { profileId, postId, storagePath: `${profileId}/${postId}/${randomId}.webm`, mimeType: 'video/mp4' as const, size: 1024 }],
+  ])('rejects a pending path scoped to %s', async (_case, input) => {
+    await expect(verifyPendingPostMedia(input)).rejects.toThrow('feed_media_reference_invalid')
+    expect(headMediaObject).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unavailable uploaded object', async () => {
+    headMediaObject.mockRejectedValueOnce(new Error('NoSuchKey'))
+
+    await expect(verifyPendingPostMedia({
+      profileId,
+      postId,
+      storagePath: videoPath,
+      mimeType: 'video/mp4',
+      size: 1024,
+    })).rejects.toThrow('feed_media_unavailable')
+  })
+
+  it('rejects a stored MIME mismatch', async () => {
+    headMediaObject.mockResolvedValueOnce({ contentType: 'video/webm', contentLength: 1024 })
+
+    await expect(verifyPendingPostMedia({
+      profileId,
+      postId,
+      storagePath: videoPath,
+      mimeType: 'video/mp4',
+      size: 1024,
+    })).rejects.toThrow('feed_media_metadata_mismatch')
+  })
+
+  it('rejects a stored byte-length mismatch', async () => {
+    headMediaObject.mockResolvedValueOnce({ contentType: 'video/mp4', contentLength: 2048 })
+
+    await expect(verifyPendingPostMedia({
+      profileId,
+      postId,
+      storagePath: videoPath,
+      mimeType: 'video/mp4',
+      size: 1024,
+    })).rejects.toThrow('feed_media_metadata_mismatch')
+  })
+
+  it('rejects an oversized/tampered media reference before HEAD verification', async () => {
+    await expect(verifyPendingPostMedia({
+      profileId,
+      postId,
+      storagePath: videoPath,
+      mimeType: 'video/mp4',
+      size: 200 * 1024 * 1024 + 1,
+    })).rejects.toThrow('feed_media_policy_invalid')
+
+    expect(headMediaObject).not.toHaveBeenCalled()
   })
 
   it('uploads through S3 while preserving the existing storage key shape and MIME type', async () => {
