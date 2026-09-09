@@ -1,20 +1,44 @@
 'use client'
 
 import { useActionState, useId, useRef, useState } from 'react'
-import { BarChart3, ImagePlus, Send } from 'lucide-react'
+import { BarChart3, ImagePlus, Send, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import type { OwnProfile } from '@/features/profiles/types'
-import { createPost, type PostComposerState } from '../actions'
+import {
+  createPost,
+  createPostMediaUpload,
+  discardPendingPostMedia,
+  type PostComposerState,
+} from '../actions'
+import {
+  isVideoPostMediaMime,
+  validatePostMediaMetadata,
+  type PostMediaMime,
+} from '../media-policy'
 import type { PostCategory } from '../types'
+import { uploadPostMediaFile } from './upload-post-media'
 
 const initialState: PostComposerState = {}
+const POST_MEDIA_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm'
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
 }
 
 type PollField = { id: string; value: string }
+
+type ComposerMedia = {
+  file: File
+  localUrl: string
+  postId: string | null
+  storagePath: string | null
+  mimeType: PostMediaMime
+  size: number
+  progress: number
+  status: 'requesting' | 'uploading' | 'ready' | 'error'
+  error?: string
+}
 
 function newPollFields(prefix: string, values: string[] = ['', '']): PollField[] {
   const source = values.length >= 2 ? values.slice(0, 6) : ['', '']
@@ -26,21 +50,50 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   const pollIdPrefix = useId()
   const nextPollFieldNumber = useRef(3)
   const formRef = useRef<HTMLFormElement>(null)
-  const mediaRef = useRef<HTMLInputElement>(null)
+  const mediaInputRef = useRef<HTMLInputElement>(null)
+  const mediaStateRef = useRef<ComposerMedia | null>(null)
+  const uploadSequenceRef = useRef(0)
   const [body, setBody] = useState('')
   const [mode, setMode] = useState<'standard' | 'poll'>('standard')
   const [pollFields, setPollFields] = useState<PollField[]>(() => newPollFields(pollIdPrefix))
-  const [mediaName, setMediaName] = useState<string | null>(null)
+  const [media, setMediaState] = useState<ComposerMedia | null>(null)
+  const [mediaError, setMediaError] = useState<string | null>(null)
+
+  function setMedia(next: ComposerMedia | null) {
+    mediaStateRef.current = next
+    setMediaState(next)
+  }
+
+  function discardMediaReference(snapshot: ComposerMedia) {
+    if (!snapshot.postId || !snapshot.storagePath) return
+    void discardPendingPostMedia({
+      postId: snapshot.postId,
+      storagePath: snapshot.storagePath,
+      mimeType: snapshot.mimeType,
+    })
+  }
+
+  function clearMedia(options: { discard: boolean }) {
+    uploadSequenceRef.current += 1
+    const snapshot = mediaStateRef.current
+    if (snapshot) {
+      URL.revokeObjectURL(snapshot.localUrl)
+      if (options.discard) discardMediaReference(snapshot)
+    }
+    if (mediaInputRef.current) mediaInputRef.current.value = ''
+    setMedia(null)
+    setMediaError(null)
+  }
 
   const [state, formAction, pending] = useActionState(async (previousState: PostComposerState, formData: FormData) => {
     const nextState = await createPost(previousState, formData)
     if (nextState.ok) {
+      clearMedia({ discard: false })
       formRef.current?.reset()
       setBody('')
       setMode('standard')
       nextPollFieldNumber.current = 3
       setPollFields(newPollFields(pollIdPrefix))
-      setMediaName(null)
       router.refresh()
     }
     return nextState
@@ -48,10 +101,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
 
   function chooseMode(nextMode: 'standard' | 'poll') {
     setMode(nextMode)
-    if (nextMode === 'poll') {
-      if (mediaRef.current) mediaRef.current.value = ''
-      setMediaName(null)
-    }
+    if (nextMode === 'poll' && mediaStateRef.current) clearMedia({ discard: true })
   }
 
   function addPollField() {
@@ -62,11 +112,101 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
     })
   }
 
+  async function chooseMedia(file: File | undefined) {
+    if (!file) return
+
+    const validation = validatePostMediaMetadata({ mimeType: file.type, size: file.size })
+    if (!validation.ok) {
+      setMediaError(validation.error)
+      if (mediaInputRef.current) mediaInputRef.current.value = ''
+      return
+    }
+
+    if (mediaStateRef.current) clearMedia({ discard: true })
+    setMediaError(null)
+    const sequence = uploadSequenceRef.current + 1
+    uploadSequenceRef.current = sequence
+    const localUrl = URL.createObjectURL(file)
+    const initialMedia: ComposerMedia = {
+      file,
+      localUrl,
+      postId: null,
+      storagePath: null,
+      mimeType: validation.mimeType,
+      size: file.size,
+      progress: 0,
+      status: 'requesting',
+    }
+    setMedia(initialMedia)
+
+    const target = await createPostMediaUpload({ mimeType: validation.mimeType, size: file.size })
+    if (uploadSequenceRef.current !== sequence) {
+      URL.revokeObjectURL(localUrl)
+      return
+    }
+    if (!target.ok) {
+      setMedia({ ...initialMedia, status: 'error', error: target.error })
+      return
+    }
+
+    const uploadingMedia: ComposerMedia = {
+      ...initialMedia,
+      postId: target.upload.postId,
+      storagePath: target.upload.storagePath,
+      mimeType: target.upload.mimeType,
+      size: target.upload.size,
+      status: 'uploading',
+    }
+    setMedia(uploadingMedia)
+
+    try {
+      await uploadPostMediaFile({
+        uploadUrl: target.upload.uploadUrl,
+        file,
+        onProgress: (progress) => {
+          if (uploadSequenceRef.current !== sequence) return
+          const current = mediaStateRef.current
+          if (!current || current.localUrl !== localUrl) return
+          setMedia({ ...current, progress })
+        },
+      })
+
+      if (uploadSequenceRef.current !== sequence) {
+        discardMediaReference(uploadingMedia)
+        return
+      }
+      const current = mediaStateRef.current
+      if (!current || current.localUrl !== localUrl) return
+      setMedia({ ...current, progress: 100, status: 'ready', error: undefined })
+    } catch {
+      if (uploadSequenceRef.current !== sequence) {
+        discardMediaReference(uploadingMedia)
+        return
+      }
+      discardMediaReference(uploadingMedia)
+      const current = mediaStateRef.current
+      if (!current || current.localUrl !== localUrl) return
+      setMedia({ ...current, status: 'error', error: 'We could not upload this media. Please try again.' })
+    }
+  }
+
+  const mediaIsReady = media?.status === 'ready' && Boolean(media.postId && media.storagePath)
+  const mediaBlocksPost = Boolean(media && !mediaIsReady)
+
   return (
     <Card className="border border-mist-100 p-4 sm:p-5">
       <form ref={formRef} action={formAction} className="space-y-4">
         <input type="hidden" name="mode" value={mode} />
         <input type="hidden" name="category" value={defaultCategory ?? 'technical_discussion'} />
+        {mediaIsReady && media ? (
+          <>
+            <input type="hidden" name="mediaPostId" value={media.postId ?? ''} />
+            <input type="hidden" name="mediaStoragePath" value={media.storagePath ?? ''} />
+            <input type="hidden" name="mediaMimeType" value={media.mimeType} />
+            <input type="hidden" name="mediaSize" value={String(media.size)} />
+          </>
+        ) : null}
+
         <div className="flex items-start gap-3">
           <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
             {initials(profile.fullName)}
@@ -127,16 +267,66 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
           </fieldset>
         ) : null}
 
+        {media && mode === 'standard' ? (
+          <div className="overflow-hidden rounded-2xl border border-mist-100 bg-mist-50/40">
+            <div className="flex items-center justify-between gap-3 border-b border-mist-100 px-3 py-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-navy-950">{media.file.name}</p>
+                <p className="text-xs text-muted">
+                  {media.status === 'requesting' ? 'Preparing media…' : null}
+                  {media.status === 'uploading' ? `Uploading ${media.progress}%` : null}
+                  {media.status === 'ready' ? 'Ready to post' : null}
+                  {media.status === 'error' ? media.error : null}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Remove media"
+                onClick={() => clearMedia({ discard: true })}
+                className="grid size-9 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-navy-950"
+              >
+                <X aria-hidden="true" className="size-4" />
+              </button>
+            </div>
+            <div className="grid max-h-[70vh] place-items-center overflow-auto bg-black/[0.03]">
+              {isVideoPostMediaMime(media.mimeType) ? (
+                <video
+                  src={media.localUrl}
+                  controls
+                  preload="metadata"
+                  className="max-h-[70vh] w-full object-contain"
+                />
+              ) : (
+                // Blob previews are local browser URLs, so Next Image optimization is not applicable here.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={media.localUrl}
+                  alt="Selected post media preview"
+                  className="max-h-[70vh] w-full object-contain"
+                />
+              )}
+            </div>
+            <label className="block border-t border-mist-100 px-3 py-3 text-sm text-muted">
+              <span className="sr-only">Media description</span>
+              <input
+                name="altText"
+                maxLength={300}
+                placeholder="Optional media description for accessibility"
+                className="min-h-10 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink"
+              />
+            </label>
+          </div>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-2 border-t border-mist-100 pt-3">
           <input
-            ref={mediaRef}
+            ref={mediaInputRef}
             id="post-media"
-            name="media"
             type="file"
-            accept="image/jpeg,image/png,image/webp"
+            accept={POST_MEDIA_ACCEPT}
             className="sr-only"
             disabled={mode === 'poll'}
-            onChange={(event) => setMediaName(event.target.files?.[0]?.name ?? null)}
+            onChange={(event) => void chooseMedia(event.target.files?.[0])}
           />
           <label
             htmlFor="post-media"
@@ -144,7 +334,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
             className={`inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold ${mode === 'poll' ? 'cursor-not-allowed text-muted opacity-50' : 'cursor-pointer text-navy-900 hover:bg-mist-50'}`}
           >
             <ImagePlus aria-hidden="true" className="size-5 text-ocean-700" />
-            Photo/Diagram
+            Photo / Video
           </label>
           <button
             type="button"
@@ -154,30 +344,9 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
             <BarChart3 aria-hidden="true" className="size-5 text-ocean-700" />
             Technical Poll
           </button>
-          {mediaName && mode === 'standard' ? (
-            <div className="flex min-w-0 items-center gap-2 rounded-xl bg-mist-50 px-3 py-2 text-xs text-muted">
-              <span className="max-w-44 truncate">{mediaName}</span>
-              <button
-                type="button"
-                className="font-semibold text-navy-900"
-                onClick={() => {
-                  if (mediaRef.current) mediaRef.current.value = ''
-                  setMediaName(null)
-                }}
-              >
-                Remove
-              </button>
-            </div>
-          ) : null}
-          {mediaName && mode === 'standard' ? (
-            <label className="w-full text-sm text-muted">
-              <span className="sr-only">Image description</span>
-              <input name="altText" maxLength={300} placeholder="Optional image description for accessibility" className="min-h-10 w-full rounded-xl border border-mist-100 bg-mist-50 px-3 text-sm text-ink" />
-            </label>
-          ) : null}
           <button
             type="submit"
-            disabled={pending}
+            disabled={pending || mediaBlocksPost}
             className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Send aria-hidden="true" className="size-4" />
@@ -185,6 +354,8 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
           </button>
         </div>
 
+        {mediaError ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{mediaError}</p> : null}
+        {state.fieldErrors?.media ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.fieldErrors.media[0]}</p> : null}
         {state.error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
       </form>
     </Card>
