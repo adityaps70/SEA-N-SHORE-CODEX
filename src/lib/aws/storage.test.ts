@@ -24,6 +24,7 @@ vi.mock('@aws-sdk/client-s3', () => {
     PutObjectCommand: Command,
     GetObjectCommand: Command,
     DeleteObjectCommand: Command,
+    HeadObjectCommand: Command,
   }
 })
 
@@ -31,8 +32,10 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl }))
 
 import {
   createMediaReadUrl,
+  createMediaUploadUrl,
   deleteMediaObject,
   getMediaBucketName,
+  headMediaObject,
   putMediaObject,
 } from './storage'
 
@@ -78,6 +81,45 @@ describe('AWS media storage boundary', () => {
     expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 3600 })
     const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
     expect(command.input).toMatchObject({ Bucket: mediaBucket, Key: 'profile/post/image.jpg' })
+  })
+
+  it('signs direct PUT uploads for five minutes with the exact key and content type', async () => {
+    const url = await createMediaUploadUrl({
+      key: 'profile/post/video.mp4',
+      contentType: 'video/mp4',
+    })
+
+    expect(url).toBe('https://signed.example/media')
+    expect(getSignedUrl).toHaveBeenCalledTimes(1)
+    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 300 })
+    const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+    expect(command.input).toMatchObject({
+      Bucket: mediaBucket,
+      Key: 'profile/post/video.mp4',
+      ContentType: 'video/mp4',
+    })
+  })
+
+  it('reads object metadata with HEAD without downloading object bytes', async () => {
+    send.mockResolvedValueOnce({ ContentType: 'video/webm', ContentLength: 123456 })
+
+    await expect(headMediaObject('profile/post/video.webm')).resolves.toEqual({
+      contentType: 'video/webm',
+      contentLength: 123456,
+    })
+
+    expect(send).toHaveBeenCalledTimes(1)
+    const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
+    expect(command.input).toEqual({ Bucket: mediaBucket, Key: 'profile/post/video.webm' })
+  })
+
+  it('normalizes missing HEAD metadata to null values', async () => {
+    send.mockResolvedValueOnce({})
+
+    await expect(headMediaObject('profile/post/image.webp')).resolves.toEqual({
+      contentType: null,
+      contentLength: null,
+    })
   })
 
   it('deletes the exact media object key', async () => {
