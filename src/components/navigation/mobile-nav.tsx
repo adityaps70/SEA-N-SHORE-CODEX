@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import {
   BookOpenCheck,
   BriefcaseBusiness,
@@ -9,6 +8,7 @@ import {
   UserRound,
   UsersRound,
 } from 'lucide-react'
+import { ActiveNavLink } from './active-nav-link'
 
 const destinations = [
   { href: '/home', label: 'Home', icon: House },
@@ -31,15 +31,16 @@ export function MobileNav() {
         const Icon = destination.icon
         const accessibleLabel = 'accessibleLabel' in destination ? destination.accessibleLabel : destination.label
         return (
-          <Link
+          <ActiveNavLink
             key={destination.href}
             href={destination.href}
             aria-label={accessibleLabel}
-            className="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 px-0.5 text-center text-[9px] font-medium leading-tight text-navy-900"
+            activeClassName="bg-ocean-50 text-ocean-700"
+            className="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 border-t-2 border-transparent px-0.5 text-center text-[9px] font-medium leading-tight text-navy-900"
           >
             <Icon aria-hidden="true" className="size-4 shrink-0" />
             <span className="max-w-full truncate">{destination.label}</span>
-          </Link>
+          </ActiveNavLink>
         )
       })}
     </nav>
