@@ -154,6 +154,17 @@ describe('Public Profile page', () => {
     expect(screen.queryByText('Relationship controls')).not.toBeInTheDocument()
   })
 
+  it('keeps Posts as the final content section after credentials', () => {
+    const source = readFileSync('src/app/(public)/people/[slug]/page.tsx', 'utf8')
+    const credentialsIndex = source.indexOf('<ProfileCredentialWallet')
+    const postsIndex = source.indexOf('<section aria-labelledby="profile-posts-heading"')
+    const disclaimerIndex = source.indexOf('Sea N Shore professional profiles are member-provided.')
+
+    expect(credentialsIndex).toBeGreaterThan(-1)
+    expect(postsIndex).toBeGreaterThan(credentialsIndex)
+    expect(disclaimerIndex).toBeGreaterThan(postsIndex)
+  })
+
   it('uses the approved desktop content-plus-rail layout with public post activity and no duplicate passport component', () => {
     const source = readFileSync('src/app/(public)/people/[slug]/page.tsx', 'utf8')
     expect(source).toContain('lg:grid-cols-[minmax(0,1fr)_300px]')
