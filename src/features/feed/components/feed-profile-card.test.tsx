@@ -57,6 +57,13 @@ describe('FeedProfileCard', () => {
     expect(screen.queryByText('MA')).not.toBeInTheDocument()
   })
 
+  it('increases the desktop profile photo by about 15 percent and preserves the cover overlap', () => {
+    render(<FeedProfileCard profile={completeProfile} />)
+
+    const profilePhoto = screen.getByRole('img', { name: 'Member A profile photo' })
+    expect(profilePhoto.parentElement).toHaveClass('size-[74px]', '-mt-[37px]')
+  })
+
   it('falls back to initials when no profile photo exists', () => {
     render(<FeedProfileCard profile={{ ...completeProfile, avatarUrl: null, coverUrl: null }} />)
 
