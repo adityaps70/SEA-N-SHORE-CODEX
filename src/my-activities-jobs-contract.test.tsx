@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { existsSync, readFileSync } from 'node:fs'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import ActivitiesPage from '@/app/(app)/activities/page'
 import { AppHeader } from '@/components/navigation/app-header'
 
 vi.mock('next/navigation', () => ({
@@ -15,26 +16,62 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
+vi.mock('@/features/notifications/components/notification-bell', () => ({
+  NotificationBell: () => <span>Notifications</span>,
+}))
+
+vi.mock('@/features/auth/actions', () => ({ signOut: vi.fn() }))
+
+vi.mock('@/features/feed/queries', () => ({
+  getMyActivityPosts: vi.fn().mockResolvedValue([]),
+  getMyCommentActivity: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('@/features/jobs/queries', () => ({
+  getMyJobApplications: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('@/features/jobs/components/job-application-list', () => ({
+  JobApplicationList: () => <div data-testid="job-applications">Job applications</div>,
+}))
+
+afterEach(() => cleanup())
+
 describe('My Activities and jobs integration contract', () => {
-  it('adds My Activities and icons to the signed-in desktop header', () => {
-    const { container } = render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+  it('stacks each signed-in primary navigation icon above its label', () => {
+    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
 
-    expect(screen.getByRole('link', { name: /my activities/i })).toHaveAttribute('href', '/activities')
-    expect(container.querySelectorAll('nav[aria-label="Primary"] svg').length).toBeGreaterThanOrEqual(7)
+    const primary = screen.getByRole('navigation', { name: 'Primary' })
+    const links = within(primary).getAllByRole('link')
+    expect(links).toHaveLength(7)
+
+    for (const link of links) {
+      expect(link).toHaveClass('flex-col')
+      expect(link.querySelector('svg')).not.toBeNull()
+      expect(link.lastElementChild?.textContent?.trim()).toBe(link.getAttribute('aria-label'))
+    }
   })
 
-  it('adds an activities route with exactly two post tabs and a separate jobs section', () => {
-    const path = 'src/app/(app)/activities/page.tsx'
-    expect(existsSync(path)).toBe(true)
-    if (!existsSync(path)) return
+  it('places Jobs Applied beside My Posts and My Comments as the third activity tab', async () => {
+    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'jobs' }) }))
 
-    const source = readFileSync(path, 'utf8')
-    expect(source).toContain('My Posts')
-    expect(source).toContain('My Comments')
-    expect(source).toContain('Jobs Applied')
+    const tabs = screen.getByRole('navigation', { name: 'Activity sections' })
+    expect(within(tabs).getAllByRole('link').map((link) => link.textContent?.trim())).toEqual([
+      'My Posts',
+      'My Comments',
+      'Jobs Applied',
+    ])
+    expect(within(tabs).getByRole('link', { name: 'Jobs Applied' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByTestId('job-applications')).toBeInTheDocument()
   })
 
-  it('adds the additive jobs and activities migration', () => {
+  it('does not show the jobs application list while a post activity tab is selected', async () => {
+    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'posts' }) }))
+
+    expect(screen.queryByTestId('job-applications')).not.toBeInTheDocument()
+  })
+
+  it('keeps the additive jobs and activities migration intact', () => {
     const path = 'infra/aws/database/migrations/0007_jobs_activities.sql'
     expect(existsSync(path)).toBe(true)
     if (!existsSync(path)) return
