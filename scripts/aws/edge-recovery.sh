@@ -133,12 +133,75 @@ aws wafv2 get-web-acl \
   --name sea-n-shore-staging-edge \
   --id 3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0 \
   --output json > "$RECOVERY_DIR/live-waf.json"
-jq -e '
-  [.WebACL.Rules[] | select(.Name == "AWSManagedRulesCommonRuleSet")] as $rules
-  | ($rules | length) == 1
-    and ($rules[0].Statement.ManagedRuleGroupStatement.RuleActionOverrides
-      | any(.Name == "SizeRestrictions_BODY" and (.ActionToUse.Count != null)))
-' "$RECOVERY_DIR/live-waf.json" >/dev/null
+python3 - "$RECOVERY_DIR/live-waf.json" <<'PY'
+import base64
+import json
+import sys
+
+with open(sys.argv[1]) as handle:
+    waf = json.load(handle)['WebACL']
+rules = waf['Rules']
+
+common = [rule for rule in rules if rule['Name'] == 'AWSManagedRulesCommonRuleSet']
+assert len(common) == 1
+managed = common[0]['Statement']['ManagedRuleGroupStatement']
+assert managed['Name'] == 'AWSManagedRulesCommonRuleSet'
+assert managed['VendorName'] == 'AWS'
+overrides = managed.get('RuleActionOverrides', [])
+assert {override['Name'] for override in overrides} == {'SizeRestrictions_BODY', 'CrossSiteScripting_BODY'}
+for override in overrides:
+    assert set(override['ActionToUse']) == {'Count'}
+
+custom = [rule for rule in rules if rule['Name'] == 'BlockManagedBodyXssExceptProfileMedia']
+assert len(custom) == 1
+custom = custom[0]
+assert custom['Priority'] == 15
+assert set(custom['Action']) == {'Block'}
+statements = custom['Statement']['AndStatement']['Statements']
+assert len(statements) == 2
+label_statements = [statement['LabelMatchStatement'] for statement in statements if 'LabelMatchStatement' in statement]
+not_statements = [statement['NotStatement'] for statement in statements if 'NotStatement' in statement]
+assert label_statements == [{
+    'Scope': 'LABEL',
+    'Key': 'awswaf:managed:aws:core-rule-set:CrossSiteScripting_Body',
+}]
+assert len(not_statements) == 1
+inner = not_statements[0]['Statement']['AndStatement']['Statements']
+assert len(inner) == 2
+
+def decoded(value):
+    if value in ('POST', '/profile'):
+        return value
+    try:
+        return base64.b64decode(value, validate=True).decode('utf-8')
+    except Exception:
+        return value
+
+seen = {}
+for statement in inner:
+    byte_match = statement['ByteMatchStatement']
+    assert byte_match['PositionalConstraint'] == 'EXACTLY'
+    assert byte_match['TextTransformations'] == [{'Priority': 0, 'Type': 'NONE'}]
+    field = byte_match['FieldToMatch']
+    if set(field) == {'Method'}:
+        seen['method'] = decoded(byte_match['SearchString'])
+    elif set(field) == {'UriPath'}:
+        seen['uri'] = decoded(byte_match['SearchString'])
+    else:
+        raise AssertionError(f'Unexpected profile-media exception field: {field}')
+assert seen == {'method': 'POST', 'uri': '/profile'}
+
+rate = [rule for rule in rules if rule['Name'] == 'PerIpRateLimit']
+assert len(rate) == 1
+rate = rate[0]
+assert rate['Priority'] == 20
+assert set(rate['Action']) == {'Block'}
+rate_statement = rate['Statement']['RateBasedStatement']
+assert rate_statement['AggregateKeyType'] == 'IP'
+assert rate_statement['Limit'] == 2000
+assert rate_statement['EvaluationWindowSec'] == 300
+print('PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED=true')
+PY
 
 for endpoint in phase4 home; do
   curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 --max-time 45 "https://$DOMAIN/api/health/$endpoint" > "$RECOVERY_DIR/$endpoint.json"
@@ -152,6 +215,6 @@ jq -e --slurpfile before "$RECOVERY_DIR/ecs-before.json" '.services[0] | .taskDe
 echo "CLOUDFRONT_ID=$CF_ID"
 echo "CLOUDFRONT_HTTPS_URL=https://$DOMAIN"
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$RECOVERY_DIR/state-after.json")"
-echo 'EDGE_FORWARDED_HOST_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; ECS_UNCHANGED_AND_HEALTHY'
+echo 'EDGE_FORWARDED_HOST_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; ECS_UNCHANGED_AND_HEALTHY'
 PRESERVE_RECOVERY=false
 rm -f .edge-recovery-preserve
