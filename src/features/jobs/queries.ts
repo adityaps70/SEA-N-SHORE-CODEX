@@ -16,7 +16,7 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
 
   async function getMyJobApplications() {
     const user = await input.requireUser()
-    return input.repository.listApplications(user.id, 50)
+    return input.repository.listApplications(user.id)
   }
 
   async function getJobApplicationState(id: string) {
