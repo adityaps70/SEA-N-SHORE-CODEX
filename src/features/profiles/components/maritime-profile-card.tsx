@@ -57,10 +57,7 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
   return (
     <Card className="border border-mist-100 p-5 sm:p-7">
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Professional record</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight text-navy-950">Maritime experience</h2>
-        </div>
+        <h2 className="text-xl font-semibold tracking-tight text-navy-950">Maritime Experience</h2>
         <div className="flex items-center gap-2">
           {profile.shoreCareerPreference && !editing ? (
             <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-semibold text-ocean-700">Open to shore career</span>
