@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getVerifiedUser: vi.fn(),
   getPeopleYouMayKnow: vi.fn(),
   getRelationshipState: vi.fn(),
+  getPublicPostsByAuthor: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -20,11 +21,11 @@ vi.mock('@/features/auth/queries', () => ({
 }))
 
 vi.mock('@/features/feed/queries', () => ({
-  getPostsByAuthor: vi.fn(async () => []),
+  getPublicPostsByAuthor: mocks.getPublicPostsByAuthor,
 }))
 
-vi.mock('@/features/feed/components/profile-posts-section', () => ({
-  ProfilePostsSection: () => <section><h2>Posts &amp; activity</h2></section>,
+vi.mock('@/features/feed/components/post-card', () => ({
+  PostCard: ({ post }: { post: { body: string } }) => <article>{post.body}</article>,
 }))
 
 vi.mock('@/features/profiles/queries', () => ({
@@ -115,43 +116,51 @@ beforeEach(() => {
     slug: 'member-three',
     fullName: 'Member Three',
   }])
+  mocks.getPublicPostsByAuthor.mockResolvedValue([{
+    id: 'post-1',
+    body: 'Public maritime update',
+  }])
 })
 
 afterEach(() => cleanup())
 
 describe('Public Profile page', () => {
-  it('shows the essential profile, relationship controls and a personalized recommendation rail without duplicate passport or posts', async () => {
+  it('shows profile posts together with relationship controls and personalized recommendations', async () => {
     render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
 
     expect(screen.getByText('Profile header')).toBeInTheDocument()
     expect(screen.getByText('Relationship controls')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Posts' })).toBeInTheDocument()
+    expect(screen.getByText('Public maritime update')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Maritime Experience' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Experience' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Licences & Credentials' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'People you may know' })).toBeInTheDocument()
     expect(screen.getByText('Member Three')).toBeInTheDocument()
-
+    expect(mocks.getPublicPostsByAuthor).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
     expect(screen.queryByRole('heading', { name: 'My Maritime Passport' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Posts & activity' })).not.toBeInTheDocument()
   })
 
-  it('does not load personalized recommendations for a signed-out viewer', async () => {
+  it('keeps posts public while omitting personalized recommendations for a signed-out viewer', async () => {
     mocks.getVerifiedUser.mockResolvedValueOnce(null)
 
     render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
 
+    expect(screen.getByRole('heading', { name: 'Posts' })).toBeInTheDocument()
+    expect(screen.getByText('Public maritime update')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'People you may know' })).not.toBeInTheDocument()
     expect(mocks.getPeopleYouMayKnow).not.toHaveBeenCalled()
     expect(screen.queryByText('Relationship controls')).not.toBeInTheDocument()
   })
 
-  it('uses the approved desktop content-plus-rail layout and does not load duplicate passport or feed activity', () => {
+  it('uses the approved desktop content-plus-rail layout with public post activity and no duplicate passport component', () => {
     const source = readFileSync('src/app/(public)/people/[slug]/page.tsx', 'utf8')
     expect(source).toContain('lg:grid-cols-[minmax(0,1fr)_300px]')
     expect(source).toContain('lg:sticky lg:top-24')
+    expect(source).toContain('getPublicPostsByAuthor')
+    expect(source).toContain('<PostCard')
     expect(source).not.toContain('ProfilePassportOverview')
-    expect(source).not.toContain('getPostsByAuthor')
     expect(source).not.toContain('ProfilePostsSection')
   })
 })
