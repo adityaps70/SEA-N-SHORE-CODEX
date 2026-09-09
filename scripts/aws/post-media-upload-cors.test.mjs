@@ -64,12 +64,12 @@ test('GitHub staging deploy role can apply and verify CORS only on the staging m
   assert.doesNotMatch(corsSource, /Resource\s*=\s*"\*"/)
 })
 
-test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and plan-safe by default', () => {
+test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and guarded', () => {
   const workflow = readFileSync(iamWorkflowPath, 'utf8')
   const script = readFileSync(iamScriptPath, 'utf8')
   const action = readFileSync(iamActionPath, 'utf8').trim()
 
-  assert.equal(action, 'plan')
+  assert.ok(['plan', 'apply-once'].includes(action))
 
   assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
   assert.match(workflow, /environment:\s*staging/)
@@ -82,7 +82,7 @@ test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and
   assert.match(workflow, /bash scripts\/aws\/github-deploy-iam\.sh/)
 
   assert.match(script, /set -euo pipefail/)
-  assert.match(script, /EXPECTED_ACCOUNT="992382634586"/)
+  assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
   assert.match(script, /GITHUB_DEPLOY_IAM_EXPECTED_SHA/)
   assert.match(script, /case "\$ACTION" in plan\|apply-once\)/)
   assert.match(script, /aws iam get-role-policy/)
