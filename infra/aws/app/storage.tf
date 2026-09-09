@@ -28,6 +28,17 @@ resource "aws_s3_bucket_public_access_block" "app" {
   restrict_public_buckets = true
 }
 
+resource "aws_s3_bucket_cors_configuration" "media" {
+  bucket = aws_s3_bucket.app["media"].id
+
+  cors_rule {
+    allowed_methods = ["PUT"]
+    allowed_origins = ["https://${aws_cloudfront_distribution.app.domain_name}"]
+    allowed_headers = ["Content-Type"]
+    max_age_seconds = 300
+  }
+}
+
 resource "aws_s3_bucket_versioning" "app" {
   for_each = aws_s3_bucket.app
 
