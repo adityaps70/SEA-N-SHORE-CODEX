@@ -90,7 +90,7 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
           )}
           {profile.skills.length ? (
             <div className="mt-6">
-              <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Expertise</p>
+              <p className="text-sm font-semibold text-navy-950">Skills</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {profile.skills.map((skill) => (
                   <span key={skill} className="rounded-full bg-mist-50 px-3 py-1.5 text-sm font-medium text-navy-900">
