@@ -230,15 +230,8 @@ export function ProfileCredentialWallet({
 
   return (
     <Card className="border border-mist-100 p-5 sm:p-7">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">
-            <FileCheck2 aria-hidden="true" className="size-4" />
-            CoC & credentials
-          </div>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight text-navy-950">Certification wallet</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-5 text-muted">Keep certificates of competency, STCW training and professional credentials visible in one place.</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-xl font-semibold tracking-tight text-navy-950">Licences &amp; Credentials</h2>
         {editable && !adding ? (
           <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white" aria-label="Add credential">
             <Plus aria-hidden="true" className="size-4" />
