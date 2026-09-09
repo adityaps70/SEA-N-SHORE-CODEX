@@ -316,6 +316,17 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     )
   }
 
+  async function isPostMediaAttached(storagePath: string) {
+    const rows = await queryRows(
+      `select exists (
+         select 1 from public.post_media
+         where storage_path = $1
+       ) as attached`,
+      [storagePath],
+    ) as Array<QueryResultRow & { attached: boolean }>
+    return Boolean(rows[0]?.attached)
+  }
+
   async function insertPollPost(input: { id: string; authorId: string; category: PostCategory; body: string }) {
     await queryRows(
       `insert into public.posts (id, author_id, category, body, post_type)
@@ -398,6 +409,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     deleteOwnPost,
     insertStandardPost,
     insertPostMedia,
+    isPostMediaAttached,
     insertPollPost,
     insertPollOption,
     setLiked,
