@@ -8,8 +8,8 @@ type ActiveNavLinkProps = ComponentProps<typeof Link> & {
   activeClassName: string
 }
 
-function routeIsActive(pathname: string, href: ComponentProps<typeof Link>['href']) {
-  if (typeof href !== 'string') return false
+function routeIsActive(pathname: string | null, href: ComponentProps<typeof Link>['href']) {
+  if (!pathname || typeof href !== 'string') return false
   if (href === '/home') return pathname === '/home'
   return pathname === href || pathname.startsWith(`${href}/`)
 }
