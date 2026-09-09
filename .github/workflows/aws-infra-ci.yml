@@ -56,6 +56,8 @@ jobs:
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
       - name: Verify post media migration contract
         run: node --test scripts/aws/migrate-post-media-to-s3.test.mjs
+      - name: Verify post media video schema contract
+        run: node --test scripts/aws/post-media-video-schema.test.mjs
       - name: Verify database reconciliation contract
         run: node --test scripts/migration/reconcile-postgres.test.mjs
       - name: Verify storage reconciliation contract
