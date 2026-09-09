@@ -35,6 +35,22 @@ describe('jobs repository', () => {
     expect(seen[0]?.values).toEqual(['viewer-1', 50])
   })
 
+  it('requires an active onboarded profile before an application can be submitted', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{ ready: true }]
+      },
+    })
+
+    await expect(repository.isMemberReady('viewer-1')).resolves.toBe(true)
+
+    expect(seen[0]?.text).toContain("p.account_status = 'active'")
+    expect(seen[0]?.text).toContain('p.onboarding_completed_at is not null')
+    expect(seen[0]?.values).toEqual(['viewer-1'])
+  })
+
   it('creates an application with applied status', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createJobsRepository({
