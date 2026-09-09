@@ -100,7 +100,7 @@ jobs:
           export GITHUB_DEPLOY_IAM_EXPECTED_SHA={sha}
           bash scripts/aws/github-deploy-iam.sh
           """
-          print(json.dumps({{"executionTimeout": ["1200"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}}))
+          print(json.dumps({"executionTimeout": ["1200"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
           PYTHON
           COMMAND_ID=$(aws ssm send-command \
             --region "$AWS_REGION" \
