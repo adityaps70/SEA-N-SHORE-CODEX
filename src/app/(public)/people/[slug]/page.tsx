@@ -41,10 +41,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           ) : undefined}
         />
 
-        <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
-          <ProfileAbout profile={profile} />
-          <MaritimeProfileCard profile={profile} />
-        </div>
+        <ProfileAbout profile={profile} />
+        <MaritimeProfileCard profile={profile} />
 
         <ProfileCareerTimeline experiences={portfolio.experiences} />
         <ProfileCredentialWallet credentials={portfolio.credentials} />
