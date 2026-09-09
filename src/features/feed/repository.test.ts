@@ -104,4 +104,19 @@ describe('feed repository', () => {
     expect(calls[2][0]).toMatch(/on conflict \(post_id, user_id\).*do update/i)
     expect(calls[2][1]).toEqual([postId, '44444444-4444-4444-8444-444444444444', viewerId])
   })
+
+  it('checks whether an exact storage path is already attached before pending media can be deleted', async () => {
+    const storagePath = `${viewerId}/${postId}/55555555-5555-4555-8555-555555555555.mp4`
+    const query = vi.fn(async () => [{ attached: true }])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await expect(repository.isPostMediaAttached(storagePath)).resolves.toBe(true)
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/select\s+exists\s*\(/i)
+    expect(sql).toMatch(/from public\.post_media/i)
+    expect(sql).toMatch(/storage_path = \$1/i)
+    expect(values).toEqual([storagePath])
+  })
 })
