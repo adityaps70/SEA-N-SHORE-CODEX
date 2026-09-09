@@ -9,6 +9,7 @@ const optionId = '44444444-4444-4444-8444-444444444444'
 function repository(overrides: Partial<FeedRepository> = {}) {
   return {
     isMemberReady: vi.fn(async () => true),
+    isPostMediaAttached: vi.fn(async () => false),
     getInteractablePost: vi.fn(async () => ({ id: postId, authorId, postType: 'standard' as const })),
     insertStandardPost: vi.fn(async () => undefined),
     insertPostMedia: vi.fn(async () => undefined),
@@ -69,6 +70,25 @@ describe('feed service authorization', () => {
       mimeType: 'image/webp',
       altText: 'Mooring station layout',
     })
+  })
+
+  it('allows discarding only media that is not already attached in Aurora', async () => {
+    const repo = repository()
+    const service = await serviceFor(repo)
+    const storagePath = `${viewerId}/${postId}/pending.jpg`
+
+    await expect(service.assertPendingMediaDiscardable(viewerId, storagePath)).resolves.toBe(true)
+    expect(repo.isPostMediaAttached).toHaveBeenCalledWith(storagePath)
+  })
+
+  it('refuses to discard media once Aurora references the object', async () => {
+    const repo = repository({ isPostMediaAttached: vi.fn(async () => true) })
+    const service = await serviceFor(repo)
+
+    await expect(service.assertPendingMediaDiscardable(
+      viewerId,
+      `${viewerId}/${postId}/attached.jpg`,
+    )).rejects.toThrow('feed_media_delete_forbidden')
   })
 
   it('creates polls transactionally with trimmed case-insensitive distinct options in first-seen order', async () => {
