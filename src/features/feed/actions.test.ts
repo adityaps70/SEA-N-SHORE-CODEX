@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { removeFeedImage, uploadFeedImage } from './media'
+import {
+  createPendingPostMediaUpload,
+  removeFeedImage,
+  uploadFeedImage,
+  verifyPendingPostMedia,
+} from './media'
 import {
   addPostCommentWithAurora,
   createPollPostWithAurora,
@@ -13,6 +18,7 @@ import {
 import {
   addComment,
   createPost,
+  createPostMediaUpload,
   deletePost,
   setPollVote,
   setPostLiked,
@@ -33,7 +39,15 @@ vi.mock('@/features/auth/aws-queries', () => {
 })
 vi.mock('./media', () => ({
   resolveFeedMediaUrls: vi.fn(async () => new Map()),
-  uploadFeedImage: vi.fn(async () => '11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/image.jpg'),
+  createPendingPostMediaUpload: vi.fn(async (input: { profileId: string; mimeType: string; size: number }) => ({
+    postId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    storagePath: `${input.profileId}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cccccccc-cccc-4ccc-8ccc-cccccccccccc.jpg`,
+    mimeType: input.mimeType,
+    size: input.size,
+    uploadUrl: 'https://s3.example/upload',
+  })),
+  verifyPendingPostMedia: vi.fn(async () => undefined),
+  uploadFeedImage: vi.fn(async () => 'legacy-server-upload-must-not-run'),
   removeFeedImage: vi.fn(async () => undefined),
 }))
 vi.mock('./service', () => ({
@@ -49,8 +63,11 @@ vi.mock('./service', () => ({
 const viewerId = '11111111-1111-4111-8111-111111111111'
 const postId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const optionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
-const storagePath = `${viewerId}/${postId}/image.jpg`
+const objectId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+const storagePath = `${viewerId}/${postId}/${objectId}.jpg`
 const mockedRequireAwsUser = vi.mocked(requireAwsUser)
+const mockedCreatePendingPostMediaUpload = vi.mocked(createPendingPostMediaUpload)
+const mockedVerifyPendingPostMedia = vi.mocked(verifyPendingPostMedia)
 const mockedUploadFeedImage = vi.mocked(uploadFeedImage)
 const mockedRemoveFeedImage = vi.mocked(removeFeedImage)
 const mockedCreateStandardPost = vi.mocked(createStandardPostWithAurora)
@@ -69,9 +86,13 @@ function basePostForm() {
   return formData
 }
 
-function postFormWithImage() {
+function postFormWithCompletedMedia() {
   const formData = basePostForm()
-  formData.set('media', new File(['image'], 'diagram.jpg', { type: 'image/jpeg' }))
+  formData.set('mediaPostId', postId)
+  formData.set('mediaStoragePath', storagePath)
+  formData.set('mediaMimeType', 'image/jpeg')
+  formData.set('mediaSize', '1024')
+  formData.set('altText', 'Annotated engine-room diagram')
   return formData
 }
 
@@ -91,41 +112,56 @@ describe('feed actions', () => {
     expect(mockedCreateStandardPost).not.toHaveBeenCalled()
   })
 
-  it.each([
-    [new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'large.jpg', { type: 'image/jpeg' }), /5 MiB/i],
-    [new File(['gif'], 'animation.gif', { type: 'image/gif' }), /JPEG, PNG, or WebP/i],
-  ])('rejects invalid media before authentication or mutation', async (file, message) => {
-    const formData = basePostForm()
-    formData.set('media', file)
+  it('rejects invalid media metadata before authenticating a presign request', async () => {
+    await expect(createPostMediaUpload({ mimeType: 'image/gif', size: 1024 })).resolves.toEqual({
+      ok: false,
+      error: 'Choose a JPEG, PNG, WebP, MP4, or WebM file.',
+    })
 
-    const state = await createPost({}, formData)
-
-    expect(state.fieldErrors?.media?.[0]).toMatch(message)
     expect(mockedRequireAwsUser).not.toHaveBeenCalled()
-    expect(mockedCreateStandardPost).not.toHaveBeenCalled()
+    expect(mockedCreatePendingPostMediaUpload).not.toHaveBeenCalled()
   })
 
-  it('rejects an image attached to a technical poll before mutation', async () => {
-    const formData = basePostForm()
+  it('creates an authenticated server-owned pending upload reference', async () => {
+    await expect(createPostMediaUpload({ mimeType: 'image/jpeg', size: 1024 })).resolves.toEqual({
+      ok: true,
+      upload: {
+        postId,
+        storagePath,
+        mimeType: 'image/jpeg',
+        size: 1024,
+        uploadUrl: 'https://s3.example/upload',
+      },
+    })
+
+    expect(mockedCreatePendingPostMediaUpload).toHaveBeenCalledWith({
+      profileId: viewerId,
+      mimeType: 'image/jpeg',
+      size: 1024,
+    })
+  })
+
+  it('rejects media attached to a technical poll before mutation', async () => {
+    const formData = postFormWithCompletedMedia()
     formData.set('mode', 'poll')
     formData.append('pollOption', 'Option A')
     formData.append('pollOption', 'Option B')
-    formData.set('media', new File(['image'], 'diagram.png', { type: 'image/png' }))
 
     const state = await createPost({}, formData)
 
-    expect(state.fieldErrors?.media?.[0]).toMatch(/polls cannot include an image/i)
+    expect(state.fieldErrors?.media?.[0]).toMatch(/polls cannot include media/i)
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
     expect(mockedCreatePollPost).not.toHaveBeenCalled()
   })
 
-  it('rejects image descriptions over 300 characters before mutation', async () => {
-    const formData = basePostForm()
-    formData.set('media', new File(['image'], 'diagram.webp', { type: 'image/webp' }))
+  it('rejects media descriptions over 300 characters before mutation', async () => {
+    const formData = postFormWithCompletedMedia()
     formData.set('altText', 'a'.repeat(301))
 
     const state = await createPost({}, formData)
 
-    expect(state.fieldErrors?.media?.[0]).toMatch(/300 characters/i)
+    expect(state.fieldErrors?.media?.[0]).toMatch(/300/i)
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
     expect(mockedCreateStandardPost).not.toHaveBeenCalled()
   })
 
@@ -147,22 +183,64 @@ describe('feed actions', () => {
     infoSpy.mockRestore()
   })
 
-  it('uploads media for the permanent profile and removes it when Aurora post creation fails', async () => {
+  it('verifies a completed direct upload before attaching the exact reference in Aurora', async () => {
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+
+    const state = await createPost({}, postFormWithCompletedMedia())
+
+    expect(state).toEqual({ ok: true })
+    expect(mockedVerifyPendingPostMedia).toHaveBeenCalledWith({
+      profileId: viewerId,
+      postId,
+      storagePath,
+      mimeType: 'image/jpeg',
+      size: 1024,
+    })
+    expect(mockedCreateStandardPost).toHaveBeenCalledWith(viewerId, {
+      id: postId,
+      category: 'technical_discussion',
+      body: 'A useful maritime technical lesson.',
+      media: {
+        storagePath,
+        mimeType: 'image/jpeg',
+        altText: 'Annotated engine-room diagram',
+      },
+    })
+    expect(mockedUploadFeedImage).not.toHaveBeenCalled()
+    expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', { postId, hasMedia: true })
+    infoSpy.mockRestore()
+  })
+
+  it('does not mutate Aurora when completed media verification fails', async () => {
+    mockedVerifyPendingPostMedia.mockRejectedValueOnce(new Error('feed_media_metadata_mismatch'))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    const state = await createPost({}, postFormWithCompletedMedia())
+
+    expect(mockedCreateStandardPost).not.toHaveBeenCalled()
+    expect(mockedRemoveFeedImage).not.toHaveBeenCalled()
+    expect(state.error).toBe('We could not verify your uploaded media. Please upload it again.')
+    expect(errorSpy).toHaveBeenCalledWith('[feed_publish_failed]', {
+      stage: 'media_verify',
+      postId,
+      hasMedia: true,
+      errorCode: 'feed_media_metadata_mismatch',
+    })
+    errorSpy.mockRestore()
+  })
+
+  it('removes directly uploaded media when Aurora post creation fails', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockedCreateStandardPost.mockRejectedValueOnce(new Error('post_create_failed'))
 
-    const state = await createPost({}, postFormWithImage())
+    const state = await createPost({}, postFormWithCompletedMedia())
 
-    expect(mockedUploadFeedImage).toHaveBeenCalledWith(expect.objectContaining({
-      profileId: viewerId,
-      file: expect.any(File),
-      extension: 'jpg',
-    }))
     expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
-    expect(state.error).toBe('We could not attach your image, so the post was not published.')
+    expect(mockedUploadFeedImage).not.toHaveBeenCalled()
+    expect(state.error).toBe('We could not attach your media, so the post was not published.')
     expect(errorSpy).toHaveBeenCalledWith('[feed_publish_failed]', expect.objectContaining({
       stage: 'aurora_create',
-      postId: expect.any(String),
+      postId,
       hasMedia: true,
       errorCode: 'post_create_failed',
     }))
@@ -175,10 +253,10 @@ describe('feed actions', () => {
     mockedCreateStandardPost.mockRejectedValueOnce(new Error('post_create_failed'))
     mockedRemoveFeedImage.mockRejectedValueOnce(new Error('s3_delete_failed'))
 
-    const state = await createPost({}, postFormWithImage())
+    const state = await createPost({}, postFormWithCompletedMedia())
 
     expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
-    expect(state.error).toBe('We could not attach your image, so the post was not published.')
+    expect(state.error).toBe('We could not attach your media, so the post was not published.')
   })
 
   it('creates a poll through Aurora using normalized options and the permanent profile UUID', async () => {
