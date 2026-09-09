@@ -3,7 +3,12 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { removeFeedImage, uploadFeedImage } from './media'
+import {
+  createPendingPostMediaUpload,
+  removeFeedImage,
+  verifyPendingPostMedia,
+} from './media'
+import { validatePostMediaMetadata } from './media-policy'
 import { getFeedPage } from './queries'
 import { commentInputSchema, createPostInputSchema, feedRequestSchema, pollVoteSchema } from './schemas'
 import {
@@ -18,6 +23,10 @@ import {
 import { POST_CATEGORIES, type FeedRequest, type PostCategory } from './types'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
+
+export type PostMediaUploadActionResult =
+  | { ok: true; upload: Awaited<ReturnType<typeof createPendingPostMediaUpload>> }
+  | { ok: false; error: string }
 
 export type PostComposerState = {
   ok?: boolean
@@ -38,21 +47,23 @@ export type CommentActionState = {
   value?: string
 }
 
-const extensionByMime = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-} as const
-
-type AllowedImageMime = keyof typeof extensionByMime
-
-function isAllowedImageMime(value: string): value is AllowedImageMime {
-  return value in extensionByMime
-}
-
 function safeErrorCode(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
   return /^[a-z][a-z0-9_]{0,79}$/.test(message) ? message : 'unknown_error'
+}
+
+function postMediaReferenceFromFormData(formData: FormData) {
+  const postId = formData.get('mediaPostId')
+  const storagePath = formData.get('mediaStoragePath')
+  const mimeType = formData.get('mediaMimeType')
+  const size = formData.get('mediaSize')
+  const altText = formData.get('altText')
+  const hasReference = [postId, storagePath, mimeType, size].some((value) => (
+    typeof value === 'string' && value.trim().length > 0
+  ))
+
+  if (!hasReference) return undefined
+  return { postId, storagePath, mimeType, size, altText }
 }
 
 function postInputFromFormData(formData: FormData) {
@@ -62,6 +73,7 @@ function postInputFromFormData(formData: FormData) {
     body: formData.get('body'),
     mode,
     pollOptions: formData.getAll('pollOption'),
+    media: postMediaReferenceFromFormData(formData),
   }
 }
 
@@ -76,18 +88,25 @@ function safePostValues(formData: FormData): PostComposerState['values'] {
   }
 }
 
-function mediaInput(formData: FormData, mode: 'standard' | 'poll') {
-  const candidate = formData.get('media')
-  const media = candidate instanceof File && candidate.size > 0 ? candidate : null
-  const altValue = formData.get('altText')
-  const altText = typeof altValue === 'string' ? altValue.trim() : ''
+export async function createPostMediaUpload(input: {
+  mimeType: string
+  size: number
+}): Promise<PostMediaUploadActionResult> {
+  const metadata = validatePostMediaMetadata(input)
+  if (!metadata.ok) return { ok: false, error: metadata.error }
 
-  if (media && mode === 'poll') return { error: 'Technical polls cannot include an image in this release.' } as const
-  if (altText.length > 300) return { error: 'Keep the image description to 300 characters or fewer.' } as const
-  if (!media) return { media: null, altText: altText || null, extension: null } as const
-  if (media.size > 5 * 1024 * 1024) return { error: 'Images must be 5 MiB or smaller.' } as const
-  if (!isAllowedImageMime(media.type)) return { error: 'Use a JPEG, PNG, or WebP image.' } as const
-  return { media, altText: altText || null, extension: extensionByMime[media.type] } as const
+  const user = await requireAwsUser()
+  try {
+    const upload = await createPendingPostMediaUpload({
+      profileId: user.id,
+      mimeType: metadata.mimeType,
+      size: input.size,
+    })
+    return { ok: true, upload }
+  } catch (error) {
+    console.error('[feed_media_presign_failed]', { errorCode: safeErrorCode(error) })
+    return { ok: false, error: 'We could not prepare your media upload. Please try again.' }
+  }
 }
 
 export async function createPost(
@@ -101,11 +120,6 @@ export async function createPost(
       fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
       values: safePostValues(formData),
     }
-  }
-
-  const media = mediaInput(formData, parsed.data.mode)
-  if ('error' in media && typeof media.error === 'string') {
-    return { fieldErrors: { media: [media.error] }, values: safePostValues(formData) }
   }
 
   const user = await requireAwsUser()
@@ -127,24 +141,24 @@ export async function createPost(
       })
       return { error: 'We could not publish your poll. Your entries are still here.', values: safePostValues(formData) }
     }
-  } else if (media.media && media.extension) {
-    const postId = crypto.randomUUID()
-    let storagePath: string
+  } else if (data.media) {
+    const postId = data.media.postId
     try {
-      storagePath = await uploadFeedImage({
+      await verifyPendingPostMedia({
         profileId: user.id,
         postId,
-        file: media.media,
-        extension: media.extension,
+        storagePath: data.media.storagePath,
+        mimeType: data.media.mimeType,
+        size: data.media.size,
       })
     } catch (error) {
       console.error('[feed_publish_failed]', {
-        stage: 'media_upload',
+        stage: 'media_verify',
         postId,
         hasMedia: true,
         errorCode: safeErrorCode(error),
       })
-      return { error: 'We could not upload your image. Your post was not published.', values: safePostValues(formData) }
+      return { error: 'We could not verify your uploaded media. Please upload it again.', values: safePostValues(formData) }
     }
 
     try {
@@ -153,9 +167,9 @@ export async function createPost(
         category: data.category,
         body: data.body,
         media: {
-          storagePath,
-          mimeType: media.media.type,
-          altText: media.altText,
+          storagePath: data.media.storagePath,
+          mimeType: data.media.mimeType,
+          altText: data.media.altText || null,
         },
       })
       console.info('[feed_publish_success]', { postId, hasMedia: true })
@@ -167,11 +181,11 @@ export async function createPost(
         errorCode: safeErrorCode(error),
       })
       try {
-        await removeFeedImage(storagePath)
+        await removeFeedImage(data.media.storagePath)
       } catch {
         // Cleanup is compensating and must not mask the original post-publication failure.
       }
-      return { error: 'We could not attach your image, so the post was not published.', values: safePostValues(formData) }
+      return { error: 'We could not attach your media, so the post was not published.', values: safePostValues(formData) }
     }
   } else {
     try {
