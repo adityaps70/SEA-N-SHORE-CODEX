@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { Anchor, ArrowRight, BadgeCheck, BookOpen, Network, Ship, Waves } from 'lucide-react'
-import { RouteLine } from '@/components/brand/route-line'
 import { Card } from '@/components/ui/card'
 
 type Action = { href: string; label: string }
@@ -11,7 +10,7 @@ export function MaritimeEcosystemHero({ primary, secondary }: { primary: Action;
       <div className="mx-auto grid w-full max-w-7xl gap-12 px-4 py-14 sm:px-6 sm:py-18 lg:grid-cols-[1.02fr_.98fr] lg:items-center lg:py-24">
         <div className="max-w-3xl">
           <p className="flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.16em] text-ocean-700">
-            <RouteLine /> Built for maritime, end to end
+            <span aria-hidden="true" className="h-6 w-16" /> Built for maritime, end to end
           </p>
           <h1 className="mt-7 text-5xl font-semibold tracking-[-0.055em] text-navy-950 sm:text-6xl lg:text-7xl">
             The all-in-one professional ecosystem for the maritime industry.
@@ -35,7 +34,6 @@ export function MaritimeEcosystemHero({ primary, secondary }: { primary: Action;
         </div>
 
         <div className="relative mx-auto w-full max-w-xl" aria-label="Sea N Shore ecosystem interface">
-          <RouteLine className="absolute -top-6 right-5 h-10 w-28 text-teal-500" />
           <Card className="overflow-hidden border border-mist-100 bg-white p-0 shadow-[var(--shadow-card)]">
             <div className="bg-navy-950 p-5 text-white sm:p-6">
               <div className="flex items-center justify-between gap-3">
