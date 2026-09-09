@@ -1,7 +1,18 @@
 import { render, screen } from '@testing-library/react'
 import { existsSync, readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { AppHeader } from '@/components/navigation/app-header'
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    refresh: vi.fn(),
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+  }),
+}))
 
 describe('My Activities and jobs integration contract', () => {
   it('adds My Activities and icons to the signed-in desktop header', () => {
