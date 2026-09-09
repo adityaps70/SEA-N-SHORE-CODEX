@@ -109,7 +109,7 @@ describe('PostComposer', () => {
     expect(screen.getByRole('button', { name: 'Technical Poll' })).toBeInTheDocument()
   })
 
-  it('uploads a portrait image directly, renders an uncropped preview, and exposes metadata only when ready', async () => {
+  it('uploads a portrait image directly, renders a full-width uncropped preview, and exposes metadata only when ready', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
     const file = fileWithSize('portrait.jpg', 'image/jpeg', 1024)
@@ -124,7 +124,10 @@ describe('PostComposer', () => {
 
     const preview = await screen.findByRole('img', { name: 'Selected post media preview' })
     expect(preview).toHaveAttribute('src', 'blob:preview-media')
+    expect(preview).toHaveClass('h-auto')
+    expect(preview).toHaveClass('w-full')
     expect(preview).toHaveClass('object-contain')
+    expect(preview).not.toHaveClass('max-h-[70vh]')
     expect(screen.getByDisplayValue(imageUpload.postId)).toHaveAttribute('name', 'mediaPostId')
     expect(screen.getByDisplayValue(imageUpload.storagePath)).toHaveAttribute('name', 'mediaStoragePath')
     expect(screen.getByDisplayValue('image/jpeg')).toHaveAttribute('name', 'mediaMimeType')
