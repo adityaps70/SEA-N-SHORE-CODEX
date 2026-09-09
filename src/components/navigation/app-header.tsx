@@ -7,7 +7,6 @@ import type { NetworkNotification } from '@/features/notifications/types'
 
 const destinations = [
   { href: '/home', label: 'Home' },
-  { href: '/saved', label: 'Saved' },
   { href: '/network', label: 'My Network' },
   { href: '/jobs', label: 'Jobs' },
   { href: '/community', label: 'Community' },
@@ -23,7 +22,7 @@ export function AppHeader({
   unreadCount: number
 }) {
   return (
-    <header className="hidden border-b border-mist-100 bg-white md:block">
+    <header className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
       <div className="mx-auto flex min-h-18 w-full max-w-7xl items-center gap-6 px-4">
         <Wordmark compact />
         <nav aria-label="Primary" className="flex items-center gap-1">
