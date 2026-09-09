@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
 import PublicProfilePage from './page'
 
 const mocks = vi.hoisted(() => ({
@@ -116,6 +116,8 @@ beforeEach(() => {
     fullName: 'Member Three',
   }])
 })
+
+afterEach(() => cleanup())
 
 describe('Public Profile page', () => {
   it('shows the essential profile, relationship controls and a personalized recommendation rail without duplicate passport or posts', async () => {
