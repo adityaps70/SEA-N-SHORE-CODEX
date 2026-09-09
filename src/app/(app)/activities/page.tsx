@@ -24,16 +24,21 @@ function EmptyPosts({ mode }: { mode: 'posts' | 'comments' }) {
   )
 }
 
+type ActivityTab = 'posts' | 'comments' | 'jobs'
+
 export default async function ActivitiesPage({
   searchParams,
 }: {
   searchParams: Promise<{ tab?: string }>
 }) {
   const { tab: rawTab } = await searchParams
-  const tab: 'posts' | 'comments' = rawTab === 'comments' ? 'comments' : 'posts'
-  const applicationsPromise = getMyJobApplications()
-  const activity = tab === 'comments' ? await getMyCommentActivity() : await getMyActivityPosts()
-  const applications = await applicationsPromise
+  const tab: ActivityTab = rawTab === 'comments' ? 'comments' : rawTab === 'jobs' ? 'jobs' : 'posts'
+
+  const posts = tab === 'posts' ? await getMyActivityPosts() : []
+  const comments = tab === 'comments' ? await getMyCommentActivity() : []
+  const applications = tab === 'jobs' ? await getMyJobApplications() : []
+
+  const tabClass = (active: boolean) => `inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1.5 text-[11px] font-semibold sm:min-h-11 sm:flex-row sm:gap-2 sm:px-4 sm:text-sm ${active ? 'bg-white text-navy-950 shadow-sm' : 'text-muted hover:text-navy-950'}`
 
   return (
     <section className="py-2 sm:py-5">
@@ -49,52 +54,54 @@ export default async function ActivitiesPage({
           </div>
         </div>
 
-        <nav aria-label="Post activity" className="mt-6 grid grid-cols-2 gap-2 rounded-2xl bg-mist-50 p-1.5 sm:max-w-md">
+        <nav aria-label="Activity sections" className="mt-6 grid grid-cols-3 gap-2 rounded-2xl bg-mist-50 p-1.5 sm:max-w-xl">
           <Link
             href="/activities?tab=posts"
             aria-current={tab === 'posts' ? 'page' : undefined}
-            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold ${tab === 'posts' ? 'bg-white text-navy-950 shadow-sm' : 'text-muted hover:text-navy-950'}`}
+            className={tabClass(tab === 'posts')}
           >
-            <PenSquare aria-hidden="true" className="size-4" /> My Posts
+            <PenSquare aria-hidden="true" className="size-4" />
+            <span>My Posts</span>
           </Link>
           <Link
             href="/activities?tab=comments"
             aria-current={tab === 'comments' ? 'page' : undefined}
-            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold ${tab === 'comments' ? 'bg-white text-navy-950 shadow-sm' : 'text-muted hover:text-navy-950'}`}
+            className={tabClass(tab === 'comments')}
           >
-            <MessageSquareText aria-hidden="true" className="size-4" /> My Comments
+            <MessageSquareText aria-hidden="true" className="size-4" />
+            <span>My Comments</span>
+          </Link>
+          <Link
+            href="/activities?tab=jobs"
+            aria-current={tab === 'jobs' ? 'page' : undefined}
+            className={tabClass(tab === 'jobs')}
+          >
+            <BriefcaseBusiness aria-hidden="true" className="size-4" />
+            <span>Jobs Applied</span>
           </Link>
         </nav>
       </div>
 
-      <section aria-labelledby="post-activity-heading" className="mt-5">
-        <h2 id="post-activity-heading" className="sr-only">{tab === 'posts' ? 'My Posts' : 'My Comments'}</h2>
+      <section aria-labelledby="activity-panel-heading" className="mt-5">
+        <h2 id="activity-panel-heading" className="sr-only">
+          {tab === 'posts' ? 'My Posts' : tab === 'comments' ? 'My Comments' : 'Jobs Applied'}
+        </h2>
+
         {tab === 'posts' ? (
-          activity.length ? (
+          posts.length ? (
             <div className="space-y-4">
-              {activity.map((post) => 'post' in post ? null : <PostCard key={post.id} post={post} />)}
+              {posts.map((post) => <PostCard key={post.id} post={post} />)}
             </div>
           ) : <EmptyPosts mode="posts" />
-        ) : (
-          activity.length ? (
+        ) : tab === 'comments' ? (
+          comments.length ? (
             <div className="space-y-5">
-              {activity.map((item) => 'post' in item ? <CommentActivityCard key={item.post.id} activity={item} /> : null)}
+              {comments.map((item) => <CommentActivityCard key={item.post.id} activity={item} />)}
             </div>
           ) : <EmptyPosts mode="comments" />
+        ) : (
+          <JobApplicationList applications={applications} />
         )}
-      </section>
-
-      <section aria-labelledby="jobs-applied-heading" className="mt-8">
-        <div className="mb-4 flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-xl bg-navy-950 text-white">
-            <BriefcaseBusiness aria-hidden="true" className="size-4.5" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Career activity</p>
-            <h2 id="jobs-applied-heading" className="text-xl font-semibold tracking-[-.02em] text-navy-950">Jobs Applied</h2>
-          </div>
-        </div>
-        <JobApplicationList applications={applications} />
       </section>
     </section>
   )
