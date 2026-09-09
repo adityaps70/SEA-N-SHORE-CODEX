@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   createPost: vi.fn(async () => ({ ok: true })),
   createPostMediaUpload: vi.fn(),
   discardPendingPostMedia: vi.fn(async () => ({ ok: true })),
-  uploadPostMediaFile: vi.fn(async () => undefined),
+  uploadPostMediaFile: vi.fn<(input: { uploadUrl: string; file: File; onProgress: (percent: number) => void }) => Promise<void>>(),
   createObjectURL: vi.fn(() => 'blob:preview-media'),
   revokeObjectURL: vi.fn(),
 }))
@@ -159,7 +159,6 @@ describe('PostComposer', () => {
     await waitFor(() => expect(mocks.uploadPostMediaFile).toHaveBeenCalled())
     expect(screen.getByRole('button', { name: 'Post' })).toBeDisabled()
     expect(screen.getByText(/Uploading/i)).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /mediaPostId/i })).not.toBeInTheDocument()
     expect(document.querySelector('input[name="mediaPostId"]')).toBeNull()
 
     finishUpload?.()
@@ -169,7 +168,7 @@ describe('PostComposer', () => {
   it('reports upload progress from the XHR progress callback', async () => {
     let reportProgress: ((percent: number) => void) | undefined
     let finishUpload: (() => void) | undefined
-    mocks.uploadPostMediaFile.mockImplementationOnce(({ onProgress }: { onProgress: (percent: number) => void }) => {
+    mocks.uploadPostMediaFile.mockImplementationOnce(({ onProgress }) => {
       reportProgress = onProgress
       return new Promise<void>((resolve) => { finishUpload = resolve })
     })
