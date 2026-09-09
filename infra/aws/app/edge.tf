@@ -30,12 +30,84 @@ resource "aws_wafv2_web_acl" "edge" {
             count {}
           }
         }
+
+        # Binary multipart image bytes can falsely match the CRS body-XSS signature.
+        # Count the managed match so its label remains available to the bounded rule
+        # below, which restores blocking everywhere except exact POST /profile uploads.
+        rule_action_override {
+          name = "CrossSiteScripting_BODY"
+          action_to_use {
+            count {}
+          }
+        }
       }
     }
 
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "${local.name_prefix}-common"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "BlockManagedBodyXssExceptProfileMedia"
+    priority = 15
+
+    action {
+      block {}
+    }
+
+    statement {
+      and_statement {
+        statement {
+          label_match_statement {
+            scope = "LABEL"
+            key   = "awswaf:managed:aws:core-rule-set:CrossSiteScripting_Body"
+          }
+        }
+
+        statement {
+          not_statement {
+            statement {
+              and_statement {
+                statement {
+                  byte_match_statement {
+                    field_to_match {
+                      method {}
+                    }
+                    positional_constraint = "EXACTLY"
+                    search_string         = "POST"
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+
+                statement {
+                  byte_match_statement {
+                    field_to_match {
+                      uri_path {}
+                    }
+                    positional_constraint = "EXACTLY"
+                    search_string         = "/profile"
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.name_prefix}-body-xss-block"
       sampled_requests_enabled   = true
     }
   }
