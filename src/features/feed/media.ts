@@ -9,6 +9,7 @@ import {
   buildPostMediaStoragePath,
   isOwnedPostMediaStoragePath,
   validatePostMediaMetadata,
+  type PostMediaMime,
 } from './media-policy'
 
 export async function resolveFeedMediaUrls(paths: string[]): Promise<Map<string, string>> {
@@ -38,7 +39,7 @@ export async function createPendingPostMediaUpload(input: {
 }): Promise<{
   postId: string
   storagePath: string
-  mimeType: string
+  mimeType: PostMediaMime
   size: number
   uploadUrl: string
 }> {
