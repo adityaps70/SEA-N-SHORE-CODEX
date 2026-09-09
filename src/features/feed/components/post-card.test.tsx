@@ -51,4 +51,38 @@ describe('PostCard', () => {
     expect(screen.getByText((_, element) => element?.tagName === 'TIME')).toHaveAttribute('datetime', post.createdAt)
     expect(screen.queryByText(/Verified/i)).not.toBeInTheDocument()
   })
+
+  it('shows portrait image media in full instead of forcing a 16:9 cover crop', () => {
+    const { container } = render(<PostCard post={{
+      ...post,
+      media: {
+        storagePath: 'member/post/portrait.jpg',
+        mimeType: 'image/jpeg',
+        altText: 'Portrait safety poster',
+        signedUrl: 'https://media.example/portrait.jpg',
+      },
+    }} />)
+
+    const image = screen.getByRole('img', { name: 'Portrait safety poster' })
+    expect(image).toHaveClass('object-contain')
+    expect(image).toHaveClass('h-auto')
+    expect(container.innerHTML).not.toContain('aspect-[16/9]')
+  })
+
+  it('shows video media as a controls-enabled inline player', () => {
+    const { container } = render(<PostCard post={{
+      ...post,
+      media: {
+        storagePath: 'member/post/drill.mp4',
+        mimeType: 'video/mp4',
+        altText: 'Emergency drill video',
+        signedUrl: 'https://media.example/drill.mp4',
+      },
+    }} />)
+
+    const video = container.querySelector('video')
+    expect(video).not.toBeNull()
+    expect(video).toHaveAttribute('controls')
+    expect(video).toHaveAttribute('src', 'https://media.example/drill.mp4')
+  })
 })
