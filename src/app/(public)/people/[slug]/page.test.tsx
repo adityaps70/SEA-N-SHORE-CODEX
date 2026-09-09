@@ -19,6 +19,14 @@ vi.mock('@/features/auth/queries', () => ({
   getVerifiedUser: mocks.getVerifiedUser,
 }))
 
+vi.mock('@/features/feed/queries', () => ({
+  getPostsByAuthor: vi.fn(async () => []),
+}))
+
+vi.mock('@/features/feed/components/profile-posts-section', () => ({
+  ProfilePostsSection: () => <section><h2>Posts &amp; activity</h2></section>,
+}))
+
 vi.mock('@/features/profiles/queries', () => ({
   getPublicProfileBySlug: vi.fn(async () => ({
     id: '22222222-2222-4222-8222-222222222222',
@@ -87,6 +95,9 @@ vi.mock('@/features/profiles/components/profile-career-timeline', () => ({
 vi.mock('@/features/profiles/components/profile-credential-wallet', () => ({
   ProfileCredentialWallet: () => <section><h2>Licences & Credentials</h2></section>,
 }))
+vi.mock('@/features/profiles/components/profile-passport-overview', () => ({
+  ProfilePassportOverview: () => <section><h2>My Maritime Passport</h2></section>,
+}))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -119,7 +130,7 @@ describe('Public Profile page', () => {
     expect(screen.getByRole('heading', { name: 'People you may know' })).toBeInTheDocument()
     expect(screen.getByText('Member Three')).toBeInTheDocument()
 
-    expect(screen.queryByText('My Maritime Passport')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'My Maritime Passport' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Posts & activity' })).not.toBeInTheDocument()
   })
 
