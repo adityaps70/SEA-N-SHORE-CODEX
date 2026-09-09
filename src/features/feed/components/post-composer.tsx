@@ -288,24 +288,26 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
                 <X aria-hidden="true" className="size-4" />
               </button>
             </div>
-            <div className="grid max-h-[70vh] place-items-center overflow-auto bg-black/[0.03]">
-              {isVideoPostMediaMime(media.mimeType) ? (
+            {isVideoPostMediaMime(media.mimeType) ? (
+              <div className="grid max-h-[70vh] place-items-center overflow-auto bg-black/[0.03]">
                 <video
                   src={media.localUrl}
                   controls
                   preload="metadata"
                   className="max-h-[70vh] w-full object-contain"
                 />
-              ) : (
-                // Blob previews are local browser URLs, so Next Image optimization is not applicable here.
-                // eslint-disable-next-line @next/next/no-img-element
+              </div>
+            ) : (
+              <div className="w-full overflow-hidden bg-black/[0.03]">
+                {/* Blob previews are local browser URLs, so Next Image optimization is not applicable here. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={media.localUrl}
                   alt="Selected post media preview"
-                  className="max-h-[70vh] w-full object-contain"
+                  className="h-auto w-full object-contain"
                 />
-              )}
-            </div>
+              </div>
+            )}
             <label className="block border-t border-mist-100 px-3 py-3 text-sm text-muted">
               <span className="sr-only">Media description</span>
               <input
