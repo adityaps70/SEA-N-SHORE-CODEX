@@ -46,7 +46,7 @@ describe('ProfileHeader', () => {
     expect(screen.queryByText('YES')).not.toBeInTheDocument()
   })
 
-  it('keeps long full names readable without truncation and isolates the profile actions', () => {
+  it('uses a LinkedIn-style stacked identity layout so actions cannot squeeze a full name', () => {
     const longNameProfile = {
       ...profile,
       fullName: 'Aditya Pratap Singh',
@@ -67,9 +67,11 @@ describe('ProfileHeader', () => {
     )
 
     const heading = screen.getByRole('heading', { name: 'Aditya Pratap Singh' })
-    expect(heading).not.toHaveClass('truncate')
-    expect(heading).toHaveClass('text-2xl', 'sm:text-3xl')
-    expect(screen.getByTestId('profile-header-actions')).toHaveClass('lg:justify-self-end')
+    expect(heading).not.toHaveClass('truncate', 'break-words')
+    expect(heading).toHaveClass('text-[1.75rem]', 'sm:text-[2rem]')
+    expect(screen.getByTestId('profile-header-avatar')).toHaveClass('rounded-full')
+    expect(screen.getByTestId('profile-header-identity')).toHaveClass('max-w-4xl')
+    expect(screen.getByTestId('profile-header-actions')).toHaveClass('mt-5', 'w-full')
   })
 
   it('prefers the exact onboarding identity and shows additional capacities', () => {
