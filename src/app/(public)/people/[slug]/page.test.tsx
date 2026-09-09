@@ -154,6 +154,16 @@ describe('Public Profile page', () => {
     expect(screen.queryByText('Relationship controls')).not.toBeInTheDocument()
   })
 
+  it('keeps About full-width in the main profile column instead of pairing it with Maritime Experience', () => {
+    const source = readFileSync('src/app/(public)/people/[slug]/page.tsx', 'utf8')
+    const aboutIndex = source.indexOf('<ProfileAbout profile={profile} />')
+    const maritimeIndex = source.indexOf('<MaritimeProfileCard profile={profile} />')
+
+    expect(aboutIndex).toBeGreaterThan(-1)
+    expect(maritimeIndex).toBeGreaterThan(aboutIndex)
+    expect(source).not.toContain('lg:grid-cols-[1.15fr_.85fr]')
+  })
+
   it('keeps Posts as the final content section after credentials', () => {
     const source = readFileSync('src/app/(public)/people/[slug]/page.tsx', 'utf8')
     const credentialsIndex = source.indexOf('<ProfileCredentialWallet')
