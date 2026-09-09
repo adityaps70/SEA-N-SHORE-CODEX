@@ -18,15 +18,15 @@ const videoMedia: FeedMedia = {
 }
 
 describe('PostMedia', () => {
-  it('renders the complete image without a destructive fixed aspect crop', () => {
+  it('renders portrait images at full post width with natural height and no viewport-height cap', () => {
     const { container } = render(<PostMedia media={imageMedia} authorName="Member A" />)
 
     const image = screen.getByRole('img', { name: 'Portrait of a vessel deck inspection' })
     expect(image).toHaveAttribute('src', imageMedia.signedUrl)
     expect(image).toHaveClass('h-auto')
-    expect(image).toHaveClass('max-h-[80vh]')
-    expect(image).toHaveClass('max-w-full')
+    expect(image).toHaveClass('w-full')
     expect(image).toHaveClass('object-contain')
+    expect(image).not.toHaveClass('max-h-[80vh]')
     expect(container.innerHTML).not.toContain('aspect-[16/9]')
     expect(container.innerHTML).not.toContain('object-cover')
   })
