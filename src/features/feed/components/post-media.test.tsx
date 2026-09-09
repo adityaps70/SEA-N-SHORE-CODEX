@@ -40,7 +40,7 @@ describe('PostMedia', () => {
     expect(video).not.toBeNull()
     expect(video).toHaveAttribute('src', videoMedia.signedUrl)
     expect(video).toHaveAttribute('controls')
-    expect(video).toHaveAttribute('muted')
+    expect(video?.muted).toBe(true)
     expect(video).toHaveAttribute('playsinline')
     expect(video).toHaveAttribute('preload', 'metadata')
     expect(video).toHaveAttribute('aria-label', 'Bridge resource management demonstration')
