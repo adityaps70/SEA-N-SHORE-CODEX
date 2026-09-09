@@ -188,6 +188,39 @@ jobs:
           test -n "$AURORA_DATABASE" || (echo "Missing staging metadata AURORA_DATABASE" && exit 1)
           test -n "$AURORA_SECRET_ARN" || (echo "Missing staging metadata AURORA_SECRET_ARN" && exit 1)
 
+      - name: Apply restricted browser PUT CORS to media bucket
+        if: env.DEPLOY_TO_ECS == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/media-cors.json <<EOF
+          {"CORSRules":[{"AllowedHeaders":["Content-Type"],"AllowedMethods":["PUT"],"AllowedOrigins":["$SERVER_ACTION_ALLOWED_ORIGINS"],"MaxAgeSeconds":300}]}
+          EOF
+
+          aws s3api put-bucket-cors \
+            --region "$AWS_REGION" \
+            --bucket "$AWS_MEDIA_BUCKET" \
+            --cors-configuration file:///tmp/media-cors.json
+
+          LIVE_CORS="$(aws s3api get-bucket-cors \
+            --region "$AWS_REGION" \
+            --bucket "$AWS_MEDIA_BUCKET" \
+            --output json)"
+
+          jq -e --arg origin "$SERVER_ACTION_ALLOWED_ORIGINS" '
+            (.CORSRules | length) == 1
+            and .CORSRules[0].AllowedMethods == ["PUT"]
+            and .CORSRules[0].AllowedOrigins == [$origin]
+            and .CORSRules[0].AllowedHeaders == ["Content-Type"]
+            and .CORSRules[0].MaxAgeSeconds == 300
+          ' <<<"$LIVE_CORS" > /dev/null
+
+          echo "MEDIA_CORS_VERIFIED=true"
+          echo "### Media bucket CORS verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Bucket: \`$AWS_MEDIA_BUCKET\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Origin: \`$SERVER_ACTION_ALLOWED_ORIGINS\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Method/header: \`PUT / Content-Type\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Create new ECS task definition revision
         if: env.DEPLOY_TO_ECS == 'true'
         env:
