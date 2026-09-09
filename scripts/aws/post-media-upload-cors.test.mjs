@@ -47,10 +47,10 @@ test('GitHub staging deploy role can apply and verify CORS only on the staging m
   assert.notEqual(policyStart, -1, 'GitHub deploy inline policy must exist')
 
   const policySource = source.slice(policyStart)
-  const corsSid = policySource.indexOf('Sid      = "ManageStagingMediaCors"')
-  assert.notEqual(corsSid, -1, 'deploy role must include a dedicated media CORS statement')
+  const corsMatch = policySource.match(/Sid\s*=\s*"ManageStagingMediaCors"[\s\S]*?\n      },/)
+  assert.ok(corsMatch, 'deploy role must include a dedicated media CORS statement')
 
-  const corsSource = policySource.slice(corsSid, policySource.indexOf('\n      },', corsSid) + 9)
+  const corsSource = corsMatch[0]
   assert.match(corsSource, /"s3:PutBucketCORS"/)
   assert.match(corsSource, /"s3:GetBucketCORS"/)
   assert.match(
