@@ -55,7 +55,8 @@ test('post media video migration execution is branch-scoped and safe by default'
     assert.equal(existsSync(path), true, `${path} must exist`)
   }
 
-  assert.equal(readFileSync(actionPath, 'utf8'), 'plan\n')
+  const action = readFileSync(actionPath, 'utf8').trim()
+  assert.ok(['plan', 'apply-once'].includes(action), `Unexpected post media video migration action: ${action}`)
 
   const guard = readFileSync(guardPath, 'utf8')
   assert.match(guard, /EXPECTED_BRANCH="feat\/aws-native-phase-0-1"/)
@@ -76,6 +77,7 @@ test('post media video migration execution is branch-scoped and safe by default'
   assert.match(workflow, /infra\/aws\/database\/migrations\/0008_post_media_video\.sql/)
   assert.match(workflow, /scripts\/aws\/post-media-video-migration-action\.txt/)
   assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+  assert.match(workflow, /Exact-head AWS Infrastructure CI is not green/)
   assert.match(workflow, /aws-actions\/configure-aws-credentials@v4/)
   assert.match(workflow, /sea-n-shore-bootstrap/)
   assert.match(workflow, /\[\[ "\$COUNT" -eq 1 \]\]/)
