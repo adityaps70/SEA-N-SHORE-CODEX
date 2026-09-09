@@ -8,11 +8,12 @@ import {
   removeFeedImage,
   verifyPendingPostMedia,
 } from './media'
-import { validatePostMediaMetadata } from './media-policy'
+import { isOwnedPostMediaStoragePath, validatePostMediaMetadata } from './media-policy'
 import { getFeedPage } from './queries'
 import { commentInputSchema, createPostInputSchema, feedRequestSchema, pollVoteSchema } from './schemas'
 import {
   addPostCommentWithAurora,
+  assertPendingMediaDiscardableWithAurora,
   createPollPostWithAurora,
   createStandardPostWithAurora,
   deletePostWithAurora,
@@ -106,6 +107,39 @@ export async function createPostMediaUpload(input: {
   } catch (error) {
     console.error('[feed_media_presign_failed]', { errorCode: safeErrorCode(error) })
     return { ok: false, error: 'We could not prepare your media upload. Please try again.' }
+  }
+}
+
+const discardPendingPostMediaSchema = z.object({
+  postId: z.string().uuid(),
+  storagePath: z.string().min(1).max(500),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm']),
+})
+
+export async function discardPendingPostMedia(input: {
+  postId: string
+  storagePath: string
+  mimeType: string
+}): Promise<FeedActionResult> {
+  const parsed = discardPendingPostMediaSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Invalid media.' }
+
+  const user = await requireAwsUser()
+  if (!isOwnedPostMediaStoragePath({
+    profileId: user.id,
+    postId: parsed.data.postId,
+    storagePath: parsed.data.storagePath,
+    mimeType: parsed.data.mimeType,
+  })) {
+    return { ok: false, error: 'Invalid media.' }
+  }
+
+  try {
+    await assertPendingMediaDiscardableWithAurora(user.id, parsed.data.storagePath)
+    await removeFeedImage(parsed.data.storagePath)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'We could not remove this media.' }
   }
 }
 
