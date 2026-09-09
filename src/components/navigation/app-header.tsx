@@ -15,6 +15,7 @@ import { Wordmark } from '@/components/brand/wordmark'
 import { signOut } from '@/features/auth/actions'
 import { NotificationBell } from '@/features/notifications/components/notification-bell'
 import type { NetworkNotification } from '@/features/notifications/types'
+import { ActiveNavLink } from './active-nav-link'
 
 const destinations = [
   { href: '/home', label: 'Home', icon: House },
@@ -25,6 +26,9 @@ const destinations = [
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/activities', label: 'My Activities', icon: History },
 ] as const
+
+const navClass = 'inline-flex min-h-14 min-w-10 flex-col items-center justify-center gap-1 rounded-lg border-b-2 border-transparent px-1.5 font-medium text-navy-900 transition hover:bg-mist-50 xl:min-w-[4.25rem]'
+const activeNavClass = 'border-ocean-600 bg-ocean-50 text-ocean-700'
 
 export function AppHeader({
   recentNotifications,
@@ -39,16 +43,17 @@ export function AppHeader({
         <Wordmark compact />
         <nav aria-label="Primary" className="flex items-center justify-self-center gap-0.5">
           {destinations.map(({ href, label, icon: Icon }) => (
-            <Link
+            <ActiveNavLink
               key={href}
               href={href}
               aria-label={label}
               title={label}
-              className="inline-flex min-h-14 min-w-10 flex-col items-center justify-center gap-1 rounded-lg px-1.5 font-medium text-navy-900 hover:bg-mist-50 xl:min-w-[4.25rem]"
+              className={navClass}
+              activeClassName={activeNavClass}
             >
               <Icon aria-hidden="true" className="size-4.5 shrink-0" />
               <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">{label}</span>
-            </Link>
+            </ActiveNavLink>
           ))}
         </nav>
         <div className="flex items-center gap-1.5">
@@ -66,10 +71,16 @@ export function AppHeader({
             />
           </form>
           <NotificationBell recent={recentNotifications} unreadCount={unreadCount} />
-          <Link href="/profile" aria-label="Profile" title="Profile" className="inline-flex min-h-14 min-w-10 flex-col items-center justify-center gap-1 rounded-lg px-1.5 font-semibold text-navy-900 hover:bg-mist-50 xl:min-w-[4rem]">
+          <ActiveNavLink
+            href="/profile"
+            aria-label="Profile"
+            title="Profile"
+            className="inline-flex min-h-14 min-w-10 flex-col items-center justify-center gap-1 rounded-lg border-b-2 border-transparent px-1.5 font-semibold text-navy-900 transition hover:bg-mist-50 xl:min-w-[4rem]"
+            activeClassName={activeNavClass}
+          >
             <UserRound aria-hidden="true" className="size-4.5" />
             <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">Profile</span>
-          </Link>
+          </ActiveNavLink>
           <form action={signOut}>
             <button type="submit" aria-label="Sign out" title="Sign out" className="grid min-h-10 min-w-10 place-items-center rounded-lg text-muted hover:bg-mist-50 hover:text-navy-900">
               <LogOut aria-hidden="true" className="size-4" />
