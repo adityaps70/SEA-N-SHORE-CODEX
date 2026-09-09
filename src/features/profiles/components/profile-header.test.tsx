@@ -46,6 +46,32 @@ describe('ProfileHeader', () => {
     expect(screen.queryByText('YES')).not.toBeInTheDocument()
   })
 
+  it('keeps long full names readable without truncation and isolates the profile actions', () => {
+    const longNameProfile = {
+      ...profile,
+      fullName: 'Aditya Pratap Singh',
+    }
+
+    render(
+      <ProfileHeader
+        profile={longNameProfile}
+        actions={
+          <div aria-label="Profile actions">
+            <button type="button">View public profile</button>
+            <button type="button">Share profile</button>
+            <button type="button">QR profile</button>
+            <button type="button">Download CV</button>
+          </div>
+        }
+      />,
+    )
+
+    const heading = screen.getByRole('heading', { name: 'Aditya Pratap Singh' })
+    expect(heading).not.toHaveClass('truncate')
+    expect(heading).toHaveClass('text-2xl', 'sm:text-3xl')
+    expect(screen.getByTestId('profile-header-actions')).toHaveClass('sm:justify-self-end')
+  })
+
   it('prefers the exact onboarding identity and shows additional capacities', () => {
     render(<ProfileHeader profile={profile} />)
     expect(screen.getByText('Chief Engineer')).toBeInTheDocument()
