@@ -51,7 +51,7 @@ export function FeedProfileCard({ profile, compact = false }: { profile: OwnProf
         ) : null}
       </div>
       <div className="px-4 pb-4 text-center">
-        <div className="mx-auto -mt-8 grid size-16 place-items-center overflow-hidden rounded-2xl border-4 border-white bg-mist-100 text-base font-semibold text-navy-950 shadow-sm">
+        <div className="mx-auto -mt-[37px] grid size-[74px] place-items-center overflow-hidden rounded-2xl border-4 border-white bg-mist-100 text-base font-semibold text-navy-950 shadow-sm">
           {profile.avatarUrl ? (
             <img src={profile.avatarUrl} alt={`${profile.fullName} profile photo`} className="h-full w-full object-cover" />
           ) : (
