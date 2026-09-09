@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppHeader } from './app-header'
 import { MobileAppHeader } from './mobile-app-header'
 
@@ -7,6 +7,8 @@ vi.mock('@/features/notifications/components/notification-bell', () => ({
   NotificationBell: () => <span>Notifications</span>,
 }))
 vi.mock('@/features/auth/actions', () => ({ signOut: vi.fn() }))
+
+afterEach(() => cleanup())
 
 describe('saved posts navigation', () => {
   it('keeps Saved out of the desktop application header', () => {
