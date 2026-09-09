@@ -118,14 +118,13 @@ export function createFeedQueries(input: {
     const rows = await input.repository.listAuthorRows({
       viewerProfileId: user.id,
       authorProfileId: user.id,
-      limit: 100,
     })
     return hydratePosts(rows, user.id)
   }
 
   async function getMyCommentActivity(): Promise<CommentActivity[]> {
     const user = await input.requireUser()
-    const rows = await input.repository.listCommentedRows({ viewerProfileId: user.id, limit: 100 })
+    const rows = await input.repository.listCommentedRows({ viewerProfileId: user.id })
     const posts = await hydratePosts(rows, user.id)
     return posts.map((post) => ({
       post,
