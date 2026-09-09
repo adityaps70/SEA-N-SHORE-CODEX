@@ -72,3 +72,19 @@ test('staging image verification uses docker push digest evidence without requir
   assert.match(workflow, /sha256:\[0-9a-f\]\{64\}/)
   assert.match(workflow, /digest=\$IMAGE_DIGEST/)
 })
+
+test('one-shot staging deploy applies and verifies only the restricted browser PUT CORS rule on the media bucket', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /Apply restricted browser PUT CORS to media bucket/)
+  assert.match(workflow, /aws s3api put-bucket-cors/)
+  assert.match(workflow, /--bucket "\$AWS_MEDIA_BUCKET"/)
+  assert.match(workflow, /"AllowedMethods":\["PUT"\]/)
+  assert.match(workflow, /"AllowedOrigins":\["\$SERVER_ACTION_ALLOWED_ORIGINS"\]/)
+  assert.match(workflow, /"AllowedHeaders":\["Content-Type"\]/)
+  assert.match(workflow, /"MaxAgeSeconds":300/)
+  assert.match(workflow, /aws s3api get-bucket-cors/)
+  assert.match(workflow, /MEDIA_CORS_VERIFIED=true/)
+  assert.doesNotMatch(workflow, /"AllowedOrigins":\["\*"\]/)
+  assert.doesNotMatch(workflow, /"AllowedHeaders":\["\*"\]/)
+})
