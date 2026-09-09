@@ -35,27 +35,11 @@ jobs:
           test -n "$AWS_REGION"
           test -n "$ECS_TASK_DEFINITION"
           test -n "$ECS_CONTAINER_NAME"
-
-          aws ecs describe-task-definition \
-            --region "$AWS_REGION" \
-            --task-definition "$ECS_TASK_DEFINITION" \
-            --query taskDefinition \
-            --output json > /tmp/task-definition.json
-
-          LOG_GROUP=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '
-            .containerDefinitions[]
-            | select(.name == $NAME)
-            | .logConfiguration.options["awslogs-group"] // empty
-          ' /tmp/task-definition.json)
+          aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$ECS_TASK_DEFINITION" --query taskDefinition --output json > /tmp/task-definition.json
+          LOG_GROUP=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name == $NAME) | .logConfiguration.options["awslogs-group"] // empty' /tmp/task-definition.json)
           test -n "$LOG_GROUP"
-
           START_MS=$(( ( $(date +%s) - 7200 ) * 1000 ))
-          aws logs filter-log-events \
-            --region "$AWS_REGION" \
-            --log-group-name "$LOG_GROUP" \
-            --start-time "$START_MS" \
-            --output json > /tmp/server-action-events.json
-
+          aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" --output json > /tmp/server-action-events.json
           echo "=== SERVER ACTION REJECTION CONTEXT ==="
           jq -r '.events[] | [.timestamp, .message] | @tsv' /tmp/server-action-events.json \
             | grep -Eai 'x-forwarded-host|host.*does not match.*origin|Invalid Server Actions request|Server Reference ID did not match' \
@@ -67,11 +51,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          IDS=$(aws ec2 describe-instances \
-            --region "$AWS_REGION" \
-            --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" \
-            --query 'Reservations[].Instances[].InstanceId' \
-            --output json)
+          IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)
           [[ "$(jq 'length' <<<"$IDS")" -eq 1 ]]
           echo "instance_id=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_OUTPUT"
 
@@ -98,14 +78,7 @@ jobs:
           while IFS=$'\t' read -r RULE_NAME METRIC; do
             [[ -n "$METRIC" ]] || continue
             SAFE_NAME=$(tr -cs 'A-Za-z0-9._-' '_' <<<"$RULE_NAME")
-            aws wafv2 get-sampled-requests \
-              --scope CLOUDFRONT \
-              --region "$WAF_REGION" \
-              --web-acl-arn "$ACL_ARN" \
-              --rule-metric-name "$METRIC" \
-              --time-window StartTime="$START",EndTime="$END" \
-              --max-items 500 \
-              --output json > "/tmp/profile-waf-${SAFE_NAME}.json"
+            aws wafv2 get-sampled-requests --scope CLOUDFRONT --region "$WAF_REGION" --web-acl-arn "$ACL_ARN" --rule-metric-name "$METRIC" --time-window StartTime="$START",EndTime="$END" --max-items 500 --output json > "/tmp/profile-waf-${SAFE_NAME}.json"
             jq -r --arg RULE "$RULE_NAME" '
               .SampledRequests[]
               | select(.Request.URI == "/profile" or (.Request.URI | startswith("/profile?")))
@@ -114,8 +87,9 @@ jobs:
                   $RULE,
                   (.RuleNameWithinRuleGroup // "-"),
                   (.Action // "-"),
-                  (.Request.HTTPMethod // "-"),
-                  (.Request.URI // "-")
+                  (.Request.Method // "-"),
+                  (.Request.URI // "-"),
+                  ((.Labels // []) | map(.Name) | join(","))
                 ]
               | @tsv
             ' "/tmp/profile-waf-${SAFE_NAME}.json"
@@ -124,15 +98,7 @@ jobs:
           '''
           print(json.dumps({"executionTimeout": ["300"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
           PYTHON
-          COMMAND_ID=$(aws ssm send-command \
-            --region "$AWS_REGION" \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "Sea N Shore profile upload WAF diagnostic" \
-            --timeout-seconds 300 \
-            --parameters file:///tmp/waf-diagnostic.json \
-            --query 'Command.CommandId' \
-            --output text)
+          COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore profile upload WAF label diagnostic" --timeout-seconds 300 --parameters file:///tmp/waf-diagnostic.json --query 'Command.CommandId' --output text)
           test -n "$COMMAND_ID"
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
 
