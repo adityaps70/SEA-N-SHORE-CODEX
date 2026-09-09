@@ -9,6 +9,9 @@ const completeProfile: OwnProfile = {
   profileType: 'seafarer',
   fullName: 'Member A',
   avatarPath: null,
+  avatarUrl: 'https://cdn.example.com/member-a-avatar.jpg',
+  coverPath: null,
+  coverUrl: 'https://cdn.example.com/member-a-cover.jpg',
   location: 'Mumbai, India',
   headline: 'Chief Officer | Tankers',
   summary: 'Experienced tanker officer focused on safe operations and professional development.',
@@ -44,5 +47,21 @@ describe('FeedProfileCard', () => {
     render(<FeedProfileCard profile={incompleteProfile} />)
     expect(screen.getByRole('link', { name: /Complete profile/i })).toHaveAttribute('href', '/profile/edit')
     expect(screen.queryByRole('link', { name: /View profile/i })).not.toBeInTheDocument()
+  })
+
+  it('renders the uploaded profile photo and banner when media URLs exist', () => {
+    render(<FeedProfileCard profile={completeProfile} />)
+
+    expect(screen.getByRole('img', { name: 'Member A cover photo' })).toHaveAttribute('src', completeProfile.coverUrl)
+    expect(screen.getByRole('img', { name: 'Member A profile photo' })).toHaveAttribute('src', completeProfile.avatarUrl)
+    expect(screen.queryByText('MA')).not.toBeInTheDocument()
+  })
+
+  it('falls back to initials when no profile photo exists', () => {
+    render(<FeedProfileCard profile={{ ...completeProfile, avatarUrl: null, coverUrl: null }} />)
+
+    expect(screen.getByText('MA')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Member A profile photo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Member A cover photo' })).not.toBeInTheDocument()
   })
 })
