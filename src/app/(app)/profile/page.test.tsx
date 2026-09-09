@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import OwnProfilePage from './page'
@@ -19,6 +20,7 @@ vi.mock('@/features/profiles/queries', () => ({
     profileType: 'seafarer',
     fullName: 'Captain Example',
     avatarPath: null,
+    coverPath: null,
     location: 'Mumbai',
     headline: 'Master Mariner',
     summary: 'Experienced maritime professional.',
@@ -41,31 +43,60 @@ vi.mock('@/features/profiles/profile-portfolio-queries', () => ({
 }))
 
 vi.mock('@/features/profiles/components/profile-header', () => ({
-  ProfileHeader: () => <div>Profile header</div>,
+  ProfileHeader: ({ actions }: { actions?: React.ReactNode }) => (
+    <div>
+      <div>Profile header</div>
+      {actions}
+    </div>
+  ),
 }))
 vi.mock('@/features/profiles/components/profile-about', () => ({
-  ProfileAbout: () => <div>Profile about</div>,
+  ProfileAbout: () => <section><h2>About</h2></section>,
 }))
 vi.mock('@/features/profiles/components/maritime-profile-card', () => ({
-  MaritimeProfileCard: () => <div>Maritime profile</div>,
+  MaritimeProfileCard: () => <section><h2>Maritime Experience</h2></section>,
 }))
 vi.mock('@/features/profiles/components/profile-media-controls', () => ({
   ProfileMediaControls: () => <button type="button">Media control</button>,
 }))
 vi.mock('@/features/profiles/components/profile-career-timeline', () => ({
-  ProfileCareerTimeline: () => <div>Career timeline</div>,
+  ProfileCareerTimeline: () => <section><h2>Experience</h2></section>,
 }))
 vi.mock('@/features/profiles/components/profile-credential-wallet', () => ({
-  ProfileCredentialWallet: () => <div>Certification wallet</div>,
+  ProfileCredentialWallet: () => <section><h2>Licences & Credentials</h2></section>,
+}))
+vi.mock('@/features/profiles/components/profile-passport-toolbar', () => ({
+  ProfilePassportToolbar: ({ slug }: { slug: string }) => <a href={`/people/${slug}`}>View public profile</a>,
+}))
+vi.mock('@/features/profiles/components/profile-passport-overview', () => ({
+  ProfilePassportOverview: () => <section>Sea N Shore professional identity</section>,
+}))
+vi.mock('@/features/feed/components/profile-posts-section', () => ({
+  ProfilePostsSection: () => <section><h2>Posts & activity</h2></section>,
 }))
 
 describe('My Profile page', () => {
-  it('keeps profile editing inline and removes developer-style privacy controls from the page header', async () => {
+  it('keeps the essential editable profile sections and public-profile action without duplicate identity or activity blocks', async () => {
     render(await OwnProfilePage())
 
+    expect(screen.getByText('Profile header')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /view public profile/i })).toHaveAttribute('href', '/people/captain-example')
+    expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Maritime Experience' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Experience' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Licences & Credentials' })).toBeInTheDocument()
+
+    expect(screen.queryByText('Professional identity')).not.toBeInTheDocument()
+    expect(screen.queryByText('My Maritime Passport')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sea N Shore professional identity')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Posts & activity' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /edit all/i })).not.toBeInTheDocument()
     expect(screen.queryByText(/contact:/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /view public profile/i })).toHaveAttribute('href', '/people/captain-example')
-    expect(screen.getByRole('heading', { name: 'Posts & activity' })).toBeInTheDocument()
+  })
+
+  it('does not load feed activity on the own-profile route', () => {
+    const source = readFileSync('src/app/(app)/profile/page.tsx', 'utf8')
+    expect(source).not.toContain('getPostsByAuthor')
+    expect(source).not.toContain('ProfilePostsSection')
   })
 })
