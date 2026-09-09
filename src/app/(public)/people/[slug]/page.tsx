@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getVerifiedUser } from '@/features/auth/queries'
+import { PostCard } from '@/features/feed/components/post-card'
+import { getPublicPostsByAuthor } from '@/features/feed/queries'
 import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-know'
 import { RelationshipControls } from '@/features/network/components/relationship-controls'
 import { getPeopleYouMayKnow, getRelationshipState } from '@/features/network/queries'
@@ -19,10 +21,11 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   ])
   if (!profile) notFound()
 
-  const [relationship, portfolio, recommendations] = await Promise.all([
+  const [relationship, portfolio, recommendations, posts] = await Promise.all([
     viewer && viewer.id !== profile.id ? getRelationshipState(profile.id) : null,
     getProfilePortfolioById(profile.id),
     viewer ? getPeopleYouMayKnow(3) : Promise.resolve([]),
+    getPublicPostsByAuthor(profile.id),
   ])
   const relationshipKey = relationship
     ? `${relationship.following ? 1 : 0}:${relationship.connection.kind}:${relationship.connection.connectionId ?? ''}`
@@ -37,6 +40,25 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             <RelationshipControls key={relationshipKey} profileId={profile.id} initialRelationship={relationship} />
           ) : undefined}
         />
+
+        <section aria-labelledby="profile-posts-heading" className="grid gap-4">
+          <div className="flex items-end justify-between gap-4 px-1">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Activity</p>
+              <h2 id="profile-posts-heading" className="mt-1 text-2xl font-semibold tracking-[-.025em] text-navy-950">Posts</h2>
+            </div>
+            <span className="text-sm text-muted">{posts.length} published</span>
+          </div>
+          {posts.length ? (
+            <div className="space-y-4">
+              {posts.map((post) => <PostCard key={post.id} post={post} readOnly={!viewer} />)}
+            </div>
+          ) : (
+            <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-8 text-center text-sm text-muted">
+              No posts published yet.
+            </div>
+          )}
+        </section>
 
         <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
           <ProfileAbout profile={profile} />
