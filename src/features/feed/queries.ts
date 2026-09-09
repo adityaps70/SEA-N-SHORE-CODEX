@@ -5,11 +5,16 @@ import { feedAuthorAvatarPath, mapFeedPost, type FeedCommentRow, type FeedPostRo
 import { prioritizeRecentFeedRows } from './ranking'
 import { feedRepository, type FeedRepository } from './repository'
 import { feedRequestSchema } from './schemas'
-import type { FeedCursor, FeedPage, FeedPost, FeedRequest } from './types'
+import type { FeedComment, FeedCursor, FeedPage, FeedPost, FeedRequest } from './types'
 
 type RequireUser = () => Promise<AwsVerifiedUser>
 type ResolveMediaUrls = (paths: string[]) => Promise<Map<string, string>>
 type GetPreferredAuthorIds = () => Promise<Iterable<string>>
+
+export type CommentActivity = {
+  post: FeedPost
+  viewerComments: FeedComment[]
+}
 
 export function buildFeedCursorFilter(cursor: FeedCursor) {
   return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
@@ -108,6 +113,26 @@ export function createFeedQueries(input: {
     return hydratePosts(rows, user.id)
   }
 
+  async function getMyActivityPosts(): Promise<FeedPost[]> {
+    const user = await input.requireUser()
+    const rows = await input.repository.listAuthorRows({
+      viewerProfileId: user.id,
+      authorProfileId: user.id,
+      limit: 100,
+    })
+    return hydratePosts(rows, user.id)
+  }
+
+  async function getMyCommentActivity(): Promise<CommentActivity[]> {
+    const user = await input.requireUser()
+    const rows = await input.repository.listCommentedRows({ viewerProfileId: user.id, limit: 100 })
+    const posts = await hydratePosts(rows, user.id)
+    return posts.map((post) => ({
+      post,
+      viewerComments: post.comments.filter((comment) => comment.author.id === user.id),
+    }))
+  }
+
   async function getPostById(id: string): Promise<FeedPost | null> {
     const user = await input.requireUser()
     const row = await input.repository.getPostRow(user.id, id)
@@ -116,7 +141,14 @@ export function createFeedQueries(input: {
     return post ?? null
   }
 
-  return { getFeedPage, getSavedPosts, getPostsByAuthor, getPostById }
+  return {
+    getFeedPage,
+    getSavedPosts,
+    getPostsByAuthor,
+    getMyActivityPosts,
+    getMyCommentActivity,
+    getPostById,
+  }
 }
 
 const productionQueries = createFeedQueries({
@@ -129,4 +161,6 @@ const productionQueries = createFeedQueries({
 export const getFeedPage = productionQueries.getFeedPage
 export const getSavedPosts = productionQueries.getSavedPosts
 export const getPostsByAuthor = productionQueries.getPostsByAuthor
+export const getMyActivityPosts = productionQueries.getMyActivityPosts
+export const getMyCommentActivity = productionQueries.getMyCommentActivity
 export const getPostById = productionQueries.getPostById
