@@ -35,9 +35,9 @@ export function AppHeader({
 }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
-      <div className="mx-auto flex min-h-18 w-full max-w-7xl items-center gap-3 px-4 xl:gap-5">
+      <div className="mx-auto grid min-h-18 w-full max-w-7xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 xl:gap-5">
         <Wordmark compact />
-        <nav aria-label="Primary" className="flex items-center gap-0.5">
+        <nav aria-label="Primary" className="flex items-center justify-self-center gap-0.5">
           {destinations.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
@@ -51,7 +51,7 @@ export function AppHeader({
             </Link>
           ))}
         </nav>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5">
           <form action="/network" method="get" role="search" className="relative hidden lg:block">
             <input type="hidden" name="tab" value="discover" />
             <label htmlFor="global-search" className="sr-only">Search maritime professionals</label>
@@ -62,7 +62,7 @@ export function AppHeader({
               type="search"
               maxLength={100}
               placeholder="Search people"
-              className="min-h-10 w-32 rounded-lg bg-mist-50 py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted 2xl:w-44"
+              className="min-h-10 w-64 rounded-lg bg-mist-50 py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted 2xl:w-[22rem]"
             />
           </form>
           <NotificationBell recent={recentNotifications} unreadCount={unreadCount} />
