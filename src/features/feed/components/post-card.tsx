@@ -25,16 +25,17 @@ function relativeTime(timestamp: string) {
   return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(timestamp))
 }
 
-export function PostCard({ post, detail = false }: { post: FeedPost; detail?: boolean }) {
+export function PostCard({ post, detail = false, readOnly = false }: { post: FeedPost; detail?: boolean; readOnly?: boolean }) {
   const [liked, setLiked] = useState(post.viewerLiked)
   const [saved, setSaved] = useState(post.viewerSaved)
   const [likeCount, setLikeCount] = useState(post.likeCount)
-  const [commentsOpen, setCommentsOpen] = useState(detail)
+  const [commentsOpen, setCommentsOpen] = useState(detail && !readOnly)
   const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
 
   function changeLike() {
+    if (readOnly) return
     const next = !liked
     const previousLiked = liked
     const previousCount = likeCount
@@ -52,6 +53,7 @@ export function PostCard({ post, detail = false }: { post: FeedPost; detail?: bo
   }
 
   function changeSaved() {
+    if (readOnly) return
     const next = !saved
     const previous = saved
     setSaved(next)
@@ -66,7 +68,7 @@ export function PostCard({ post, detail = false }: { post: FeedPost; detail?: bo
   }
 
   function removePost() {
-    if (pending || !window.confirm('Delete this post? This will remove it from the feed and your profile.')) return
+    if (readOnly || pending || !window.confirm('Delete this post? This will remove it from the feed and your profile.')) return
     setError('')
     startTransition(async () => {
       const result = await deletePost(post.id)
@@ -110,7 +112,7 @@ export function PostCard({ post, detail = false }: { post: FeedPost; detail?: bo
               {relativeTime(post.createdAt)}
             </time>
           </div>
-          {post.viewerOwns ? (
+          {post.viewerOwns && !readOnly ? (
             <button
               type="button"
               disabled={pending}
@@ -125,55 +127,57 @@ export function PostCard({ post, detail = false }: { post: FeedPost; detail?: bo
 
         <div className="px-4 pb-4 pt-4 sm:px-5">
           <p className="whitespace-pre-wrap text-[15px] leading-7 text-ink">{post.body}</p>
-
           {post.media?.signedUrl ? <PostMedia media={post.media} authorName={post.author.fullName} /> : null}
-
           {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-mist-100 px-4 py-2 text-xs text-muted sm:px-5">
           <span>{likeCount} {likeCount === 1 ? 'like' : 'likes'}</span>
-          <button type="button" onClick={() => setCommentsOpen(true)} className="min-h-9 rounded-lg px-2 hover:bg-mist-50 hover:text-navy-900">
-            {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
-          </button>
+          <span>{post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}</span>
         </div>
 
-        <div className="grid grid-cols-4 border-t border-mist-100 px-2 py-1 sm:px-3">
-          <button
-            type="button"
-            aria-pressed={liked}
-            disabled={pending}
-            onClick={changeLike}
-            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${liked ? 'text-ocean-700' : 'text-navy-900'}`}
-          >
-            <Heart aria-hidden="true" className="size-5" fill={liked ? 'currentColor' : 'none'} />
-            <span className="hidden sm:inline">Like</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setCommentsOpen((value) => !value)}
-            aria-expanded={commentsOpen}
-            aria-controls={`comments-${post.id}`}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50"
-          >
-            <MessageCircle aria-hidden="true" className="size-5" />
-            <span className="hidden sm:inline">Comment</span>
-          </button>
-          <SharePostButton postId={post.id} />
-          <button
-            type="button"
-            aria-pressed={saved}
-            disabled={pending}
-            onClick={changeSaved}
-            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${saved ? 'text-ocean-700' : 'text-navy-900'}`}
-          >
-            <Bookmark aria-hidden="true" className="size-5" fill={saved ? 'currentColor' : 'none'} />
-            <span className="hidden sm:inline">Save</span>
-          </button>
-        </div>
+        {readOnly ? (
+          <div className="border-t border-mist-100 px-4 py-2 sm:px-5">
+            <SharePostButton postId={post.id} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-4 border-t border-mist-100 px-2 py-1 sm:px-3">
+            <button
+              type="button"
+              aria-pressed={liked}
+              disabled={pending}
+              onClick={changeLike}
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${liked ? 'text-ocean-700' : 'text-navy-900'}`}
+            >
+              <Heart aria-hidden="true" className="size-5" fill={liked ? 'currentColor' : 'none'} />
+              <span className="hidden sm:inline">Like</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCommentsOpen((value) => !value)}
+              aria-expanded={commentsOpen}
+              aria-controls={`comments-${post.id}`}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50"
+            >
+              <MessageCircle aria-hidden="true" className="size-5" />
+              <span className="hidden sm:inline">Comment</span>
+            </button>
+            <SharePostButton postId={post.id} />
+            <button
+              type="button"
+              aria-pressed={saved}
+              disabled={pending}
+              onClick={changeSaved}
+              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${saved ? 'text-ocean-700' : 'text-navy-900'}`}
+            >
+              <Bookmark aria-hidden="true" className="size-5" fill={saved ? 'currentColor' : 'none'} />
+              <span className="hidden sm:inline">Save</span>
+            </button>
+          </div>
+        )}
 
         {error ? <p role="alert" className="mx-4 mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 sm:mx-5">{error}</p> : null}
-        {commentsOpen ? <CommentThread postId={post.id} comments={post.comments} /> : null}
+        {commentsOpen && !readOnly ? <CommentThread postId={post.id} comments={post.comments} /> : null}
       </article>
     </Card>
   )
