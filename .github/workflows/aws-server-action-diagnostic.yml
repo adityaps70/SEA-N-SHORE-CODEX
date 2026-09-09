@@ -49,7 +49,6 @@ jobs:
           ' /tmp/task-definition.json)
           test -n "$LOG_GROUP"
 
-          # Read-only diagnostic window; no application or infrastructure changes.
           START_MS=$(( ( $(date +%s) - 7200 ) * 1000 ))
           aws logs filter-log-events \
             --region "$AWS_REGION" \
@@ -61,10 +60,51 @@ jobs:
           jq -r '.events[] | [.timestamp, .message] | @tsv' /tmp/server-action-events.json \
             | grep -Eai 'x-forwarded-host|host.*does not match.*origin|Invalid Server Actions request|Server Reference ID did not match' \
             | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
-            | tail -n 20 > /tmp/server-action-context.txt || true
+            | tail -n 20 || true
 
-          cat /tmp/server-action-context.txt
-          test -s /tmp/server-action-context.txt || {
-            echo "No Server Action rejection context found in the last two hours." >&2
-            exit 1
-          }
+      - name: Read recent CloudFront WAF samples for profile requests
+        shell: bash
+        run: |
+          set -euo pipefail
+          WAF_REGION=us-east-1
+          ACL_NAME=sea-n-shore-staging-edge
+          ACL_JSON=$(aws wafv2 list-web-acls --scope CLOUDFRONT --region "$WAF_REGION" --output json)
+          ACL_ID=$(jq -r --arg NAME "$ACL_NAME" '.WebACLs[] | select(.Name == $NAME) | .Id' <<<"$ACL_JSON" | head -n1)
+          test -n "$ACL_ID" || { echo "Staging CloudFront WAF ACL not found." >&2; exit 1; }
+
+          aws wafv2 get-web-acl --scope CLOUDFRONT --region "$WAF_REGION" --name "$ACL_NAME" --id "$ACL_ID" --output json > /tmp/waf-acl.json
+          START=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          echo "=== WAF PROFILE REQUEST SAMPLES ==="
+          FOUND=0
+          while IFS=$'\t' read -r RULE_NAME METRIC; do
+            test -n "$METRIC" || continue
+            aws wafv2 get-sampled-requests \
+              --scope CLOUDFRONT \
+              --region "$WAF_REGION" \
+              --web-acl-arn "$(jq -r '.WebACL.ARN' /tmp/waf-acl.json)" \
+              --rule-metric-name "$METRIC" \
+              --time-window StartTime="$START",EndTime="$END" \
+              --max-items 500 \
+              --output json > "/tmp/waf-${RULE_NAME}.json"
+
+            jq -r --arg RULE "$RULE_NAME" '
+              .SampledRequests[]
+              | select(.Request.URI == "/profile" or (.Request.URI | startswith("/profile?")))
+              | [
+                  (.Timestamp // ""),
+                  $RULE,
+                  (.RuleNameWithinRuleGroup // "-"),
+                  (.Action // "-"),
+                  (.Request.HTTPMethod // "-"),
+                  (.Request.URI // "-")
+                ]
+              | @tsv
+            ' "/tmp/waf-${RULE_NAME}.json" | while IFS= read -r LINE; do
+              FOUND=1
+              printf '%s\n' "$LINE"
+            done
+          done < <(jq -r '.WebACL.Rules[] | [.Name, .VisibilityConfig.MetricName] | @tsv' /tmp/waf-acl.json)
+
+          echo "WAF_SAMPLE_QUERY_COMPLETE=true"
