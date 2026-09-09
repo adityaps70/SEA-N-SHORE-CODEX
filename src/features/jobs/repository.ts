@@ -97,7 +97,11 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     return rows[0] ? mapJob(rows[0]) : null
   }
 
-  async function listApplications(applicantId: string, limit = 50): Promise<JobApplication[]> {
+  async function listApplications(applicantId: string, limit?: number): Promise<JobApplication[]> {
+    const values: unknown[] = [applicantId]
+    const limitSql = limit === undefined ? '' : ' limit $2'
+    if (limit !== undefined) values.push(limit)
+
     const rows = await queryRows(
       `select
          a.id,
@@ -111,9 +115,8 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
        from public.job_applications a
        join public.jobs j on j.id = a.job_id
        where a.applicant_id = $1
-       order by a.applied_at desc, a.id desc
-       limit $2`,
-      [applicantId, limit],
+       order by a.applied_at desc, a.id desc${limitSql}`,
+      values,
     ) as ApplicationRow[]
     return rows.map(mapApplication)
   }
