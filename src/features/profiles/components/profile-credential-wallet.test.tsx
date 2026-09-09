@@ -27,10 +27,12 @@ const credentials: ProfileCredentialRecord[] = [
 afterEach(() => cleanup())
 
 describe('ProfileCredentialWallet', () => {
-  it('renders a self-reported CoC without implying formal verification', () => {
+  it('renders a self-reported CoC under the simple Licences & Credentials heading', () => {
     render(<ProfileCredentialWallet credentials={credentials} />)
 
-    expect(screen.getByRole('heading', { name: 'Certification wallet' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Licences & Credentials' })).toBeInTheDocument()
+    expect(screen.queryByText('CoC & credentials')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Keep certificates of competency, STCW training and professional credentials visible in one place/i)).not.toBeInTheDocument()
     expect(screen.getByText('Certificate of Competency - Master')).toBeInTheDocument()
     expect(screen.getByText('DG Shipping India')).toBeInTheDocument()
     expect(screen.getByText('COC-12345')).toBeInTheDocument()
@@ -55,6 +57,6 @@ describe('ProfileCredentialWallet', () => {
   it('hides an empty wallet from public profile viewers', () => {
     render(<ProfileCredentialWallet credentials={[]} />)
 
-    expect(screen.queryByRole('heading', { name: 'Certification wallet' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Licences & Credentials' })).not.toBeInTheDocument()
   })
 })
