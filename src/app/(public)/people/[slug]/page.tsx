@@ -41,6 +41,14 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           ) : undefined}
         />
 
+        <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
+          <ProfileAbout profile={profile} />
+          <MaritimeProfileCard profile={profile} />
+        </div>
+
+        <ProfileCareerTimeline experiences={portfolio.experiences} />
+        <ProfileCredentialWallet credentials={portfolio.credentials} />
+
         <section aria-labelledby="profile-posts-heading" className="grid gap-4">
           <div className="flex items-end justify-between gap-4 px-1">
             <div>
@@ -59,14 +67,6 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
             </div>
           )}
         </section>
-
-        <div className="grid gap-5 lg:grid-cols-[1.15fr_.85fr]">
-          <ProfileAbout profile={profile} />
-          <MaritimeProfileCard profile={profile} />
-        </div>
-
-        <ProfileCareerTimeline experiences={portfolio.experiences} />
-        <ProfileCredentialWallet credentials={portfolio.credentials} />
 
         <p className="px-1 text-center text-xs leading-5 text-muted">
           Sea N Shore professional profiles are member-provided. Verification badges will appear only after the formal evidence review workflow is enabled.
