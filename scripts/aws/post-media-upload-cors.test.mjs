@@ -4,6 +4,9 @@ import test from 'node:test'
 
 const storagePath = 'infra/aws/app/storage.tf'
 const bootstrapPath = 'infra/aws/bootstrap/main.tf'
+const iamWorkflowPath = '.github/workflows/aws-github-deploy-iam.yml'
+const iamScriptPath = 'scripts/aws/github-deploy-iam.sh'
+const iamActionPath = 'scripts/aws/github-deploy-iam-action.txt'
 
 function listValues(source, attribute) {
   const match = source.match(new RegExp(`${attribute}\\s*=\\s*\\[([^\\]]*)\\]`, 'i'))
@@ -59,4 +62,37 @@ test('GitHub staging deploy role can apply and verify CORS only on the staging m
   )
   assert.doesNotMatch(corsSource, /"s3:\*"/)
   assert.doesNotMatch(corsSource, /Resource\s*=\s*"\*"/)
+})
+
+test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and plan-safe by default', () => {
+  const workflow = readFileSync(iamWorkflowPath, 'utf8')
+  const script = readFileSync(iamScriptPath, 'utf8')
+  const action = readFileSync(iamActionPath, 'utf8').trim()
+
+  assert.equal(action, 'plan')
+
+  assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
+  assert.match(workflow, /environment:\s*staging/)
+  assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+  assert.match(workflow, /head_sha=\$\{GITHUB_SHA\}/)
+  assert.match(workflow, /Name=tag:Name,Values=sea-n-shore-bootstrap/)
+  assert.match(workflow, /AWS-RunShellScript/)
+  assert.match(workflow, /git checkout --quiet --detach \{sha\}/)
+  assert.match(workflow, /GITHUB_DEPLOY_IAM_EXPECTED_SHA=\{sha\}/)
+  assert.match(workflow, /bash scripts\/aws\/github-deploy-iam\.sh/)
+
+  assert.match(script, /set -euo pipefail/)
+  assert.match(script, /EXPECTED_ACCOUNT="992382634586"/)
+  assert.match(script, /GITHUB_DEPLOY_IAM_EXPECTED_SHA/)
+  assert.match(script, /case "\$ACTION" in plan\|apply-once\)/)
+  assert.match(script, /aws iam get-role-policy/)
+  assert.match(script, /ManageStagingMediaCors/)
+  assert.match(script, /s3:PutBucketCORS/)
+  assert.match(script, /s3:GetBucketCORS/)
+  assert.match(script, /sea-n-shore-staging-\$\{EXPECTED_ACCOUNT\}-media/)
+  assert.match(script, /aws iam put-role-policy/)
+  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE/)
+  assert.match(script, /GITHUB_DEPLOY_IAM_ALREADY_RECONCILED/)
+  assert.doesNotMatch(script, /"s3:\*"/)
 })
