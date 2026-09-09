@@ -77,6 +77,31 @@ export function createFeedQueries(input: {
     ))
   }
 
+  async function hydratePublicPosts(rows: FeedPostRow[]): Promise<FeedPost[]> {
+    if (!rows.length) return []
+    const postIds = rows.map((row) => row.id)
+    const comments = await input.repository.getComments(postIds)
+    const paths = [...new Set([
+      ...rows.map(mediaPath),
+      ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
+      ...comments.map((comment) => feedAuthorAvatarPath(comment.profiles)),
+    ].filter((path): path is string => Boolean(path)))]
+    const signedUrls = await input.resolveMediaUrls(paths)
+    const commentsByPost = new Map<string, FeedCommentRow[]>()
+    for (const comment of comments) {
+      if (!comment.post_id) continue
+      const existing = commentsByPost.get(comment.post_id) ?? []
+      existing.push(comment)
+      commentsByPost.set(comment.post_id, existing)
+    }
+    const emptyViewer = { likedPostIds: new Set<string>(), savedPostIds: new Set<string>(), pollVotes: new Map<string, string>() }
+    return rows.map((row) => mapFeedPost(
+      { ...row, post_comments: commentsByPost.get(row.id) ?? [] },
+      emptyViewer,
+      signedUrls,
+    ))
+  }
+
   async function getFeedPage(request: FeedRequest = {}): Promise<FeedPage> {
     const parsed = feedRequestSchema.parse(request)
     const user = await input.requireUser()
@@ -113,6 +138,15 @@ export function createFeedQueries(input: {
     return hydratePosts(rows, user.id)
   }
 
+  async function getPublicPostsByAuthor(authorProfileId: string): Promise<FeedPost[]> {
+    const rows = await input.repository.listAuthorRows({
+      viewerProfileId: authorProfileId,
+      authorProfileId,
+      limit: 30,
+    })
+    return hydratePublicPosts(rows)
+  }
+
   async function getMyActivityPosts(): Promise<FeedPost[]> {
     const user = await input.requireUser()
     const rows = await input.repository.listAuthorRows({
@@ -144,6 +178,7 @@ export function createFeedQueries(input: {
     getFeedPage,
     getSavedPosts,
     getPostsByAuthor,
+    getPublicPostsByAuthor,
     getMyActivityPosts,
     getMyCommentActivity,
     getPostById,
@@ -160,6 +195,7 @@ const productionQueries = createFeedQueries({
 export const getFeedPage = productionQueries.getFeedPage
 export const getSavedPosts = productionQueries.getSavedPosts
 export const getPostsByAuthor = productionQueries.getPostsByAuthor
+export const getPublicPostsByAuthor = productionQueries.getPublicPostsByAuthor
 export const getMyActivityPosts = productionQueries.getMyActivityPosts
 export const getMyCommentActivity = productionQueries.getMyCommentActivity
 export const getPostById = productionQueries.getPostById
