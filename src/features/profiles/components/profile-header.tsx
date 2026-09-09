@@ -83,66 +83,92 @@ export function ProfileHeader({
       </div>
 
       <div className="px-5 pb-6 sm:px-8 sm:pb-8">
-        <div className="-mt-12 grid gap-5 sm:-mt-14 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-          <div className="flex min-w-0 items-end gap-4">
-            <div className="relative shrink-0">
-              <div className="grid size-24 place-items-center overflow-hidden rounded-2xl border-4 border-white bg-mist-100 text-xl font-semibold text-navy-950 shadow-sm sm:size-28 sm:text-2xl">
-                {profile.avatarUrl ? (
-                  <img
-                    src={profile.avatarUrl}
-                    alt={`${profile.fullName} profile photo`}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  initials(profile.fullName)
-                )}
-              </div>
-              {avatarControls ? <div className="absolute -bottom-1 -right-1 z-10">{avatarControls}</div> : null}
+        <div className="-mt-12 flex items-end justify-between gap-4 sm:-mt-16">
+          <div className="relative shrink-0">
+            <div
+              data-testid="profile-header-avatar"
+              className="grid size-24 place-items-center overflow-hidden rounded-full border-4 border-white bg-mist-100 text-xl font-semibold text-navy-950 shadow-sm sm:size-32 sm:text-2xl"
+            >
+              {profile.avatarUrl ? (
+                <img
+                  src={profile.avatarUrl}
+                  alt={`${profile.fullName} profile photo`}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                initials(profile.fullName)
+              )}
             </div>
-            <div className="min-w-0 flex-1 pb-1">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-mist-50 px-2.5 py-1 text-xs font-semibold text-ocean-700">
-                <Anchor aria-hidden="true" className="size-3.5" />
-                {identityLabel}
-              </span>
-              <div className="mt-2 flex min-w-0 items-center gap-2">
-                <h1 className="min-w-0 break-words text-2xl font-semibold leading-tight tracking-[-.03em] text-navy-950 sm:text-3xl">
-                  {profile.fullName}
-                </h1>
-                {editHref ? (
-                  <button
-                    type="button"
-                    onClick={() => setEditing(true)}
-                    aria-label="Edit basic information"
-                    className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-mist-100 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
-                  >
-                    <Pencil aria-hidden="true" className="size-4" />
-                  </button>
-                ) : null}
-              </div>
-              {secondaryIdentities.length ? (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {secondaryIdentities.map((identity) => (
-                    <span key={identity} className="rounded-full bg-ocean-50 px-2.5 py-1 text-xs font-medium text-ocean-800">
-                      {identity}
-                    </span>
-                  ))}
-                </div>
+            {avatarControls ? <div className="absolute -bottom-1 -right-1 z-10">{avatarControls}</div> : null}
+          </div>
+
+          {availabilityLabel ? (
+            <span className="mb-1 inline-flex w-fit shrink-0 items-center gap-2 rounded-xl border border-mist-100 bg-mist-50 px-3 py-2 text-sm font-medium text-navy-900">
+              <TimerReset aria-hidden="true" className="size-4 text-teal-500" />
+              {availabilityLabel}
+            </span>
+          ) : null}
+        </div>
+
+        <div data-testid="profile-header-identity" className="mt-4 max-w-4xl">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-mist-50 px-2.5 py-1 text-xs font-semibold text-ocean-700">
+            <Anchor aria-hidden="true" className="size-3.5" />
+            {identityLabel}
+          </span>
+
+          <div className="mt-2 flex min-w-0 items-center gap-2">
+            <h1 className="min-w-0 text-[1.75rem] font-semibold leading-[1.15] tracking-[-.025em] text-navy-950 sm:text-[2rem]">
+              {profile.fullName}
+            </h1>
+            {editHref ? (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label="Edit basic information"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-mist-100 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
+              >
+                <Pencil aria-hidden="true" className="size-4" />
+              </button>
+            ) : null}
+          </div>
+
+          {secondaryIdentities.length ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {secondaryIdentities.map((identity) => (
+                <span key={identity} className="rounded-full bg-ocean-50 px-2.5 py-1 text-xs font-medium text-ocean-800">
+                  {identity}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {!editing && profile.headline ? (
+            <p className="mt-3 max-w-3xl text-base font-medium leading-6 text-ink sm:text-[1.05rem]">{profile.headline}</p>
+          ) : null}
+
+          {!editing ? (
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
+              {profile.location ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin aria-hidden="true" className="size-4" />
+                  {profile.location}
+                </span>
+              ) : null}
+              {profile.currentCompany ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Ship aria-hidden="true" className="size-4" />
+                  {profile.currentCompany}
+                </span>
               ) : null}
             </div>
-          </div>
-          <div
-            data-testid="profile-header-actions"
-            className="flex min-w-0 flex-col items-start gap-3 lg:items-end lg:justify-self-end"
-          >
-            {availabilityLabel ? (
-              <span className="inline-flex w-fit items-center gap-2 rounded-xl border border-mist-100 bg-mist-50 px-3 py-2 text-sm font-medium text-navy-900">
-                <TimerReset aria-hidden="true" className="size-4 text-teal-500" />
-                {availabilityLabel}
-              </span>
-            ) : null}
-            {actions ? <div className="w-full lg:w-auto">{actions}</div> : null}
-          </div>
+          ) : null}
         </div>
+
+        {actions ? (
+          <div data-testid="profile-header-actions" className="mt-5 w-full">
+            {actions}
+          </div>
+        ) : null}
 
         {editing ? (
           <form action={formAction} className="mt-6 rounded-2xl border border-ocean-100 bg-ocean-50/40 p-4 sm:p-5">
@@ -192,28 +218,7 @@ export function ProfileHeader({
               </button>
             </div>
           </form>
-        ) : (
-          <>
-            {profile.headline ? (
-              <p className="mt-5 max-w-3xl text-base font-medium leading-7 text-ink sm:text-lg">{profile.headline}</p>
-            ) : null}
-
-            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-muted">
-              {profile.location ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <MapPin aria-hidden="true" className="size-4" />
-                  {profile.location}
-                </span>
-              ) : null}
-              {profile.currentCompany ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <Ship aria-hidden="true" className="size-4" />
-                  {profile.currentCompany}
-                </span>
-              ) : null}
-            </div>
-          </>
-        )}
+        ) : null}
       </div>
     </section>
   )
