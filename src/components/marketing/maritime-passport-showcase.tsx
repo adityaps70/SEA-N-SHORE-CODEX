@@ -10,7 +10,7 @@ export function MaritimePassportShowcase() {
     <section className="py-16 sm:py-20" aria-labelledby="passport-showcase-title">
       <div className="mx-auto grid w-full max-w-7xl gap-10 px-4 sm:px-6 lg:grid-cols-[.95fr_1.05fr] lg:items-center">
         <div>
-          <LandingSectionHeading eyebrow="Maritime Passport" title="Your maritime career. One professional identity." body="Give recruiters, colleagues and industry connections a clearer view of the experience that actually matters at sea and ashore." />
+          <LandingSectionHeading id="passport-showcase-title" eyebrow="Maritime Passport" title="Your maritime career. One professional identity." body="Give recruiters, colleagues and industry connections a clearer view of the experience that actually matters at sea and ashore." />
           <div className="mt-7 grid gap-2 sm:grid-cols-2">
             {details.map((item) => <div key={item} className="flex items-center gap-2 rounded-xl border border-mist-100 bg-white px-3 py-2.5 text-sm font-semibold text-navy-900"><BadgeCheck aria-hidden="true" className="size-4 text-teal-500" />{item}</div>)}
           </div>
