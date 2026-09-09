@@ -3,6 +3,9 @@ import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const migrationPath = 'infra/aws/database/migrations/0008_post_media_video.sql'
+const guardPath = 'scripts/aws/post-media-video-migration.sh'
+const actionPath = 'scripts/aws/post-media-video-migration-action.txt'
+const workflowPath = '.github/workflows/aws-post-media-video-migration.yml'
 const approvedMimeTypes = [
   'image/jpeg',
   'image/png',
@@ -45,4 +48,38 @@ test('post media video migration only widens the existing MIME constraint', () =
 
   const quotedValues = [...normalized.matchAll(/'([^']+)'/g)].map((match) => match[1])
   assert.deepEqual(quotedValues, approvedMimeTypes, 'no extra constraint values are allowed')
+})
+
+test('post media video migration execution is branch-scoped and safe by default', () => {
+  for (const path of [guardPath, actionPath, workflowPath]) {
+    assert.equal(existsSync(path), true, `${path} must exist`)
+  }
+
+  assert.equal(readFileSync(actionPath, 'utf8'), 'plan\n')
+
+  const guard = readFileSync(guardPath, 'utf8')
+  assert.match(guard, /EXPECTED_BRANCH="feat\/aws-native-phase-0-1"/)
+  assert.match(guard, /EXPECTED_ACCOUNT="310356785722"/)
+  assert.match(guard, /CLUSTER_ID="sea-n-shore-staging-aurora"/)
+  assert.match(guard, /POST_MEDIA_VIDEO_MIGRATION_EXPECTED_SHA/)
+  assert.match(guard, /git remote get-url origin/)
+  assert.match(guard, /https:\/\/github\.com\/adityaps70\/SEA-N-SHORE-CODEX\.git/)
+  assert.match(guard, /plan\|apply-once/)
+  assert.match(guard, /git ls-remote origin "refs\/heads\/\$EXPECTED_BRANCH"/)
+  assert.match(guard, /aws rds-data begin-transaction/)
+  assert.match(guard, /pg_get_constraintdef/)
+  assert.match(guard, /POST_MEDIA_VIDEO_MIGRATION_APPLY_VERIFIED=true/)
+  assert.doesNotMatch(guard, /aws secretsmanager get-secret-value/)
+
+  const workflow = readFileSync(workflowPath, 'utf8')
+  assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
+  assert.match(workflow, /infra\/aws\/database\/migrations\/0008_post_media_video\.sql/)
+  assert.match(workflow, /scripts\/aws\/post-media-video-migration-action\.txt/)
+  assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+  assert.match(workflow, /aws-actions\/configure-aws-credentials@v4/)
+  assert.match(workflow, /sea-n-shore-bootstrap/)
+  assert.match(workflow, /\[\[ "\$COUNT" -eq 1 \]\]/)
+  assert.match(workflow, /AWS-RunShellScript/)
+  assert.match(workflow, /POST_MEDIA_VIDEO_MIGRATION_EXPECTED_SHA/)
+  assert.match(workflow, /bash scripts\/aws\/post-media-video-migration\.sh/)
 })
