@@ -18,6 +18,7 @@ export function getMediaBucketName(): string {
 function getS3Client(): S3Client {
   client ??= new S3Client({
     region: process.env.AWS_REGION || process.env.AWS_COGNITO_REGION || 'ap-south-1',
+    requestChecksumCalculation: 'WHEN_REQUIRED',
   })
   return client
 }
