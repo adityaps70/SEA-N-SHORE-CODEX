@@ -21,11 +21,26 @@ const pollOptionsSchema = z.preprocess(
   z.array(z.string().max(120, 'Keep each poll option to 120 characters or fewer.')).min(2, 'Add at least two distinct poll options.').max(6, 'Add no more than six poll options.'),
 )
 
+export const postMediaReferenceSchema = z.object({
+  postId: z.string().uuid(),
+  storagePath: z.string().min(1).max(500),
+  mimeType: z.enum([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'video/mp4',
+    'video/webm',
+  ]),
+  size: z.coerce.number().int().positive(),
+  altText: z.string().trim().max(300).optional().default(''),
+})
+
 const standardPostSchema = z.object({
   category: z.enum(POST_CATEGORIES),
   body: bodySchema,
   mode: z.literal('standard'),
   pollOptions: z.preprocess(() => [], z.array(z.never()).max(0)).optional().default([]),
+  media: postMediaReferenceSchema.optional(),
 })
 
 const pollPostSchema = z.object({
@@ -33,6 +48,7 @@ const pollPostSchema = z.object({
   body: bodySchema,
   mode: z.literal('poll'),
   pollOptions: pollOptionsSchema,
+  media: z.never({ error: 'Technical polls cannot include media.' }).optional(),
 })
 
 export const createPostInputSchema = z.discriminatedUnion('mode', [standardPostSchema, pollPostSchema])
@@ -63,6 +79,7 @@ export function parseFeedCategory(value: unknown) {
   return parsed.success ? parsed.data : undefined
 }
 
+export type PostMediaReferenceInput = z.infer<typeof postMediaReferenceSchema>
 export type CreatePostInput = z.infer<typeof createPostInputSchema>
 export type CommentInput = z.infer<typeof commentInputSchema>
 export type FeedRequestInput = z.infer<typeof feedRequestSchema>
