@@ -6,6 +6,7 @@ import { AppHeader } from '@/components/navigation/app-header'
 
 vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
+  usePathname: () => '/activities',
   useRouter: () => ({
     refresh: vi.fn(),
     push: vi.fn(),
@@ -27,12 +28,29 @@ vi.mock('@/features/feed/queries', () => ({
   getMyCommentActivity: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('@/features/feed/components/feed-profile-card', () => ({
+  FeedProfileCard: () => <div data-testid="profile-card">Profile card</div>,
+}))
+
 vi.mock('@/features/jobs/queries', () => ({
   getMyJobApplications: vi.fn().mockResolvedValue([]),
+  getPublishedJobs: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('@/features/jobs/components/job-application-list', () => ({
   JobApplicationList: () => <div data-testid="job-applications">Job applications</div>,
+}))
+
+vi.mock('@/features/network/queries', () => ({
+  getPeopleYouMayKnow: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('@/features/network/components/people-you-may-know', () => ({
+  PeopleYouMayKnow: () => <div data-testid="people-you-may-know">People you may know</div>,
+}))
+
+vi.mock('@/features/profiles/queries', () => ({
+  getOwnProfile: vi.fn().mockResolvedValue({ id: 'profile-1', fullName: 'Test Mariner' }),
 }))
 
 afterEach(() => cleanup())
