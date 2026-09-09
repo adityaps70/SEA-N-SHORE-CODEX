@@ -1,5 +1,4 @@
 import { Link2, Network, ShipWheel, Waypoints } from 'lucide-react'
-import { LandingSectionHeading } from './landing-section-heading'
 
 const problems = [
   ['Fragmented identity', 'Maritime careers move across vessels, companies and contracts, but professional identity rarely moves with the person.', ShipWheel],
@@ -14,7 +13,7 @@ export function WhySeaNShore() {
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
         <div className="max-w-3xl">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-teal-300">Why Sea N Shore exists</p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Maritime careers should not become fragmented every time the vessel, company or role changes.</h2>
+          <h2 id="why-sea-n-shore-title" className="mt-3 text-3xl font-semibold tracking-[-0.035em] sm:text-4xl">Maritime careers should not become fragmented every time the vessel, company or role changes.</h2>
           <p className="mt-4 text-base leading-7 text-white/70 sm:text-lg sm:leading-8">Sea N Shore connects identity, people, knowledge and opportunity so professional value stays visible across the whole maritime career.</p>
         </div>
         <div className="mt-9 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
