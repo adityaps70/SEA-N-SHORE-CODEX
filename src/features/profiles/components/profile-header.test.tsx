@@ -69,7 +69,7 @@ describe('ProfileHeader', () => {
     const heading = screen.getByRole('heading', { name: 'Aditya Pratap Singh' })
     expect(heading).not.toHaveClass('truncate')
     expect(heading).toHaveClass('text-2xl', 'sm:text-3xl')
-    expect(screen.getByTestId('profile-header-actions')).toHaveClass('sm:justify-self-end')
+    expect(screen.getByTestId('profile-header-actions')).toHaveClass('lg:justify-self-end')
   })
 
   it('prefers the exact onboarding identity and shows additional capacities', () => {
