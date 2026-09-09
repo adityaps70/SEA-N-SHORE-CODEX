@@ -130,6 +130,20 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     return Boolean(rows[0]?.applied)
   }
 
+  async function isMemberReady(applicantId: string): Promise<boolean> {
+    const rows = await queryRows(
+      `select exists (
+         select 1
+         from public.profiles p
+         where p.id = $1
+           and p.account_status = 'active'
+           and p.onboarding_completed_at is not null
+       ) as ready`,
+      [applicantId],
+    ) as Array<QueryResultRow & { ready: boolean }>
+    return Boolean(rows[0]?.ready)
+  }
+
   async function createApplication(jobId: string, applicantId: string): Promise<void> {
     await queryRows(
       `insert into public.job_applications (job_id, applicant_id, status)
@@ -143,6 +157,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     getPublishedJob,
     listApplications,
     hasApplied,
+    isMemberReady,
     createApplication,
   }
 }
