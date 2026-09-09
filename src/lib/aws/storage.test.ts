@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { send, getSignedUrl } = vi.hoisted(() => ({
+const { send, getSignedUrl, s3ClientState } = vi.hoisted(() => ({
   send: vi.fn<(command: unknown) => Promise<unknown>>(async () => ({})),
   getSignedUrl: vi.fn<(
     client: unknown,
     command: unknown,
     options: { expiresIn: number },
   ) => Promise<string>>(async () => 'https://signed.example/media'),
+  s3ClientState: { config: null as Record<string, unknown> | null },
 }))
 
 vi.mock('@aws-sdk/client-s3', () => {
@@ -20,6 +21,9 @@ vi.mock('@aws-sdk/client-s3', () => {
   return {
     S3Client: class {
       send = send
+      constructor(config: Record<string, unknown>) {
+        s3ClientState.config = config
+      }
     },
     PutObjectCommand: Command,
     GetObjectCommand: Command,
@@ -70,6 +74,17 @@ describe('AWS media storage boundary', () => {
       Bucket: mediaBucket,
       Key: 'profile/post/image.jpg',
       ContentType: 'image/jpeg',
+    })
+  })
+
+  it('constructs the S3 client with checksum calculation limited to required operations', async () => {
+    await createMediaUploadUrl({
+      key: 'profile/post/video.mp4',
+      contentType: 'video/mp4',
+    })
+
+    expect(s3ClientState.config).toMatchObject({
+      requestChecksumCalculation: 'WHEN_REQUIRED',
     })
   })
 
