@@ -3,7 +3,7 @@ set -euo pipefail
 umask 077
 
 AWS_REGION="${AWS_REGION:-ap-south-1}"
-EXPECTED_ACCOUNT="992382634586"
+EXPECTED_ACCOUNT="310356785722"
 ROLE_NAME="sea-n-shore-staging-github-deploy"
 POLICY_NAME="sea-n-shore-staging-github-deploy"
 ACTION_FILE="scripts/aws/github-deploy-iam-action.txt"
