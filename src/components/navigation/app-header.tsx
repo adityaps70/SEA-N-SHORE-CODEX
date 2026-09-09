@@ -44,10 +44,10 @@ export function AppHeader({
               href={href}
               aria-label={label}
               title={label}
-              className="inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-medium text-navy-900 hover:bg-mist-50 xl:min-w-0"
+              className="inline-flex min-h-14 min-w-10 flex-col items-center justify-center gap-1 rounded-lg px-1.5 font-medium text-navy-900 hover:bg-mist-50 xl:min-w-[4.25rem]"
             >
-              <Icon aria-hidden="true" className="size-4 shrink-0" />
-              <span className="hidden xl:inline">{label}</span>
+              <Icon aria-hidden="true" className="size-4.5 shrink-0" />
+              <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">{label}</span>
             </Link>
           ))}
         </nav>
@@ -66,9 +66,9 @@ export function AppHeader({
             />
           </form>
           <NotificationBell recent={recentNotifications} unreadCount={unreadCount} />
-          <Link href="/profile" aria-label="Profile" title="Profile" className="inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50 xl:min-w-0">
-            <UserRound aria-hidden="true" className="size-4" />
-            <span className="hidden xl:inline">Profile</span>
+          <Link href="/profile" aria-label="Profile" title="Profile" className="inline-flex min-h-14 min-w-10 flex-col items-center justify-center gap-1 rounded-lg px-1.5 font-semibold text-navy-900 hover:bg-mist-50 xl:min-w-[4rem]">
+            <UserRound aria-hidden="true" className="size-4.5" />
+            <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">Profile</span>
           </Link>
           <form action={signOut}>
             <button type="submit" aria-label="Sign out" title="Sign out" className="grid min-h-10 min-w-10 place-items-center rounded-lg text-muted hover:bg-mist-50 hover:text-navy-900">
