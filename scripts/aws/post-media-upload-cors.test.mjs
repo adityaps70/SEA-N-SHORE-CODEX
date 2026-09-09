@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const storagePath = 'infra/aws/app/storage.tf'
+const bootstrapPath = 'infra/aws/bootstrap/main.tf'
 
 function listValues(source, attribute) {
   const match = source.match(new RegExp(`${attribute}\\s*=\\s*\\[([^\\]]*)\\]`, 'i'))
@@ -38,4 +39,24 @@ test('media bucket exposes only restricted browser-to-S3 PUT CORS', () => {
   ]) {
     assert.match(source, new RegExp(`${setting}\\s*=\\s*true`))
   }
+})
+
+test('GitHub staging deploy role can apply and verify CORS only on the staging media bucket', () => {
+  const source = readFileSync(bootstrapPath, 'utf8')
+  const policyStart = source.indexOf('resource "aws_iam_role_policy" "github_deploy"')
+  assert.notEqual(policyStart, -1, 'GitHub deploy inline policy must exist')
+
+  const policySource = source.slice(policyStart)
+  const corsSid = policySource.indexOf('Sid      = "ManageStagingMediaCors"')
+  assert.notEqual(corsSid, -1, 'deploy role must include a dedicated media CORS statement')
+
+  const corsSource = policySource.slice(corsSid, policySource.indexOf('\n      },', corsSid) + 9)
+  assert.match(corsSource, /"s3:PutBucketCORS"/)
+  assert.match(corsSource, /"s3:GetBucketCORS"/)
+  assert.match(
+    corsSource,
+    /Resource\s*=\s*"arn:aws:s3:::\$\{local\.name_prefix\}-\$\{data\.aws_caller_identity\.current\.account_id\}-media"/,
+  )
+  assert.doesNotMatch(corsSource, /"s3:\*"/)
+  assert.doesNotMatch(corsSource, /Resource\s*=\s*"\*"/)
 })
