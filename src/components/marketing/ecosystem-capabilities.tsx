@@ -15,7 +15,7 @@ export function EcosystemCapabilities() {
   return (
     <section className="bg-white py-16 sm:py-20" aria-labelledby="ecosystem-capabilities-title">
       <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
-        <LandingSectionHeading eyebrow="One maritime ecosystem" title="Everything maritime professionals need to stay visible, connected and useful." body="Sea N Shore brings professional identity, people, knowledge and opportunity into one consistent maritime network." />
+        <LandingSectionHeading id="ecosystem-capabilities-title" eyebrow="One maritime ecosystem" title="Everything maritime professionals need to stay visible, connected and useful." body="Sea N Shore brings professional identity, people, knowledge and opportunity into one consistent maritime network." />
         <div className="mt-9 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {capabilities.map(([title, detail, Icon]) => (
             <Card key={title} className="border border-mist-100 p-6 shadow-none">
