@@ -1,11 +1,11 @@
-import { MessageSquareText, Poll, Wrench } from 'lucide-react'
+import { BarChart3, MessageSquareText, Wrench } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { LandingSectionHeading } from './landing-section-heading'
 
 const examples = [
   ['Bridge teamwork', 'What is the most overlooked bridge-team behaviour during high-workload pilotage?', MessageSquareText],
   ['Engineering practice', 'Three practical checks before troubleshooting repeated purifier alarms onboard.', Wrench],
-  ['Industry poll', 'Which SIRE 2.0 competency is hardest to assess objectively onboard?', Poll],
+  ['Industry poll', 'Which SIRE 2.0 competency is hardest to assess objectively onboard?', BarChart3],
 ] as const
 
 export function MaritimeFeedShowcase() {
