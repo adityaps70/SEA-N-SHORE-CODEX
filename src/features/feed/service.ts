@@ -70,6 +70,14 @@ export function createFeedService(input: {
     })
   }
 
+  async function assertPendingMediaDiscardable(actorId: string, storagePath: string) {
+    return input.withTransaction(async (repository) => {
+      await assertMemberReady(repository, actorId)
+      if (await repository.isPostMediaAttached(storagePath)) serviceError('feed_media_delete_forbidden')
+      return true
+    })
+  }
+
   async function createPollPost(actorId: string, post: PollPostInput) {
     return input.withTransaction(async (repository) => {
       await assertMemberReady(repository, actorId)
@@ -130,7 +138,16 @@ export function createFeedService(input: {
     })
   }
 
-  return { createStandardPost, createPollPost, deletePost, setLiked, setSaved, addComment, setPollVote }
+  return {
+    createStandardPost,
+    assertPendingMediaDiscardable,
+    createPollPost,
+    deletePost,
+    setLiked,
+    setSaved,
+    addComment,
+    setPollVote,
+  }
 }
 
 const productionService = createFeedService({
@@ -138,6 +155,7 @@ const productionService = createFeedService({
 })
 
 export const createStandardPostWithAurora = productionService.createStandardPost
+export const assertPendingMediaDiscardableWithAurora = productionService.assertPendingMediaDiscardable
 export const createPollPostWithAurora = productionService.createPollPost
 export const deletePostWithAurora = productionService.deletePost
 export const setPostLikedWithAurora = productionService.setLiked
