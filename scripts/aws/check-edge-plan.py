@@ -11,12 +11,34 @@ EXPECTED_CUSTOM_HEADERS = [{'name': 'X-Forwarded-Host', 'value': FORWARDED_HOST}
 
 WAF_ID = '3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0'
 WAF_ARN = 'arn:aws:wafv2:us-east-1:310356785722:global/webacl/sea-n-shore-staging-edge/' + WAF_ID
+SIZE_OVERRIDE = 'SizeRestrictions_BODY'
+XSS_OVERRIDE = 'CrossSiteScripting_BODY'
+XSS_LABEL = 'awswaf:managed:aws:core-rule-set:CrossSiteScripting_Body'
+XSS_BLOCK_RULE = 'BlockManagedBodyXssExceptProfileMedia'
 
 
 def has_unknown(value):
     if isinstance(value, dict): return any(has_unknown(v) for v in value.values())
     if isinstance(value, list): return any(has_unknown(v) for v in value)
     return value is True
+
+
+def _compact(value):
+    """Drop provider-expanded empty sibling fields while retaining marker blocks like [{}]."""
+    if isinstance(value, dict):
+        result = {}
+        for key, child in value.items():
+            compacted = _compact(child)
+            if compacted not in (None, [], {}):
+                result[key] = compacted
+            elif isinstance(child, list) and child and all(isinstance(item, dict) for item in child):
+                # Terraform represents marker blocks such as method {}, block {}, and count {}
+                # as one-element lists containing an otherwise empty object.
+                result[key] = [{}]
+        return result
+    if isinstance(value, list):
+        return [_compact(item) for item in value]
+    return value
 
 
 def _managed_common_statement(waf):
@@ -35,35 +57,83 @@ def _managed_common_statement(waf):
     return group
 
 
-def _is_size_body_count_override(value):
-    if value.get('name') != 'SizeRestrictions_BODY':
+def _is_count_override(value, expected_name):
+    if value.get('name') != expected_name:
         return False
     actions = value.get('action_to_use', [])
     if len(actions) != 1:
         return False
-    action = actions[0]
-    count = action.get('count')
-    if count not in ([{}], [{'custom_request_handling': []}]):
-        return False
-    for name, setting in action.items():
-        if name != 'count' and setting not in (None, [], {}):
-            return False
-    return True
+    return _compact(actions[0]) == {'count': [{}]}
 
 
-def _normalize_waf_without_allowed_override(waf, require_override):
+def _is_body_xss_exception_rule(rule):
+    expected = {
+        'name': XSS_BLOCK_RULE,
+        'priority': 15,
+        'action': [{'block': [{}]}],
+        'statement': [{
+            'and_statement': [{
+                'statement': [
+                    {'label_match_statement': [{'scope': 'LABEL', 'key': XSS_LABEL}]},
+                    {'not_statement': [{
+                        'statement': [{
+                            'and_statement': [{
+                                'statement': [
+                                    {'byte_match_statement': [{
+                                        'field_to_match': [{'method': [{}]}],
+                                        'positional_constraint': 'EXACTLY',
+                                        'search_string': 'POST',
+                                        'text_transformation': [{'priority': 0, 'type': 'NONE'}],
+                                    }]},
+                                    {'byte_match_statement': [{
+                                        'field_to_match': [{'uri_path': [{}]}],
+                                        'positional_constraint': 'EXACTLY',
+                                        'search_string': '/profile',
+                                        'text_transformation': [{'priority': 0, 'type': 'NONE'}],
+                                    }]},
+                                ]
+                            }]
+                        }]
+                    }]},
+                ]
+            }]
+        }],
+        'visibility_config': [{
+            'cloudwatch_metrics_enabled': True,
+            'metric_name': 'sea-n-shore-staging-body-xss-block',
+            'sampled_requests_enabled': True,
+        }],
+    }
+    return _compact(rule) == expected
+
+
+def _normalize_waf(waf):
     normalized = copy.deepcopy(waf)
     group = _managed_common_statement(normalized)
     if group is None:
         return None
+
     overrides = group.get('rule_action_override', []) or []
-    allowed = [override for override in overrides if _is_size_body_count_override(override)]
-    if require_override and len(allowed) != 1:
-        return None
-    if any(not _is_size_body_count_override(override) for override in overrides):
-        return None
+    names = set()
+    for override in overrides:
+        name = override.get('name')
+        if name not in (SIZE_OVERRIDE, XSS_OVERRIDE) or not _is_count_override(override, name):
+            return None
+        if name in names:
+            return None
+        names.add(name)
     group.pop('rule_action_override', None)
-    return normalized
+
+    xss_rules = [rule for rule in normalized.get('rule', []) if rule.get('name') == XSS_BLOCK_RULE]
+    if len(xss_rules) > 1:
+        return None
+    has_xss_rule = len(xss_rules) == 1
+    if has_xss_rule and not _is_body_xss_exception_rule(xss_rules[0]):
+        return None
+    if has_xss_rule:
+        normalized['rule'] = [rule for rule in normalized.get('rule', []) if rule.get('name') != XSS_BLOCK_RULE]
+
+    return _compact(normalized), names, has_xss_rule
 
 
 def _diagnose_override_shape(label, waf):
@@ -121,21 +191,42 @@ def _validate_waf_update(change):
         return False
     if before.get('id') != WAF_ID or after.get('id') != WAF_ID:
         return False
-    normalized_before = _normalize_waf_without_allowed_override(before, False)
-    normalized_after = _normalize_waf_without_allowed_override(after, True)
+
+    normalized_before = _normalize_waf(before)
+    normalized_after = _normalize_waf(after)
     if normalized_before is None:
         _diagnose_override_shape('BEFORE', before)
     if normalized_after is None:
         _diagnose_override_shape('AFTER', after)
     if normalized_before is None or normalized_after is None:
         return False
-    if normalized_before != normalized_after:
+
+    before_base, before_overrides, before_xss_rule = normalized_before
+    after_base, after_overrides, after_xss_rule = normalized_after
+    if before_base != after_base:
         print('WAF_NORMALIZED_DIFF_BEGIN', file=sys.stderr)
-        for difference in _diff_paths(normalized_before, normalized_after):
+        for difference in _diff_paths(before_base, after_base):
             print(difference, file=sys.stderr)
         print('WAF_NORMALIZED_DIFF_END', file=sys.stderr)
         return False
-    return True
+
+    # Historical first media exception: no body overrides -> only SizeRestrictions_BODY Count.
+    size_transition = (
+        before_overrides == set()
+        and not before_xss_rule
+        and after_overrides == {SIZE_OVERRIDE}
+        and not after_xss_rule
+    )
+
+    # Current media fix: retain SizeRestrictions_BODY Count, add only the CRS body-XSS
+    # Count override, and restore that managed block everywhere except exact POST /profile.
+    xss_transition = (
+        before_overrides == {SIZE_OVERRIDE}
+        and not before_xss_rule
+        and after_overrides == {SIZE_OVERRIDE, XSS_OVERRIDE}
+        and after_xss_rule
+    )
+    return size_transition or xss_transition
 
 
 def validate(plan, origin):
@@ -159,7 +250,7 @@ def validate(plan, origin):
             errors.append('Existing WAF identity mismatch')
     elif waf_actions == ['update']:
         if not _validate_waf_update(waf):
-            errors.append('WAF update must only add SizeRestrictions_BODY Count override')
+            errors.append('WAF update must be an exact bounded profile-media body-rule transition')
     else:
         errors.append('Existing WAF must be present')
 
@@ -206,4 +297,4 @@ if __name__ == '__main__':
     if errors:
         print('\n'.join(errors), file=sys.stderr)
         sys.exit(1)
-    print('EDGE_PLAN_GUARD_PASSED: only bounded staging CloudFront changes and exact SizeRestrictions_BODY Count override allowed')
+    print('EDGE_PLAN_GUARD_PASSED: only bounded staging CloudFront changes and exact profile-media WAF transitions allowed')
