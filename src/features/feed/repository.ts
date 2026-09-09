@@ -157,6 +157,25 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return rows as FeedPostRow[]
   }
 
+  async function listCommentedRows(lookup: { viewerProfileId: string; limit: number }): Promise<FeedPostRow[]> {
+    const rows = await queryRows(
+      `${FEED_ROW_SELECT}
+       join (
+         select c.post_id, max(c.created_at) as last_commented_at
+         from public.post_comments c
+         where c.author_id = $1
+           and c.deleted_at is null
+         group by c.post_id
+       ) viewer_activity on viewer_activity.post_id = p.id
+       where p.deleted_at is null
+         and ${visibilitySql()}
+       order by viewer_activity.last_commented_at desc, p.id desc
+       limit $2`,
+      [lookup.viewerProfileId, lookup.limit],
+    ) as FeedRow[]
+    return rows as FeedPostRow[]
+  }
+
   async function getPostRow(viewerProfileId: string, postId: string): Promise<FeedPostRow | null> {
     const rows = await queryRows(
       `${FEED_ROW_SELECT}
@@ -364,6 +383,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     listFeedRows,
     listSavedRows,
     listAuthorRows,
+    listCommentedRows,
     getPostRow,
     getViewerState,
     getComments,
