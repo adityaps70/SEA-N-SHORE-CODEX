@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { FeedMedia } from '../types'
 import { PostMedia } from './post-media'
 
@@ -17,6 +17,8 @@ const videoMedia: FeedMedia = {
   signedUrl: 'https://media.example/bridge.mp4',
 }
 
+afterEach(() => cleanup())
+
 describe('PostMedia', () => {
   it('renders portrait images at full post width with natural height and no viewport-height cap', () => {
     const { container } = render(<PostMedia media={imageMedia} authorName="Member A" />)
@@ -31,16 +33,17 @@ describe('PostMedia', () => {
     expect(container.innerHTML).not.toContain('object-cover')
   })
 
-  it('renders a video inline with native controls and no autoplay', () => {
+  it('renders a muted inline video with native controls ready for visibility-driven autoplay', () => {
     const { container } = render(<PostMedia media={videoMedia} authorName="Member A" />)
 
     const video = container.querySelector('video')
     expect(video).not.toBeNull()
     expect(video).toHaveAttribute('src', videoMedia.signedUrl)
     expect(video).toHaveAttribute('controls')
+    expect(video).toHaveAttribute('muted')
+    expect(video).toHaveAttribute('playsinline')
     expect(video).toHaveAttribute('preload', 'metadata')
     expect(video).toHaveAttribute('aria-label', 'Bridge resource management demonstration')
-    expect(video).not.toHaveAttribute('autoplay')
     expect(screen.getByText('Your browser does not support this video.')).toBeInTheDocument()
   })
 
