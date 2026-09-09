@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3'
@@ -30,6 +31,33 @@ export async function createMediaReadUrl(
     Key: key,
   })
   return getSignedUrl(getS3Client(), command, { expiresIn: expiresInSeconds })
+}
+
+export async function createMediaUploadUrl(
+  input: { key: string; contentType: string },
+  expiresInSeconds = 300,
+): Promise<string> {
+  const command = new PutObjectCommand({
+    Bucket: getMediaBucketName(),
+    Key: input.key,
+    ContentType: input.contentType,
+  })
+  return getSignedUrl(getS3Client(), command, { expiresIn: expiresInSeconds })
+}
+
+export async function headMediaObject(key: string): Promise<{
+  contentType: string | null
+  contentLength: number | null
+}> {
+  const response = await getS3Client().send(new HeadObjectCommand({
+    Bucket: getMediaBucketName(),
+    Key: key,
+  }))
+
+  return {
+    contentType: response.ContentType ?? null,
+    contentLength: typeof response.ContentLength === 'number' ? response.ContentLength : null,
+  }
 }
 
 export async function putMediaObject(input: {
