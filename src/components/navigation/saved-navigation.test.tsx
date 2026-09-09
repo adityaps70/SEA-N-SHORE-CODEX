@@ -28,4 +28,22 @@ describe('saved posts navigation', () => {
 
     expect(screen.getByRole('banner')).toHaveClass('fixed', 'top-0', 'z-50')
   })
+
+  it('centers the navigation between the logo and right-side controls', () => {
+    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+
+    const primaryNav = screen.getByRole('navigation', { name: 'Primary' })
+    expect(primaryNav).toHaveClass('justify-self-center')
+    expect(primaryNav.parentElement).toHaveClass('grid', 'grid-cols-[auto_minmax(0,1fr)_auto]')
+  })
+
+  it('doubles the desktop search width without increasing its height', () => {
+    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+
+    expect(screen.getByRole('searchbox', { name: 'Search maritime professionals' })).toHaveClass(
+      'min-h-10',
+      'w-64',
+      '2xl:w-[22rem]',
+    )
+  })
 })
