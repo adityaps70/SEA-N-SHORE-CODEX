@@ -20,6 +20,10 @@ export async function applyToJob(jobId: string): Promise<ApplyToJobResult> {
   if (!parsed.success) return { ok: false, error: 'Invalid job.' }
 
   const user = await requireAwsUser()
+  if (!await jobsRepository.isMemberReady(user.id)) {
+    return { ok: false, error: 'Complete your professional profile before applying.' }
+  }
+
   const job = await jobsRepository.getPublishedJob(parsed.data)
   if (!job) return { ok: false, error: 'This job is no longer accepting applications.' }
 
