@@ -23,4 +23,13 @@ describe('profile media WAF contract', () => {
     const edge = readFileSync('infra/aws/app/edge.tf', 'utf8')
     expect(edge).toMatch(/name\s*=\s*"PerIpRateLimit"[\s\S]*?priority\s*=\s*20[\s\S]*?rate_based_statement[\s\S]*?limit\s*=\s*2000/)
   })
+
+  it('requires the edge apply workflow to verify the exact live XSS exception before reporting success', () => {
+    const recovery = readFileSync('scripts/aws/edge-recovery.sh', 'utf8')
+
+    expect(recovery).toContain('CrossSiteScripting_BODY')
+    expect(recovery).toContain('BlockManagedBodyXssExceptProfileMedia')
+    expect(recovery).toContain('awswaf:managed:aws:core-rule-set:CrossSiteScripting_Body')
+    expect(recovery).toContain('PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED')
+  })
 })
