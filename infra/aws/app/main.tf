@@ -396,6 +396,7 @@ resource "aws_ecs_task_definition" "web" {
         { name = "AURORA_HOST", value = aws_rds_cluster.aurora.endpoint },
         { name = "AURORA_PORT", value = tostring(aws_rds_cluster.aurora.port) },
         { name = "AURORA_DATABASE", value = aws_rds_cluster.aurora.database_name },
+        { name = "AURORA_SECRET_ARN", value = local.aurora_master_secret_arn },
         { name = "AURORA_SSL", value = "true" },
         { name = "NODE_ENV", value = "production" },
         { name = "PORT", value = "3000" },
@@ -444,6 +445,7 @@ resource "aws_ecs_task_definition" "web" {
 
   depends_on = [
     aws_iam_role_policy.ecs_execution_aurora_secret,
+    aws_iam_role_policy.ecs_task_aurora_secret,
     aws_iam_role_policy.ecs_task_media
   ]
 
