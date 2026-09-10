@@ -89,17 +89,20 @@ describe('AWS notification queries', () => {
   })
 
   it.each([
-    ['post_comment', null, 'commented on your post', `/posts/${POST_ID}#comment-${COMMENT_ID}`],
-    ['comment_reply', null, 'replied to your comment', `/posts/${POST_ID}#comment-${COMMENT_ID}`],
-    ['post_reaction', 'respect', 'reacted Respect 🫡 to your post', `/posts/${POST_ID}`],
-    ['comment_reaction', 'support', 'reacted Support ❤️ to your comment', `/posts/${POST_ID}#comment-${COMMENT_ID}`],
-    ['post_mention', null, 'mentioned you in a post', `/posts/${POST_ID}`],
-    ['comment_mention', null, 'mentioned you in a comment', `/posts/${POST_ID}#comment-${COMMENT_ID}`],
-  ])('maps %s social notifications to professional copy and a deep link', async (notificationType, reactionType, copy, destination) => {
+    ['post_comment', null, 'commented on your post', true, `/posts/${POST_ID}#comment-${COMMENT_ID}`],
+    ['comment_reply', null, 'replied to your comment', true, `/posts/${POST_ID}#comment-${COMMENT_ID}`],
+    ['post_reaction', 'respect', 'reacted Respect 🫡 to your post', false, `/posts/${POST_ID}`],
+    ['comment_reaction', 'support', 'reacted Support ❤️ to your comment', true, `/posts/${POST_ID}#comment-${COMMENT_ID}`],
+    ['post_mention', null, 'mentioned you in a post', false, `/posts/${POST_ID}`],
+    ['comment_mention', null, 'mentioned you in a comment', true, `/posts/${POST_ID}#comment-${COMMENT_ID}`],
+  ])('maps %s social notifications to professional copy and a deep link', async (notificationType, reactionType, hasCommentTarget, copyOrDestination, maybeDestination) => {
+    const copy = typeof copyOrDestination === 'string' ? copyOrDestination : ''
+    const destination = maybeDestination as string
+    const commentId = hasCommentTarget ? COMMENT_ID : null
     const queries = await queriesFor([notification({
       notification_type: notificationType,
       post_id: POST_ID,
-      comment_id: COMMENT_ID,
+      comment_id: commentId,
       reaction_type: reactionType,
     })])
     const [row] = await queries.getNotifications(8)
@@ -108,7 +111,7 @@ describe('AWS notification queries', () => {
       message: `Captain Rhea ${copy}.`,
       destination,
       postId: POST_ID,
-      commentId: COMMENT_ID,
+      commentId,
       reactionType,
     })
   })
