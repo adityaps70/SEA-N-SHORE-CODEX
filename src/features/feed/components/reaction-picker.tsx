@@ -7,7 +7,6 @@ export function ReactionPicker({
   value,
   disabled = false,
   onChange,
-  compact = false,
 }: {
   value: PostReactionType | null
   disabled?: boolean
@@ -54,7 +53,7 @@ export function ReactionPicker({
         className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition hover:bg-mist-50 disabled:opacity-50 ${value ? 'text-ocean-700' : 'text-navy-900'}`}
       >
         <span aria-hidden="true" className="text-base leading-none">{current.emoji}</span>
-        <span className={compact ? 'sr-only sm:not-sr-only' : ''}>{current.label}</span>
+        <span data-reaction-label className="sr-only">{current.label}</span>
       </button>
       {open ? (
         <div role="menu" aria-label="Reactions" className="absolute bottom-full left-0 z-40 mb-2 flex min-w-max gap-1 rounded-full border border-mist-100 bg-white p-1.5 shadow-xl">
@@ -74,7 +73,7 @@ export function ReactionPicker({
                 className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-mist-50 ${value === reaction ? 'bg-ocean-50 text-ocean-700' : 'text-navy-900'}`}
               >
                 <span aria-hidden="true" className="text-xl">{meta.emoji}</span>
-                <span>{meta.label}</span>
+                <span data-reaction-label className="sr-only">{meta.label}</span>
               </button>
             )
           })}
