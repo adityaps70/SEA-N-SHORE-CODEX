@@ -2,7 +2,6 @@
 
 import { Ellipsis, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react'
 import * as feedActions from '../actions'
 import type { CommentActionState } from '../actions'
@@ -86,17 +85,26 @@ function firstActionError(state: CommentActionState) {
   return Object.values(state.fieldErrors ?? {}).flatMap((errors) => errors ?? [])[0] ?? 'We could not update this comment.'
 }
 
-function ReplyComposer({ postId, parentCommentId, onDone }: { postId: string; parentCommentId: string; onDone(): void }) {
-  const router = useRouter()
+function ReplyComposer({
+  postId,
+  parentCommentId,
+  onCreated,
+  onDone,
+}: {
+  postId: string
+  parentCommentId: string
+  onCreated(comment: FeedComment): void
+  onDone(): void
+}) {
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
   const [state, formAction, pending] = useActionState(async (previousState: CommentActionState, formData: FormData) => {
     const nextState = await feedActions.addComment(previousState, formData)
-    if (nextState.ok) {
+    if (nextState.ok && nextState.comment) {
+      onCreated(nextState.comment)
       setBody('')
       setMentions([])
       onDone()
-      router.refresh()
     }
     return nextState
   }, initialState)
@@ -137,6 +145,9 @@ function CommentItem({
   readOnly,
   isReply = false,
   replyCount = 0,
+  onChanged,
+  onDeleted,
+  onCreatedReply,
 }: {
   postId: string
   comment: FeedComment
@@ -144,8 +155,10 @@ function CommentItem({
   readOnly: boolean
   isReply?: boolean
   replyCount?: number
+  onChanged(comment: FeedComment): void
+  onDeleted(commentId: string, comment: FeedComment | null): void
+  onCreatedReply(comment: FeedComment): void
 }) {
-  const router = useRouter()
   const [reaction, setReaction] = useState<PostReactionType | null>(comment.viewerReaction ?? null)
   const [summary, setSummary] = useState<ReactionSummary>(() => commentSummary(comment))
   const [replying, setReplying] = useState(false)
@@ -204,13 +217,13 @@ function CommentItem({
     setError('')
     startManagementTransition(async () => {
       const result = await feedActions.updateComment({}, formData)
-      if (!result.ok) {
+      if (!result.ok || !result.comment) {
         if (result.value !== undefined) setEditBody(result.value)
         setError(firstActionError(result))
         return
       }
+      onChanged(result.comment)
       setEditing(false)
-      router.refresh()
     })
   }
 
@@ -224,7 +237,7 @@ function CommentItem({
         setError(result.error)
         return
       }
-      router.refresh()
+      onDeleted(result.commentId, result.comment)
     })
   }
 
@@ -329,7 +342,14 @@ function CommentItem({
           </div>
         ) : null}
         {error ? <p role="alert" className="px-1 text-xs text-red-700">{error}</p> : null}
-        {replying && !readOnly && !editing ? <ReplyComposer postId={postId} parentCommentId={rootCommentId} onDone={() => setReplying(false)} /> : null}
+        {replying && !readOnly && !editing ? (
+          <ReplyComposer
+            postId={postId}
+            parentCommentId={rootCommentId}
+            onCreated={onCreatedReply}
+            onDone={() => setReplying(false)}
+          />
+        ) : null}
         <ReactionDetailsModal
           open={reactionsOpen}
           targetType="comment"
@@ -353,31 +373,49 @@ export function CommentThread({
   readOnly?: boolean
   composerOpen?: boolean
 }) {
-  const router = useRouter()
+  const [threadComments, setThreadComments] = useState(comments)
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
   const [state, formAction, pending] = useActionState(async (previousState: CommentActionState, formData: FormData) => {
     const nextState = await feedActions.addComment(previousState, formData)
-    if (nextState.ok) {
+    if (nextState.ok && nextState.comment) {
+      upsertComment(nextState.comment)
       setBody('')
       setMentions([])
-      router.refresh()
     }
     return nextState
   }, initialState)
   const [visibleRootCount, setVisibleRootCount] = useState(1)
 
+  function upsertComment(nextComment: FeedComment) {
+    setThreadComments((current) => {
+      const exists = current.some((comment) => comment.id === nextComment.id)
+      if (exists) return current.map((comment) => comment.id === nextComment.id ? nextComment : comment)
+      return [...current, nextComment]
+    })
+  }
+
+  function reconcileDelete(commentId: string, nextComment: FeedComment | null) {
+    setThreadComments((current) => nextComment
+      ? current.map((comment) => comment.id === commentId ? nextComment : comment)
+      : current.filter((comment) => comment.id !== commentId))
+  }
+
+  useEffect(() => {
+    setThreadComments(comments)
+  }, [comments])
+
   const { roots, repliesByRoot } = useMemo(() => {
-    const rootComments = comments.filter((comment) => !comment.parentCommentId).slice().reverse()
+    const rootComments = threadComments.filter((comment) => !comment.parentCommentId).slice().reverse()
     const map = new Map<string, FeedComment[]>()
-    for (const comment of comments) {
+    for (const comment of threadComments) {
       if (!comment.parentCommentId) continue
       const current = map.get(comment.parentCommentId) ?? []
       current.push(comment)
       map.set(comment.parentCommentId, current)
     }
     return { roots: rootComments, repliesByRoot: map }
-  }, [comments])
+  }, [threadComments])
 
   useEffect(() => {
     if (composerOpen && !readOnly) document.getElementById(`comment-${postId}`)?.focus()
@@ -394,9 +432,28 @@ export function CommentThread({
             const replies = repliesByRoot.get(comment.id) ?? []
             return (
               <div key={comment.id} className="space-y-2">
-                <CommentItem postId={postId} comment={comment} rootCommentId={comment.id} readOnly={readOnly} replyCount={replies.length} />
+                <CommentItem
+                  postId={postId}
+                  comment={comment}
+                  rootCommentId={comment.id}
+                  readOnly={readOnly}
+                  replyCount={replies.length}
+                  onChanged={upsertComment}
+                  onDeleted={reconcileDelete}
+                  onCreatedReply={upsertComment}
+                />
                 {replies.map((reply) => (
-                  <CommentItem key={reply.id} postId={postId} comment={reply} rootCommentId={comment.id} readOnly={readOnly} isReply />
+                  <CommentItem
+                    key={reply.id}
+                    postId={postId}
+                    comment={reply}
+                    rootCommentId={comment.id}
+                    readOnly={readOnly}
+                    isReply
+                    onChanged={upsertComment}
+                    onDeleted={reconcileDelete}
+                    onCreatedReply={upsertComment}
+                  />
                 ))}
               </div>
             )
