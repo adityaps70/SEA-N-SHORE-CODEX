@@ -70,6 +70,22 @@ describe('feed repository', () => {
     for (const [, values] of callsOf(query)) expect(values?.[0]).toBe(viewerId)
   })
 
+  it('hydrates comment ownership and edit eligibility from database time', async () => {
+    const query = vi.fn(async () => [])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await repository.getComments([postId], viewerId)
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/c\.updated_at/i)
+    expect(sql).toMatch(/c\.deleted_at/i)
+    expect(sql).toMatch(/c\.author_id\s*=\s*\$2[^\n]*as viewer_owns/i)
+    expect(sql).toMatch(/now\(\)\s*<\s*c\.created_at\s*\+\s*interval\s+'15 minutes'/i)
+    expect(sql).toMatch(/as can_edit/i)
+    expect(values).toEqual([[postId], viewerId])
+  })
+
   it('checks post interaction availability with active viewer and bilateral block exclusion', async () => {
     const query = vi.fn(async () => [{ id: postId, author_id: authorId, post_type: 'standard' }])
     const { createFeedRepository } = await import('./repository')

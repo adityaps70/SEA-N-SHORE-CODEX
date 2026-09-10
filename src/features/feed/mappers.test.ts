@@ -80,4 +80,37 @@ describe('mapFeedPost', () => {
     expect(mapped.comments[0]?.author.rank).toBe('Second Engineer')
     expect(mapped.commentCount).toBe(1)
   })
+
+  it('maps server-authoritative comment ownership, edit eligibility and deletion metadata', () => {
+    const comment = {
+      id: 'comment-1',
+      body: 'Useful lesson',
+      created_at: '2026-09-10T09:00:00.000Z',
+      updated_at: '2026-09-10T09:10:00.000Z',
+      deleted_at: null,
+      viewer_owns: true,
+      can_edit: true,
+      profiles: {
+        id: '22222222-2222-4222-8222-222222222222',
+        slug: 'member-b',
+        full_name: 'Member B',
+        avatar_path: null,
+        headline: null,
+        maritime_profiles: null,
+      },
+    } as unknown as NonNullable<FeedPostRow['post_comments']>[number]
+
+    const mapped = mapFeedPost(row({
+      post_type: 'standard',
+      post_polls: null,
+      post_comments: [comment],
+    }), viewer)
+
+    expect(mapped.comments[0]).toMatchObject({
+      updatedAt: '2026-09-10T09:10:00.000Z',
+      viewerOwns: true,
+      canEdit: true,
+      deleted: false,
+    })
+  })
 })
