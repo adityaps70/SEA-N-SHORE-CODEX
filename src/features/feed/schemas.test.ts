@@ -129,6 +129,44 @@ describe('reactionDetailsSchema', () => {
   })
 })
 
+describe('comment management schemas', () => {
+  it('normalizes edits, keeps the comment identity stable, and deduplicates mentions', async () => {
+    const schemas = await import('./schemas') as unknown as {
+      updateCommentInputSchema?: { parse(input: unknown): { commentId: string; body: string; mentionProfileIds: string[] } }
+    }
+    expect(schemas.updateCommentInputSchema).toBeDefined()
+    if (!schemas.updateCommentInputSchema) return
+
+    const commentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    const mentionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    expect(schemas.updateCommentInputSchema.parse({
+      commentId,
+      body: '  Updated watchkeeping note.  ',
+      mentionProfileIds: [mentionId, mentionId],
+    })).toEqual({
+      commentId,
+      body: 'Updated watchkeeping note.',
+      mentionProfileIds: [mentionId],
+    })
+  })
+
+  it('validates delete ids and rejects invalid or empty edit payloads', async () => {
+    const schemas = await import('./schemas') as unknown as {
+      updateCommentInputSchema?: { parse(input: unknown): unknown }
+      deleteCommentInputSchema?: { parse(input: unknown): { commentId: string } }
+    }
+    expect(schemas.updateCommentInputSchema).toBeDefined()
+    expect(schemas.deleteCommentInputSchema).toBeDefined()
+    if (!schemas.updateCommentInputSchema || !schemas.deleteCommentInputSchema) return
+
+    const commentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    expect(schemas.deleteCommentInputSchema.parse({ commentId })).toEqual({ commentId })
+    expect(() => schemas.deleteCommentInputSchema?.parse({ commentId: 'not-a-uuid' })).toThrow()
+    expect(() => schemas.updateCommentInputSchema?.parse({ commentId, body: '   ' })).toThrow()
+    expect(() => schemas.updateCommentInputSchema?.parse({ commentId, body: 'a'.repeat(2001) })).toThrow()
+  })
+})
+
 describe('parseFeedCategory', () => {
   it('returns only canonical categories', () => {
     expect(parseFeedCategory('safety_lessons')).toBe('safety_lessons')
