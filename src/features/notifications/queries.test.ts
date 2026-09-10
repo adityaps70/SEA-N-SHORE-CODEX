@@ -95,9 +95,7 @@ describe('AWS notification queries', () => {
     ['comment_reaction', 'support', 'reacted Support ❤️ to your comment', true, `/posts/${POST_ID}#comment-${COMMENT_ID}`],
     ['post_mention', null, 'mentioned you in a post', false, `/posts/${POST_ID}`],
     ['comment_mention', null, 'mentioned you in a comment', true, `/posts/${POST_ID}#comment-${COMMENT_ID}`],
-  ])('maps %s social notifications to professional copy and a deep link', async (notificationType, reactionType, hasCommentTarget, copyOrDestination, maybeDestination) => {
-    const copy = typeof copyOrDestination === 'string' ? copyOrDestination : ''
-    const destination = maybeDestination as string
+  ])('maps %s social notifications to professional copy and a deep link', async (notificationType, reactionType, copy, hasCommentTarget, destination) => {
     const commentId = hasCommentTarget ? COMMENT_ID : null
     const queries = await queriesFor([notification({
       notification_type: notificationType,
