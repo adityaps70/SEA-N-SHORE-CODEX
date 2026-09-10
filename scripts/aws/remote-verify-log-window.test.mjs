@@ -25,6 +25,14 @@ test('CloudWatch runtime review ignores only malformed client Server Reference I
   assert.match(workflow, /Repeating runtime error signatures detected/)
 })
 
+test('CloudWatch runtime review reports and excludes only explicit old-or-new deployment Server Action version skew', () => {
+  assert.match(workflow, /STALE_SERVER_ACTION_PATTERN/)
+  assert.match(workflow, /Failed to find Server Action/)
+  assert.match(workflow, /This request might be from an older or newer deployment/)
+  assert.match(workflow, /IGNORED_STALE_SERVER_ACTION_REQUESTS/)
+  assert.match(workflow, /grep -Ev "\$STALE_SERVER_ACTION_PATTERN"/)
+})
+
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
   assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
   assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
