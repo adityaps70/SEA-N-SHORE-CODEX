@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FeedPost } from '../types'
 import { PostCard } from './post-card'
@@ -8,6 +8,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('../actions', () => ({
+  loadReactionDetails: vi.fn(async () => ({ ok: true, page: { reactors: [], nextCursor: null } })),
   deletePost: vi.fn(async () => ({ ok: true })),
   setPostReaction: vi.fn(async () => ({ ok: true })),
   setPostLiked: vi.fn(async () => ({ ok: true })),
@@ -45,13 +46,28 @@ const post: FeedPost = {
 afterEach(() => cleanup())
 
 describe('PostCard', () => {
-  it('renders a semantic post with real controls and counts', () => {
+  it('renders one primary reaction control with total-only summary and an openable unique reaction cluster', () => {
     render(<PostCard post={post} />)
     expect(screen.getByRole('article')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Member A' })).toHaveAttribute('href', '/people/member-a')
-    expect(screen.getByText('4 reactions')).toBeInTheDocument()
+
+    const totalOpener = screen.getByRole('button', { name: '4 reactions' })
+    expect(totalOpener).toHaveTextContent('4 reactions')
+    expect(totalOpener).not.toHaveTextContent('👍')
     expect(screen.getByText('2 comments')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Like$/i })).toBeInTheDocument()
+
+    const clusterOpener = screen.getByRole('button', { name: 'View 4 reactions' })
+    expect(clusterOpener).toHaveTextContent('👍')
+    expect(clusterOpener.textContent?.match(/👍/g)).toHaveLength(1)
+
+    const primaryReactionControls = screen.getAllByRole('button', { name: /^Like$/i })
+    expect(primaryReactionControls).toHaveLength(1)
+    expect(primaryReactionControls[0].querySelector('svg.lucide-thumbs-up')).toBeInTheDocument()
+    expect(primaryReactionControls[0]).not.toHaveTextContent('👍')
+
+    fireEvent.click(totalOpener)
+    expect(screen.getByRole('dialog', { name: /reactions/i })).toBeInTheDocument()
+
     expect(screen.getByRole('button', { name: /^Comment$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Share$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Save$/i })).toBeInTheDocument()
