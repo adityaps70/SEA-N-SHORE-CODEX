@@ -46,7 +46,7 @@ const post: FeedPost = {
 afterEach(() => cleanup())
 
 describe('PostCard', () => {
-  it('renders one compact icon-only post actions row with inline reaction and comment counts', () => {
+  it('renders one compact icon-only post actions row with the reaction summary at the far right', () => {
     render(<PostCard post={post} />)
     expect(screen.getByRole('article')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Member A' })).toHaveAttribute('href', '/people/member-a')
@@ -68,6 +68,9 @@ describe('PostCard', () => {
 
     const saveButton = within(actions).getByRole('button', { name: /^Save$/i })
     expect(saveButton).not.toHaveTextContent('Save')
+
+    expect(primaryReactionControl.compareDocumentPosition(reactionCount) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(saveButton.compareDocumentPosition(reactionCount) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     expect(screen.queryByText('4 reactions')).not.toBeInTheDocument()
     expect(screen.queryByText('2 comments')).not.toBeInTheDocument()
