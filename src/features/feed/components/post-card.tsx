@@ -1,14 +1,23 @@
 'use client'
 
 import Link from 'next/link'
-import { Bookmark, Heart, MessageCircle, Trash2 } from 'lucide-react'
+import { Bookmark, MessageCircle, Trash2 } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
-import { deletePost, setPostLiked, setPostSaved } from '../actions'
-import { POST_CATEGORY_LABELS, type FeedPost } from '../types'
+import { deletePost, setPostReaction, setPostSaved } from '../actions'
+import {
+  EMPTY_REACTION_SUMMARY,
+  POST_REACTIONS,
+  POST_REACTION_META,
+  reactionCount,
+  type FeedPost,
+  type PostReactionType,
+  type ReactionSummary,
+} from '../types'
 import { CommentThread } from './comment-thread'
 import { PollCard } from './poll-card'
 import { PostMedia } from './post-media'
+import { ReactionPicker } from './reaction-picker'
 import { SharePostButton } from './share-post-button'
 
 function initials(name: string) {
@@ -25,28 +34,52 @@ function relativeTime(timestamp: string) {
   return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(timestamp))
 }
 
+function initialSummary(post: FeedPost): ReactionSummary {
+  return post.reactionSummary ?? { ...EMPTY_REACTION_SUMMARY, like: post.likeCount }
+}
+
+function updateSummary(summary: ReactionSummary, previous: PostReactionType | null, next: PostReactionType | null) {
+  const updated = { ...summary }
+  if (previous) updated[previous] = Math.max(0, updated[previous] - 1)
+  if (next) updated[next] += 1
+  return updated
+}
+
+function ReactionSummaryLine({ summary }: { summary: ReactionSummary }) {
+  const total = reactionCount(summary)
+  if (!total) return <span>Be the first to react</span>
+  const active = POST_REACTIONS.filter((reaction) => summary[reaction] > 0)
+  return (
+    <span className="inline-flex items-center gap-1.5" aria-label={`${total} ${total === 1 ? 'reaction' : 'reactions'}`}>
+      <span aria-hidden="true" className="-space-x-1">
+        {active.slice(0, 4).map((reaction) => <span key={reaction}>{POST_REACTION_META[reaction].emoji}</span>)}
+      </span>
+      <span>{total} {total === 1 ? 'reaction' : 'reactions'}</span>
+    </span>
+  )
+}
+
 export function PostCard({ post, detail = false, readOnly = false }: { post: FeedPost; detail?: boolean; readOnly?: boolean }) {
-  const [liked, setLiked] = useState(post.viewerLiked)
+  const [reaction, setReaction] = useState<PostReactionType | null>(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
+  const [summary, setSummary] = useState<ReactionSummary>(() => initialSummary(post))
   const [saved, setSaved] = useState(post.viewerSaved)
-  const [likeCount, setLikeCount] = useState(post.likeCount)
-  const [commentsOpen, setCommentsOpen] = useState(detail && !readOnly)
+  const [composerOpen, setComposerOpen] = useState(detail && !readOnly)
   const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
 
-  function changeLike() {
-    if (readOnly) return
-    const next = !liked
-    const previousLiked = liked
-    const previousCount = likeCount
-    setLiked(next)
-    setLikeCount((count) => Math.max(0, count + (next ? 1 : -1)))
+  function changeReaction(next: PostReactionType | null) {
+    if (readOnly || pending) return
+    const previousReaction = reaction
+    const previousSummary = summary
+    setReaction(next)
+    setSummary(updateSummary(summary, previousReaction, next))
     setError('')
     startTransition(async () => {
-      const result = await setPostLiked(post.id, next)
+      const result = await setPostReaction(post.id, next)
       if (!result.ok) {
-        setLiked(previousLiked)
-        setLikeCount(previousCount)
+        setReaction(previousReaction)
+        setSummary(previousSummary)
         setError(result.error)
       }
     })
@@ -83,28 +116,19 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
   if (deleted) return null
 
   return (
-    <Card className="overflow-hidden border border-mist-100">
+    <Card className="overflow-visible border border-mist-100">
       <article aria-labelledby={`post-author-${post.id}`}>
         <header className="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
           <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
             {post.author.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={post.author.avatarUrl}
-                alt={`${post.author.fullName}'s profile photo`}
-                className="h-full w-full object-cover"
-              />
+              <img src={post.author.avatarUrl} alt={`${post.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
             ) : initials(post.author.fullName)}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Link id={`post-author-${post.id}`} href={`/people/${post.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
-                {post.author.fullName}
-              </Link>
-              <span className="rounded-full bg-mist-50 px-2 py-1 text-[11px] font-semibold text-ocean-700">
-                {POST_CATEGORY_LABELS[post.category]}
-              </span>
-            </div>
+            <Link id={`post-author-${post.id}`} href={`/people/${post.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
+              {post.author.fullName}
+            </Link>
             <p className="mt-0.5 truncate text-sm text-muted">
               {[post.author.rank ?? post.author.headline, post.author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
             </p>
@@ -113,13 +137,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
             </time>
           </div>
           {post.viewerOwns && !readOnly ? (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={removePost}
-              aria-label="Delete post"
-              className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
-            >
+            <button type="button" disabled={pending} onClick={removePost} aria-label="Delete post" className="inline-flex size-9 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50">
               <Trash2 aria-hidden="true" className="size-4" />
             </button>
           ) : null}
@@ -132,30 +150,19 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-mist-100 px-4 py-2 text-xs text-muted sm:px-5">
-          <span>{likeCount} {likeCount === 1 ? 'like' : 'likes'}</span>
+          <ReactionSummaryLine summary={summary} />
           <span>{post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}</span>
         </div>
 
         {readOnly ? (
-          <div className="border-t border-mist-100 px-4 py-2 sm:px-5">
-            <SharePostButton postId={post.id} />
-          </div>
+          <div className="border-t border-mist-100 px-4 py-2 sm:px-5"><SharePostButton postId={post.id} /></div>
         ) : (
-          <div className="grid grid-cols-4 border-t border-mist-100 px-2 py-1 sm:px-3">
+          <div className="grid grid-cols-4 items-center border-t border-mist-100 px-2 py-1 sm:px-3">
+            <div className="flex justify-center"><ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} compact /></div>
             <button
               type="button"
-              aria-pressed={liked}
-              disabled={pending}
-              onClick={changeLike}
-              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${liked ? 'text-ocean-700' : 'text-navy-900'}`}
-            >
-              <Heart aria-hidden="true" className="size-5" fill={liked ? 'currentColor' : 'none'} />
-              <span className="hidden sm:inline">Like</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCommentsOpen((value) => !value)}
-              aria-expanded={commentsOpen}
+              onClick={() => setComposerOpen(true)}
+              aria-expanded={composerOpen}
               aria-controls={`comments-${post.id}`}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50"
             >
@@ -163,13 +170,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
               <span className="hidden sm:inline">Comment</span>
             </button>
             <SharePostButton postId={post.id} />
-            <button
-              type="button"
-              aria-pressed={saved}
-              disabled={pending}
-              onClick={changeSaved}
-              className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${saved ? 'text-ocean-700' : 'text-navy-900'}`}
-            >
+            <button type="button" aria-pressed={saved} disabled={pending} onClick={changeSaved} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${saved ? 'text-ocean-700' : 'text-navy-900'}`}>
               <Bookmark aria-hidden="true" className="size-5" fill={saved ? 'currentColor' : 'none'} />
               <span className="hidden sm:inline">Save</span>
             </button>
@@ -177,7 +178,9 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
         )}
 
         {error ? <p role="alert" className="mx-4 mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 sm:mx-5">{error}</p> : null}
-        {commentsOpen && !readOnly ? <CommentThread postId={post.id} comments={post.comments} /> : null}
+        {(post.commentCount > 0 || composerOpen) ? (
+          <CommentThread postId={post.id} comments={post.comments} readOnly={readOnly} composerOpen={composerOpen} />
+        ) : null}
       </article>
     </Card>
   )
