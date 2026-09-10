@@ -10,12 +10,22 @@ import {
 } from './media'
 import { isOwnedPostMediaStoragePath, validatePostMediaMetadata } from './media-policy'
 import { getFeedPage } from './queries'
-import { commentInputSchema, createPostInputSchema, feedRequestSchema, pollVoteSchema, reactionDetailsSchema, reactionSchema } from './schemas'
+import {
+  commentInputSchema,
+  createPostInputSchema,
+  deleteCommentInputSchema,
+  feedRequestSchema,
+  pollVoteSchema,
+  reactionDetailsSchema,
+  reactionSchema,
+  updateCommentInputSchema,
+} from './schemas'
 import {
   addPostCommentWithAurora,
   assertPendingMediaDiscardableWithAurora,
   createPollPostWithAurora,
   createStandardPostWithAurora,
+  deleteCommentWithAurora,
   deletePostWithAurora,
   loadReactionDetailsWithAurora,
   setCommentReactionWithAurora,
@@ -23,6 +33,7 @@ import {
   setPostLikedWithAurora,
   setPostReactionWithAurora,
   setPostSavedWithAurora,
+  updateCommentWithAurora,
 } from './service'
 import { POST_CATEGORIES, type FeedRequest, type PostCategory, type PostReactionType } from './types'
 
@@ -301,6 +312,50 @@ export async function addComment(_previousState: CommentActionState, formData: F
   } catch {
     return { error: 'We could not add your comment.', value: parsed.data.body }
   }
+  revalidateSocialFeed()
+  return { ok: true }
+}
+
+export async function updateComment(_previousState: CommentActionState, formData: FormData): Promise<CommentActionState> {
+  const rawBody = formData.get('body')
+  const rawValue = typeof rawBody === 'string' && rawBody.length <= 2000 ? rawBody : undefined
+  const parsed = updateCommentInputSchema.safeParse({
+    commentId: formData.get('commentId'),
+    body: rawBody,
+    mentionProfileIds: mentionIds(formData),
+  })
+  if (!parsed.success) {
+    return {
+      fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>,
+      value: rawValue,
+    }
+  }
+  const user = await requireAwsUser()
+  try {
+    await updateCommentWithAurora(
+      user.id,
+      parsed.data.commentId,
+      parsed.data.body,
+      parsed.data.mentionProfileIds,
+    )
+  } catch (error) {
+    return {
+      error: error instanceof Error && error.message === 'feed_comment_edit_expired'
+        ? 'Comments can only be edited for 15 minutes after posting.'
+        : 'We could not update this comment.',
+      value: rawValue,
+    }
+  }
+  revalidateSocialFeed()
+  return { ok: true }
+}
+
+export async function deleteComment(commentId: string): Promise<FeedActionResult> {
+  const parsed = deleteCommentInputSchema.safeParse({ commentId })
+  if (!parsed.success) return { ok: false, error: 'Invalid comment.' }
+  const user = await requireAwsUser()
+  try { await deleteCommentWithAurora(user.id, parsed.data.commentId) }
+  catch { return { ok: false, error: 'We could not delete this comment.' } }
   revalidateSocialFeed()
   return { ok: true }
 }
