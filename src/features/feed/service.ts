@@ -5,7 +5,7 @@ import {
   type FeedMediaInput,
   type FeedRepository,
 } from './repository'
-import type { PostCategory } from './types'
+import type { PostCategory, PostReactionType } from './types'
 
 type FeedTransaction = <T>(fn: (repository: FeedRepository) => Promise<T>) => Promise<T>
 
@@ -14,6 +14,7 @@ type StandardPostInput = {
   category: PostCategory
   body: string
   media?: FeedMediaInput
+  mentionProfileIds?: string[]
 }
 
 type PollPostInput = Omit<StandardPostInput, 'id' | 'media'> & {
@@ -66,6 +67,7 @@ export function createFeedService(input: {
         body: post.body.trim(),
       })
       if (post.media) await repository.insertPostMedia(id, post.media)
+      if (post.mentionProfileIds?.length) await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
       return id
     })
   }
@@ -92,6 +94,7 @@ export function createFeedService(input: {
       for (const [position, label] of options.entries()) {
         await repository.insertPollOption(id, label, position)
       }
+      if (post.mentionProfileIds?.length) await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
       return id
     })
   }
@@ -100,6 +103,14 @@ export function createFeedService(input: {
     return input.withTransaction(async (repository) => {
       await assertMemberReady(repository, actorId)
       if (!await repository.deleteOwnPost(actorId, postId)) serviceError('feed_post_delete_forbidden')
+      return true
+    })
+  }
+
+  async function setPostReaction(actorId: string, postId: string, reaction: PostReactionType | null) {
+    return input.withTransaction(async (repository) => {
+      await assertInteractablePost(repository, actorId, postId)
+      await repository.setPostReaction(actorId, postId, reaction)
       return true
     })
   }
@@ -120,10 +131,32 @@ export function createFeedService(input: {
     })
   }
 
-  async function addComment(actorId: string, postId: string, body: string) {
+  async function addComment(
+    actorId: string,
+    postId: string,
+    body: string,
+    parentCommentId: string | null = null,
+    mentionProfileIds: string[] = [],
+  ) {
     return input.withTransaction(async (repository) => {
       await assertInteractablePost(repository, actorId, postId)
-      await repository.addComment(actorId, postId, body.trim())
+      let normalizedParentId: string | null = null
+      if (parentCommentId) {
+        const parent = await repository.getCommentForInteraction(actorId, parentCommentId)
+        if (!parent || parent.postId !== postId) serviceError('feed_comment_parent_unavailable')
+        normalizedParentId = parent.rootParentId
+      }
+      const commentId = await repository.addComment(actorId, postId, body.trim(), normalizedParentId)
+      if (mentionProfileIds.length) await repository.insertCommentMentions(actorId, commentId, mentionProfileIds)
+      return commentId
+    })
+  }
+
+  async function setCommentReaction(actorId: string, commentId: string, reaction: PostReactionType | null) {
+    return input.withTransaction(async (repository) => {
+      const comment = await repository.getCommentForInteraction(actorId, commentId)
+      if (!comment) serviceError('feed_interaction_unavailable')
+      await repository.setCommentReaction(actorId, commentId, reaction)
       return true
     })
   }
@@ -143,9 +176,11 @@ export function createFeedService(input: {
     assertPendingMediaDiscardable,
     createPollPost,
     deletePost,
+    setPostReaction,
     setLiked,
     setSaved,
     addComment,
+    setCommentReaction,
     setPollVote,
   }
 }
@@ -158,7 +193,9 @@ export const createStandardPostWithAurora = productionService.createStandardPost
 export const assertPendingMediaDiscardableWithAurora = productionService.assertPendingMediaDiscardable
 export const createPollPostWithAurora = productionService.createPollPost
 export const deletePostWithAurora = productionService.deletePost
+export const setPostReactionWithAurora = productionService.setPostReaction
 export const setPostLikedWithAurora = productionService.setLiked
 export const setPostSavedWithAurora = productionService.setSaved
 export const addPostCommentWithAurora = productionService.addComment
+export const setCommentReactionWithAurora = productionService.setCommentReaction
 export const setPollVoteWithAurora = productionService.setPollVote
