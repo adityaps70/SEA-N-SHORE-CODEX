@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { POST_REACTIONS, POST_REACTION_META, type PostReactionType } from '../types'
 
 export function ReactionPicker({
@@ -16,20 +15,37 @@ export function ReactionPicker({
   compact?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
+  const closeTimerRef = useRef<number | null>(null)
   const current = value ? POST_REACTION_META[value] : POST_REACTION_META.like
 
-  useEffect(() => {
-    if (!open) return
-    function close(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+  function cancelClose() {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
     }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
+  }
+
+  function openPicker() {
+    if (disabled) return
+    cancelClose()
+    setOpen(true)
+  }
+
+  function scheduleClose() {
+    cancelClose()
+    closeTimerRef.current = window.setTimeout(() => setOpen(false), 120)
+  }
 
   return (
-    <div ref={rootRef} className="relative inline-flex min-w-0 items-center">
+    <div
+      className="relative inline-flex min-w-0 items-center"
+      onMouseEnter={openPicker}
+      onMouseLeave={scheduleClose}
+      onFocus={openPicker}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleClose()
+      }}
+    >
       <button
         type="button"
         disabled={disabled}
@@ -40,19 +56,8 @@ export function ReactionPicker({
         <span aria-hidden="true" className="text-base leading-none">{current.emoji}</span>
         <span className={compact ? 'sr-only sm:not-sr-only' : ''}>{current.label}</span>
       </button>
-      <button
-        type="button"
-        disabled={disabled}
-        aria-label="Choose reaction"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        onClick={() => setOpen((visible) => !visible)}
-        className="inline-flex min-h-9 w-6 items-center justify-center rounded-lg text-muted hover:bg-mist-50 disabled:opacity-50"
-      >
-        <ChevronDown aria-hidden="true" className="size-3.5" />
-      </button>
       {open ? (
-        <div role="menu" aria-label="Reactions" className="absolute bottom-full left-0 z-30 mb-2 flex min-w-max gap-1 rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl">
+        <div role="menu" aria-label="Reactions" className="absolute bottom-full left-0 z-40 mb-2 flex min-w-max gap-1 rounded-full border border-mist-100 bg-white p-1.5 shadow-xl">
           {POST_REACTIONS.map((reaction) => {
             const meta = POST_REACTION_META[reaction]
             return (
@@ -66,7 +71,7 @@ export function ReactionPicker({
                   onChange(value === reaction ? null : reaction)
                   setOpen(false)
                 }}
-                className={`inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2.5 text-sm font-semibold hover:bg-mist-50 ${value === reaction ? 'bg-ocean-50 text-ocean-700' : 'text-navy-900'}`}
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-mist-50 ${value === reaction ? 'bg-ocean-50 text-ocean-700' : 'text-navy-900'}`}
               >
                 <span aria-hidden="true" className="text-xl">{meta.emoji}</span>
                 <span>{meta.label}</span>
