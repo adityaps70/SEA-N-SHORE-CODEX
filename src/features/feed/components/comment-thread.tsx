@@ -15,6 +15,7 @@ import {
 } from '../types'
 import { MentionInput, type SelectedMention } from './mention-input'
 import { MentionText } from './mention-text'
+import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
 
 const initialState: CommentActionState = {}
@@ -35,14 +36,23 @@ function commentSummary(comment: FeedComment): ReactionSummary {
   return comment.reactionSummary ?? { ...EMPTY_REACTION_SUMMARY }
 }
 
-function ReactionCount({ summary }: { summary: ReactionSummary }) {
+function CommentReactionCount({ summary, onOpen }: { summary: ReactionSummary; onOpen(): void }) {
   const total = reactionCount(summary)
   if (!total) return null
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted" aria-label={`${total} ${total === 1 ? 'reaction' : 'reactions'}`}>
-      <span aria-hidden="true">{POST_REACTIONS.filter((reaction) => summary[reaction] > 0).map((reaction) => POST_REACTION_META[reaction].emoji).join('')}</span>
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`View ${total} comment ${total === 1 ? 'reaction' : 'reactions'}`}
+      className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-[11px] text-muted transition hover:bg-mist-50 hover:text-ocean-700"
+    >
+      <span aria-hidden="true" className="inline-flex -space-x-0.5">
+        {POST_REACTIONS.filter((reaction) => summary[reaction] > 0).map((reaction) => (
+          <span key={reaction}>{POST_REACTION_META[reaction].emoji}</span>
+        ))}
+      </span>
       <span>{total}</span>
-    </span>
+    </button>
   )
 }
 
@@ -106,6 +116,7 @@ function CommentItem({
   const [reaction, setReaction] = useState<PostReactionType | null>(comment.viewerReaction ?? null)
   const [summary, setSummary] = useState<ReactionSummary>(() => commentSummary(comment))
   const [replying, setReplying] = useState(false)
+  const [reactionsOpen, setReactionsOpen] = useState(false)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
 
@@ -147,7 +158,7 @@ function CommentItem({
           <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink"><MentionText body={comment.body} mentions={comment.mentions} /></p>
         </div>
         <div className="mt-0.5 flex min-h-8 items-center gap-1.5 px-1">
-          <ReactionCount summary={summary} />
+          <CommentReactionCount summary={summary} onOpen={() => setReactionsOpen(true)} />
           {!readOnly ? <ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} compact /> : null}
           {!readOnly ? (
             <button type="button" onClick={() => setReplying((value) => !value)} className="min-h-8 rounded-lg px-2 text-xs font-semibold text-navy-900 hover:bg-mist-50">Reply</button>
@@ -155,6 +166,13 @@ function CommentItem({
         </div>
         {error ? <p role="alert" className="px-1 text-xs text-red-700">{error}</p> : null}
         {replying && !readOnly ? <ReplyComposer postId={postId} parentCommentId={rootCommentId} onDone={() => setReplying(false)} /> : null}
+        <ReactionDetailsModal
+          open={reactionsOpen}
+          targetType="comment"
+          targetId={comment.id}
+          summary={summary}
+          onClose={() => setReactionsOpen(false)}
+        />
       </div>
     </div>
   )
