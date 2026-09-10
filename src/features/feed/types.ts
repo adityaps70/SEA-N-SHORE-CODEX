@@ -22,6 +22,24 @@ export const POST_CATEGORY_LABELS: Record<PostCategory, string> = {
   industry_opinion: 'Industry Opinion',
 }
 
+export const POST_REACTIONS = ['like', 'support', 'respect', 'on_point'] as const
+export type PostReactionType = (typeof POST_REACTIONS)[number]
+export type ReactionSummary = Record<PostReactionType, number>
+
+export const POST_REACTION_META: Record<PostReactionType, { label: string; emoji: string }> = {
+  like: { label: 'Like', emoji: '👍' },
+  support: { label: 'Support', emoji: '❤️' },
+  respect: { label: 'Respect', emoji: '🫡' },
+  on_point: { label: 'On Point', emoji: '⚓' },
+}
+
+export const EMPTY_REACTION_SUMMARY: ReactionSummary = {
+  like: 0,
+  support: 0,
+  respect: 0,
+  on_point: 0,
+}
+
 export type FeedCursor = {
   createdAt: string
   id: string
@@ -58,11 +76,23 @@ export type FeedPoll = {
   viewerOptionId: string | null
 }
 
+export type FeedMention = {
+  profileId: string
+  slug: string
+  fullName: string
+}
+
 export type FeedComment = {
   id: string
   body: string
   createdAt: string
   author: FeedAuthor
+  parentCommentId: string | null
+  reactionSummary: ReactionSummary
+  reactionCount: number
+  viewerReaction: PostReactionType | null
+  mentions: FeedMention[]
+  replies?: FeedComment[]
 }
 
 export type FeedPost = {
@@ -75,11 +105,13 @@ export type FeedPost = {
   author: FeedAuthor
   media: FeedMedia | null
   poll: FeedPoll | null
-  likeCount: number
+  reactionSummary: ReactionSummary
+  reactionCount: number
+  viewerReaction: PostReactionType | null
   commentCount: number
-  viewerLiked: boolean
   viewerSaved: boolean
   viewerOwns?: boolean
+  mentions: FeedMention[]
   comments: FeedComment[]
 }
 
