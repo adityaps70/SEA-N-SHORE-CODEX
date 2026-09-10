@@ -6,8 +6,8 @@ type RelativeTimeModule = {
 
 async function loadRelativeTimeFrom() {
   const modulePath = './relative-time'
-  const module = await import(/* @vite-ignore */ modulePath).catch(() => ({} as RelativeTimeModule))
-  return (module as RelativeTimeModule).relativeTimeFrom
+  const loaded = await import(/* @vite-ignore */ modulePath).catch(() => ({} as RelativeTimeModule))
+  return (loaded as RelativeTimeModule).relativeTimeFrom
 }
 
 describe('relativeTimeFrom', () => {
