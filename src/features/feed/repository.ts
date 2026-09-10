@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import type { FeedCommentRow, FeedPostRow, FeedViewerState } from './mappers'
-import type { FeedCursor, PostCategory, PostReactionType } from './types'
+import type { FeedCursor, PostCategory, PostReactionType, ReactionTargetType } from './types'
 
 type FeedQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -21,6 +21,18 @@ type PostStateRow = QueryResultRow & { post_id: string; option_id?: string; reac
 type DeletedPostRow = QueryResultRow & { id: string }
 type IdRow = QueryResultRow & { id: string }
 
+export type ReactorRow = QueryResultRow & {
+  profile_id: string
+  slug: string | null
+  full_name: string
+  avatar_path: string | null
+  headline: string | null
+  rank: string | null
+  current_company: string | null
+  reaction_type: PostReactionType
+  reacted_at: string
+}
+
 export type FeedRowsLookup = {
   viewerProfileId: string
   category?: PostCategory
@@ -32,6 +44,15 @@ export type FeedMediaInput = {
   storagePath: string
   mimeType: string
   altText: string | null
+}
+
+type ReactionDetailsLookup = {
+  viewerProfileId: string
+  targetType: ReactionTargetType
+  targetId: string
+  reaction?: PostReactionType
+  cursor?: string
+  limit: number
 }
 
 const FEED_ROW_SELECT = `
@@ -122,6 +143,22 @@ function visibilitySql() {
       )
     )
   `
+}
+
+function parseReactionCursor(cursor: string | undefined) {
+  if (!cursor) return null
+  const separator = cursor.lastIndexOf('|')
+  if (separator <= 0) throw new Error('feed_reaction_cursor_invalid')
+  const reactedAt = cursor.slice(0, separator)
+  const profileId = cursor.slice(separator + 1)
+  if (Number.isNaN(Date.parse(reactedAt)) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(profileId)) {
+    throw new Error('feed_reaction_cursor_invalid')
+  }
+  return { reactedAt, profileId }
+}
+
+function reactionCursor(row: ReactorRow) {
+  return `${row.reacted_at}|${row.profile_id}`
 }
 
 export function createFeedRepository(input: { query?: FeedQuery } = {}) {
@@ -226,6 +263,62 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       likedPostIds: new Set(reactions.filter((row) => !row.reaction_type || row.reaction_type === 'like').map((row) => row.post_id)),
       savedPostIds: new Set(saved.map((row) => row.post_id)),
       pollVotes: new Map(votes.flatMap((row) => row.option_id ? [[row.post_id, row.option_id] as const] : [])),
+    }
+  }
+
+  async function listReactionDetails(lookup: ReactionDetailsLookup): Promise<{ rows: ReactorRow[]; nextCursor: string | null }> {
+    const table = lookup.targetType === 'post' ? 'public.post_reactions' : 'public.comment_reactions'
+    const targetColumn = lookup.targetType === 'post' ? 'post_id' : 'comment_id'
+    const values: unknown[] = [lookup.viewerProfileId, lookup.targetId]
+    const clauses = [
+      `reaction.${targetColumn} = $2`,
+      `reactor.account_status = 'active'`,
+      `reactor.onboarding_completed_at is not null`,
+      `exists (select 1 from public.profiles viewer where viewer.id = $1 and viewer.account_status = 'active' and viewer.onboarding_completed_at is not null)`,
+      `not exists (
+         select 1 from public.user_blocks b
+         where (b.blocker_id = $1 and b.blocked_id = reaction.user_id)
+            or (b.blocker_id = reaction.user_id and b.blocked_id = $1)
+       )`,
+    ]
+    if (lookup.reaction) {
+      values.push(lookup.reaction)
+      clauses.push(`reaction.reaction_type = $${values.length}`)
+    }
+    const cursor = parseReactionCursor(lookup.cursor)
+    if (cursor) {
+      values.push(cursor.reactedAt)
+      const reactedAtParameter = values.length
+      values.push(cursor.profileId)
+      const profileParameter = values.length
+      clauses.push(`(reaction.created_at < $${reactedAtParameter} or (reaction.created_at = $${reactedAtParameter} and reaction.user_id < $${profileParameter}))`)
+    }
+    values.push(lookup.limit + 1)
+    const limitParameter = values.length
+    const rows = await queryRows(
+      `select
+         reaction.user_id as profile_id,
+         reactor.slug,
+         reactor.full_name,
+         reactor.avatar_path,
+         reactor.headline,
+         maritime.rank,
+         maritime.current_company,
+         reaction.reaction_type::text as reaction_type,
+         reaction.created_at as reacted_at
+       from ${table} reaction
+       join public.profiles reactor on reactor.id = reaction.user_id
+       left join public.maritime_profiles maritime on maritime.user_id = reactor.id
+       where ${clauses.join('\n         and ')}
+       order by reaction.created_at desc, reaction.user_id desc
+       limit $${limitParameter}`,
+      values,
+    ) as ReactorRow[]
+    const hasMore = rows.length > lookup.limit
+    const visibleRows = rows.slice(0, lookup.limit)
+    return {
+      rows: visibleRows,
+      nextCursor: hasMore && visibleRows.length ? reactionCursor(visibleRows[visibleRows.length - 1]) : null,
     }
   }
 
@@ -501,6 +594,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     listCommentedRows,
     getPostRow,
     getViewerState,
+    listReactionDetails,
     getComments,
     listTopLevelComments,
     countTopLevelComments,
