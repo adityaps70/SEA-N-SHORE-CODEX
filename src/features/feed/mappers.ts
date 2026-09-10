@@ -1,4 +1,13 @@
-import type { FeedAuthor, FeedComment, FeedPost, PostCategory } from './types'
+import type {
+  FeedAuthor,
+  FeedComment,
+  FeedMention,
+  FeedPost,
+  PostCategory,
+  PostReactionType,
+  ReactionSummary,
+} from './types'
+import { EMPTY_REACTION_SUMMARY, POST_REACTIONS, reactionCount } from './types'
 
 type MaritimeSummaryRow = {
   rank: string | null
@@ -14,12 +23,24 @@ type AuthorRow = {
   maritime_profiles: MaritimeSummaryRow | MaritimeSummaryRow[] | null
 }
 
+type MentionRow = {
+  profile_id: string
+  slug: string | null
+  full_name: string
+}
+
+type ReactionCountsRow = Partial<Record<PostReactionType, number>> & { count?: number }
+
 export type FeedCommentRow = {
   id: string
   post_id?: string
+  parent_comment_id?: string | null
   body: string
   created_at: string
   profiles: AuthorRow | AuthorRow[] | null
+  reaction_summary?: ReactionCountsRow | null
+  viewer_reaction?: PostReactionType | null
+  mentions?: MentionRow[] | null
 }
 
 type MediaRow = {
@@ -49,13 +70,15 @@ export type FeedPostRow = {
   profiles: AuthorRow | AuthorRow[] | null
   post_media: MediaRow | MediaRow[] | null
   post_polls: PollRow | PollRow[] | null
-  post_reactions?: Array<{ count: number }> | { count: number } | null
+  post_reactions?: ReactionCountsRow | Array<{ count: number }> | { count: number } | null
   post_comment_count?: Array<{ count: number }> | { count: number } | null
+  post_mentions?: MentionRow[] | null
   post_comments?: FeedCommentRow[] | null
 }
 
 export type FeedViewerState = {
-  likedPostIds: Set<string>
+  postReactions?: Map<string, PostReactionType>
+  likedPostIds?: Set<string>
   savedPostIds: Set<string>
   pollVotes: Map<string, string>
 }
@@ -68,6 +91,31 @@ function firstOrNull<T>(value: T | T[] | null | undefined): T | null {
 function countRelation(value: Array<{ count: number }> | { count: number } | null | undefined) {
   if (Array.isArray(value)) return value[0]?.count ?? 0
   return value?.count ?? 0
+}
+
+function mapReactionSummary(value: FeedPostRow['post_reactions'] | FeedCommentRow['reaction_summary']): ReactionSummary {
+  if (!value || Array.isArray(value)) {
+    const legacy = countRelation(value as Array<{ count: number }> | { count: number } | null | undefined)
+    return { ...EMPTY_REACTION_SUMMARY, like: legacy }
+  }
+  const row = value as ReactionCountsRow
+  if (!POST_REACTIONS.some((reaction) => row[reaction] !== undefined)) {
+    return { ...EMPTY_REACTION_SUMMARY, like: Number(row.count ?? 0) }
+  }
+  return {
+    like: Number(row.like ?? 0),
+    support: Number(row.support ?? 0),
+    respect: Number(row.respect ?? 0),
+    on_point: Number(row.on_point ?? 0),
+  }
+}
+
+function mapMentions(rows: MentionRow[] | null | undefined): FeedMention[] {
+  return (rows ?? []).flatMap((row) => row.slug ? [{
+    profileId: row.profile_id,
+    slug: row.slug,
+    fullName: row.full_name,
+  }] : [])
 }
 
 export function feedAuthorAvatarPath(row: AuthorRow | AuthorRow[] | null | undefined) {
@@ -91,11 +139,17 @@ function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, 
 }
 
 function mapComment(row: FeedCommentRow, signedUrls: Map<string, string>): FeedComment {
+  const reactionSummary = mapReactionSummary(row.reaction_summary)
   return {
     id: row.id,
     body: row.body,
     createdAt: row.created_at,
     author: mapAuthor(row.profiles, signedUrls),
+    parentCommentId: row.parent_comment_id ?? null,
+    reactionSummary,
+    reactionCount: reactionCount(reactionSummary),
+    viewerReaction: row.viewer_reaction ?? null,
+    mentions: mapMentions(row.mentions),
   }
 }
 
@@ -118,6 +172,9 @@ export function mapFeedPost(
   const totalVotes = options.reduce((total, option) => total + option.voteCount, 0)
   const author = mapAuthor(row.profiles, signedUrls)
   const comments = (row.post_comments ?? []).map((comment) => mapComment(comment, signedUrls))
+  const reactionSummary = mapReactionSummary(row.post_reactions)
+  const viewerReaction = viewer.postReactions?.get(row.id)
+    ?? (viewer.likedPostIds?.has(row.id) ? 'like' : null)
 
   return {
     id: row.id,
@@ -142,11 +199,15 @@ export function mapFeedPost(
           viewerOptionId: viewer.pollVotes.get(row.id) ?? null,
         }
       : null,
-    likeCount: countRelation(row.post_reactions),
+    reactionSummary,
+    reactionCount: reactionCount(reactionSummary),
+    viewerReaction,
+    likeCount: reactionSummary.like,
+    viewerLiked: viewerReaction === 'like',
     commentCount: countRelation(row.post_comment_count) || comments.length,
-    viewerLiked: viewer.likedPostIds.has(row.id),
     viewerSaved: viewer.savedPostIds.has(row.id),
     viewerOwns: Boolean(viewerProfileId) && author.id === viewerProfileId,
+    mentions: mapMentions(row.post_mentions),
     comments,
   }
 }
