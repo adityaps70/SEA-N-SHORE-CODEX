@@ -39,7 +39,8 @@ describe('jobs repository', () => {
     })
     const jobs = await repository.searchJobs(filters, 40, 0)
 
-    expect(seen[0]?.text).toContain("j.job_domain = 'sea'")
+    expect(seen[0]?.text).toContain('j.job_domain = $1')
+    expect(seen[0]?.values).toContain('sea')
     expect(seen[0]?.text).toContain('j.vessel_types &&')
     expect(seen[0]?.text).toContain('c.is_verified')
     expect(seen[0]?.text).toContain('j.urgent = true')
