@@ -17,6 +17,11 @@ type CommentInteractionRow = QueryResultRow & {
   root_parent_id: string
   post_author_id: string
 }
+type CommentMutationRow = QueryResultRow & {
+  id: string
+  post_id: string
+  parent_comment_id: string | null
+}
 type PostStateRow = QueryResultRow & { post_id: string; option_id?: string; reaction_type?: PostReactionType }
 type DeletedPostRow = QueryResultRow & { id: string }
 type IdRow = QueryResultRow & { id: string }
@@ -159,6 +164,14 @@ function parseReactionCursor(cursor: string | undefined) {
 
 function reactionCursor(row: ReactorRow) {
   return `${row.reacted_at}|${row.profile_id}`
+}
+
+function mapCommentMutation(row: CommentMutationRow | undefined) {
+  return row ? {
+    id: row.id,
+    postId: row.post_id,
+    parentCommentId: row.parent_comment_id,
+  } : null
 }
 
 export function createFeedRepository(input: { query?: FeedQuery } = {}) {
@@ -325,17 +338,19 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
   async function getComments(postIds: string[], viewerProfileId?: string): Promise<FeedCommentRow[]> {
     if (!postIds.length) return []
     const viewerSql = viewerProfileId
-      ? `(select cr.reaction_type::text from public.comment_reactions cr where cr.comment_id = c.id and cr.user_id = $2 limit 1)`
+      ? `case when c.deleted_at is null then (select cr.reaction_type::text from public.comment_reactions cr where cr.comment_id = c.id and cr.user_id = $2 limit 1) else null::text end`
       : `null::text`
     const ownershipSql = viewerProfileId
-      ? `(c.author_id = $2) as viewer_owns,
+      ? `(c.deleted_at is null and c.author_id = $2) as viewer_owns,
          (c.author_id = $2 and c.deleted_at is null and now() < c.created_at + interval '15 minutes') as can_edit`
       : `false as viewer_owns,
          false as can_edit`
     const values: readonly unknown[] = viewerProfileId ? [postIds, viewerProfileId] : [postIds]
     return await queryRows(
       `select
-         c.id, c.post_id, c.parent_comment_id, c.body, c.created_at, c.updated_at, c.deleted_at,
+         c.id, c.post_id, c.parent_comment_id,
+         case when c.deleted_at is null then c.body else '' end as body,
+         c.created_at, c.updated_at, c.deleted_at,
          json_build_object(
            'id', author.id,
            'slug', author.slug,
@@ -344,24 +359,31 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
            'headline', author.headline,
            'maritime_profiles', case when maritime.user_id is null then null else json_build_object('rank', maritime.rank, 'current_company', maritime.current_company) end
          ) as profiles,
-         json_build_object(
+         case when c.deleted_at is null then json_build_object(
            'like', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'like'),
            'support', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'support'),
            'respect', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'respect'),
            'on_point', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'on_point')
-         ) as reaction_summary,
+         ) else json_build_object('like', 0, 'support', 0, 'respect', 0, 'on_point', 0) end as reaction_summary,
          ${viewerSql} as viewer_reaction,
          ${ownershipSql},
-         coalesce((
+         case when c.deleted_at is null then coalesce((
            select json_agg(json_build_object('profile_id', mentioned.id, 'slug', mentioned.slug, 'full_name', mentioned.full_name) order by mention.created_at asc)
            from public.content_mentions mention
            join public.profiles mentioned on mentioned.id = mention.mentioned_profile_id
            where mention.comment_id = c.id
-         ), '[]'::json) as mentions
+         ), '[]'::json) else '[]'::json end as mentions
        from public.post_comments c
        join public.profiles author on author.id = c.author_id
        left join public.maritime_profiles maritime on maritime.user_id = author.id
-       where c.post_id = any($1::uuid[]) and c.deleted_at is null
+       where c.post_id = any($1::uuid[])
+         and (
+           c.deleted_at is null
+           or (c.parent_comment_id is null and exists (
+             select 1 from public.post_comments reply
+             where reply.parent_comment_id = c.id and reply.deleted_at is null
+           ))
+         )
        order by c.created_at asc, c.id asc`,
       values,
     ) as CommentRow[]
@@ -371,7 +393,11 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     const roots = await queryRows(
       `select c.id
        from public.post_comments c
-       where c.post_id = $1 and c.parent_comment_id is null and c.deleted_at is null
+       where c.post_id = $1 and c.parent_comment_id is null
+         and (c.deleted_at is null or exists (
+           select 1 from public.post_comments reply
+           where reply.parent_comment_id = c.id and reply.deleted_at is null
+         ))
        order by c.created_at desc, c.id desc
        offset $2 limit $3`,
       [postId, Math.max(0, offset), Math.min(Math.max(limit, 1), 20)],
@@ -385,7 +411,13 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
 
   async function countTopLevelComments(postId: string) {
     const rows = await queryRows(
-      `select count(*)::text as count from public.post_comments where post_id = $1 and parent_comment_id is null and deleted_at is null`,
+      `select count(*)::text as count
+       from public.post_comments c
+       where c.post_id = $1 and c.parent_comment_id is null
+         and (c.deleted_at is null or exists (
+           select 1 from public.post_comments reply
+           where reply.parent_comment_id = c.id and reply.deleted_at is null
+         ))`,
       [postId],
     ) as Array<QueryResultRow & { count: string }>
     return Number(rows[0]?.count ?? 0)
@@ -464,6 +496,29 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       [ownerProfileId, postId],
     ) as DeletedPostRow[]
     return rows.length === 1
+  }
+
+  async function updateOwnCommentWithinEditWindow(ownerProfileId: string, commentId: string, body: string) {
+    const rows = await queryRows(
+      `update public.post_comments
+       set body = $3
+       where author_id = $1 and id = $2 and deleted_at is null
+         and now() < created_at + interval '15 minutes'
+       returning id, post_id, parent_comment_id`,
+      [ownerProfileId, commentId, body],
+    ) as CommentMutationRow[]
+    return mapCommentMutation(rows[0])
+  }
+
+  async function softDeleteOwnComment(ownerProfileId: string, commentId: string) {
+    const rows = await queryRows(
+      `update public.post_comments
+       set deleted_at = now()
+       where author_id = $1 and id = $2 and deleted_at is null
+       returning id, post_id, parent_comment_id`,
+      [ownerProfileId, commentId],
+    ) as CommentMutationRow[]
+    return mapCommentMutation(rows[0])
   }
 
   async function insertStandardPost(input: { id: string; authorId: string; category: PostCategory; body: string }) {
@@ -575,6 +630,32 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return inserted
   }
 
+  async function replaceCommentMentions(actorId: string, commentId: string, mentionedProfileIds: string[]) {
+    const previousRows = await queryRows(
+      `select mentioned_profile_id as id from public.content_mentions where comment_id = $1`,
+      [commentId],
+    ) as IdRow[]
+    const previousIds = new Set(previousRows.map((row) => row.id))
+    await queryRows(`delete from public.content_mentions where comment_id = $1`, [commentId])
+
+    const mentionProfileIds: string[] = []
+    for (const profileId of [...new Set(mentionedProfileIds)]) {
+      if (!await canMentionProfile(actorId, profileId)) continue
+      const rows = await queryRows(
+        `insert into public.content_mentions (id, actor_id, mentioned_profile_id, comment_id)
+         values ($1, $2, $3, $4)
+         on conflict (comment_id, mentioned_profile_id) where comment_id is not null do nothing
+         returning mentioned_profile_id as id`,
+        [randomUUID(), actorId, profileId, commentId],
+      ) as IdRow[]
+      if (rows[0]?.id) mentionProfileIds.push(rows[0].id)
+    }
+    return {
+      mentionProfileIds,
+      newlyIntroducedProfileIds: mentionProfileIds.filter((profileId) => !previousIds.has(profileId)),
+    }
+  }
+
   async function setPollVote(viewerProfileId: string, postId: string, optionId: string) {
     await queryRows(
       `insert into public.post_poll_votes (post_id, option_id, user_id) values ($1, $2, $3) on conflict (post_id, user_id) do update set option_id = excluded.option_id`,
@@ -603,6 +684,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     getInteractablePost,
     getCommentForInteraction,
     deleteOwnPost,
+    updateOwnCommentWithinEditWindow,
+    softDeleteOwnComment,
     insertStandardPost,
     insertPostMedia,
     isPostMediaAttached,
@@ -615,6 +698,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     addComment,
     insertPostMentions,
     insertCommentMentions,
+    replaceCommentMentions,
     setPollVote,
     pollOptionBelongsToPost,
   }
