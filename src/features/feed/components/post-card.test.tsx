@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FeedPost } from '../types'
 import { PostCard } from './post-card'
@@ -46,31 +46,35 @@ const post: FeedPost = {
 afterEach(() => cleanup())
 
 describe('PostCard', () => {
-  it('renders one primary reaction control with total-only summary and an openable unique reaction cluster', () => {
+  it('renders one compact icon-only post actions row with inline reaction and comment counts', () => {
     render(<PostCard post={post} />)
     expect(screen.getByRole('article')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Member A' })).toHaveAttribute('href', '/people/member-a')
 
-    const totalOpener = screen.getByRole('button', { name: '4 reactions' })
-    expect(totalOpener).toHaveTextContent('4 reactions')
-    expect(totalOpener).not.toHaveTextContent('👍')
-    expect(screen.getByText('2 comments')).toBeInTheDocument()
+    const actions = screen.getByRole('group', { name: 'Post actions' })
+    const primaryReactionControl = within(actions).getByRole('button', { name: /^Like$/i })
+    expect(primaryReactionControl.querySelector('svg.lucide-thumbs-up')).toBeInTheDocument()
 
-    const clusterOpener = screen.getByRole('button', { name: 'View 4 reactions' })
-    expect(clusterOpener).toHaveTextContent('👍')
-    expect(clusterOpener.textContent?.match(/👍/g)).toHaveLength(1)
+    const reactionCount = within(actions).getByRole('button', { name: 'View 4 reactions' })
+    expect(reactionCount).toHaveTextContent('4')
+    expect(reactionCount).not.toHaveTextContent(/reaction/i)
 
-    const primaryReactionControls = screen.getAllByRole('button', { name: /^Like$/i })
-    expect(primaryReactionControls).toHaveLength(1)
-    expect(primaryReactionControls[0].querySelector('svg.lucide-thumbs-up')).toBeInTheDocument()
-    expect(primaryReactionControls[0]).not.toHaveTextContent('👍')
+    const commentButton = within(actions).getByRole('button', { name: /^Comment$/i })
+    expect(commentButton).toHaveTextContent('2')
+    expect(commentButton).not.toHaveTextContent('Comment')
 
-    fireEvent.click(totalOpener)
+    const shareButton = within(actions).getByRole('button', { name: /^Share$/i })
+    expect(shareButton).not.toHaveTextContent('Share')
+
+    const saveButton = within(actions).getByRole('button', { name: /^Save$/i })
+    expect(saveButton).not.toHaveTextContent('Save')
+
+    expect(screen.queryByText('4 reactions')).not.toBeInTheDocument()
+    expect(screen.queryByText('2 comments')).not.toBeInTheDocument()
+
+    fireEvent.click(reactionCount)
     expect(screen.getByRole('dialog', { name: /reactions/i })).toBeInTheDocument()
 
-    expect(screen.getByRole('button', { name: /^Comment$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Share$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Save$/i })).toBeInTheDocument()
     expect(screen.getByText((_, element) => element?.tagName === 'TIME')).toHaveAttribute('datetime', post.createdAt)
     expect(screen.queryByText(/Verified/i)).not.toBeInTheDocument()
   })
