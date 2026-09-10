@@ -3,19 +3,9 @@
 import { CheckCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
+import { relativeTimeFrom } from '@/lib/relative-time'
 import { markAllNotificationsRead, markNotificationRead } from '../actions'
 import type { NetworkNotification } from '../types'
-
-function notificationDate(timestamp: string) {
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'UTC',
-  }).format(new Date(timestamp))
-}
 
 export function NotificationList({ notifications }: { notifications: NetworkNotification[] }) {
   const router = useRouter()
@@ -85,7 +75,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
             <span className={`mt-2 size-2 shrink-0 rounded-full ${notification.readAt ? 'bg-mist-100' : 'bg-ocean-700'}`} aria-hidden="true" />
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium leading-6 text-navy-950">{notification.message}</span>
-              <time dateTime={notification.createdAt} className="mt-1 block text-xs text-muted">{notificationDate(notification.createdAt)} UTC</time>
+              <time dateTime={notification.createdAt} title={notification.createdAt} className="mt-1 block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
             </span>
           </button>
         ))}
