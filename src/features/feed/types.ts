@@ -40,6 +40,10 @@ export const EMPTY_REACTION_SUMMARY: ReactionSummary = {
   on_point: 0,
 }
 
+export function reactionCount(summary: ReactionSummary) {
+  return POST_REACTIONS.reduce((total, reaction) => total + summary[reaction], 0)
+}
+
 export type FeedCursor = {
   createdAt: string
   id: string
@@ -87,11 +91,11 @@ export type FeedComment = {
   body: string
   createdAt: string
   author: FeedAuthor
-  parentCommentId: string | null
-  reactionSummary: ReactionSummary
-  reactionCount: number
-  viewerReaction: PostReactionType | null
-  mentions: FeedMention[]
+  parentCommentId?: string | null
+  reactionSummary?: ReactionSummary
+  reactionCount?: number
+  viewerReaction?: PostReactionType | null
+  mentions?: FeedMention[]
   replies?: FeedComment[]
 }
 
@@ -105,13 +109,16 @@ export type FeedPost = {
   author: FeedAuthor
   media: FeedMedia | null
   poll: FeedPoll | null
-  reactionSummary: ReactionSummary
-  reactionCount: number
-  viewerReaction: PostReactionType | null
+  reactionSummary?: ReactionSummary
+  reactionCount?: number
+  viewerReaction?: PostReactionType | null
+  /** Compatibility fields retained while old fixtures/cached shapes roll forward. */
+  likeCount: number
+  viewerLiked: boolean
   commentCount: number
   viewerSaved: boolean
   viewerOwns?: boolean
-  mentions: FeedMention[]
+  mentions?: FeedMention[]
   comments: FeedComment[]
 }
 
