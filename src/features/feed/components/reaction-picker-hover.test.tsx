@@ -21,4 +21,21 @@ describe('ReactionPicker hover behavior', () => {
     expect(screen.getByRole('menuitemradio', { name: /Respect/i })).toBeInTheDocument()
     expect(screen.getByRole('menuitemradio', { name: /On Point/i })).toBeInTheDocument()
   })
+
+  it('keeps reaction names accessible but hides all reaction text labels visually', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<ReactionPicker value="anchor" onChange={vi.fn()} compact />)
+
+    const trigger = screen.getByRole('button', { name: 'On Point' })
+    expect(trigger).toBeInTheDocument()
+    expect(trigger.querySelector('[data-reaction-label]')).toHaveClass('sr-only')
+
+    await user.hover(trigger)
+
+    const menu = await screen.findByRole('menu', { name: 'Reactions' })
+    expect(menu).toBeInTheDocument()
+    for (const label of container.querySelectorAll('[data-reaction-label]')) {
+      expect(label).toHaveClass('sr-only')
+    }
+  })
 })
