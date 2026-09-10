@@ -89,6 +89,15 @@ export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) 
     }
   }
 
+  async function connectWithAuthRecovery() {
+    try {
+      return await getPool().connect()
+    } catch (error) {
+      if (!isAuthenticationFailure(error) || !await refreshPoolAfterAuthenticationFailure()) throw error
+      return getPool().connect()
+    }
+  }
+
   return {
     async query<T extends QueryResultRow = QueryResultRow>(
       text: string,
@@ -99,7 +108,7 @@ export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) 
     },
 
     async withTransaction<T>(fn: (client: DatabaseQueryClient) => Promise<T>): Promise<T> {
-      const client = await getPool().connect()
+      const client = await connectWithAuthRecovery()
 
       try {
         await client.query('BEGIN')
