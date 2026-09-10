@@ -104,7 +104,7 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
     score += 10
   } else if (available && (!joiningUntil || available.getTime() <= joiningUntil.getTime())) {
     score += 10
-    reasons.push('Joining availability fits the required window')
+    reasons.push('joining availability fits the required window')
   } else {
     warnings.push('Your recorded availability may not fit the required joining window.')
   }
