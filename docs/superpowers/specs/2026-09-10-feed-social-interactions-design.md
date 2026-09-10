@@ -11,7 +11,7 @@ The approved scope is:
 
 - `@mentions` in posts, comments, and replies
 - replies to comments
-- reactions on comments
+- reactions on posts and comments
 - in-app notifications for comments, replies, reactions, and mentions
 - show one comment by default on posts when comments exist
 - show a LinkedIn-style “View more comments” affordance when multiple comments exist
@@ -19,7 +19,7 @@ The approved scope is:
 - profile photo instead of initials in the post composer, with initials as fallback
 - remove visible post-category selection and visible category badge/header
 - keep `technical_discussion` only as an internal compatibility default
-- approved reaction set: **Like 👍 · Support ❤️ · Respect 🫡 · On Point ⚓**
+- approved reaction set for both posts and comments: **Like 👍 · Support ❤️ · Respect 🫡 · On Point ⚓**
 
 Email notifications are explicitly out of scope for this phase.
 
@@ -157,15 +157,15 @@ Approved reaction set for both posts and comments:
 
 ### Behavior
 
-For comments:
+For posts and comments:
 
-- a member may have at most one active reaction per comment
+- a member may have at most one active reaction per target
 - selecting the same reaction again removes it
 - selecting another reaction replaces the previous reaction atomically
 - show a compact reaction summary and total count
 - do not duplicate rows/events when rapidly toggling the same state
 
-For posts, the existing like behavior should remain compatible. This phase may upgrade the post reaction control to the same four-reaction model if the existing data model can be migrated safely without breaking current likes. If post reaction migration would significantly expand risk, keep current post likes for this phase and use the approved four-reaction model for comments only; however the UI labels and notification design should be structured so a later post-reaction upgrade is straightforward.
+The existing post Like state must be preserved. Existing likes should map to the new `like` reaction during migration or through a compatibility path that yields the same persisted result. No existing Like should disappear merely because the reaction model expands to four choices.
 
 ## 6. In-app Notifications
 
@@ -232,16 +232,19 @@ Exact SQL names should follow current migration naming conventions, but the mode
 
 Extend comments with nullable `parent_comment_id`, constrained so the parent belongs to the same post. Application service logic should normalize replies-to-replies onto the top-level parent.
 
-### Comment reactions
+### Post and comment reactions
 
-Add a comment reaction relation containing at least:
+Use a reaction model capable of representing the approved four values on both posts and comments. The implementation may extend the existing post-like table/schema or migrate to a generalized reaction relation according to the current repository conventions, but it must preserve existing post likes.
 
-- comment ID
+A reaction relation requires at least:
+
+- target kind (`post` or `comment`) or equivalent target-specific table
+- target ID
 - actor/member ID
-- reaction type enum/value
+- reaction type
 - created/updated timestamps
 
-Enforce a unique constraint on `(comment_id, actor_id)` so one user has one active reaction per comment.
+Enforce uniqueness so one actor has only one active reaction per target.
 
 ### Mentions
 
@@ -261,13 +264,13 @@ Extend existing event types/payloads for social actions rather than creating a s
 
 ## 9. Query and Mapping Changes
 
-Feed queries should return enough comment information to render the default conversation without an extra client fetch:
+Feed queries should return enough information to render the default conversation without an extra client fetch:
 
 - top-level comment count
 - at least the comment selected for default visibility
 - reply count and replies for the currently returned visible comments where practical
-- comment reaction summary
-- viewer's current comment reaction
+- post and comment reaction summary
+- viewer's current post/comment reaction
 - avatar/profile fields for authors
 - structured mention display/link data
 
@@ -284,7 +287,7 @@ Prefer focused components rather than turning the existing comment thread into o
 - `CommentThread`: orchestration/default visibility/more-comments control
 - `CommentItem`: one comment's identity, body and actions
 - `ReplyComposer`: reply-specific submission state
-- `ReactionPicker`: shared four-reaction menu/control
+- `ReactionPicker`: shared four-reaction menu/control for posts and comments
 - notification event mapper/consumer: social event → notification copy/link
 
 Names may vary to match existing conventions.
@@ -332,7 +335,8 @@ Required regression coverage includes:
 
 ### Reactions
 
-- Like/Support/Respect/On Point choices render
+- Like/Support/Respect/On Point choices render on posts and comments
+- existing post likes remain Like reactions after migration/compatibility handling
 - same reaction toggles off
 - alternate reaction replaces prior reaction
 - uniqueness enforced by repository/service tests
@@ -357,14 +361,15 @@ Required regression coverage includes:
 
 ### Existing behavior
 
-All current feed media, autoplay, post ownership, save/like, poll, Activities, public-profile post, notification chrome, Aurora migration, and AWS guard tests must remain green.
+All current feed media, autoplay, post ownership, save, poll, Activities, public-profile post, notification chrome, Aurora migration, and AWS guard tests must remain green. Existing post Like behavior is intentionally subsumed by the new reaction model and must be covered by compatibility tests.
 
 ## 14. Migration and Rollout Safety
 
-This is an additive migration. Existing posts/comments must remain readable throughout the rollout.
+This is an additive/compatibility-preserving migration. Existing posts/comments/likes must remain readable throughout the rollout.
 
 - nullable reply parent preserves existing comment rows
-- new reaction/mention tables do not require rewriting historical comments
+- new reaction/mention structures must not require rewriting historical comments
+- existing post likes remain represented as `like`
 - visible category removal is a UI change; internal category compatibility remains intact
 - deployment follows the existing guarded AWS staging process
 - staging action uses only `plan` and one-shot `deploy-once`
@@ -386,4 +391,4 @@ Not included in this phase:
 
 ## Acceptance Criteria
 
-The feature is complete when a Sea N Shore member can publish a clean category-free-looking post with avatar, emoji and structured mentions; viewers can see one existing comment immediately, reveal more, reply, mention members and react with **Like 👍, Support ❤️, Respect 🫡, On Point ⚓**; and recipients receive deduplicated in-app notifications for comments, replies, reactions and mentions that open the relevant post/comment. Existing feed functionality and AWS deployment safety contracts must continue to pass.
+The feature is complete when a Sea N Shore member can publish a clean category-free-looking post with avatar, emoji and structured mentions; viewers can see one existing comment immediately, reveal more, reply, mention members and react on both posts and comments with **Like 👍, Support ❤️, Respect 🫡, On Point ⚓**; and recipients receive deduplicated in-app notifications for comments, replies, reactions and mentions that open the relevant post/comment. Existing likes, feed functionality and AWS deployment safety contracts must continue to pass.
