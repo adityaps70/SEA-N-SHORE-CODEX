@@ -20,12 +20,17 @@ export function EmojiPicker({ onSelect }: { onSelect(emoji: string): void }) {
 
   return (
     <div ref={rootRef} className="relative">
-      <button type="button" aria-label="Emoji" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50">
+      <button
+        type="button"
+        aria-label="Add emoji"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="grid size-10 place-items-center rounded-full text-navy-900 transition hover:bg-mist-50"
+      >
         <Smile aria-hidden="true" className="size-5 text-ocean-700" />
-        Emoji
       </button>
       {open ? (
-        <div role="menu" aria-label="Choose emoji" className="absolute bottom-full left-0 z-40 mb-2 grid grid-cols-5 gap-1 rounded-2xl border border-mist-100 bg-white p-2 shadow-xl">
+        <div role="menu" aria-label="Choose emoji" className="absolute bottom-full left-0 z-50 mb-2 grid w-64 grid-cols-5 gap-1 rounded-2xl border border-mist-100 bg-white p-2 shadow-xl">
           {EMOJI.map((emoji) => (
             <button key={emoji} type="button" role="menuitem" aria-label={`Insert ${emoji}`} onClick={() => { onSelect(emoji); setOpen(false) }} className="grid size-10 place-items-center rounded-xl text-xl hover:bg-mist-50">
               {emoji}
