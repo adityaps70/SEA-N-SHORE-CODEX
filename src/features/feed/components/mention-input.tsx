@@ -39,10 +39,7 @@ export function MentionInput({
   }, [value, mentions, onMentionsChange])
 
   useEffect(() => {
-    if (!queryState) {
-      setCandidates([])
-      return
-    }
+    if (!queryState) return
     let cancelled = false
     const timer = window.setTimeout(() => {
       void searchMentionCandidates(queryState.query).then((results) => {
@@ -66,9 +63,14 @@ export function MentionInput({
     return { query: match[1] ?? '', start: at, end: cursor }
   }
 
+  function setActiveQuery(next: { query: string; start: number; end: number } | null) {
+    setQueryState(next)
+    if (!next) setCandidates([])
+  }
+
   function update(text: string, cursor: number) {
     onChange(text)
-    setQueryState(findQuery(text, cursor))
+    setActiveQuery(findQuery(text, cursor))
   }
 
   function select(candidate: MentionCandidate) {
@@ -79,8 +81,7 @@ export function MentionInput({
     if (!activeLabels.has(inserted)) {
       onMentionsChange([...mentions, { profileId: candidate.id, label: candidate.fullName }])
     }
-    setQueryState(null)
-    setCandidates([])
+    setActiveQuery(null)
     window.requestAnimationFrame(() => {
       const cursor = queryState.start + inserted.length + 1
       textareaRef.current?.focus()
@@ -97,7 +98,7 @@ export function MentionInput({
         rows={rows}
         value={value}
         onChange={(event) => update(event.target.value, event.target.selectionStart)}
-        onClick={(event) => setQueryState(findQuery(value, event.currentTarget.selectionStart))}
+        onClick={(event) => setActiveQuery(findQuery(value, event.currentTarget.selectionStart))}
         onKeyDown={(event) => {
           if (!candidates.length || !queryState) return
           if (event.key === 'ArrowDown') {
@@ -112,8 +113,7 @@ export function MentionInput({
             if (candidate) select(candidate)
           } else if (event.key === 'Escape') {
             event.preventDefault()
-            setCandidates([])
-            setQueryState(null)
+            setActiveQuery(null)
           }
         }}
         placeholder={placeholder}
