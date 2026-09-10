@@ -18,14 +18,12 @@ function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
 }
 
-export function ReactionDetailsModal({
-  open,
+function OpenReactionDetails({
   targetType,
   targetId,
   summary,
   onClose,
 }: {
-  open: boolean
   targetType: ReactionTargetType
   targetId: string
   summary: ReactionSummary
@@ -33,16 +31,13 @@ export function ReactionDetailsModal({
 }) {
   const [reaction, setReaction] = useState<PostReactionType | null>(null)
   const [page, setPage] = useState<ReactionDetailsPage | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const total = reactionCount(summary)
   const active = POST_REACTIONS.filter((item) => summary[item] > 0)
 
   useEffect(() => {
-    if (!open) return
     let cancelled = false
-    setLoading(true)
-    setError('')
     const request = reaction
       ? { targetType, targetId, reaction, limit: 30 as const }
       : { targetType, targetId, limit: 30 as const }
@@ -63,9 +58,15 @@ export function ReactionDetailsModal({
     })
 
     return () => { cancelled = true }
-  }, [open, reaction, targetId, targetType])
+  }, [reaction, targetId, targetType])
 
-  if (!open) return null
+  function selectReaction(next: PostReactionType | null) {
+    if (reaction === next) return
+    setReaction(next)
+    setPage(null)
+    setError('')
+    setLoading(true)
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy-950/35 p-4" onMouseDown={(event) => {
@@ -93,7 +94,7 @@ export function ReactionDetailsModal({
           <button
             type="button"
             aria-pressed={reaction === null}
-            onClick={() => setReaction(null)}
+            onClick={() => selectReaction(null)}
             className={`rounded-t-lg border-b-2 px-3 py-2 text-sm font-semibold transition ${reaction === null ? 'border-ocean-600 text-ocean-700' : 'border-transparent text-muted hover:text-navy-950'}`}
           >
             All {total}
@@ -103,7 +104,7 @@ export function ReactionDetailsModal({
               key={item}
               type="button"
               aria-pressed={reaction === item}
-              onClick={() => setReaction(item)}
+              onClick={() => selectReaction(item)}
               className={`rounded-t-lg border-b-2 px-3 py-2 text-sm font-semibold transition ${reaction === item ? 'border-ocean-600 text-ocean-700' : 'border-transparent text-muted hover:text-navy-950'}`}
             >
               <span aria-hidden="true">{POST_REACTION_META[item].emoji}</span>{' '}
@@ -148,4 +149,21 @@ export function ReactionDetailsModal({
       </section>
     </div>
   )
+}
+
+export function ReactionDetailsModal({
+  open,
+  targetType,
+  targetId,
+  summary,
+  onClose,
+}: {
+  open: boolean
+  targetType: ReactionTargetType
+  targetId: string
+  summary: ReactionSummary
+  onClose(): void
+}) {
+  if (!open) return null
+  return <OpenReactionDetails targetType={targetType} targetId={targetId} summary={summary} onClose={onClose} />
 }
