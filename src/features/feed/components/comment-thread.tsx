@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useActionState, useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { addComment, setCommentReaction, type CommentActionState } from '../actions'
 import {
@@ -48,26 +48,25 @@ function ReactionCount({ summary }: { summary: ReactionSummary }) {
 
 function ReplyComposer({ postId, parentCommentId, onDone }: { postId: string; parentCommentId: string; onDone(): void }) {
   const router = useRouter()
-  const formRef = useRef<HTMLFormElement>(null)
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
-  const [state, formAction, pending] = useActionState(addComment, initialState)
+  const [state, formAction, pending] = useActionState(async (previousState: CommentActionState, formData: FormData) => {
+    const nextState = await addComment(previousState, formData)
+    if (nextState.ok) {
+      setBody('')
+      setMentions([])
+      onDone()
+      router.refresh()
+    }
+    return nextState
+  }, initialState)
 
   useEffect(() => {
     document.getElementById(`reply-${parentCommentId}`)?.focus()
   }, [parentCommentId])
 
-  useEffect(() => {
-    if (!state.ok) return
-    formRef.current?.reset()
-    setBody('')
-    setMentions([])
-    onDone()
-    router.refresh()
-  }, [state.ok, onDone, router])
-
   return (
-    <form ref={formRef} action={formAction} className="mt-2 flex items-end gap-2">
+    <form action={formAction} className="mt-2 flex items-end gap-2">
       <input type="hidden" name="postId" value={postId} />
       <input type="hidden" name="parentCommentId" value={parentCommentId} />
       <div className="min-w-0 flex-1">
@@ -173,10 +172,17 @@ export function CommentThread({
   composerOpen?: boolean
 }) {
   const router = useRouter()
-  const formRef = useRef<HTMLFormElement>(null)
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
-  const [state, formAction, pending] = useActionState(addComment, initialState)
+  const [state, formAction, pending] = useActionState(async (previousState: CommentActionState, formData: FormData) => {
+    const nextState = await addComment(previousState, formData)
+    if (nextState.ok) {
+      setBody('')
+      setMentions([])
+      router.refresh()
+    }
+    return nextState
+  }, initialState)
   const [visibleRootCount, setVisibleRootCount] = useState(1)
 
   const { roots, repliesByRoot } = useMemo(() => {
@@ -194,14 +200,6 @@ export function CommentThread({
   useEffect(() => {
     if (composerOpen && !readOnly) document.getElementById(`comment-${postId}`)?.focus()
   }, [composerOpen, postId, readOnly])
-
-  useEffect(() => {
-    if (!state.ok) return
-    formRef.current?.reset()
-    setBody('')
-    setMentions([])
-    router.refresh()
-  }, [state.ok, router])
 
   const visibleRoots = roots.slice(0, visibleRootCount)
   const remaining = Math.max(0, roots.length - visibleRoots.length)
@@ -229,7 +227,7 @@ export function CommentThread({
       ) : null}
 
       {composerOpen && !readOnly ? (
-        <form ref={formRef} action={formAction} className="mt-3 flex items-end gap-2">
+        <form action={formAction} className="mt-3 flex items-end gap-2">
           <input type="hidden" name="postId" value={postId} />
           <div className="min-w-0 flex-1">
             <label htmlFor={`comment-${postId}`} className="sr-only">Add a comment</label>
