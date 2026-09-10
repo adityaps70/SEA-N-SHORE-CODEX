@@ -1,3 +1,4 @@
+import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager'
 import { Pool, type PoolConfig, type QueryResultRow } from 'pg'
 import { getDatabaseEnvironment, type DatabaseEnvironment } from './config'
 
@@ -125,7 +126,26 @@ export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) 
   }
 }
 
-const database = createDatabaseClient()
+let runtimeSecretsManager: SecretsManagerClient | null = null
+const runtimeCredentialProvider: CredentialProvider | undefined = process.env.AURORA_SECRET_ARN?.trim()
+  ? async () => {
+      const secretArn = process.env.AURORA_SECRET_ARN?.trim()
+      if (!secretArn) throw new Error('aurora_secret_arn_missing')
+
+      runtimeSecretsManager ??= new SecretsManagerClient({})
+      const response = await runtimeSecretsManager.send(new GetSecretValueCommand({ SecretId: secretArn }))
+      if (!response.SecretString) throw new Error('aurora_secret_string_missing')
+
+      const secret = JSON.parse(response.SecretString) as { username?: unknown; password?: unknown }
+      if (typeof secret.username !== 'string' || typeof secret.password !== 'string') {
+        throw new Error('aurora_secret_credentials_invalid')
+      }
+
+      return { user: secret.username, password: secret.password }
+    }
+  : undefined
+
+const database = createDatabaseClient({ credentialProvider: runtimeCredentialProvider })
 
 export function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
