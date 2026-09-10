@@ -82,6 +82,28 @@ describe('PostCard', () => {
     expect(screen.queryByText(/Verified/i)).not.toBeInTheDocument()
   })
 
+  it('groups primary post actions on the left with LinkedIn-like spacing', () => {
+    render(<PostCard post={post} />)
+
+    const actions = screen.getByRole('group', { name: 'Post actions' })
+    const primaryActions = within(actions).getByTestId('post-primary-actions')
+    const reactionButton = within(primaryActions).getByRole('button', { name: /^Like$/i })
+    const commentButton = within(primaryActions).getByRole('button', { name: /^Comment$/i })
+    const shareButton = within(primaryActions).getByRole('button', { name: /^Share$/i })
+    const saveButton = within(primaryActions).getByRole('button', { name: /^Save$/i })
+
+    expect(actions).toHaveClass('flex')
+    expect(actions).toHaveClass('justify-between')
+    expect(actions).toHaveClass('px-3')
+    expect(primaryActions).toHaveClass('flex')
+    expect(primaryActions).toHaveClass('gap-2')
+    expect(primaryActions).toHaveClass('sm:gap-3')
+    expect(reactionButton.querySelector('svg')).toHaveClass('size-5')
+    expect(commentButton.querySelector('svg')).toHaveClass('size-5')
+    expect(shareButton.querySelector('svg')).toHaveClass('size-5')
+    expect(saveButton.querySelector('svg')).toHaveClass('size-5')
+  })
+
   it('shows portrait image media in full instead of forcing a 16:9 cover crop', () => {
     const { container } = render(<PostCard post={{
       ...post,
