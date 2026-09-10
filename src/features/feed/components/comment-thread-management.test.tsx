@@ -109,15 +109,16 @@ describe('CommentThread management', () => {
       parentCommentId: rootId,
       canEdit: false,
     })
-    const nonOwner = comment({
+    const nonOwnerReply = comment({
       id: otherId,
-      body: 'Another root.',
+      body: 'Another reply.',
+      parentCommentId: rootId,
       viewerOwns: false,
       canEdit: false,
       author: otherAuthor,
     })
 
-    render(<CommentThread postId={postId} comments={[ownedRoot, ownedExpiredReply, nonOwner]} />)
+    render(<CommentThread postId={postId} comments={[ownedRoot, ownedExpiredReply, nonOwnerReply]} />)
 
     expect(item(rootId).getByRole('button', { name: /comment actions/i })).toBeInTheDocument()
     expect(item(replyId).getByRole('button', { name: /comment actions/i })).toBeInTheDocument()
@@ -174,7 +175,7 @@ describe('CommentThread management', () => {
 
   it('soft-delete action leaves failures inline and refreshes only after success', async () => {
     const user = userEvent.setup()
-    mocks.deleteComment.mockResolvedValueOnce({ ok: false, error: 'We could not delete this comment.' })
+    mocks.deleteComment.mockResolvedValueOnce({ ok: false, error: 'We could not delete this comment.' } as never)
     render(<CommentThread postId={postId} comments={[comment()]} />)
 
     await user.click(item(rootId).getByRole('button', { name: /comment actions/i }))
@@ -192,7 +193,7 @@ describe('CommentThread management', () => {
   it('renders Edited only when updatedAt is later than createdAt', () => {
     render(<CommentThread postId={postId} comments={[
       comment({ updatedAt: '2026-09-10T09:02:00.000Z' }),
-      comment({ id: otherId, viewerOwns: false, canEdit: false, author: otherAuthor }),
+      comment({ id: otherId, parentCommentId: rootId, viewerOwns: false, canEdit: false, author: otherAuthor }),
     ]} />)
 
     expect(item(rootId).getByText('Edited')).toBeInTheDocument()
