@@ -15,6 +15,23 @@ test('social event infrastructure uses EventBridge, encrypted SQS and a DLQ', ()
   assert.match(terraform, /Service = "events\.amazonaws\.com"/)
 })
 
+test('notification routing includes network and feed social event detail types', () => {
+  for (const eventType of [
+    'user.followed',
+    'connection.requested',
+    'connection.accepted',
+    'post.commented',
+    'comment.replied',
+    'post.reacted',
+    'comment.reacted',
+    'post.mentioned',
+    'comment.mentioned',
+  ]) {
+    assert.ok(terraform.includes(`"${eventType}"`), `missing EventBridge detail type ${eventType}`)
+  }
+  assert.match(terraform, /SOCIAL_NOTIFICATION_MODE[^\n]+shadow/)
+})
+
 test('worker IAM is least privilege and forbidden architecture is absent', () => {
   assert.match(terraform, /"events:PutEvents"/)
   assert.match(terraform, /"sqs:ReceiveMessage"/)
