@@ -118,7 +118,6 @@ export function MentionInput({
         }}
         placeholder={placeholder}
         aria-autocomplete="list"
-        aria-expanded={Boolean(candidates.length)}
         aria-controls={`${id}-mentions`}
         className={className}
       />
