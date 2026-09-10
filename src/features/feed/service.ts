@@ -5,9 +5,10 @@ import {
   type FeedMediaInput,
   type FeedRepository,
 } from './repository'
+import { createFeedSocialWriterForClient, type FeedSocialWriter } from './social-writer'
 import type { PostCategory, PostReactionType } from './types'
 
-type FeedTransaction = <T>(fn: (repository: FeedRepository) => Promise<T>) => Promise<T>
+type FeedTransaction = <T>(fn: (repository: FeedRepository, social?: FeedSocialWriter) => Promise<T>) => Promise<T>
 
 type StandardPostInput = {
   id?: string
@@ -23,6 +24,10 @@ type PollPostInput = Omit<StandardPostInput, 'id' | 'media'> & {
 
 function serviceError(code: string): never {
   throw new Error(code)
+}
+
+function occurredAt() {
+  return new Date().toISOString()
 }
 
 async function assertMemberReady(repository: FeedRepository, profileId: string) {
@@ -50,6 +55,64 @@ function normalizePollOptions(options: string[]) {
   return normalized
 }
 
+async function notifyPostMentions(
+  social: FeedSocialWriter | undefined,
+  actorId: string,
+  postId: string,
+  recipients: string[],
+) {
+  if (!social) return
+  for (const targetId of recipients) {
+    const eventId = randomUUID()
+    await social.upsertNotification({
+      recipientId: targetId,
+      actorId,
+      type: 'post_mention',
+      postId,
+      dedupeKey: `post-mention:${postId}:${targetId}`,
+    })
+    await social.enqueue({
+      id: eventId,
+      aggregateType: 'post',
+      aggregateId: postId,
+      eventType: 'post.mentioned',
+      schemaVersion: 1,
+      occurredAt: occurredAt(),
+      payload: { eventType: 'post.mentioned', actorId, targetId, postId },
+    })
+  }
+}
+
+async function notifyCommentMentions(
+  social: FeedSocialWriter | undefined,
+  actorId: string,
+  postId: string,
+  commentId: string,
+  recipients: string[],
+) {
+  if (!social) return
+  for (const targetId of recipients) {
+    const eventId = randomUUID()
+    await social.upsertNotification({
+      recipientId: targetId,
+      actorId,
+      type: 'comment_mention',
+      postId,
+      commentId,
+      dedupeKey: `comment-mention:${commentId}:${targetId}`,
+    })
+    await social.enqueue({
+      id: eventId,
+      aggregateType: 'comment',
+      aggregateId: commentId,
+      eventType: 'comment.mentioned',
+      schemaVersion: 1,
+      occurredAt: occurredAt(),
+      payload: { eventType: 'comment.mentioned', actorId, targetId, postId, commentId },
+    })
+  }
+}
+
 export function createFeedService(input: {
   withTransaction: FeedTransaction
   createId?: () => string
@@ -57,17 +120,15 @@ export function createFeedService(input: {
   const createId = input.createId ?? randomUUID
 
   async function createStandardPost(actorId: string, post: StandardPostInput) {
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async (repository, social) => {
       await assertMemberReady(repository, actorId)
       const id = post.id ?? createId()
-      await repository.insertStandardPost({
-        id,
-        authorId: actorId,
-        category: post.category,
-        body: post.body.trim(),
-      })
+      await repository.insertStandardPost({ id, authorId: actorId, category: post.category, body: post.body.trim() })
       if (post.media) await repository.insertPostMedia(id, post.media)
-      if (post.mentionProfileIds?.length) await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
+      const mentions = post.mentionProfileIds?.length
+        ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
+        : []
+      await notifyPostMentions(social, actorId, id, mentions)
       return id
     })
   }
@@ -81,20 +142,16 @@ export function createFeedService(input: {
   }
 
   async function createPollPost(actorId: string, post: PollPostInput) {
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async (repository, social) => {
       await assertMemberReady(repository, actorId)
       const options = normalizePollOptions(post.pollOptions)
       const id = createId()
-      await repository.insertPollPost({
-        id,
-        authorId: actorId,
-        category: post.category,
-        body: post.body.trim(),
-      })
-      for (const [position, label] of options.entries()) {
-        await repository.insertPollOption(id, label, position)
-      }
-      if (post.mentionProfileIds?.length) await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
+      await repository.insertPollPost({ id, authorId: actorId, category: post.category, body: post.body.trim() })
+      for (const [position, label] of options.entries()) await repository.insertPollOption(id, label, position)
+      const mentions = post.mentionProfileIds?.length
+        ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
+        : []
+      await notifyPostMentions(social, actorId, id, mentions)
       return id
     })
   }
@@ -108,9 +165,32 @@ export function createFeedService(input: {
   }
 
   async function setPostReaction(actorId: string, postId: string, reaction: PostReactionType | null) {
-    return input.withTransaction(async (repository) => {
-      await assertInteractablePost(repository, actorId, postId)
+    return input.withTransaction(async (repository, social) => {
+      const post = await assertInteractablePost(repository, actorId, postId)
       await repository.setPostReaction(actorId, postId, reaction)
+      if (!social || post.authorId === actorId) return true
+      const dedupeKey = `post-reaction:${postId}:${actorId}`
+      if (!reaction) {
+        await social.deleteNotification(post.authorId, dedupeKey)
+        return true
+      }
+      await social.upsertNotification({
+        recipientId: post.authorId,
+        actorId,
+        type: 'post_reaction',
+        postId,
+        reactionType: reaction,
+        dedupeKey,
+      })
+      await social.enqueue({
+        id: randomUUID(),
+        aggregateType: 'post',
+        aggregateId: postId,
+        eventType: 'post.reacted',
+        schemaVersion: 1,
+        occurredAt: occurredAt(),
+        payload: { eventType: 'post.reacted', actorId, targetId: post.authorId, postId, reactionType: reaction },
+      })
       return true
     })
   }
@@ -138,25 +218,104 @@ export function createFeedService(input: {
     parentCommentId: string | null = null,
     mentionProfileIds: string[] = [],
   ) {
-    return input.withTransaction(async (repository) => {
-      await assertInteractablePost(repository, actorId, postId)
+    return input.withTransaction(async (repository, social) => {
+      const post = await assertInteractablePost(repository, actorId, postId)
       let normalizedParentId: string | null = null
+      let replyRecipientId: string | null = null
       if (parentCommentId) {
         const parent = await repository.getCommentForInteraction(actorId, parentCommentId)
         if (!parent || parent.postId !== postId) serviceError('feed_comment_parent_unavailable')
         normalizedParentId = parent.rootParentId
+        const root = parent.rootParentId === parent.id
+          ? parent
+          : await repository.getCommentForInteraction(actorId, parent.rootParentId)
+        if (!root || root.postId !== postId) serviceError('feed_comment_parent_unavailable')
+        replyRecipientId = root.authorId
       }
       const commentId = await repository.addComment(actorId, postId, body.trim(), normalizedParentId)
-      if (mentionProfileIds.length) await repository.insertCommentMentions(actorId, commentId, mentionProfileIds)
+      const mentions = mentionProfileIds.length
+        ? await repository.insertCommentMentions(actorId, commentId, mentionProfileIds)
+        : []
+
+      if (social && normalizedParentId && replyRecipientId && replyRecipientId !== actorId) {
+        await social.upsertNotification({
+          recipientId: replyRecipientId,
+          actorId,
+          type: 'comment_reply',
+          postId,
+          commentId,
+          dedupeKey: `comment-reply:${commentId}`,
+        })
+        await social.enqueue({
+          id: randomUUID(),
+          aggregateType: 'comment',
+          aggregateId: commentId,
+          eventType: 'comment.replied',
+          schemaVersion: 1,
+          occurredAt: occurredAt(),
+          payload: { eventType: 'comment.replied', actorId, targetId: replyRecipientId, postId, commentId, parentCommentId: normalizedParentId },
+        })
+      } else if (social && !normalizedParentId && post.authorId !== actorId) {
+        await social.upsertNotification({
+          recipientId: post.authorId,
+          actorId,
+          type: 'post_comment',
+          postId,
+          commentId,
+          dedupeKey: `post-comment:${commentId}`,
+        })
+        await social.enqueue({
+          id: randomUUID(),
+          aggregateType: 'post',
+          aggregateId: postId,
+          eventType: 'post.commented',
+          schemaVersion: 1,
+          occurredAt: occurredAt(),
+          payload: { eventType: 'post.commented', actorId, targetId: post.authorId, postId, commentId },
+        })
+      }
+
+      await notifyCommentMentions(social, actorId, postId, commentId, mentions)
       return commentId
     })
   }
 
   async function setCommentReaction(actorId: string, commentId: string, reaction: PostReactionType | null) {
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async (repository, social) => {
       const comment = await repository.getCommentForInteraction(actorId, commentId)
       if (!comment) serviceError('feed_interaction_unavailable')
       await repository.setCommentReaction(actorId, commentId, reaction)
+      if (!social || comment.authorId === actorId) return true
+      const dedupeKey = `comment-reaction:${commentId}:${actorId}`
+      if (!reaction) {
+        await social.deleteNotification(comment.authorId, dedupeKey)
+        return true
+      }
+      await social.upsertNotification({
+        recipientId: comment.authorId,
+        actorId,
+        type: 'comment_reaction',
+        postId: comment.postId,
+        commentId,
+        reactionType: reaction,
+        dedupeKey,
+      })
+      await social.enqueue({
+        id: randomUUID(),
+        aggregateType: 'comment',
+        aggregateId: commentId,
+        eventType: 'comment.reacted',
+        schemaVersion: 1,
+        occurredAt: occurredAt(),
+        payload: {
+          eventType: 'comment.reacted',
+          actorId,
+          targetId: comment.authorId,
+          postId: comment.postId,
+          commentId,
+          reactionType: reaction,
+        },
+      })
       return true
     })
   }
@@ -186,7 +345,10 @@ export function createFeedService(input: {
 }
 
 const productionService = createFeedService({
-  withTransaction: (fn) => databaseTransaction((client) => fn(createFeedRepositoryForClient(client))),
+  withTransaction: (fn) => databaseTransaction((client) => fn(
+    createFeedRepositoryForClient(client),
+    createFeedSocialWriterForClient(client),
+  )),
 })
 
 export const createStandardPostWithAurora = productionService.createStandardPost
