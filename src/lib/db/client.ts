@@ -14,13 +14,17 @@ type ReleasableDatabaseClient = DatabaseQueryClient & {
 
 type DatabasePool = DatabaseQueryClient & {
   connect(): Promise<ReleasableDatabaseClient>
+  end?(): Promise<void>
 }
 
 type PoolFactory = (config: PoolConfig) => DatabasePool
+export type DatabaseCredentials = Pick<DatabaseEnvironment, 'user' | 'password'>
+type CredentialProvider = () => Promise<DatabaseCredentials>
 
 type CreateDatabaseClientOptions = {
   environment?: DatabaseEnvironment
   poolFactory?: PoolFactory
+  credentialProvider?: CredentialProvider
 }
 
 function poolConfig(environment: DatabaseEnvironment): PoolConfig {
@@ -42,15 +46,47 @@ function defaultPoolFactory(config: PoolConfig): DatabasePool {
   return new Pool(config) as unknown as DatabasePool
 }
 
+function isAuthenticationFailure(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === '28P01'
+}
+
 export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) {
   let pool: DatabasePool | null = null
+  let environment: DatabaseEnvironment | null = options.environment ?? null
+
+  function getEnvironment() {
+    environment ??= getDatabaseEnvironment()
+    return environment
+  }
 
   function getPool() {
     if (!pool) {
-      const environment = options.environment ?? getDatabaseEnvironment()
-      pool = (options.poolFactory ?? defaultPoolFactory)(poolConfig(environment))
+      pool = (options.poolFactory ?? defaultPoolFactory)(poolConfig(getEnvironment()))
     }
     return pool
+  }
+
+  async function refreshPoolAfterAuthenticationFailure() {
+    if (!options.credentialProvider) return false
+
+    const stalePool = pool
+    const credentials = await options.credentialProvider()
+    environment = { ...getEnvironment(), ...credentials }
+    pool = (options.poolFactory ?? defaultPoolFactory)(poolConfig(environment))
+    await stalePool?.end?.()
+    return true
+  }
+
+  async function queryWithAuthRecovery<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    values: readonly unknown[],
+  ) {
+    try {
+      return await getPool().query<T>(text, values)
+    } catch (error) {
+      if (!isAuthenticationFailure(error) || !await refreshPoolAfterAuthenticationFailure()) throw error
+      return getPool().query<T>(text, values)
+    }
   }
 
   return {
@@ -58,7 +94,7 @@ export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) 
       text: string,
       values: readonly unknown[] = [],
     ): Promise<T[]> {
-      const result = await getPool().query<T>(text, values)
+      const result = await queryWithAuthRecovery<T>(text, values)
       return result.rows
     },
 
