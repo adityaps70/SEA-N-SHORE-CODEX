@@ -21,6 +21,7 @@ const normalizeMentionIds = (value: unknown) => {
 }
 
 const bodySchema = z.string().trim().min(1, 'Write something before posting.').max(5000, 'Keep posts to 5,000 characters or fewer.')
+const commentBodySchema = z.string().trim().min(1, 'Write a comment first.').max(2000, 'Keep comments to 2,000 characters or fewer.')
 const mentionIdsSchema = z.preprocess(normalizeMentionIds, z.array(z.string().uuid()).max(20, 'Mention no more than 20 members.')).default([])
 const pollOptionsSchema = z.preprocess(
   normalizePollOptions,
@@ -67,9 +68,19 @@ export const createPostInputSchema = z.discriminatedUnion('mode', [standardPostS
 
 export const commentInputSchema = z.object({
   postId: z.string().uuid(),
-  body: z.string().trim().min(1, 'Write a comment first.').max(2000, 'Keep comments to 2,000 characters or fewer.'),
+  body: commentBodySchema,
   parentCommentId: z.preprocess((value) => value === '' || value == null ? undefined : value, z.string().uuid().optional()),
   mentionProfileIds: mentionIdsSchema,
+})
+
+export const updateCommentInputSchema = z.object({
+  commentId: z.string().uuid(),
+  body: commentBodySchema,
+  mentionProfileIds: mentionIdsSchema,
+})
+
+export const deleteCommentInputSchema = z.object({
+  commentId: z.string().uuid(),
 })
 
 export const feedCursorSchema = z.object({
@@ -96,5 +107,7 @@ export function parseFeedCategory(value: unknown) {
 export type PostMediaReferenceInput = z.infer<typeof postMediaReferenceSchema>
 export type CreatePostInput = z.infer<typeof createPostInputSchema>
 export type CommentInput = z.infer<typeof commentInputSchema>
+export type UpdateCommentInput = z.infer<typeof updateCommentInputSchema>
+export type DeleteCommentInput = z.infer<typeof deleteCommentInputSchema>
 export type FeedRequestInput = z.infer<typeof feedRequestSchema>
 export type ReactionDetailsInput = z.infer<typeof reactionDetailsSchema>
