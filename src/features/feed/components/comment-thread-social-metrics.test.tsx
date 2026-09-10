@@ -75,7 +75,7 @@ afterEach(() => {
 })
 
 describe('CommentThread social metrics', () => {
-  it('shows reaction symbols beside the total and a direct reply count on the root comment', () => {
+  it('keeps React and Reply on the left and a compact clickable reaction total on the far right', () => {
     render(<CommentThread postId={postId} comments={[
       comment(),
       comment({ id: replyOneId, body: 'First reply.', parentCommentId: rootId, reactionSummary: { like: 1, support: 0, respect: 0, on_point: 0 }, reactionCount: 1 }),
@@ -83,8 +83,16 @@ describe('CommentThread social metrics', () => {
     ]} />)
 
     const root = item(rootId)
-    expect(root.getByRole('button', { name: /view comment reaction types/i })).toHaveTextContent('👍❤️')
-    expect(root.getByRole('button', { name: /view 3 comment reactions/i })).toHaveTextContent('3 reactions')
+    const reactButton = root.getByRole('button', { name: 'Like' })
+    const replyButton = root.getByRole('button', { name: 'Reply' })
+    const reactionTotal = root.getByRole('button', { name: /view 3 comment reactions/i })
+
+    expect(root.queryByRole('button', { name: /view comment reaction types/i })).not.toBeInTheDocument()
+    expect(reactButton.compareDocumentPosition(replyButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(replyButton.compareDocumentPosition(reactionTotal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(reactionTotal).toHaveClass('ml-auto')
+    expect(reactionTotal).toHaveTextContent('👍❤️3')
+    expect(reactionTotal).not.toHaveTextContent(/reactions?/i)
     expect(root.getByLabelText('2 replies')).toHaveTextContent('2')
   })
 
