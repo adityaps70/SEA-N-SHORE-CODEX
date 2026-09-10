@@ -22,9 +22,13 @@ describe('Aurora transaction credential rotation', () => {
       end: staleEnd,
     }
     const transactionQuery = vi.fn(async <T extends QueryResultRow = QueryResultRow>(
-      _text: string,
-      _values?: readonly unknown[],
-    ): Promise<{ rows: T[] }> => ({ rows: [] }))
+      text: string,
+      values?: readonly unknown[],
+    ): Promise<{ rows: T[] }> => {
+      void text
+      void values
+      return { rows: [] }
+    })
     const transactionClient = {
       query: transactionQuery as unknown as DatabaseQueryClient['query'],
       release: vi.fn(),
