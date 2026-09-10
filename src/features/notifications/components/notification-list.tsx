@@ -2,16 +2,40 @@
 
 import { CheckCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { relativeTimeFrom } from '@/lib/relative-time'
-import { markAllNotificationsRead, markNotificationRead } from '../actions'
+import { loadNotifications, markAllNotificationsRead, markNotificationRead } from '../actions'
 import type { NetworkNotification } from '../types'
 
 export function NotificationList({ notifications }: { notifications: NetworkNotification[] }) {
   const router = useRouter()
+  const [items, setItems] = useState(notifications)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
-  const unreadCount = notifications.filter((notification) => !notification.readAt).length
+  const unreadCount = items.filter((notification) => !notification.readAt).length
+
+  useEffect(() => {
+    let active = true
+    let checking = false
+
+    const refreshSnapshot = async () => {
+      if (checking) return
+      checking = true
+      try {
+        const result = await loadNotifications()
+        if (!active || !result.ok) return
+        setItems(result.notifications)
+      } finally {
+        checking = false
+      }
+    }
+
+    const interval = window.setInterval(() => { void refreshSnapshot() }, 30_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [])
 
   function openNotification(notification: NetworkNotification) {
     if (pending) return
@@ -23,9 +47,10 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
           setError(result.error)
           return
         }
+        const readAt = new Date().toISOString()
+        setItems((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item))
       }
       router.push(notification.destination)
-      router.refresh()
     })
   }
 
@@ -38,11 +63,12 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
         setError(result.error)
         return
       }
-      router.refresh()
+      const readAt = new Date().toISOString()
+      setItems((current) => current.map((notification) => notification.readAt ? notification : { ...notification, readAt }))
     })
   }
 
-  if (!notifications.length) {
+  if (!items.length) {
     return (
       <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-14 text-center">
         <p className="font-semibold text-navy-950">No notifications yet.</p>
@@ -64,7 +90,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
       </div>
 
       <div className="divide-y divide-mist-100">
-        {notifications.map((notification) => (
+        {items.map((notification) => (
           <button
             key={notification.id}
             type="button"
