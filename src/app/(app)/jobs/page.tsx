@@ -7,10 +7,6 @@ import { getJobsDiscovery } from '@/features/jobs/queries'
 
 type RawParams = Record<string, string | string[] | undefined>
 
-function first(value: string | string[] | undefined) {
-  return Array.isArray(value) ? value[0] ?? '' : value ?? ''
-}
-
 function serialize(params: RawParams) {
   const query = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {
