@@ -24,7 +24,7 @@ describe('ReactionPicker hover behavior', () => {
 
   it('keeps reaction names accessible but hides all reaction text labels visually', async () => {
     const user = userEvent.setup()
-    const { container } = render(<ReactionPicker value="anchor" onChange={vi.fn()} compact />)
+    const { container } = render(<ReactionPicker value="on_point" onChange={vi.fn()} compact />)
 
     const trigger = screen.getByRole('button', { name: 'On Point' })
     expect(trigger).toBeInTheDocument()
