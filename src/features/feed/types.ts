@@ -25,6 +25,7 @@ export const POST_CATEGORY_LABELS: Record<PostCategory, string> = {
 export const POST_REACTIONS = ['like', 'support', 'respect', 'on_point'] as const
 export type PostReactionType = (typeof POST_REACTIONS)[number]
 export type ReactionSummary = Record<PostReactionType, number>
+export type ReactionTargetType = 'post' | 'comment'
 
 export const POST_REACTION_META: Record<PostReactionType, { label: string; emoji: string }> = {
   like: { label: 'Like', emoji: '👍' },
@@ -60,6 +61,16 @@ export type FeedAuthor = {
   currentCompany: string | null
 }
 
+export type ReactorProfile = FeedAuthor & {
+  reaction: PostReactionType
+  reactedAt: string
+}
+
+export type ReactionDetailsPage = {
+  reactors: ReactorProfile[]
+  nextCursor: string | null
+}
+
 export type FeedMedia = {
   storagePath: string
   mimeType: string
@@ -90,6 +101,11 @@ export type FeedComment = {
   id: string
   body: string
   createdAt: string
+  /** Compatibility defaults are hydrated by the mapper while older fixtures roll forward. */
+  updatedAt?: string
+  viewerOwns?: boolean
+  canEdit?: boolean
+  deleted?: boolean
   author: FeedAuthor
   parentCommentId?: string | null
   reactionSummary?: ReactionSummary
