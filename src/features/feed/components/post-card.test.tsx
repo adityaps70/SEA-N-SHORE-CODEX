@@ -3,10 +3,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FeedPost } from '../types'
 import { PostCard } from './post-card'
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}))
+
 vi.mock('../actions', () => ({
   deletePost: vi.fn(async () => ({ ok: true })),
+  setPostReaction: vi.fn(async () => ({ ok: true })),
   setPostLiked: vi.fn(async () => ({ ok: true })),
   setPostSaved: vi.fn(async () => ({ ok: true })),
+  setCommentReaction: vi.fn(async () => ({ ok: true })),
   setPollVote: vi.fn(async () => ({ ok: true })),
   addComment: vi.fn(async () => ({ ok: true })),
 }))
@@ -43,8 +49,7 @@ describe('PostCard', () => {
     render(<PostCard post={post} />)
     expect(screen.getByRole('article')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Member A' })).toHaveAttribute('href', '/people/member-a')
-    expect(screen.getByText('Achievement')).toBeInTheDocument()
-    expect(screen.getByText('4 likes')).toBeInTheDocument()
+    expect(screen.getByText('4 reactions')).toBeInTheDocument()
     expect(screen.getByText('2 comments')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Like$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Comment$/i })).toBeInTheDocument()
