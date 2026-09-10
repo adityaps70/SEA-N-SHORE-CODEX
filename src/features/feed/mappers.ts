@@ -37,6 +37,10 @@ export type FeedCommentRow = {
   parent_comment_id?: string | null
   body: string
   created_at: string
+  updated_at?: string
+  deleted_at?: string | null
+  viewer_owns?: boolean
+  can_edit?: boolean
   profiles: AuthorRow | AuthorRow[] | null
   reaction_summary?: ReactionCountsRow | null
   viewer_reaction?: PostReactionType | null
@@ -144,6 +148,10 @@ function mapComment(row: FeedCommentRow, signedUrls: Map<string, string>): FeedC
     id: row.id,
     body: row.body,
     createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at,
+    viewerOwns: Boolean(row.viewer_owns),
+    canEdit: Boolean(row.can_edit),
+    deleted: Boolean(row.deleted_at),
     author: mapAuthor(row.profiles, signedUrls),
     parentCommentId: row.parent_comment_id ?? null,
     reactionSummary,
