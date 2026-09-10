@@ -65,7 +65,7 @@ function CommentReactionSummary({ summary, onOpen }: { summary: ReactionSummary;
 }
 
 function selectedMentions(comment: FeedComment): SelectedMention[] {
-  return comment.mentions.map((mention) => ({ profileId: mention.profileId, label: mention.fullName }))
+  return (comment.mentions ?? []).map((mention) => ({ profileId: mention.profileId, label: mention.fullName }))
 }
 
 function firstActionError(state: CommentActionState) {
@@ -142,10 +142,11 @@ function CommentItem({
   const [error, setError] = useState('')
   const [reactionPending, startReactionTransition] = useTransition()
   const [managementPending, startManagementTransition] = useTransition()
+  const updatedAt = comment.updatedAt ?? comment.createdAt
 
   const edited = !comment.deleted
-    && Number.isFinite(Date.parse(comment.updatedAt))
-    && Date.parse(comment.updatedAt) > Date.parse(comment.createdAt)
+    && Number.isFinite(Date.parse(updatedAt))
+    && Date.parse(updatedAt) > Date.parse(comment.createdAt)
 
   function changeReaction(next: PostReactionType | null) {
     if (readOnly || reactionPending) return
