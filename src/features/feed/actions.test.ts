@@ -6,6 +6,7 @@ import {
   uploadFeedImage,
   verifyPendingPostMedia,
 } from './media'
+import { getPostById } from './queries'
 import {
   addPostCommentWithAurora,
   assertPendingMediaDiscardableWithAurora,
@@ -55,6 +56,10 @@ vi.mock('./media', () => ({
   uploadFeedImage: vi.fn(async () => 'legacy-server-upload-must-not-run'),
   removeFeedImage: vi.fn(async () => undefined),
 }))
+vi.mock('./queries', () => ({
+  getFeedPage: vi.fn(),
+  getPostById: vi.fn(),
+}))
 vi.mock('./service', () => ({
   createStandardPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   assertPendingMediaDiscardableWithAurora: vi.fn(async () => true),
@@ -63,7 +68,7 @@ vi.mock('./service', () => ({
   setPostLikedWithAurora: vi.fn(async () => true),
   setPostReactionWithAurora: vi.fn(async () => true),
   setPostSavedWithAurora: vi.fn(async () => true),
-  addPostCommentWithAurora: vi.fn(async () => true),
+  addPostCommentWithAurora: vi.fn(async () => 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
   updateCommentWithAurora: vi.fn(async () => ({
     id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     postId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -91,6 +96,7 @@ const mockedCreatePendingPostMediaUpload = vi.mocked(createPendingPostMediaUploa
 const mockedVerifyPendingPostMedia = vi.mocked(verifyPendingPostMedia)
 const mockedUploadFeedImage = vi.mocked(uploadFeedImage)
 const mockedRemoveFeedImage = vi.mocked(removeFeedImage)
+const mockedGetPostById = vi.mocked(getPostById)
 const mockedCreateStandardPost = vi.mocked(createStandardPostWithAurora)
 const mockedAssertPendingMediaDiscardable = vi.mocked(assertPendingMediaDiscardableWithAurora)
 const mockedCreatePollPost = vi.mocked(createPollPostWithAurora)
@@ -102,16 +108,46 @@ const mockedUpdateComment = vi.mocked(updateCommentWithAurora)
 const mockedDeleteComment = vi.mocked(deleteCommentWithAurora)
 const mockedSetVote = vi.mocked(setPollVoteWithAurora)
 
+const hydratedComment = {
+  id: commentId,
+  body: 'Useful lesson.',
+  createdAt: '2026-09-10T09:00:00.000Z',
+  updatedAt: '2026-09-10T09:00:00.000Z',
+  viewerOwns: true,
+  canEdit: true,
+  deleted: false,
+  author: {
+    id: viewerId,
+    slug: 'viewer',
+    fullName: 'Viewer Member',
+    avatarPath: null,
+    avatarUrl: null,
+    headline: 'Chief Officer',
+    rank: 'Chief Officer',
+    currentCompany: 'Example Shipping',
+  },
+  parentCommentId: null,
+  reactionSummary: { like: 0, support: 0, respect: 0, on_point: 0 },
+  reactionCount: 0,
+  viewerReaction: null,
+  mentions: [],
+} as const
+
+function hydratedPost(comments: readonly unknown[] = [hydratedComment]) {
+  return { comments } as never
+}
+
 type CommentActionState = {
   ok?: boolean
   error?: string
   fieldErrors?: Record<string, string[] | undefined>
   value?: string
+  comment?: typeof hydratedComment
 }
 
 type CommentManagementActions = {
   updateComment(previousState: CommentActionState, formData: FormData): Promise<CommentActionState>
-  deleteComment(commentId: string): Promise<{ ok: boolean; error?: string }>
+  deleteComment(commentId: string): Promise<{ ok: boolean; error?: string; commentId?: string; comment?: typeof hydratedComment | null }>
 }
 
 const managedActions = feedActions as unknown as CommentManagementActions
@@ -146,6 +182,7 @@ function commentEditForm() {
 describe('feed actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockedGetPostById.mockResolvedValue(hydratedPost())
   })
 
   it('does not authenticate or mutate when a post body is invalid', async () => {
@@ -189,12 +226,7 @@ describe('feed actions', () => {
   })
 
   it('discards only an authenticated pending object scoped to the current user and post', async () => {
-    await expect(discardPendingPostMedia({
-      postId,
-      storagePath,
-      mimeType: 'image/jpeg',
-    })).resolves.toEqual({ ok: true })
-
+    await expect(discardPendingPostMedia({ postId, storagePath, mimeType: 'image/jpeg' })).resolves.toEqual({ ok: true })
     expect(mockedAssertPendingMediaDiscardable).toHaveBeenCalledWith(viewerId, storagePath)
     expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
   })
@@ -205,20 +237,13 @@ describe('feed actions', () => {
       storagePath: `${otherViewerId}/${postId}/${objectId}.jpg`,
       mimeType: 'image/jpeg',
     })).resolves.toEqual({ ok: false, error: 'Invalid media.' })
-
     expect(mockedAssertPendingMediaDiscardable).not.toHaveBeenCalled()
     expect(mockedRemoveFeedImage).not.toHaveBeenCalled()
   })
 
   it('refuses to delete a pending object once Aurora already references it', async () => {
     mockedAssertPendingMediaDiscardable.mockRejectedValueOnce(new Error('feed_media_delete_forbidden'))
-
-    await expect(discardPendingPostMedia({
-      postId,
-      storagePath,
-      mimeType: 'image/jpeg',
-    })).resolves.toEqual({ ok: false, error: 'We could not remove this media.' })
-
+    await expect(discardPendingPostMedia({ postId, storagePath, mimeType: 'image/jpeg' })).resolves.toEqual({ ok: false, error: 'We could not remove this media.' })
     expect(mockedRemoveFeedImage).not.toHaveBeenCalled()
   })
 
@@ -227,9 +252,7 @@ describe('feed actions', () => {
     formData.set('mode', 'poll')
     formData.append('pollOption', 'Option A')
     formData.append('pollOption', 'Option B')
-
     const state = await createPost({}, formData)
-
     expect(state.fieldErrors?.media?.[0]).toMatch(/polls cannot include media/i)
     expect(mockedRequireAwsUser).not.toHaveBeenCalled()
     expect(mockedCreatePollPost).not.toHaveBeenCalled()
@@ -238,9 +261,7 @@ describe('feed actions', () => {
   it('rejects media descriptions over 300 characters before mutation', async () => {
     const formData = postFormWithCompletedMedia()
     formData.set('altText', 'a'.repeat(301))
-
     const state = await createPost({}, formData)
-
     expect(state.fieldErrors?.media?.[0]).toMatch(/300/i)
     expect(mockedRequireAwsUser).not.toHaveBeenCalled()
     expect(mockedCreateStandardPost).not.toHaveBeenCalled()
@@ -249,17 +270,13 @@ describe('feed actions', () => {
   it('creates a standard post through Aurora using the permanent profile UUID', async () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     const state = await createPost({}, basePostForm())
-
     expect(state).toEqual({ ok: true })
     expect(mockedCreateStandardPost).toHaveBeenCalledWith(viewerId, {
       category: 'technical_discussion',
       body: 'A useful maritime technical lesson.',
       mentionProfileIds: [],
     })
-    expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', expect.objectContaining({
-      postId: expect.any(String),
-      hasMedia: false,
-    }))
+    expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', expect.objectContaining({ postId: expect.any(String), hasMedia: false }))
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain('A useful maritime technical lesson.')
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain(viewerId)
     infoSpy.mockRestore()
@@ -267,26 +284,14 @@ describe('feed actions', () => {
 
   it('verifies a completed direct upload before attaching the exact reference in Aurora', async () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
-
     const state = await createPost({}, postFormWithCompletedMedia())
-
     expect(state).toEqual({ ok: true })
-    expect(mockedVerifyPendingPostMedia).toHaveBeenCalledWith({
-      profileId: viewerId,
-      postId,
-      storagePath,
-      mimeType: 'image/jpeg',
-      size: 1024,
-    })
+    expect(mockedVerifyPendingPostMedia).toHaveBeenCalledWith({ profileId: viewerId, postId, storagePath, mimeType: 'image/jpeg', size: 1024 })
     expect(mockedCreateStandardPost).toHaveBeenCalledWith(viewerId, {
       id: postId,
       category: 'technical_discussion',
       body: 'A useful maritime technical lesson.',
-      media: {
-        storagePath,
-        mimeType: 'image/jpeg',
-        altText: 'Annotated engine-room diagram',
-      },
+      media: { storagePath, mimeType: 'image/jpeg', altText: 'Annotated engine-room diagram' },
       mentionProfileIds: [],
     })
     expect(mockedUploadFeedImage).not.toHaveBeenCalled()
@@ -297,36 +302,22 @@ describe('feed actions', () => {
   it('does not mutate Aurora when completed media verification fails', async () => {
     mockedVerifyPendingPostMedia.mockRejectedValueOnce(new Error('feed_media_metadata_mismatch'))
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-
     const state = await createPost({}, postFormWithCompletedMedia())
-
     expect(mockedCreateStandardPost).not.toHaveBeenCalled()
     expect(mockedRemoveFeedImage).not.toHaveBeenCalled()
     expect(state.error).toBe('We could not verify your uploaded media. Please upload it again.')
-    expect(errorSpy).toHaveBeenCalledWith('[feed_publish_failed]', {
-      stage: 'media_verify',
-      postId,
-      hasMedia: true,
-      errorCode: 'feed_media_metadata_mismatch',
-    })
+    expect(errorSpy).toHaveBeenCalledWith('[feed_publish_failed]', { stage: 'media_verify', postId, hasMedia: true, errorCode: 'feed_media_metadata_mismatch' })
     errorSpy.mockRestore()
   })
 
   it('removes directly uploaded media when Aurora post creation fails', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mockedCreateStandardPost.mockRejectedValueOnce(new Error('post_create_failed'))
-
     const state = await createPost({}, postFormWithCompletedMedia())
-
     expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
     expect(mockedUploadFeedImage).not.toHaveBeenCalled()
     expect(state.error).toBe('We could not attach your media, so the post was not published.')
-    expect(errorSpy).toHaveBeenCalledWith('[feed_publish_failed]', expect.objectContaining({
-      stage: 'aurora_create',
-      postId,
-      hasMedia: true,
-      errorCode: 'post_create_failed',
-    }))
+    expect(errorSpy).toHaveBeenCalledWith('[feed_publish_failed]', expect.objectContaining({ stage: 'aurora_create', postId, hasMedia: true, errorCode: 'post_create_failed' }))
     expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('A useful maritime technical lesson.')
     expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(viewerId)
     errorSpy.mockRestore()
@@ -335,9 +326,7 @@ describe('feed actions', () => {
   it('keeps the original publication error when compensating media cleanup also fails', async () => {
     mockedCreateStandardPost.mockRejectedValueOnce(new Error('post_create_failed'))
     mockedRemoveFeedImage.mockRejectedValueOnce(new Error('s3_delete_failed'))
-
     const state = await createPost({}, postFormWithCompletedMedia())
-
     expect(mockedRemoveFeedImage).toHaveBeenCalledWith(storagePath)
     expect(state.error).toBe('We could not attach your media, so the post was not published.')
   })
@@ -347,9 +336,7 @@ describe('feed actions', () => {
     formData.set('mode', 'poll')
     formData.append('pollOption', ' Mooring ')
     formData.append('pollOption', 'Bridge')
-
     const state = await createPost({}, formData)
-
     expect(state).toEqual({ ok: true })
     expect(mockedCreatePollPost).toHaveBeenCalledWith(viewerId, {
       category: 'technical_discussion',
@@ -367,7 +354,6 @@ describe('feed actions', () => {
   it('routes like and save toggles through the Aurora service with the permanent UUID', async () => {
     expect(await setPostLiked(postId, false)).toEqual({ ok: true })
     expect(await setPostSaved(postId, true)).toEqual({ ok: true })
-
     expect(mockedSetLiked).toHaveBeenCalledWith(viewerId, postId, false)
     expect(mockedSetSaved).toHaveBeenCalledWith(viewerId, postId, true)
   })
@@ -377,9 +363,10 @@ describe('feed actions', () => {
     formData.set('postId', postId)
     formData.set('body', 'Useful lesson.')
 
-    expect(await addComment({}, formData)).toEqual({ ok: true })
+    expect(await addComment({}, formData)).toEqual({ ok: true, comment: hydratedComment })
     expect(await setPollVote(postId, optionId)).toEqual({ ok: true })
     expect(mockedAddComment).toHaveBeenCalledWith(viewerId, postId, 'Useful lesson.', null, [])
+    expect(mockedGetPostById).toHaveBeenCalledWith(postId)
     expect(mockedSetVote).toHaveBeenCalledWith(viewerId, postId, optionId)
   })
 
@@ -391,9 +378,7 @@ describe('feed actions', () => {
   it('validates an edit before authentication and preserves the attempted body', async () => {
     const formData = commentEditForm()
     formData.set('commentId', 'not-a-uuid')
-
     const state = await managedActions.updateComment({}, formData)
-
     expect(state.fieldErrors?.commentId).toBeTruthy()
     expect(state.value).toBe('  Updated bridge note.  ')
     expect(mockedRequireAwsUser).not.toHaveBeenCalled()
@@ -401,31 +386,23 @@ describe('feed actions', () => {
   })
 
   it('routes an authenticated comment edit through Aurora with normalized body and mentions', async () => {
+    const updatedComment = { ...hydratedComment, body: 'Updated bridge note.', updatedAt: '2026-09-10T09:02:00.000Z' }
+    mockedGetPostById.mockResolvedValueOnce(hydratedPost([updatedComment]))
     const state = await managedActions.updateComment({}, commentEditForm())
-
-    expect(state).toEqual({ ok: true })
+    expect(state).toEqual({ ok: true, comment: updatedComment })
     expect(mockedUpdateComment).toHaveBeenCalledWith(viewerId, commentId, 'Updated bridge note.', [mentionId])
   })
 
   it('returns the exact 15-minute edit error without exposing the service code', async () => {
     mockedUpdateComment.mockRejectedValueOnce(new Error('feed_comment_edit_expired'))
-
     const state = await managedActions.updateComment({}, commentEditForm())
-
-    expect(state).toEqual({
-      error: 'Comments can only be edited for 15 minutes after posting.',
-      value: '  Updated bridge note.  ',
-    })
+    expect(state).toEqual({ error: 'Comments can only be edited for 15 minutes after posting.', value: '  Updated bridge note.  ' })
     expect(JSON.stringify(state)).not.toContain('feed_comment_edit_expired')
   })
 
   it('uses generic edit copy for permission or unavailable-target failures', async () => {
     mockedUpdateComment.mockRejectedValueOnce(new Error('feed_comment_mutation_forbidden'))
-
-    await expect(managedActions.updateComment({}, commentEditForm())).resolves.toEqual({
-      error: 'We could not update this comment.',
-      value: '  Updated bridge note.  ',
-    })
+    await expect(managedActions.updateComment({}, commentEditForm())).resolves.toEqual({ error: 'We could not update this comment.', value: '  Updated bridge note.  ' })
   })
 
   it('validates delete ids before authentication and routes valid deletes through Aurora', async () => {
@@ -433,16 +410,13 @@ describe('feed actions', () => {
     expect(mockedRequireAwsUser).not.toHaveBeenCalled()
     expect(mockedDeleteComment).not.toHaveBeenCalled()
 
-    await expect(managedActions.deleteComment(commentId)).resolves.toEqual({ ok: true })
+    mockedGetPostById.mockResolvedValueOnce(hydratedPost([]))
+    await expect(managedActions.deleteComment(commentId)).resolves.toEqual({ ok: true, commentId, comment: null })
     expect(mockedDeleteComment).toHaveBeenCalledWith(viewerId, commentId)
   })
 
   it('uses generic delete copy for permission or unavailable-target failures', async () => {
     mockedDeleteComment.mockRejectedValueOnce(new Error('feed_interaction_unavailable'))
-
-    await expect(managedActions.deleteComment(commentId)).resolves.toEqual({
-      ok: false,
-      error: 'We could not delete this comment.',
-    })
+    await expect(managedActions.deleteComment(commentId)).resolves.toEqual({ ok: false, error: 'We could not delete this comment.' })
   })
 })
