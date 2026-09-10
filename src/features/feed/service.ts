@@ -49,6 +49,13 @@ async function assertInteractablePost(repository: FeedRepository, viewerProfileI
   return post
 }
 
+async function assertOwnedComment(repository: FeedRepository, actorId: string, commentId: string) {
+  const comment = await repository.getCommentForInteraction(actorId, commentId)
+  if (!comment) serviceError('feed_interaction_unavailable')
+  if (comment.authorId !== actorId) serviceError('feed_comment_mutation_forbidden')
+  return comment
+}
+
 function normalizePollOptions(options: string[]) {
   const seen = new Set<string>()
   const normalized: string[] = []
@@ -322,6 +329,31 @@ export function createFeedService(input: {
     })
   }
 
+  async function updateComment(
+    actorId: string,
+    commentId: string,
+    body: string,
+    mentionProfileIds: string[] = [],
+  ) {
+    return input.withTransaction(async (repository, social) => {
+      await assertOwnedComment(repository, actorId, commentId)
+      const updated = await repository.updateOwnCommentWithinEditWindow(actorId, commentId, body.trim())
+      if (!updated) serviceError('feed_comment_edit_expired')
+      const mentions = await repository.replaceCommentMentions(actorId, commentId, mentionProfileIds)
+      await notifyCommentMentions(social, actorId, updated.postId, commentId, mentions.newlyIntroducedProfileIds)
+      return updated
+    })
+  }
+
+  async function deleteComment(actorId: string, commentId: string) {
+    return input.withTransaction(async (repository) => {
+      await assertOwnedComment(repository, actorId, commentId)
+      const deleted = await repository.softDeleteOwnComment(actorId, commentId)
+      if (!deleted) serviceError('feed_interaction_unavailable')
+      return deleted
+    })
+  }
+
   async function setCommentReaction(actorId: string, commentId: string, reaction: PostReactionType | null) {
     return input.withTransaction(async (repository, social) => {
       const comment = await repository.getCommentForInteraction(actorId, commentId)
@@ -382,6 +414,8 @@ export function createFeedService(input: {
     setLiked,
     setSaved,
     addComment,
+    updateComment,
+    deleteComment,
     setCommentReaction,
     setPollVote,
   }
@@ -403,5 +437,7 @@ export const setPostReactionWithAurora = productionService.setPostReaction
 export const setPostLikedWithAurora = productionService.setLiked
 export const setPostSavedWithAurora = productionService.setSaved
 export const addPostCommentWithAurora = productionService.addComment
+export const updateCommentWithAurora = productionService.updateComment
+export const deleteCommentWithAurora = productionService.deleteComment
 export const setCommentReactionWithAurora = productionService.setCommentReaction
 export const setPollVoteWithAurora = productionService.setPollVote
