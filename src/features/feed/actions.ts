@@ -9,7 +9,7 @@ import {
   verifyPendingPostMedia,
 } from './media'
 import { isOwnedPostMediaStoragePath, validatePostMediaMetadata } from './media-policy'
-import { getFeedPage } from './queries'
+import { getFeedPage, getPostById } from './queries'
 import {
   commentInputSchema,
   createPostInputSchema,
@@ -35,7 +35,7 @@ import {
   setPostSavedWithAurora,
   updateCommentWithAurora,
 } from './service'
-import { POST_CATEGORIES, type FeedRequest, type PostCategory, type PostReactionType } from './types'
+import { POST_CATEGORIES, type FeedComment, type FeedRequest, type PostCategory, type PostReactionType } from './types'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
 
@@ -60,7 +60,12 @@ export type CommentActionState = {
   error?: string
   fieldErrors?: Record<string, string[]>
   value?: string
+  comment?: FeedComment
 }
+
+export type DeleteCommentActionResult =
+  | { ok: true; commentId: string; comment: FeedComment | null }
+  | { ok: false; error: string }
 
 function safeErrorCode(error: unknown): string {
   const message = error instanceof Error ? error.message : ''
@@ -113,6 +118,11 @@ function revalidateSocialFeed() {
   revalidatePath('/profile')
   revalidatePath('/people/[slug]', 'page')
   revalidatePath('/posts/[id]', 'page')
+}
+
+async function hydrateComment(postId: string, commentId: string) {
+  const post = await getPostById(postId)
+  return post?.comments.find((comment) => comment.id === commentId) ?? null
 }
 
 export async function createPostMediaUpload(input: { mimeType: string; size: number }): Promise<PostMediaUploadActionResult> {
@@ -300,18 +310,19 @@ export async function addComment(_previousState: CommentActionState, formData: F
   }
   const user = await requireAwsUser()
   try {
-    await addPostCommentWithAurora(
+    const commentId = await addPostCommentWithAurora(
       user.id,
       parsed.data.postId,
       parsed.data.body,
       parsed.data.parentCommentId ?? null,
       parsed.data.mentionProfileIds,
     )
+    const comment = await hydrateComment(parsed.data.postId, commentId)
+    if (!comment) return { error: 'We could not refresh your comment.', value: parsed.data.body }
+    return { ok: true, comment }
   } catch {
     return { error: 'We could not add your comment.', value: parsed.data.body }
   }
-  revalidateSocialFeed()
-  return { ok: true }
 }
 
 export async function updateComment(_previousState: CommentActionState, formData: FormData): Promise<CommentActionState> {
@@ -330,12 +341,15 @@ export async function updateComment(_previousState: CommentActionState, formData
   }
   const user = await requireAwsUser()
   try {
-    await updateCommentWithAurora(
+    const updated = await updateCommentWithAurora(
       user.id,
       parsed.data.commentId,
       parsed.data.body,
       parsed.data.mentionProfileIds,
     )
+    const comment = await hydrateComment(updated.postId, updated.id)
+    if (!comment) return { error: 'We could not refresh your comment.', value: rawValue }
+    return { ok: true, comment }
   } catch (error) {
     return {
       error: error instanceof Error && error.message === 'feed_comment_edit_expired'
@@ -344,18 +358,19 @@ export async function updateComment(_previousState: CommentActionState, formData
       value: rawValue,
     }
   }
-  revalidateSocialFeed()
-  return { ok: true }
 }
 
-export async function deleteComment(commentId: string): Promise<FeedActionResult> {
+export async function deleteComment(commentId: string): Promise<DeleteCommentActionResult> {
   const parsed = deleteCommentInputSchema.safeParse({ commentId })
   if (!parsed.success) return { ok: false, error: 'Invalid comment.' }
   const user = await requireAwsUser()
-  try { await deleteCommentWithAurora(user.id, parsed.data.commentId) }
-  catch { return { ok: false, error: 'We could not delete this comment.' } }
-  revalidateSocialFeed()
-  return { ok: true }
+  try {
+    const deleted = await deleteCommentWithAurora(user.id, parsed.data.commentId)
+    const comment = await hydrateComment(deleted.postId, deleted.id)
+    return { ok: true, commentId: deleted.id, comment }
+  } catch {
+    return { ok: false, error: 'We could not delete this comment.' }
+  }
 }
 
 export async function setPollVote(postId: string, optionId: string): Promise<FeedActionResult> {
