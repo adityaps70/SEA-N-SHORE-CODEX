@@ -42,14 +42,12 @@ function CommentReactionSummary({ summary, onOpen }: { summary: ReactionSummary;
   if (!total) return null
   const activeReactions = POST_REACTIONS.filter((reaction) => summary[reaction] > 0)
   return (
-    <>
-      <button type="button" onClick={onOpen} aria-label="View comment reaction types" className="inline-flex min-h-8 items-center gap-0.5 rounded-lg px-1 text-[11px] transition hover:bg-mist-50">
+    <button type="button" onClick={onOpen} aria-label={`View ${total} comment reactions`} className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-[11px] text-muted transition hover:bg-mist-50 hover:text-ocean-700">
+      <span aria-hidden="true" className="inline-flex items-center gap-0.5">
         {activeReactions.map((reaction) => <span key={reaction}>{POST_REACTION_META[reaction].emoji}</span>)}
-      </button>
-      <button type="button" onClick={onOpen} aria-label={`View ${total} comment reactions`} className="min-h-8 rounded-lg px-1 text-[11px] text-muted transition hover:bg-mist-50 hover:text-ocean-700">
-        {total} {total === 1 ? 'reaction' : 'reactions'}
-      </button>
-    </>
+      </span>
+      <span>{total}</span>
+    </button>
   )
 }
 
@@ -247,10 +245,10 @@ function CommentItem({ postId, comment, rootCommentId, readOnly, isReply = false
         </div>
         {!editing ? (
           <div className="mt-0.5 flex min-h-8 items-center gap-1.5 px-1">
-            <CommentReactionSummary summary={summary} onOpen={() => setReactionsOpen(true)} />
-            <CommentReplySummary count={replyCount} />
             {!readOnly ? <ReactionPicker value={reaction} disabled={reactionPending} onChange={changeReaction} compact /> : null}
             {!readOnly ? <button type="button" onClick={() => setReplying((value) => !value)} className="min-h-8 rounded-lg px-2 text-xs font-semibold text-navy-900 hover:bg-mist-50">Reply</button> : null}
+            <CommentReplySummary count={replyCount} />
+            <CommentReactionSummary summary={summary} onOpen={() => setReactionsOpen(true)} />
           </div>
         ) : null}
         {error ? <p role="alert" className="px-1 text-xs text-red-700">{error}</p> : null}
