@@ -42,6 +42,8 @@ const postId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const rootId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const replyId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 const otherId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+const newRootId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+const newReplyId = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
 
 const viewerAuthor = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -133,8 +135,54 @@ describe('CommentThread management', () => {
     expect(item(replyId).getByRole('button', { name: 'Delete' })).toBeInTheDocument()
   })
 
-  it('edits inline with mention autocomplete and submits the same comment id with the selected mentions', async () => {
+  it('adds a root comment to the mounted thread without refreshing the route', async () => {
     const user = userEvent.setup()
+    const created = comment({
+      id: newRootId,
+      body: 'Fresh local comment.',
+      createdAt: '2026-09-10T09:05:00.000Z',
+      updatedAt: '2026-09-10T09:05:00.000Z',
+    })
+    mocks.addComment.mockResolvedValueOnce({ ok: true, comment: created } as never)
+
+    render(<CommentThread postId={postId} comments={[comment()]} composerOpen />)
+    await user.type(screen.getByRole('textbox', { name: /add a comment/i }), 'Fresh local comment.')
+    await user.click(screen.getByRole('button', { name: 'Comment' }))
+
+    expect(await screen.findByText('Fresh local comment.')).toBeInTheDocument()
+    expect(item(newRootId).getByText('Fresh local comment.')).toBeInTheDocument()
+    expect(mocks.refresh).not.toHaveBeenCalled()
+  })
+
+  it('adds a reply locally, increments the reply count, and keeps the route mounted', async () => {
+    const user = userEvent.setup()
+    const createdReply = comment({
+      id: newReplyId,
+      body: 'Fresh threaded reply.',
+      parentCommentId: rootId,
+      createdAt: '2026-09-10T09:06:00.000Z',
+      updatedAt: '2026-09-10T09:06:00.000Z',
+    })
+    mocks.addComment.mockResolvedValueOnce({ ok: true, comment: createdReply } as never)
+
+    render(<CommentThread postId={postId} comments={[comment()]} />)
+    await user.click(item(rootId).getByRole('button', { name: 'Reply' }))
+    await user.type(item(rootId).getByRole('textbox', { name: /write a reply/i }), 'Fresh threaded reply.')
+    await user.click(item(rootId).getByRole('button', { name: 'Reply' }))
+
+    expect(await screen.findByText('Fresh threaded reply.')).toBeInTheDocument()
+    expect(item(rootId).getByLabelText('1 reply')).toBeInTheDocument()
+    expect(mocks.refresh).not.toHaveBeenCalled()
+  })
+
+  it('edits inline with mention autocomplete, updates locally, and submits the same comment id with selected mentions', async () => {
+    const user = userEvent.setup()
+    const updated = comment({
+      body: 'Updated note for @Rahul Gupta ',
+      updatedAt: '2026-09-10T09:07:00.000Z',
+      mentions: [{ profileId: '44444444-4444-4444-8444-444444444444', slug: 'rahul-gupta', fullName: 'Rahul Gupta' }],
+    })
+    mocks.updateComment.mockResolvedValueOnce({ ok: true, comment: updated } as never)
     render(<CommentThread postId={postId} comments={[comment()]} />)
 
     await user.click(item(rootId).getByRole('button', { name: /comment actions/i }))
@@ -153,7 +201,9 @@ describe('CommentThread management', () => {
     expect(formData.get('commentId')).toBe(rootId)
     expect(formData.get('body')).toBe('Updated note for @Rahul Gupta ')
     expect(formData.getAll('mentionProfileId')).toEqual(['44444444-4444-4444-8444-444444444444'])
-    expect(mocks.refresh).toHaveBeenCalled()
+    expect(await item(rootId).findByText(/Updated note for/i)).toBeInTheDocument()
+    expect(item(rootId).getByText('Edited')).toBeInTheDocument()
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('keeps an edit draft open and shows the server error when save is rejected', async () => {
@@ -173,7 +223,7 @@ describe('CommentThread management', () => {
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
-  it('soft-delete action leaves failures inline and refreshes only after success', async () => {
+  it('soft-delete action leaves failures inline and removes a standalone comment locally after success', async () => {
     const user = userEvent.setup()
     mocks.deleteComment.mockResolvedValueOnce({ ok: false, error: 'We could not delete this comment.' } as never)
     render(<CommentThread postId={postId} comments={[comment()]} />)
@@ -185,9 +235,12 @@ describe('CommentThread management', () => {
     expect(mocks.deleteComment).toHaveBeenCalledWith(rootId)
     expect(mocks.refresh).not.toHaveBeenCalled()
 
+    mocks.deleteComment.mockResolvedValueOnce({ ok: true, commentId: rootId, comment: null } as never)
     await user.click(item(rootId).getByRole('button', { name: /comment actions/i }))
     await user.click(item(rootId).getByRole('button', { name: 'Delete' }))
-    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
+
+    await waitFor(() => expect(document.getElementById(`comment-${rootId}`)).not.toBeInTheDocument())
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('renders Edited only when updatedAt is later than createdAt', () => {
