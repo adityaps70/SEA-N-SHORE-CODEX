@@ -10,13 +10,14 @@ import {
 } from './media'
 import { isOwnedPostMediaStoragePath, validatePostMediaMetadata } from './media-policy'
 import { getFeedPage } from './queries'
-import { commentInputSchema, createPostInputSchema, feedRequestSchema, pollVoteSchema, reactionSchema } from './schemas'
+import { commentInputSchema, createPostInputSchema, feedRequestSchema, pollVoteSchema, reactionDetailsSchema, reactionSchema } from './schemas'
 import {
   addPostCommentWithAurora,
   assertPendingMediaDiscardableWithAurora,
   createPollPostWithAurora,
   createStandardPostWithAurora,
   deletePostWithAurora,
+  loadReactionDetailsWithAurora,
   setCommentReactionWithAurora,
   setPollVoteWithAurora,
   setPostLikedWithAurora,
@@ -203,6 +204,18 @@ export async function loadFeedPage(input: FeedRequest) {
   if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
   try { return { ok: true as const, page: await getFeedPage(parsed.data) } }
   catch { return { ok: false as const, error: 'We could not load more posts.' } }
+}
+
+export async function loadReactionDetails(input: unknown) {
+  const parsed = reactionDetailsSchema.safeParse(input)
+  if (!parsed.success) return { ok: false as const, error: 'Invalid reaction request.' }
+  try {
+    const user = await requireAwsUser()
+    const page = await loadReactionDetailsWithAurora(user.id, parsed.data)
+    return { ok: true as const, page }
+  } catch {
+    return { ok: false as const, error: 'We could not load reactions.' }
+  }
 }
 
 const postIdSchema = z.string().uuid()
