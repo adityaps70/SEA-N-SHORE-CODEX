@@ -7,9 +7,6 @@ import { Card } from '@/components/ui/card'
 import { deletePost, setPostReaction, setPostSaved } from '../actions'
 import {
   EMPTY_REACTION_SUMMARY,
-  POST_REACTIONS,
-  POST_REACTION_META,
-  reactionCount,
   type FeedPost,
   type PostReactionType,
   type ReactionSummary,
@@ -18,7 +15,9 @@ import { CommentThread } from './comment-thread'
 import { MentionText } from './mention-text'
 import { PollCard } from './poll-card'
 import { PostMedia } from './post-media'
+import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
+import { ReactionSummaryTrigger } from './reaction-summary'
 import { SharePostButton } from './share-post-button'
 
 function initials(name: string) {
@@ -46,25 +45,12 @@ function updateSummary(summary: ReactionSummary, previous: PostReactionType | nu
   return updated
 }
 
-function ReactionSummaryLine({ summary }: { summary: ReactionSummary }) {
-  const total = reactionCount(summary)
-  if (!total) return <span>Be the first to react</span>
-  const active = POST_REACTIONS.filter((reaction) => summary[reaction] > 0)
-  return (
-    <span className="inline-flex items-center gap-1.5" aria-label={`${total} ${total === 1 ? 'reaction' : 'reactions'}`}>
-      <span aria-hidden="true" className="-space-x-1">
-        {active.slice(0, 4).map((reaction) => <span key={reaction}>{POST_REACTION_META[reaction].emoji}</span>)}
-      </span>
-      <span>{total} {total === 1 ? 'reaction' : 'reactions'}</span>
-    </span>
-  )
-}
-
 export function PostCard({ post, detail = false, readOnly = false }: { post: FeedPost; detail?: boolean; readOnly?: boolean }) {
   const [reaction, setReaction] = useState<PostReactionType | null>(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
   const [summary, setSummary] = useState<ReactionSummary>(() => initialSummary(post))
   const [saved, setSaved] = useState(post.viewerSaved)
   const [composerOpen, setComposerOpen] = useState(detail && !readOnly)
+  const [reactionsOpen, setReactionsOpen] = useState(false)
   const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
@@ -150,9 +136,8 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
           {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-mist-100 px-4 py-2 text-xs text-muted sm:px-5">
-          <ReactionSummaryLine summary={summary} />
-          <span>{post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}</span>
+        <div className="border-t border-mist-100 px-4 py-2 sm:px-5">
+          <ReactionSummaryTrigger summary={summary} commentCount={post.commentCount} onOpen={() => setReactionsOpen(true)} />
         </div>
 
         {readOnly ? (
@@ -182,6 +167,13 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
         {(post.commentCount > 0 || composerOpen) ? (
           <CommentThread postId={post.id} comments={post.comments} readOnly={readOnly} composerOpen={composerOpen} />
         ) : null}
+        <ReactionDetailsModal
+          open={reactionsOpen}
+          targetType="post"
+          targetId={post.id}
+          summary={summary}
+          onClose={() => setReactionsOpen(false)}
+        />
       </article>
     </Card>
   )
