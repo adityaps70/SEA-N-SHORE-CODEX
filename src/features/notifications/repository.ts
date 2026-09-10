@@ -1,11 +1,15 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
+import type { PostReactionType } from '@/features/feed/types'
 import type { NetworkNotificationType } from './types'
 
 export type NotificationRow = QueryResultRow & {
   id: string
   actor_id: string | null
   notification_type: NetworkNotificationType
+  post_id: string | null
+  comment_id: string | null
+  reaction_type: PostReactionType | null
   created_at: string
   read_at: string | null
 }
@@ -31,7 +35,9 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
   return {
     async listRecent(recipientId: string, limit: number): Promise<NotificationRow[]> {
       const rows = await queryRows(
-        `select id, actor_id, notification_type::text as notification_type, created_at, read_at
+        `select id, actor_id, notification_type::text as notification_type,
+                post_id, comment_id, reaction_type::text as reaction_type,
+                created_at, read_at
          from public.notifications
          where recipient_id = $1
          order by created_at desc
@@ -86,6 +92,9 @@ export function createNotificationEventRepositoryForClient(client: DatabaseQuery
       actorId: string
       type: NetworkNotificationType
       connectionId?: string
+      postId?: string
+      commentId?: string
+      reactionType?: PostReactionType
     }) {
       const receipt = await client.query<ReceiptRow>(
         `insert into public.notification_event_receipts (event_id, processing_mode)
@@ -105,10 +114,19 @@ export function createNotificationEventRepositoryForClient(client: DatabaseQuery
 
       const notification = await client.query<IdRow>(
         `insert into public.notifications (
-           recipient_id, actor_id, notification_type, connection_id
-         ) values ($1, $2, $3, $4)
+           recipient_id, actor_id, notification_type, connection_id,
+           post_id, comment_id, reaction_type
+         ) values ($1, $2, $3, $4, $5, $6, $7)
          returning id`,
-        [input.recipientId, input.actorId, input.type, input.connectionId ?? null],
+        [
+          input.recipientId,
+          input.actorId,
+          input.type,
+          input.connectionId ?? null,
+          input.postId ?? null,
+          input.commentId ?? null,
+          input.reactionType ?? null,
+        ],
       )
       const notificationId = notification.rows[0]?.id
       if (!notificationId) throw new Error('notification_event_insert_failed')
