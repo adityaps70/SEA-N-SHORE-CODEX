@@ -23,14 +23,7 @@ export function ReactionSummaryTrigger({
 
   return (
     <div className="flex min-w-0 items-center justify-between gap-3 text-xs text-muted">
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label={`View ${total} ${total === 1 ? 'reaction' : 'reactions'}`}
-        className="min-w-0 truncate rounded-lg text-left transition hover:text-ocean-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/30"
-      >
-        {label}
-      </button>
+      <span className="min-w-0 truncate">{label}</span>
 
       <div className="flex shrink-0 items-center gap-3">
         <span>{commentCount} {commentCount === 1 ? 'comment' : 'comments'}</span>
