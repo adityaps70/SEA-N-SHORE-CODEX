@@ -54,9 +54,9 @@ describe('feed repository', () => {
     expect(values).toEqual([viewerId, 50])
   })
 
-  it('hydrates viewer liked, saved and vote state only for the permanent viewer UUID', async () => {
+  it('hydrates viewer reaction, saved and vote state only for the permanent viewer UUID', async () => {
     const query = vi.fn()
-      .mockResolvedValueOnce([{ post_id: postId }])
+      .mockResolvedValueOnce([{ post_id: postId, reaction_type: 'support' }])
       .mockResolvedValueOnce([{ post_id: postId }])
       .mockResolvedValueOnce([{ post_id: postId, option_id: '44444444-4444-4444-8444-444444444444' }])
     const { createFeedRepository } = await import('./repository')
@@ -64,7 +64,7 @@ describe('feed repository', () => {
 
     const state = await repository.getViewerState(viewerId, [postId])
 
-    expect(state.likedPostIds.has(postId)).toBe(true)
+    expect(state.postReactions.get(postId)).toBe('support')
     expect(state.savedPostIds.has(postId)).toBe(true)
     expect(state.pollVotes.get(postId)).toBe('44444444-4444-4444-8444-444444444444')
     for (const [, values] of callsOf(query)) expect(values?.[0]).toBe(viewerId)
