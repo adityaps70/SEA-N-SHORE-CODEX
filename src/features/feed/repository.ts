@@ -234,10 +234,15 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     const viewerSql = viewerProfileId
       ? `(select cr.reaction_type::text from public.comment_reactions cr where cr.comment_id = c.id and cr.user_id = $2 limit 1)`
       : `null::text`
+    const ownershipSql = viewerProfileId
+      ? `(c.author_id = $2) as viewer_owns,
+         (c.author_id = $2 and c.deleted_at is null and now() < c.created_at + interval '15 minutes') as can_edit`
+      : `false as viewer_owns,
+         false as can_edit`
     const values: readonly unknown[] = viewerProfileId ? [postIds, viewerProfileId] : [postIds]
     return await queryRows(
       `select
-         c.id, c.post_id, c.parent_comment_id, c.body, c.created_at,
+         c.id, c.post_id, c.parent_comment_id, c.body, c.created_at, c.updated_at, c.deleted_at,
          json_build_object(
            'id', author.id,
            'slug', author.slug,
@@ -253,6 +258,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
            'on_point', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'on_point')
          ) as reaction_summary,
          ${viewerSql} as viewer_reaction,
+         ${ownershipSql},
          coalesce((
            select json_agg(json_build_object('profile_id', mentioned.id, 'slug', mentioned.slug, 'full_name', mentioned.full_name) order by mention.created_at asc)
            from public.content_mentions mention
