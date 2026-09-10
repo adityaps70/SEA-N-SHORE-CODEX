@@ -19,6 +19,7 @@
 - Comment/reply Edit is author-only and allowed strictly before `created_at + interval '15 minutes'`; at or after the cutoff it is rejected server-side.
 - Comment/reply Delete is author-only and available anytime.
 - Root comments with visible replies become tombstones after deletion; deleted bodies/mentions/reaction controls are never exposed.
+- The existing schema already has `post_comments.created_at`, `updated_at`, `deleted_at`, and the `post_comments_set_updated_at` trigger in `infra/aws/database/migrations/0002_content_network.sql`. **No database migration is required for this feature.**
 - Staging deployment must use `scripts/aws/staging-deploy-action.txt = deploy-once`, keep the branch pinned through exact deployment verification, then return it to `plan`.
 - Keep `scripts/aws/edge-recovery-action.txt` and `scripts/aws/github-deploy-iam-action.txt` at `plan`.
 - Correct AWS account is `310356785722`.
@@ -28,37 +29,40 @@
 ## File Structure
 
 **Feed data/contracts**
-- Modify `src/features/feed/types.ts` — add reactor result types and comment ownership/edit/tombstone metadata.
+- Modify `src/features/feed/types.ts` — reactor result types and comment ownership/edit/tombstone metadata.
 - Modify `src/features/feed/mappers.ts` — map comment update/ownership/deletion metadata.
-- Modify `src/features/feed/repository.ts` — add lazy reactor reads and author-scoped comment update/delete SQL.
-- Modify `src/features/feed/service.ts` — orchestrate reactor reads, comment edit/delete, mention replacement, and permission errors.
+- Modify `src/features/feed/repository.ts` — lazy reactor reads and author-scoped comment update/delete SQL.
+- Modify `src/features/feed/service.ts` — reactor reads, comment edit/delete, mention replacement, permission errors.
 - Modify `src/features/feed/schemas.ts` — validate reaction-details queries and comment edit payloads.
 - Modify `src/features/feed/actions.ts` — expose lazy reaction reads and comment edit/delete server actions.
 
 **Feed UI**
 - Modify `src/features/feed/components/reaction-picker.tsx` — neutral lucide thumbs-up when unreacted; selected emoji only when reacted.
-- Create `src/features/feed/components/reaction-summary.tsx` — reusable total-only summary + unique reaction cluster trigger.
+- Create `src/features/feed/components/reaction-summary.tsx` — total-only summary + far-right unique reaction cluster trigger.
 - Create `src/features/feed/components/reaction-details-modal.tsx` — shared post/comment reactor modal with tabs and lazy loading.
-- Modify `src/features/feed/components/post-card.tsx` — use total-only summary, far-right cluster, one primary reaction icon.
-- Modify `src/features/feed/components/comment-thread.tsx` — total-only comment reactions, modal trigger, owner menu, inline edit, delete/tombstone behavior.
+- Modify `src/features/feed/components/post-card.tsx` — one primary reaction icon and LinkedIn-style summary/modal behavior.
+- Modify `src/features/feed/components/comment-thread.tsx` — total-only comment reactions, owner menu, inline edit, delete/tombstone behavior.
 
 **Notifications**
-- Create `src/lib/relative-time.ts` — one shared deterministic relative-time formatter.
-- Modify `src/features/notifications/components/notification-list.tsx` — render relative notification age and retain precise accessible timestamp.
+- Create `src/lib/relative-time.ts` — deterministic relative-time formatter.
+- Modify `src/features/notifications/components/notification-list.tsx` — relative visible age + precise timestamp metadata.
 
 **Tests**
-- Modify `src/features/feed/types.test.ts` only if existing type helper tests require extension; otherwise no new type-only test.
 - Modify `src/features/feed/mappers.test.ts`.
 - Modify `src/features/feed/repository.test.ts`.
 - Modify `src/features/feed/service.test.ts`.
+- Modify `src/features/feed/schemas.test.ts`.
 - Modify `src/features/feed/actions.test.ts`.
 - Modify `src/features/feed/components/reaction-picker-hover.test.tsx`.
 - Create `src/features/feed/components/reaction-summary.test.tsx`.
 - Create `src/features/feed/components/reaction-details-modal.test.tsx`.
-- Modify existing post-card reaction test(s) in `src/features/feed/components/`.
-- Modify `src/features/feed/components/comment-thread-mentions.test.tsx` and add `src/features/feed/components/comment-thread-management.test.tsx`.
-- Add or modify notification-list tests under `src/features/notifications/components/`.
+- Modify `src/features/feed/components/post-card.test.tsx`.
+- Modify `src/features/feed/components/post-card-owner.test.tsx` only for ownership regressions if required by changed props.
+- Modify `src/features/feed/components/comment-thread-mentions.test.tsx`.
+- Create `src/features/feed/components/comment-thread-management.test.tsx`.
+- Create `src/features/notifications/components/notification-list.test.tsx`.
 - Create `src/lib/relative-time.test.ts`.
+- Run `src/feed-social-interactions-contract.test.tsx` as an integration regression guard.
 
 ---
 
@@ -68,32 +72,12 @@
 - Modify: `src/features/feed/types.ts`
 - Modify: `src/features/feed/mappers.ts`
 - Modify: `src/features/feed/mappers.test.ts`
+- Modify: `src/features/feed/repository.ts`
+- Modify: `src/features/feed/repository.test.ts`
 
-**Interfaces:**
-- Produces:
-  ```ts
-  export type ReactionTargetType = 'post' | 'comment'
-  export type ReactorProfile = FeedAuthor & {
-    reaction: PostReactionType
-    reactedAt: string
-  }
-  export type ReactionDetailsPage = {
-    reactors: ReactorProfile[]
-    summary: ReactionSummary
-    nextCursor: string | null
-  }
-  ```
-- Extends `FeedComment` with:
-  ```ts
-  updatedAt: string
-  viewerOwns: boolean
-  canEdit: boolean
-  deleted: boolean
-  ```
+- [ ] **Step 1: Write failing mapper/repository tests for comment metadata.**
 
-- [ ] **Step 1: Write failing mapper tests for comment metadata**
-
-Add fixtures that include `updated_at`, `deleted_at`, and an author matching the viewer. Assert the mapped comment exposes `updatedAt`, `viewerOwns`, and `deleted`, and derives `canEdit` from an explicit row field rather than client time.
+Require comment rows to expose `updated_at`, `deleted_at`, `viewer_owns`, and `can_edit`, with edit eligibility computed server-side in SQL using database time.
 
 ```ts
 expect(post.comments[0]).toMatchObject({
@@ -104,39 +88,52 @@ expect(post.comments[0]).toMatchObject({
 })
 ```
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [ ] **Step 2: Run RED.**
 
-Run:
 ```bash
-npm test -- src/features/feed/mappers.test.ts
+npm test -- src/features/feed/mappers.test.ts src/features/feed/repository.test.ts
 ```
-Expected: FAIL because the new properties do not exist.
+Expected: FAIL because the new metadata is not hydrated.
 
-- [ ] **Step 3: Add exact types and mapper fields**
+- [ ] **Step 3: Add exact types and query fields.**
 
-Extend `FeedCommentRow` with `updated_at`, `deleted_at`, and `can_edit`; map them directly. Do not calculate the 15-minute window in the mapper.
+Add:
+```ts
+export type ReactionTargetType = 'post' | 'comment'
+export type ReactorProfile = FeedAuthor & {
+  reaction: PostReactionType
+  reactedAt: string
+}
+export type ReactionDetailsPage = {
+  reactors: ReactorProfile[]
+  nextCursor: string | null
+}
+```
 
-- [ ] **Step 4: Run focused tests and typecheck**
+Extend `FeedComment` with `updatedAt`, `viewerOwns`, `canEdit`, and `deleted`. In `getComments`, derive `viewer_owns` from `author_id = viewerProfileId` and `can_edit` from ownership plus `now() < c.created_at + interval '15 minutes'`. Do not derive permissions from browser/client time.
+
+- [ ] **Step 4: Run GREEN.**
 
 ```bash
-npm test -- src/features/feed/mappers.test.ts
+npm test -- src/features/feed/mappers.test.ts src/features/feed/repository.test.ts
 npm run typecheck
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Commit.**
 
 ```bash
-git add src/features/feed/types.ts src/features/feed/mappers.ts src/features/feed/mappers.test.ts
+git add src/features/feed/types.ts src/features/feed/mappers.ts src/features/feed/mappers.test.ts src/features/feed/repository.ts src/features/feed/repository.test.ts
 git commit -m "feat: extend feed comment interaction metadata"
 ```
 
 ---
 
-### Task 2: Add lazy reactor identity queries for posts and comments
+### Task 2: Add lazy reactor identity reads for posts and comments
 
 **Files:**
 - Modify: `src/features/feed/schemas.ts`
+- Modify: `src/features/feed/schemas.test.ts`
 - Modify: `src/features/feed/repository.ts`
 - Modify: `src/features/feed/repository.test.ts`
 - Modify: `src/features/feed/service.ts`
@@ -144,80 +141,58 @@ git commit -m "feat: extend feed comment interaction metadata"
 - Modify: `src/features/feed/actions.ts`
 - Modify: `src/features/feed/actions.test.ts`
 
-**Interfaces:**
-- Produces server action:
-  ```ts
-  export async function loadReactionDetails(input: {
-    targetType: 'post' | 'comment'
-    targetId: string
-    reaction?: PostReactionType
-    cursor?: string
-    limit?: number
-  }): Promise<{ ok: true; page: ReactionDetailsPage } | { ok: false; error: string }>
-  ```
-- Repository method:
-  ```ts
-  listReactionDetails(input: {
-    viewerProfileId: string
-    targetType: ReactionTargetType
-    targetId: string
-    reaction?: PostReactionType
-    cursor?: string
-    limit: number
-  }): Promise<{ rows: ReactorRow[]; nextCursor: string | null }>
-  ```
+- [ ] **Step 1: Write RED schema/repository tests.**
 
-- [ ] **Step 1: Write RED repository tests for post and comment reactors**
+Cover both `post_reactions` and `comment_reactions`, optional reaction filter, stable pagination, active-profile filtering, and existing user-block visibility rules. The normal feed query must remain aggregate-only.
 
-Assert generated SQL joins the appropriate reaction table to `profiles` and `maritime_profiles`, filters deleted/inactive/blocked identities using the existing feed visibility rules, optionally filters `reaction_type`, and orders by newest reaction first with a stable secondary key.
-
-- [ ] **Step 2: Run repository tests**
+- [ ] **Step 2: Run RED.**
 
 ```bash
-npm test -- src/features/feed/repository.test.ts
+npm test -- src/features/feed/schemas.test.ts src/features/feed/repository.test.ts
 ```
-Expected: FAIL because `listReactionDetails` is absent.
+Expected: FAIL because reaction-details read contracts do not exist.
 
-- [ ] **Step 3: Implement repository query and cursor contract**
+- [ ] **Step 3: Implement schema and repository query.**
 
-Use the existing reaction tables. Return profile identity + `reaction_type` + `created_at`; use `limit + 1` to derive `nextCursor`. Do not modify normal `FEED_ROW_SELECT` to fetch names of reactors.
+Use a Zod input with `targetType`, UUID `targetId`, optional reaction, cursor, and `limit` capped at 50. Query existing reaction tables and join `profiles`/`maritime_profiles`. Return profile identity, reaction type, and reaction created time. Fetch `limit + 1` to derive `nextCursor`.
 
-- [ ] **Step 4: Write RED service/action tests**
+- [ ] **Step 4: Write RED service/action tests.**
 
-Cover invalid target IDs, invalid reaction filters, authentication, successful post/comment reads, and safe generic error response.
+Cover invalid target IDs/reactions, authentication, successful post/comment reads, safe generic errors, and profile avatar URL hydration.
 
-- [ ] **Step 5: Implement Zod schema, service mapping, and server action**
+- [ ] **Step 5: Implement service/action.**
 
-Use:
+Expose:
 ```ts
-const reactionDetailsSchema = z.object({
-  targetType: z.enum(['post', 'comment']),
-  targetId: z.string().uuid(),
-  reaction: reactionSchema.optional(),
-  cursor: z.string().optional(),
-  limit: z.number().int().min(1).max(50).default(30),
-})
+export async function loadReactionDetails(input: {
+  targetType: 'post' | 'comment'
+  targetId: string
+  reaction?: PostReactionType
+  cursor?: string
+  limit?: number
+}): Promise<{ ok: true; page: ReactionDetailsPage } | { ok: false; error: string }>
 ```
-Map avatar storage paths to signed URLs using the same feed media/profile signing path already used by feed queries.
 
-- [ ] **Step 6: Run focused tests**
+Do not include aggregate summary in the lazy response; the modal receives the already-hydrated `ReactionSummary` from the feed/comment card for tab counts.
+
+- [ ] **Step 6: Run GREEN.**
 
 ```bash
-npm test -- src/features/feed/repository.test.ts src/features/feed/service.test.ts src/features/feed/actions.test.ts
+npm test -- src/features/feed/schemas.test.ts src/features/feed/repository.test.ts src/features/feed/service.test.ts src/features/feed/actions.test.ts
 npm run typecheck
 ```
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Commit.**
 
 ```bash
-git add src/features/feed/schemas.ts src/features/feed/repository.ts src/features/feed/repository.test.ts src/features/feed/service.ts src/features/feed/service.test.ts src/features/feed/actions.ts src/features/feed/actions.test.ts
+git add src/features/feed/schemas.ts src/features/feed/schemas.test.ts src/features/feed/repository.ts src/features/feed/repository.test.ts src/features/feed/service.ts src/features/feed/service.test.ts src/features/feed/actions.ts src/features/feed/actions.test.ts
 git commit -m "feat: add lazy reaction detail reads"
 ```
 
 ---
 
-### Task 3: Build the LinkedIn-style reaction summary and reactor modal
+### Task 3: Build reusable reaction summary and reaction-details modal
 
 **Files:**
 - Create: `src/features/feed/components/reaction-summary.tsx`
@@ -225,54 +200,23 @@ git commit -m "feat: add lazy reaction detail reads"
 - Create: `src/features/feed/components/reaction-details-modal.tsx`
 - Create: `src/features/feed/components/reaction-details-modal.test.tsx`
 
-**Interfaces:**
-- `ReactionSummaryTrigger`:
-  ```ts
-  function ReactionSummaryTrigger(props: {
-    summary: ReactionSummary
-    commentCount?: number
-    onOpen(): void
-  }): JSX.Element
-  ```
-- `ReactionDetailsModal`:
-  ```ts
-  function ReactionDetailsModal(props: {
-    open: boolean
-    targetType: ReactionTargetType
-    targetId: string
-    summary: ReactionSummary
-    onClose(): void
-  }): JSX.Element | null
-  ```
+- [ ] **Step 1: Write RED summary tests.**
 
-- [ ] **Step 1: Write RED summary tests**
+Require the left side to show only `N reaction(s)`, never an active-emoji string. Require the **extreme-right** trigger to show only unique active reaction types; the comment count sits immediately to its left. When total is zero, render a neutral lucide `ThumbsUp` affordance.
 
-Assert:
-```ts
-expect(screen.getByText('53 reactions')).toBeInTheDocument()
-expect(screen.queryByText('👍❤️⚓')).not.toBeInTheDocument()
-expect(screen.getByRole('button', { name: /view reactions/i })).toBeInTheDocument()
-```
-Also assert the far-right cluster contains unique active types only and neutral `ThumbsUp` when total is zero.
+- [ ] **Step 2: Implement `ReactionSummary`.**
 
-- [ ] **Step 2: Implement `ReactionSummaryTrigger`**
+Expose a reusable component receiving `summary`, optional `commentCount`, and `onOpen`. The total text and far-right unique-type cluster both open the same modal. Keep cluster compact and Sea N Shore styled.
 
-Render left total text only. Render right cluster as overlapping/compact emoji circles for active types, or lucide `ThumbsUp` for empty state. Keep comment count nearby when supplied.
+- [ ] **Step 3: Write RED modal tests.**
 
-- [ ] **Step 3: Write RED modal tests**
+Mock `loadReactionDetails`. Require `All` plus only non-zero type tabs, tab counts from the passed aggregate summary, reactor rows with avatar/name/rank/company/exact reaction, profile links, loading/error/retry, close behavior, and a fresh lazy read when filters change.
 
-Mock `loadReactionDetails`. Assert All + only non-zero reaction tabs, names/profile links, exact reaction icon per row, loading/error states, close button, and filtering triggers a fresh lazy read.
+- [ ] **Step 4: Implement modal.**
 
-- [ ] **Step 4: Implement modal**
+Use a centered rounded Sea N Shore modal with mobile-scrollable tabs and vertically scrollable reactor list. `All` loads all; type tabs pass the reaction filter. Preserve accessibility with dialog labelling and focusable close control.
 
-Use fixed overlay + centered rounded Sea N Shore card. Suggested structural classes:
-```tsx
-<div className="fixed inset-0 z-50 grid place-items-center bg-navy-950/35 p-4">
-  <section className="flex max-h-[80vh] w-full max-w-xl flex-col overflow-hidden rounded-[1.5rem] border border-mist-100 bg-white shadow-2xl">
-```
-Keep tabs horizontally scrollable on mobile and reactor list vertically scrollable.
-
-- [ ] **Step 5: Run tests**
+- [ ] **Step 5: Run GREEN.**
 
 ```bash
 npm test -- src/features/feed/components/reaction-summary.test.tsx src/features/feed/components/reaction-details-modal.test.tsx
@@ -280,7 +224,7 @@ npm run typecheck
 ```
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit.**
 
 ```bash
 git add src/features/feed/components/reaction-summary.tsx src/features/feed/components/reaction-summary.test.tsx src/features/feed/components/reaction-details-modal.tsx src/features/feed/components/reaction-details-modal.test.tsx
@@ -295,91 +239,80 @@ git commit -m "feat: add reaction summary and reactor modal"
 - Modify: `src/features/feed/components/reaction-picker.tsx`
 - Modify: `src/features/feed/components/reaction-picker-hover.test.tsx`
 - Modify: `src/features/feed/components/post-card.tsx`
-- Modify: relevant post-card test file(s) under `src/features/feed/components/`
+- Modify: `src/features/feed/components/post-card.test.tsx`
+- Modify: `src/features/feed/components/post-card-owner.test.tsx` only if changed props affect its fixture contract.
 
-**Interfaces:**
-- Consumes `ReactionSummaryTrigger` and `ReactionDetailsModal` from Task 3.
+- [ ] **Step 1: Write RED reaction-picker test.**
 
-- [ ] **Step 1: Write RED picker tests for unreacted state**
+Require unreacted state to render a neutral lucide thumbs-up icon and not the yellow `👍` emoji. Reacted state must render only the viewer's selected emoji. Preserve the fast custom top tooltip in the reaction tray.
 
-Assert unreacted trigger contains lucide-style SVG and not the yellow `👍` emoji; reacted state continues to show only the selected emoji.
+- [ ] **Step 2: Implement neutral unreacted icon.**
 
-- [ ] **Step 2: Implement neutral unreacted icon**
+Import `ThumbsUp` from `lucide-react`; use it only when `value === null`. Clicking unreacted still selects Like; clicking the selected reaction still removes it.
 
-Import `ThumbsUp` from `lucide-react`. Use it only when `value === null`; keep existing hover reaction tray and custom tooltips.
+- [ ] **Step 3: Write RED `post-card.test.tsx` layout tests.**
 
-- [ ] **Step 3: Write RED post-card layout tests**
+Require one primary reaction control only, total-only left summary, comment count immediately left of the far-right unique reaction cluster, and modal opening from total/cluster.
 
-Assert only total text is present in left summary, unique reaction cluster is the clickable detail trigger, only one user-reaction control appears in action row, and modal opens from either total/cluster interaction.
+- [ ] **Step 4: Wire `PostCard`.**
 
-- [ ] **Step 4: Replace `ReactionSummaryLine` in `post-card.tsx`**
+Remove the old `ReactionSummaryLine`, use the shared summary/modal components, and keep optimistic reaction count updates/rollback unchanged.
 
-Remove the current active-emoji rendering. Add local modal-open state and shared summary/modal components. Keep optimistic reaction state updates unchanged so summary counts update immediately.
-
-- [ ] **Step 5: Run focused tests**
+- [ ] **Step 5: Run GREEN.**
 
 ```bash
-npm test -- src/features/feed/components/reaction-picker-hover.test.tsx src/features/feed/components/reaction-summary.test.tsx src/features/feed/components/reaction-details-modal.test.tsx
+npm test -- src/features/feed/components/reaction-picker-hover.test.tsx src/features/feed/components/post-card.test.tsx src/features/feed/components/post-card-owner.test.tsx src/features/feed/components/reaction-summary.test.tsx src/features/feed/components/reaction-details-modal.test.tsx
 npm run typecheck
 ```
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit.**
 
 ```bash
-git add src/features/feed/components/reaction-picker.tsx src/features/feed/components/reaction-picker-hover.test.tsx src/features/feed/components/post-card.tsx src/features/feed/components
+git add src/features/feed/components/reaction-picker.tsx src/features/feed/components/reaction-picker-hover.test.tsx src/features/feed/components/post-card.tsx src/features/feed/components/post-card.test.tsx src/features/feed/components/post-card-owner.test.tsx
 git commit -m "feat: align post reactions with linkedin behavior"
 ```
 
 ---
 
-### Task 5: Add server-authoritative comment edit/delete behavior
+### Task 5: Add server-authoritative comment/reply edit and delete
 
 **Files:**
+- Modify: `src/features/feed/schemas.ts`
+- Modify: `src/features/feed/schemas.test.ts`
 - Modify: `src/features/feed/repository.ts`
 - Modify: `src/features/feed/repository.test.ts`
 - Modify: `src/features/feed/service.ts`
 - Modify: `src/features/feed/service.test.ts`
-- Modify: `src/features/feed/schemas.ts`
 - Modify: `src/features/feed/actions.ts`
 - Modify: `src/features/feed/actions.test.ts`
-- If schema inspection proves `post_comments.updated_at` is missing, create one additive migration using the repository's existing Aurora migration naming/guard pattern and add its migration contract test.
 
-**Interfaces:**
-- Server actions:
-  ```ts
-  export async function updateComment(input: {
-    commentId: string
-    body: string
-    mentionProfileIds: string[]
-  }): Promise<FeedActionResult>
+**No migration:** `post_comments.updated_at`, `deleted_at`, and the update trigger already exist in migration `0002_content_network.sql`.
 
-  export async function deleteComment(commentId: string): Promise<FeedActionResult>
-  ```
+- [ ] **Step 1: Write RED schema/repository/service tests for ownership and timing.**
 
-- [ ] **Step 1: Write RED repository/service tests for ownership and timing**
-
-Use SQL/service fixtures for these exact boundaries:
+Test exact boundaries:
 ```ts
 createdAt = now - 14m59s // edit succeeds
 createdAt = now - 15m00s // edit rejected
 ```
-Assert non-owner edit/delete rejects, deleted target rejects edit, delete is allowed after 15 minutes, and update retains `id`, `post_id`, and `parent_comment_id`.
+Also require non-owner edit/delete rejection, deleted-target edit rejection, delete after 15 minutes success, and preservation of comment ID/post/parent relationship.
 
-- [ ] **Step 2: Write RED tests for mention replacement**
+- [ ] **Step 2: Write RED mention-replacement tests.**
 
-Assert edit transaction deletes prior `content_mentions` for the comment, validates/deduplicates the submitted mention IDs, reinserts current mentions, and emits mention notification/event only for newly introduced mentionees.
+An edit replaces that comment's `content_mentions` in the same transaction, deduplicates mentions, validates visibility/blocking, and emits mention notification/event only for newly introduced mentionees. Removing a mention emits no notification.
 
-- [ ] **Step 3: Implement repository mutations**
+- [ ] **Step 3: Implement repository/service mutations.**
 
-Use one transaction for update + mention replacement. Enforce edit cutoff in SQL/service with server/database time:
+Use server/database time for edit cutoff:
 ```sql
-... where id = $commentId
-      and author_id = $viewerId
-      and deleted_at is null
-      and now() < created_at + interval '15 minutes'
+where id = $commentId
+  and author_id = $viewerId
+  and deleted_at is null
+  and now() < created_at + interval '15 minutes'
 ```
-For delete:
+
+Soft-delete:
 ```sql
 update public.post_comments
 set deleted_at = now()
@@ -387,28 +320,26 @@ where id = $1 and author_id = $2 and deleted_at is null
 returning id, post_id, parent_comment_id;
 ```
 
-- [ ] **Step 4: Hydrate root tombstones safely**
+- [ ] **Step 4: Hydrate root tombstones safely.**
 
-Change comment reads so a deleted root is returned only when it has at least one non-deleted child reply. For such rows, do not select/render body or mentions as visible content; expose `deleted: true`. Deleted replies and deleted roots without visible replies remain excluded.
+Return a deleted root only when it has at least one non-deleted visible reply. For tombstone rows, map `deleted: true` and do not expose the deleted body/mentions/reaction state to UI rendering. Deleted replies and deleted roots without visible replies are excluded.
 
-- [ ] **Step 5: Implement actions/service errors**
+- [ ] **Step 5: Implement actions and safe errors.**
 
-Return a distinct safe message for expired edit window:
-`Comments can only be edited for 15 minutes after posting.`
-Use generic messages for permission/nonexistent targets so ownership details are not leaked.
+Expose `updateComment` and `deleteComment`. Expired edits return exactly: `Comments can only be edited for 15 minutes after posting.` Permission/not-found failures remain generic.
 
-- [ ] **Step 6: Run focused tests**
+- [ ] **Step 6: Run GREEN.**
 
 ```bash
-npm test -- src/features/feed/repository.test.ts src/features/feed/service.test.ts src/features/feed/actions.test.ts
+npm test -- src/features/feed/schemas.test.ts src/features/feed/repository.test.ts src/features/feed/service.test.ts src/features/feed/actions.test.ts
 npm run typecheck
 ```
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Commit.**
 
 ```bash
-git add src/features/feed/repository.ts src/features/feed/repository.test.ts src/features/feed/service.ts src/features/feed/service.test.ts src/features/feed/schemas.ts src/features/feed/actions.ts src/features/feed/actions.test.ts
+git add src/features/feed/schemas.ts src/features/feed/schemas.test.ts src/features/feed/repository.ts src/features/feed/repository.test.ts src/features/feed/service.ts src/features/feed/service.test.ts src/features/feed/actions.ts src/features/feed/actions.test.ts
 git commit -m "feat: add controlled comment edit and delete"
 ```
 
@@ -420,47 +351,37 @@ git commit -m "feat: add controlled comment edit and delete"
 - Modify: `src/features/feed/components/comment-thread.tsx`
 - Modify: `src/features/feed/components/comment-thread-mentions.test.tsx`
 - Create: `src/features/feed/components/comment-thread-management.test.tsx`
+- Modify: `src/features/feed/components/reaction-summary.tsx` only if comment-specific compact props are required.
+- Modify: `src/features/feed/components/reaction-summary.test.tsx` for those compact props if required.
 
-**Interfaces:**
-- Consumes Task 2 reaction loader, Task 3 modal/summary components, and Task 5 mutations.
+- [ ] **Step 1: Write RED management tests.**
 
-- [ ] **Step 1: Write RED management tests**
+Cover own fresh comment/reply showing `•••` with Edit + Delete, own expired item showing Delete only, non-owner no menu, inline `MentionInput` edit, successful save, stale save preserving draft/error, root tombstone preserving replies, deleted reply disappearing, and tombstone hiding body/mentions/reactions/management.
 
-Cover:
-- own comment before 15 minutes shows `•••` menu with Edit + Delete;
-- own comment after edit window shows Delete only;
-- other user's comment shows no management menu;
-- Edit opens inline MentionInput initialized with current body/mentions;
-- successful save closes editor and refreshes;
-- expired server response preserves draft and shows the cutoff error;
-- root deletion with replies renders `Comment deleted` and retains replies;
-- reply deletion disappears;
-- tombstone has no reaction/edit/reply-to-body controls.
+- [ ] **Step 2: Implement owner menu and inline editor.**
 
-- [ ] **Step 2: Add owner menu and inline editor**
+Use lucide `MoreHorizontal`, `Pencil`, `Trash2`. Edit is initially shown from server-hydrated `canEdit`; client may hide it as the deadline passes, but server remains authoritative. Preserve existing mention autocomplete.
 
-Use lucide `MoreHorizontal`, `Pencil`, and `Trash2`. Keep the menu compact and within the comment bubble header. Preserve mention autocomplete through the existing `MentionInput`.
+- [ ] **Step 3: Replace comment reaction duplication.**
 
-- [ ] **Step 3: Replace comment `ReactionCount` with shared reaction summary behavior**
+Show total count only plus unique-type cluster. The viewer action is one neutral thumbs-up or selected emoji. Clicking count/cluster opens `ReactionDetailsModal` with `targetType="comment"`.
 
-Display total count only; the user's action control is a single neutral thumbs-up or selected emoji. Clicking count/cluster opens `ReactionDetailsModal` with `targetType="comment"`.
+- [ ] **Step 4: Render tombstones.**
 
-- [ ] **Step 4: Render tombstones**
+A deleted root with visible replies shows only a muted `Comment deleted` shell and retains replies. A deleted standalone comment/reply is absent.
 
-For `comment.deleted === true`, render a muted rounded shell containing only `Comment deleted`, timestamp/thread structure, and visible child replies.
-
-- [ ] **Step 5: Run component tests**
+- [ ] **Step 5: Run GREEN.**
 
 ```bash
-npm test -- src/features/feed/components/comment-thread-mentions.test.tsx src/features/feed/components/comment-thread-management.test.tsx src/features/feed/components/reaction-details-modal.test.tsx
+npm test -- src/features/feed/components/comment-thread-mentions.test.tsx src/features/feed/components/comment-thread-management.test.tsx src/features/feed/components/reaction-summary.test.tsx src/features/feed/components/reaction-details-modal.test.tsx
 npm run typecheck
 ```
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit.**
 
 ```bash
-git add src/features/feed/components/comment-thread.tsx src/features/feed/components/comment-thread-mentions.test.tsx src/features/feed/components/comment-thread-management.test.tsx
+git add src/features/feed/components/comment-thread.tsx src/features/feed/components/comment-thread-mentions.test.tsx src/features/feed/components/comment-thread-management.test.tsx src/features/feed/components/reaction-summary.tsx src/features/feed/components/reaction-summary.test.tsx
 git commit -m "feat: add comment management and reaction details"
 ```
 
@@ -472,47 +393,41 @@ git commit -m "feat: add comment management and reaction details"
 - Create: `src/lib/relative-time.ts`
 - Create: `src/lib/relative-time.test.ts`
 - Modify: `src/features/notifications/components/notification-list.tsx`
-- Modify or create notification list test under `src/features/notifications/components/`.
+- Create: `src/features/notifications/components/notification-list.test.tsx`
 
-**Interfaces:**
-- Produces:
-  ```ts
-  export function relativeTimeFrom(timestamp: string, now = Date.now()): string
-  ```
+- [ ] **Step 1: Write RED formatter tests with a fixed clock.**
 
-- [ ] **Step 1: Write RED formatter tests**
-
-Use fixed time and assert exact output for `just now`, minutes, hours, days, and older compact dates. Avoid tests dependent on the machine clock.
+Cover `just now`, minutes, hours, days, older compact dates, and small future-clock skew.
 
 ```ts
 expect(relativeTimeFrom('2026-09-10T09:28:30Z', Date.parse('2026-09-10T09:29:00Z'))).toBe('just now')
 expect(relativeTimeFrom('2026-09-10T09:27:00Z', Date.parse('2026-09-10T09:29:00Z'))).toBe('2m')
 ```
 
-- [ ] **Step 2: Implement formatter**
+- [ ] **Step 2: Implement `relativeTimeFrom`.**
 
-Use elapsed positive duration; future-skewed timestamps within a short tolerance should return `just now` rather than negative text.
+Keep it deterministic by accepting optional `now`; future-skewed recent timestamps return `just now` instead of negative age.
 
-- [ ] **Step 3: Write RED notification component test**
+- [ ] **Step 3: Write RED notification-list component test.**
 
-Assert visible text uses relative age and the `<time>` retains a precise timestamp through `title` and `dateTime`.
+Require visible relative age while `<time dateTime>` and `title` retain the precise timestamp. Read/unread and navigation behavior must remain unchanged.
 
-- [ ] **Step 4: Replace `notificationDate` usage**
+- [ ] **Step 4: Update `notification-list.tsx`.**
 
-Import `relativeTimeFrom`; keep ordering/read behavior unchanged.
+Remove visible absolute `UTC` formatting and use the shared relative-time helper.
 
-- [ ] **Step 5: Run tests**
+- [ ] **Step 5: Run GREEN.**
 
 ```bash
-npm test -- src/lib/relative-time.test.ts src/features/notifications/components
+npm test -- src/lib/relative-time.test.ts src/features/notifications/components/notification-list.test.tsx
 npm run typecheck
 ```
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Commit.**
 
 ```bash
-git add src/lib/relative-time.ts src/lib/relative-time.test.ts src/features/notifications/components
+git add src/lib/relative-time.ts src/lib/relative-time.test.ts src/features/notifications/components/notification-list.tsx src/features/notifications/components/notification-list.test.tsx
 git commit -m "feat: show relative notification time"
 ```
 
@@ -521,13 +436,11 @@ git commit -m "feat: show relative notification time"
 ### Task 8: Full regression verification and guarded staging rollout
 
 **Files:**
-- Possibly modify test files only if a real regression is discovered.
+- Test-only fixes if a genuine regression is discovered.
 - Temporarily modify then restore: `scripts/aws/staging-deploy-action.txt`.
 - Verify unchanged at `plan`: `scripts/aws/edge-recovery-action.txt`, `scripts/aws/github-deploy-iam-action.txt`.
 
-**Interfaces:** None; this task validates and deploys the integrated feature.
-
-- [ ] **Step 1: Run the full local/CI-equivalent application suite**
+- [ ] **Step 1: Run full application regression.**
 
 ```bash
 npm run lint
@@ -535,61 +448,49 @@ npm run typecheck
 npm test
 npm run build
 ```
-Expected: all PASS.
+Also explicitly require `src/feed-social-interactions-contract.test.tsx` to pass within the suite.
 
-- [ ] **Step 2: Push/commit only to `feat/aws-native-phase-0-1` and wait for exact-head AWS Infrastructure CI**
+- [ ] **Step 2: Require exact-head AWS Infrastructure CI green.**
 
-Require success for Application verify, Docker build, Terraform app/bootstrap validation, Terraform plan guard tests, and GitHub SSM execution contract.
+Require Application verify, Docker build, Terraform app/bootstrap validation, Terraform plan guard tests, and GitHub SSM execution contract.
 
-- [ ] **Step 3: Confirm one-shot guards before arming**
+- [ ] **Step 3: Confirm one-shot guard states before arming.**
 
-Exact expected file contents:
 ```text
 scripts/aws/staging-deploy-action.txt = plan
 scripts/aws/edge-recovery-action.txt = plan
 scripts/aws/github-deploy-iam-action.txt = plan
 ```
 
-- [ ] **Step 4: Arm staging exactly once**
+- [ ] **Step 4: Arm staging once.**
 
-Change only:
-```text
-scripts/aws/staging-deploy-action.txt
-```
-from `plan` to `deploy-once`, commit on the feature branch, and **do not move the branch again** until the deployment workflow completes exact ECS verification.
+Change only `scripts/aws/staging-deploy-action.txt` from `plan` to `deploy-once`, commit on the feature branch, and **do not move the branch** until the deployment workflow completes exact ECS verification.
 
-- [ ] **Step 5: Verify deployment**
+- [ ] **Step 5: Verify AWS deployment.**
 
-Require:
-- AWS account `310356785722`;
-- immutable image build/push success;
-- task definition registration success;
-- ECS desired/running/pending `1/1/0`;
-- rollout state `COMPLETED`;
-- exact image/task-definition verification success.
+Require correct AWS account `310356785722`, immutable image push, task-definition registration, ECS desired/running/pending `1/1/0`, rollout `COMPLETED`, and exact image/task-definition verification success.
 
-- [ ] **Step 6: Disarm only after deployment completion**
+- [ ] **Step 6: Disarm only after deployment completion.**
 
 Return `scripts/aws/staging-deploy-action.txt` to `plan` and commit on the feature branch.
 
-- [ ] **Step 7: Verify safe-head workflows**
+- [ ] **Step 7: Verify safe-head workflows and all guards.**
 
-Require AWS Remote Verify success on the disarm head and confirm exact-head CI is green. Confirm the two other guard files remain `plan`.
+Require AWS Remote Verify success on the disarm head, exact-head CI green, and both edge-recovery/IAM guard files still `plan`.
 
-- [ ] **Step 8: Manual staging acceptance at `https://d3prih0q6jofyr.cloudfront.net`**
+- [ ] **Step 8: Manual staging acceptance at `https://d3prih0q6jofyr.cloudfront.net`.**
 
 Verify:
-1. unreacted posts show a neutral thumbs-up matching Share/Save style;
-2. a reacted post shows only the viewer's selected reaction icon;
-3. reaction summary shows total count only plus unique reaction cluster at far right;
-4. clicking total/cluster opens reactor modal with All/type tabs and names;
-5. comment reaction behavior matches posts;
-6. own fresh comments/replies show Edit + Delete;
-7. Edit disappears after 15 minutes and server still rejects stale saves;
-8. Delete remains available and root tombstones preserve replies;
-9. notifications show `just now` / `Xm` / `Xh` / `Xd` rather than UTC date text;
-10. mentions, reply creation, save, share, polls, media, and read-only feed paths still work.
+1. unreacted post/comment action shows neutral thumbs-up matching Share/Save styling;
+2. reacted action shows only the viewer's selected reaction;
+3. left summary shows only total reaction count;
+4. comment count is immediately left of the extreme-right unique reaction cluster;
+5. clicking total or cluster opens the modal with All/type tabs and named reactors;
+6. own fresh comment/reply offers Edit + Delete, Edit disappears after 15 minutes, and stale server saves reject;
+7. Delete remains available; root tombstones preserve replies;
+8. notifications show `just now` / `Xm` / `Xh` / `Xd` instead of visible UTC timestamps;
+9. mentions, replies, save, share, polls, media, and read-only paths still work.
 
-- [ ] **Step 9: Final safety report**
+- [ ] **Step 9: Final safety report.**
 
-Report exact safe-head SHA, deployed task definition/image digest, ECS status, Remote Verify result, all guard states, and explicitly state that `main` was untouched and no merge/PR was created.
+Report safe-head SHA, deployed task definition/image digest, ECS status, Remote Verify result, all guard states, and explicitly state `main` was untouched and no merge/PR was created.
