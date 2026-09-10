@@ -15,6 +15,10 @@ vi.mock('@/features/auth/aws-queries', () => ({
     email: 'member@example.com',
   })),
 }))
+vi.mock('./queries', () => ({
+  getNotificationChrome: vi.fn(),
+  getNotifications: vi.fn(),
+}))
 vi.mock('./repository', () => ({
   markNotificationReadInAurora: vi.fn(async () => true),
   markAllNotificationsReadInAurora: vi.fn(async () => undefined),
