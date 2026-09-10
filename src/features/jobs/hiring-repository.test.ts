@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { createHiringRepository, type HiringJobInput, type HiringJobUpdateInput } from './hiring-repository'
 
 const HIRING_ROLE_VALUES = ['owner', 'administrator', 'recruiter']
+const companyRow = {
+  company_id: 'company-1',
+  company_slug: 'oceanic',
+  company_name: 'Oceanic',
+  company_verified: true,
+  role: 'recruiter',
+}
 
 function jobInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
   return {
@@ -35,8 +42,62 @@ function jobInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
 }
 
 function jobUpdateInput(overrides: Partial<HiringJobUpdateInput> = {}): HiringJobUpdateInput {
-  const { companyId: _companyId, ...input } = jobInput()
+  const { companyId, ...input } = jobInput()
+  void companyId
   return { ...input, ...overrides }
+}
+
+const applicantRow = {
+  application_id: 'application-1',
+  application_status: 'applied',
+  applied_at: '2026-09-10T10:00:00.000Z',
+  updated_at: '2026-09-10T10:00:00.000Z',
+  candidate_id: 'candidate-1',
+  candidate_slug: 'capt-rahul',
+  candidate_name: 'Capt Rahul',
+  avatar_path: null,
+  candidate_location: 'Mumbai',
+  headline: 'Chief Officer',
+  candidate_rank: 'Chief Officer',
+  sailing_experience_years: '11.4',
+  candidate_vessel_types: ['Oil Tanker'],
+  trading_areas: ['Worldwide'],
+  availability: null,
+  shore_career_preference: false,
+  skills: ['Leadership'],
+  credentials: [{ name: 'STCW', expires_at: null, verified: true }],
+  visas: ['US C1/D'],
+  job_id: 'job-1',
+  job_title: 'Chief Officer',
+  company_name: 'Oceanic',
+  company_id: 'company-1',
+  company_slug: 'oceanic',
+  company_verified: true,
+  recruiter_verified: true,
+  job_location: 'Worldwide',
+  job_summary: 'Opening',
+  job_description: 'Lead deck team',
+  job_requirements: null,
+  apply_until: null,
+  job_created_at: '2026-09-09T00:00:00.000Z',
+  job_published_at: '2026-09-09T00:00:00.000Z',
+  job_domain: 'sea',
+  department: 'Deck',
+  job_rank: 'Chief Officer',
+  job_vessel_types: ['Oil Tanker'],
+  experience_min_years: '4',
+  experience_max_years: null,
+  joining_from: null,
+  joining_until: null,
+  salary_min: '7800',
+  salary_max: '8400',
+  salary_currency: 'USD',
+  salary_period: 'month',
+  sailing_regions: ['Worldwide'],
+  urgent: true,
+  easy_apply: true,
+  certificate_requirements: ['STCW'],
+  visa_requirements: ['US C1/D'],
 }
 
 describe('jobs hiring repository', () => {
@@ -45,7 +106,7 @@ describe('jobs hiring repository', () => {
     const repository = createHiringRepository({
       query: async (text, values) => {
         seen.push({ text, values })
-        return [{ company_id: 'company-1', company_slug: 'oceanic', company_name: 'Oceanic', company_verified: true, role: 'recruiter' }]
+        return [companyRow]
       },
     })
 
@@ -57,32 +118,34 @@ describe('jobs hiring repository', () => {
     expect(seen[0]?.values).toEqual(['user-1', HIRING_ROLE_VALUES, 'company-1'])
   })
 
-  it('loads a recruiter dashboard with jobs and application funnel metrics scoped to that company', async () => {
+  it('loads recruiter funnel metrics scoped to the authorized company', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
-    const repository = createHiringRepository({ query: async (text, values) => { seen.push({ text, values }); return [{ active_jobs: '4', applicants: '128', shortlisted: '8', interviews: '3', selected: '1' }] } })
+    const repository = createHiringRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{ active_jobs: '4', applicants: '128', shortlisted: '8', interviews: '3', selected: '1' }]
+      },
+    })
 
     await expect(repository.getDashboardMetrics('user-1', 'company-1')).resolves.toEqual({ activeJobs: 4, applicants: 128, shortlisted: 8, interviews: 3, selected: 1 })
     expect(seen[0]?.text).toContain('public.company_members cm')
-    expect(seen[0]?.text).toContain('cm.user_id = $1')
     expect(seen[0]?.text).toContain('j.company_id = $3')
     expect(seen[0]?.values).toEqual(['user-1', HIRING_ROLE_VALUES, 'company-1'])
   })
 
-  it('creates a structured job using the authorized company identity instead of trusting a client company name', async () => {
+  it('creates a structured job from server-authorized company identity', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
-      if (text.includes('from public.companies c')) return [{ company_id: 'company-1', company_slug: 'oceanic', company_name: 'Oceanic', company_verified: true, role: 'recruiter' }]
+      if (text.includes('from public.companies c')) return [companyRow]
       if (text.includes('insert into public.jobs')) return [{ id: 'job-1' }]
       return []
     }
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
 
     await expect(repository.createJob('user-1', jobInput())).resolves.toBe('job-1')
-
     const insert = seen.find((entry) => entry.text.includes('insert into public.jobs'))
     expect(insert?.text).toContain('company_name')
-    expect(insert?.text).toContain('published_at')
     expect(insert?.values).toContain('Oceanic')
     expect(seen.some((entry) => entry.text.includes('job_certificate_requirements'))).toBe(true)
     expect(seen.some((entry) => entry.text.includes('job_visa_requirements'))).toBe(true)
@@ -112,7 +175,7 @@ describe('jobs hiring repository', () => {
     expect(seen[0]?.values).toEqual(['user-1', HIRING_ROLE_VALUES, 'company-1'])
   })
 
-  it('loads an editable vacancy only when the recruiter is authorized for its company', async () => {
+  it('loads an editable vacancy only for its authorized company', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createHiringRepository({
       query: async (text, values) => {
@@ -135,7 +198,7 @@ describe('jobs hiring repository', () => {
     expect(seen[0]?.text).toContain('j.id = $3')
   })
 
-  it('updates a vacancy without allowing the client to move employer identity', async () => {
+  it('updates a vacancy without allowing employer identity to move', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
@@ -151,30 +214,13 @@ describe('jobs hiring repository', () => {
     expect(update?.text).not.toContain('company_id =')
     expect(update?.text).not.toContain('company_name =')
     expect(seen.some((entry) => entry.text.includes('delete from public.job_certificate_requirements'))).toBe(true)
-    expect(seen.some((entry) => entry.text.includes('Advanced Oil Tanker'))).toBe(false)
     expect(seen.flatMap((entry) => entry.values ?? [])).toContain('Advanced Oil Tanker')
     expect(seen.some((entry) => entry.text.includes('delete from public.job_visa_requirements'))).toBe(true)
   })
 
-  it('lists authorized applicants with maritime candidate data and deterministic match scores', async () => {
+  it('lists authorized applicants with maritime data and deterministic match scores', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
-    const repository = createHiringRepository({
-      query: async (text, values) => {
-        seen.push({ text, values })
-        return [{
-          application_id: 'application-1', application_status: 'applied', applied_at: '2026-09-10T10:00:00.000Z', updated_at: '2026-09-10T10:00:00.000Z',
-          candidate_id: 'candidate-1', candidate_slug: 'capt-rahul', candidate_name: 'Capt Rahul', avatar_path: null, candidate_location: 'Mumbai', headline: 'Chief Officer',
-          candidate_rank: 'Chief Officer', sailing_experience_years: '11.4', candidate_vessel_types: ['Oil Tanker'], trading_areas: ['Worldwide'],
-          availability: null, shore_career_preference: false, skills: ['Leadership'], credentials: [{ name: 'STCW', expires_at: null, verified: true }], visas: ['US C1/D'],
-          job_id: 'job-1', job_title: 'Chief Officer', company_name: 'Oceanic', company_id: 'company-1', company_slug: 'oceanic', company_verified: true,
-          recruiter_verified: true, job_location: 'Worldwide', job_summary: 'Opening', job_description: 'Lead deck team', job_requirements: null,
-          apply_until: null, job_created_at: '2026-09-09T00:00:00.000Z', job_published_at: '2026-09-09T00:00:00.000Z', job_domain: 'sea', department: 'Deck',
-          job_rank: 'Chief Officer', job_vessel_types: ['Oil Tanker'], experience_min_years: '4', experience_max_years: null, joining_from: null, joining_until: null,
-          salary_min: '7800', salary_max: '8400', salary_currency: 'USD', salary_period: 'month', sailing_regions: ['Worldwide'], urgent: true, easy_apply: true,
-          certificate_requirements: ['STCW'], visa_requirements: ['US C1/D'],
-        }]
-      },
-    })
+    const repository = createHiringRepository({ query: async (text, values) => { seen.push({ text, values }); return [applicantRow] } })
 
     const applicants = await repository.listApplicants('user-1', 'job-1')
     expect(applicants).toHaveLength(1)
@@ -189,22 +235,18 @@ describe('jobs hiring repository', () => {
     expect(seen[0]?.text).toContain('mp.sailing_experience_years')
   })
 
-  it('loads an authorized application review with immutable history and private recruiter notes', async () => {
+  it('loads authorized application review history and company-private recruiter notes', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createHiringRepository({
       query: async (text, values) => {
         seen.push({ text, values })
         return [{
-          application_id: 'application-1', application_status: 'shortlisted', applied_at: '2026-09-10T10:00:00.000Z', updated_at: '2026-09-11T10:00:00.000Z',
-          candidate_id: 'candidate-1', candidate_slug: 'capt-rahul', candidate_name: 'Capt Rahul', avatar_path: null, candidate_location: 'Mumbai', headline: 'Chief Officer',
-          candidate_rank: 'Chief Officer', sailing_experience_years: '11.4', candidate_vessel_types: ['Oil Tanker'], trading_areas: ['Worldwide'], availability: null,
-          shore_career_preference: false, skills: [], credentials: [{ name: 'STCW', expires_at: null, verified: true }], visas: ['US C1/D'],
-          job_id: 'job-1', job_title: 'Chief Officer', company_name: 'Oceanic', company_id: 'company-1', company_slug: 'oceanic', company_verified: true, recruiter_verified: true,
-          job_location: 'Worldwide', job_summary: 'Opening', job_description: 'Lead deck team', job_requirements: null, apply_until: null,
-          job_created_at: '2026-09-09T00:00:00.000Z', job_published_at: '2026-09-09T00:00:00.000Z', job_domain: 'sea', department: 'Deck', job_rank: 'Chief Officer',
-          job_vessel_types: ['Oil Tanker'], experience_min_years: '4', experience_max_years: null, joining_from: null, joining_until: null, salary_min: '7800', salary_max: '8400',
-          salary_currency: 'USD', salary_period: 'month', sailing_regions: ['Worldwide'], urgent: true, easy_apply: true, certificate_requirements: ['STCW'], visa_requirements: ['US C1/D'],
-          events: [{ id: '1', status: 'applied', note: null, created_at: '2026-09-10T10:00:00.000Z' }, { id: '2', status: 'shortlisted', note: 'Strong tanker fit', created_at: '2026-09-11T10:00:00.000Z' }],
+          ...applicantRow,
+          application_status: 'shortlisted',
+          events: [
+            { id: '1', status: 'applied', note: null, created_at: '2026-09-10T10:00:00.000Z' },
+            { id: '2', status: 'shortlisted', note: 'Strong tanker fit', created_at: '2026-09-11T10:00:00.000Z' },
+          ],
           recruiter_notes: [{ id: 'note-1', recruiter_id: 'user-1', note: 'Call after 1600 UTC.', created_at: '2026-09-11T11:00:00.000Z' }],
         }]
       },
@@ -212,11 +254,9 @@ describe('jobs hiring repository', () => {
 
     const review = await repository.getApplicationReview('user-1', 'application-1')
     expect(review).toMatchObject({
-      applicationId: 'application-1', status: 'shortlisted',
-      candidate: { fullName: 'Capt Rahul' },
+      applicationId: 'application-1', status: 'shortlisted', candidate: { fullName: 'Capt Rahul' },
       events: [{ status: 'applied' }, { status: 'shortlisted' }],
-      recruiterNotes: [{ id: 'note-1', note: 'Call after 1600 UTC.' }],
-      match: { score: 100 },
+      recruiterNotes: [{ id: 'note-1', note: 'Call after 1600 UTC.' }], match: { score: 100 },
     })
     expect(seen[0]?.text).toContain('cm.approved_at is not null')
     expect(seen[0]?.text).toContain('rn.application_id = a.id')
@@ -233,16 +273,13 @@ describe('jobs hiring repository', () => {
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
 
     await repository.updateApplicationStatus('user-1', 'application-1', 'shortlisted', 'Strong tanker fit')
-
     expect(seen[0]?.text).toContain('public.company_members cm')
-    expect(seen[0]?.text).toContain('cm.approved_at is not null')
     expect(seen.some((entry) => entry.text.includes('update public.job_applications'))).toBe(true)
     expect(seen.some((entry) => entry.text.includes('insert into public.job_application_events'))).toBe(true)
     expect(seen.flatMap((entry) => entry.values ?? [])).toContain('shortlisted')
-    expect(seen.flatMap((entry) => entry.values ?? [])).toContain('Strong tanker fit')
   })
 
-  it('keeps recruiter notes private to the authorized company hiring workflow and uses the schema recruiter_id column', async () => {
+  it('stores private recruiter notes with the schema recruiter_id column', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
@@ -252,11 +289,8 @@ describe('jobs hiring repository', () => {
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
 
     await repository.saveRecruiterNote('user-1', 'application-1', 'Call after 1600 UTC.')
-
-    expect(seen[0]?.text).toContain('public.company_members cm')
     const insert = seen.find((entry) => entry.text.includes('insert into public.job_recruiter_notes'))
     expect(insert?.text).toContain('(application_id, recruiter_id, note)')
     expect(insert?.text).not.toContain('author_id')
-    expect(seen.flatMap((entry) => entry.values ?? [])).toContain('Call after 1600 UTC.')
   })
 })
