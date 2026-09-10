@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Share2 } from 'lucide-react'
 
-export function SharePostButton({ postId }: { postId: string }) {
+export function SharePostButton({ postId, iconOnly = false }: { postId: string; iconOnly?: boolean }) {
   const [message, setMessage] = useState('')
 
   async function share() {
@@ -23,9 +23,14 @@ export function SharePostButton({ postId }: { postId: string }) {
 
   return (
     <>
-      <button type="button" onClick={share} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50">
+      <button
+        type="button"
+        onClick={share}
+        aria-label={iconOnly ? 'Share' : undefined}
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50"
+      >
         <Share2 aria-hidden="true" className="size-5" />
-        Share
+        {iconOnly ? null : 'Share'}
       </button>
       <span className="sr-only" aria-live="polite">{message}</span>
     </>
