@@ -1,5 +1,6 @@
 'use client'
 
+import { ThumbsUp } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { POST_REACTIONS, POST_REACTION_META, type PostReactionType } from '../types'
 
@@ -53,7 +54,11 @@ export function ReactionPicker({
         onClick={() => onChange(value ? null : 'like')}
         className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition hover:bg-mist-50 disabled:opacity-50 ${value ? 'text-ocean-700' : 'text-navy-900'}`}
       >
-        <span aria-hidden="true" className="text-base leading-none">{current.emoji}</span>
+        {value ? (
+          <span aria-hidden="true" className="text-base leading-none">{current.emoji}</span>
+        ) : (
+          <ThumbsUp aria-hidden="true" className="size-5" />
+        )}
         <span data-reaction-label className="sr-only">{current.label}</span>
       </button>
       {open ? (
