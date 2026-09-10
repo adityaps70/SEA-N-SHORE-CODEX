@@ -217,4 +217,116 @@ describe('feed repository', () => {
     expect(sql).toMatch(/storage_path = \$1/i)
     expect(values).toEqual([storagePath])
   })
+
+  it('updates an owned non-deleted comment only before the strict database 15-minute cutoff', async () => {
+    const query = vi.fn(async () => [{ id: commentId, post_id: postId, parent_comment_id: null }])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query }) as unknown as {
+      updateOwnCommentWithinEditWindow(ownerId: string, id: string, body: string): Promise<{ id: string; postId: string; parentCommentId: string | null } | null>
+    }
+
+    await expect(repository.updateOwnCommentWithinEditWindow(viewerId, commentId, 'Updated watchkeeping note.')).resolves.toEqual({
+      id: commentId,
+      postId,
+      parentCommentId: null,
+    })
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/update public\.post_comments/i)
+    expect(sql).toMatch(/set body = \$3/i)
+    expect(sql).toMatch(/id = \$2/i)
+    expect(sql).toMatch(/author_id = \$1/i)
+    expect(sql).toMatch(/deleted_at is null/i)
+    expect(sql).toMatch(/now\(\)\s*<\s*created_at\s*\+\s*interval\s+'15 minutes'/i)
+    expect(sql).not.toMatch(/now\(\)\s*<=/i)
+    expect(sql).toMatch(/returning id, post_id, parent_comment_id/i)
+    expect(values).toEqual([viewerId, commentId, 'Updated watchkeeping note.'])
+  })
+
+  it('soft-deletes an owned comment at any age without an edit-window condition', async () => {
+    const query = vi.fn(async () => [{ id: commentId, post_id: postId, parent_comment_id: null }])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query }) as unknown as {
+      softDeleteOwnComment(ownerId: string, id: string): Promise<{ id: string; postId: string; parentCommentId: string | null } | null>
+    }
+
+    await expect(repository.softDeleteOwnComment(viewerId, commentId)).resolves.toEqual({
+      id: commentId,
+      postId,
+      parentCommentId: null,
+    })
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/update public\.post_comments/i)
+    expect(sql).toMatch(/set deleted_at = now\(\)/i)
+    expect(sql).toMatch(/id = \$2/i)
+    expect(sql).toMatch(/author_id = \$1/i)
+    expect(sql).toMatch(/deleted_at is null/i)
+    expect(sql).not.toMatch(/15 minutes/i)
+    expect(sql).toMatch(/returning id, post_id, parent_comment_id/i)
+    expect(values).toEqual([viewerId, commentId])
+  })
+
+  it('replaces comment mentions and reports only newly introduced allowed mentionees', async () => {
+    const existingMentionId = '55555555-5555-4555-8555-555555555555'
+    const newMentionId = '66666666-6666-4666-8666-666666666666'
+    const query = vi.fn(async (sql: string, values?: readonly unknown[]) => {
+      if (/select mentioned_profile_id as id from public\.content_mentions/i.test(sql)) return [{ id: existingMentionId }]
+      if (/delete from public\.content_mentions/i.test(sql)) return []
+      if (/select exists/i.test(sql)) return [{ allowed: true }]
+      if (/insert into public\.content_mentions/i.test(sql)) return [{ id: values?.[2] }]
+      return []
+    })
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query }) as unknown as {
+      replaceCommentMentions(actorId: string, id: string, mentionIds: string[]): Promise<{ mentionProfileIds: string[]; newlyIntroducedProfileIds: string[] }>
+    }
+
+    await expect(repository.replaceCommentMentions(viewerId, commentId, [existingMentionId, newMentionId, newMentionId])).resolves.toEqual({
+      mentionProfileIds: [existingMentionId, newMentionId],
+      newlyIntroducedProfileIds: [newMentionId],
+    })
+
+    const calls = callsOf(query)
+    expect(calls[0][0]).toMatch(/select mentioned_profile_id as id from public\.content_mentions/i)
+    expect(calls[0][1]).toEqual([commentId])
+    expect(calls[1][0]).toMatch(/delete from public\.content_mentions where comment_id = \$1/i)
+    expect(calls[1][1]).toEqual([commentId])
+    expect(calls.filter(([sql]) => /insert into public\.content_mentions/i.test(sql))).toHaveLength(2)
+  })
+
+  it('hydrates deleted roots only as sanitized tombstones when visible replies remain', async () => {
+    const query = vi.fn(async () => [])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await repository.getComments([postId], viewerId)
+
+    const [sql] = callsOf(query)[0]
+    expect(sql).toMatch(/case when c\.deleted_at is null then c\.body else '' end as body/i)
+    expect(sql).toMatch(/c\.deleted_at is null\s+or\s+\(c\.parent_comment_id is null\s+and\s+exists/i)
+    expect(sql).toMatch(/reply\.parent_comment_id = c\.id/i)
+    expect(sql).toMatch(/reply\.deleted_at is null/i)
+    expect(sql).toMatch(/case when c\.deleted_at is null then json_build_object/i)
+    expect(sql).toMatch(/case when c\.deleted_at is null then coalesce/i)
+  })
+
+  it('keeps deleted roots with visible replies in top-level pagination and counts', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ count: '1' }])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await repository.listTopLevelComments(postId, viewerId, 0, 10)
+    await repository.countTopLevelComments(postId)
+
+    const calls = callsOf(query)
+    expect(calls[0][0]).toMatch(/c\.deleted_at is null\s+or\s+exists/i)
+    expect(calls[0][0]).toMatch(/reply\.parent_comment_id = c\.id/i)
+    expect(calls[0][0]).toMatch(/reply\.deleted_at is null/i)
+    expect(calls[1][0]).toMatch(/deleted_at is null\s+or\s+exists/i)
+    expect(calls[1][0]).toMatch(/reply\.parent_comment_id = public\.post_comments\.id|reply\.parent_comment_id = c\.id/i)
+    expect(calls[1][0]).toMatch(/reply\.deleted_at is null/i)
+  })
 })
