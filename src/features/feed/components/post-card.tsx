@@ -15,6 +15,7 @@ import {
   type ReactionSummary,
 } from '../types'
 import { CommentThread } from './comment-thread'
+import { MentionText } from './mention-text'
 import { PollCard } from './poll-card'
 import { PostMedia } from './post-media'
 import { ReactionPicker } from './reaction-picker'
@@ -144,7 +145,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
         </header>
 
         <div className="px-4 pb-4 pt-4 sm:px-5">
-          <p className="whitespace-pre-wrap text-[15px] leading-7 text-ink">{post.body}</p>
+          <p className="whitespace-pre-wrap text-[15px] leading-7 text-ink"><MentionText body={post.body} mentions={post.mentions} /></p>
           {post.media?.signedUrl ? <PostMedia media={post.media} authorName={post.author.fullName} /> : null}
           {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
         </div>
