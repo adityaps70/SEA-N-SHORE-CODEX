@@ -23,7 +23,13 @@ export function ReactionSummaryTrigger({
 
   return (
     <div className="flex min-w-0 items-center justify-between gap-3 text-xs text-muted">
-      <span className="min-w-0 truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="min-w-0 truncate rounded-md text-left transition hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/30"
+      >
+        {label}
+      </button>
 
       <div className="flex shrink-0 items-center gap-3">
         <span>{commentCount} {commentCount === 1 ? 'comment' : 'comments'}</span>
