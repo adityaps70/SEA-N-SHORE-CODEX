@@ -71,6 +71,11 @@ function mediaInput() {
   return screen.getByLabelText('Photo / Video') as HTMLInputElement
 }
 
+async function openComposer(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /start a post/i }))
+  expect(screen.getByRole('dialog', { name: /create a post/i })).toBeInTheDocument()
+}
+
 function fileWithSize(name: string, type: string, size: number) {
   const file = new File(['x'], name, { type })
   Object.defineProperty(file, 'size', { configurable: true, value: size })
@@ -98,10 +103,12 @@ afterEach(() => {
 })
 
 describe('PostComposer', () => {
-  it('offers one Photo / Video control with the exact supported MIME types', () => {
+  it('offers one Photo / Video control with the exact supported MIME types inside the modal', async () => {
+    const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
 
-    expect(screen.getByPlaceholderText('Share a maritime update, technical lesson, or industry insight...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Share your thoughts ...')).toBeInTheDocument()
     expect(screen.queryByLabelText('Topic')).not.toBeInTheDocument()
     expect(screen.getByText('Photo / Video')).toBeInTheDocument()
     expect(mediaInput()).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp,video/mp4,video/webm')
@@ -109,9 +116,10 @@ describe('PostComposer', () => {
     expect(screen.getByRole('button', { name: 'Technical Poll' })).toBeInTheDocument()
   })
 
-  it('uploads a portrait image directly, renders a full-width uncropped preview, and exposes metadata only when ready', async () => {
+  it('uploads a portrait image directly, renders an uncropped modal preview, and exposes metadata only when ready', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
     const file = fileWithSize('portrait.jpg', 'image/jpeg', 1024)
 
     await user.upload(mediaInput(), file)
@@ -124,19 +132,19 @@ describe('PostComposer', () => {
 
     const preview = await screen.findByRole('img', { name: 'Selected post media preview' })
     expect(preview).toHaveAttribute('src', 'blob:preview-media')
-    expect(preview).toHaveClass('h-auto')
+    expect(preview).toHaveClass('max-h-[48vh]')
     expect(preview).toHaveClass('w-full')
     expect(preview).toHaveClass('object-contain')
-    expect(preview).not.toHaveClass('max-h-[70vh]')
     expect(screen.getByDisplayValue(imageUpload.postId)).toHaveAttribute('name', 'mediaPostId')
     expect(screen.getByDisplayValue(imageUpload.storagePath)).toHaveAttribute('name', 'mediaStoragePath')
     expect(screen.getByDisplayValue('image/jpeg')).toHaveAttribute('name', 'mediaMimeType')
     expect(screen.getByDisplayValue('1024')).toHaveAttribute('name', 'mediaSize')
   })
 
-  it('renders an uploaded MP4 as an inline controls-enabled video preview', async () => {
+  it('renders an uploaded MP4 as a controls-enabled video preview in the modal', async () => {
     const user = userEvent.setup()
     const { container } = render(<PostComposer profile={profile} />)
+    await openComposer(user)
     const file = fileWithSize('bridge.mp4', 'video/mp4', 2048)
 
     await user.upload(mediaInput(), file)
@@ -156,6 +164,7 @@ describe('PostComposer', () => {
     }))
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
 
     await user.upload(mediaInput(), fileWithSize('portrait.webp', 'image/webp', 1024))
 
@@ -177,6 +186,7 @@ describe('PostComposer', () => {
     })
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
 
     await user.upload(mediaInput(), fileWithSize('engine.png', 'image/png', 1024))
     await waitFor(() => expect(reportProgress).toBeDefined())
@@ -188,6 +198,7 @@ describe('PostComposer', () => {
   it('removes a ready preview and best-effort discards its pending S3 object', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
     await user.upload(mediaInput(), fileWithSize('portrait.jpg', 'image/jpeg', 1024))
     await screen.findByRole('img', { name: 'Selected post media preview' })
 
@@ -205,6 +216,7 @@ describe('PostComposer', () => {
   it('switching to Technical Poll clears and discards a ready pending media object', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
     await user.upload(mediaInput(), fileWithSize('portrait.jpg', 'image/jpeg', 1024))
     await screen.findByRole('img', { name: 'Selected post media preview' })
 
@@ -225,6 +237,7 @@ describe('PostComposer', () => {
   ])('rejects oversized media before requesting an upload target', async (file, message) => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
 
     await user.upload(mediaInput(), file)
 
@@ -236,9 +249,10 @@ describe('PostComposer', () => {
   it('successful publication revokes the local preview without deleting the now-attached object', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
     await user.upload(mediaInput(), fileWithSize('portrait.jpg', 'image/jpeg', 1024))
     await screen.findByRole('img', { name: 'Selected post media preview' })
-    await user.type(screen.getByPlaceholderText('Share a maritime update, technical lesson, or industry insight...'), 'Safety observation')
+    await user.type(screen.getByPlaceholderText('Share your thoughts ...'), 'Safety observation')
 
     await user.click(screen.getByRole('button', { name: 'Post' }))
 
@@ -251,6 +265,7 @@ describe('PostComposer', () => {
   it('opens poll fields and keeps at least two choices', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
+    await openComposer(user)
     await user.click(screen.getByRole('button', { name: 'Technical Poll' }))
     expect(screen.getByLabelText('Poll option 1')).toBeInTheDocument()
     expect(screen.getByLabelText('Poll option 2')).toBeInTheDocument()
