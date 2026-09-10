@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   markNotificationRead: vi.fn(async () => ({ ok: true as const })),
   markAllNotificationsRead: vi.fn(async () => ({ ok: true as const })),
+  loadNotifications: vi.fn(async () => ({ ok: true as const, notifications: [] })),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -17,6 +18,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('../actions', () => ({
   markNotificationRead: mocks.markNotificationRead,
   markAllNotificationsRead: mocks.markAllNotificationsRead,
+  loadNotifications: mocks.loadNotifications,
 }))
 
 const notification: NetworkNotification = {
@@ -42,6 +44,7 @@ describe('NotificationList timestamps', () => {
     mocks.refresh.mockClear()
     mocks.markNotificationRead.mockClear()
     mocks.markAllNotificationsRead.mockClear()
+    mocks.loadNotifications.mockClear()
   })
 
   afterEach(() => {
@@ -62,6 +65,7 @@ describe('NotificationList timestamps', () => {
 
     await waitFor(() => expect(mocks.markNotificationRead).toHaveBeenCalledWith(notification.id))
     expect(mocks.push).toHaveBeenCalledWith(notification.destination)
-    expect(mocks.refresh).toHaveBeenCalledTimes(1)
+    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(screen.getByText('All caught up')).toBeInTheDocument()
   })
 })
