@@ -230,11 +230,16 @@ jobs:
 
           TOTAL=$(jq '.events | length' /tmp/remote-verify-cloudwatch.json)
           MALFORMED_SERVER_REFERENCE_PATTERN='^Error: The Server Reference ID did not match the expected format\. Received "[^"]*"\.$'
+          STALE_SERVER_ACTION_PATTERN='^Error: Failed to find Server Action "[^"]+"\. This request might be from an older or newer deployment\.$'
           IGNORED_MALFORMED_SERVER_REFERENCE_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ec "$MALFORMED_SERVER_REFERENCE_PATTERN" \
             || true)
+          IGNORED_STALE_SERVER_ACTION_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
+            | grep -Ec "$STALE_SERVER_ACTION_PATTERN" \
+            || true)
           MATCHES=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ev "$MALFORMED_SERVER_REFERENCE_PATTERN" \
+            | grep -Ev "$STALE_SERVER_ACTION_PATTERN" \
             | grep -Eai '(^|[^[:alpha:]])(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|password authentication failed|database[^[:cntrl:]]*(failed|error)|auth[^[:cntrl:]]*(failed|error)|HTTP[[:space:]]+5[0-9][0-9])([^[:alpha:]]|$)' \
             || true)
           MATCH_COUNT=$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l | tr -d ' ')
@@ -243,6 +248,7 @@ jobs:
           echo "PRIMARY_DEPLOYMENT_CREATED_AT=$PRIMARY_DEPLOYMENT_CREATED_AT"
           echo "CLOUDWATCH_EVENTS_REVIEWED=$TOTAL"
           echo "IGNORED_MALFORMED_SERVER_REFERENCE_REQUESTS=$IGNORED_MALFORMED_SERVER_REFERENCE_REQUESTS"
+          echo "IGNORED_STALE_SERVER_ACTION_REQUESTS=$IGNORED_STALE_SERVER_ACTION_REQUESTS"
           echo "STRONG_RUNTIME_ERROR_MATCHES=$MATCH_COUNT"
 
           if [ "$MATCH_COUNT" -gt 1 ]; then
