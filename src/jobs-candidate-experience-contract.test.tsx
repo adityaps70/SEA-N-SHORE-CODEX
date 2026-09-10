@@ -9,6 +9,7 @@ function source(path: string) {
 describe('premium candidate jobs experience contract', () => {
   it('turns /jobs into maritime discovery with modes, structured filters and profile recommendations', () => {
     const page = source('src/app/(app)/jobs/page.tsx')
+    const subnav = source('src/features/jobs/components/jobs-subnav.tsx')
     expect(page).toContain('getJobsDiscovery')
     expect(page).toContain('JOB_DISCOVERY_MODES')
     expect(page).toContain('Rank / position')
@@ -16,9 +17,10 @@ describe('premium candidate jobs experience contract', () => {
     expect(page).toContain('Joining within')
     expect(page).toContain('Minimum salary')
     expect(page).toContain('Verified employers')
-    expect(page).toContain('/jobs/saved')
-    expect(page).toContain('/jobs/applications')
-    expect(page).toContain('/jobs/alerts')
+    expect(page).toContain('JobsSubnav')
+    expect(subnav).toContain('/jobs/saved')
+    expect(subnav).toContain('/jobs/applications')
+    expect(subnav).toContain('/jobs/alerts')
   })
 
   it('makes job cards maritime-specific, trust-aware and match-aware', () => {
@@ -45,6 +47,7 @@ describe('premium candidate jobs experience contract', () => {
     const saved = source('src/app/(app)/jobs/saved/page.tsx')
     const applications = source('src/app/(app)/jobs/applications/page.tsx')
     const alerts = source('src/app/(app)/jobs/alerts/page.tsx')
+    const alertForm = source('src/features/jobs/components/job-alert-form.tsx')
 
     expect(saved).toContain('getSavedJobs')
     expect(saved).toContain('Saved Jobs')
@@ -52,7 +55,7 @@ describe('premium candidate jobs experience contract', () => {
     expect(applications).toContain('Application timeline')
     expect(applications).toContain('JOB_APPLICATION_STATUS_LABELS')
     expect(alerts).toContain('getJobAlerts')
-    expect(alerts).toContain('Create an alert')
     expect(alerts).toContain('JobAlertForm')
+    expect(alertForm).toContain('Create an alert')
   })
 })
