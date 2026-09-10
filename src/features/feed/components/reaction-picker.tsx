@@ -49,6 +49,7 @@ export function ReactionPicker({
         type="button"
         disabled={disabled}
         aria-pressed={Boolean(value)}
+        aria-label={current.label}
         onClick={() => onChange(value ? null : 'like')}
         className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition hover:bg-mist-50 disabled:opacity-50 ${value ? 'text-ocean-700' : 'text-navy-900'}`}
       >
@@ -65,6 +66,7 @@ export function ReactionPicker({
                 type="button"
                 role="menuitemradio"
                 aria-checked={value === reaction}
+                aria-label={meta.label}
                 onClick={() => {
                   onChange(value === reaction ? null : reaction)
                   setOpen(false)
