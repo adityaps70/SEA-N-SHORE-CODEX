@@ -29,6 +29,14 @@ const pollOptionsSchema = z.preprocess(
 
 export const reactionSchema = z.enum(POST_REACTIONS)
 
+export const reactionDetailsSchema = z.object({
+  targetType: z.enum(['post', 'comment']),
+  targetId: z.string().uuid(),
+  reaction: reactionSchema.optional(),
+  cursor: z.string().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(50).default(30),
+})
+
 export const postMediaReferenceSchema = z.object({
   postId: z.string().uuid(),
   storagePath: z.string().min(1).max(500),
@@ -89,3 +97,4 @@ export type PostMediaReferenceInput = z.infer<typeof postMediaReferenceSchema>
 export type CreatePostInput = z.infer<typeof createPostInputSchema>
 export type CommentInput = z.infer<typeof commentInputSchema>
 export type FeedRequestInput = z.infer<typeof feedRequestSchema>
+export type ReactionDetailsInput = z.infer<typeof reactionDetailsSchema>
