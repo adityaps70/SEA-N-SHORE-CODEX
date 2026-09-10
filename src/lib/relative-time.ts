@@ -2,6 +2,7 @@ const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * HOUR_MS
 const COMPACT_DATE_AFTER_MS = 7 * DAY_MS
+const UTC_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const
 
 export function relativeTimeFrom(timestamp: string, now = Date.now()) {
   const occurredAt = Date.parse(timestamp)
@@ -15,11 +16,8 @@ export function relativeTimeFrom(timestamp: string, now = Date.now()) {
 
   const date = new Date(occurredAt)
   const nowDate = new Date(now)
-  const sameYear = date.getUTCFullYear() === nowDate.getUTCFullYear()
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    ...(sameYear ? {} : { year: 'numeric' as const }),
-    timeZone: 'UTC',
-  }).format(date)
+  const dateLabel = `${date.getUTCDate()} ${UTC_MONTHS[date.getUTCMonth()]}`
+  return date.getUTCFullYear() === nowDate.getUTCFullYear()
+    ? dateLabel
+    : `${dateLabel} ${date.getUTCFullYear()}`
 }
