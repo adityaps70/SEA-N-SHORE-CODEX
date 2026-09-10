@@ -1,6 +1,6 @@
 'use client'
 
-import { Ellipsis } from 'lucide-react'
+import { Ellipsis, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react'
@@ -47,20 +47,33 @@ function CommentReactionSummary({ summary, onOpen }: { summary: ReactionSummary;
       <button
         type="button"
         onClick={onOpen}
+        aria-label="View comment reaction types"
+        className="inline-flex min-h-8 items-center gap-0.5 rounded-lg px-1 text-[11px] transition hover:bg-mist-50"
+      >
+        {activeReactions.map((reaction) => <span key={reaction}>{POST_REACTION_META[reaction].emoji}</span>)}
+      </button>
+      <button
+        type="button"
+        onClick={onOpen}
         aria-label={`View ${total} comment reactions`}
         className="min-h-8 rounded-lg px-1 text-[11px] text-muted transition hover:bg-mist-50 hover:text-ocean-700"
       >
         {total} {total === 1 ? 'reaction' : 'reactions'}
       </button>
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label="View comment reaction types"
-        className="ml-auto inline-flex min-h-8 items-center gap-0.5 rounded-lg px-1 text-[11px] transition hover:bg-mist-50"
-      >
-        {activeReactions.map((reaction) => <span key={reaction}>{POST_REACTION_META[reaction].emoji}</span>)}
-      </button>
     </>
+  )
+}
+
+function CommentReplySummary({ count }: { count: number }) {
+  if (!count) return null
+  return (
+    <span
+      aria-label={`${count} ${count === 1 ? 'reply' : 'replies'}`}
+      className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-[11px] text-muted"
+    >
+      <MessageCircle aria-hidden="true" className="size-4" />
+      <span>{count}</span>
+    </span>
   )
 }
 
@@ -123,12 +136,14 @@ function CommentItem({
   rootCommentId,
   readOnly,
   isReply = false,
+  replyCount = 0,
 }: {
   postId: string
   comment: FeedComment
   rootCommentId: string
   readOnly: boolean
   isReply?: boolean
+  replyCount?: number
 }) {
   const router = useRouter()
   const [reaction, setReaction] = useState<PostReactionType | null>(comment.viewerReaction ?? null)
@@ -225,8 +240,18 @@ function CommentItem({
   }
 
   return (
-    <div id={`comment-${comment.id}`} className={`flex gap-2.5 ${isReply ? 'ml-8 border-l border-mist-100 pl-3' : ''}`} data-testid={isReply ? undefined : 'visible-top-level-comment'}>
-      <div className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-mist-100 text-xs font-semibold text-navy-950">
+    <div
+      id={`comment-${comment.id}`}
+      className={`relative flex gap-2.5 ${isReply ? 'ml-8 pl-5' : ''}`}
+      data-testid={isReply ? `reply-thread-${comment.id}` : 'visible-top-level-comment'}
+    >
+      {isReply ? (
+        <>
+          <span aria-hidden="true" className="absolute bottom-1/2 left-0 top-[-0.75rem] w-px bg-mist-100" />
+          <span aria-hidden="true" className="absolute left-0 top-2 h-4 w-4 rounded-bl-xl border-b border-l border-mist-100" />
+        </>
+      ) : null}
+      <div className="relative z-[1] grid size-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-mist-100 text-xs font-semibold text-navy-950">
         {comment.author.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={comment.author.avatarUrl} alt={`${comment.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
@@ -296,6 +321,7 @@ function CommentItem({
         {!editing ? (
           <div className="mt-0.5 flex min-h-8 items-center gap-1.5 px-1">
             <CommentReactionSummary summary={summary} onOpen={() => setReactionsOpen(true)} />
+            <CommentReplySummary count={replyCount} />
             {!readOnly ? <ReactionPicker value={reaction} disabled={reactionPending} onChange={changeReaction} compact /> : null}
             {!readOnly ? (
               <button type="button" onClick={() => setReplying((value) => !value)} className="min-h-8 rounded-lg px-2 text-xs font-semibold text-navy-900 hover:bg-mist-50">Reply</button>
@@ -364,14 +390,17 @@ export function CommentThread({
     <div id={`comments-${postId}`} className="border-t border-mist-100 px-4 py-4 sm:px-5">
       {visibleRoots.length ? (
         <div className="space-y-3">
-          {visibleRoots.map((comment) => (
-            <div key={comment.id} className="space-y-2">
-              <CommentItem postId={postId} comment={comment} rootCommentId={comment.id} readOnly={readOnly} />
-              {(repliesByRoot.get(comment.id) ?? []).map((reply) => (
-                <CommentItem key={reply.id} postId={postId} comment={reply} rootCommentId={comment.id} readOnly={readOnly} isReply />
-              ))}
-            </div>
-          ))}
+          {visibleRoots.map((comment) => {
+            const replies = repliesByRoot.get(comment.id) ?? []
+            return (
+              <div key={comment.id} className="space-y-2">
+                <CommentItem postId={postId} comment={comment} rootCommentId={comment.id} readOnly={readOnly} replyCount={replies.length} />
+                {replies.map((reply) => (
+                  <CommentItem key={reply.id} postId={postId} comment={reply} rootCommentId={comment.id} readOnly={readOnly} isReply />
+                ))}
+              </div>
+            )
+          })}
           {remaining > 0 ? (
             <button type="button" onClick={() => setVisibleRootCount((count) => Math.min(roots.length, count + 10))} className="min-h-9 rounded-lg px-2 text-sm font-semibold text-ocean-700 hover:bg-mist-50">
               View {remaining} more comments
