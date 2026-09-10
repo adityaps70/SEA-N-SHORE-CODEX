@@ -158,4 +158,66 @@ describe('feed service authorization', () => {
     await service.setPollVote(viewerId, postId, optionId)
     expect(repo.setPollVote).toHaveBeenCalledWith(viewerId, postId, optionId)
   })
+
+  it('lazily maps visible reactor identities and signs only their avatar paths', async () => {
+    const avatarPath = 'profiles/55555555-5555-4555-8555-555555555555/avatar.webp'
+    const listReactionDetails = vi.fn(async () => ({
+      rows: [{
+        profile_id: '55555555-5555-4555-8555-555555555555',
+        slug: 'reactor-a',
+        full_name: 'Reactor A',
+        avatar_path: avatarPath,
+        headline: 'Master Mariner',
+        rank: 'Master',
+        current_company: 'Example Shipping',
+        reaction_type: 'support' as const,
+        reacted_at: '2026-09-10T09:00:00.000Z',
+      }],
+      nextCursor: null,
+    }))
+    const repo = repository({ listReactionDetails } as unknown as Partial<FeedRepository>)
+    const resolveMediaUrls = vi.fn(async () => new Map([[avatarPath, 'https://example.test/reactor-avatar']]))
+    const { createFeedService } = await import('./service')
+    const create = createFeedService as unknown as (input: {
+      withTransaction: <T>(fn: (repository: FeedRepository) => Promise<T>) => Promise<T>
+      resolveMediaUrls: (paths: string[]) => Promise<Map<string, string>>
+    }) => {
+      getReactionDetails(actorId: string, request: {
+        targetType: 'post' | 'comment'
+        targetId: string
+        reaction?: 'like' | 'support' | 'respect' | 'on_point'
+        limit: number
+      }): Promise<{ reactors: Array<{ id: string; avatarUrl: string | null; reaction: string; reactedAt: string }>; nextCursor: string | null }>
+    }
+    const service = create({
+      withTransaction: async <T>(fn: (repository: FeedRepository) => Promise<T>) => fn(repo),
+      resolveMediaUrls,
+    })
+
+    const page = await service.getReactionDetails(viewerId, {
+      targetType: 'post',
+      targetId: postId,
+      reaction: 'support',
+      limit: 30,
+    })
+
+    expect(repo.getInteractablePost).toHaveBeenCalledWith({ viewerProfileId: viewerId, postId })
+    expect(listReactionDetails).toHaveBeenCalledWith({
+      viewerProfileId: viewerId,
+      targetType: 'post',
+      targetId: postId,
+      reaction: 'support',
+      limit: 30,
+    })
+    expect(resolveMediaUrls).toHaveBeenCalledWith([avatarPath])
+    expect(page).toEqual({
+      reactors: [expect.objectContaining({
+        id: '55555555-5555-4555-8555-555555555555',
+        avatarUrl: 'https://example.test/reactor-avatar',
+        reaction: 'support',
+        reactedAt: '2026-09-10T09:00:00.000Z',
+      })],
+      nextCursor: null,
+    })
+  })
 })

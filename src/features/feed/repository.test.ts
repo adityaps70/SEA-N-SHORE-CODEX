@@ -4,6 +4,7 @@ import type { FeedPostRow } from './mappers'
 const viewerId = '11111111-1111-4111-8111-111111111111'
 const authorId = '22222222-2222-4222-8222-222222222222'
 const postId = '33333333-3333-4333-8333-333333333333'
+const commentId = '44444444-4444-4444-8444-444444444444'
 
 type QueryCall = [text: string, values?: readonly unknown[]]
 
@@ -84,6 +85,87 @@ describe('feed repository', () => {
     expect(sql).toMatch(/now\(\)\s*<\s*c\.created_at\s*\+\s*interval\s+'15 minutes'/i)
     expect(sql).toMatch(/as can_edit/i)
     expect(values).toEqual([[postId], viewerId])
+  })
+
+  it('lazily lists visible post reactors with an optional reaction filter without changing feed hydration', async () => {
+    const query = vi.fn(async () => [])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query }) as unknown as {
+      listReactionDetails(input: {
+        viewerProfileId: string
+        targetType: 'post' | 'comment'
+        targetId: string
+        reaction?: 'like' | 'support' | 'respect' | 'on_point'
+        limit: number
+      }): Promise<{ rows: unknown[]; nextCursor: string | null }>
+    }
+
+    await repository.listReactionDetails({
+      viewerProfileId: viewerId,
+      targetType: 'post',
+      targetId: postId,
+      reaction: 'support',
+      limit: 30,
+    })
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/from public\.post_reactions reaction/i)
+    expect(sql).toMatch(/join public\.profiles reactor on reactor\.id = reaction\.user_id/i)
+    expect(sql).toMatch(/left join public\.maritime_profiles/i)
+    expect(sql).toMatch(/reaction\.post_id = \$2/i)
+    expect(sql).toMatch(/reaction\.reaction_type = \$3/i)
+    expect(sql).toMatch(/reactor\.account_status = 'active'/i)
+    expect(sql).toMatch(/reactor\.onboarding_completed_at is not null/i)
+    expect(sql).toMatch(/user_blocks/i)
+    expect(sql).toMatch(/order by reaction\.created_at desc, reaction\.user_id desc/i)
+    expect(sql).toMatch(/limit \$4/i)
+    expect(values).toEqual([viewerId, postId, 'support', 31])
+  })
+
+  it('lazily paginates comment reactors with a stable opaque cursor', async () => {
+    const first = {
+      profile_id: '55555555-5555-4555-8555-555555555555',
+      slug: 'reactor-a',
+      full_name: 'Reactor A',
+      avatar_path: null,
+      headline: null,
+      rank: 'Chief Officer',
+      current_company: 'Example Shipping',
+      reaction_type: 'respect',
+      reacted_at: '2026-09-10T09:00:00.000Z',
+    }
+    const second = {
+      ...first,
+      profile_id: '66666666-6666-4666-8666-666666666666',
+      slug: 'reactor-b',
+      full_name: 'Reactor B',
+      reacted_at: '2026-09-10T08:59:00.000Z',
+    }
+    const query = vi.fn(async () => [first, second])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query }) as unknown as {
+      listReactionDetails(input: {
+        viewerProfileId: string
+        targetType: 'post' | 'comment'
+        targetId: string
+        limit: number
+      }): Promise<{ rows: typeof first[]; nextCursor: string | null }>
+    }
+
+    const result = await repository.listReactionDetails({
+      viewerProfileId: viewerId,
+      targetType: 'comment',
+      targetId: commentId,
+      limit: 1,
+    })
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/from public\.comment_reactions reaction/i)
+    expect(sql).toMatch(/reaction\.comment_id = \$2/i)
+    expect(sql).toMatch(/order by reaction\.created_at desc, reaction\.user_id desc/i)
+    expect(values).toEqual([viewerId, commentId, 2])
+    expect(result.rows).toEqual([first])
+    expect(result.nextCursor).toBe(`${first.reacted_at}|${first.profile_id}`)
   })
 
   it('checks post interaction availability with active viewer and bilateral block exclusion', async () => {

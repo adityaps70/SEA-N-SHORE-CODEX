@@ -101,6 +101,34 @@ describe('feedRequestSchema', () => {
   })
 })
 
+describe('reactionDetailsSchema', () => {
+  it('accepts canonical post/comment targets, reactions and defaults the page size', async () => {
+    const schemas = await import('./schemas') as unknown as {
+      reactionDetailsSchema?: { parse(input: unknown): { limit: number; reaction?: string } }
+    }
+    expect(schemas.reactionDetailsSchema).toBeDefined()
+    if (!schemas.reactionDetailsSchema) return
+
+    expect(schemas.reactionDetailsSchema.parse({
+      targetType: 'post',
+      targetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      reaction: 'support',
+    })).toMatchObject({ limit: 30, reaction: 'support' })
+  })
+
+  it('rejects invalid target ids, reaction names and oversized pages', async () => {
+    const schemas = await import('./schemas') as unknown as {
+      reactionDetailsSchema?: { parse(input: unknown): unknown }
+    }
+    expect(schemas.reactionDetailsSchema).toBeDefined()
+    if (!schemas.reactionDetailsSchema) return
+
+    expect(() => schemas.reactionDetailsSchema?.parse({ targetType: 'post', targetId: 'not-a-uuid' })).toThrow()
+    expect(() => schemas.reactionDetailsSchema?.parse({ targetType: 'comment', targetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', reaction: 'celebrate' })).toThrow()
+    expect(() => schemas.reactionDetailsSchema?.parse({ targetType: 'post', targetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', limit: 51 })).toThrow()
+  })
+})
+
 describe('parseFeedCategory', () => {
   it('returns only canonical categories', () => {
     expect(parseFeedCategory('safety_lessons')).toBe('safety_lessons')
