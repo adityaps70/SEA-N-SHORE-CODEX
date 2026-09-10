@@ -11,10 +11,12 @@ import {
   assertPendingMediaDiscardableWithAurora,
   createPollPostWithAurora,
   createStandardPostWithAurora,
+  deleteCommentWithAurora,
   deletePostWithAurora,
   setPollVoteWithAurora,
   setPostLikedWithAurora,
   setPostSavedWithAurora,
+  updateCommentWithAurora,
 } from './service'
 import {
   addComment,
@@ -26,6 +28,7 @@ import {
   setPostLiked,
   setPostSaved,
 } from './actions'
+import * as feedActions from './actions'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/features/auth/aws-queries', () => {
@@ -61,6 +64,16 @@ vi.mock('./service', () => ({
   setPostReactionWithAurora: vi.fn(async () => true),
   setPostSavedWithAurora: vi.fn(async () => true),
   addPostCommentWithAurora: vi.fn(async () => true),
+  updateCommentWithAurora: vi.fn(async () => ({
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    postId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    parentCommentId: null,
+  })),
+  deleteCommentWithAurora: vi.fn(async () => ({
+    id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    postId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    parentCommentId: null,
+  })),
   setCommentReactionWithAurora: vi.fn(async () => true),
   setPollVoteWithAurora: vi.fn(async () => true),
 }))
@@ -70,6 +83,8 @@ const otherViewerId = '22222222-2222-4222-8222-222222222222'
 const postId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const optionId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const objectId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+const commentId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+const mentionId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
 const storagePath = `${viewerId}/${postId}/${objectId}.jpg`
 const mockedRequireAwsUser = vi.mocked(requireAwsUser)
 const mockedCreatePendingPostMediaUpload = vi.mocked(createPendingPostMediaUpload)
@@ -83,7 +98,23 @@ const mockedDeletePost = vi.mocked(deletePostWithAurora)
 const mockedSetLiked = vi.mocked(setPostLikedWithAurora)
 const mockedSetSaved = vi.mocked(setPostSavedWithAurora)
 const mockedAddComment = vi.mocked(addPostCommentWithAurora)
+const mockedUpdateComment = vi.mocked(updateCommentWithAurora)
+const mockedDeleteComment = vi.mocked(deleteCommentWithAurora)
 const mockedSetVote = vi.mocked(setPollVoteWithAurora)
+
+type CommentActionState = {
+  ok?: boolean
+  error?: string
+  fieldErrors?: Record<string, string[] | undefined>
+  value?: string
+}
+
+type CommentManagementActions = {
+  updateComment(previousState: CommentActionState, formData: FormData): Promise<CommentActionState>
+  deleteComment(commentId: string): Promise<{ ok: boolean; error?: string }>
+}
+
+const managedActions = feedActions as unknown as CommentManagementActions
 
 function basePostForm() {
   const formData = new FormData()
@@ -100,6 +131,15 @@ function postFormWithCompletedMedia() {
   formData.set('mediaMimeType', 'image/jpeg')
   formData.set('mediaSize', '1024')
   formData.set('altText', 'Annotated engine-room diagram')
+  return formData
+}
+
+function commentEditForm() {
+  const formData = new FormData()
+  formData.set('commentId', commentId)
+  formData.set('body', '  Updated bridge note.  ')
+  formData.append('mentionProfileId', mentionId)
+  formData.append('mentionProfileId', mentionId)
   return formData
 }
 
@@ -346,5 +386,63 @@ describe('feed actions', () => {
   it('preserves safe UI error copy when an Aurora mutation fails', async () => {
     mockedSetLiked.mockRejectedValueOnce(new Error('feed_interaction_unavailable'))
     expect(await setPostLiked(postId, true)).toEqual({ ok: false, error: 'We could not update your like.' })
+  })
+
+  it('validates an edit before authentication and preserves the attempted body', async () => {
+    const formData = commentEditForm()
+    formData.set('commentId', 'not-a-uuid')
+
+    const state = await managedActions.updateComment({}, formData)
+
+    expect(state.fieldErrors?.commentId).toBeTruthy()
+    expect(state.value).toBe('  Updated bridge note.  ')
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
+    expect(mockedUpdateComment).not.toHaveBeenCalled()
+  })
+
+  it('routes an authenticated comment edit through Aurora with normalized body and mentions', async () => {
+    const state = await managedActions.updateComment({}, commentEditForm())
+
+    expect(state).toEqual({ ok: true })
+    expect(mockedUpdateComment).toHaveBeenCalledWith(viewerId, commentId, 'Updated bridge note.', [mentionId])
+  })
+
+  it('returns the exact 15-minute edit error without exposing the service code', async () => {
+    mockedUpdateComment.mockRejectedValueOnce(new Error('feed_comment_edit_expired'))
+
+    const state = await managedActions.updateComment({}, commentEditForm())
+
+    expect(state).toEqual({
+      error: 'Comments can only be edited for 15 minutes after posting.',
+      value: '  Updated bridge note.  ',
+    })
+    expect(JSON.stringify(state)).not.toContain('feed_comment_edit_expired')
+  })
+
+  it('uses generic edit copy for permission or unavailable-target failures', async () => {
+    mockedUpdateComment.mockRejectedValueOnce(new Error('feed_comment_mutation_forbidden'))
+
+    await expect(managedActions.updateComment({}, commentEditForm())).resolves.toEqual({
+      error: 'We could not update this comment.',
+      value: '  Updated bridge note.  ',
+    })
+  })
+
+  it('validates delete ids before authentication and routes valid deletes through Aurora', async () => {
+    await expect(managedActions.deleteComment('not-a-uuid')).resolves.toEqual({ ok: false, error: 'Invalid comment.' })
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
+    expect(mockedDeleteComment).not.toHaveBeenCalled()
+
+    await expect(managedActions.deleteComment(commentId)).resolves.toEqual({ ok: true })
+    expect(mockedDeleteComment).toHaveBeenCalledWith(viewerId, commentId)
+  })
+
+  it('uses generic delete copy for permission or unavailable-target failures', async () => {
+    mockedDeleteComment.mockRejectedValueOnce(new Error('feed_interaction_unavailable'))
+
+    await expect(managedActions.deleteComment(commentId)).resolves.toEqual({
+      ok: false,
+      error: 'We could not delete this comment.',
+    })
   })
 })
