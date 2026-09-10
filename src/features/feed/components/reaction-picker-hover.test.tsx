@@ -38,4 +38,21 @@ describe('ReactionPicker hover behavior', () => {
       expect(label).toHaveClass('sr-only')
     }
   })
+
+  it('uses an immediate custom tooltip above each reaction instead of the native title tooltip', async () => {
+    const user = userEvent.setup()
+    render(<ReactionPicker value={null} onChange={vi.fn()} />)
+
+    await user.hover(screen.getByRole('button', { name: /^Like$/i }))
+
+    const onPoint = await screen.findByRole('menuitemradio', { name: 'On Point' })
+    expect(onPoint).not.toHaveAttribute('title')
+
+    await user.hover(onPoint)
+
+    const tooltip = await screen.findByRole('tooltip', { name: 'On Point' })
+    expect(tooltip).toHaveAttribute('data-placement', 'top')
+    expect(tooltip).toHaveClass('rounded-lg')
+    expect(tooltip).toHaveClass('bottom-full')
+  })
 })
