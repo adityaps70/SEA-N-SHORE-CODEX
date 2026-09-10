@@ -58,8 +58,10 @@ vi.mock('./service', () => ({
   createPollPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   deletePostWithAurora: vi.fn(async () => true),
   setPostLikedWithAurora: vi.fn(async () => true),
+  setPostReactionWithAurora: vi.fn(async () => true),
   setPostSavedWithAurora: vi.fn(async () => true),
   addPostCommentWithAurora: vi.fn(async () => true),
+  setCommentReactionWithAurora: vi.fn(async () => true),
   setPollVoteWithAurora: vi.fn(async () => true),
 }))
 
@@ -212,6 +214,7 @@ describe('feed actions', () => {
     expect(mockedCreateStandardPost).toHaveBeenCalledWith(viewerId, {
       category: 'technical_discussion',
       body: 'A useful maritime technical lesson.',
+      mentionProfileIds: [],
     })
     expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', expect.objectContaining({
       postId: expect.any(String),
@@ -244,6 +247,7 @@ describe('feed actions', () => {
         mimeType: 'image/jpeg',
         altText: 'Annotated engine-room diagram',
       },
+      mentionProfileIds: [],
     })
     expect(mockedUploadFeedImage).not.toHaveBeenCalled()
     expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', { postId, hasMedia: true })
@@ -311,6 +315,7 @@ describe('feed actions', () => {
       category: 'technical_discussion',
       body: 'A useful maritime technical lesson.',
       pollOptions: ['Mooring', 'Bridge'],
+      mentionProfileIds: [],
     })
   })
 
@@ -334,7 +339,7 @@ describe('feed actions', () => {
 
     expect(await addComment({}, formData)).toEqual({ ok: true })
     expect(await setPollVote(postId, optionId)).toEqual({ ok: true })
-    expect(mockedAddComment).toHaveBeenCalledWith(viewerId, postId, 'Useful lesson.')
+    expect(mockedAddComment).toHaveBeenCalledWith(viewerId, postId, 'Useful lesson.', null, [])
     expect(mockedSetVote).toHaveBeenCalledWith(viewerId, postId, optionId)
   })
 
