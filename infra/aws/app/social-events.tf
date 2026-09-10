@@ -36,8 +36,18 @@ resource "aws_cloudwatch_event_rule" "notification_events" {
   event_bus_name = aws_cloudwatch_event_bus.social.name
 
   event_pattern = jsonencode({
-    source      = ["sea-n-shore.social"]
-    detail-type = ["user.followed", "connection.requested", "connection.accepted"]
+    source = ["sea-n-shore.social"]
+    detail-type = [
+      "user.followed",
+      "connection.requested",
+      "connection.accepted",
+      "post.commented",
+      "comment.replied",
+      "post.reacted",
+      "comment.reacted",
+      "post.mentioned",
+      "comment.mentioned"
+    ]
   })
 
   tags = local.common_tags
