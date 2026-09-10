@@ -3,7 +3,7 @@ import type { FeedMention } from '../types'
 
 type MentionTextProps = {
   body: string
-  mentions: FeedMention[]
+  mentions?: FeedMention[]
   className?: string
 }
 
@@ -47,7 +47,7 @@ function segmentBody(body: string, mentions: FeedMention[]): Segment[] {
   return segments
 }
 
-export function MentionText({ body, mentions, className }: MentionTextProps) {
+export function MentionText({ body, mentions = [], className }: MentionTextProps) {
   const segments = segmentBody(body, mentions)
   return (
     <span className={className}>
