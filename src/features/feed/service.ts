@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { withTransaction as databaseTransaction } from '@/lib/db/client'
+import { resolveFeedMediaUrls } from './media'
 import {
   createFeedRepositoryForClient,
   type FeedMediaInput,
   type FeedRepository,
 } from './repository'
 import { createFeedSocialWriterForClient, type FeedSocialWriter } from './social-writer'
-import type { PostCategory, PostReactionType } from './types'
+import type { PostCategory, PostReactionType, ReactionDetailsPage, ReactionTargetType } from './types'
 
 type FeedTransaction = <T>(fn: (repository: FeedRepository, social?: FeedSocialWriter) => Promise<T>) => Promise<T>
 
@@ -20,6 +21,14 @@ type StandardPostInput = {
 
 type PollPostInput = Omit<StandardPostInput, 'id' | 'media'> & {
   pollOptions: string[]
+}
+
+type ReactionDetailsRequest = {
+  targetType: ReactionTargetType
+  targetId: string
+  reaction?: PostReactionType
+  cursor?: string
+  limit: number
 }
 
 function serviceError(code: string): never {
@@ -116,8 +125,10 @@ async function notifyCommentMentions(
 export function createFeedService(input: {
   withTransaction: FeedTransaction
   createId?: () => string
+  resolveMediaUrls?: (paths: string[]) => Promise<Map<string, string>>
 }) {
   const createId = input.createId ?? randomUUID
+  const resolveMediaUrls = input.resolveMediaUrls ?? resolveFeedMediaUrls
 
   async function createStandardPost(actorId: string, post: StandardPostInput) {
     return input.withTransaction(async (repository, social) => {
@@ -162,6 +173,37 @@ export function createFeedService(input: {
       if (!await repository.deleteOwnPost(actorId, postId)) serviceError('feed_post_delete_forbidden')
       return true
     })
+  }
+
+  async function getReactionDetails(actorId: string, request: ReactionDetailsRequest): Promise<ReactionDetailsPage> {
+    const page = await input.withTransaction(async (repository) => {
+      await assertMemberReady(repository, actorId)
+      if (request.targetType === 'post') {
+        await assertInteractablePost(repository, actorId, request.targetId)
+      } else {
+        const comment = await repository.getCommentForInteraction(actorId, request.targetId)
+        if (!comment) serviceError('feed_interaction_unavailable')
+      }
+      return repository.listReactionDetails({ viewerProfileId: actorId, ...request })
+    })
+
+    const avatarPaths = [...new Set(page.rows.flatMap((row) => row.avatar_path ? [row.avatar_path] : []))]
+    const signedUrls = await resolveMediaUrls(avatarPaths)
+    return {
+      reactors: page.rows.flatMap((row) => row.slug ? [{
+        id: row.profile_id,
+        slug: row.slug,
+        fullName: row.full_name,
+        avatarPath: row.avatar_path,
+        avatarUrl: row.avatar_path ? signedUrls.get(row.avatar_path) ?? null : null,
+        headline: row.headline,
+        rank: row.rank,
+        currentCompany: row.current_company,
+        reaction: row.reaction_type,
+        reactedAt: row.reacted_at,
+      }] : []),
+      nextCursor: page.nextCursor,
+    }
   }
 
   async function setPostReaction(actorId: string, postId: string, reaction: PostReactionType | null) {
@@ -335,6 +377,7 @@ export function createFeedService(input: {
     assertPendingMediaDiscardable,
     createPollPost,
     deletePost,
+    getReactionDetails,
     setPostReaction,
     setLiked,
     setSaved,
@@ -355,6 +398,7 @@ export const createStandardPostWithAurora = productionService.createStandardPost
 export const assertPendingMediaDiscardableWithAurora = productionService.assertPendingMediaDiscardable
 export const createPollPostWithAurora = productionService.createPollPost
 export const deletePostWithAurora = productionService.deletePost
+export const loadReactionDetailsWithAurora = productionService.getReactionDetails
 export const setPostReactionWithAurora = productionService.setPostReaction
 export const setPostLikedWithAurora = productionService.setLiked
 export const setPostSavedWithAurora = productionService.setSaved
