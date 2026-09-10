@@ -218,18 +218,14 @@ describe('CommentThread management', () => {
     expect(item(replyId).getByText('Visible reply survives.')).toBeInTheDocument()
   })
 
-  it('separates the total-only comment reaction opener from the unique reaction cluster and opens the same modal', async () => {
+  it('opens reaction details from the combined far-right emoji and count control', async () => {
     const summary = { like: 2, support: 1, respect: 0, on_point: 1 }
     render(<CommentThread postId={postId} comments={[comment({ reactionSummary: summary, reactionCount: 4 })]} />)
-    const total = item(rootId).getByRole('button', { name: /view 4 comment reactions/i })
-    expect(total).toHaveTextContent('4 reactions')
-    expect(total).not.toHaveTextContent('👍')
-    expect(total).not.toHaveTextContent('❤️')
-    expect(total).not.toHaveTextContent('⚓')
-    const cluster = item(rootId).getByRole('button', { name: /view comment reaction types/i })
-    expect(cluster).toHaveTextContent('👍❤️⚓')
-    expect(cluster).not.toHaveTextContent('🫡')
-    fireEvent.click(cluster)
+    const details = item(rootId).getByRole('button', { name: /view 4 comment reactions/i })
+    expect(details).toHaveTextContent('👍❤️⚓4')
+    expect(details).not.toHaveTextContent(/reactions?/i)
+    expect(item(rootId).queryByRole('button', { name: /view comment reaction types/i })).not.toBeInTheDocument()
+    fireEvent.click(details)
     expect(screen.getByRole('dialog', { name: /reactions/i })).toBeInTheDocument()
     await waitFor(() => expect(mocks.loadReactionDetails).toHaveBeenCalledWith({ targetType: 'comment', targetId: rootId, limit: 30 }))
   })
