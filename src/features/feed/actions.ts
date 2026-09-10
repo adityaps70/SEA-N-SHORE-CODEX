@@ -250,7 +250,6 @@ export async function setPostReaction(postId: string, reaction: PostReactionType
   const user = await requireAwsUser()
   try { await setPostReactionWithAurora(user.id, parsedId.data, parsedReaction.data) }
   catch { return { ok: false, error: 'We could not update your reaction.' } }
-  revalidateSocialFeed()
   return { ok: true }
 }
 
@@ -271,7 +270,6 @@ export async function setCommentReaction(commentId: string, reaction: PostReacti
   const user = await requireAwsUser()
   try { await setCommentReactionWithAurora(user.id, parsedId.data, parsedReaction.data) }
   catch { return { ok: false, error: 'We could not update your comment reaction.' } }
-  revalidateSocialFeed()
   return { ok: true }
 }
 
