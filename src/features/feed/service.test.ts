@@ -52,6 +52,15 @@ function serviceFor(repo: FeedRepository, social?: FeedSocialWriter) {
   }))
 }
 
+type CommentManagementService = Awaited<ReturnType<typeof serviceFor>> & {
+  updateComment(actorId: string, id: string, body: string, mentionProfileIds?: string[]): Promise<{ id: string; postId: string; parentCommentId: string | null }>
+  deleteComment(actorId: string, id: string): Promise<{ id: string; postId: string; parentCommentId: string | null }>
+}
+
+async function managedServiceFor(repo: FeedRepository, social?: FeedSocialWriter) {
+  return await serviceFor(repo, social) as CommentManagementService
+}
+
 describe('feed service authorization', () => {
   it('rejects post creation when the permanent profile is not an active onboarded member', async () => {
     const repo = repository({ isMemberReady: vi.fn(async () => false) })
@@ -253,7 +262,7 @@ describe('feed service comment management', () => {
     }))
     const repo = repository({ replaceCommentMentions })
     const social = socialWriter()
-    const service = await serviceFor(repo, social)
+    const service = await managedServiceFor(repo, social)
 
     await expect(service.updateComment(
       viewerId,
@@ -285,7 +294,7 @@ describe('feed service comment management', () => {
 
   it('rejects an owned edit once the authoritative database edit window has closed', async () => {
     const repo = repository({ updateOwnCommentWithinEditWindow: vi.fn(async () => null) })
-    const service = await serviceFor(repo)
+    const service = await managedServiceFor(repo)
 
     await expect(service.updateComment(viewerId, commentId, 'Too late.', [])).rejects.toThrow('feed_comment_edit_expired')
     expect(repo.replaceCommentMentions).not.toHaveBeenCalled()
@@ -302,7 +311,7 @@ describe('feed service comment management', () => {
         postAuthorId: authorId,
       })),
     })
-    const service = await serviceFor(repo)
+    const service = await managedServiceFor(repo)
 
     await expect(service.updateComment(viewerId, commentId, 'Not mine.', [])).rejects.toThrow('feed_comment_mutation_forbidden')
     await expect(service.deleteComment(viewerId, commentId)).rejects.toThrow('feed_comment_mutation_forbidden')
@@ -312,7 +321,7 @@ describe('feed service comment management', () => {
 
   it('rejects deleted or unavailable comment targets generically', async () => {
     const repo = repository({ getCommentForInteraction: vi.fn(async () => null) })
-    const service = await serviceFor(repo)
+    const service = await managedServiceFor(repo)
 
     await expect(service.updateComment(viewerId, commentId, 'Unavailable.', [])).rejects.toThrow('feed_interaction_unavailable')
     await expect(service.deleteComment(viewerId, commentId)).rejects.toThrow('feed_interaction_unavailable')
@@ -320,7 +329,7 @@ describe('feed service comment management', () => {
 
   it('soft-deletes an owned comment without applying an age limit', async () => {
     const repo = repository()
-    const service = await serviceFor(repo)
+    const service = await managedServiceFor(repo)
 
     await expect(service.deleteComment(viewerId, commentId)).resolves.toEqual({ id: commentId, postId, parentCommentId: null })
     expect(repo.softDeleteOwnComment).toHaveBeenCalledWith(viewerId, commentId)
@@ -334,7 +343,7 @@ describe('feed service comment management', () => {
       })),
     })
     const social = socialWriter()
-    const service = await serviceFor(repo, social)
+    const service = await managedServiceFor(repo, social)
 
     await service.updateComment(viewerId, commentId, 'Mention removed.', [])
 
