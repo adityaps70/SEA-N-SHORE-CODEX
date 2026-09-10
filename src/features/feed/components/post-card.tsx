@@ -136,29 +136,39 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
           {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
         </div>
 
-        <div className="border-t border-mist-100 px-4 py-2 sm:px-5">
-          <ReactionSummaryTrigger summary={summary} commentCount={post.commentCount} onOpen={() => setReactionsOpen(true)} />
-        </div>
-
         {readOnly ? (
           <div className="border-t border-mist-100 px-4 py-2 sm:px-5"><SharePostButton postId={post.id} /></div>
         ) : (
-          <div className="grid grid-cols-4 items-center border-t border-mist-100 px-2 py-1 sm:px-3">
-            <div className="flex justify-center"><ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} compact /></div>
+          <div
+            role="group"
+            aria-label="Post actions"
+            className="grid grid-cols-4 items-center border-t border-mist-100 px-2 py-1 sm:px-3"
+          >
+            <div className="flex min-w-0 items-center justify-center gap-0.5">
+              <ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} compact />
+              <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
+            </div>
             <button
               type="button"
               onClick={() => setComposerOpen(true)}
+              aria-label="Comment"
               aria-expanded={composerOpen}
               aria-controls={`comments-${post.id}`}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50"
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50"
             >
               <MessageCircle aria-hidden="true" className="size-5" />
-              <span className="hidden sm:inline">Comment</span>
+              <span>{post.commentCount}</span>
             </button>
-            <SharePostButton postId={post.id} />
-            <button type="button" aria-pressed={saved} disabled={pending} onClick={changeSaved} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${saved ? 'text-ocean-700' : 'text-navy-900'}`}>
+            <SharePostButton postId={post.id} iconOnly />
+            <button
+              type="button"
+              aria-label="Save"
+              aria-pressed={saved}
+              disabled={pending}
+              onClick={changeSaved}
+              className={`inline-flex min-h-11 items-center justify-center rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${saved ? 'text-ocean-700' : 'text-navy-900'}`}
+            >
               <Bookmark aria-hidden="true" className="size-5" fill={saved ? 'currentColor' : 'none'} />
-              <span className="hidden sm:inline">Save</span>
             </button>
           </div>
         )}
