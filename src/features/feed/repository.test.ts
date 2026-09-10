@@ -64,7 +64,7 @@ describe('feed repository', () => {
 
     const state = await repository.getViewerState(viewerId, [postId])
 
-    expect(state.postReactions.get(postId)).toBe('support')
+    expect(state.postReactions?.get(postId)).toBe('support')
     expect(state.savedPostIds.has(postId)).toBe(true)
     expect(state.pollVotes.get(postId)).toBe('44444444-4444-4444-8444-444444444444')
     for (const [, values] of callsOf(query)) expect(values?.[0]).toBe(viewerId)
