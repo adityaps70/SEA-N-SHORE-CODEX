@@ -18,3 +18,20 @@ resource "aws_iam_role_policy" "ecs_execution_aurora_secret" {
     ]
   })
 }
+
+resource "aws_iam_role_policy" "ecs_task_aurora_secret" {
+  name = "${local.name_prefix}-aurora-secret-runtime"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "ReadAuroraManagedMasterSecretAtRuntime"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = local.aurora_master_secret_arn
+      }
+    ]
+  })
+}
