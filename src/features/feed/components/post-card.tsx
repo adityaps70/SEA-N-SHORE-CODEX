@@ -142,11 +142,10 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
           <div
             role="group"
             aria-label="Post actions"
-            className="grid grid-cols-4 items-center border-t border-mist-100 px-2 py-1 sm:px-3"
+            className="grid grid-cols-[auto_1fr_1fr_1fr_auto] items-center border-t border-mist-100 px-2 py-1 sm:px-3"
           >
-            <div className="flex min-w-0 items-center justify-center gap-0.5">
+            <div className="flex min-w-0 items-center justify-start">
               <ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} compact />
-              <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
             </div>
             <button
               type="button"
@@ -170,6 +169,9 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
             >
               <Bookmark aria-hidden="true" className="size-5" fill={saved ? 'currentColor' : 'none'} />
             </button>
+            <div className="flex min-w-0 items-center justify-end">
+              <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
+            </div>
           </div>
         )}
 
