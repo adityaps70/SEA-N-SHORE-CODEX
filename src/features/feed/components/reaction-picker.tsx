@@ -65,15 +65,23 @@ export function ReactionPicker({
                 type="button"
                 role="menuitemradio"
                 aria-checked={value === reaction}
-                title={meta.label}
                 onClick={() => {
                   onChange(value === reaction ? null : reaction)
                   setOpen(false)
                 }}
-                className={`inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-mist-50 ${value === reaction ? 'bg-ocean-50 text-ocean-700' : 'text-navy-900'}`}
+                className={`group relative inline-flex min-h-11 items-center gap-1.5 rounded-full px-2.5 text-sm font-semibold transition hover:-translate-y-0.5 hover:bg-mist-50 ${value === reaction ? 'bg-ocean-50 text-ocean-700' : 'text-navy-900'}`}
               >
                 <span aria-hidden="true" className="text-xl">{meta.emoji}</span>
                 <span data-reaction-label className="sr-only">{meta.label}</span>
+                <span
+                  role="tooltip"
+                  aria-label={meta.label}
+                  data-placement="top"
+                  className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-navy-950 px-2.5 py-1.5 text-xs font-semibold leading-none text-white opacity-0 shadow-lg transition-opacity duration-100 group-hover:opacity-100 group-focus-visible:opacity-100"
+                >
+                  {meta.label}
+                  <span aria-hidden="true" className="absolute left-1/2 top-full size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-navy-950" />
+                </span>
               </button>
             )
           })}
