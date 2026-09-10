@@ -6,6 +6,38 @@ import { ReactionPicker } from './reaction-picker'
 afterEach(() => cleanup())
 
 describe('ReactionPicker hover behavior', () => {
+  it('renders a neutral lucide thumbs-up and no yellow Like emoji when unreacted', () => {
+    const { container } = render(<ReactionPicker value={null} onChange={vi.fn()} />)
+
+    const trigger = screen.getByRole('button', { name: /^Like$/i })
+    expect(trigger.querySelector('svg.lucide-thumbs-up')).toBeInTheDocument()
+    expect(trigger).not.toHaveTextContent('👍')
+    expect(container.querySelectorAll('svg.lucide-thumbs-up')).toHaveLength(1)
+  })
+
+  it('renders only the selected reaction emoji when reacted', () => {
+    render(<ReactionPicker value="support" onChange={vi.fn()} />)
+
+    const trigger = screen.getByRole('button', { name: 'Support' })
+    expect(trigger).toHaveTextContent('❤️')
+    expect(trigger.querySelector('svg.lucide-thumbs-up')).not.toBeInTheDocument()
+    expect(trigger).not.toHaveTextContent('👍')
+  })
+
+  it('selects Like from the neutral control and removes the selected reaction when clicked', async () => {
+    const user = userEvent.setup()
+    const onNeutralChange = vi.fn()
+    const { rerender } = render(<ReactionPicker value={null} onChange={onNeutralChange} />)
+
+    await user.click(screen.getByRole('button', { name: /^Like$/i }))
+    expect(onNeutralChange).toHaveBeenCalledWith('like')
+
+    const onSelectedChange = vi.fn()
+    rerender(<ReactionPicker value="respect" onChange={onSelectedChange} />)
+    await user.click(screen.getByRole('button', { name: 'Respect' }))
+    expect(onSelectedChange).toHaveBeenCalledWith(null)
+  })
+
   it('shows reactions on hover without an arrow chooser button', async () => {
     const user = userEvent.setup()
     render(<ReactionPicker value={null} onChange={vi.fn()} />)
