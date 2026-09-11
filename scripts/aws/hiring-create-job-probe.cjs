@@ -1,4 +1,5 @@
 'use strict'
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 const assert = require('node:assert/strict')
 const { readFileSync } = require('node:fs')
