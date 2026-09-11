@@ -54,6 +54,8 @@ jobs:
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
       - name: Verify onboarding e2e guard contract
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
+      - name: Verify organization hiring e2e guard contract
+        run: node --test scripts/aws/organization-hiring-e2e-guard.test.mjs
       - name: Verify post media migration contract
         run: node --test scripts/aws/migrate-post-media-to-s3.test.mjs
       - name: Verify post media video schema contract
