@@ -110,4 +110,25 @@ describe('premium hiring workspace contract', () => {
     expect(page).not.toContain('is_verified =')
     expect(page).not.toContain('verified_by =')
   })
+
+  it('shows Start Hiring in app headers only when the signed-in user has authorized organization hiring access', () => {
+    const layout = source('src/app/(app)/layout.tsx')
+    const desktopHeader = source('src/components/navigation/app-header.tsx')
+    const mobileHeader = source('src/components/navigation/mobile-app-header.tsx')
+    const repository = source('src/features/jobs/hiring-repository.ts')
+
+    expect(layout).toContain('hiringRepository.getAuthorizedCompany(user.id)')
+    expect(layout).toContain('canStartHiring={Boolean(authorizedCompany)}')
+    expect(desktopHeader).toContain('canStartHiring')
+    expect(desktopHeader).toContain('Start Hiring')
+    expect(desktopHeader).toContain('href="/hiring"')
+    expect(mobileHeader).toContain('canStartHiring')
+    expect(mobileHeader).toContain('Start Hiring')
+    expect(mobileHeader).toContain('href="/hiring"')
+
+    expect(repository).toContain('cm.approved_at is not null')
+    expect(repository).toContain('cm.role::text = any($2::text[])')
+    expect(repository).toContain('c.is_verified = true')
+    expect(repository).not.toContain('profile_type')
+  })
 })
