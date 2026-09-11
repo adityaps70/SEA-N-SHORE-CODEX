@@ -685,9 +685,9 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
            urgent, easy_apply, published_at
          ) values (
            $1, $2, $3, $4, $5, $6, $7, $8,
-           $9, $10, $11, $12, $13, $14::text[], $15, $16,
+           $9, $10::public.job_listing_status, $11, $12, $13, $14::text[], $15, $16,
            $17, $18, $19, $20, $21, $22, $23::text[],
-           $24, $25, case when $10 = 'published' then now() else null end
+           $24, $25, case when $10::public.job_listing_status = 'published'::public.job_listing_status then now() else null end
          ) returning id`,
         [
           job.title, company.name, company.id, userId, job.location, job.summary, job.description, job.requirements,
