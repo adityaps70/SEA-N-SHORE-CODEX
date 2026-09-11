@@ -60,7 +60,7 @@ test('run-once uses disposable authenticated users and the live organization app
 
 test('organization onboarding follows the production organization hiring redirect', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
-  const organizationFlow = browserScript.match(/async function completeOrganisation[\s\S]*?\n}\n/)?.[0] ?? ''
+  const organizationFlow = browserScript.match(/async function completeApplicantOrganisation[\s\S]*?\n}\n/)?.[0] ?? ''
 
   assert.match(organizationFlow, /url\.pathname === '\/hiring\/organization'/)
   assert.doesNotMatch(organizationFlow, /url\.pathname === '\/home'/)
