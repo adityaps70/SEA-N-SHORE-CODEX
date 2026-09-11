@@ -85,7 +85,7 @@ describe('platform admin organization repository', () => {
     expect(seen[1]?.text).toContain('public.company_access_requests')
   })
 
-  it('lists organization applications oldest-first with applicant and employer context', async () => {
+  it('lists a bounded organization queue oldest-first with applicant and employer context', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createAdminRepository({
       query: async (text, values) => {
@@ -105,6 +105,7 @@ describe('platform admin organization repository', () => {
     })
     expect(seen[1]?.text).toContain('oa.status = $1')
     expect(seen[1]?.text).toContain('order by oa.submitted_at asc')
+    expect(seen[1]?.text).toContain('limit 100')
     expect(seen[1]?.values).toEqual(['pending'])
   })
 
