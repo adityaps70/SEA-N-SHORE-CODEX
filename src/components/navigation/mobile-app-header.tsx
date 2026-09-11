@@ -1,13 +1,29 @@
 import Link from 'next/link'
-import { Bell, Bookmark } from 'lucide-react'
+import { Bell, Bookmark, BriefcaseBusiness } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
 
-export function MobileAppHeader({ unreadCount }: { unreadCount: number }) {
+export function MobileAppHeader({
+  unreadCount,
+  canStartHiring,
+}: {
+  unreadCount: number
+  canStartHiring: boolean
+}) {
   return (
     <header className="border-b border-mist-100 bg-white md:hidden">
       <div className="flex min-h-14 items-center justify-between gap-3 px-4">
         <Wordmark compact />
         <div className="flex items-center gap-1">
+          {canStartHiring ? (
+            <Link
+              href="/hiring"
+              aria-label="Start Hiring"
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-ocean-700 px-2.5 text-xs font-bold text-white transition hover:bg-ocean-800"
+            >
+              <BriefcaseBusiness aria-hidden="true" className="size-4 shrink-0" />
+              <span className="whitespace-nowrap">Start Hiring</span>
+            </Link>
+          ) : null}
           <Link
             href="/saved"
             aria-label="Saved posts"

@@ -32,9 +32,11 @@ const activeNavClass = 'border-ocean-600 bg-ocean-50 text-ocean-700'
 export function AppHeader({
   recentNotifications,
   unreadCount,
+  canStartHiring,
 }: {
   recentNotifications: NetworkNotification[]
   unreadCount: number
+  canStartHiring: boolean
 }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
@@ -69,6 +71,18 @@ export function AppHeader({
               className="min-h-10 w-64 rounded-lg bg-mist-50 py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted 2xl:w-[22rem]"
             />
           </form>
+          {canStartHiring ? (
+            <ActiveNavLink
+              href="/hiring"
+              aria-label="Start Hiring"
+              title="Start Hiring"
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-ocean-700 px-3 text-sm font-semibold text-white transition hover:bg-ocean-800"
+              activeClassName="bg-ocean-800 text-white"
+            >
+              <BriefcaseBusiness aria-hidden="true" className="size-4 shrink-0" />
+              <span className="whitespace-nowrap">Start Hiring</span>
+            </ActiveNavLink>
+          ) : null}
           <NotificationBell recent={recentNotifications} unreadCount={unreadCount} />
           <ActiveNavLink
             href="/profile"
