@@ -155,7 +155,7 @@ export async function completeActivation(
     })
   }
 
-  redirect('/home')
+  redirect(parsed.data.identityRoot === 'organisation' ? '/hiring/organization' : '/home')
 }
 
 export async function updateProfile(
