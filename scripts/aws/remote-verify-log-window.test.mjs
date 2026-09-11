@@ -33,8 +33,11 @@ test('CloudWatch runtime review reports and excludes only explicit old-or-new de
   assert.match(workflow, /grep -Ev "\$STALE_SERVER_ACTION_PATTERN"/)
 })
 
-test('CloudWatch runtime review excludes only the explicit unauthenticated route guard while retaining generic auth error detection', () => {
-  assert.match(workflow, /EXPECTED_AUTH_REQUIRED_PATTERN='\^AwsAuthenticationRequiredError: Authentication required\\\.\$'/)
+test('CloudWatch runtime review excludes only the exact Next.js unauthenticated route guard while retaining generic auth error detection', () => {
+  assert.equal(
+    workflow.includes("EXPECTED_AUTH_REQUIRED_PATTERN='^⨯ Error \\[AwsAuthenticationRequiredError\\]: Authentication required\\.$'"),
+    true,
+  )
   assert.match(workflow, /IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS/)
   assert.match(workflow, /grep -Ev "\$EXPECTED_AUTH_REQUIRED_PATTERN"/)
   assert.match(workflow, /auth\[\^\[\:cntrl\:\]\]\*\(failed\|error\)/)
