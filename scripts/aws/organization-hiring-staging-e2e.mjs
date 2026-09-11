@@ -198,8 +198,42 @@ async function postJobAsOwner() {
   await page.getByLabel('Salary period').selectOption('month')
   await page.getByLabel('Urgent joining').check()
   await page.getByLabel('Status').selectOption('published')
+
+  const postObservations = []
+  const requestFailures = []
+  const consoleErrors = []
+  const startedAt = Date.now()
+  page.on('response', (response) => {
+    const request = response.request()
+    if (request.method() === 'POST' && response.url().startsWith(siteUrl)) {
+      postObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
+    }
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().startsWith(siteUrl)) requestFailures.push({ method: request.method(), url: request.url(), failure: request.failure()?.errorText ?? 'unknown' })
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
+  })
+
+  const jobStatus = page.locator('p[role="status"]')
   await page.getByRole('button', { name: 'Create job' }).click()
-  await page.waitForURL((url) => url.pathname === '/hiring/jobs', { timeout: 20_000 })
+  const outcome = await Promise.race([
+    page.waitForURL((url) => url.pathname === '/hiring/jobs', { timeout: 20_000 }).then(() => ({ kind: 'navigated' })),
+    jobStatus.waitFor({ state: 'visible', timeout: 20_000 }).then(async () => ({ kind: 'status', text: (await jobStatus.innerText()).trim() })),
+  ]).catch(() => null)
+
+  if (outcome?.kind === 'status' && outcome.text !== 'Job saved successfully.') {
+    throw new Error(`Job create action failed: status=${JSON.stringify(outcome.text)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+  }
+  if (outcome?.kind === 'status') {
+    await page.waitForURL((url) => url.pathname === '/hiring/jobs', { timeout: 10_000 }).catch(() => null)
+  }
+  if (new URL(page.url()).pathname !== '/hiring/jobs') {
+    const statusText = await jobStatus.textContent().catch(() => null)
+    throw new Error(`Job create navigation failed: outcome=${JSON.stringify(outcome)} status=${JSON.stringify(statusText?.trim() || null)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+  }
+
   await expect(page.getByRole('heading', { name: 'Company jobs' })).toBeVisible()
   await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
   await expect(page.getByText('published', { exact: true })).toBeVisible()
