@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 
 const phase = process.argv[2]
-const allowedPhases = new Set(['confirm', 'grant-admin', 'resolve-application', 'verify-approval', 'resolve-job', 'verify-unauthorized', 'cleanup'])
+const allowedPhases = new Set(['confirm', 'grant-admin', 'resolve-application', 'verify-approval', 'resolve-job', 'probe-job', 'verify-unauthorized', 'cleanup'])
 assert.ok(allowedPhases.has(phase), `Unsupported SSM E2E phase: ${phase}`)
 
 const instanceId = process.env.INSTANCE_ID
