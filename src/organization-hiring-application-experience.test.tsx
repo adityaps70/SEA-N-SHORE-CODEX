@@ -34,6 +34,8 @@ describe('organization hiring verification experience', () => {
     expect(page).toContain('Application rejected')
     expect(page).toContain('Hiring access suspended')
     expect(page).toContain('adminReviewNote')
+    expect(page).toContain('state.submittedAt')
+    expect(page).toContain('Submitted')
     expect(page).toContain('OrganizationApplicationForm')
     expect(page).toContain("redirect('/hiring')")
   })
