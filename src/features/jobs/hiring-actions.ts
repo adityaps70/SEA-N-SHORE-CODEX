@@ -67,6 +67,26 @@ function safeMutationError(error: unknown) {
   return 'Something went wrong. Please try again.'
 }
 
+function databaseErrorField(error: unknown, field: string) {
+  if (typeof error !== 'object' || error === null) return null
+  const value = (error as Record<string, unknown>)[field]
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function logHiringMutationError(operation: string, error: unknown) {
+  if (error instanceof Error && error.message === 'hiring_forbidden') return
+
+  console.error('hiring_mutation_failed', {
+    operation,
+    name: error instanceof Error ? error.name : null,
+    message: error instanceof Error ? error.message : null,
+    code: databaseErrorField(error, 'code'),
+    constraint: databaseErrorField(error, 'constraint'),
+    table: databaseErrorField(error, 'table'),
+    column: databaseErrorField(error, 'column'),
+  })
+}
+
 function refreshJobMutation(jobId: string) {
   revalidatePath('/hiring')
   revalidatePath('/hiring/jobs')
@@ -84,6 +104,7 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
     refreshJobMutation(jobId)
     return { ok: true, jobId }
   } catch (error) {
+    logHiringMutationError('create_job', error)
     return { ok: false, error: safeMutationError(error) }
   }
 }
@@ -101,6 +122,7 @@ export async function updateHiringJob(jobId: string, input: HiringJobUpdateInput
     revalidatePath(`/hiring/jobs/${parsedJobId.data}/edit`)
     return { ok: true }
   } catch (error) {
+    logHiringMutationError('update_job', error)
     return { ok: false, error: safeMutationError(error) }
   }
 }
@@ -126,6 +148,7 @@ export async function updateHiringApplicationStatus(
     revalidatePath('/activities')
     return { ok: true }
   } catch (error) {
+    logHiringMutationError('update_application_status', error)
     return { ok: false, error: safeMutationError(error) }
   }
 }
@@ -142,6 +165,7 @@ export async function saveHiringRecruiterNote(applicationId: string, note: strin
     revalidatePath(`/hiring/applicants/${parsedApplicationId.data}`)
     return { ok: true }
   } catch (error) {
+    logHiringMutationError('save_recruiter_note', error)
     return { ok: false, error: safeMutationError(error) }
   }
 }
