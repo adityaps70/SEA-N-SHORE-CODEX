@@ -4,10 +4,10 @@ import { Wordmark } from '@/components/brand/wordmark'
 
 export function MobileAppHeader({
   unreadCount,
-  canStartHiring,
+  canStartHiring = false,
 }: {
   unreadCount: number
-  canStartHiring: boolean
+  canStartHiring?: boolean
 }) {
   return (
     <header className="border-b border-mist-100 bg-white md:hidden">

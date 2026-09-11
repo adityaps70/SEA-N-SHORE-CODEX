@@ -32,11 +32,11 @@ const activeNavClass = 'border-ocean-600 bg-ocean-50 text-ocean-700'
 export function AppHeader({
   recentNotifications,
   unreadCount,
-  canStartHiring,
+  canStartHiring = false,
 }: {
   recentNotifications: NetworkNotification[]
   unreadCount: number
-  canStartHiring: boolean
+  canStartHiring?: boolean
 }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
