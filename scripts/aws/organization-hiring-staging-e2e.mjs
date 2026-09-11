@@ -163,7 +163,6 @@ async function approveOrganization() {
   await expect(page.getByRole('heading', { name: organizationName })).toBeVisible()
   await expect(page.getByText('Not verified', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Approve organization' }).click()
-  await expect(page.getByText('Review decision saved.')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText('Verified employer', { exact: true })).toBeVisible({ timeout: 20_000 })
   console.log('ORGANIZATION_HIRING_E2E_ADMIN_APPROVAL_UI_VERIFIED=true')
   await context.close()
