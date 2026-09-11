@@ -1,0 +1,121 @@
+name: AWS Organization Hiring E2E Recovery
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-organization-hiring-e2e-recovery.yml
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-organization-hiring-e2e-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover-failed-run:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      AWS_REGION: ap-south-1
+      COGNITO_POOL_NAME: sea-n-shore-staging-users
+      RECOVERY_RUN_ID: '34591056763'
+      E2E_APPLICANT_EMAIL: sea-n-shore-hiring-e2e-34591056763-applicant@example.com
+      E2E_ADMIN_EMAIL: sea-n-shore-hiring-e2e-34591056763-admin@example.com
+      E2E_UNAUTHORIZED_EMAIL: sea-n-shore-hiring-e2e-34591056763-unauthorized@example.com
+      E2E_ORGANIZATION_NAME: E2E Hiring Organization 34591056763
+      E2E_JOB_TITLE: E2E Chief Officer 34591056763
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Verify recovery namespace is hard pinned
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RECOVERY_RUN_ID" == '34591056763' ]]
+          [[ "$E2E_APPLICANT_EMAIL" == "sea-n-shore-hiring-e2e-${RECOVERY_RUN_ID}-applicant@example.com" ]]
+          [[ "$E2E_ADMIN_EMAIL" == "sea-n-shore-hiring-e2e-${RECOVERY_RUN_ID}-admin@example.com" ]]
+          [[ "$E2E_UNAUTHORIZED_EMAIL" == "sea-n-shore-hiring-e2e-${RECOVERY_RUN_ID}-unauthorized@example.com" ]]
+          [[ "$E2E_ORGANIZATION_NAME" == "E2E Hiring Organization ${RECOVERY_RUN_ID}" ]]
+          [[ "$E2E_JOB_TITLE" == "E2E Chief Officer ${RECOVERY_RUN_ID}" ]]
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == completed ]]; then
+              [[ "$CONCLUSION" == success ]] || { echo 'Exact-head AWS Infrastructure CI is not green.' >&2; exit 1; }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Timed out waiting for exact-head AWS Infrastructure CI.' >&2
+          exit 1
+
+      - name: Guard recovery against a moved branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_HEAD="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
+          [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || {
+            echo 'Branch moved after recovery started; refusing stale execution.' >&2
+            exit 1
+          }
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Verify staging AWS account
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT_ID" == '310356785722' ]] || { echo "Unexpected AWS account: $ACCOUNT_ID" >&2; exit 1; }
+
+      - name: Discover bootstrap instance
+        id: instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTANCE_IDS="$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)"
+          COUNT="$(jq 'length' <<<"$INSTANCE_IDS")"
+          [[ "$COUNT" -eq 1 ]] || { echo "Expected exactly one running bootstrap; found $COUNT." >&2; exit 1; }
+          echo "instance_id=$(jq -r '.[0]' <<<"$INSTANCE_IDS")" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup failed E2E namespace
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/aws/organization-hiring-e2e-ssm.mjs cleanup | tee /tmp/organization-hiring-recovery-first.log
+          grep -q '^ORGANIZATION_HIRING_E2E_CLEANUP_VERIFIED=true$' /tmp/organization-hiring-recovery-first.log
+
+      - name: Prove cleanup is idempotent and zero-residual
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/aws/organization-hiring-e2e-ssm.mjs cleanup | tee /tmp/organization-hiring-recovery-second.log
+          grep -q '^ORGANIZATION_HIRING_E2E_CLEANUP_VERIFIED=true$' /tmp/organization-hiring-recovery-second.log
+          echo 'ORGANIZATION_HIRING_E2E_RECOVERY_VERIFIED=true'
