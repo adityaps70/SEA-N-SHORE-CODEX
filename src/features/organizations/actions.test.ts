@@ -58,6 +58,14 @@ describe('organization application server actions', () => {
     expect(mocks.submitOrganizationApplication).not.toHaveBeenCalled()
   })
 
+  it('rejects an invalid organization website before authentication', async () => {
+    const result = await submitOrganizationApplication(validInput({ website: 'not-a-url' }))
+
+    expect(result.ok).toBe(false)
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.submitOrganizationApplication).not.toHaveBeenCalled()
+  })
+
   it('submits normalized organization data with the authenticated user', async () => {
     await expect(submitOrganizationApplication(validInput())).resolves.toEqual({ ok: true, applicationId })
 
