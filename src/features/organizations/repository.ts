@@ -27,6 +27,21 @@ type OrganizationStateRow = QueryResultRow & {
   member_approved_at: string | null
 }
 
+type OrganizationApplicationDetailRow = QueryResultRow & {
+  application_id: string
+  organization_name: string
+  organization_type: string | null
+  website: string | null
+  official_email: string
+  office_locations: string[] | null
+  description: string | null
+  fleet_summary: string | null
+  vessel_types: string[] | null
+  applicant_role: string
+  registration_reference: string | null
+  supporting_notes: string | null
+}
+
 type CompanySearchRow = QueryResultRow & {
   id: string
   slug: string
@@ -121,6 +136,46 @@ export function createOrganizationRepository(input: {
       membership: row.member_role
         ? { role: row.member_role, approvedAt: row.member_approved_at ?? null }
         : null,
+    }
+  }
+
+  async function getOrganizationApplication(userId: string, applicationId: string): Promise<OrganizationApplicationInput | null> {
+    const rows = await query(
+      `select
+         oa.id as application_id,
+         c.name as organization_name,
+         c.company_type as organization_type,
+         c.website,
+         oa.official_email,
+         c.office_locations,
+         c.description,
+         c.fleet_summary,
+         c.vessel_types,
+         oa.applicant_role,
+         oa.registration_reference,
+         oa.supporting_notes
+       from public.organization_applications oa
+       join public.companies c on c.id = oa.company_id
+       where oa.submitted_by = $1
+         and oa.id = $2
+       limit 1`,
+      [userId, applicationId],
+    ) as OrganizationApplicationDetailRow[]
+    const row = rows[0]
+    if (!row) return null
+
+    return {
+      organizationName: row.organization_name,
+      organizationType: row.organization_type ?? '',
+      website: row.website ?? null,
+      officialEmail: row.official_email,
+      officeLocation: Array.isArray(row.office_locations) ? row.office_locations[0] ?? '' : '',
+      description: row.description ?? '',
+      fleetSummary: row.fleet_summary ?? null,
+      vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
+      applicantRole: row.applicant_role,
+      registrationReference: row.registration_reference ?? null,
+      supportingNotes: row.supporting_notes ?? null,
     }
   }
 
@@ -271,6 +326,7 @@ export function createOrganizationRepository(input: {
 
   return {
     getUserOrganizationState,
+    getOrganizationApplication,
     submitOrganizationApplication,
     resubmitOrganizationApplication,
     searchCompanies,
