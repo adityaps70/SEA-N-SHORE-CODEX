@@ -93,6 +93,34 @@ describe('organization approval repository', () => {
     })
   })
 
+  it('loads editable organization details only for the submitting user', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createOrganizationRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          application_id: 'application-1',
+          organization_name: 'Oceanic Shipping Pvt Ltd',
+          organization_type: 'Ship Management Company',
+          website: 'https://oceanic.example.com',
+          official_email: 'hiring@oceanic.example.com',
+          office_locations: ['Mumbai, India'],
+          description: 'Ship management and crewing company serving international owners.',
+          fleet_summary: '12 managed tankers and bulk carriers.',
+          vessel_types: ['Oil Tanker', 'Bulk Carrier'],
+          applicant_role: 'Managing Director',
+          registration_reference: 'CIN-12345',
+          supporting_notes: 'Please verify our company profile for maritime hiring.',
+        }]
+      },
+    })
+
+    await expect(repository.getOrganizationApplication(actorId, 'application-1')).resolves.toEqual(applicationInput())
+    expect(seen[0]?.text).toContain('oa.submitted_by = $1')
+    expect(seen[0]?.text).toContain('oa.id = $2')
+    expect(seen[0]?.values).toEqual([actorId, 'application-1'])
+  })
+
   it('resubmits only an existing changes-requested or rejected application and clears review state', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
