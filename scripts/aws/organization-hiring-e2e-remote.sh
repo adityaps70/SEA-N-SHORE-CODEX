@@ -92,6 +92,21 @@ case "$PHASE" in
     echo 'ORGANIZATION_HIRING_E2E_JOB_VERIFIED=true'
     ;;
 
+  probe-job)
+    resolve_db
+    [[ "$COMPANY_ID" =~ ^[0-9a-f-]{36}$ ]]
+    PRESENT_COUNT=$(sql "SELECT count(*)::text FROM public.jobs j WHERE j.company_id='$COMPANY_ID'::uuid AND j.title='$JOB_TITLE'" | jq -r '.records[0][0].stringValue // empty')
+    echo "ORGANIZATION_HIRING_E2E_JOB_PRESENT_COUNT=$PRESENT_COUNT"
+    if [[ "$PRESENT_COUNT" == 0 ]]; then
+      JOB_COLUMNS=$(sql "SELECT coalesce(string_agg(column_name || ':' || data_type || ':nullable=' || is_nullable || ':default=' || coalesce(column_default, ''), ',' ORDER BY ordinal_position), '') FROM information_schema.columns WHERE table_schema='public' AND table_name='jobs'" | jq -r '.records[0][0].stringValue // empty')
+      JOB_CONSTRAINTS=$(sql "SELECT coalesce(string_agg(c.conname || '=' || pg_get_constraintdef(c.oid), ' | ' ORDER BY c.conname), '') FROM pg_constraint c JOIN pg_class r ON r.oid=c.conrelid JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public' AND r.relname='jobs'" | jq -r '.records[0][0].stringValue // empty')
+      REQUIREMENT_COLUMNS=$(sql "SELECT coalesce(string_agg(table_name || '.' || column_name || ':' || data_type || ':nullable=' || is_nullable || ':default=' || coalesce(column_default, ''), ',' ORDER BY table_name, ordinal_position), '') FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('job_certificate_requirements','job_visa_requirements')" | jq -r '.records[0][0].stringValue // empty')
+      echo "ORGANIZATION_HIRING_E2E_JOBS_SCHEMA=$JOB_COLUMNS"
+      echo "ORGANIZATION_HIRING_E2E_JOBS_CONSTRAINTS=$JOB_CONSTRAINTS"
+      echo "ORGANIZATION_HIRING_E2E_REQUIREMENTS_SCHEMA=$REQUIREMENT_COLUMNS"
+    fi
+    ;;
+
   verify-unauthorized)
     resolve_db
     MEMBER_COUNT=$(sql "SELECT count(*)::text FROM public.company_members WHERE user_id=($unauthorized_id_sql)" | jq -r '.records[0][0].stringValue // empty')
