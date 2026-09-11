@@ -82,6 +82,18 @@ test('organization approval verifies durable employer state instead of a transie
   assert.doesNotMatch(approvalFlow, /getByText\('Review decision saved\.'\)/)
 })
 
+test('owner job submission records actionable Server Action diagnostics before failing', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const ownerFlow = browserScript.match(/async function postJobAsOwner[\s\S]*?\n}\n/)?.[0] ?? ''
+
+  assert.match(ownerFlow, /postObservations/)
+  assert.match(ownerFlow, /requestFailures/)
+  assert.match(ownerFlow, /consoleErrors/)
+  assert.match(ownerFlow, /jobStatus/)
+  assert.match(ownerFlow, /Job create action failed/)
+  assert.match(ownerFlow, /Job create navigation failed/)
+})
+
 test('database audit proves admin grant, approval, published job ownership and unauthorized denial', () => {
   const remote = readFileSync(remoteScriptPath, 'utf8')
 
