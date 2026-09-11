@@ -22,6 +22,14 @@ describe('premium hiring workspace contract', () => {
     expect(subnav).toContain('/hiring/company')
   })
 
+  it('directs users without hiring access into organization verification', () => {
+    const page = source('src/app/(app)/hiring/page.tsx')
+
+    expect(page).toContain('/hiring/organization')
+    expect(page).toContain('Verify your organization')
+    expect(page).toContain('Track verification')
+  })
+
   it('lists company vacancies with applicant and edit workflows', () => {
     const page = source('src/app/(app)/hiring/jobs/page.tsx')
     expect(page).toContain('listCompanyJobs')
