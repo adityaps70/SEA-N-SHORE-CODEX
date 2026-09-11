@@ -25,8 +25,8 @@ describe('staging create-job diagnostic probe contract', () => {
     expect(workflow).toMatch(/Guard probe against a moved branch/)
     expect(workflow).toMatch(/310356785722/)
     expect(workflow).not.toMatch(/992382634586/)
-    expect(wrapper).toMatch(/ssm.*send-command/s)
-    expect(wrapper).not.toMatch(/ecs.*run-task/s)
+    expect(wrapper).toMatch(/ssm[\s\S]*send-command/)
+    expect(wrapper).not.toMatch(/ecs[\s\S]*run-task/)
   })
 
   it('exercises each createJob SQL stage, preserves SQLSTATE and always rolls the transaction back', () => {
