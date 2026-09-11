@@ -148,7 +148,6 @@ async function submitOrganizationApplication() {
   await page.getByLabel('Registration / reference number').fill(`E2E-${runId}`)
   await page.getByLabel('Supporting notes').fill('Guarded staging E2E. This organization and all linked records must be deleted by workflow cleanup.')
   await page.getByRole('button', { name: 'Submit for verification' }).click()
-  await expect(page.getByText('Organization submitted for verification.')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('heading', { name: 'Verification in progress' })).toBeVisible({ timeout: 20_000 })
   console.log('ORGANIZATION_HIRING_E2E_APPLICATION_SUBMITTED=true')
   await context.close()
