@@ -58,6 +58,14 @@ test('run-once uses disposable authenticated users and the live organization app
   assert.match(browserScript, /cross-company edit route must return 404/)
 })
 
+test('organization onboarding follows the production organization hiring redirect', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const organizationFlow = browserScript.match(/async function completeOrganisation[\s\S]*?\n}\n/)?.[0] ?? ''
+
+  assert.match(organizationFlow, /url\.pathname === '\/hiring\/organization'/)
+  assert.doesNotMatch(organizationFlow, /url\.pathname === '\/home'/)
+})
+
 test('database audit proves admin grant, approval, published job ownership and unauthorized denial', () => {
   const remote = readFileSync(remoteScriptPath, 'utf8')
 
@@ -91,4 +99,6 @@ test('cleanup is unconditional, prefix constrained, and removes every disposable
   assert.match(remote, /admin-delete-user/)
   assert.match(remote, /sea-n-shore-hiring-e2e-/)
   assert.match(remote, /ORGANIZATION_HIRING_E2E_CLEANUP_VERIFIED=true/)
+  assert.match(remote, /company_access_requests where user_id in/i)
+  assert.doesNotMatch(remote, /company_access_requests where requested_by/i)
 })
