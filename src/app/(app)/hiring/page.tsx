@@ -10,9 +10,19 @@ function HiringAccessRequired() {
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Sea N Shore Hiring</p>
         <h1 className="mt-3 text-3xl font-bold text-navy-950">Hiring access</h1>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-          You need an approved company owner, administrator or recruiter membership before you can manage maritime vacancies.
+          Hiring unlocks after your organization is verified and your owner, administrator or recruiter membership is approved by Sea N Shore.
         </p>
-        <Link href="/jobs" className="mt-6 inline-flex rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white">Explore Jobs</Link>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Link href="/hiring/organization" className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900">
+            Verify your organization
+          </Link>
+          <Link href="/hiring/organization" className="inline-flex min-h-11 items-center rounded-xl border border-mist-100 bg-white px-5 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-mist-50">
+            Track verification
+          </Link>
+          <Link href="/jobs" className="inline-flex min-h-11 items-center rounded-xl px-5 py-2.5 text-sm font-bold text-muted transition hover:bg-mist-50 hover:text-navy-950">
+            Explore Jobs
+          </Link>
+        </div>
       </section>
     </main>
   )
