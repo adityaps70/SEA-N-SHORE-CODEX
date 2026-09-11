@@ -32,6 +32,17 @@ function ReviewNote({ note }: { note: string | null }) {
   )
 }
 
+function formatSubmittedAt(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date)
+}
+
 function StatusPanel({
   title,
   description,
@@ -43,7 +54,7 @@ function StatusPanel({
   tone: 'pending' | 'changes' | 'rejected' | 'suspended'
   note: string | null
 }) {
-  const Icon = tone === 'pending' ? Clock3 : tone === 'changes' ? AlertTriangle : tone === 'rejected' ? ShieldAlert : ShieldAlert
+  const Icon = tone === 'pending' ? Clock3 : tone === 'changes' ? AlertTriangle : ShieldAlert
   const classes = tone === 'pending'
     ? 'border-sky-100 bg-sky-50 text-sky-900'
     : tone === 'changes'
@@ -102,6 +113,12 @@ export default async function HiringOrganizationPage() {
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
       <ReviewHeader organizationName={state.company.name} />
 
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-mist-100 bg-white px-4 py-3 text-sm text-muted shadow-[var(--shadow-card)]">
+        <span className="font-semibold text-navy-950">{state.company.name}</span>
+        <span aria-hidden="true">·</span>
+        <span>Submitted <time dateTime={state.submittedAt}>{formatSubmittedAt(state.submittedAt)}</time></span>
+      </div>
+
       {state.status === 'pending' ? (
         <StatusPanel
           title="Verification in progress"
@@ -138,7 +155,7 @@ export default async function HiringOrganizationPage() {
         />
       ) : null}
 
-      {editable && editable ? (
+      {editable ? (
         <div className="space-y-4">
           <div className="flex items-center gap-3 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)]">
             <CheckCircle2 aria-hidden="true" className="size-5 text-teal-700" />
