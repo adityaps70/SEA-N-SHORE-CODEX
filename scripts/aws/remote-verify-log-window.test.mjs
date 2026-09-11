@@ -33,6 +33,14 @@ test('CloudWatch runtime review reports and excludes only explicit old-or-new de
   assert.match(workflow, /grep -Ev "\$STALE_SERVER_ACTION_PATTERN"/)
 })
 
+test('CloudWatch runtime review excludes only the explicit unauthenticated route guard while retaining generic auth error detection', () => {
+  assert.match(workflow, /EXPECTED_AUTH_REQUIRED_PATTERN='\^AwsAuthenticationRequiredError: Authentication required\\\.\$'/)
+  assert.match(workflow, /IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS/)
+  assert.match(workflow, /grep -Ev "\$EXPECTED_AUTH_REQUIRED_PATTERN"/)
+  assert.match(workflow, /auth\[\^\[\:cntrl\:\]\]\*\(failed\|error\)/)
+  assert.doesNotMatch(workflow, /grep -Ev ['"]Authentication required/)
+})
+
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
   assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
   assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
