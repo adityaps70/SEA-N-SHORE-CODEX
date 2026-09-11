@@ -62,6 +62,8 @@ jobs:
         run: node --test scripts/aws/feed-social-interactions-schema.test.mjs
       - name: Verify jobs intelligence schema contract
         run: node --test scripts/aws/jobs-intelligence-schema.test.mjs
+      - name: Verify organization hiring approval schema contract
+        run: node --test scripts/aws/organization-hiring-approval-schema.test.mjs
       - name: Verify jobs intelligence migration guard
         run: node --test scripts/aws/jobs-intelligence-migration.test.mjs
       - name: Verify direct media upload CORS contract
