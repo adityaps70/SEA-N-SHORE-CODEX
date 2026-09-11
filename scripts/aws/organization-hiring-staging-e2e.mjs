@@ -109,7 +109,7 @@ async function completeApplicantOrganisation() {
   await page.getByLabel('Profile address').fill(`sns-hiring-applicant-${runId}`)
   await page.getByLabel('Location').fill('Mumbai')
   await page.getByRole('button', { name: 'Complete profile' }).click()
-  await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
+  await page.waitForURL((url) => url.pathname === '/hiring/organization', { timeout: 20_000 })
   await context.close()
 }
 
