@@ -66,6 +66,14 @@ test('organization onboarding follows the production organization hiring redirec
   assert.doesNotMatch(organizationFlow, /url\.pathname === '\/home'/)
 })
 
+test('organization submission verifies durable review state instead of a transient toast', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const submissionFlow = browserScript.match(/async function submitOrganizationApplication[\s\S]*?\n}\n/)?.[0] ?? ''
+
+  assert.match(submissionFlow, /getByRole\('heading', \{ name: 'Verification in progress' \}\)/)
+  assert.doesNotMatch(submissionFlow, /getByText\('Organization submitted for verification\.'\)/)
+})
+
 test('database audit proves admin grant, approval, published job ownership and unauthorized denial', () => {
   const remote = readFileSync(remoteScriptPath, 'utf8')
 
