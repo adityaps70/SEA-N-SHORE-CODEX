@@ -234,7 +234,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     const rows = await queryRows(
       `${ORGANIZATION_REVIEW_SELECT}
        where oa.status = $1
-       order by oa.submitted_at asc, oa.id asc`,
+       order by oa.submitted_at asc, oa.id asc
+       limit 100`,
       [status],
     ) as OrganizationReviewRow[]
     return rows.map(mapOrganizationReview)
