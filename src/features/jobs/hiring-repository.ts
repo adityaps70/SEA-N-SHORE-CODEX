@@ -250,6 +250,7 @@ const AUTHORIZED_COMPANY_SELECT = `
   where cm.user_id = $1
     and cm.approved_at is not null
     and cm.role::text = any($2::text[])
+    and c.is_verified = true
 ` as const
 
 const APPLICANT_SELECT = `
@@ -541,10 +542,12 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
       `with authorised_company as (
          select cm.company_id
          from public.company_members cm
+         join public.companies c on c.id = cm.company_id
          where cm.user_id = $1
            and cm.approved_at is not null
            and cm.role::text = any($2::text[])
            and cm.company_id = $3
+           and c.is_verified = true
        )
        select
          count(distinct j.id) filter (where j.status = 'published' and (j.apply_until is null or j.apply_until >= current_date)) as active_jobs,
@@ -573,10 +576,12 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
       `with authorised_company as (
          select cm.company_id
          from public.company_members cm
+         join public.companies c on c.id = cm.company_id
          where cm.user_id = $1
            and cm.approved_at is not null
            and cm.role::text = any($2::text[])
            and cm.company_id = $3
+           and c.is_verified = true
        )
        select
          j.id,
@@ -653,11 +658,13 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
          ), '{}'::text[]) as visas
        from public.jobs j
        join public.company_members cm on cm.company_id = j.company_id
+       join public.companies c on c.id = j.company_id
        where cm.user_id = $1
          and j.company_id = $2
          and j.id = $3
          and cm.approved_at is not null
          and cm.role::text = any($4::text[])
+         and c.is_verified = true
          and j.status <> 'closed'
        limit 1`,
       [userId, companyId, jobId, [...HIRING_ROLES]],
@@ -717,10 +724,12 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
       `select j.id, j.company_id
        from public.jobs j
        join public.company_members cm on cm.company_id = j.company_id
+       join public.companies c on c.id = j.company_id
        where j.id = $1
          and cm.user_id = $2
          and cm.approved_at is not null
          and cm.role::text = any($3::text[])
+         and c.is_verified = true
        limit 1`,
       [jobId, userId, [...HIRING_ROLES]],
     )
@@ -780,12 +789,13 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
        join public.company_members cm on cm.company_id = j.company_id
        join public.profiles p on p.id = a.applicant_id
        left join public.maritime_profiles mp on mp.user_id = p.id
-       left join public.companies c on c.id = j.company_id
+       join public.companies c on c.id = j.company_id
        left join public.company_members rcm on rcm.company_id = j.company_id and rcm.user_id = j.created_by_user_id
        where cm.user_id = $1
          and j.id = $2
          and cm.role::text = any($3::text[])
          and cm.approved_at is not null
+         and c.is_verified = true
          ${statusFilter}
        order by a.applied_at desc, a.id desc`,
       values,
@@ -822,12 +832,13 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
        join public.company_members cm on cm.company_id = j.company_id
        join public.profiles p on p.id = a.applicant_id
        left join public.maritime_profiles mp on mp.user_id = p.id
-       left join public.companies c on c.id = j.company_id
+       join public.companies c on c.id = j.company_id
        left join public.company_members rcm on rcm.company_id = j.company_id and rcm.user_id = j.created_by_user_id
        where cm.user_id = $1
          and a.id = $2
          and cm.role::text = any($3::text[])
          and cm.approved_at is not null
+         and c.is_verified = true
        limit 1`,
       [userId, applicationId, [...HIRING_ROLES]],
     ) as ApplicantRow[]
@@ -862,10 +873,12 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
        from public.job_applications a
        join public.jobs j on j.id = a.job_id
        join public.company_members cm on cm.company_id = j.company_id
+       join public.companies c on c.id = j.company_id
        where a.id = $1
          and cm.user_id = $2
          and cm.approved_at is not null
          and cm.role::text = any($3::text[])
+         and c.is_verified = true
        limit 1`,
       [applicationId, userId, [...HIRING_ROLES]],
     )
