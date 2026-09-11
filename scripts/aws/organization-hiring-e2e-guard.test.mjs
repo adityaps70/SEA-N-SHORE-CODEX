@@ -74,6 +74,14 @@ test('organization submission verifies durable review state instead of a transie
   assert.doesNotMatch(submissionFlow, /getByText\('Organization submitted for verification\.'\)/)
 })
 
+test('organization approval verifies durable employer state instead of a transient toast', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const approvalFlow = browserScript.match(/async function approveOrganization[\s\S]*?\n}\n/)?.[0] ?? ''
+
+  assert.match(approvalFlow, /getByText\('Verified employer', \{ exact: true \}\)/)
+  assert.doesNotMatch(approvalFlow, /getByText\('Review decision saved\.'\)/)
+})
+
 test('database audit proves admin grant, approval, published job ownership and unauthorized denial', () => {
   const remote = readFileSync(remoteScriptPath, 'utf8')
 
