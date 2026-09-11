@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { chromium, expect } from '@playwright/test'
 
 const siteUrl = process.env.SITE_URL
@@ -37,6 +38,38 @@ for (const [key, user] of Object.entries(users)) {
 }
 
 const browser = await chromium.launch()
+
+function runFailedJobProbe() {
+  try {
+    const region = process.env.AWS_REGION || 'ap-south-1'
+    const discovery = spawnSync('aws', [
+      'ec2', 'describe-instances',
+      '--region', region,
+      '--filters', 'Name=tag:Name,Values=sea-n-shore-bootstrap', 'Name=instance-state-name,Values=running',
+      '--query', 'Reservations[].Instances[].InstanceId',
+      '--output', 'json',
+    ], { encoding: 'utf8', env: process.env })
+
+    if (discovery.status !== 0) {
+      return `probe bootstrap discovery failed: ${(discovery.stderr || discovery.stdout || 'unknown error').trim()}`
+    }
+
+    const instanceIds = JSON.parse(discovery.stdout)
+    if (!Array.isArray(instanceIds) || instanceIds.length !== 1 || !/^i-[0-9a-f]+$/.test(instanceIds[0])) {
+      return `probe bootstrap discovery returned ${JSON.stringify(instanceIds)}`
+    }
+
+    const probe = spawnSync(process.execPath, ['scripts/aws/organization-hiring-e2e-ssm.mjs', 'probe-job'], {
+      encoding: 'utf8',
+      env: { ...process.env, INSTANCE_ID: instanceIds[0] },
+    })
+    const output = [probe.stdout, probe.stderr].filter(Boolean).join('\n').trim()
+    if (probe.status !== 0) return `probe-job failed status=${probe.status}: ${output || 'no output'}`
+    return output || 'probe-job completed without output'
+  } catch (error) {
+    return `probe-job exception: ${error instanceof Error ? error.message : String(error)}`
+  }
+}
 
 async function signUp(user) {
   const context = await browser.newContext()
@@ -224,14 +257,16 @@ async function postJobAsOwner() {
   ]).catch(() => null)
 
   if (outcome?.kind === 'status' && outcome.text !== 'Job saved successfully.') {
-    throw new Error(`Job create action failed: status=${JSON.stringify(outcome.text)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+    const probe = runFailedJobProbe()
+    throw new Error(`Job create action failed: status=${JSON.stringify(outcome.text)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)} probe=${JSON.stringify(probe)}`)
   }
   if (outcome?.kind === 'status') {
     await page.waitForURL((url) => url.pathname === '/hiring/jobs', { timeout: 10_000 }).catch(() => null)
   }
   if (new URL(page.url()).pathname !== '/hiring/jobs') {
     const statusText = await jobStatus.textContent().catch(() => null)
-    throw new Error(`Job create navigation failed: outcome=${JSON.stringify(outcome)} status=${JSON.stringify(statusText?.trim() || null)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+    const probe = runFailedJobProbe()
+    throw new Error(`Job create navigation failed: outcome=${JSON.stringify(outcome)} status=${JSON.stringify(statusText?.trim() || null)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)} probe=${JSON.stringify(probe)}`)
   }
 
   await expect(page.getByRole('heading', { name: 'Company jobs' })).toBeVisible()
