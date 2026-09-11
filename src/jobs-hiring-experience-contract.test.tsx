@@ -88,4 +88,18 @@ describe('premium hiring workspace contract', () => {
     expect(status).toContain('Reject')
     expect(notes).toContain('saveHiringRecruiterNote')
   })
+
+  it('shows an authorized company trust summary without allowing recruiter self-verification', () => {
+    const page = source('src/app/(app)/hiring/company/page.tsx')
+
+    expect(page).toContain('getAuthorizedCompany')
+    expect(page).toContain('company.name')
+    expect(page).toContain('company.verified')
+    expect(page).toContain('company.role')
+    expect(page).toContain('Verification is controlled by Sea N Shore')
+    expect(page).toContain('/jobs?q=')
+    expect(page).toContain('View public jobs')
+    expect(page).not.toContain('is_verified =')
+    expect(page).not.toContain('verified_by =')
+  })
 })
