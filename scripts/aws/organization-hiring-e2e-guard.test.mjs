@@ -94,13 +94,14 @@ test('owner job submission records actionable Server Action diagnostics before f
   assert.match(ownerFlow, /Job create navigation failed/)
 })
 
-test('failed owner submission probes persisted job state and live schema before cleanup', () => {
-  const workflow = readFileSync(workflowPath, 'utf8')
+test('failed owner submission probes persisted job state and live schema before throwing', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const ssmHelper = readFileSync(ssmHelperPath, 'utf8')
   const remote = readFileSync(remoteScriptPath, 'utf8')
 
-  assert.match(workflow, /Probe job persistence after owner submission failure/)
-  assert.match(workflow, /if:\s*failure\(\)/)
-  assert.match(workflow, /probe-job/)
+  assert.match(browserScript, /organization-hiring-e2e-ssm\.mjs/)
+  assert.match(browserScript, /probe-job/)
+  assert.match(ssmHelper, /probe-job/)
   assert.match(remote, /probe-job\)/)
   assert.match(remote, /ORGANIZATION_HIRING_E2E_JOB_PRESENT_COUNT=/)
   assert.match(remote, /information_schema\.columns/i)
