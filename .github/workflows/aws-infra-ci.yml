@@ -66,6 +66,8 @@ jobs:
         run: node --test scripts/aws/organization-hiring-approval-schema.test.mjs
       - name: Verify jobs intelligence migration guard
         run: node --test scripts/aws/jobs-intelligence-migration.test.mjs
+      - name: Verify organization hiring approval migration guard
+        run: node --test scripts/aws/organization-hiring-approval-migration.test.mjs
       - name: Verify direct media upload CORS contract
         run: node --test scripts/aws/post-media-upload-cors.test.mjs
       - name: Verify deterministic AWS SDK install contract
