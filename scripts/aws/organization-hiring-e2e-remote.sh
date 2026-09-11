@@ -106,7 +106,7 @@ case "$PHASE" in
     sql "DELETE FROM public.jobs WHERE title='$JOB_TITLE' AND (created_by_user_id IN ($profile_ids_sql) OR company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME'))" >/dev/null
     sql "DELETE FROM public.audit_events WHERE actor_id IN ($profile_ids_sql)" >/dev/null
     sql "DELETE FROM public.organization_applications WHERE submitted_by IN ($profile_ids_sql) OR company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME')" >/dev/null
-    sql "DELETE FROM public.company_access_requests WHERE requested_by IN ($profile_ids_sql) OR company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME')" >/dev/null
+    sql "DELETE FROM public.company_access_requests WHERE user_id IN ($profile_ids_sql) OR company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME')" >/dev/null
     sql "DELETE FROM public.company_members WHERE user_id IN ($profile_ids_sql) OR company_id IN (SELECT id FROM public.companies WHERE name='$ORGANIZATION_NAME')" >/dev/null
     sql "DELETE FROM public.companies WHERE name='$ORGANIZATION_NAME' OR created_by=($applicant_id_sql)" >/dev/null
     sql "DELETE FROM public.user_roles WHERE user_id IN ($profile_ids_sql)" >/dev/null
