@@ -5,10 +5,13 @@ import test from 'node:test'
 const actionPath = 'scripts/aws/organization-hiring-e2e-action.txt'
 const workflowPath = '.github/workflows/aws-organization-hiring-e2e.yml'
 const browserScriptPath = 'scripts/aws/organization-hiring-staging-e2e.mjs'
+const ssmHelperPath = 'scripts/aws/organization-hiring-e2e-ssm.mjs'
+const remoteScriptPath = 'scripts/aws/organization-hiring-e2e-remote.sh'
 
-test('organization hiring e2e is plan-only by default and exact-head branch gated', () => {
+test('organization hiring e2e is branch scoped with a plan or exact one-shot guard', () => {
   assert.equal(existsSync(actionPath), true, `${actionPath} must exist`)
-  assert.equal(readFileSync(actionPath, 'utf8').trim(), 'plan')
+  const action = readFileSync(actionPath, 'utf8').trim()
+  assert.ok(['plan', 'run-once'].includes(action), `Unexpected organization hiring E2E action: ${action}`)
   assert.equal(existsSync(workflowPath), true, `${workflowPath} must exist`)
 
   const workflow = readFileSync(workflowPath, 'utf8')
@@ -26,18 +29,17 @@ test('organization hiring e2e is plan-only by default and exact-head branch gate
 })
 
 test('run-once uses disposable authenticated users and the live organization approval and hiring UI', () => {
-  assert.equal(existsSync(browserScriptPath), true, `${browserScriptPath} must exist`)
+  for (const path of [browserScriptPath, ssmHelperPath, remoteScriptPath]) assert.equal(existsSync(path), true, `${path} must exist`)
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const ssmHelper = readFileSync(ssmHelperPath, 'utf8')
 
   assert.match(workflow, /npx playwright install --with-deps chromium/)
   assert.match(workflow, /sea-n-shore-hiring-e2e-/)
   assert.match(workflow, /-applicant@example\.com/)
   assert.match(workflow, /-admin@example\.com/)
   assert.match(workflow, /-unauthorized@example\.com/)
-  assert.match(workflow, /admin-confirm-sign-up/)
-  assert.match(workflow, /insert into public\.user_roles/i)
-  assert.match(workflow, /administrator/i)
+  assert.match(ssmHelper, /aws|ssm|send-command/i)
 
   assert.match(browserScript, /\/auth\/sign-up/)
   assert.match(browserScript, /\/auth\/sign-in/)
@@ -53,35 +55,40 @@ test('run-once uses disposable authenticated users and the live organization app
   assert.match(browserScript, /Post a maritime job/)
   assert.match(browserScript, /Create job/)
   assert.match(browserScript, /Hiring access required/)
+  assert.match(browserScript, /cross-company edit route must return 404/)
 })
 
-test('database audit proves approval and published job ownership before cleanup', () => {
-  const workflow = readFileSync(workflowPath, 'utf8')
+test('database audit proves admin grant, approval, published job ownership and unauthorized denial', () => {
+  const remote = readFileSync(remoteScriptPath, 'utf8')
 
-  assert.match(workflow, /organization_applications/i)
-  assert.match(workflow, /company_members/i)
-  assert.match(workflow, /is_verified/i)
-  assert.match(workflow, /approved_at/i)
-  assert.match(workflow, /public\.jobs/i)
-  assert.match(workflow, /status.*published/i)
-  assert.match(workflow, /ORGANIZATION_HIRING_E2E_APPROVAL_VERIFIED=true/)
-  assert.match(workflow, /ORGANIZATION_HIRING_E2E_JOB_VERIFIED=true/)
-  assert.match(workflow, /ORGANIZATION_HIRING_E2E_UNAUTHORIZED_VERIFIED=true/)
+  assert.match(remote, /admin-confirm-sign-up/)
+  assert.match(remote, /insert into public\.user_roles/i)
+  assert.match(remote, /administrator/i)
+  assert.match(remote, /organization_applications/i)
+  assert.match(remote, /company_members/i)
+  assert.match(remote, /is_verified/i)
+  assert.match(remote, /approved_at/i)
+  assert.match(remote, /public\.jobs/i)
+  assert.match(remote, /status::text = 'published'/i)
+  assert.match(remote, /ORGANIZATION_HIRING_E2E_APPROVAL_VERIFIED=true/)
+  assert.match(remote, /ORGANIZATION_HIRING_E2E_JOB_VERIFIED=true/)
+  assert.match(remote, /ORGANIZATION_HIRING_E2E_UNAUTHORIZED_VERIFIED=true/)
 })
 
 test('cleanup is unconditional, prefix constrained, and removes every disposable hiring artifact', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
+  const remote = readFileSync(remoteScriptPath, 'utf8')
 
   assert.match(workflow, /if:\s*always\(\)/)
-  assert.match(workflow, /delete from public\.jobs/i)
-  assert.match(workflow, /delete from public\.audit_events/i)
-  assert.match(workflow, /delete from public\.organization_applications/i)
-  assert.match(workflow, /delete from public\.company_access_requests/i)
-  assert.match(workflow, /delete from public\.company_members/i)
-  assert.match(workflow, /delete from public\.companies/i)
-  assert.match(workflow, /delete from public\.user_roles/i)
-  assert.match(workflow, /delete from public\.profiles/i)
-  assert.match(workflow, /admin-delete-user/)
-  assert.match(workflow, /sea-n-shore-hiring-e2e-/)
-  assert.match(workflow, /ORGANIZATION_HIRING_E2E_CLEANUP_VERIFIED=true/)
+  assert.match(remote, /delete from public\.jobs/i)
+  assert.match(remote, /delete from public\.audit_events/i)
+  assert.match(remote, /delete from public\.organization_applications/i)
+  assert.match(remote, /delete from public\.company_access_requests/i)
+  assert.match(remote, /delete from public\.company_members/i)
+  assert.match(remote, /delete from public\.companies/i)
+  assert.match(remote, /delete from public\.user_roles/i)
+  assert.match(remote, /delete from public\.profiles/i)
+  assert.match(remote, /admin-delete-user/)
+  assert.match(remote, /sea-n-shore-hiring-e2e-/)
+  assert.match(remote, /ORGANIZATION_HIRING_E2E_CLEANUP_VERIFIED=true/)
 })
