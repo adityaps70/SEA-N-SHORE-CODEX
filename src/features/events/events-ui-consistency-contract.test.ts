@@ -23,6 +23,7 @@ describe('Sea N Shore premium page and Events presentation contract', () => {
       'src/app/(app)/events/page.tsx',
       'src/app/(app)/jobs/page.tsx',
       'src/app/(app)/network/page.tsx',
+      'src/app/(app)/activities/page.tsx',
     ]) {
       expect(source(page)).toContain('PremiumPageHero')
     }
