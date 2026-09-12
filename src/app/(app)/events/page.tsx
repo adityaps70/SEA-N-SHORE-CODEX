@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Search } from 'lucide-react'
+import { ChevronDown, Search } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
@@ -17,6 +17,12 @@ function titleCase(value: string) { return value.replaceAll('_', ' ').replace(/\
 function categoryValue(value?: string): CalendarEventCategory | undefined { return CALENDAR_EVENT_CATEGORIES.find((item) => item === value) }
 function typeValue(value?: string): CalendarEventType | undefined { return CALENDAR_EVENT_TYPES.find((item) => item === value) }
 function formatValue(value?: string): CalendarEventFormat | undefined { return CALENDAR_EVENT_FORMATS.find((item) => item === value) }
+
+const filterSelectClass = 'min-h-12 w-full appearance-none rounded-2xl border border-mist-100 bg-mist-50 px-4 pr-10 text-sm font-semibold text-navy-900 outline-none transition hover:border-mist-200 focus:border-teal-500'
+
+function FilterChevron() {
+  return <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+}
 
 export default async function EventsPage({ searchParams }: { searchParams: Promise<{ q?: string; category?: string; eventType?: string; format?: string; location?: string }> }) {
   const user = await requireAwsUser()
@@ -48,17 +54,17 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         </div>
       </PremiumPageHero>
 
-      <form method="get" className="grid gap-3 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] lg:grid-cols-[2fr_repeat(3,1fr)_1.4fr_auto]">
-        <label className="relative">
+      <form method="get" className="grid gap-3 rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5 lg:grid-cols-3 xl:grid-cols-[2fr_repeat(3,1fr)_1.4fr_auto]">
+        <label className="relative lg:col-span-3 xl:col-span-1">
           <span className="sr-only">Search events</span>
-          <Search className="absolute left-3 top-3.5 h-4 w-4 text-muted" />
-          <input name="q" defaultValue={params.q ?? ''} placeholder="Search title, topic, host focus…" className="min-h-11 w-full rounded-xl border border-mist-100 bg-mist-50 pl-10 pr-3 text-sm text-navy-950 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-100" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input name="q" defaultValue={params.q ?? ''} placeholder="Search title, topic, host focus…" className="min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 pl-11 pr-4 text-sm font-normal text-navy-950 outline-none transition placeholder:text-slate-400 focus:border-teal-500" />
         </label>
-        <label><span className="sr-only">Category</span><select name="category" defaultValue={params.category ?? ''} className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-900"><option value="">All categories</option>{CALENDAR_EVENT_CATEGORIES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label>
-        <label><span className="sr-only">Event type</span><select name="eventType" defaultValue={params.eventType ?? ''} className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-900"><option value="">All event types</option>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label>
-        <label><span className="sr-only">Format</span><select name="format" defaultValue={params.format ?? ''} className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-900"><option value="">Any format</option>{CALENDAR_EVENT_FORMATS.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label>
-        <label><span className="sr-only">Location</span><input name="location" defaultValue={params.location ?? ''} placeholder="City, country or venue" className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-950 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-100" /></label>
-        <button className="min-h-11 rounded-xl bg-teal-600 px-5 text-sm font-bold text-white hover:bg-teal-700">Filter</button>
+        <label className="relative"><span className="sr-only">Category</span><select name="category" defaultValue={params.category ?? ''} className={filterSelectClass}><option value="">All categories</option>{CALENDAR_EVENT_CATEGORIES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
+        <label className="relative"><span className="sr-only">Event type</span><select name="eventType" defaultValue={params.eventType ?? ''} className={filterSelectClass}><option value="">All event types</option>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
+        <label className="relative"><span className="sr-only">Format</span><select name="format" defaultValue={params.format ?? ''} className={filterSelectClass}><option value="">Any format</option>{CALENDAR_EVENT_FORMATS.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
+        <label><span className="sr-only">Location</span><input name="location" defaultValue={params.location ?? ''} placeholder="City, country or venue" className="min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 text-sm font-normal text-navy-950 outline-none transition placeholder:text-slate-400 focus:border-teal-500" /></label>
+        <button className="min-h-12 rounded-2xl bg-teal-600 px-6 text-sm font-bold text-white transition hover:bg-teal-700">Filter</button>
       </form>
 
       <section className="space-y-4">
