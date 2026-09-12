@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   sendMessageAction: vi.fn(),
@@ -25,6 +25,8 @@ function canonical(clientMessageId: string) {
     deletedAt: null,
   }
 }
+
+afterEach(() => cleanup())
 
 describe('MessageComposer', () => {
   it('adds an optimistic message immediately and reconciles it with the canonical persisted message', async () => {
