@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const pageSource = readFileSync(
-  fileURLToPath(new URL('../../app/(app)/events/page.tsx', import.meta.url)),
+  resolve(process.cwd(), 'src/app/(app)/events/page.tsx'),
   'utf8',
 )
 
