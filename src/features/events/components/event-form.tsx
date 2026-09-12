@@ -66,19 +66,25 @@ export function EventForm(props: Props) {
       return
     }
     startTransition(async () => {
-      const result = props.mode === 'create'
-        ? await createEventAction(input)
-        : await updateEventAction(props.eventId, input)
+      if (props.mode === 'create') {
+        const result = await createEventAction(input)
+        if (!result.ok) {
+          setError(true)
+          setMessage(result.error)
+          return
+        }
+        router.push(`/events/${result.eventId}`)
+        return
+      }
+
+      const result = await updateEventAction(props.eventId, input)
       if (!result.ok) {
         setError(true)
         setMessage(result.error)
         return
       }
-      if (props.mode === 'create') router.push(`/events/${result.eventId}`)
-      else {
-        setMessage('Event updated successfully.')
-        router.refresh()
-      }
+      setMessage('Event updated successfully.')
+      router.refresh()
     })
   }
 
