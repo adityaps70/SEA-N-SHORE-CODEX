@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition, type ChangeEvent } from 'react'
-import { ImageUp, Trash2 } from 'lucide-react'
+import { ChevronDown, ImageUp, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { cancelEventAction, createEventAction, createEventBannerUploadAction, updateEventAction } from '../calendar-actions'
 import { EVENT_BANNER_MAX_BYTES, EVENT_BANNER_MIME_TYPES } from '../event-banner-policy'
+import { EVENT_TIMEZONES } from '../event-timezones'
 import {
   CALENDAR_EVENT_CATEGORIES,
   CALENDAR_EVENT_TYPES,
@@ -15,14 +16,17 @@ import {
   type CalendarEventType,
   type CalendarSpeakerDetail,
 } from '../calendar-types'
+import { EventDateTimeField } from './event-date-time-field'
 import { uploadEventBannerFile } from './upload-event-banner'
 
 type Props =
   | { mode: 'create'; initial?: never; eventId?: never }
   | { mode: 'edit'; initial: CalendarEvent; eventId: string }
 
-const inputClass = 'min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500'
-const labelClass = 'space-y-1.5 text-sm font-semibold text-navy-900'
+const inputClass = 'min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 py-3 text-[15px] font-normal text-navy-950 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-teal-500'
+const selectClass = `${inputClass} appearance-none pr-10 font-semibold`
+const labelClass = 'space-y-2 text-sm font-semibold text-navy-900'
+const helperClass = 'block text-xs font-normal leading-5 text-slate-400'
 
 function text(data: FormData, key: string) { return String(data.get(key) ?? '').trim() }
 function nullableText(data: FormData, key: string) { return text(data, key) || null }
@@ -81,18 +85,25 @@ function buildInput(data: FormData): CalendarEventInput {
   }
 }
 
+function SelectChevron() {
+  return <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+}
+
 export function EventForm(props: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState(false)
   const initial = props.mode === 'edit' ? props.initial : undefined
+  const [format, setFormat] = useState<CalendarEventFormat>(initial?.format ?? 'online')
   const [bannerReference, setBannerReference] = useState(initial?.bannerStoragePath ?? initial?.bannerUrl ?? '')
   const [bannerPreview, setBannerPreview] = useState<string | null>(initial?.bannerUrl ?? null)
   const [bannerUploading, setBannerUploading] = useState(false)
   const [bannerProgress, setBannerProgress] = useState(0)
   const localPreviewRef = useRef<string | null>(null)
   const busy = pending || bannerUploading
+  const initialTimezone = initial?.timezone ?? 'Asia/Kolkata'
+  const timezoneIsListed = EVENT_TIMEZONES.some((zone) => zone.value === initialTimezone)
 
   useEffect(() => () => {
     if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current)
@@ -202,40 +213,73 @@ export function EventForm(props: Props) {
   }
 
   return (
-    <form action={submit} className="space-y-5">
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Event details</p>
-        <h2 className="mt-1 text-xl font-bold text-navy-950">Create a useful maritime gathering</h2>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          <label className={`${labelClass} sm:col-span-2`}>Title<input className={inputClass} name="title" required maxLength={180} defaultValue={initial?.title ?? ''} placeholder="SIRE 2.0 readiness masterclass" /></label>
-          <label className={`${labelClass} sm:col-span-2`}>Short summary<textarea className={`${inputClass} min-h-24`} name="summary" required maxLength={600} defaultValue={initial?.summary ?? ''} placeholder="What will maritime professionals gain from this event?" /></label>
-          <label className={`${labelClass} sm:col-span-2`}>Description<textarea className={`${inputClass} min-h-40`} name="description" maxLength={12000} defaultValue={initial?.description ?? ''} placeholder="Learning outcomes, audience and preparation required." /></label>
-          <label className={labelClass}>Category<select className={inputClass} name="category" defaultValue={initial?.category ?? 'community'}>{CALENDAR_EVENT_CATEGORIES.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
-          <label className={labelClass}>Event type<select className={inputClass} name="eventType" defaultValue={initial?.eventType ?? 'webinar'}>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select></label>
-          <label className={labelClass}>Format<select className={inputClass} name="format" defaultValue={initial?.format ?? 'online'}><option value="online">Online</option><option value="in_person">In person</option><option value="hybrid">Hybrid</option></select></label>
-          <label className={labelClass}>Capacity<input className={inputClass} type="number" min="1" max="1000000" name="capacity" defaultValue={initial?.capacity ?? ''} placeholder="Optional" /></label>
-          <label className={labelClass}>Starts<input className={inputClass} type="datetime-local" name="startAt" required defaultValue={datetimeLocal(initial?.startAt)} /></label>
-          <label className={labelClass}>Ends<input className={inputClass} type="datetime-local" name="endAt" required defaultValue={datetimeLocal(initial?.endAt)} /></label>
-          <label className={`${labelClass} sm:col-span-2`}>Timezone<input className={inputClass} name="timezone" required defaultValue={initial?.timezone ?? 'Asia/Kolkata'} placeholder="Asia/Kolkata" /><span className="block text-xs font-normal text-muted">Use an IANA timezone such as Asia/Kolkata, Europe/London or Asia/Singapore.</span></label>
-          <label className={labelClass}>Venue<input className={inputClass} name="locationName" defaultValue={initial?.locationName ?? ''} placeholder="Required for in-person / hybrid" /></label>
-          <label className={labelClass}>Venue address<input className={inputClass} name="locationAddress" defaultValue={initial?.locationAddress ?? ''} /></label>
-          <label className={labelClass}>City<input className={inputClass} name="city" defaultValue={initial?.city ?? ''} placeholder="Mumbai" /></label>
-          <label className={labelClass}>Country<input className={inputClass} name="country" defaultValue={initial?.country ?? ''} placeholder="India" /></label>
-          <label className={`${labelClass} sm:col-span-2`}>Online meeting URL<input className={inputClass} type="url" name="meetingUrl" defaultValue={initial?.meetingUrl ?? ''} placeholder="https://… required for online / hybrid" /></label>
-          <label className={`${labelClass} sm:col-span-2`}>Topics<input className={inputClass} name="topics" defaultValue={initial?.topics.join(', ') ?? ''} placeholder="SIRE 2.0, tanker operations, human factors" /><span className="block text-xs font-normal text-muted">Separate multiple topics with commas.</span></label>
-          <label className={`${labelClass} sm:col-span-2`}>Agenda<textarea className={`${inputClass} min-h-32`} name="agenda" defaultValue={initial?.agenda.join('\n') ?? ''} placeholder={'09:00 Welcome\n09:15 SIRE 2.0 readiness\n11:30 Q&A'} /><span className="block text-xs font-normal text-muted">One agenda item per line.</span></label>
-          <label className={`${labelClass} sm:col-span-2`}>Speaker details<textarea className={`${inputClass} min-h-28`} name="speakerDetails" defaultValue={initial?.speakerDetails.map((speaker) => [speaker.name, speaker.title, speaker.organization].join(' | ')).join('\n') ?? ''} placeholder={'Capt. Name | Master Mariner | Company\nChief Engineer Name | Technical Director | Company'} /><span className="block text-xs font-normal text-muted">One speaker per line: Name | Title | Organization.</span></label>
-          <label className={`${labelClass} sm:col-span-2`}>Speaker names only <span className="font-normal text-muted">(optional fallback)</span><input className={inputClass} name="speakers" defaultValue={initial?.speakers.join(', ') ?? ''} placeholder="Capt. Name, Chief Engineer Name" /></label>
+    <form action={submit} className="space-y-6">
+      <section className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Event basics</p>
+        <h2 className="mt-1 text-xl font-bold text-navy-950">Tell people what the event is about</h2>
+        <p className="mt-1.5 text-sm font-normal text-slate-400">Keep the essentials clear first. You can add the richer programme details below.</p>
+        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          <label className={`${labelClass} sm:col-span-2`}>Title<input className={inputClass} name="title" required maxLength={180} defaultValue={initial?.title ?? ''} placeholder="e.g. SIRE 2.0 readiness masterclass" /></label>
+          <label className={`${labelClass} sm:col-span-2`}>Short summary<textarea className={`${inputClass} min-h-24 resize-y`} name="summary" required maxLength={600} defaultValue={initial?.summary ?? ''} placeholder="A short promise of what maritime professionals will gain." /></label>
+          <label className={`${labelClass} sm:col-span-2`}>Description<textarea className={`${inputClass} min-h-40 resize-y`} name="description" maxLength={12000} defaultValue={initial?.description ?? ''} placeholder="Add learning outcomes, intended audience and useful preparation." /></label>
+
+          <label className={labelClass}>Category<div className="relative"><select className={selectClass} name="category" defaultValue={initial?.category ?? 'community'}>{CALENDAR_EVENT_CATEGORIES.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select><SelectChevron /></div></label>
+          <label className={labelClass}>Event type<div className="relative"><select className={selectClass} name="eventType" defaultValue={initial?.eventType ?? 'webinar'}>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{label(value)}</option>)}</select><SelectChevron /></div></label>
+          <label className={labelClass}>Format<div className="relative"><select className={selectClass} name="format" value={format} onChange={(event) => setFormat(event.target.value as CalendarEventFormat)}><option value="online">Online</option><option value="in_person">In person</option><option value="hybrid">Hybrid</option></select><SelectChevron /></div></label>
+          <label className={labelClass}>Capacity<input className={`${inputClass} appearance-none`} type="number" min="1" max="1000000" name="capacity" defaultValue={initial?.capacity ?? ''} placeholder="Optional" /></label>
         </div>
       </section>
 
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <section className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Schedule</p>
+        <h2 className="mt-1 text-xl font-bold text-navy-950">Set the date, time and timezone</h2>
+        <p className="mt-1.5 text-sm font-normal text-slate-400">Choose the date from the calendar and the time separately. No mixed browser date-time picker.</p>
+        <div className="mt-6 grid gap-5 lg:grid-cols-2">
+          <EventDateTimeField label="Starts" name="startAt" required defaultValue={datetimeLocal(initial?.startAt)} />
+          <EventDateTimeField label="Ends" name="endAt" required defaultValue={datetimeLocal(initial?.endAt)} />
+          <label className={`${labelClass} lg:col-span-2`}>Timezone<div className="relative"><select className={selectClass} name="timezone" required defaultValue={initialTimezone}>{!timezoneIsListed ? <option value={initialTimezone}>{initialTimezone}</option> : null}{EVENT_TIMEZONES.map((zone) => <option key={zone.value} value={zone.value}>{zone.label}</option>)}</select><SelectChevron /></div><span className={helperClass}>Times will be labelled with this timezone for attendees.</span></label>
+        </div>
+      </section>
+
+      <section className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Location & access</p>
+        <h2 className="mt-1 text-xl font-bold text-navy-950">Where it happens</h2>
+        <p className="mt-1.5 text-sm font-normal text-slate-400">{format === 'online' ? 'Attendees will join remotely, so only add the online access link.' : format === 'in_person' ? 'Add the physical venue and arrival details for attendees.' : 'Add both the physical venue and the online joining link.'}</p>
+        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          {format !== 'online' ? (
+            <>
+              <label className={labelClass}>Venue<input className={inputClass} name="locationName" defaultValue={initial?.locationName ?? ''} placeholder="e.g. Maritime Training Centre" required={format !== 'online'} /></label>
+              <label className={labelClass}>Venue address<input className={inputClass} name="locationAddress" defaultValue={initial?.locationAddress ?? ''} placeholder="Street or building address" /></label>
+              <label className={labelClass}>City<input className={inputClass} name="city" defaultValue={initial?.city ?? ''} placeholder="e.g. Mumbai" /></label>
+              <label className={labelClass}>Country<input className={inputClass} name="country" defaultValue={initial?.country ?? ''} placeholder="e.g. India" /></label>
+            </>
+          ) : null}
+          {format !== 'in_person' ? (
+            <label className={`${labelClass} sm:col-span-2`}>Online meeting URL<input className={inputClass} type="url" name="meetingUrl" defaultValue={initial?.meetingUrl ?? ''} placeholder="https://zoom.us/… or Microsoft Teams link" required={format !== 'in_person'} /><span className={helperClass}>Paste the Zoom, Teams or other joining link used for the session.</span></label>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Programme</p>
+        <h2 className="mt-1 text-xl font-bold text-navy-950">Content & speakers</h2>
+        <p className="mt-1.5 text-sm font-normal text-slate-400">These details help professionals decide quickly whether the session is relevant to them.</p>
+        <div className="mt-6 grid gap-5">
+          <label className={labelClass}>Topics<input className={inputClass} name="topics" defaultValue={initial?.topics.join(', ') ?? ''} placeholder="e.g. SIRE 2.0, tanker operations, human factors" /><span className={helperClass}>Separate multiple topics with commas.</span></label>
+          <label className={labelClass}>Agenda<textarea className={`${inputClass} min-h-36 resize-y`} name="agenda" defaultValue={initial?.agenda.join('\n') ?? ''} placeholder={'e.g. 09:00 Welcome\n09:15 SIRE 2.0 readiness\n11:30 Q&A'} /><span className={helperClass}>One agenda item per line.</span></label>
+          <label className={labelClass}>Speaker details<textarea className={`${inputClass} min-h-32 resize-y`} name="speakerDetails" defaultValue={initial?.speakerDetails.map((speaker) => [speaker.name, speaker.title, speaker.organization].join(' | ')).join('\n') ?? ''} placeholder={'e.g. Capt. Name | Master Mariner | Company\nChief Engineer Name | Technical Director | Company'} /><span className={helperClass}>One speaker per line: Name | Title | Organization.</span></label>
+          <label className={labelClass}>Speaker names only <span className="font-normal text-slate-400">(optional fallback)</span><input className={inputClass} name="speakers" defaultValue={initial?.speakers.join(', ') ?? ''} placeholder="e.g. Capt. Name, Chief Engineer Name" /></label>
+        </div>
+      </section>
+
+      <section className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Registration & presentation</p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className={labelClass}>Registration<select className={inputClass} name="registrationMode" defaultValue={initial?.registrationMode ?? 'open'}><option value="open">Open</option><option value="closed">Closed</option></select></label>
-          <label className={labelClass}>Registration closes<input className={inputClass} type="datetime-local" name="registrationClosesAt" defaultValue={datetimeLocal(initial?.registrationClosesAt)} /><span className="block text-xs font-normal text-muted">Optional. Must be before the event starts.</span></label>
+        <h2 className="mt-1 text-xl font-bold text-navy-950">Control registration and presentation</h2>
+        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+          <label className={labelClass}>Registration<div className="relative"><select className={selectClass} name="registrationMode" defaultValue={initial?.registrationMode ?? 'open'}><option value="open">Open</option><option value="closed">Closed</option></select><SelectChevron /></div></label>
+          <EventDateTimeField label="Registration closes" name="registrationClosesAt" defaultValue={datetimeLocal(initial?.registrationClosesAt)} helper="Optional. Keep this before the event starts." />
           <div className="space-y-2 sm:col-span-2">
-            <div className="flex items-end justify-between gap-3"><div><p className="text-sm font-semibold text-navy-900">Event banner</p><p className="mt-1 text-xs font-normal text-muted">JPEG, PNG or WebP up to 8 MB. A 16:9 image works best.</p></div>{bannerReference ? <button type="button" onClick={removeBanner} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"><Trash2 aria-hidden="true" className="size-3.5" />Remove</button> : null}</div>
+            <div className="flex items-end justify-between gap-3"><div><p className="text-sm font-semibold text-navy-900">Event banner</p><p className="mt-1 text-xs font-normal text-slate-400">JPEG, PNG or WebP up to 8 MB. A 16:9 image works best.</p></div>{bannerReference ? <button type="button" onClick={removeBanner} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"><Trash2 aria-hidden="true" className="size-3.5" />Remove</button> : null}</div>
             <input type="hidden" name="bannerUrl" value={bannerReference} />
             <label className="group block cursor-pointer overflow-hidden rounded-2xl border border-dashed border-mist-200 bg-mist-50 transition hover:border-teal-300 hover:bg-teal-50/40">
               <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={onBannerChange} />
@@ -246,15 +290,15 @@ export function EventForm(props: Props) {
                   <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-navy-950/90 to-transparent px-4 pb-4 pt-10 text-white"><span className="text-sm font-bold">{bannerUploading ? `Uploading ${bannerProgress}%` : 'Banner ready'}</span><span className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold group-hover:bg-teal-400 group-hover:text-navy-950">Replace banner</span></div>
                 </div>
               ) : (
-                <div className="flex min-h-40 flex-col items-center justify-center px-6 py-8 text-center"><span className="grid size-11 place-items-center rounded-2xl bg-white text-teal-700 shadow-sm"><ImageUp aria-hidden="true" className="size-5" /></span><span className="mt-3 text-sm font-bold text-navy-950">Upload banner</span><span className="mt-1 text-xs text-muted">Click to choose an image from your device</span>{bannerUploading ? <span className="mt-3 text-xs font-bold text-teal-700">Uploading {bannerProgress}%</span> : null}</div>
+                <div className="flex min-h-40 flex-col items-center justify-center px-6 py-8 text-center"><span className="grid size-11 place-items-center rounded-2xl bg-white text-teal-700 shadow-sm"><ImageUp aria-hidden="true" className="size-5" /></span><span className="mt-3 text-sm font-bold text-navy-950">Upload banner</span><span className="mt-1 text-xs font-normal text-slate-400">Click to choose an image from your device</span>{bannerUploading ? <span className="mt-3 text-xs font-bold text-teal-700">Uploading {bannerProgress}%</span> : null}</div>
               )}
             </label>
           </div>
         </div>
       </section>
 
-      {message ? <p className={`rounded-xl px-4 py-3 text-sm font-semibold ${error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{message}</p> : null}
-      <div className="flex flex-wrap gap-3">
+      {message ? <p className={`rounded-2xl px-4 py-3 text-sm font-semibold ${error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{message}</p> : null}
+      <div className="sticky bottom-3 z-20 flex flex-wrap gap-3 rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-xl backdrop-blur sm:p-4">
         <button disabled={busy} type="submit" name="status" value="draft" className="rounded-xl border border-navy-200 bg-white px-5 py-3 text-sm font-bold text-navy-900 disabled:opacity-60">{bannerUploading ? 'Uploading banner…' : pending ? 'Saving…' : initial?.status === 'published' ? 'Unpublish to draft' : 'Save draft'}</button>
         <button disabled={busy} type="submit" name="status" value="published" className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-60">{initial?.status === 'published' ? 'Save & keep published' : 'Publish event'}</button>
         {props.mode === 'edit' ? <button disabled={busy} type="button" onClick={cancelEvent} className="ml-auto rounded-xl border border-rose-200 px-5 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-60">Cancel event</button> : null}
