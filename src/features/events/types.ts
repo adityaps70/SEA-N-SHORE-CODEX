@@ -10,6 +10,7 @@ export type SocialDomainEventType =
   | 'comment.reacted'
   | 'post.mentioned'
   | 'comment.mentioned'
+  | 'message.created'
 
 export type SocialDomainEventPayload =
   | { eventType: 'user.followed'; actorId: string; targetId: string }
@@ -21,10 +22,17 @@ export type SocialDomainEventPayload =
   | { eventType: 'comment.reacted'; actorId: string; targetId: string; postId: string; commentId: string; reactionType: PostReactionType }
   | { eventType: 'post.mentioned'; actorId: string; targetId: string; postId: string }
   | { eventType: 'comment.mentioned'; actorId: string; targetId: string; postId: string; commentId: string }
+  | {
+      eventType: 'message.created'
+      conversationId: string
+      messageId: string
+      senderId: string
+      recipientProfileIds: string[]
+    }
 
 export type DomainEvent = {
   id: string
-  aggregateType: 'profile' | 'connection' | 'post' | 'comment'
+  aggregateType: 'profile' | 'connection' | 'post' | 'comment' | 'message'
   aggregateId: string
   eventType: SocialDomainEventType
   schemaVersion: 1
