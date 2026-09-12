@@ -1,7 +1,7 @@
 'use client'
 
 import { MessageCircleMore } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
 import { ConversationList } from './conversation-list'
 import { MessageComposer, type OptimisticMessagingMessage } from './message-composer'
@@ -17,20 +17,14 @@ export type MessagingActiveConversation = {
   nextCursor: { createdAt: string; id: string } | null
 }
 
-export function MessageShell({
+function ActiveConversationWorkspace({
   viewerId,
-  inbox,
-  activeConversation,
+  conversation,
 }: {
   viewerId: string
-  inbox: MessagingInboxItem[]
-  activeConversation: MessagingActiveConversation | null
+  conversation: MessagingActiveConversation
 }) {
-  const [messages, setMessages] = useState<MessageThreadItem[]>(activeConversation?.messages ?? [])
-
-  useEffect(() => {
-    setMessages(activeConversation?.messages ?? [])
-  }, [activeConversation?.conversationId, activeConversation?.messages])
+  const [messages, setMessages] = useState<MessageThreadItem[]>(conversation.messages)
 
   function addOptimistic(message: OptimisticMessagingMessage) {
     setMessages((current) => {
@@ -57,6 +51,37 @@ export function MessageShell({
   }
 
   return (
+    <>
+      <MessageThread
+        viewerId={viewerId}
+        conversationId={conversation.conversationId}
+        otherName={conversation.otherName}
+        otherHeadline={conversation.otherHeadline}
+        otherAvatarUrl={conversation.otherAvatarUrl}
+        messages={messages}
+        nextCursor={conversation.nextCursor}
+      />
+      <MessageComposer
+        conversationId={conversation.conversationId}
+        viewerId={viewerId}
+        onOptimisticMessage={addOptimistic}
+        onMessageConfirmed={confirmMessage}
+        onMessageFailed={failMessage}
+      />
+    </>
+  )
+}
+
+export function MessageShell({
+  viewerId,
+  inbox,
+  activeConversation,
+}: {
+  viewerId: string
+  inbox: MessagingInboxItem[]
+  activeConversation: MessagingActiveConversation | null
+}) {
+  return (
     <div className="space-y-4">
       <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -78,24 +103,11 @@ export function MessageShell({
 
           <div className={activeConversation ? 'flex min-h-0 flex-col' : 'hidden min-h-0 md:flex md:flex-col'}>
             {activeConversation ? (
-              <>
-                <MessageThread
-                  viewerId={viewerId}
-                  conversationId={activeConversation.conversationId}
-                  otherName={activeConversation.otherName}
-                  otherHeadline={activeConversation.otherHeadline}
-                  otherAvatarUrl={activeConversation.otherAvatarUrl}
-                  messages={messages}
-                  nextCursor={activeConversation.nextCursor}
-                />
-                <MessageComposer
-                  conversationId={activeConversation.conversationId}
-                  viewerId={viewerId}
-                  onOptimisticMessage={addOptimistic}
-                  onMessageConfirmed={confirmMessage}
-                  onMessageFailed={failMessage}
-                />
-              </>
+              <ActiveConversationWorkspace
+                key={activeConversation.conversationId}
+                viewerId={viewerId}
+                conversation={activeConversation}
+              />
             ) : (
               <div className="grid min-h-full flex-1 place-items-center bg-[linear-gradient(180deg,white,var(--mist-50))] p-8 text-center">
                 <div className="max-w-md">
