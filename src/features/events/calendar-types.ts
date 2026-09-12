@@ -51,7 +51,7 @@ export type CalendarEventInput = {
   registrationClosesAt: string | null
 }
 
-export type CalendarEvent = CalendarEventInput & {
+export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
   id: string
   hostUserId: string
   hostName: string
