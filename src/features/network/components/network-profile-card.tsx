@@ -24,9 +24,14 @@ export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
   return (
     <Card className="flex h-full flex-col border border-mist-100 p-5">
       <div className="flex items-start gap-3">
-        <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
-          {initials(profile.fullName)}
-        </div>
+        {profile.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
+          <img src={profile.avatarUrl} alt={`${profile.fullName} profile`} loading="lazy" className="size-12 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" />
+        ) : (
+          <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
+            {initials(profile.fullName)}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-[.11em] text-ocean-700">{profileTypeLabels[profile.profileType]}</p>
           <h2 className="mt-1 truncate text-lg font-semibold text-navy-950">{profile.fullName}</h2>

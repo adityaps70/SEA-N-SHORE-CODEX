@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProfileDirectoryCard } from '@/features/profiles/components/profile-directory-card'
 import type { NetworkProfile } from '../types'
 import { ConnectionRequestCard } from './connection-request-card'
@@ -9,6 +9,8 @@ import { PeopleYouMayKnow } from './people-you-may-know'
 vi.mock('./relationship-controls', () => ({
   RelationshipControls: () => <div>Relationship actions</div>,
 }))
+
+afterEach(cleanup)
 
 const signedAvatarUrl = 'https://media.example.test/signed/capt-meera-nair.jpg?signature=abc123'
 

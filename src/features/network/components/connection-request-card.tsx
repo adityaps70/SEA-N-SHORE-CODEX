@@ -20,7 +20,12 @@ export function ConnectionRequestCard({
   return (
     <Card className="border border-mist-100 p-5">
       <div className="flex items-start gap-3">
-        <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950">{initials(profile.fullName)}</div>
+        {profile.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
+          <img src={profile.avatarUrl} alt={`${profile.fullName} profile`} loading="lazy" className="size-12 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" />
+        ) : (
+          <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950">{initials(profile.fullName)}</div>
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-lg font-semibold text-navy-950">{profile.fullName}</h2>

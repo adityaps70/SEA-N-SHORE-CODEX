@@ -9,7 +9,8 @@ function makeProfile(index: number): NetworkProfile {
     slug: `member-${index}`,
     profileType: 'seafarer',
     fullName: `Member ${index}`,
-    avatarPath: index === 1 ? '/media/member-1.webp' : null,
+    avatarPath: index === 1 ? 'profiles/member-1/avatar.webp' : null,
+    avatarUrl: index === 1 ? 'https://media.example.test/member-1.webp?signature=signed' : null,
     location: 'Mumbai, India',
     headline: `Master Mariner ${index}`,
     summary: `Short professional summary ${index}`,
@@ -27,11 +28,12 @@ function makeProfile(index: number): NetworkProfile {
 }
 
 describe('PeopleYouMayKnow', () => {
-  it('shows only three compact profiles with photo/about text and a direct View profile action', () => {
+  it('shows only three compact profiles with signed photo/about text and a direct View profile action', () => {
     render(<PeopleYouMayKnow profiles={[1, 2, 3, 4].map(makeProfile)} />)
 
     expect(screen.getByRole('heading', { name: /People you may know/i })).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: 'Member 1 profile' })).toHaveAttribute('src', '/media/member-1.webp')
+    expect(screen.getByRole('img', { name: 'Member 1 profile' })).toHaveAttribute('src', 'https://media.example.test/member-1.webp?signature=signed')
+    expect(screen.getByRole('img', { name: 'Member 1 profile' })).not.toHaveAttribute('src', 'profiles/member-1/avatar.webp')
     expect(screen.getByText('Short professional summary 1')).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: /View profile/i })).toHaveLength(3)
     expect(screen.getByText('Member 3')).toBeInTheDocument()

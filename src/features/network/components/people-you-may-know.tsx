@@ -21,9 +21,9 @@ export function PeopleYouMayKnow({ profiles }: { profiles: NetworkProfile[] }) {
           return (
             <article key={profile.id} className="py-3 first:pt-1 last:pb-1">
               <div className="flex items-start gap-3">
-                {profile.avatarPath ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- profile media may be hydrated to an external signed URL
-                  <img src={profile.avatarPath} alt={`${profile.fullName} profile`} className="size-11 shrink-0 rounded-xl object-cover ring-1 ring-mist-100" />
+                {profile.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
+                  <img src={profile.avatarUrl} alt={`${profile.fullName} profile`} loading="lazy" className="size-11 shrink-0 rounded-xl object-cover ring-1 ring-mist-100" />
                 ) : (
                   <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-mist-100 text-xs font-semibold text-navy-950">
                     {initials(profile.fullName)}
