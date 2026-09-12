@@ -120,14 +120,14 @@ async function completeProfessional(user) {
   await page.getByRole('button', { name: 'Complete profile' }).click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
 
-  await page.goto(`${siteUrl}/profile`, { waitUntil: 'networkidle' })
+  await page.goto(`${siteUrl}/profile`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('Master', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('Mentor', { exact: true }).first()).toBeVisible()
 
-  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
+  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Edit profile' })).toBeVisible()
 
-  await page.goto(`${siteUrl}/events`, { waitUntil: 'networkidle' })
+  await page.goto(`${siteUrl}/events`, { waitUntil: 'domcontentloaded' })
   await expect(page).toHaveURL((url) => url.pathname === '/events')
   await expect(page.getByRole('heading', { name: 'Maritime events' })).toBeVisible()
   await expect(page.getByRole('search', { name: 'Event search preview' })).toContainText('Search events, topics, speakers or organisations')
@@ -155,7 +155,7 @@ async function completeCustom(user) {
   await page.getByLabel('Current organisation').fill('E2E Hydro')
   await page.getByRole('button', { name: 'Complete profile' }).click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
-  await page.goto(`${siteUrl}/profile`, { waitUntil: 'networkidle' })
+  await page.goto(`${siteUrl}/profile`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('Hydrographic Survey Expedition Lead', { exact: true }).first()).toBeVisible()
   await context.close()
 }
@@ -176,7 +176,7 @@ async function completeOrganisation(user) {
   await assert.rejects(async () => page.getByLabel('Current organisation').waitFor({ state: 'visible', timeout: 500 }))
   await page.getByRole('button', { name: 'Complete profile' }).click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
-  await page.goto(`${siteUrl}/profile`, { waitUntil: 'networkidle' })
+  await page.goto(`${siteUrl}/profile`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('Shipowner', { exact: true }).first()).toBeVisible()
   await context.close()
 }
