@@ -1,0 +1,165 @@
+name: AWS Events E2E
+
+on:
+  push:
+    branches: [feat/aws-native-phase-0-1]
+    paths:
+      - scripts/aws/events-e2e-action.txt
+      - scripts/aws/events-e2e-guard.test.mjs
+      - scripts/aws/events-staging-e2e.mjs
+      - scripts/aws/events-e2e-ssm.mjs
+      - scripts/aws/events-e2e-remote.sh
+      - .github/workflows/aws-events-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-events-e2e
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      run_e2e: ${{ steps.guard.outputs.run_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION=$(tr -d '[:space:]' < scripts/aws/events-e2e-action.txt)
+          case "$ACTION" in
+            plan) echo 'run_e2e=false' >> "$GITHUB_OUTPUT" ;;
+            run-once) echo 'run_e2e=true' >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unsupported EVENTS_E2E_ACTION=$ACTION" >&2; exit 1 ;;
+          esac
+
+  events-e2e:
+    needs: guard
+    if: needs.guard.outputs.run_e2e == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+    env:
+      AWS_REGION: ap-south-1
+      SITE_URL: https://d3prih0q6jofyr.cloudfront.net
+      COGNITO_POOL_NAME: sea-n-shore-staging-users
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' "$API")
+            STATUS=$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")
+            CONCLUSION=$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")
+            if [[ "$STATUS" == completed ]]; then [[ "$CONCLUSION" == success ]] || { echo 'Exact-head AWS Infrastructure CI is not green.' >&2; exit 1; }; exit 0; fi
+            sleep 10
+          done
+          echo 'Timed out waiting for exact-head AWS Infrastructure CI.' >&2
+          exit 1
+
+      - name: Guard push E2E against a moved branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$GITHUB_SHA" ]] || { echo 'Branch moved; refusing stale Events E2E.' >&2; exit 1; }
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Verify staging AWS account
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
+
+      - name: Discover bootstrap instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters 'Name=tag:Name,Values=sea-n-shore-bootstrap' 'Name=instance-state-name,Values=running' --query 'Reservations[].Instances[].InstanceId' --output json)
+          [[ "$(jq 'length' <<<"$IDS")" -eq 1 ]]
+          echo "INSTANCE_ID=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_ENV"
+
+      - name: Initialize disposable Events E2E data
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOST_PASSWORD="SnS!Host${GITHUB_RUN_ID}Aa9#"
+          ATTENDEE_PASSWORD="SnS!Attend${GITHUB_RUN_ID}Bb8#"
+          echo "::add-mask::$HOST_PASSWORD"
+          echo "::add-mask::$ATTENDEE_PASSWORD"
+          {
+            echo "E2E_HOST_EMAIL=sea-n-shore-events-e2e-${GITHUB_RUN_ID}-host@example.com"
+            echo "E2E_ATTENDEE_EMAIL=sea-n-shore-events-e2e-${GITHUB_RUN_ID}-attendee@example.com"
+            echo 'E2E_HOST_NAME=Events E2E Host'
+            echo 'E2E_ATTENDEE_NAME=Events E2E Attendee'
+            echo "E2E_HOST_PASSWORD=$HOST_PASSWORD"
+            echo "E2E_ATTENDEE_PASSWORD=$ATTENDEE_PASSWORD"
+            echo "E2E_EVENT_TITLE=E2E Maritime Event ${GITHUB_RUN_ID}"
+            echo "E2E_EDITED_SUMMARY=Updated durable Events E2E summary ${GITHUB_RUN_ID}"
+          } >> "$GITHUB_ENV"
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Public sign-up disposable users
+        run: E2E_PHASE=signup node scripts/aws/events-staging-e2e.mjs
+      - name: Confirm disposable users through guarded AWS control plane
+        run: node scripts/aws/events-e2e-ssm.mjs confirm
+      - name: Complete authenticated maritime onboarding
+        run: E2E_PHASE=onboarding node scripts/aws/events-staging-e2e.mjs
+
+      - name: Create and publish event through live UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          OUTPUT=$(E2E_PHASE=host-create node scripts/aws/events-staging-e2e.mjs 2>&1)
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+          [[ $STATUS -eq 0 ]] || exit "$STATUS"
+          EVENT_ID=$(sed -n 's/^EVENTS_E2E_EVENT_ID=//p' <<<"$OUTPUT" | tail -1)
+          [[ "$EVENT_ID" =~ ^[0-9a-f-]{36}$ ]]
+          echo "E2E_EVENT_ID=$EVENT_ID" >> "$GITHUB_ENV"
+
+      - name: Attend event through second authenticated identity
+        run: E2E_PHASE=attendee-rsvp node scripts/aws/events-staging-e2e.mjs
+      - name: Verify durable RSVP in Aurora
+        run: node scripts/aws/events-e2e-ssm.mjs verify-attendance
+      - name: Edit event through organizer UI
+        run: E2E_PHASE=host-edit node scripts/aws/events-staging-e2e.mjs
+      - name: Withdraw RSVP through attendee UI
+        run: E2E_PHASE=attendee-withdraw node scripts/aws/events-staging-e2e.mjs
+      - name: Verify durable withdrawal in Aurora
+        run: node scripts/aws/events-e2e-ssm.mjs verify-withdrawal
+      - name: Cancel event through organizer UI
+        run: E2E_PHASE=host-cancel node scripts/aws/events-staging-e2e.mjs
+      - name: Verify durable cancellation and edit in Aurora
+        run: node scripts/aws/events-e2e-ssm.mjs verify-cancelled
+
+      - name: Cleanup disposable Events E2E data
+        if: always()
+        run: node scripts/aws/events-e2e-ssm.mjs cleanup
