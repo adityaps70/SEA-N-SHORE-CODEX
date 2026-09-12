@@ -51,19 +51,22 @@ describe('Sea N Shore premium page and Events presentation contract', () => {
 
   it('uses authenticated presigned S3 uploads and durable banner references', () => {
     const mediaPath = 'src/features/events/event-banner-media.ts'
+    const policyPath = 'src/features/events/event-banner-policy.ts'
     const uploadPath = 'src/features/events/components/upload-event-banner.ts'
     expect(existsSync(resolve(root, mediaPath))).toBe(true)
+    expect(existsSync(resolve(root, policyPath))).toBe(true)
     expect(existsSync(resolve(root, uploadPath))).toBe(true)
-    if (!existsSync(resolve(root, mediaPath)) || !existsSync(resolve(root, uploadPath))) return
+    if (!existsSync(resolve(root, mediaPath)) || !existsSync(resolve(root, policyPath)) || !existsSync(resolve(root, uploadPath))) return
 
     const media = source(mediaPath)
+    const policy = source(policyPath)
     const actions = source('src/features/events/calendar-actions.ts')
     const repository = source('src/features/events/calendar-repository.ts')
 
     expect(media).toContain('createMediaUploadUrl')
     expect(media).toContain('headMediaObject')
     expect(media).toContain('createMediaReadUrl')
-    expect(media).toContain('events/')
+    expect(policy).toContain('events/')
     expect(actions).toContain('createEventBannerUploadAction')
     expect(actions).toContain('verifyEventBannerReference')
     expect(repository).toContain('resolveEventBannerReference')
