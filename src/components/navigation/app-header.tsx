@@ -57,7 +57,6 @@ export function AppHeader({
               activeClassName={activeNavClass}
             >
               <Icon aria-hidden="true" className="size-4.5 shrink-0" />
-              <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">{label}</span>
               {href === '/messages' && messagingUnreadCount > 0 ? (
                 <span
                   aria-label={`${messagingUnreadCount} unread messages`}
@@ -66,6 +65,7 @@ export function AppHeader({
                   {messagingUnreadCount}
                 </span>
               ) : null}
+              <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">{label}</span>
             </ActiveNavLink>
           ))}
         </nav>
