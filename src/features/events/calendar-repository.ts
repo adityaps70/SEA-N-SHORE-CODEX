@@ -1,5 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { resolveEventBannerReference } from './event-banner-media'
+import { isEventBannerStoragePath } from './event-banner-policy'
 import type {
   CalendarEvent,
   CalendarEventFilters,
@@ -173,6 +175,7 @@ function mapEvent(row: CalendarEventRow): CalendarEvent {
     speakerDetails: speakerDetails(row.speaker_details),
     capacity: row.capacity,
     bannerUrl: row.banner_url,
+    bannerStoragePath: row.banner_url && isEventBannerStoragePath(row.banner_url) ? row.banner_url : null,
     registrationMode: row.registration_mode,
     registrationClosesAt: nullableIso(row.registration_closes_at),
     attendeeCount: Number(row.attendee_count ?? 0),
@@ -226,7 +229,10 @@ function normalizedFilters(filters: CalendarEventFilters | string = '') {
 
 async function rowsForViewer(viewerId: string, whereSql: string, values: readonly unknown[]) {
   const rows = await query<CalendarEventRow>(`${EVENT_SELECT}\n${whereSql}`, [viewerId, ...values])
-  return rows.map(mapEvent)
+  return Promise.all(rows.map(async (row) => {
+    const event = mapEvent(row)
+    return { ...event, bannerUrl: await resolveEventBannerReference(row.banner_url) }
+  }))
 }
 
 async function listDiscoverEvents(viewerId: string, filters: CalendarEventFilters | string = '') {

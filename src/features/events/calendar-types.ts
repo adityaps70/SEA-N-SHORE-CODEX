@@ -57,6 +57,7 @@ export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
   hostName: string
   hostSlug: string | null
   status: CalendarEventStatus
+  bannerStoragePath: string | null
   attendeeCount: number
   viewerIsAttending: boolean
   viewerIsHost: boolean
@@ -72,4 +73,8 @@ export type CalendarActionResult =
 
 export type CalendarCreateResult =
   | { ok: true; eventId: string }
+  | { ok: false; error: string }
+
+export type EventBannerUploadResult =
+  | { ok: true; upload: { storagePath: string; uploadUrl: string } }
   | { ok: false; error: string }

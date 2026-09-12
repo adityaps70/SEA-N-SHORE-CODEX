@@ -1,4 +1,5 @@
-import { Search, UsersRound } from 'lucide-react'
+import { Search } from 'lucide-react'
+import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { ConnectionRequestCard } from '@/features/network/components/connection-request-card'
 import { NetworkProfileCard } from '@/features/network/components/network-profile-card'
 import { NetworkTabs } from '@/features/network/components/network-tabs'
@@ -41,21 +42,15 @@ export default async function NetworkPage({
 
   return (
     <section className="py-2 sm:py-5">
-      <div className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-8">
-        <div className="flex items-start gap-4">
-          <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-navy-950 text-white">
-            <UsersRound aria-hidden="true" className="size-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Maritime network</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em] text-navy-950">People worth knowing at sea and ashore.</h1>
-          </div>
-        </div>
-
-        <form action="/network" method="get" role="search" className="relative mt-6 max-w-2xl">
+      <PremiumPageHero
+        eyebrow="Maritime network"
+        title="People worth knowing at sea and ashore."
+        description="Discover trusted maritime professionals by rank, company, location, vessel experience and specialist skills."
+      >
+        <form action="/network" method="get" role="search" className="relative mt-6 max-w-2xl rounded-2xl bg-white p-2">
           <input type="hidden" name="tab" value="discover" />
           <label htmlFor="network-search" className="sr-only">Search maritime professionals</label>
-          <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-4 -translate-y-1/2 text-muted" />
           <input
             id="network-search"
             name="q"
@@ -63,10 +58,10 @@ export default async function NetworkPage({
             defaultValue={query}
             maxLength={100}
             placeholder="Search by name, rank, company, location, vessel type or skill"
-            className="min-h-12 w-full rounded-xl border border-mist-100 bg-mist-50 py-3 pl-11 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-700 focus:bg-white"
+            className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-11 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200"
           />
         </form>
-      </div>
+      </PremiumPageHero>
 
       <NetworkTabs active={tab} incomingRequestCount={hub.incomingRequestCount} />
 
@@ -75,7 +70,7 @@ export default async function NetworkPage({
           <section aria-labelledby="received-requests-heading">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Invitations</p>
+                <p className="text-xs font-semibold uppercase tracking-[.12em] text-teal-700">Invitations</p>
                 <h2 id="received-requests-heading" className="mt-1 text-xl font-semibold text-navy-950">Requests for you</h2>
               </div>
               {hub.receivedRequests.length ? <span className="text-sm font-medium text-muted">{hub.receivedRequests.length} pending</span> : null}
@@ -90,7 +85,7 @@ export default async function NetworkPage({
           </section>
 
           <section aria-labelledby="sent-requests-heading">
-            <p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Outgoing</p>
+            <p className="text-xs font-semibold uppercase tracking-[.12em] text-teal-700">Outgoing</p>
             <h2 id="sent-requests-heading" className="mt-1 text-xl font-semibold text-navy-950">Requests you sent</h2>
             {hub.sentRequests.length ? (
               <div className="mt-3 grid gap-4 lg:grid-cols-2">

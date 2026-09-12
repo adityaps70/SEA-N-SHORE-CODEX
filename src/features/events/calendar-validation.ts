@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isEventBannerReference } from './event-banner-policy'
 import {
   CALENDAR_EVENT_CATEGORIES,
   CALENDAR_EVENT_FORMATS,
@@ -9,6 +10,7 @@ import {
 const webUrl = z.string().trim().url().max(2000).refine((value) => value.startsWith('https://') || value.startsWith('http://'), 'Use an http or https URL.')
 const nullableUrl = webUrl.nullable()
 const nullableText = (max: number) => z.string().trim().max(max).nullable()
+const eventBannerReference = z.string().trim().max(2000).refine(isEventBannerReference, 'Upload a valid event banner image.').nullable()
 const speakerDetailSchema = z.object({
   name: z.string().trim().min(1).max(160),
   title: z.string().trim().max(160),
@@ -36,7 +38,7 @@ export const calendarEventInputSchema = z.object({
   speakers: z.array(z.string().trim().min(1).max(160)).max(30),
   speakerDetails: z.array(speakerDetailSchema).max(30),
   capacity: z.number().int().min(1).max(1000000).nullable(),
-  bannerUrl: nullableUrl,
+  bannerUrl: eventBannerReference,
   registrationMode: z.enum(CALENDAR_REGISTRATION_MODES),
   registrationClosesAt: z.string().datetime({ offset: true }).nullable(),
 }).superRefine((value, context) => {

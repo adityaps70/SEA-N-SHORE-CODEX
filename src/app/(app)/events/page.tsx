@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Search } from 'lucide-react'
+import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import {
@@ -34,31 +35,30 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      <header className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-navy-950 via-navy-900 to-teal-800 p-6 text-white shadow-xl sm:p-8">
-        <div className="max-w-3xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-200">Maritime events</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">Learn, meet and move the maritime industry forward.</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75 sm:text-base">Discover webinars, masterclasses, conferences, meetups and professional sessions hosted by maritime professionals.</p>
-        </div>
+      <PremiumPageHero
+        eyebrow="Maritime events"
+        title="Learn, meet and move the maritime industry forward."
+        description="Discover webinars, masterclasses, conferences, meetups and professional sessions hosted by maritime professionals."
+      >
         <div className="mt-6 flex flex-wrap gap-2">
           <Link href="/events" className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-navy-950">Discover</Link>
           <Link href="/events/my" className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15">My Events</Link>
           <Link href="/events/hosting" className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15">Hosting</Link>
           <Link href="/events/create" className="ml-auto rounded-xl bg-teal-400 px-4 py-2 text-sm font-bold text-navy-950 hover:bg-teal-300">Create event</Link>
         </div>
-      </header>
+      </PremiumPageHero>
 
       <form method="get" className="grid gap-3 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] lg:grid-cols-[2fr_repeat(3,1fr)_1.4fr_auto]">
         <label className="relative">
           <span className="sr-only">Search events</span>
           <Search className="absolute left-3 top-3.5 h-4 w-4 text-muted" />
-          <input name="q" defaultValue={params.q ?? ''} placeholder="Search title, topic, host focus…" className="min-h-11 w-full rounded-xl border border-mist-100 bg-mist-50 pl-10 pr-3 text-sm text-navy-950 outline-none focus:border-navy-300" />
+          <input name="q" defaultValue={params.q ?? ''} placeholder="Search title, topic, host focus…" className="min-h-11 w-full rounded-xl border border-mist-100 bg-mist-50 pl-10 pr-3 text-sm text-navy-950 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-100" />
         </label>
         <label><span className="sr-only">Category</span><select name="category" defaultValue={params.category ?? ''} className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-900"><option value="">All categories</option>{CALENDAR_EVENT_CATEGORIES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label>
         <label><span className="sr-only">Event type</span><select name="eventType" defaultValue={params.eventType ?? ''} className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-900"><option value="">All event types</option>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label>
         <label><span className="sr-only">Format</span><select name="format" defaultValue={params.format ?? ''} className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-900"><option value="">Any format</option>{CALENDAR_EVENT_FORMATS.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label>
-        <label><span className="sr-only">Location</span><input name="location" defaultValue={params.location ?? ''} placeholder="City, country or venue" className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-950 outline-none focus:border-navy-300" /></label>
-        <button className="min-h-11 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white">Filter</button>
+        <label><span className="sr-only">Location</span><input name="location" defaultValue={params.location ?? ''} placeholder="City, country or venue" className="min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-navy-950 outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-100" /></label>
+        <button className="min-h-11 rounded-xl bg-teal-600 px-5 text-sm font-bold text-white hover:bg-teal-700">Filter</button>
       </form>
 
       <section className="space-y-4">

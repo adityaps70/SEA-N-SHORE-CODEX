@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition, type ChangeEvent } from 'react'
+import { ImageUp, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { cancelEventAction, createEventAction, updateEventAction } from '../calendar-actions'
+import { cancelEventAction, createEventAction, createEventBannerUploadAction, updateEventAction } from '../calendar-actions'
+import { EVENT_BANNER_MAX_BYTES, EVENT_BANNER_MIME_TYPES } from '../event-banner-policy'
 import {
   CALENDAR_EVENT_CATEGORIES,
   CALENDAR_EVENT_TYPES,
@@ -13,12 +15,13 @@ import {
   type CalendarEventType,
   type CalendarSpeakerDetail,
 } from '../calendar-types'
+import { uploadEventBannerFile } from './upload-event-banner'
 
 type Props =
   | { mode: 'create'; initial?: never; eventId?: never }
   | { mode: 'edit'; initial: CalendarEvent; eventId: string }
 
-const inputClass = 'min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-navy-300 focus:ring-2 focus:ring-navy-100'
+const inputClass = 'min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus:ring-1 focus:ring-teal-100'
 const labelClass = 'space-y-1.5 text-sm font-semibold text-navy-900'
 
 function text(data: FormData, key: string) { return String(data.get(key) ?? '').trim() }
@@ -84,8 +87,73 @@ export function EventForm(props: Props) {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState(false)
   const initial = props.mode === 'edit' ? props.initial : undefined
+  const [bannerReference, setBannerReference] = useState(initial?.bannerStoragePath ?? initial?.bannerUrl ?? '')
+  const [bannerPreview, setBannerPreview] = useState<string | null>(initial?.bannerUrl ?? null)
+  const [bannerUploading, setBannerUploading] = useState(false)
+  const [bannerProgress, setBannerProgress] = useState(0)
+  const localPreviewRef = useRef<string | null>(null)
+  const busy = pending || bannerUploading
+
+  useEffect(() => () => {
+    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current)
+  }, [])
+
+  function setLocalPreview(file: File) {
+    if (localPreviewRef.current) URL.revokeObjectURL(localPreviewRef.current)
+    const preview = URL.createObjectURL(file)
+    localPreviewRef.current = preview
+    setBannerPreview(preview)
+  }
+
+  async function uploadBanner(file: File) {
+    setMessage(null)
+    setError(false)
+    if (!EVENT_BANNER_MIME_TYPES.some((mimeType) => mimeType === file.type)) {
+      setError(true)
+      setMessage('Use a JPEG, PNG or WebP banner image.')
+      return
+    }
+    if (file.size <= 0 || file.size > EVENT_BANNER_MAX_BYTES) {
+      setError(true)
+      setMessage('Banner images must be 8 MB or smaller.')
+      return
+    }
+
+    setBannerUploading(true)
+    setBannerProgress(0)
+    try {
+      const result = await createEventBannerUploadAction({ mimeType: file.type, size: file.size })
+      if (!result.ok) throw new Error(result.error)
+      await uploadEventBannerFile({ uploadUrl: result.upload.uploadUrl, file, onProgress: setBannerProgress })
+      setBannerReference(result.upload.storagePath)
+      setLocalPreview(file)
+      setMessage('Banner uploaded. It will be saved with the event.')
+    } catch (uploadError) {
+      setError(true)
+      setMessage(uploadError instanceof Error && uploadError.message !== 'event_banner_upload_failed' ? uploadError.message : 'We could not upload the banner. Please try again.')
+    } finally {
+      setBannerUploading(false)
+    }
+  }
+
+  function onBannerChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+    if (file) void uploadBanner(file)
+  }
+
+  function removeBanner() {
+    if (localPreviewRef.current) {
+      URL.revokeObjectURL(localPreviewRef.current)
+      localPreviewRef.current = null
+    }
+    setBannerReference('')
+    setBannerPreview(null)
+    setBannerProgress(0)
+  }
 
   function submit(data: FormData) {
+    if (bannerUploading) return
     setMessage(null)
     setError(false)
     let input: CalendarEventInput
@@ -166,15 +234,30 @@ export function EventForm(props: Props) {
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className={labelClass}>Registration<select className={inputClass} name="registrationMode" defaultValue={initial?.registrationMode ?? 'open'}><option value="open">Open</option><option value="closed">Closed</option></select></label>
           <label className={labelClass}>Registration closes<input className={inputClass} type="datetime-local" name="registrationClosesAt" defaultValue={datetimeLocal(initial?.registrationClosesAt)} /><span className="block text-xs font-normal text-muted">Optional. Must be before the event starts.</span></label>
-          <label className={`${labelClass} sm:col-span-2`}>Banner image URL<input className={inputClass} type="url" name="bannerUrl" defaultValue={initial?.bannerUrl ?? ''} placeholder="Optional https://… public or signed display URL" /><span className="block text-xs font-normal text-muted">Use a public or signed display URL; never paste a private storage key.</span></label>
+          <div className="space-y-2 sm:col-span-2">
+            <div className="flex items-end justify-between gap-3"><div><p className="text-sm font-semibold text-navy-900">Event banner</p><p className="mt-1 text-xs font-normal text-muted">JPEG, PNG or WebP up to 8 MB. A 16:9 image works best.</p></div>{bannerReference ? <button type="button" onClick={removeBanner} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"><Trash2 aria-hidden="true" className="size-3.5" />Remove</button> : null}</div>
+            <input type="hidden" name="bannerUrl" value={bannerReference} />
+            <label className="group block cursor-pointer overflow-hidden rounded-2xl border border-dashed border-mist-200 bg-mist-50 transition hover:border-teal-300 hover:bg-teal-50/40">
+              <input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={onBannerChange} />
+              {bannerPreview ? (
+                <div className="relative aspect-[16/7] overflow-hidden bg-navy-950">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={bannerPreview} alt="Event banner preview" className="h-full w-full object-cover" />
+                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-navy-950/90 to-transparent px-4 pb-4 pt-10 text-white"><span className="text-sm font-bold">{bannerUploading ? `Uploading ${bannerProgress}%` : 'Banner ready'}</span><span className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-bold group-hover:bg-teal-400 group-hover:text-navy-950">Replace banner</span></div>
+                </div>
+              ) : (
+                <div className="flex min-h-40 flex-col items-center justify-center px-6 py-8 text-center"><span className="grid size-11 place-items-center rounded-2xl bg-white text-teal-700 shadow-sm"><ImageUp aria-hidden="true" className="size-5" /></span><span className="mt-3 text-sm font-bold text-navy-950">Upload banner</span><span className="mt-1 text-xs text-muted">Click to choose an image from your device</span>{bannerUploading ? <span className="mt-3 text-xs font-bold text-teal-700">Uploading {bannerProgress}%</span> : null}</div>
+              )}
+            </label>
+          </div>
         </div>
       </section>
 
       {message ? <p className={`rounded-xl px-4 py-3 text-sm font-semibold ${error ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{message}</p> : null}
       <div className="flex flex-wrap gap-3">
-        <button disabled={pending} type="submit" name="status" value="draft" className="rounded-xl border border-navy-200 bg-white px-5 py-3 text-sm font-bold text-navy-900 disabled:opacity-60">{pending ? 'Saving…' : initial?.status === 'published' ? 'Unpublish to draft' : 'Save draft'}</button>
-        <button disabled={pending} type="submit" name="status" value="published" className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-60">{initial?.status === 'published' ? 'Save & keep published' : 'Publish event'}</button>
-        {props.mode === 'edit' ? <button disabled={pending} type="button" onClick={cancelEvent} className="ml-auto rounded-xl border border-rose-200 px-5 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-60">Cancel event</button> : null}
+        <button disabled={busy} type="submit" name="status" value="draft" className="rounded-xl border border-navy-200 bg-white px-5 py-3 text-sm font-bold text-navy-900 disabled:opacity-60">{bannerUploading ? 'Uploading banner…' : pending ? 'Saving…' : initial?.status === 'published' ? 'Unpublish to draft' : 'Save draft'}</button>
+        <button disabled={busy} type="submit" name="status" value="published" className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-60">{initial?.status === 'published' ? 'Save & keep published' : 'Publish event'}</button>
+        {props.mode === 'edit' ? <button disabled={busy} type="button" onClick={cancelEvent} className="ml-auto rounded-xl border border-rose-200 px-5 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-60">Cancel event</button> : null}
       </div>
     </form>
   )

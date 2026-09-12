@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { BellRing, BriefcaseBusiness, Filter, Search, ShieldCheck, Sparkles } from 'lucide-react'
+import { BellRing, BriefcaseBusiness, Filter, Search, ShieldCheck } from 'lucide-react'
+import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { JobCard } from '@/features/jobs/components/job-card'
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { JOB_DISCOVERY_MODES, MARITIME_CERTIFICATES, MARITIME_VISAS, SEA_RANKS, SHORE_ROLES, VESSEL_TYPES } from '@/features/jobs/catalog'
@@ -26,26 +27,22 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
   return (
     <section className="py-2 sm:py-5">
-      <div className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-navy-950 p-5 text-white shadow-[var(--shadow-card)] sm:p-8">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[.16em] text-white/70"><Sparkles aria-hidden="true" className="size-4" />Sea N Shore Jobs Intelligence</p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-.04em] sm:text-4xl">The right maritime role should find you faster.</h1>
-            <p className="mt-3 max-w-xl text-sm leading-7 text-white/70">Search sea and shore opportunities using real maritime requirements, then see why each role matches your rank, experience, vessels and credentials.</p>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80"><ShieldCheck aria-hidden="true" className="mr-2 inline size-4" />Verified employer signals and suspicious-job reporting are built in.</div>
-        </div>
-
+      <PremiumPageHero
+        eyebrow="Sea N Shore Jobs Intelligence"
+        title="The right maritime role should find you faster."
+        description="Search sea and shore opportunities using real maritime requirements, then see why each role matches your rank, experience, vessels and credentials."
+      >
+        <div className="mt-5 inline-flex rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80"><ShieldCheck aria-hidden="true" className="mr-2 mt-0.5 inline size-4 shrink-0" />Verified employer signals and suspicious-job reporting are built in.</div>
         <form action="/jobs" method="get" role="search" className="mt-6 grid gap-2 rounded-2xl bg-white p-2 sm:grid-cols-[1fr_180px_auto]">
           <input type="hidden" name="mode" value={filters.mode} />
           <label className="relative block">
             <span className="sr-only">Search maritime jobs</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <input name="q" type="search" defaultValue={filters.query} maxLength={120} placeholder="Position, rank, company or keyword" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-10 pr-3 text-sm text-ink outline-none focus:ring-2 focus:ring-ocean-700/30" />
+            <input name="q" type="search" defaultValue={filters.query} maxLength={120} placeholder="Position, rank, company or keyword" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-10 pr-3 text-sm text-ink outline-none focus:ring-1 focus:ring-teal-200" />
           </label>
-          <input name="region" defaultValue={filters.regions[0] ?? ''} placeholder="Region / location" className="min-h-12 rounded-xl bg-mist-50 px-3 text-sm text-ink outline-none focus:ring-2 focus:ring-ocean-700/30" />
-          <button type="submit" className="min-h-12 rounded-xl bg-ocean-700 px-6 text-sm font-semibold text-white hover:bg-ocean-800">Search jobs</button>
+          <input name="region" defaultValue={filters.regions[0] ?? ''} placeholder="Region / location" className="min-h-12 rounded-xl bg-mist-50 px-3 text-sm text-ink outline-none focus:ring-1 focus:ring-teal-200" />
+          <button type="submit" className="min-h-12 rounded-xl bg-teal-400 px-6 text-sm font-bold text-navy-950 hover:bg-teal-300">Search jobs</button>
         </form>
-      </div>
+      </PremiumPageHero>
 
       <JobsSubnav active="discover" />
 
@@ -57,7 +54,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="self-start rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] lg:sticky lg:top-20">
-          <div className="flex items-center justify-between"><h2 className="inline-flex items-center gap-2 font-semibold text-navy-950"><Filter aria-hidden="true" className="size-4" />Filters</h2>{activeFilterCount ? <span className="rounded-full bg-mist-50 px-2 py-1 text-xs font-semibold text-ocean-700">{activeFilterCount} active</span> : null}</div>
+          <div className="flex items-center justify-between"><h2 className="inline-flex items-center gap-2 font-semibold text-navy-950"><Filter aria-hidden="true" className="size-4" />Filters</h2>{activeFilterCount ? <span className="rounded-full bg-mist-50 px-2 py-1 text-xs font-semibold text-teal-700">{activeFilterCount} active</span> : null}</div>
           <form action="/jobs" method="get" className="mt-4 space-y-4">
             <input type="hidden" name="mode" value={filters.mode} /><input type="hidden" name="q" value={filters.query} />
             <label className="block text-xs font-semibold text-navy-950">Rank / position<select name="rank" defaultValue={filters.ranks[0] ?? ''} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink"><option value="">Any rank</option>{ranks.map((rank) => <option key={rank} value={rank}>{rank}</option>)}</select></label>
@@ -67,9 +64,9 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             <label className="block text-xs font-semibold text-navy-950">Minimum salary<input name="salaryMin" type="number" min="0" defaultValue={filters.salaryMin ?? ''} placeholder="e.g. 7000" className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 px-3 text-sm text-ink" /></label>
             <label className="block text-xs font-semibold text-navy-950">Certificate<select name="certificate" defaultValue={filters.certificates[0] ?? ''} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink"><option value="">Any certificate</option>{MARITIME_CERTIFICATES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
             <label className="block text-xs font-semibold text-navy-950">Visa<select name="visa" defaultValue={filters.visas[0] ?? ''} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink"><option value="">Any visa</option>{MARITIME_VISAS.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-            <label className="flex items-center gap-2 text-sm font-medium text-ink"><input name="verified" value="1" type="checkbox" defaultChecked={filters.verifiedOnly} className="size-4 accent-navy-950" />Verified employers</label>
-            <label className="flex items-center gap-2 text-sm font-medium text-ink"><input name="easyApply" value="1" type="checkbox" defaultChecked={filters.easyApplyOnly} className="size-4 accent-navy-950" />Easy Apply only</label>
-            <div className="grid grid-cols-2 gap-2"><button type="submit" className="min-h-10 rounded-xl bg-navy-950 px-3 text-sm font-semibold text-white">Apply filters</button><Link href={`/jobs?mode=${filters.mode}`} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-mist-100 text-sm font-semibold text-navy-950">Reset</Link></div>
+            <label className="flex items-center gap-2 text-sm font-medium text-ink"><input name="verified" value="1" type="checkbox" defaultChecked={filters.verifiedOnly} className="size-4 accent-teal-600" />Verified employers</label>
+            <label className="flex items-center gap-2 text-sm font-medium text-ink"><input name="easyApply" value="1" type="checkbox" defaultChecked={filters.easyApplyOnly} className="size-4 accent-teal-600" />Easy Apply only</label>
+            <div className="grid grid-cols-2 gap-2"><button type="submit" className="min-h-10 rounded-xl bg-teal-600 px-3 text-sm font-semibold text-white hover:bg-teal-700">Apply filters</button><Link href={`/jobs?mode=${filters.mode}`} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-mist-100 text-sm font-semibold text-navy-950">Reset</Link></div>
           </form>
         </aside>
 

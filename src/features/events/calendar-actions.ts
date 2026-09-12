@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import type { CalendarActionResult, CalendarCreateResult, CalendarEventInput } from './calendar-types'
+import { prepareEventBannerUpload, verifyEventBannerReference } from './event-banner-media'
+import { validateEventBannerMetadata } from './event-banner-policy'
+import type { CalendarActionResult, CalendarCreateResult, CalendarEventInput, EventBannerUploadResult } from './calendar-types'
 import { calendarEventRepository } from './calendar-repository'
 import { calendarValidationMessage, parseCalendarEventInput } from './calendar-validation'
 
@@ -26,7 +28,21 @@ function safeError(error: unknown) {
   if (code === 'event_host_cannot_attend') return 'Hosts are already part of their own event.'
   if (code === 'event_not_open') return 'Registration is not open for this event.'
   if (code === 'event_full') return 'This event has reached its attendee capacity.'
+  if (code.startsWith('event_banner_')) return 'Please upload the banner image again.'
   return 'Something went wrong. Please try again.'
+}
+
+export async function createEventBannerUploadAction(input: { mimeType: string; size: number }): Promise<EventBannerUploadResult> {
+  const metadata = validateEventBannerMetadata(input)
+  if (!metadata.ok) return { ok: false, error: metadata.error }
+  try {
+    const user = await requireAwsUser()
+    const upload = await prepareEventBannerUpload({ profileId: user.id, mimeType: metadata.mimeType, size: metadata.size })
+    return { ok: true, upload: { storagePath: upload.storagePath, uploadUrl: upload.uploadUrl } }
+  } catch (error) {
+    console.error('calendar_event_banner_presign_failed', error)
+    return { ok: false, error: 'We could not prepare the banner upload. Please try again.' }
+  }
 }
 
 export async function createEventAction(input: CalendarEventInput): Promise<CalendarCreateResult> {
@@ -34,6 +50,7 @@ export async function createEventAction(input: CalendarEventInput): Promise<Cale
   if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error) }
   try {
     const user = await requireAwsUser()
+    await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
     const eventId = await calendarEventRepository.createEvent(user.id, parsed.data)
     refreshEventPaths(eventId)
     return { ok: true, eventId }
@@ -50,6 +67,7 @@ export async function updateEventAction(eventId: string, input: CalendarEventInp
   if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error) }
   try {
     const user = await requireAwsUser()
+    await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
     await calendarEventRepository.updateEvent(user.id, id.data, parsed.data)
     refreshEventPaths(id.data)
     return { ok: true }
