@@ -21,7 +21,7 @@ type Props =
   | { mode: 'create'; initial?: never; eventId?: never }
   | { mode: 'edit'; initial: CalendarEvent; eventId: string }
 
-const inputClass = 'min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500 focus:ring-1 focus:ring-teal-100'
+const inputClass = 'min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-teal-500'
 const labelClass = 'space-y-1.5 text-sm font-semibold text-navy-900'
 
 function text(data: FormData, key: string) { return String(data.get(key) ?? '').trim() }
