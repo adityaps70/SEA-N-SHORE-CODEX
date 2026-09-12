@@ -61,7 +61,7 @@ describe('My Activities and jobs integration contract', () => {
 
     const primary = screen.getByRole('navigation', { name: 'Primary' })
     const links = within(primary).getAllByRole('link')
-    expect(links).toHaveLength(7)
+    expect(links).toHaveLength(8)
 
     for (const link of links) {
       expect(link).toHaveClass('flex-col')
