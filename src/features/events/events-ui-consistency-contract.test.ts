@@ -34,11 +34,23 @@ describe('Sea N Shore premium page and Events presentation contract', () => {
     expect(jobs).toContain('hover:bg-teal-300')
   })
 
-  it('keeps Events form focus styling subtle instead of a double bold outline', () => {
+  it('uses one minimal focus layer across forms while keeping keyboard controls accessible', () => {
+    const globalCss = source('src/app/globals.css')
     const form = source('src/features/events/components/event-form.tsx')
-    expect(form).not.toContain('focus:ring-2')
+
+    expect(globalCss).toContain('input:focus-visible')
+    expect(globalCss).toContain('textarea:focus-visible')
+    expect(globalCss).toContain('select:focus-visible')
+    expect(globalCss).toContain('border-color: var(--teal-500)')
+    expect(globalCss).toContain('box-shadow: none !important')
+    expect(globalCss).toContain('outline: none')
+    expect(globalCss).toContain('a:focus-visible')
+    expect(globalCss).toContain('button:focus-visible')
+    expect(globalCss).toContain('outline: 1px solid var(--teal-500)')
+    expect(globalCss).not.toContain(':focus-visible { outline: 3px')
+
     expect(form).toContain('focus:border-teal-500')
-    expect(form).toContain('focus:ring-1')
+    expect(form).not.toContain('focus:ring-')
   })
 
   it('lets hosts upload an event banner directly instead of requiring a pasted URL', () => {
