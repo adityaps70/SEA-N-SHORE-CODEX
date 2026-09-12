@@ -15,6 +15,7 @@ type MessagingQuery = (
 type IdRow = QueryResultRow & { id: string }
 type AllowedRow = QueryResultRow & { allowed?: boolean }
 type AdvancedRow = QueryResultRow & { advanced?: boolean }
+type CountRow = QueryResultRow & { count?: number | string }
 type ParticipantRow = QueryResultRow & { profile_id: string }
 type ConversationRow = QueryResultRow & MessagingConversationRow
 type MessageRow = QueryResultRow & MessagingMessageRow
@@ -233,6 +234,19 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     ) as InboxRow[]
   }
 
+  async function countUnreadConversations(viewerProfileId: string) {
+    const rows = await queryRows(
+      `select count(*)::int as count
+       from public.conversation_participants mine
+       join public.conversations c on c.id = mine.conversation_id
+       where mine.profile_id = $1
+         and c.last_message_at is not null
+         and (mine.last_read_at is null or c.last_message_at > mine.last_read_at)`,
+      [viewerProfileId],
+    ) as CountRow[]
+    return Number(rows[0]?.count ?? 0)
+  }
+
   return {
     findDirectConversationByPair,
     insertDirectConversation,
@@ -245,6 +259,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     listMessageRows,
     advanceReadState,
     listInboxRows,
+    countUnreadConversations,
   }
 }
 
