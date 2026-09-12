@@ -13,8 +13,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
   const { eventId } = await params
   const event = await calendarEventRepository.getEvent(eventId, user.id)
   if (!event) notFound()
-  const ended = new Date(event.endAt).getTime() <= Date.now()
-  const registrationClosed = event.status !== 'published' || ended
+  const registrationClosed = event.status !== 'published'
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6">
