@@ -39,6 +39,9 @@ function notificationInput(event: DomainEvent) {
     case 'comment.mentioned':
       if (payload.eventType !== 'comment.mentioned') throw new Error('notification_event_invalid_payload')
       return { eventId: event.id, recipientId: payload.targetId, actorId: payload.actorId, type: 'comment_mention' as const, postId: payload.postId, commentId: payload.commentId }
+    case 'message.created':
+      if (payload.eventType !== 'message.created') throw new Error('notification_event_invalid_payload')
+      return null
   }
 }
 
@@ -49,6 +52,7 @@ export function createNotificationEventConsumer(input: {
   return {
     async consume(event: DomainEvent) {
       const mapped = notificationInput(event)
+      if (!mapped) return { processed: false, created: false, notificationId: null }
       return input.withTransaction((repository) => repository.processNotificationEvent({ ...mapped, mode: input.mode }))
     },
   }
