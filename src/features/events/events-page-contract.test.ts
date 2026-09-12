@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const pageSource = readFileSync(resolve(process.cwd(), 'src/app/(app)/events/page.tsx'), 'utf8')
+const legacyCreateRouteSource = readFileSync(resolve(process.cwd(), 'src/app/(app)/events/new/page.tsx'), 'utf8')
 
 describe('working events discovery page contract', () => {
   it('exposes real event navigation and contains no coming-soon placeholders', () => {
@@ -14,7 +15,8 @@ describe('working events discovery page contract', () => {
     expect(pageSource).toContain('Event archive')
     expect(pageSource).toContain('href="/events/my"')
     expect(pageSource).toContain('href="/events/hosting"')
-    expect(pageSource).toContain('href="/events/new"')
+    expect(pageSource).toContain('href="/events/create"')
+    expect(legacyCreateRouteSource).toContain("redirect('/events/create')")
     expect(pageSource.toLowerCase()).not.toContain('coming soon')
     expect(pageSource).not.toContain('ProductSurface')
   })
