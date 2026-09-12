@@ -1,10 +1,16 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NetworkProfile } from '../types'
 import { NetworkProfileCard } from './network-profile-card'
 
 vi.mock('./relationship-controls', () => ({
   RelationshipControls: () => <div>Relationship actions</div>,
+}))
+
+vi.mock('@/features/messaging/components/start-conversation-button', () => ({
+  StartConversationButton: ({ targetProfileId }: { targetProfileId: string }) => (
+    <button type="button" data-testid="message-cta">Message {targetProfileId}</button>
+  ),
 }))
 
 const profile: NetworkProfile = {
@@ -28,8 +34,10 @@ const profile: NetworkProfile = {
   relationship: { following: false, connection: { kind: 'none', connectionId: null } },
 }
 
+afterEach(() => cleanup())
+
 describe('NetworkProfileCard', () => {
-  it('shows real maritime profile context and actions', () => {
+  it('shows real maritime profile context and actions without messaging non-connections', () => {
     render(<NetworkProfileCard profile={profile} />)
     expect(screen.getByText('Capt. Meera Nair')).toBeInTheDocument()
     expect(screen.getByText('Master Mariner | Tanker Operations')).toBeInTheDocument()
@@ -39,6 +47,24 @@ describe('NetworkProfileCard', () => {
     expect(screen.getByText('+1')).toBeInTheDocument()
     expect(screen.getByText('Relationship actions')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /View professional profile/i })).toHaveAttribute('href', '/people/capt-meera-nair')
+    expect(screen.queryByTestId('message-cta')).not.toBeInTheDocument()
     expect(screen.queryByText(/Verified|Reputation/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the Message CTA only for an accepted connection', () => {
+    const connectedProfile: NetworkProfile = {
+      ...profile,
+      relationship: {
+        following: false,
+        connection: {
+          kind: 'connected',
+          connectionId: '33333333-3333-4333-8333-333333333333',
+        },
+      },
+    }
+
+    render(<NetworkProfileCard profile={connectedProfile} />)
+
+    expect(screen.getByTestId('message-cta')).toHaveTextContent(`Message ${profile.id}`)
   })
 })
