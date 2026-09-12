@@ -60,7 +60,9 @@ function makeNetworkRepository(overrides: Record<string, unknown> = {}) {
 }
 
 function makeOutbox() {
-  return { enqueue: vi.fn(async (_event: unknown) => undefined) }
+  const enqueue = vi.fn<OutboxRepository['enqueue']>()
+  enqueue.mockResolvedValue(undefined)
+  return { enqueue }
 }
 
 async function service(input: {
