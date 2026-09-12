@@ -6,12 +6,12 @@ import type { MessagingMessageRow } from './types'
 
 type MessagingQueryRepository = Pick<
   MessagingRepository,
-  'listInboxRows' | 'isParticipant' | 'listMessageRows'
+  'listInboxRows' | 'isParticipant' | 'listMessageRows' | 'countUnreadConversations'
 >
 
 type RequireMessagingUser = () => Promise<{ id: string }>
 
-type MessagingMessageDto = {
+export type MessagingMessageDto = {
   id: string
   conversationId: string
   senderProfileId: string
@@ -20,6 +20,19 @@ type MessagingMessageDto = {
   createdAt: string
   editedAt: string | null
   deletedAt: string | null
+}
+
+export type MessagingInboxItem = {
+  conversationId: string
+  otherProfileId: string
+  otherName: string | null
+  otherHeadline: string | null
+  otherAvatarUrl: string | null
+  lastMessageId: string | null
+  lastMessageBody: string | null
+  lastMessageSenderId: string | null
+  lastMessageAt: string | null
+  unread: boolean
 }
 
 function iso(value: string | Date) {
@@ -54,7 +67,7 @@ export function createMessagingQueries(input: {
   createReadUrl: (key: string) => Promise<string>
 }) {
   return {
-    async getConversationInbox(options: { limit?: number } = {}) {
+    async getConversationInbox(options: { limit?: number } = {}): Promise<MessagingInboxItem[]> {
       const user = await input.requireUser()
       const rows = await input.repository.listInboxRows(user.id, {
         limit: inboxLimit(options.limit),
@@ -74,6 +87,11 @@ export function createMessagingQueries(input: {
         lastMessageAt: optionalIso(row.last_message_at),
         unread: row.unread,
       })))
+    },
+
+    async getUnreadConversationCount() {
+      const user = await input.requireUser()
+      return input.repository.countUnreadConversations(user.id)
     },
 
     async getConversationThread(rawInput: unknown) {
@@ -109,4 +127,5 @@ const productionMessagingQueries = createMessagingQueries({
 })
 
 export const getConversationInbox = productionMessagingQueries.getConversationInbox
+export const getUnreadConversationCount = productionMessagingQueries.getUnreadConversationCount
 export const getConversationThread = productionMessagingQueries.getConversationThread
