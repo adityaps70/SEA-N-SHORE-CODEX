@@ -126,6 +126,16 @@ async function completeProfessional(user) {
 
   await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: 'Edit profile' })).toBeVisible()
+
+  await page.goto(`${siteUrl}/events`, { waitUntil: 'networkidle' })
+  await expect(page).toHaveURL((url) => url.pathname === '/events')
+  await expect(page.getByRole('heading', { name: 'Maritime events' })).toBeVisible()
+  await expect(page.getByRole('search', { name: 'Event search preview' })).toContainText('Search events, topics, speakers or organisations')
+  await expect(page.getByRole('heading', { name: 'Upcoming events' })).toBeVisible()
+  await expect(page.getByText('No published maritime events yet.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Expert webinars', { exact: true })).toBeVisible()
+  console.log('ONBOARDING_E2E_EVENTS_VERIFIED=true')
+
   await context.close()
 }
 
