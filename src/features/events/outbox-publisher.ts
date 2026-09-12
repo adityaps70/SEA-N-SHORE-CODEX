@@ -5,7 +5,7 @@ import type { DomainEvent, SocialDomainEventPayload, SocialDomainEventType } fro
 
 type OutboxRow = QueryResultRow & {
   id: string
-  aggregate_type: 'profile' | 'connection'
+  aggregate_type: DomainEvent['aggregateType']
   aggregate_id: string
   event_type: SocialDomainEventType
   schema_version: 1
