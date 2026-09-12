@@ -97,7 +97,7 @@ export function ConversationList({
                       <span className="mt-0.5 block truncate text-xs text-muted">{item.otherHeadline}</span>
                     ) : null}
                     <span className={`mt-1 block truncate text-xs ${item.unread ? 'font-semibold text-navy-900' : 'text-muted'}`}>
-                      {item.lastMessageBody ?? 'Start the conversation'}
+                      {item.lastMessageBody ? `Last: ${item.lastMessageBody}` : 'Start the conversation'}
                     </span>
                   </span>
                   {item.unread ? (
