@@ -248,14 +248,14 @@ export function EventForm(props: Props) {
         <div className="mt-6 grid gap-5 sm:grid-cols-2">
           {format !== 'online' ? (
             <>
-              <label className={labelClass}>Venue<input className={inputClass} name="locationName" defaultValue={initial?.locationName ?? ''} placeholder="e.g. Maritime Training Centre" required={format !== 'online'} /></label>
+              <label className={labelClass}>Venue<input className={inputClass} name="locationName" defaultValue={initial?.locationName ?? ''} placeholder="e.g. Maritime Training Centre" required /></label>
               <label className={labelClass}>Venue address<input className={inputClass} name="locationAddress" defaultValue={initial?.locationAddress ?? ''} placeholder="Street or building address" /></label>
               <label className={labelClass}>City<input className={inputClass} name="city" defaultValue={initial?.city ?? ''} placeholder="e.g. Mumbai" /></label>
               <label className={labelClass}>Country<input className={inputClass} name="country" defaultValue={initial?.country ?? ''} placeholder="e.g. India" /></label>
             </>
           ) : null}
           {format !== 'in_person' ? (
-            <label className={`${labelClass} sm:col-span-2`}>Online meeting URL<input className={inputClass} type="url" name="meetingUrl" defaultValue={initial?.meetingUrl ?? ''} placeholder="https://zoom.us/… or Microsoft Teams link" required={format !== 'in_person'} /><span className={helperClass}>Paste the Zoom, Teams or other joining link used for the session.</span></label>
+            <label className={`${labelClass} sm:col-span-2`}>Online meeting URL<input className={inputClass} type="url" name="meetingUrl" defaultValue={initial?.meetingUrl ?? ''} placeholder="https://zoom.us/… or Microsoft Teams link" required /><span className={helperClass}>Paste the Zoom, Teams or other joining link used for the session.</span></label>
           ) : null}
         </div>
       </section>
