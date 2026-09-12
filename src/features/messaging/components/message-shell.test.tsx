@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MessageShell } from './message-shell'
 
 vi.mock('../actions', () => ({
@@ -69,6 +69,8 @@ const activeConversation = {
   ],
   nextCursor: null,
 }
+
+afterEach(() => cleanup())
 
 describe('MessageShell', () => {
   it('renders a premium inbox, unread state and active professional thread', () => {
