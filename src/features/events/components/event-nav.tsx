@@ -13,7 +13,7 @@ export function EventNav({ active }: { active: 'discover' | 'my' | 'hosting' }) 
           {link.label}
         </Link>
       ))}
-      <Link href="/events/new" className="ml-auto rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-teal-700">Create event</Link>
+      <Link href="/events/create" className="ml-auto rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-teal-700">Create event</Link>
     </nav>
   )
 }

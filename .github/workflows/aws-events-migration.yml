@@ -6,6 +6,7 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - infra/aws/database/migrations/0012_events_engine.sql
+      - infra/aws/database/migrations/0013_events_product_fields.sql
       - scripts/aws/events-migration.sh
       - scripts/aws/events-migration-action.txt
       - .github/workflows/aws-events-migration.yml
@@ -50,11 +51,25 @@ jobs:
           done
           exit 1
 
+      - name: Guard migration against a moved branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_HEAD="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
+          [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || { echo "Branch moved after events migration started; refusing stale execution." >&2; exit 1; }
+
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
+
+      - name: Verify staging AWS account
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT_ID" == 310356785722 ]] || { echo "Refusing events migration in unexpected AWS account $ACCOUNT_ID." >&2; exit 1; }
 
       - name: Discover bootstrap instance
         id: instance
