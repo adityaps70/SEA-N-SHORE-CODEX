@@ -76,7 +76,6 @@ export default function EventsPage() {
             <div
               role="search"
               aria-label="Event search preview"
-              aria-disabled="true"
               className="mt-6 flex min-h-12 max-w-2xl items-center gap-3 rounded-xl border border-mist-100 bg-mist-50 px-4 text-sm text-muted"
             >
               <Search aria-hidden="true" className="size-4 shrink-0" />
