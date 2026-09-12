@@ -175,7 +175,7 @@ async function completeOrganisation(user) {
   await page.getByLabel('Location').fill('Mumbai')
   await assert.rejects(async () => page.getByLabel('Current organisation').waitFor({ state: 'visible', timeout: 500 }))
   await page.getByRole('button', { name: 'Complete profile' }).click()
-  await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
+  await page.waitForURL((url) => url.pathname === '/hiring/organization', { timeout: 20_000 })
   await page.goto(`${siteUrl}/profile`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('Shipowner', { exact: true }).first()).toBeVisible()
   await context.close()
