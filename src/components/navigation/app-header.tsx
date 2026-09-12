@@ -5,6 +5,7 @@ import {
   History,
   House,
   LogOut,
+  MessageCircleMore,
   MessagesSquare,
   Search,
   UserRound,
@@ -21,21 +22,24 @@ const destinations = [
   { href: '/network', label: 'My Network', icon: UsersRound },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
   { href: '/community', label: 'Community', icon: MessagesSquare },
+  { href: '/messages', label: 'Messages', icon: MessageCircleMore },
   { href: '/learn', label: 'Learn', icon: BookOpenCheck },
   { href: '/events', label: 'Events', icon: CalendarDays },
   { href: '/activities', label: 'My Activities', icon: History },
 ] as const
 
-const navClass = 'inline-flex min-h-14 min-w-10 flex-col items-center justify-center gap-1 rounded-lg border-b-2 border-transparent px-1.5 font-medium text-navy-900 transition hover:bg-mist-50 xl:min-w-[4.25rem]'
+const navClass = 'relative inline-flex min-h-14 min-w-10 flex-col items-center justify-center gap-1 rounded-lg border-b-2 border-transparent px-1.5 font-medium text-navy-900 transition hover:bg-mist-50 xl:min-w-[4.25rem]'
 const activeNavClass = 'border-ocean-600 bg-ocean-50 text-ocean-700'
 
 export function AppHeader({
   recentNotifications,
   unreadCount,
+  messagingUnreadCount = 0,
   canStartHiring = false,
 }: {
   recentNotifications: NetworkNotification[]
   unreadCount: number
+  messagingUnreadCount?: number
   canStartHiring?: boolean
 }) {
   return (
@@ -54,6 +58,14 @@ export function AppHeader({
             >
               <Icon aria-hidden="true" className="size-4.5 shrink-0" />
               <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">{label}</span>
+              {href === '/messages' && messagingUnreadCount > 0 ? (
+                <span
+                  aria-label={`${messagingUnreadCount} unread messages`}
+                  className="absolute right-0.5 top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white"
+                >
+                  {messagingUnreadCount}
+                </span>
+              ) : null}
             </ActiveNavLink>
           ))}
         </nav>
