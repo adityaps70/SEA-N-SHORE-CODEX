@@ -40,6 +40,8 @@ type CalendarEventRow = QueryResultRow & {
   attendee_count: string | number
   viewer_is_attending: boolean
   viewer_is_host: boolean
+  registration_open: boolean
+  is_past: boolean
   created_at: string | Date
   updated_at: string | Date
 }
@@ -97,6 +99,21 @@ const EVENT_SELECT = `
       where viewer_ea.event_id = e.id and viewer_ea.user_id = $1::uuid
     ) as viewer_is_attending,
     (e.host_user_id = $1::uuid) as viewer_is_host,
+    (
+      e.status = 'published'
+      and e.end_at > now()
+      and e.registration_mode = 'open'
+      and (e.registration_closes_at is null or e.registration_closes_at > now())
+      and (
+        e.capacity is null
+        or (select count(*) from public.event_attendees capacity_ea where capacity_ea.event_id = e.id) < e.capacity
+        or exists (
+          select 1 from public.event_attendees registered_ea
+          where registered_ea.event_id = e.id and registered_ea.user_id = $1::uuid
+        )
+      )
+    ) as registration_open,
+    (e.end_at <= now()) as is_past,
     e.created_at,
     e.updated_at
   from public.events e
@@ -161,6 +178,8 @@ function mapEvent(row: CalendarEventRow): CalendarEvent {
     attendeeCount: Number(row.attendee_count ?? 0),
     viewerIsAttending: row.viewer_is_attending,
     viewerIsHost: row.viewer_is_host,
+    registrationOpen: row.registration_open,
+    isPast: row.is_past,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
   }

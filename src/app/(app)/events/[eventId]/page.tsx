@@ -20,10 +20,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
   const { eventId } = await params
   const event = await calendarEventRepository.getEvent(eventId, user.id)
   if (!event) notFound()
-  const registrationClosed = event.status !== 'published'
-    || event.registrationMode === 'closed'
-    || Boolean(event.registrationClosesAt && Date.parse(event.registrationClosesAt) <= Date.now())
-    || Boolean(event.capacity && event.attendeeCount >= event.capacity && !event.viewerIsAttending)
+  const registrationClosed = !event.registrationOpen
   const place = [event.locationName, event.locationAddress, event.city, event.country].filter(Boolean).join(', ')
 
   return (

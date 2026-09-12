@@ -47,6 +47,8 @@ const row = {
   attendee_count: '4',
   viewer_is_attending: false,
   viewer_is_host: false,
+  registration_open: true,
+  is_past: false,
   created_at: '2026-09-12T10:00:00.000Z',
   updated_at: '2026-09-12T10:00:00.000Z',
 }
@@ -62,7 +64,7 @@ describe('calendar event repository', () => {
     const result = await calendarEventRepository.listDiscoverEvents(viewerId, {
       search: 'SIRE', category: 'training', eventType: 'masterclass', format: 'hybrid', location: 'Mumbai',
     })
-    expect(result[0]).toMatchObject({ id: eventId, category: 'training', eventType: 'masterclass', city: 'Mumbai', attendeeCount: 4 })
+    expect(result[0]).toMatchObject({ id: eventId, category: 'training', eventType: 'masterclass', city: 'Mumbai', attendeeCount: 4, registrationOpen: true, isPast: false })
     expect(result[0]?.agenda).toEqual(['Welcome', 'Readiness'])
     expect(result[0]?.speakerDetails[0]?.organization).toBe('Sea N Shore')
     expect(db.query.mock.calls[0]?.[1]).toEqual([viewerId, 'SIRE', 'training', 'masterclass', 'hybrid', 'Mumbai'])

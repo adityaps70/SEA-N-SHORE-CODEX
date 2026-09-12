@@ -7,9 +7,8 @@ import { EventNav } from '@/features/events/components/event-nav'
 export default async function HostingEventsPage() {
   const user = await requireAwsUser()
   const events = await calendarEventRepository.listHostedEvents(user.id)
-  const now = Date.now()
-  const upcoming = events.filter((event) => Date.parse(event.endAt) > now)
-  const past = events.filter((event) => Date.parse(event.endAt) <= now)
+  const upcoming = events.filter((event) => !event.isPast)
+  const past = events.filter((event) => event.isPast)
   const cards = (items: typeof events) => items.map((event) => <div key={event.id} className="space-y-2"><EventCard event={event} showStatus />{event.status !== 'cancelled' ? <Link href={`/events/${event.id}/edit`} className="inline-flex text-sm font-bold text-teal-700 hover:text-teal-800">Manage event →</Link> : null}</div>)
   return (
     <div className="mx-auto w-full max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8">

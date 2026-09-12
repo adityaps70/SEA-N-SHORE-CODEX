@@ -60,6 +60,8 @@ export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
   attendeeCount: number
   viewerIsAttending: boolean
   viewerIsHost: boolean
+  registrationOpen: boolean
+  isPast: boolean
   createdAt: string
   updatedAt: string
 }
