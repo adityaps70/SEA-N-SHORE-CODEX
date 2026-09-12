@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { BriefcaseBusiness, History, MapPin, MessageSquareText, PenSquare } from 'lucide-react'
+import { BriefcaseBusiness, MapPin, MessageSquareText, PenSquare } from 'lucide-react'
+import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { Card } from '@/components/ui/card'
 import { CommentActivityCard } from '@/features/feed/components/comment-activity-card'
 import { FeedProfileCard } from '@/features/feed/components/feed-profile-card'
@@ -50,7 +51,7 @@ export default async function ActivitiesPage({
   ])
   if (!profile) redirect('/onboarding')
 
-  const tabClass = (active: boolean) => `inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1.5 text-[11px] font-semibold sm:min-h-11 sm:flex-row sm:gap-2 sm:px-4 sm:text-sm ${active ? 'bg-white text-navy-950 shadow-sm' : 'text-muted hover:text-navy-950'}`
+  const tabClass = (active: boolean) => `inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1.5 text-[11px] font-semibold transition sm:min-h-11 sm:flex-row sm:gap-2 sm:px-4 sm:text-sm ${active ? 'bg-white text-navy-950 shadow-sm' : 'text-white/75 hover:bg-white/10 hover:text-white'}`
 
   return (
     <section className="grid gap-5 py-2 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_300px] xl:gap-6">
@@ -65,19 +66,12 @@ export default async function ActivitiesPage({
           <FeedProfileCard profile={profile} compact />
         </div>
 
-        <div className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-8">
-          <div className="flex items-start gap-4">
-            <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-navy-950 text-white">
-              <History aria-hidden="true" className="size-5" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Member workspace</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em] text-navy-950">My Activities</h1>
-              <p className="mt-2 max-w-2xl leading-7 text-muted">Review what you have shared, revisit conversations you joined, and follow the status of every maritime job application.</p>
-            </div>
-          </div>
-
-          <nav aria-label="Activity sections" className="mt-6 grid grid-cols-3 gap-2 rounded-2xl bg-mist-50 p-1.5 sm:max-w-xl">
+        <PremiumPageHero
+          eyebrow="Member workspace"
+          title="My Activities"
+          description="Review what you have shared, revisit conversations you joined, and follow the status of every maritime job application."
+        >
+          <nav aria-label="Activity sections" className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-1.5 sm:max-w-xl">
             <Link href="/activities?tab=posts" aria-current={tab === 'posts' ? 'page' : undefined} className={tabClass(tab === 'posts')}>
               <PenSquare aria-hidden="true" className="size-4" />
               <span>My Posts</span>
@@ -91,7 +85,7 @@ export default async function ActivitiesPage({
               <span>Jobs Applied</span>
             </Link>
           </nav>
-        </div>
+        </PremiumPageHero>
 
         <section aria-labelledby="activity-panel-heading" className="mt-5">
           <h2 id="activity-panel-heading" className="sr-only">
