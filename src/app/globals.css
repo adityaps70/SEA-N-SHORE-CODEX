@@ -32,7 +32,31 @@
 * { box-sizing: border-box; }
 html { background: var(--mist-50); color: var(--ink); }
 body { min-height: 100vh; margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-:focus-visible { outline: 3px solid var(--ocean-700); outline-offset: 3px; }
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: none !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--teal-500) !important;
+}
+
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible,
+input[type="range"]:focus-visible,
+input[type="file"]:focus-visible {
+  outline: 1px solid var(--teal-500);
+  outline-offset: 2px;
+}
 
 .onboarding-maritime-fields { display: grid; }
 
