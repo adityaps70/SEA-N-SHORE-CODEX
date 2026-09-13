@@ -36,6 +36,8 @@ export type MessagingInboxItem = {
   lastMessageBody: string | null
   lastMessageSenderId: string | null
   lastMessageAt: string | null
+  otherLastReadMessageId: string | null
+  otherLastReadAt: string | null
   unread: boolean
 }
 
@@ -89,6 +91,8 @@ export function createMessagingQueries(input: {
         lastMessageBody: row.last_message_body,
         lastMessageSenderId: row.last_message_sender_id,
         lastMessageAt: optionalIso(row.last_message_at),
+        otherLastReadMessageId: row.other_last_read_message_id,
+        otherLastReadAt: optionalIso(row.other_last_read_at),
         unread: row.unread,
       })))
     },
