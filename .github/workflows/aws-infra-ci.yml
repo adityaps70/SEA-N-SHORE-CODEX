@@ -86,6 +86,8 @@ jobs:
         run: node --test scripts/aws/phase5b-ses-readiness.test.mjs
       - name: Verify Phase 5B SES Terraform contract
         run: node --test scripts/aws/phase5b-ses-terraform.test.mjs
+      - name: Verify SES identity tag permission contract
+        run: node --test scripts/aws/ses-identity-tags-permission.test.mjs
       - name: Verify Phase 5B SES cutover contract
         run: node --test scripts/aws/phase5b-ses-cutover.test.mjs
       - name: Verify event outbox schema contract
