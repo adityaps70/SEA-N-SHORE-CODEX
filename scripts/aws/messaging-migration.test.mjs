@@ -38,6 +38,8 @@ test('messaging migration is guarded, exact-head, fail-closed and one-shot', () 
   assert.match(runner, /pg_indexes/)
   assert.match(runner, /pg_trigger/)
   assert.match(runner, /pg_constraint/)
+  assert.match(runner, /\^\\s\*\(drop\|truncate\|delete\|update\|insert\)\\b/)
+  assert.doesNotMatch(runner, /\\b\(delete\|update\|insert\)\\s\+\\b/)
 
   assert.match(migration, /create table public\.conversations/i)
   assert.match(migration, /create table public\.messages/i)
