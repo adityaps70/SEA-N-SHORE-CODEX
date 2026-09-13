@@ -13,7 +13,14 @@ import { getPublicVisitorActions } from '@/components/navigation/public-visitor-
 import { getVerifiedUser } from '@/features/auth/queries'
 
 export default async function Home() {
-  const viewer = await getVerifiedUser()
+  let viewer: Awaited<ReturnType<typeof getVerifiedUser>> | null = null
+
+  try {
+    viewer = await getVerifiedUser()
+  } catch {
+    viewer = null
+  }
+
   const actions = getPublicVisitorActions(Boolean(viewer))
 
   return (
