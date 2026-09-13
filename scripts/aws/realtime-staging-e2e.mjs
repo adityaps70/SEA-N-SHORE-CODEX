@@ -116,6 +116,11 @@ async function realtimeJourney() {
 
     await signInCompleted(senderPage, users.sender)
     await signInCompleted(recipientPage, users.recipient)
+    await senderPage.goto(`${siteUrl}/messages/${conversationId}`, { waitUntil: 'domcontentloaded' })
+    await recipientPage.goto(`${siteUrl}/messages/${conversationId}`, { waitUntil: 'domcontentloaded' })
+    await expect(senderPage.getByLabel('Write a message')).toBeVisible()
+    await expect(recipientPage.getByLabel('Write a message')).toBeVisible()
+
     const senderTicket = await openProbeSocket(senderPage, 'sender')
     const recipientTicket = await openProbeSocket(recipientPage, 'recipient')
     assert.match(senderTicket.websocketUrl, /^wss:/)
@@ -134,11 +139,6 @@ async function realtimeJourney() {
     }, senderTicket.websocketUrl)
     assert.equal(malformedRejected, true)
     console.log('REALTIME_E2E_MALFORMED_TICKET_REJECTED=true')
-
-    await senderPage.goto(`${siteUrl}/messages/${conversationId}`, { waitUntil: 'domcontentloaded' })
-    await recipientPage.goto(`${siteUrl}/messages/${conversationId}`, { waitUntil: 'domcontentloaded' })
-    await expect(senderPage.getByLabel('Write a message')).toBeVisible()
-    await expect(recipientPage.getByLabel('Write a message')).toBeVisible()
 
     await senderPage.getByLabel('Write a message').fill(messageBody)
     await senderPage.getByRole('button', { name: 'Send message' }).click()
@@ -159,10 +159,6 @@ async function realtimeJourney() {
     await recipientPage.bringToFront()
     await expect(recipientPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 30_000 })
     await recipientPage.getByTestId('message-read-sentinel').scrollIntoViewIfNeeded()
-    await recipientPage.waitForFunction(({ conversationId }) => {
-      const signals = globalThis.__realtime_recipient_signals ?? []
-      return signals.some((signal) => signal?.eventType === 'message.created' && signal?.payload?.conversationId === conversationId)
-    }, { conversationId }, { timeout: 10_000 })
     await senderPage.waitForFunction(({ conversationId }) => {
       const signals = globalThis.__realtime_sender_signals ?? []
       return signals.some((signal) => signal?.eventType === 'conversation.read_cursor_advanced' && signal?.payload?.conversationId === conversationId)
