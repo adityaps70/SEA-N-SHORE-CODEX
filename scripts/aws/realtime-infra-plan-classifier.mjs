@@ -89,7 +89,7 @@ export function classifyRealtimeInfraPlan(plan, action) {
 
   if (changes.length === 0) {
     if (action === 'apply-once') {
-      throw new Error('apply-once requires the initial or bounded recovery realtime infrastructure plan')
+      throw new Error('apply-once requires the initial realtime infrastructure plan or the exact bounded recovery plan')
     }
     return { mode: 'steady', createCount: 0, replaceCount: 0 }
   }
