@@ -5,6 +5,7 @@ import {
   fetchConversationCatchUp,
   isMessageSeen,
   latestCanonicalCursor,
+  laterReadCursor,
   mergeCanonicalMessages,
 } from './thread-realtime'
 
@@ -133,6 +134,25 @@ describe('active messaging realtime helpers', () => {
       initialCursor,
       repeatedCursorFetch,
     )).rejects.toThrow('messaging_catchup_cursor_did_not_advance')
+  })
+
+  it('keeps the later peer read cursor when duplicate or out-of-order events arrive', () => {
+    const earlier = {
+      createdAt: '2026-09-13T10:04:00.000Z',
+      id: '77777777-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    }
+    const later = {
+      createdAt: '2026-09-13T10:05:00.000Z',
+      id: '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    }
+    const sameTimeLaterId = {
+      createdAt: later.createdAt,
+      id: '99999999-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    }
+
+    expect(laterReadCursor(null, earlier)).toEqual(earlier)
+    expect(laterReadCursor(later, earlier)).toEqual(later)
+    expect(laterReadCursor(later, sameTimeLaterId)).toEqual(sameTimeLaterId)
   })
 
   it('marks an outgoing canonical message Seen only when the peer durable cursor passes its tuple', () => {
