@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+export PATH="$HOME/bin:$PATH"
+export AWS_PAGER=""
+
+EXPECTED_ACCOUNT="310356785722"
+AWS_REGION="${AWS_REGION:-ap-south-1}"
+STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"
+STATE_KEY="sea-n-shore/staging/terraform.tfstate"
+APP_DIR="$PWD/infra/aws/app"
+RESOURCE="aws_iam_role_policy.ecs_task_aurora_secret"
+ROLE_NAME="sea-n-shore-staging-ecs-task"
+POLICY_NAME="sea-n-shore-staging-aurora-secret-runtime"
+CLUSTER_ID="sea-n-shore-staging-aurora"
+ACTION_FILE="scripts/aws/ecs-task-aurora-policy-action.txt"
+
+[[ "${ECS_TASK_AURORA_POLICY_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "ECS_TASK_AURORA_POLICY_EXPECTED_SHA must be an exact commit SHA." >&2
+  exit 1
+}
+[[ "$(git rev-parse HEAD)" == "$ECS_TASK_AURORA_POLICY_EXPECTED_SHA" ]]
+[[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
+git diff --quiet HEAD -- \
+  infra/aws/app/ecs-database-runtime.tf \
+  scripts/aws/ecs-task-aurora-policy.sh \
+  scripts/aws/ecs-task-aurora-policy-action.txt \
+  scripts/aws/ecs-task-aurora-policy-release.test.mjs \
+  .github/workflows/aws-ecs-task-aurora-policy.yml
+[[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+
+ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported ECS task Aurora policy action." >&2; exit 1 ;; esac
+
+WORK_DIR="$(mktemp -d "$PWD/.ecs-task-aurora-policy.XXXXXXXX")"
+trap 'rm -rf -- "$WORK_DIR"' EXIT
+
+aws s3api get-object \
+  --bucket "$STATE_BUCKET" \
+  --key "$STATE_KEY" \
+  --region "$AWS_REGION" \
+  "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
+jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null
+
+STATE_COUNT="$(jq '[.resources[] | select(.mode=="managed" and .type=="aws_iam_role_policy" and .name=="ecs_task_aurora_secret")] | length' "$WORK_DIR/state.json")"
+if [[ "$STATE_COUNT" == "1" ]]; then
+  echo "ECS_TASK_AURORA_POLICY_STATE_ALREADY_RECONCILED=true"
+  exit 0
+fi
+[[ "$STATE_COUNT" == "0" ]] || {
+  echo "Unexpected ECS task Aurora policy state count: $STATE_COUNT" >&2
+  exit 1
+}
+
+CLUSTER_JSON="$(aws rds describe-db-clusters --region "$AWS_REGION" --db-cluster-identifier "$CLUSTER_ID" --output json)"
+SECRET_ARN="$(jq -r '.DBClusters[0].MasterUserSecret.SecretArn // empty' <<<"$CLUSTER_JSON")"
+[[ "$SECRET_ARN" == arn:aws:secretsmanager:ap-south-1:310356785722:secret:rds\!cluster-* ]]
+
+if aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" --output json > "$WORK_DIR/preexisting.json" 2>"$WORK_DIR/preexisting.err"; then
+  echo "ECS task Aurora policy exists live while Terraform state is absent; refusing create path." >&2
+  exit 1
+elif ! grep -q 'NoSuchEntity' "$WORK_DIR/preexisting.err"; then
+  cat "$WORK_DIR/preexisting.err" >&2
+  exit 1
+fi
+
+echo "ECS_TASK_AURORA_POLICY_LIVE_ABSENT_VERIFIED=true"
+
+python3 - "$WORK_DIR/state.json" "$WORK_DIR/variables.json" <<'PY'
+import json, sys
+with open(sys.argv[1]) as f:
+    state = json.load(f)
+resources = state['resources']
+
+def attrs(kind, name=None):
+    matches = [
+        resource for resource in resources
+        if resource['mode'] == 'managed'
+        and resource['type'] == kind
+        and (name is None or resource['name'] == name)
+    ]
+    assert len(matches) == 1, f'Expected one {kind} {name or ""}'.strip()
+    return matches[0]['instances'][0]['attributes']
+
+web_task = attrs('aws_ecs_task_definition', 'web')
+containers = json.loads(web_task['container_definitions'])
+web = next(container for container in containers if container['name'] == 'web')
+site_url = next(item['value'] for item in web['environment'] if item['name'] == 'NEXT_PUBLIC_SITE_URL')
+image = web['image']
+assert ':' in image.rsplit('/', 1)[-1], f'Expected tag-qualified web image, got {image}'
+values = {
+    'image_tag': image.rsplit(':', 1)[1],
+    'site_url': site_url,
+    'aurora_engine_version': attrs('aws_rds_cluster', 'aurora')['engine_version'],
+}
+with open(sys.argv[2], 'w') as f:
+    json.dump(values, f)
+PY
+
+PLUGIN_DIR="$HOME/SEA-N-SHORE-CODEX/infra/aws/app/.terraform/providers"
+[[ -x "$PLUGIN_DIR/registry.terraform.io/hashicorp/aws/6.62.0/linux_amd64/terraform-provider-aws_v6.62.0_x5" ]]
+terraform -chdir="$APP_DIR" init -input=false -no-color -lockfile=readonly -plugin-dir="$PLUGIN_DIR" \
+  -backend-config="bucket=$STATE_BUCKET" \
+  -backend-config="key=$STATE_KEY" \
+  -backend-config="region=$AWS_REGION" \
+  -backend-config=use_lockfile=true > "$WORK_DIR/init.log"
+
+terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
+  -target="$RESOURCE" \
+  -var-file="$WORK_DIR/variables.json" \
+  -out="$WORK_DIR/policy.tfplan" > "$WORK_DIR/plan.log"
+terraform -chdir="$APP_DIR" show -json "$WORK_DIR/policy.tfplan" > "$WORK_DIR/plan.json"
+
+jq -e --arg resource "$RESOURCE" '
+  ([.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])]) as $changes |
+  ($changes | length) == 1 and
+  $changes[0].address == $resource and
+  $changes[0].change.actions == ["create"]
+' "$WORK_DIR/plan.json" >/dev/null || {
+  echo "ECS task Aurora policy plan contains unexpected actual changes." >&2
+  jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"]) | {address, actions:.change.actions}]' "$WORK_DIR/plan.json" >&2
+  exit 1
+}
+
+STATE_SERIAL_BEFORE="$(jq -r '.serial' "$WORK_DIR/state.json")"
+echo "ECS_TASK_AURORA_POLICY_ACTION=$ACTION"
+echo "ECS_TASK_AURORA_POLICY_STATE_COUNT_BEFORE=0"
+echo "STATE_SERIAL_BEFORE=$STATE_SERIAL_BEFORE"
+echo "ECS_TASK_AURORA_POLICY_PLAN_VERIFIED=CREATE_ONLY"
+echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/policy.tfplan" | cut -d' ' -f1)"
+
+if [[ "$ACTION" == "plan" ]]; then
+  echo "ECS_TASK_AURORA_POLICY_PLAN_ONLY_NO_APPLY"
+  exit 0
+fi
+
+[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$ECS_TASK_AURORA_POLICY_EXPECTED_SHA" ]]
+[[ "$(aws s3api get-bucket-versioning --bucket "$STATE_BUCKET" --query Status --output text)" == Enabled ]]
+STATE_BACKUP_VERSION="$(jq -r '.VersionId // empty' "$WORK_DIR/object.json")"
+[[ -n "$STATE_BACKUP_VERSION" ]]
+echo "STATE_BACKUP_VERSION=$STATE_BACKUP_VERSION"
+
+echo "APPLYING_SAVED_ECS_TASK_AURORA_POLICY_PLAN"
+terraform -chdir="$APP_DIR" apply -input=false -no-color "$WORK_DIR/policy.tfplan" > "$WORK_DIR/apply.log"
+
+aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" --output json > "$WORK_DIR/live-policy.json"
+jq -e --arg secret "$SECRET_ARN" '
+  def as_array: if type == "array" then . else [.] end;
+  .RoleName == "sea-n-shore-staging-ecs-task" and
+  .PolicyName == "sea-n-shore-staging-aurora-secret-runtime" and
+  (.PolicyDocument.Statement | length) == 1 and
+  .PolicyDocument.Statement[0].Effect == "Allow" and
+  ((.PolicyDocument.Statement[0].Action | as_array) == ["secretsmanager:GetSecretValue"]) and
+  ((.PolicyDocument.Statement[0].Resource | as_array) == [$secret])
+' "$WORK_DIR/live-policy.json" >/dev/null
+
+terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
+  -target="$RESOURCE" \
+  -var-file="$WORK_DIR/variables.json" \
+  -out="$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.log"
+terraform -chdir="$APP_DIR" show -json "$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.json"
+ACTUAL_AFTER="$(jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])] | length' "$WORK_DIR/plan-after.json")"
+[[ "$ACTUAL_AFTER" == "0" ]] || {
+  echo "ECS task Aurora policy still has Terraform drift after apply." >&2
+  jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"]) | {address, actions:.change.actions}]' "$WORK_DIR/plan-after.json" >&2
+  exit 1
+}
+
+terraform -chdir="$APP_DIR" state pull > "$WORK_DIR/state-after.json"
+STATE_COUNT_AFTER="$(jq '[.resources[] | select(.mode=="managed" and .type=="aws_iam_role_policy" and .name=="ecs_task_aurora_secret")] | length' "$WORK_DIR/state-after.json")"
+[[ "$STATE_COUNT_AFTER" == "1" ]]
+STATE_SERIAL_AFTER="$(jq -r '.serial' "$WORK_DIR/state-after.json")"
+[[ "$STATE_SERIAL_AFTER" -gt "$STATE_SERIAL_BEFORE" ]]
+echo "STATE_SERIAL_AFTER=$STATE_SERIAL_AFTER"
+echo "ECS_TASK_AURORA_POLICY_STATE_COUNT_AFTER=1"
+echo "ECS_TASK_AURORA_POLICY_LIVE_POLICY_MATCHES_DESIRED=true"
+echo "ECS_TASK_AURORA_POLICY_APPLY_VERIFIED=true"
