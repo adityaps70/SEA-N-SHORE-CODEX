@@ -56,16 +56,22 @@ test('realtime e2e proves canonical message and read-cursor fanout over authenti
   assert.match(workflow, /npx playwright install --with-deps chromium/)
 })
 
-test('realtime e2e cleanup is unconditional and constrained to disposable identities', () => {
+test('realtime e2e cleanup is unconditional, missing-table resilient, and constrained to disposable identities', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const remote = readFileSync(remotePath, 'utf8')
   assert.match(workflow, /if:\s*always\(\)/)
   assert.match(remote, /sea-n-shore-realtime-e2e-/)
+  assert.match(remote, /to_regclass\('public\.conversations'\)/i)
+  assert.match(remote, /to_regclass\('public\.conversation_participants'\)/i)
+  assert.match(remote, /to_regclass\('public\.messages'\)/i)
   assert.match(remote, /delete from public\.messages/i)
   assert.match(remote, /delete from public\.conversation_participants/i)
   assert.match(remote, /delete from public\.conversations/i)
   assert.match(remote, /delete from public\.connections/i)
   assert.match(remote, /delete from public\.profiles/i)
+  const messagingCleanupEnd = remote.indexOf('MESSAGING_TABLES_PRESENT')
+  const connectionCleanup = remote.indexOf('DELETE FROM public.connections')
+  assert.ok(messagingCleanupEnd >= 0 && connectionCleanup > messagingCleanupEnd, 'connection cleanup must proceed independently of messaging table presence')
   assert.match(remote, /admin-delete-user/)
   assert.match(remote, /REALTIME_E2E_CLEANUP_VERIFIED=true/)
 })
