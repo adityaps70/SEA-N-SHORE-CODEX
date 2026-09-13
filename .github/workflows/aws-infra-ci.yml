@@ -60,6 +60,8 @@ jobs:
         run: node --test scripts/aws/events-e2e-guard.test.mjs
       - name: Verify realtime messaging e2e guard contract
         run: node --test scripts/aws/realtime-e2e-guard.test.mjs
+      - name: Verify public marketing home resilience contract
+        run: node --test scripts/aws/marketing-home-resilience.test.mjs
       - name: Verify post media migration contract
         run: node --test scripts/aws/migrate-post-media-to-s3.test.mjs
       - name: Verify post media video schema contract
