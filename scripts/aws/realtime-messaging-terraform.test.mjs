@@ -61,9 +61,9 @@ test('the ticket signing secret is generated and scoped to web plus authorizer',
   assert.match(mainTerraform, /aws_iam_role_policy\.ecs_execution_realtime_ticket_secret/)
 })
 
-test('archive and random providers are pinned in the single app provider configuration', () => {
-  assert.match(mainTerraform, /archive\s*=\s*\{[\s\S]*?source\s*=\s*"hashicorp\/archive"[\s\S]*?version\s*=\s*"~> 2\.7"/)
-  assert.match(mainTerraform, /random\s*=\s*\{[\s\S]*?source\s*=\s*"hashicorp\/random"[\s\S]*?version\s*=\s*"~> 3\.7"/)
+test('archive and random providers use exact deterministic versions', () => {
+  assert.match(mainTerraform, /archive\s*=\s*\{[\s\S]*?source\s*=\s*"hashicorp\/archive"[\s\S]*?version\s*=\s*"2\.8\.0"/)
+  assert.match(mainTerraform, /random\s*=\s*\{[\s\S]*?source\s*=\s*"hashicorp\/random"[\s\S]*?version\s*=\s*"3\.9\.0"/)
 })
 
 test('realtime infrastructure release is bounded, guarded, and executed through the bootstrap host', async () => {
@@ -180,6 +180,9 @@ test('realtime infrastructure release is bounded, guarded, and executed through 
   assert.match(script, /realtime-infra-plan-classifier\.mjs/)
   assert.match(script, /plan\|apply-once/)
   assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /terraform[^\n]+init/)
+  assert.doesNotMatch(script, /-plugin-dir/)
+  assert.doesNotMatch(script, /-lockfile=readonly/)
   assert.match(script, /terraform[^\n]+plan/)
   assert.match(script, /terraform[^\n]+apply/)
   assert.match(script, /aws apigatewayv2 get-api/)
