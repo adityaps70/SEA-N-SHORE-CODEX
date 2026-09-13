@@ -196,5 +196,7 @@ test('realtime infrastructure release is bounded, guarded, and executed through 
   assert.match(workflow, /aws ssm send-command/)
   assert.match(workflow, /REALTIME_INFRA_EXPECTED_SHA/)
   assert.match(workflow, /bash scripts\/aws\/realtime-infra\.sh/)
+  assert.match(workflow, /json\.dumps\(\{"executionTimeout"/)
+  assert.doesNotMatch(workflow, /json\.dumps\(\{\{/)
   assert.doesNotMatch(workflow, /terraform\s+-chdir=/)
 })
