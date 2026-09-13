@@ -118,7 +118,7 @@ describe('messaging queries', () => {
     })).resolves.toEqual({
       messages: [
         {
-          id: OLER_MESSAGE_ID,
+          id: OLDER_MESSAGE_ID,
           conversationId: CONVERSATION_ID,
           senderProfileId: VIEWER_ID,
           clientMessageId: CLIENT_MESSAGE_ID,
