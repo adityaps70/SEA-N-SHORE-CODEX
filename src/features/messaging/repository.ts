@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import type {
+  MessageAfterRequest,
   MessagePageRequest,
   MessagingConversationRow,
   MessagingInboxRow,
@@ -200,6 +201,37 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     ) as MessageRow[]
   }
 
+  async function listMessageRowsAfter(
+    request: MessageAfterRequest & { viewerProfileId: string },
+  ) {
+    return await queryRows(
+      `select m.id, m.conversation_id, m.sender_profile_id, m.client_message_id,
+              m.body, m.created_at, m.edited_at, m.deleted_at
+       from public.messages m
+       where m.conversation_id = $1
+         and m.deleted_at is null
+         and exists (
+           select 1
+           from public.conversation_participants cp
+           where cp.conversation_id = m.conversation_id
+             and cp.profile_id = $2
+         )
+         and (
+           m.created_at > $3::timestamptz
+           or (m.created_at = $3::timestamptz and m.id > $4::uuid)
+         )
+       order by m.created_at asc, m.id asc
+       limit $5`,
+      [
+        request.conversationId,
+        request.viewerProfileId,
+        request.after.createdAt,
+        request.after.id,
+        request.limit,
+      ],
+    ) as MessageRow[]
+  }
+
   async function advanceReadState(
     profileId: string,
     conversationId: string,
@@ -275,6 +307,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     updateConversationLastMessage,
     findMessageInConversation,
     listMessageRows,
+    listMessageRowsAfter,
     advanceReadState,
     listInboxRows,
     countUnreadConversations,
