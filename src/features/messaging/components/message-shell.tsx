@@ -44,12 +44,15 @@ function ActiveConversationWorkspace({
 }) {
   const { subscribe } = useMessagingRealtime()
   const [messages, setMessages] = useState<MessageThreadItem[]>(conversation.messages)
-  const [peerReadCursor, setPeerReadCursor] = useState<MessagingReadCursor | null>(
-    peerCursorFromConversation(conversation),
-  )
+  const [peerReadCursor, setPeerReadCursor] = useState<MessagingReadCursor | null>(null)
   const messagesRef = useRef<MessageThreadItem[]>(conversation.messages)
   const catchUpRunningRef = useRef(false)
   const catchUpPendingRef = useRef(false)
+  const displayedMessages = mergeCanonicalMessages(messages, conversation.messages)
+  const effectivePeerReadCursor = laterReadCursor(
+    peerReadCursor,
+    peerCursorFromConversation(conversation),
+  )
 
   function updateMessages(updater: (current: MessageThreadItem[]) => MessageThreadItem[]) {
     setMessages((current) => {
@@ -58,11 +61,6 @@ function ActiveConversationWorkspace({
       return next
     })
   }
-
-  useEffect(() => {
-    updateMessages((current) => mergeCanonicalMessages(current, conversation.messages))
-    setPeerReadCursor((current) => laterReadCursor(current, peerCursorFromConversation(conversation)))
-  }, [conversation.messages, conversation.otherLastReadAt, conversation.otherLastReadMessageId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let cancelled = false
@@ -77,7 +75,9 @@ function ActiveConversationWorkspace({
       try {
         do {
           catchUpPendingRef.current = false
-          const cursor = latestCanonicalCursor(messagesRef.current)
+          const cursor = latestCanonicalCursor(
+            mergeCanonicalMessages(messagesRef.current, conversation.messages),
+          )
           if (!cursor) return
 
           try {
@@ -118,7 +118,7 @@ function ActiveConversationWorkspace({
       cancelled = true
       unsubscribe()
     }
-  }, [conversation.conversationId, conversation.otherProfileId, subscribe]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conversation.conversationId, conversation.messages, conversation.otherProfileId, subscribe])
 
   function addOptimistic(message: OptimisticMessagingMessage) {
     updateMessages((current) => {
@@ -152,9 +152,9 @@ function ActiveConversationWorkspace({
         otherName={conversation.otherName}
         otherHeadline={conversation.otherHeadline}
         otherAvatarUrl={conversation.otherAvatarUrl}
-        messages={messages}
+        messages={displayedMessages}
         nextCursor={conversation.nextCursor}
-        peerReadCursor={peerReadCursor}
+        peerReadCursor={effectivePeerReadCursor}
       />
       <MessageComposer
         conversationId={conversation.conversationId}
@@ -213,7 +213,7 @@ export function MessageShell({
                   <p className="mt-2 text-sm leading-6 text-muted">Choose a maritime professional from your inbox to continue a focused one-to-one conversation.</p>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
