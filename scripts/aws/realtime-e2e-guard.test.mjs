@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
@@ -67,6 +68,20 @@ test('realtime e2e proves canonical message and read-cursor fanout over authenti
   assert.match(remote, /REALTIME_E2E_DURABLE_MESSAGE_VERIFIED=true/)
   assert.match(remote, /REALTIME_E2E_INFRA_HEALTH_VERIFIED=true/)
   assert.match(workflow, /npx playwright install --with-deps chromium/)
+})
+
+test('realtime infra health SQS jq filter preserves the root object for both queue counters', () => {
+  const remote = readFileSync(remotePath, 'utf8')
+  const match = remote.match(/jq -e '([^']*ApproximateNumberOfMessages[^']*)' <<<"\$MAIN_ATTR"/)
+  assert.ok(match, 'SQS health jq filter must be present')
+  const sample = JSON.stringify({
+    Attributes: {
+      ApproximateNumberOfMessages: '0',
+      ApproximateNumberOfMessagesNotVisible: '0',
+    },
+  })
+  const result = spawnSync('jq', ['-e', match[1]], { input: sample, encoding: 'utf8' })
+  assert.equal(result.status, 0, result.stderr || result.stdout)
 })
 
 test('realtime authenticated connect probe is narrow, exact-head gated, and always cleaned up', () => {
