@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/api/health" | jq -e '.status == "ok" or .ok == true' >/dev/null
+          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
 
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
