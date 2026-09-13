@@ -1,0 +1,58 @@
+import { describe, expect, it, vi } from 'vitest'
+import { createMessagingRepository } from './repository'
+
+const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
+const CONVERSATION_ID = '33333333-3333-4333-8333-333333333333'
+const MESSAGE_ID = '55555555-5555-4555-8555-555555555555'
+
+type QueryCall = [text: string, values?: readonly unknown[]]
+
+function firstCall(query: { mock: { calls: unknown[] } }) {
+  return query.mock.calls[0] as unknown as QueryCall
+}
+
+describe('messaging durable read cursor ordering', () => {
+  it('advances by the same created_at/id tuple used to order messages', async () => {
+    const query = vi.fn(async () => [{ advanced: true }])
+    const repository = createMessagingRepository({ query })
+
+    await repository.advanceReadState(
+      VIEWER_ID,
+      CONVERSATION_ID,
+      MESSAGE_ID,
+      '2026-09-13T10:00:00.000Z',
+    )
+
+    const [sql] = firstCall(query)
+    const text = sql.toLowerCase()
+    expect(text).toContain('last_read_at < $4::timestamptz')
+    expect(text).toContain('last_read_at = $4::timestamptz')
+    expect(text).toContain('last_read_message_id < $3::uuid')
+  })
+
+  it('derives inbox unread state by timestamp and message-id tie break and exposes peer read cursor', async () => {
+    const query = vi.fn(async () => [])
+    const repository = createMessagingRepository({ query })
+
+    await repository.listInboxRows(VIEWER_ID, { limit: 30 })
+
+    const [sql] = firstCall(query)
+    const text = sql.toLowerCase()
+    expect(text).toContain('other.last_read_message_id as other_last_read_message_id')
+    expect(text).toContain('other.last_read_at as other_last_read_at')
+    expect(text).toContain('c.last_message_at = mine.last_read_at')
+    expect(text).toContain('c.last_message_id > mine.last_read_message_id')
+  })
+
+  it('counts unread conversations with the same message-id tie break', async () => {
+    const query = vi.fn(async () => [{ count: 0 }])
+    const repository = createMessagingRepository({ query })
+
+    await repository.countUnreadConversations(VIEWER_ID)
+
+    const [sql] = firstCall(query)
+    const text = sql.toLowerCase()
+    expect(text).toContain('c.last_message_at = mine.last_read_at')
+    expect(text).toContain('c.last_message_id > mine.last_read_message_id')
+  })
+})
