@@ -28,6 +28,8 @@ jobs:
       run_e2e: ${{ steps.guard.outputs.run_e2e }}
       run_cleanup: ${{ steps.guard.outputs.run_cleanup }}
       cleanup_source_run_id: ${{ steps.guard.outputs.cleanup_source_run_id }}
+      run_diagnostic: ${{ steps.guard.outputs.run_diagnostic }}
+      diagnostic_source_run_id: ${{ steps.guard.outputs.diagnostic_source_run_id }}
     steps:
       - uses: actions/checkout@v4
       - id: guard
@@ -40,11 +42,15 @@ jobs:
               echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
               echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
+              echo 'run_diagnostic=false' >> "$GITHUB_OUTPUT"
+              echo 'diagnostic_source_run_id=' >> "$GITHUB_OUTPUT"
               ;;
             run-once)
               echo 'run_e2e=true' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
               echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
+              echo 'run_diagnostic=false' >> "$GITHUB_OUTPUT"
+              echo 'diagnostic_source_run_id=' >> "$GITHUB_OUTPUT"
               ;;
             cleanup-once:*)
               SOURCE_RUN_ID=${ACTION#cleanup-once:}
@@ -52,6 +58,17 @@ jobs:
               echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=true' >> "$GITHUB_OUTPUT"
               echo "cleanup_source_run_id=$SOURCE_RUN_ID" >> "$GITHUB_OUTPUT"
+              echo 'run_diagnostic=false' >> "$GITHUB_OUTPUT"
+              echo 'diagnostic_source_run_id=' >> "$GITHUB_OUTPUT"
+              ;;
+            diagnose-connect-once:*)
+              SOURCE_RUN_ID=${ACTION#diagnose-connect-once:}
+              [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo "Invalid diagnostic source run id: $SOURCE_RUN_ID" >&2; exit 1; }
+              echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
+              echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
+              echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
+              echo 'run_diagnostic=true' >> "$GITHUB_OUTPUT"
+              echo "diagnostic_source_run_id=$SOURCE_RUN_ID" >> "$GITHUB_OUTPUT"
               ;;
             *) echo "Unsupported REALTIME_E2E_ACTION=$ACTION" >&2; exit 1 ;;
           esac
@@ -257,3 +274,91 @@ jobs:
 
       - name: Cleanup prior disposable Realtime E2E data
         run: node scripts/aws/realtime-e2e-ssm.mjs cleanup
+
+  realtime-connect-diagnostic:
+    needs: guard
+    if: needs.guard.outputs.run_diagnostic == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      AWS_REGION: ap-south-1
+      SOURCE_RUN_ID: ${{ needs.guard.outputs.diagnostic_source_run_id }}
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' "$API")
+            STATUS=$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")
+            CONCLUSION=$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")
+            if [[ "$STATUS" == completed ]]; then
+              [[ "$CONCLUSION" == success ]] || { echo 'Exact-head AWS Infrastructure CI is not green.' >&2; exit 1; }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'Timed out waiting for exact-head AWS Infrastructure CI.' >&2
+          exit 1
+
+      - name: Guard diagnostic against a moved branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$GITHUB_SHA" ]] || { echo 'Branch moved; refusing stale Realtime diagnostic.' >&2; exit 1; }
+
+      - name: Resolve bounded failed-run window
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]
+          JSON=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}")
+          [[ "$(jq -r '.name' <<<"$JSON")" == 'AWS Realtime E2E' ]]
+          [[ "$(jq -r '.head_branch' <<<"$JSON")" == 'feat/aws-native-phase-0-1' ]]
+          START=$(jq -r '.run_started_at' <<<"$JSON")
+          END=$(jq -r '.updated_at' <<<"$JSON")
+          START_MS=$(( $(date -u -d "$START - 2 minutes" +%s) * 1000 ))
+          END_MS=$(( $(date -u -d "$END + 2 minutes" +%s) * 1000 ))
+          (( END_MS >= START_MS ))
+          (( END_MS - START_MS <= 3600000 ))
+          {
+            echo "E2E_DIAGNOSTIC_START_MS=$START_MS"
+            echo "E2E_DIAGNOSTIC_END_MS=$END_MS"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Verify staging AWS account
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
+
+      - name: Discover bootstrap instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters 'Name=tag:Name,Values=sea-n-shore-bootstrap' 'Name=instance-state-name,Values=running' --query 'Reservations[].Instances[].InstanceId' --output json)
+          [[ "$(jq 'length' <<<"$IDS")" -eq 1 ]]
+          echo "INSTANCE_ID=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_ENV"
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Read failed realtime connect evidence
+        run: node scripts/aws/realtime-e2e-ssm.mjs diagnose-connect
