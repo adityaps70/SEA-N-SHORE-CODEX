@@ -65,6 +65,21 @@ const RECOVERY_ACTIONS = new Map([
   ['aws_api_gateway_account.realtime', JSON.stringify(['create'])],
 ])
 
+export function resolveRealtimeInfraTargets(state) {
+  const tracked = new Set(
+    (state.resources ?? [])
+      .filter((resource) => resource?.mode === 'managed' && (resource.instances ?? []).length > 0)
+      .map((resource) => `${resource.type}.${resource.name}`),
+  )
+  const realtimeComplete = REALTIME_INFRA_CREATE_RESOURCES.every((address) => tracked.has(address))
+
+  if (realtimeComplete) {
+    return [...REALTIME_INFRA_CREATE_RESOURCES]
+  }
+
+  return [...REALTIME_INFRA_CREATE_RESOURCES, REALTIME_WEB_TASK_RESOURCE]
+}
+
 function isExactRecovery(changes) {
   if (changes.length !== RECOVERY_ACTIONS.size) return false
   const seen = new Set()
@@ -162,8 +177,21 @@ export function classifyRealtimeInfraPlan(plan, action) {
 }
 
 async function main() {
-  const [planPath, action] = process.argv.slice(2)
-  if (!planPath || !action) {
+  const args = process.argv.slice(2)
+
+  if (args[0] === 'targets') {
+    const [, statePath] = args
+    if (!statePath || args.length !== 2) {
+      throw new Error('Usage: node realtime-infra-plan-classifier.mjs targets <state.json>')
+    }
+
+    const state = JSON.parse(await readFile(statePath, 'utf8'))
+    process.stdout.write(`${resolveRealtimeInfraTargets(state).join('\n')}\n`)
+    return
+  }
+
+  const [planPath, action] = args
+  if (!planPath || !action || args.length !== 2) {
     throw new Error('Usage: node realtime-infra-plan-classifier.mjs <plan.json> <plan|apply-once>')
   }
 
