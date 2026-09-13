@@ -25,3 +25,15 @@ test('shared IAM audit inspects the ECS task Aurora runtime secret policy withou
     assert.doesNotMatch(audit, new RegExp(`aws\\s+iam\\s+${mutatingCommand}`))
   }
 })
+
+test('shared IAM audit inspects the ECS task media policy in state and live IAM without mutating it', () => {
+  assert.match(audit, /sea-n-shore-staging-ecs-task-media/)
+  assert.match(audit, /ecs_task_media/)
+  assert.match(audit, /SOCIAL_SHARED_IAM_MEDIA_STATE_COUNT=/)
+  assert.match(audit, /SOCIAL_SHARED_IAM_MEDIA_LIVE_EXISTS=/)
+  assert.match(audit, /SOCIAL_SHARED_IAM_MEDIA_LIVE_POLICY_MATCHES_DESIRED=/)
+  assert.match(audit, /sea-n-shore-staging-310356785722-media\/\*/)
+  assert.match(audit, /s3:GetObject/)
+  assert.match(audit, /s3:PutObject/)
+  assert.match(audit, /s3:DeleteObject/)
+})
