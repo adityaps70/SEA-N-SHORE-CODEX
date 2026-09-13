@@ -138,7 +138,7 @@ echo "REALTIME_PROVIDER_LOCK_VERIFIED=true"
 TARGETS=()
 while IFS= read -r target; do
   [[ -n "$target" ]] && TARGETS+=("$target")
-done < <(node --input-type=module -e "import('./$PLAN_CLASSIFIER').then((m) => console.log([...m.REALTIME_INFRA_CREATE_RESOURCES, m.REALTIME_WEB_TASK_RESOURCE].join('\\n')))" )
+done < <(node "$PLAN_CLASSIFIER" targets "$WORK_DIR/state.json")
 [[ "${#TARGETS[@]}" -gt 1 ]]
 PLAN_ARGS=()
 for target in "${TARGETS[@]}"; do
