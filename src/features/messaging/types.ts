@@ -37,6 +37,8 @@ export type MessagingInboxRow = {
   last_message_at: string | Date | null
   last_read_message_id: string | null
   last_read_at: string | Date | null
+  other_last_read_message_id: string | null
+  other_last_read_at: string | Date | null
   unread: boolean
 }
 
