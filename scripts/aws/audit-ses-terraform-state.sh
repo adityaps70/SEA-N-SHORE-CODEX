@@ -3,6 +3,7 @@ set -euo pipefail
 umask 077
 export AWS_PAGER=""
 
+# Triggered only to refresh read-only SES Terraform-state evidence after exact-head CI.
 EXPECTED_ACCOUNT="310356785722"
 AWS_REGION="${AWS_REGION:-ap-south-1}"
 STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"
