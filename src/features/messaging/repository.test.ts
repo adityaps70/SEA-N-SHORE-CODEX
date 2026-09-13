@@ -49,6 +49,27 @@ describe('Aurora messaging repository', () => {
     )
   })
 
+  it('resolves the other direct participant and returns null when the actor is not in the pair', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce([{ other_profile_id: TARGET_ID }])
+      .mockResolvedValueOnce([])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(
+      repository.findOtherParticipantId(CONVERSATION_ID, VIEWER_ID),
+    ).resolves.toBe(TARGET_ID)
+    await expect(
+      repository.findOtherParticipantId(CONVERSATION_ID, '99999999-9999-4999-8999-999999999999'),
+    ).resolves.toBeNull()
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('conversation_participants')
+    expect(text).toContain('profile_id <>')
+    expect(values).toEqual([CONVERSATION_ID, VIEWER_ID])
+  })
+
   it('looks up retry idempotency by sender and client message id', async () => {
     const query = vi.fn(async () => [])
     const { createMessagingRepository } = await import('./repository')
