@@ -14,7 +14,7 @@ const users = {
 
 assert.ok(siteUrl)
 assert.ok(runId)
-assert.ok(['signup', 'onboarding', 'realtime'].includes(phase))
+assert.ok(['signup', 'onboarding', 'connect-probe', 'realtime'].includes(phase))
 for (const [key, user] of Object.entries(users)) {
   assert.match(user.email ?? '', new RegExp(`^sea-n-shore-realtime-e2e-[0-9]+-${key}@example\\.com$`))
   assert.ok((user.password ?? '').length >= 12)
@@ -99,6 +99,33 @@ async function closeProbeSocket(page, key) {
     const socket = globalThis[`__realtime_${key}_socket`]
     if (socket && socket.readyState < 2) socket.close(1000, 'e2e-complete')
   }, key)
+}
+
+async function connectProbeJourney() {
+  const senderContext = await browser.newContext()
+  const senderPage = await senderContext.newPage()
+
+  try {
+    await signInCompleted(senderPage, users.sender)
+    let result = 'opened'
+    try {
+      const ticket = await openProbeSocket(senderPage, 'connect_probe')
+      assert.match(ticket.websocketUrl, /^wss:/)
+      await closeProbeSocket(senderPage, 'connect_probe')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown_error'
+      if (message.includes('websocket_open_timeout')) {
+        result = 'websocket_open_timeout'
+      } else if (message.includes('websocket_open_error')) {
+        result = 'websocket_open_error'
+      } else {
+        throw error
+      }
+    }
+    console.log(`REALTIME_E2E_CONNECT_PROBE_RESULT=${result}`)
+  } finally {
+    await senderContext.close()
+  }
 }
 
 async function realtimeJourney() {
@@ -194,6 +221,8 @@ try {
     await completeProfessional(users.sender, 'sender')
     await completeProfessional(users.recipient, 'recipient')
     console.log('REALTIME_E2E_ONBOARDING_VERIFIED=true')
+  } else if (phase === 'connect-probe') {
+    await connectProbeJourney()
   } else if (phase === 'realtime') {
     await realtimeJourney()
     console.log('REALTIME_E2E_BROWSER_VERIFIED=true')
