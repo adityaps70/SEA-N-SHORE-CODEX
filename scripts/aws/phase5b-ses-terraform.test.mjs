@@ -190,6 +190,7 @@ test('Phase 5B SES identity has a single-resource guarded Terraform state-import
   assert.match(runner, /DkimAttributes\.Status/)
   assert.match(runner, /CurrentSigningKeyLength/)
   assert.match(runner, /NextSigningKeyLength/)
+  assert.match(runner, /SES_IDENTITY_STATE_LIVE_TAGS=/)
   assert.match(runner, /terraform[^\n]+plan/)
   assert.match(runner, /-target="\$RESOURCE"/)
   assert.match(runner, /SES_IDENTITY_STATE_PLAN_VERIFIED=IMPORT_ONLY/)
