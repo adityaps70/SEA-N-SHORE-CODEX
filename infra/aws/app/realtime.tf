@@ -1,8 +1,8 @@
 locals {
-  realtime_ticket_audience              = "sea-n-shore-realtime"
-  realtime_profile_index                = "profile_id-index"
-  realtime_websocket_url                = "wss://${aws_apigatewayv2_api.realtime.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_apigatewayv2_stage.realtime.name}"
-  realtime_management_url               = "https://${aws_apigatewayv2_api.realtime.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_apigatewayv2_stage.realtime.name}"
+  realtime_ticket_audience = "sea-n-shore-realtime"
+  realtime_profile_index   = "profile_id-index"
+  realtime_websocket_url   = "wss://${aws_apigatewayv2_api.realtime.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_apigatewayv2_stage.realtime.name}"
+  realtime_management_url  = "https://${aws_apigatewayv2_api.realtime.id}.execute-api.${var.aws_region}.amazonaws.com/${aws_apigatewayv2_stage.realtime.name}"
   realtime_lambda_assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -112,7 +112,7 @@ resource "aws_cloudwatch_event_rule" "realtime_events" {
   event_bus_name = aws_cloudwatch_event_bus.social.name
 
   event_pattern = jsonencode({
-    source        = ["sea-n-shore.social"]
+    source = ["sea-n-shore.social"]
     "detail-type" = [
       "message.created",
       "conversation.read_cursor_advanced"
@@ -310,7 +310,7 @@ resource "aws_lambda_function" "realtime_authorizer" {
     variables = {
       REALTIME_TICKET_AUDIENCE   = local.realtime_ticket_audience
       REALTIME_TICKET_SECRET_ARN = aws_secretsmanager_secret.realtime_ticket.arn
-      REALTIME_ALLOWED_ORIGIN     = var.site_url
+      REALTIME_ALLOWED_ORIGIN    = var.site_url
     }
   }
 
