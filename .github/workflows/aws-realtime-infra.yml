@@ -104,6 +104,12 @@ jobs:
           cd "$WORK_DIR/repo"
           git checkout --quiet --detach {sha}
           test "$(git rev-parse HEAD)" = "{sha}"
+          echo "APIGATEWAY_ACCOUNT_AUDIT_BEGIN"
+          aws apigateway get-account --region ap-south-1 --output json
+          echo "APIGATEWAY_TRUSTED_ROLE_CANDIDATES_BEGIN"
+          aws iam list-roles --output json | jq -r '.Roles[] | select(any(.AssumeRolePolicyDocument.Statement[]?; (.Principal.Service? == "apigateway.amazonaws.com") or ((.Principal.Service? | type) == "array" and any(.Principal.Service[]?; . == "apigateway.amazonaws.com")))) | [.RoleName, .Arn] | @tsv'
+          echo "APIGATEWAY_TRUSTED_ROLE_CANDIDATES_END"
+          echo "APIGATEWAY_ACCOUNT_AUDIT_END"
           export REALTIME_INFRA_EXPECTED_SHA={sha}
           bash scripts/aws/realtime-infra.sh
           """
