@@ -105,16 +105,35 @@ case "$PHASE" in
   cleanup)
     resolve_db
     resolve_pool
-    if [[ -z "$CONVERSATION_ID" ]]; then
+    TABLE_STATE=$(sql "SELECT (to_regclass('public.conversations') IS NOT NULL)::text,(to_regclass('public.conversation_participants') IS NOT NULL)::text,(to_regclass('public.messages') IS NOT NULL)::text,(to_regclass('public.event_outbox') IS NOT NULL)::text" | jq -r '.records[0] | map(.stringValue // "false") | @tsv')
+    IFS=$'\t' read -r HAS_CONVERSATIONS HAS_PARTICIPANTS HAS_MESSAGES HAS_OUTBOX <<<"$TABLE_STATE"
+    MESSAGING_TABLES_PRESENT=false
+    if [[ "$HAS_CONVERSATIONS" == true && "$HAS_PARTICIPANTS" == true && "$HAS_MESSAGES" == true ]]; then
+      MESSAGING_TABLES_PRESENT=true
+    fi
+    if [[ "$HAS_CONVERSATIONS" == true && -z "$CONVERSATION_ID" ]]; then
       RESULT=$(sql "SELECT c.id::text FROM public.conversations c WHERE c.direct_user_low_id IN ($profile_ids_sql) AND c.direct_user_high_id IN ($profile_ids_sql) ORDER BY c.created_at DESC LIMIT 1")
       CONVERSATION_ID=$(jq -r '.records[0][0].stringValue // empty' <<<"$RESULT")
     fi
     if [[ "$CONVERSATION_ID" =~ ^[0-9a-f-]{36}$ ]]; then
-      sql "DELETE FROM public.event_outbox WHERE (aggregate_type='message' AND aggregate_id IN (SELECT id FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid)) OR (aggregate_type='conversation' AND aggregate_id='$CONVERSATION_ID'::uuid) OR payload->>'conversationId'='$CONVERSATION_ID'" >/dev/null
-      sql "DELETE FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid" >/dev/null
-      sql "DELETE FROM public.conversation_participants WHERE conversation_id='$CONVERSATION_ID'::uuid" >/dev/null
-      sql "DELETE FROM public.conversations WHERE id='$CONVERSATION_ID'::uuid" >/dev/null
+      if [[ "$HAS_OUTBOX" == true ]]; then
+        if [[ "$HAS_MESSAGES" == true ]]; then
+          sql "DELETE FROM public.event_outbox WHERE (aggregate_type='message' AND aggregate_id IN (SELECT id FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid)) OR (aggregate_type='conversation' AND aggregate_id='$CONVERSATION_ID'::uuid) OR payload->>'conversationId'='$CONVERSATION_ID'" >/dev/null
+        else
+          sql "DELETE FROM public.event_outbox WHERE (aggregate_type='conversation' AND aggregate_id='$CONVERSATION_ID'::uuid) OR payload->>'conversationId'='$CONVERSATION_ID'" >/dev/null
+        fi
+      fi
+      if [[ "$HAS_MESSAGES" == true ]]; then
+        sql "DELETE FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid" >/dev/null
+      fi
+      if [[ "$HAS_PARTICIPANTS" == true ]]; then
+        sql "DELETE FROM public.conversation_participants WHERE conversation_id='$CONVERSATION_ID'::uuid" >/dev/null
+      fi
+      if [[ "$HAS_CONVERSATIONS" == true ]]; then
+        sql "DELETE FROM public.conversations WHERE id='$CONVERSATION_ID'::uuid" >/dev/null
+      fi
     fi
+    echo "MESSAGING_TABLES_PRESENT=$MESSAGING_TABLES_PRESENT"
     sql "DELETE FROM public.notifications WHERE recipient_id IN ($profile_ids_sql) OR actor_id IN ($profile_ids_sql)" >/dev/null
     sql "DELETE FROM public.follows WHERE follower_id IN ($profile_ids_sql) OR following_id IN ($profile_ids_sql)" >/dev/null
     sql "DELETE FROM public.connections WHERE user_low_id IN ($profile_ids_sql) OR user_high_id IN ($profile_ids_sql)" >/dev/null
