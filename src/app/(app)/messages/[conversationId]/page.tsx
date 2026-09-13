@@ -32,6 +32,8 @@ export default async function MessageConversationPage({
     otherName: peer?.otherName ?? 'Sea N Shore member',
     otherHeadline: peer?.otherHeadline ?? null,
     otherAvatarUrl: peer?.otherAvatarUrl ?? null,
+    otherLastReadMessageId: peer?.otherLastReadMessageId ?? null,
+    otherLastReadAt: peer?.otherLastReadAt ?? null,
     messages: thread.messages,
     nextCursor: thread.nextCursor,
   }
