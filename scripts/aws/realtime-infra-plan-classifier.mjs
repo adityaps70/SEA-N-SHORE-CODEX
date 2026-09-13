@@ -77,6 +77,13 @@ function isExactRecovery(changes) {
   return seen.size === RECOVERY_ACTIONS.size
 }
 
+function isExactAuthorizerMaintenance(changes) {
+  if (changes.length !== 1) return false
+  const [resource] = changes
+  return resource.address === 'aws_lambda_function.realtime_authorizer'
+    && JSON.stringify(resource?.change?.actions ?? []) === JSON.stringify(['update'])
+}
+
 export function classifyRealtimeInfraPlan(plan, action) {
   if (!['plan', 'apply-once'].includes(action)) {
     throw new Error(`Unsupported realtime infrastructure action: ${action}`)
@@ -92,6 +99,15 @@ export function classifyRealtimeInfraPlan(plan, action) {
       throw new Error('apply-once requires the initial realtime infrastructure plan or the exact bounded recovery plan')
     }
     return { mode: 'steady', createCount: 0, replaceCount: 0 }
+  }
+
+  if (isExactAuthorizerMaintenance(changes)) {
+    return {
+      mode: 'maintenance',
+      createCount: 0,
+      updateCount: 1,
+      replaceCount: 0,
+    }
   }
 
   if (isExactRecovery(changes)) {
