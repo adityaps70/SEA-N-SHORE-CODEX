@@ -1,5 +1,6 @@
 name: AWS Realtime Messaging Infrastructure
 
+# Guarded push retrigger: re-plan after prerequisite state reconciliation; the action file remains authoritative.
 on:
   push:
     branches:
