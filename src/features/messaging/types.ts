@@ -46,6 +46,12 @@ export type MessagePageRequest = {
   cursor?: MessagingCursor
 }
 
+export type MessageAfterRequest = {
+  conversationId: string
+  limit: number
+  after: MessagingCursor
+}
+
 export type SendMessageInput = {
   conversationId: string
   clientMessageId: string
