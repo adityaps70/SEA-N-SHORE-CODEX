@@ -48,7 +48,7 @@ export async function POST() {
     return Response.json(
       {
         ...issued,
-        websocketUrl: getRealtimeWebsocketUrl(),
+        webSocketUrl: getRealtimeWebsocketUrl(),
       },
       {
         status: 200,
