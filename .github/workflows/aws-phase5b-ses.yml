@@ -1,5 +1,6 @@
 name: AWS Phase 5B SES
 
+# Read-only discover retrigger for realtime Terraform prerequisite classification.
 on:
   workflow_dispatch:
   push:
