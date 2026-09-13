@@ -104,6 +104,8 @@ jobs:
         run: node --test scripts/aws/social-shared-iam-runtime-audit.test.mjs
       - name: Verify ECS task Aurora policy release contract
         run: node --test scripts/aws/ecs-task-aurora-policy-release.test.mjs
+      - name: Verify ECS task media policy state release contract
+        run: node --test scripts/aws/ecs-task-media-policy-state-release.test.mjs
       - name: Verify social infrastructure plan classifier
         run: node --test scripts/aws/social-events-plan-classifier.test.mjs
       - name: Verify social event parity runtime audit contract
