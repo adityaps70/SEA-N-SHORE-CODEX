@@ -105,9 +105,10 @@ case "$PHASE" in
   cleanup)
     resolve_db
     resolve_pool
-    set +e
-    resolve_conversation
-    set -e
+    if [[ -z "$CONVERSATION_ID" ]]; then
+      RESULT=$(sql "SELECT c.id::text FROM public.conversations c WHERE c.direct_user_low_id IN ($profile_ids_sql) AND c.direct_user_high_id IN ($profile_ids_sql) ORDER BY c.created_at DESC LIMIT 1")
+      CONVERSATION_ID=$(jq -r '.records[0][0].stringValue // empty' <<<"$RESULT")
+    fi
     if [[ "$CONVERSATION_ID" =~ ^[0-9a-f-]{36}$ ]]; then
       sql "DELETE FROM public.event_outbox WHERE (aggregate_type='message' AND aggregate_id IN (SELECT id FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid)) OR (aggregate_type='conversation' AND aggregate_id='$CONVERSATION_ID'::uuid) OR payload->>'conversationId'='$CONVERSATION_ID'" >/dev/null
       sql "DELETE FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid" >/dev/null
