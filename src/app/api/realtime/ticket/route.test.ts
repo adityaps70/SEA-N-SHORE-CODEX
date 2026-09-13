@@ -60,7 +60,7 @@ describe('POST /api/realtime/ticket', () => {
     expect(await response.json()).toEqual({
       ticket: TICKET,
       expiresAt: EXPIRES_AT,
-      websocketUrl: WEBSOCKET_URL,
+      webSocketUrl: WEBSOCKET_URL,
     })
     expect(realtime.createRealtimeTicketCodec).toHaveBeenCalledWith({
       secret: process.env.REALTIME_TICKET_SECRET,
