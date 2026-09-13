@@ -5,6 +5,7 @@ import { requireUser } from '@/features/auth/queries'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { getUnreadConversationCount } from '@/features/messaging/queries'
 import { getNotificationChrome } from '@/features/notifications/queries'
+import { MessagingRealtimeProvider } from '@/features/realtime/provider'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
@@ -15,22 +16,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ])
 
   return (
-    <div className="min-h-screen bg-mist-50 pb-20 md:pb-0 md:pt-18">
-      <AppHeader
-        recentNotifications={notificationChrome.recent}
-        unreadCount={notificationChrome.unreadCount}
-        messagingUnreadCount={messagingUnreadCount}
-        canStartHiring={Boolean(authorizedCompany)}
-      />
-      <MobileAppHeader
-        unreadCount={notificationChrome.unreadCount}
-        messagingUnreadCount={messagingUnreadCount}
-        canStartHiring={Boolean(authorizedCompany)}
-      />
-      <main id="main-content" className="mx-auto w-full max-w-7xl px-4 py-6">
-        {children}
-      </main>
-      <MobileNav />
-    </div>
+    <MessagingRealtimeProvider>
+      <div className="min-h-screen bg-mist-50 pb-20 md:pb-0 md:pt-18">
+        <AppHeader
+          recentNotifications={notificationChrome.recent}
+          unreadCount={notificationChrome.unreadCount}
+          messagingUnreadCount={messagingUnreadCount}
+          canStartHiring={Boolean(authorizedCompany)}
+        />
+        <MobileAppHeader
+          unreadCount={notificationChrome.unreadCount}
+          messagingUnreadCount={messagingUnreadCount}
+          canStartHiring={Boolean(authorizedCompany)}
+        />
+        <main id="main-content" className="mx-auto w-full max-w-7xl px-4 py-6">
+          {children}
+        </main>
+        <MobileNav />
+      </div>
+    </MessagingRealtimeProvider>
   )
 }
