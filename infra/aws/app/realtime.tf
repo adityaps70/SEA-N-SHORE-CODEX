@@ -414,6 +414,36 @@ resource "aws_cloudwatch_log_group" "realtime_api" {
   tags              = local.common_tags
 }
 
+resource "aws_iam_role" "realtime_api_gateway_logs" {
+  name = "${local.name_prefix}-realtime-api-gateway-logs"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "apigateway.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "realtime_api_gateway_logs" {
+  role       = aws_iam_role.realtime_api_gateway_logs.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+}
+
+resource "aws_api_gateway_account" "realtime" {
+  cloudwatch_role_arn = aws_iam_role.realtime_api_gateway_logs.arn
+
+  depends_on = [aws_iam_role_policy_attachment.realtime_api_gateway_logs]
+}
+
 resource "aws_apigatewayv2_stage" "realtime" {
   api_id      = aws_apigatewayv2_api.realtime.id
   name        = var.environment
@@ -434,6 +464,8 @@ resource "aws_apigatewayv2_stage" "realtime" {
     throttling_burst_limit = 500
     throttling_rate_limit  = 1000
   }
+
+  depends_on = [aws_api_gateway_account.realtime]
 
   tags = local.common_tags
 }
