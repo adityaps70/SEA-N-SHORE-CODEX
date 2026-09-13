@@ -8,6 +8,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.7"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
+    }
   }
 }
 
@@ -393,6 +401,7 @@ resource "aws_ecs_task_definition" "web" {
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.app.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
         { name = "AWS_MEDIA_BUCKET", value = aws_s3_bucket.app["media"].bucket },
+        { name = "REALTIME_WEBSOCKET_URL", value = local.realtime_websocket_url },
         { name = "AURORA_HOST", value = aws_rds_cluster.aurora.endpoint },
         { name = "AURORA_PORT", value = tostring(aws_rds_cluster.aurora.port) },
         { name = "AURORA_DATABASE", value = aws_rds_cluster.aurora.database_name },
@@ -411,6 +420,10 @@ resource "aws_ecs_task_definition" "web" {
         {
           name      = "AURORA_PASSWORD"
           valueFrom = "${local.aurora_master_secret_arn}:password::"
+        },
+        {
+          name      = "REALTIME_TICKET_SECRET"
+          valueFrom = aws_secretsmanager_secret.realtime_ticket.arn
         }
       ]
 
@@ -445,6 +458,7 @@ resource "aws_ecs_task_definition" "web" {
 
   depends_on = [
     aws_iam_role_policy.ecs_execution_aurora_secret,
+    aws_iam_role_policy.ecs_execution_realtime_ticket_secret,
     aws_iam_role_policy.ecs_task_aurora_secret,
     aws_iam_role_policy.ecs_task_media
   ]
