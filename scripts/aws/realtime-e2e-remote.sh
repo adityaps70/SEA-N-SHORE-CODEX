@@ -90,18 +90,29 @@ case "$PHASE" in
       [[ "$LIVE" -eq 0 ]] && break
       sleep 3
     done
+    echo "REALTIME_INFRA_DIAG_DYNAMODB_CONNECTIONS=$LIVE"
     [[ "$LIVE" -eq 0 ]] || { echo "Realtime DynamoDB connections remain: $LIVE" >&2; exit 1; }
     MAIN_ATTR=$(aws sqs get-queue-attributes --region "$AWS_REGION" --queue-url "$MAIN_QUEUE" --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json)
+    MAIN_VISIBLE=$(jq -r '.Attributes.ApproximateNumberOfMessages // empty' <<<"$MAIN_ATTR")
+    MAIN_NOT_VISIBLE=$(jq -r '.Attributes.ApproximateNumberOfMessagesNotVisible // empty' <<<"$MAIN_ATTR")
+    echo "REALTIME_INFRA_DIAG_MAIN_QUEUE_VISIBLE=$MAIN_VISIBLE"
+    echo "REALTIME_INFRA_DIAG_MAIN_QUEUE_NOT_VISIBLE=$MAIN_NOT_VISIBLE"
     DLQ_VISIBLE=$(aws sqs get-queue-attributes --region "$AWS_REGION" --queue-url "$DLQ" --attribute-names ApproximateNumberOfMessages --query 'Attributes.ApproximateNumberOfMessages' --output text)
+    echo "REALTIME_INFRA_DIAG_DLQ_VISIBLE=$DLQ_VISIBLE"
     [[ "$DLQ_VISIBLE" == 0 ]]
     START=${RUN_STARTED_AT:-$(date -u -d '15 minutes ago' +%Y-%m-%dT%H:%M:%SZ)}
     END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     for METRIC in Errors Throttles; do
       SUM=$(aws cloudwatch get-metric-statistics --region "$AWS_REGION" --namespace AWS/Lambda --metric-name "$METRIC" --dimensions Name=FunctionName,Value=sea-n-shore-staging-realtime-fanout --start-time "$START" --end-time "$END" --period 60 --statistics Sum --output json | jq '[.Datapoints[].Sum] | add // 0')
+      case "$METRIC" in
+        Errors) echo "REALTIME_INFRA_DIAG_LAMBDA_ERRORS=$SUM" ;;
+        Throttles) echo "REALTIME_INFRA_DIAG_LAMBDA_THROTTLES=$SUM" ;;
+      esac
       [[ "$SUM" == 0 ]]
     done
     [[ -n "$MESSAGE_BODY" ]]
     LOG_HITS=$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name /aws/lambda/sea-n-shore-staging-realtime-fanout --start-time "$(date -u -d "$START" +%s)000" --filter-pattern "\"$MESSAGE_BODY\"" --query 'events | length(@)' --output text || echo 0)
+    echo "REALTIME_INFRA_DIAG_FANOUT_BODY_LOG_HITS=$LOG_HITS"
     [[ "$LOG_HITS" == 0 ]]
     jq -e '(.Attributes.ApproximateNumberOfMessages | tonumber) >= 0 and (.Attributes.ApproximateNumberOfMessagesNotVisible | tonumber) >= 0' <<<"$MAIN_ATTR" >/dev/null
     echo 'REALTIME_E2E_INFRA_HEALTH_VERIFIED=true'
