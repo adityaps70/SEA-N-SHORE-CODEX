@@ -106,6 +106,7 @@ echo "SES_IDENTITY_STATE_LIVE_VERIFICATION_STATUS=$(jq -r '.VerificationStatus' 
 echo "SES_IDENTITY_STATE_LIVE_DKIM_STATUS=$(jq -r '.DkimAttributes.Status' "$WORK_DIR/live-before.json")"
 echo "SES_IDENTITY_STATE_LIVE_CURRENT_SIGNING_KEY_LENGTH=$(jq -r '.DkimAttributes.CurrentSigningKeyLength' "$WORK_DIR/live-before.json")"
 echo "SES_IDENTITY_STATE_LIVE_NEXT_SIGNING_KEY_LENGTH=$(jq -r '.DkimAttributes.NextSigningKeyLength' "$WORK_DIR/live-before.json")"
+echo "SES_IDENTITY_STATE_LIVE_TAGS=$(jq -cS '[.Tags[]? | {Key,Value}] | sort_by(.Key)' "$WORK_DIR/tags-before.json")"
 if live_tags_match_desired "$WORK_DIR/tags-before.json"; then
   TAGS_MATCH=true
 else
