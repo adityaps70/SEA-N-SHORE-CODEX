@@ -50,6 +50,7 @@ function makeRepository(overrides: Record<string, unknown> = {}) {
         deleted_at: null,
       },
     ]),
+    listMessageRowsAfter: vi.fn(async () => []),
     ...overrides,
   }
 }
