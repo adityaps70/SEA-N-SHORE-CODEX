@@ -98,10 +98,23 @@ test('realtime infra health emits bounded numeric diagnostics without weakening 
     assert.match(remote, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
   assert.match(remote, /\[\[ "\$DLQ_VISIBLE" == 0 \]\]/)
-  assert.match(remote, /\[\[ "\$SUM" == 0 \]\]/)
   assert.match(remote, /\[\[ "\$LOG_HITS" == 0 \]\]/)
   assert.doesNotMatch(remote, /REALTIME_INFRA_DIAG_.*MESSAGE_BODY/)
   assert.doesNotMatch(remote, /REALTIME_INFRA_DIAG_.*SECRET/)
+})
+
+test('realtime Lambda health treats CloudWatch decimal zero as zero without accepting non-zero metrics', () => {
+  const remote = readFileSync(remotePath, 'utf8')
+  const match = remote.match(/jq -e --arg sum "\$SUM" '([^']*tonumber[^']*)' <<<null/)
+  assert.ok(match, 'Lambda metric zero check must numerically coerce the CloudWatch Sum')
+  for (const value of ['0', '0.0', '0.00']) {
+    const result = spawnSync('jq', ['-e', '--arg', 'sum', value, match[1]], { input: 'null\n', encoding: 'utf8' })
+    assert.equal(result.status, 0, `expected ${value} to be accepted as numeric zero: ${result.stderr || result.stdout}`)
+  }
+  for (const value of ['0.1', '1', '2.0']) {
+    const result = spawnSync('jq', ['-e', '--arg', 'sum', value, match[1]], { input: 'null\n', encoding: 'utf8' })
+    assert.notEqual(result.status, 0, `expected ${value} to be rejected as non-zero`)
+  }
 })
 
 test('realtime authenticated connect probe is narrow, exact-head gated, and always cleaned up', () => {
