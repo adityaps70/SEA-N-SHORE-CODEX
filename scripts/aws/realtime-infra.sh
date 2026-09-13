@@ -52,11 +52,19 @@ SERVICE_TASK_BEFORE="$(aws ecs describe-services \
   --output text)"
 [[ "$SERVICE_TASK_BEFORE" == arn:aws:ecs:ap-south-1:310356785722:task-definition/sea-n-shore-staging-web:* ]]
 
-python3 - "$WORK_DIR/state.json" "$WORK_DIR/variables.json" <<'PY'
+aws ecs describe-task-definition \
+  --region "$AWS_REGION" \
+  --task-definition "$SERVICE_TASK_BEFORE" \
+  --query taskDefinition \
+  --output json > "$WORK_DIR/service-task-before.json"
+
+python3 - "$WORK_DIR/state.json" "$WORK_DIR/service-task-before.json" "$WORK_DIR/variables.json" <<'PY'
 import json, sys
-state_path, output_path = sys.argv[1:]
+state_path, service_task_path, output_path = sys.argv[1:]
 with open(state_path) as f:
     state = json.load(f)
+with open(service_task_path) as f:
+    service_task = json.load(f)
 resources = state['resources']
 
 def attrs(kind, name=None):
@@ -67,12 +75,17 @@ def attrs(kind, name=None):
         and (name is None or resource['name'] == name)
     ]
     assert len(matches) == 1, f'Expected exactly one {kind} {name or ""}'.strip()
+    assert len(matches[0].get('instances', [])) == 1, f'Expected exactly one current instance for {kind} {name or ""}'.strip()
     return matches[0]['instances'][0]['attributes']
 
-web_task = attrs('aws_ecs_task_definition', 'web')
-containers = json.loads(web_task['container_definitions'])
-web = next(container for container in containers if container['name'] == 'web')
-site_url = next(item['value'] for item in web['environment'] if item['name'] == 'NEXT_PUBLIC_SITE_URL')
+assert service_task.get('family') == 'sea-n-shore-staging-web', 'Unexpected live ECS task definition family'
+containers = service_task.get('containerDefinitions') or []
+web_matches = [container for container in containers if container.get('name') == 'web']
+assert len(web_matches) == 1, 'Expected exactly one web container in live ECS task definition'
+web = web_matches[0]
+site_matches = [item['value'] for item in (web.get('environment') or []) if item.get('name') == 'NEXT_PUBLIC_SITE_URL']
+assert len(site_matches) == 1, 'Expected exactly one NEXT_PUBLIC_SITE_URL in live ECS task definition'
+site_url = site_matches[0]
 image = web['image']
 assert ':' in image.rsplit('/', 1)[-1], f'Expected tag-qualified web image, got {image}'
 image_tag = image.rsplit(':', 1)[1]
