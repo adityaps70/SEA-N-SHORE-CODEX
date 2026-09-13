@@ -77,7 +77,7 @@ async function openProbeSocket(page, key) {
     const response = await fetch('/api/realtime/ticket', { method: 'POST', cache: 'no-store' })
     if (!response.ok) throw new Error(`ticket_http_${response.status}`)
     const payload = await response.json()
-    const url = new URL(payload.websocketUrl)
+    const url = new URL(payload.webSocketUrl)
     url.searchParams.set('ticket', payload.ticket)
     const socket = new WebSocket(url.toString())
     globalThis[`__realtime_${key}_signals`] = []
@@ -90,7 +90,7 @@ async function openProbeSocket(page, key) {
       socket.onopen = () => { clearTimeout(timer); resolve() }
       socket.onerror = () => { clearTimeout(timer); reject(new Error('websocket_open_error')) }
     })
-    return { websocketUrl: payload.websocketUrl, expiresAt: payload.expiresAt }
+    return { webSocketUrl: payload.webSocketUrl, expiresAt: payload.expiresAt }
   }, { key })
 }
 
@@ -110,7 +110,7 @@ async function connectProbeJourney() {
     let result = 'opened'
     try {
       const ticket = await openProbeSocket(senderPage, 'connect_probe')
-      assert.match(ticket.websocketUrl, /^wss:/)
+      assert.match(ticket.webSocketUrl, /^wss:/)
       await closeProbeSocket(senderPage, 'connect_probe')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown_error'
@@ -150,11 +150,11 @@ async function realtimeJourney() {
 
     const senderTicket = await openProbeSocket(senderPage, 'sender')
     const recipientTicket = await openProbeSocket(recipientPage, 'recipient')
-    assert.match(senderTicket.websocketUrl, /^wss:/)
-    assert.equal(senderTicket.websocketUrl, recipientTicket.websocketUrl)
+    assert.match(senderTicket.webSocketUrl, /^wss:/)
+    assert.equal(senderTicket.webSocketUrl, recipientTicket.webSocketUrl)
 
-    const malformedRejected = await anonymousPage.evaluate(async (websocketUrl) => {
-      const url = new URL(websocketUrl)
+    const malformedRejected = await anonymousPage.evaluate(async (webSocketUrl) => {
+      const url = new URL(webSocketUrl)
       url.searchParams.set('ticket', 'malformed-ticket')
       return await new Promise((resolve) => {
         const socket = new WebSocket(url.toString())
@@ -163,7 +163,7 @@ async function realtimeJourney() {
         socket.onerror = () => {}
         socket.onclose = () => { clearTimeout(timer); resolve(true) }
       })
-    }, senderTicket.websocketUrl)
+    }, senderTicket.webSocketUrl)
     assert.equal(malformedRejected, true)
     console.log('REALTIME_E2E_MALFORMED_TICKET_REJECTED=true')
 
