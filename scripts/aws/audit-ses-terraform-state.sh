@@ -10,6 +10,9 @@ STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"
 STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 SES_CONFIGURATION_SET="sea-n-shore-staging-transactional"
 SES_DOMAIN="seaandshore.in"
+SES_IDENTITY_ARN="arn:aws:ses:ap-south-1:310356785722:identity/seaandshore.in"
+SES_IDENTITY_POLICY_NAME="sea-n-shore-staging-cognito-sender"
+COGNITO_USER_POOL_ARN="arn:aws:cognito-idp:ap-south-1:310356785722:userpool/ap-south-1_FKyi5lJsY"
 
 [[ "${SES_TERRAFORM_STATE_AUDIT_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "SES_TERRAFORM_STATE_AUDIT_EXPECTED_SHA must be an exact commit SHA." >&2
@@ -74,6 +77,41 @@ else
     cat "$WORK_DIR/identity.err" >&2
     exit 1
   fi
+fi
+
+aws ses get-identity-policies \
+  --region "$AWS_REGION" \
+  --identity "$SES_DOMAIN" \
+  --policy-names "$SES_IDENTITY_POLICY_NAME" \
+  --output json > "$WORK_DIR/identity-policies.json"
+LIVE_POLICY="$(jq -r --arg name "$SES_IDENTITY_POLICY_NAME" '.Policies[$name] // empty' "$WORK_DIR/identity-policies.json")"
+if [[ -n "$LIVE_POLICY" ]]; then
+  echo "SES_IDENTITY_POLICY_LIVE_EXISTS=true"
+  printf '%s\n' "$LIVE_POLICY" | jq . > "$WORK_DIR/live-identity-policy.json"
+  if jq -e \
+    --arg account "$EXPECTED_ACCOUNT" \
+    --arg source "$COGNITO_USER_POOL_ARN" \
+    --arg identity "$SES_IDENTITY_ARN" '
+      def as_array: if type == "array" then . else [.] end;
+      (.Statement | as_array) as $statements |
+      ($statements | length) == 1 and
+      ($statements[0] as $s |
+        $s.Sid == "AuthorizeSeaNShoreCognito" and
+        $s.Effect == "Allow" and
+        (($s.Action | as_array | sort) == (["SES:SendEmail", "SES:SendRawEmail"] | sort)) and
+        (($s.Resource | as_array) == [$identity]) and
+        (($s.Principal.Service | as_array) == ["email.cognito-idp.amazonaws.com"]) and
+        (((($s.Condition.StringEquals["aws:SourceAccount"] // $s.Condition.StringEquals["AWS:SourceAccount"]) | as_array)) == [$account]) and
+        (((($s.Condition.ArnLike["aws:SourceArn"] // $s.Condition.ArnLike["AWS:SourceArn"]) | as_array)) == [$source])
+      )
+    ' "$WORK_DIR/live-identity-policy.json" >/dev/null; then
+    echo "SES_IDENTITY_POLICY_LIVE_MATCHES_DESIRED=true"
+  else
+    echo "SES_IDENTITY_POLICY_LIVE_MATCHES_DESIRED=false"
+  fi
+else
+  echo "SES_IDENTITY_POLICY_LIVE_EXISTS=false"
+  echo "SES_IDENTITY_POLICY_LIVE_MATCHES_DESIRED=false"
 fi
 
 echo "SES_TERRAFORM_STATE_AUDIT_READ_ONLY=true"
