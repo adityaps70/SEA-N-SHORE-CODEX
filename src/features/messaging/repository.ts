@@ -153,7 +153,14 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
        set last_message_id = $2,
            last_message_at = $3
        where id = $1
-         and (last_message_at is null or last_message_at <= $3::timestamptz)`,
+         and (
+           last_message_at is null
+           or last_message_at < $3::timestamptz
+           or (
+             last_message_at = $3::timestamptz
+             and (last_message_id is null or last_message_id < $2::uuid)
+           )
+         )`,
       [conversationId, messageId, createdAt],
     )
   }
