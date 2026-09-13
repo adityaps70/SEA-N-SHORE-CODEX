@@ -1,6 +1,6 @@
 name: AWS Realtime Messaging Infrastructure
 
-# Guarded push retrigger: re-plan after Aurora and media IAM state prerequisites are reconciled; the action file remains authoritative.
+# Guarded push retrigger: re-plan after SES identity state reconciliation; the action file remains authoritative.
 on:
   push:
     branches:
