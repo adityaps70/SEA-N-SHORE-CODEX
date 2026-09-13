@@ -23,6 +23,8 @@ const inbox = [
     lastMessageBody: 'Joining instructions received.',
     lastMessageSenderId: OTHER_ID,
     lastMessageAt: '2026-09-13T02:00:00.000Z',
+    otherLastReadMessageId: null,
+    otherLastReadAt: null,
     unread: true,
   },
   {
@@ -35,6 +37,8 @@ const inbox = [
     lastMessageBody: null,
     lastMessageSenderId: null,
     lastMessageAt: null,
+    otherLastReadMessageId: null,
+    otherLastReadAt: null,
     unread: false,
   },
 ]
@@ -45,6 +49,8 @@ const activeConversation = {
   otherName: 'Capt. Meera Nair',
   otherHeadline: 'Master Mariner | Tanker Operations',
   otherAvatarUrl: null,
+  otherLastReadMessageId: null,
+  otherLastReadAt: null,
   messages: [
     {
       id: '77777777-7777-4777-8777-777777777777',
