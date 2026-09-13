@@ -103,7 +103,7 @@ case "$PHASE" in
     [[ -n "$MESSAGE_BODY" ]]
     LOG_HITS=$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name /aws/lambda/sea-n-shore-staging-realtime-fanout --start-time "$(date -u -d "$START" +%s)000" --filter-pattern "\"$MESSAGE_BODY\"" --query 'events | length(@)' --output text || echo 0)
     [[ "$LOG_HITS" == 0 ]]
-    jq -e '.Attributes.ApproximateNumberOfMessages | tonumber >= 0 and (.Attributes.ApproximateNumberOfMessagesNotVisible | tonumber) >= 0' <<<"$MAIN_ATTR" >/dev/null
+    jq -e '(.Attributes.ApproximateNumberOfMessages | tonumber) >= 0 and (.Attributes.ApproximateNumberOfMessagesNotVisible | tonumber) >= 0' <<<"$MAIN_ATTR" >/dev/null
     echo 'REALTIME_E2E_INFRA_HEALTH_VERIFIED=true'
     ;;
   cleanup)
