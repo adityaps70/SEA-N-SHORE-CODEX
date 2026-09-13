@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const terraform = await readFile(new URL('../../infra/aws/app/realtime.tf', import.meta.url), 'utf8')
+const mainTerraform = await readFile(new URL('../../infra/aws/app/main.tf', import.meta.url), 'utf8')
 
 test('realtime messaging uses API Gateway WebSocket with ephemeral DynamoDB connections', () => {
   assert.match(terraform, /resource "aws_apigatewayv2_api" "realtime"/)
@@ -49,11 +50,17 @@ test('realtime Lambdas are split by responsibility and fanout can only manage We
   assert.match(terraform, /"dynamodb:DeleteItem"/)
 })
 
-test('the ticket signing secret is generated, stored in Secrets Manager and scoped to web plus authorizer', () => {
+test('the ticket signing secret is generated and scoped to web plus authorizer', () => {
   assert.match(terraform, /resource "random_password" "realtime_ticket"/)
   assert.match(terraform, /resource "aws_secretsmanager_secret" "realtime_ticket"/)
   assert.match(terraform, /resource "aws_secretsmanager_secret_version" "realtime_ticket"/)
-  assert.match(terraform, /REALTIME_TICKET_SECRET/)
   assert.match(terraform, /secretsmanager:GetSecretValue/)
-  assert.match(terraform, /REALTIME_WEBSOCKET_URL/)
+  assert.match(mainTerraform, /name\s*=\s*"REALTIME_WEBSOCKET_URL"\s*,\s*value\s*=\s*local\.realtime_websocket_url/)
+  assert.match(mainTerraform, /name\s*=\s*"REALTIME_TICKET_SECRET"[\s\S]*?valueFrom\s*=\s*aws_secretsmanager_secret\.realtime_ticket\.arn/)
+  assert.match(mainTerraform, /aws_iam_role_policy\.ecs_execution_realtime_ticket_secret/)
+})
+
+test('archive and random providers are pinned in the single app provider configuration', () => {
+  assert.match(mainTerraform, /archive\s*=\s*\{[\s\S]*?source\s*=\s*"hashicorp\/archive"[\s\S]*?version\s*=\s*"~> 2\.7"/)
+  assert.match(mainTerraform, /random\s*=\s*\{[\s\S]*?source\s*=\s*"hashicorp\/random"[\s\S]*?version\s*=\s*"~> 3\.7"/)
 })
