@@ -92,6 +92,15 @@ export function latestCanonicalCursor(messages: MessagingThreadItem[]): Messagin
   return latest
 }
 
+export function laterReadCursor(
+  current: MessagingReadCursor | null,
+  candidate: MessagingReadCursor | null,
+) {
+  if (!candidate) return current
+  if (!current || compareCursor(current, candidate) < 0) return candidate
+  return current
+}
+
 export function isMessageSeen(
   message: MessagingMessageDto,
   peerCursor: MessagingReadCursor | null,
