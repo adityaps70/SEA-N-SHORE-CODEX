@@ -35,7 +35,7 @@ describe('realtime messaging canonical catch-up', () => {
       limit: 51,
     })
 
-    const [sql, values] = query.mock.calls[0] as QueryCall
+    const [sql, values] = query.mock.calls[0] as unknown as QueryCall
     const text = sql.toLowerCase()
     expect(text).toContain('from public.messages')
     expect(text).toContain('conversation_participants')
