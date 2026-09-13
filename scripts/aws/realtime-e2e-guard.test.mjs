@@ -8,9 +8,10 @@ const browserPath = 'scripts/aws/realtime-staging-e2e.mjs'
 const ssmPath = 'scripts/aws/realtime-e2e-ssm.mjs'
 const remotePath = 'scripts/aws/realtime-e2e-remote.sh'
 
-test('realtime e2e is branch-scoped and guarded by plan or run-once', () => {
+test('realtime e2e is branch-scoped and guarded by plan, run-once, or targeted cleanup-once', () => {
   assert.equal(existsSync(actionPath), true)
-  assert.ok(['plan', 'run-once'].includes(readFileSync(actionPath, 'utf8').trim()))
+  const action = readFileSync(actionPath, 'utf8').trim()
+  assert.ok(action === 'plan' || action === 'run-once' || /^cleanup-once:[0-9]+$/.test(action))
   for (const path of [workflowPath, browserPath, ssmPath, remotePath]) {
     assert.equal(existsSync(path), true, `${path} must exist`)
   }
@@ -18,6 +19,8 @@ test('realtime e2e is branch-scoped and guarded by plan or run-once', () => {
   assert.match(workflow, /feat\/aws-native-phase-0-1/)
   assert.match(workflow, /realtime-e2e-action\.txt/)
   assert.match(workflow, /run-once/)
+  assert.match(workflow, /cleanup-once:/)
+  assert.match(workflow, /cleanup_source_run_id/)
   assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
   assert.match(workflow, /Guard push E2E against a moved branch/)
   assert.match(workflow, /environment:\s*staging/)
@@ -74,4 +77,16 @@ test('realtime e2e cleanup is unconditional, missing-table resilient, and constr
   assert.ok(messagingCleanupEnd >= 0 && connectionCleanup > messagingCleanupEnd, 'connection cleanup must proceed independently of messaging table presence')
   assert.match(remote, /admin-delete-user/)
   assert.match(remote, /REALTIME_E2E_CLEANUP_VERIFIED=true/)
+})
+
+test('realtime cleanup-only mode targets a prior disposable run without signup or onboarding', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  assert.match(workflow, /realtime-cleanup:/)
+  assert.match(workflow, /needs\.guard\.outputs\.run_cleanup == 'true'/)
+  assert.match(workflow, /E2E_SENDER_EMAIL=sea-n-shore-realtime-e2e-\$\{SOURCE_RUN_ID\}-sender@example\.com/)
+  assert.match(workflow, /E2E_RECIPIENT_EMAIL=sea-n-shore-realtime-e2e-\$\{SOURCE_RUN_ID\}-recipient@example\.com/)
+  assert.match(workflow, /node scripts\/aws\/realtime-e2e-ssm\.mjs cleanup/)
+  const cleanupJob = workflow.slice(workflow.indexOf('realtime-cleanup:'))
+  assert.doesNotMatch(cleanupJob, /E2E_PHASE=signup/)
+  assert.doesNotMatch(cleanupJob, /E2E_PHASE=onboarding/)
 })
