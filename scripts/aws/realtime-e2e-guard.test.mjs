@@ -8,12 +8,13 @@ const browserPath = 'scripts/aws/realtime-staging-e2e.mjs'
 const ssmPath = 'scripts/aws/realtime-e2e-ssm.mjs'
 const remotePath = 'scripts/aws/realtime-e2e-remote.sh'
 
-test('realtime e2e is branch-scoped and guarded by plan, run-once, targeted cleanup-once, or read-only connect diagnosis', () => {
+test('realtime e2e is branch-scoped and guarded by plan, run-once, bounded connect probe, targeted cleanup-once, or read-only connect diagnosis', () => {
   assert.equal(existsSync(actionPath), true)
   const action = readFileSync(actionPath, 'utf8').trim()
   assert.ok(
     action === 'plan'
       || action === 'run-once'
+      || action === 'probe-connect-once'
       || /^cleanup-once:[0-9]+$/.test(action)
       || /^diagnose-connect-once:[0-9]+$/.test(action),
   )
@@ -24,8 +25,10 @@ test('realtime e2e is branch-scoped and guarded by plan, run-once, targeted clea
   assert.match(workflow, /feat\/aws-native-phase-0-1/)
   assert.match(workflow, /realtime-e2e-action\.txt/)
   assert.match(workflow, /run-once/)
+  assert.match(workflow, /probe-connect-once/)
   assert.match(workflow, /cleanup-once:/)
   assert.match(workflow, /diagnose-connect-once:/)
+  assert.match(workflow, /run_probe/)
   assert.match(workflow, /cleanup_source_run_id/)
   assert.match(workflow, /diagnostic_source_run_id/)
   assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
@@ -64,6 +67,24 @@ test('realtime e2e proves canonical message and read-cursor fanout over authenti
   assert.match(remote, /REALTIME_E2E_DURABLE_MESSAGE_VERIFIED=true/)
   assert.match(remote, /REALTIME_E2E_INFRA_HEALTH_VERIFIED=true/)
   assert.match(workflow, /npx playwright install --with-deps chromium/)
+})
+
+test('realtime authenticated connect probe is narrow, exact-head gated, and always cleaned up', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browser = readFileSync(browserPath, 'utf8')
+  assert.match(workflow, /realtime-connect-probe:/)
+  assert.match(workflow, /needs\.guard\.outputs\.run_probe == 'true'/)
+  assert.match(workflow, /E2E_PHASE=connect-probe node scripts\/aws\/realtime-staging-e2e\.mjs/)
+  assert.match(workflow, /Cleanup disposable Realtime connect probe data[\s\S]*if:\s*always\(\)/)
+  assert.match(browser, /'connect-probe'/)
+  assert.match(browser, /REALTIME_E2E_CONNECT_PROBE_RESULT=/)
+  assert.match(browser, /openProbeSocket\(senderPage, 'connect_probe'\)/)
+
+  const probeJobStart = workflow.indexOf('realtime-connect-probe:')
+  const nextJobStart = workflow.indexOf('\n  realtime-cleanup:', probeJobStart)
+  assert.ok(probeJobStart >= 0 && nextJobStart > probeJobStart, 'connect probe job must be independently bounded')
+  const probeJob = workflow.slice(probeJobStart, nextJobStart)
+  assert.doesNotMatch(probeJob, /verify-durable|verify-infra|E2E_PHASE=realtime|Prepare accepted disposable connection and conversation/)
 })
 
 test('realtime e2e cleanup is unconditional, missing-table resilient, and constrained to disposable identities', () => {
