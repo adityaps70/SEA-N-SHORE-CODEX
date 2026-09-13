@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const PROFILE_ID = '11111111-1111-4111-8111-111111111111'
 const TICKET = 'payload.signature'
 const EXPIRES_AT = '2026-09-13T09:31:00.000Z'
+const WEBSOCKET_URL = 'wss://example.execute-api.ap-south-1.amazonaws.com/staging'
 
 const auth = vi.hoisted(() => {
   class AwsAuthenticationRequiredError extends Error {
@@ -37,6 +38,7 @@ describe('POST /api/realtime/ticket', () => {
     vi.resetModules()
     vi.clearAllMocks()
     process.env.REALTIME_TICKET_SECRET = '0123456789abcdef0123456789abcdef'
+    process.env.REALTIME_WEBSOCKET_URL = WEBSOCKET_URL
 
     auth.requireAwsUser.mockResolvedValue({
       id: PROFILE_ID,
@@ -55,7 +57,11 @@ describe('POST /api/realtime/ticket', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('cache-control')).toBe('private, no-store')
-    expect(await response.json()).toEqual({ ticket: TICKET, expiresAt: EXPIRES_AT })
+    expect(await response.json()).toEqual({
+      ticket: TICKET,
+      expiresAt: EXPIRES_AT,
+      websocketUrl: WEBSOCKET_URL,
+    })
     expect(realtime.createRealtimeTicketCodec).toHaveBeenCalledWith({
       secret: process.env.REALTIME_TICKET_SECRET,
       audience: 'sea-n-shore-realtime',
