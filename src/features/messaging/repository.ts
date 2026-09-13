@@ -244,7 +244,14 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
            last_read_at = $4::timestamptz
        where conversation_id = $1
          and profile_id = $2
-         and (last_read_at is null or last_read_at < $4::timestamptz)
+         and (
+           last_read_at is null
+           or last_read_at < $4::timestamptz
+           or (
+             last_read_at = $4::timestamptz
+             and (last_read_message_id is null or last_read_message_id < $3::uuid)
+           )
+         )
        returning true as advanced`,
       [conversationId, profileId, messageId, createdAt],
     ) as AdvancedRow[]
@@ -264,10 +271,18 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
               c.last_message_at,
               mine.last_read_message_id,
               mine.last_read_at,
+              other.last_read_message_id as other_last_read_message_id,
+              other.last_read_at as other_last_read_at,
               case
                 when c.last_message_at is null then false
                 when mine.last_read_at is null then true
-                else c.last_message_at > mine.last_read_at
+                when c.last_message_at > mine.last_read_at then true
+                when c.last_message_at = mine.last_read_at
+                  and (
+                    mine.last_read_message_id is null
+                    or c.last_message_id > mine.last_read_message_id
+                  ) then true
+                else false
               end as unread
        from public.conversation_participants mine
        join public.conversations c on c.id = mine.conversation_id
@@ -290,7 +305,17 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
        join public.conversations c on c.id = mine.conversation_id
        where mine.profile_id = $1
          and c.last_message_at is not null
-         and (mine.last_read_at is null or c.last_message_at > mine.last_read_at)`,
+         and (
+           mine.last_read_at is null
+           or c.last_message_at > mine.last_read_at
+           or (
+             c.last_message_at = mine.last_read_at
+             and (
+               mine.last_read_message_id is null
+               or c.last_message_id > mine.last_read_message_id
+             )
+           )
+         )`,
       [viewerProfileId],
     ) as CountRow[]
     return Number(rows[0]?.count ?? 0)
