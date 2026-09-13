@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ArrowUpRight, MapPin, Ship } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import type { NetworkProfile } from '../types'
 import { RelationshipControls } from './relationship-controls'
 
@@ -53,6 +54,9 @@ export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
 
       <div className="mt-auto pt-5">
         <RelationshipControls key={relationshipKey} profileId={profile.id} initialRelationship={profile.relationship} />
+        {profile.relationship.connection.kind === 'connected' ? (
+          <StartConversationButton targetProfileId={profile.id} className="mt-3" />
+        ) : null}
         <Link href={`/people/${profile.slug}`} className="mt-3 inline-flex min-h-10 w-full items-center justify-between rounded-xl border border-mist-100 px-3 text-sm font-semibold text-navy-900 hover:border-ocean-500 hover:text-ocean-700">
           View professional profile
           <ArrowUpRight aria-hidden="true" className="size-4" />
