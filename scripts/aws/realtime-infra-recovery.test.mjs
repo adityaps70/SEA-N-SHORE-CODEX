@@ -14,6 +14,29 @@ describe('realtime infrastructure partial-apply recovery', () => {
     expect(runner).not.toMatch(/web_task\s*=\s*attrs\('aws_ecs_task_definition',\s*'web'\)/)
   })
 
+  it('omits unrelated web task drift from maintenance targets once realtime infrastructure is tracked', () => {
+    const completeState = {
+      resources: classifier.REALTIME_INFRA_CREATE_RESOURCES.map((address) => {
+        const [type, name] = address.split('.')
+        return { type, name, mode: 'managed', instances: [{}] }
+      }),
+    }
+
+    expect(classifier.resolveRealtimeInfraTargets(completeState)).toEqual(
+      classifier.REALTIME_INFRA_CREATE_RESOURCES,
+    )
+
+    const incompleteState = {
+      resources: completeState.resources.slice(0, -1),
+    }
+    expect(classifier.resolveRealtimeInfraTargets(incompleteState)).toEqual([
+      ...classifier.REALTIME_INFRA_CREATE_RESOURCES,
+      classifier.REALTIME_WEB_TASK_RESOURCE,
+    ])
+
+    expect(runner).toContain('done < <(node "$PLAN_CLASSIFIER" targets "$WORK_DIR/state.json")')
+  })
+
   it('surfaces the residual non-no-op plan before the fail-closed classifier runs', () => {
     const diagnostic = `jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}]' "$WORK_DIR/plan.json"`
     const diagnosticIndex = runner.indexOf(diagnostic)
