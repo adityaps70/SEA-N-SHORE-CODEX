@@ -64,4 +64,40 @@ describe('realtime infrastructure partial-apply recovery', () => {
       resource_changes: recoveryPlan.resource_changes.slice(0, -1),
     }, 'apply-once')).toThrow()
   })
+
+  it('allows only a singleton realtime authorizer Lambda update as maintenance', () => {
+    const maintenancePlan = {
+      resource_changes: [
+        {
+          address: 'aws_lambda_function.realtime_authorizer',
+          mode: 'managed',
+          change: { actions: ['update'] },
+        },
+      ],
+    }
+
+    expect(classifier.classifyRealtimeInfraPlan(maintenancePlan, 'plan')).toEqual({
+      mode: 'maintenance',
+      createCount: 0,
+      updateCount: 1,
+      replaceCount: 0,
+    })
+    expect(classifier.classifyRealtimeInfraPlan(maintenancePlan, 'apply-once')).toEqual({
+      mode: 'maintenance',
+      createCount: 0,
+      updateCount: 1,
+      replaceCount: 0,
+    })
+
+    expect(() => classifier.classifyRealtimeInfraPlan({
+      resource_changes: [
+        ...maintenancePlan.resource_changes,
+        {
+          address: 'aws_lambda_function.realtime_connection',
+          mode: 'managed',
+          change: { actions: ['update'] },
+        },
+      ],
+    }, 'apply-once')).toThrow()
+  })
 })
