@@ -43,6 +43,7 @@ function makeMessagingRepository(overrides: Record<string, unknown> = {}) {
     insertDirectConversation: vi.fn(async () => CONVERSATION_ID),
     isParticipant: vi.fn(async () => true),
     findOtherParticipantId: vi.fn(async () => TARGET_ID),
+    listParticipantIds: vi.fn(async () => [VIEWER_ID, TARGET_ID]),
     findMessageByClientId: vi.fn(async () => null),
     insertMessage: vi.fn(async () => message()),
     updateConversationLastMessage: vi.fn(async () => undefined),
@@ -325,7 +326,7 @@ describe('messaging authorization and durability service', () => {
     expect(wrongConversation.messaging.advanceReadState).not.toHaveBeenCalled()
   })
 
-  it('delegates a monotonic read-state advance after authorization', async () => {
+  it('emits one durable read-cursor event only after the cursor actually advances', async () => {
     const context = await service()
 
     await expect(
@@ -338,6 +339,36 @@ describe('messaging authorization and durability service', () => {
       MESSAGE_ID,
       '2026-09-13T00:01:00.000Z',
     )
+    expect(context.messaging.listParticipantIds).toHaveBeenCalledWith(CONVERSATION_ID)
+    expect(context.outbox.enqueue).toHaveBeenCalledTimes(1)
+    expect(context.outbox.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      aggregateType: 'conversation',
+      aggregateId: CONVERSATION_ID,
+      eventType: 'conversation.read_cursor_advanced',
+      schemaVersion: 1,
+      occurredAt: '2026-09-13T00:01:00.000Z',
+      payload: {
+        eventType: 'conversation.read_cursor_advanced',
+        conversationId: CONVERSATION_ID,
+        readerProfileId: VIEWER_ID,
+        lastReadMessageId: MESSAGE_ID,
+        lastReadAt: '2026-09-13T00:01:00.000Z',
+        participantProfileIds: [VIEWER_ID, TARGET_ID],
+      },
+    }))
+  })
+
+  it('does not emit a read-cursor event when the durable cursor did not advance', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({ advanceReadState: vi.fn(async () => false) }),
+    })
+
+    await expect(
+      context.service.markConversationRead(VIEWER_ID, CONVERSATION_ID, MESSAGE_ID),
+    ).resolves.toBe(false)
+
+    expect(context.messaging.listParticipantIds).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
   })
 
   it('does not let an unrelated profile become a participant through send or read operations', async () => {
