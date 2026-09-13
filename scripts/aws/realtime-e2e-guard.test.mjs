@@ -84,6 +84,26 @@ test('realtime infra health SQS jq filter preserves the root object for both que
   assert.equal(result.status, 0, result.stderr || result.stdout)
 })
 
+test('realtime infra health emits bounded numeric diagnostics without weakening zero-failure thresholds', () => {
+  const remote = readFileSync(remotePath, 'utf8')
+  for (const marker of [
+    'REALTIME_INFRA_DIAG_DYNAMODB_CONNECTIONS=',
+    'REALTIME_INFRA_DIAG_MAIN_QUEUE_VISIBLE=',
+    'REALTIME_INFRA_DIAG_MAIN_QUEUE_NOT_VISIBLE=',
+    'REALTIME_INFRA_DIAG_DLQ_VISIBLE=',
+    'REALTIME_INFRA_DIAG_LAMBDA_ERRORS=',
+    'REALTIME_INFRA_DIAG_LAMBDA_THROTTLES=',
+    'REALTIME_INFRA_DIAG_FANOUT_BODY_LOG_HITS=',
+  ]) {
+    assert.match(remote, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+  assert.match(remote, /\[\[ "\$DLQ_VISIBLE" == 0 \]\]/)
+  assert.match(remote, /\[\[ "\$SUM" == 0 \]\]/)
+  assert.match(remote, /\[\[ "\$LOG_HITS" == 0 \]\]/)
+  assert.doesNotMatch(remote, /REALTIME_INFRA_DIAG_.*MESSAGE_BODY/)
+  assert.doesNotMatch(remote, /REALTIME_INFRA_DIAG_.*SECRET/)
+})
+
 test('realtime authenticated connect probe is narrow, exact-head gated, and always cleaned up', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browser = readFileSync(browserPath, 'utf8')
