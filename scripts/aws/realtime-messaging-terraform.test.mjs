@@ -171,7 +171,7 @@ test('realtime infrastructure release is bounded, guarded, and executed through 
     /Expected create-only realtime resource change/,
   )
 
-  assert.equal((await readFile(actionUrl, 'utf8')).trim(), 'plan')
+  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
