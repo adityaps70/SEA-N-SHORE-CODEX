@@ -310,7 +310,7 @@ resource "aws_lambda_function" "realtime_authorizer" {
     variables = {
       REALTIME_TICKET_AUDIENCE   = local.realtime_ticket_audience
       REALTIME_TICKET_SECRET_ARN = aws_secretsmanager_secret.realtime_ticket.arn
-      REALTIME_ALLOWED_ORIGIN    = var.site_url
+      REALTIME_ALLOWED_ORIGIN    = "https://${aws_cloudfront_distribution.app.domain_name}"
     }
   }
 
