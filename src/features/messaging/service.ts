@@ -89,7 +89,7 @@ export function createMessagingService(input: { withTransaction: MessagingTransa
         const createdAt = iso(message.created_at)
         await messaging.updateConversationLastMessage(data.conversationId, message.id, createdAt)
 
-        const participantIds = await messaging.listParticipantIds?.(data.conversationId) ?? []
+        const participantIds = await messaging.listParticipantIds(data.conversationId)
         const recipientProfileIds = participantIds.filter((profileId) => profileId !== actorId)
         const event: DomainEvent = {
           id: randomUUID(),
@@ -112,18 +112,41 @@ export function createMessagingService(input: { withTransaction: MessagingTransa
     },
 
     async markConversationRead(actorId: string, conversationId: string, messageId: string) {
-      return input.withTransaction(async ({ messaging }) => {
+      return input.withTransaction(async ({ messaging, outbox }) => {
         if (!await messaging.isParticipant(actorId, conversationId)) {
           error('messaging_not_participant')
         }
         const message = await messaging.findMessageInConversation(conversationId, messageId)
         if (!message) error('messaging_message_not_found')
-        return messaging.advanceReadState(
+
+        const lastReadAt = iso(message.created_at)
+        const advanced = await messaging.advanceReadState(
           actorId,
           conversationId,
           messageId,
-          iso(message.created_at),
+          lastReadAt,
         )
+        if (!advanced) return false
+
+        const participantProfileIds = await messaging.listParticipantIds(conversationId)
+        const event: DomainEvent = {
+          id: randomUUID(),
+          aggregateType: 'conversation',
+          aggregateId: conversationId,
+          eventType: 'conversation.read_cursor_advanced',
+          schemaVersion: 1,
+          occurredAt: lastReadAt,
+          payload: {
+            eventType: 'conversation.read_cursor_advanced',
+            conversationId,
+            readerProfileId: actorId,
+            lastReadMessageId: messageId,
+            lastReadAt,
+            participantProfileIds,
+          },
+        }
+        await outbox.enqueue(event)
+        return true
       })
     },
   }
