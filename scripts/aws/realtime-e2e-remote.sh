@@ -108,7 +108,7 @@ case "$PHASE" in
         Errors) echo "REALTIME_INFRA_DIAG_LAMBDA_ERRORS=$SUM" ;;
         Throttles) echo "REALTIME_INFRA_DIAG_LAMBDA_THROTTLES=$SUM" ;;
       esac
-      [[ "$SUM" == 0 ]]
+      jq -e --arg sum "$SUM" '($sum | tonumber) == 0' <<<null >/dev/null
     done
     [[ -n "$MESSAGE_BODY" ]]
     LOG_HITS=$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name /aws/lambda/sea-n-shore-staging-realtime-fanout --start-time "$(date -u -d "$START" +%s)000" --filter-pattern "\"$MESSAGE_BODY\"" --query 'events | length(@)' --output text || echo 0)
