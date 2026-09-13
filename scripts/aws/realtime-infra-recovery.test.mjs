@@ -10,4 +10,14 @@ describe('realtime infrastructure partial-apply recovery', () => {
     expect(runner).toMatch(/python3 - "\$WORK_DIR\/state\.json" "\$WORK_DIR\/service-task-before\.json" "\$WORK_DIR\/variables\.json"/)
     expect(runner).not.toMatch(/web_task\s*=\s*attrs\('aws_ecs_task_definition',\s*'web'\)/)
   })
+
+  it('surfaces the residual non-no-op plan before the fail-closed classifier runs', () => {
+    const diagnostic = `jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}]' "$WORK_DIR/plan.json"`
+    const diagnosticIndex = runner.indexOf(diagnostic)
+    const classifierIndex = runner.indexOf('CLASSIFICATION="$(node "$PLAN_CLASSIFIER" "$WORK_DIR/plan.json" "$ACTION")"')
+
+    expect(diagnosticIndex).toBeGreaterThan(-1)
+    expect(classifierIndex).toBeGreaterThan(-1)
+    expect(diagnosticIndex).toBeLessThan(classifierIndex)
+  })
 })
