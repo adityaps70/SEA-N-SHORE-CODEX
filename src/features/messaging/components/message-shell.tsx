@@ -1,8 +1,16 @@
 'use client'
 
 import { MessageCircleMore } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useMessagingRealtime } from '@/features/realtime/provider'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
+import {
+  fetchConversationCatchUp,
+  laterReadCursor,
+  latestCanonicalCursor,
+  mergeCanonicalMessages,
+  type MessagingReadCursor,
+} from '../thread-realtime'
 import { ConversationList } from './conversation-list'
 import { MessageComposer, type OptimisticMessagingMessage } from './message-composer'
 import { MessageThread, type MessageThreadItem } from './message-thread'
@@ -13,8 +21,18 @@ export type MessagingActiveConversation = {
   otherName: string | null
   otherHeadline: string | null
   otherAvatarUrl: string | null
+  otherLastReadMessageId: string | null
+  otherLastReadAt: string | null
   messages: MessagingMessageDto[]
   nextCursor: { createdAt: string; id: string } | null
+}
+
+function peerCursorFromConversation(conversation: MessagingActiveConversation): MessagingReadCursor | null {
+  if (!conversation.otherLastReadMessageId || !conversation.otherLastReadAt) return null
+  return {
+    createdAt: conversation.otherLastReadAt,
+    id: conversation.otherLastReadMessageId,
+  }
 }
 
 function ActiveConversationWorkspace({
@@ -24,23 +42,99 @@ function ActiveConversationWorkspace({
   viewerId: string
   conversation: MessagingActiveConversation
 }) {
+  const { subscribe } = useMessagingRealtime()
   const [messages, setMessages] = useState<MessageThreadItem[]>(conversation.messages)
+  const [peerReadCursor, setPeerReadCursor] = useState<MessagingReadCursor | null>(
+    peerCursorFromConversation(conversation),
+  )
+  const messagesRef = useRef<MessageThreadItem[]>(conversation.messages)
+  const catchUpRunningRef = useRef(false)
+  const catchUpPendingRef = useRef(false)
+
+  function updateMessages(updater: (current: MessageThreadItem[]) => MessageThreadItem[]) {
+    setMessages((current) => {
+      const next = updater(current)
+      messagesRef.current = next
+      return next
+    })
+  }
+
+  useEffect(() => {
+    updateMessages((current) => mergeCanonicalMessages(current, conversation.messages))
+    setPeerReadCursor((current) => laterReadCursor(current, peerCursorFromConversation(conversation)))
+  }, [conversation.messages, conversation.otherLastReadAt, conversation.otherLastReadMessageId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function catchUpActiveConversation() {
+      if (catchUpRunningRef.current) {
+        catchUpPendingRef.current = true
+        return
+      }
+
+      catchUpRunningRef.current = true
+      try {
+        do {
+          catchUpPendingRef.current = false
+          const cursor = latestCanonicalCursor(messagesRef.current)
+          if (!cursor) return
+
+          try {
+            const incoming = await fetchConversationCatchUp(conversation.conversationId, cursor)
+            if (!cancelled && incoming.length) {
+              updateMessages((current) => mergeCanonicalMessages(current, incoming))
+            }
+          } catch {
+            // The global realtime provider also refreshes canonical server props.
+            // Direct catch-up is an acceleration path, never the source of truth.
+          }
+        } while (!cancelled && catchUpPendingRef.current)
+      } finally {
+        catchUpRunningRef.current = false
+      }
+    }
+
+    const unsubscribe = subscribe((signal) => {
+      if (signal.payload.conversationId !== conversation.conversationId) return
+
+      if (signal.eventType === 'message.created') {
+        void catchUpActiveConversation()
+        return
+      }
+
+      if (
+        signal.eventType === 'conversation.read_cursor_advanced'
+        && signal.payload.readerProfileId === conversation.otherProfileId
+      ) {
+        setPeerReadCursor((current) => laterReadCursor(current, {
+          createdAt: signal.payload.lastReadAt,
+          id: signal.payload.lastReadMessageId,
+        }))
+      }
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [conversation.conversationId, conversation.otherProfileId, subscribe]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function addOptimistic(message: OptimisticMessagingMessage) {
-    setMessages((current) => {
+    updateMessages((current) => {
       const withoutRetry = current.filter((item) => item.clientMessageId !== message.clientMessageId)
       return [...withoutRetry, message]
     })
   }
 
   function confirmMessage(clientMessageId: string, canonical: MessagingMessageDto) {
-    setMessages((current) => current.map((message) => (
+    updateMessages((current) => current.map((message) => (
       message.clientMessageId === clientMessageId ? canonical : message
     )))
   }
 
   function failMessage(clientMessageId: string, error: string) {
-    setMessages((current) => current.map((message) => {
+    updateMessages((current) => current.map((message) => {
       if (message.clientMessageId !== clientMessageId) return message
       return {
         ...message,
@@ -60,6 +154,7 @@ function ActiveConversationWorkspace({
         otherAvatarUrl={conversation.otherAvatarUrl}
         messages={messages}
         nextCursor={conversation.nextCursor}
+        peerReadCursor={peerReadCursor}
       />
       <MessageComposer
         conversationId={conversation.conversationId}
