@@ -8,10 +8,15 @@ const browserPath = 'scripts/aws/realtime-staging-e2e.mjs'
 const ssmPath = 'scripts/aws/realtime-e2e-ssm.mjs'
 const remotePath = 'scripts/aws/realtime-e2e-remote.sh'
 
-test('realtime e2e is branch-scoped and guarded by plan, run-once, or targeted cleanup-once', () => {
+test('realtime e2e is branch-scoped and guarded by plan, run-once, targeted cleanup-once, or read-only connect diagnosis', () => {
   assert.equal(existsSync(actionPath), true)
   const action = readFileSync(actionPath, 'utf8').trim()
-  assert.ok(action === 'plan' || action === 'run-once' || /^cleanup-once:[0-9]+$/.test(action))
+  assert.ok(
+    action === 'plan'
+      || action === 'run-once'
+      || /^cleanup-once:[0-9]+$/.test(action)
+      || /^diagnose-connect-once:[0-9]+$/.test(action),
+  )
   for (const path of [workflowPath, browserPath, ssmPath, remotePath]) {
     assert.equal(existsSync(path), true, `${path} must exist`)
   }
@@ -20,7 +25,9 @@ test('realtime e2e is branch-scoped and guarded by plan, run-once, or targeted c
   assert.match(workflow, /realtime-e2e-action\.txt/)
   assert.match(workflow, /run-once/)
   assert.match(workflow, /cleanup-once:/)
+  assert.match(workflow, /diagnose-connect-once:/)
   assert.match(workflow, /cleanup_source_run_id/)
+  assert.match(workflow, /diagnostic_source_run_id/)
   assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
   assert.match(workflow, /Guard push E2E against a moved branch/)
   assert.match(workflow, /environment:\s*staging/)
@@ -89,4 +96,21 @@ test('realtime cleanup-only mode targets a prior disposable run without signup o
   const cleanupJob = workflow.slice(workflow.indexOf('realtime-cleanup:'))
   assert.doesNotMatch(cleanupJob, /E2E_PHASE=signup/)
   assert.doesNotMatch(cleanupJob, /E2E_PHASE=onboarding/)
+})
+
+test('realtime connect diagnosis is read-only, exact-head gated, and bounded to prior-run CloudWatch evidence', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const remote = readFileSync(remotePath, 'utf8')
+  assert.match(workflow, /realtime-connect-diagnostic:/)
+  assert.match(workflow, /needs\.guard\.outputs\.run_diagnostic == 'true'/)
+  assert.match(workflow, /SOURCE_RUN_ID:\s*\$\{\{ needs\.guard\.outputs\.diagnostic_source_run_id \}\}/)
+  assert.match(workflow, /node scripts\/aws\/realtime-e2e-ssm\.mjs diagnose-connect/)
+  assert.match(remote, /diagnose-connect\)/)
+  assert.match(remote, /\/aws\/apigateway\/sea-n-shore-staging\/realtime/)
+  assert.match(remote, /\/aws\/lambda\/sea-n-shore-staging-realtime-authorizer/)
+  assert.match(remote, /\/aws\/lambda\/sea-n-shore-staging-realtime-connection/)
+  assert.match(remote, /aws logs filter-log-events/)
+  assert.match(remote, /REALTIME_E2E_CONNECT_DIAGNOSTIC_VERIFIED=true/)
+  const diagnosticCase = remote.slice(remote.indexOf('diagnose-connect)'))
+  assert.doesNotMatch(diagnosticCase, /admin-confirm-sign-up|admin-delete-user|rds-data execute-statement|dynamodb .*put|sqs .*send/i)
 })
