@@ -1,0 +1,49 @@
+import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import test from 'node:test'
+
+test('ECS task Aurora runtime policy has a single-resource guarded Terraform release path', async () => {
+  const scriptUrl = new URL('./ecs-task-aurora-policy.sh', import.meta.url)
+  const actionUrl = new URL('./ecs-task-aurora-policy-action.txt', import.meta.url)
+  const workflowUrl = new URL('../../.github/workflows/aws-ecs-task-aurora-policy.yml', import.meta.url)
+
+  assert.equal(existsSync(scriptUrl), true, 'missing ECS task Aurora policy runner')
+  assert.equal(existsSync(actionUrl), true, 'missing ECS task Aurora policy action guard')
+  assert.equal(existsSync(workflowUrl), true, 'missing ECS task Aurora policy workflow')
+  assert.equal((await readFile(actionUrl, 'utf8')).trim(), 'plan')
+
+  const script = await readFile(scriptUrl, 'utf8')
+  assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
+  assert.match(script, /STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"/)
+  assert.match(script, /RESOURCE="aws_iam_role_policy\.ecs_task_aurora_secret"/)
+  assert.match(script, /ROLE_NAME="sea-n-shore-staging-ecs-task"/)
+  assert.match(script, /POLICY_NAME="sea-n-shore-staging-aurora-secret-runtime"/)
+  assert.match(script, /ecs-task-aurora-policy-action\.txt/)
+  assert.match(script, /plan\|apply-once/)
+  assert.match(script, /terraform[^\n]+plan/)
+  assert.match(script, /-target="\$RESOURCE"/)
+  assert.match(script, /\$changes\[0\]\.address == \$resource/)
+  assert.match(script, /\$changes\[0\]\.change\.actions == \["create"\]/)
+  assert.match(script, /terraform[^\n]+apply/)
+  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /get-bucket-versioning/)
+  assert.match(script, /STATE_BACKUP_VERSION=/)
+  assert.match(script, /aws iam get-role-policy/)
+  assert.match(script, /secretsmanager:GetSecretValue/)
+  assert.match(script, /ECS_TASK_AURORA_POLICY_PLAN_VERIFIED=CREATE_ONLY/)
+  assert.match(script, /ECS_TASK_AURORA_POLICY_APPLY_VERIFIED=true/)
+  assert.doesNotMatch(script, /aws\s+iam\s+put-role-policy/)
+  assert.doesNotMatch(script, /aws\s+ecs\s+update-service/)
+  assert.doesNotMatch(script, /aws\s+ecs\s+register-task-definition/)
+
+  const workflow = await readFile(workflowUrl, 'utf8')
+  assert.match(workflow, /name: AWS ECS Task Aurora Policy/)
+  assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
+  assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+  assert.match(workflow, /role-to-assume: \$\{\{ vars\.AWS_ROLE_TO_ASSUME \}\}/)
+  assert.match(workflow, /aws ssm send-command/)
+  assert.match(workflow, /ECS_TASK_AURORA_POLICY_EXPECTED_SHA/)
+  assert.match(workflow, /bash scripts\/aws\/ecs-task-aurora-policy\.sh/)
+  assert.doesNotMatch(workflow, /terraform\s+-chdir=/)
+})
