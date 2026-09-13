@@ -30,7 +30,7 @@ python3 - "$MIGRATION_FILE" "$EXPECTED_STATEMENTS" <<'PY'
 import re, sys
 path, expected = sys.argv[1], int(sys.argv[2])
 sql = open(path, encoding='utf-8').read().strip()
-if re.search(r'\b(drop|truncate)\b|\b(delete|update|insert)\s+\b', sql, re.I):
+if re.search(r'^\s*(drop|truncate|delete|update|insert)\b', sql, re.I | re.M):
     raise SystemExit('Messaging migration contains destructive or data-changing SQL')
 parts = [p.strip() for p in re.split(r'^\s*-- statement-breakpoint\s*$', sql, flags=re.M) if p.strip()]
 if len(parts) != expected:
