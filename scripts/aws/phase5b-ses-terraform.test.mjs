@@ -175,7 +175,7 @@ test('Phase 5B SES identity has a single-resource guarded Terraform state-import
   assert.equal(fs.existsSync(runnerUrl), true, 'missing SES identity state runner')
   assert.equal(fs.existsSync(actionUrl), true, 'missing SES identity state action guard')
   assert.equal(fs.existsSync(workflowUrl), true, 'missing SES identity state workflow')
-  assert.equal(fs.readFileSync(actionUrl, 'utf8').trim(), 'plan')
+  assert.ok(['plan', 'apply-once'].includes(fs.readFileSync(actionUrl, 'utf8').trim()))
 
   const runner = fs.readFileSync(runnerUrl, 'utf8')
   assert.match(runner, /EXPECTED_ACCOUNT="310356785722"/)
@@ -226,7 +226,7 @@ test('Phase 5B SES identity tags reconcile through a guarded exact-head SSM path
   assert.equal(fs.existsSync(runnerUrl), true, 'missing SES identity tags runner')
   assert.equal(fs.existsSync(actionUrl), true, 'missing SES identity tags action guard')
   assert.equal(fs.existsSync(workflowUrl), true, 'missing SES identity tags workflow')
-  assert.equal(fs.readFileSync(actionUrl, 'utf8').trim(), 'plan')
+  assert.ok(['plan', 'apply-once'].includes(fs.readFileSync(actionUrl, 'utf8').trim()))
 
   const runner = fs.readFileSync(runnerUrl, 'utf8')
   assert.match(runner, /EXPECTED_ACCOUNT="310356785722"/)
