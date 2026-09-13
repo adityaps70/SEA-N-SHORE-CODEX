@@ -151,6 +151,9 @@ terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   -out="$WORK_DIR/realtime.tfplan" > "$WORK_DIR/plan.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/realtime.tfplan" > "$WORK_DIR/plan.json"
 
+echo "REALTIME_INFRA_RESIDUAL_CHANGES="
+jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"]) | {address, actions: .change.actions}]' "$WORK_DIR/plan.json"
+
 CLASSIFICATION="$(node "$PLAN_CLASSIFIER" "$WORK_DIR/plan.json" "$ACTION")"
 PLAN_MODE="$(jq -r '.mode' <<<"$CLASSIFICATION")"
 CREATE_COUNT="$(jq -r '.createCount' <<<"$CLASSIFICATION")"
