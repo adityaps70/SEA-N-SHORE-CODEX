@@ -10,10 +10,14 @@ CONVERSATION_ID="${E2E_CONVERSATION_ID:-}"
 MESSAGE_BODY="${E2E_MESSAGE_BODY:-}"
 INJECTED_BODY="${E2E_INJECTED_BODY:-}"
 RUN_STARTED_AT="${E2E_RUN_STARTED_AT:-}"
+DIAGNOSTIC_START_MS="${E2E_DIAGNOSTIC_START_MS:-}"
+DIAGNOSTIC_END_MS="${E2E_DIAGNOSTIC_END_MS:-}"
 
-for EMAIL in "$SENDER" "$RECIPIENT"; do
-  [[ "$EMAIL" == sea-n-shore-realtime-e2e-* && "$EMAIL" == *@example.com ]] || { echo "Unsafe disposable Realtime E2E email." >&2; exit 1; }
-done
+if [[ "$PHASE" != diagnose-connect ]]; then
+  for EMAIL in "$SENDER" "$RECIPIENT"; do
+    [[ "$EMAIL" == sea-n-shore-realtime-e2e-* && "$EMAIL" == *@example.com ]] || { echo "Unsafe disposable Realtime E2E email." >&2; exit 1; }
+  done
+fi
 [[ -z "$CONVERSATION_ID" || "$CONVERSATION_ID" =~ ^[0-9a-f-]{36}$ ]] || { echo "Unsafe realtime conversation id." >&2; exit 1; }
 
 resolve_pool() {
@@ -150,6 +154,28 @@ case "$PHASE" in
       fi
     done
     echo 'REALTIME_E2E_CLEANUP_VERIFIED=true'
+    ;;
+  diagnose-connect)
+    [[ "$DIAGNOSTIC_START_MS" =~ ^[0-9]{13}$ ]]
+    [[ "$DIAGNOSTIC_END_MS" =~ ^[0-9]{13}$ ]]
+    (( DIAGNOSTIC_END_MS >= DIAGNOSTIC_START_MS ))
+    (( DIAGNOSTIC_END_MS - DIAGNOSTIC_START_MS <= 3600000 ))
+    for GROUP in \
+      /aws/apigateway/sea-n-shore-staging/realtime \
+      /aws/lambda/sea-n-shore-staging-realtime-authorizer \
+      /aws/lambda/sea-n-shore-staging-realtime-connection
+    do
+      echo "REALTIME_CONNECT_DIAGNOSTIC_LOG_GROUP=$GROUP"
+      aws logs filter-log-events \
+        --region "$AWS_REGION" \
+        --log-group-name "$GROUP" \
+        --start-time "$DIAGNOSTIC_START_MS" \
+        --end-time "$DIAGNOSTIC_END_MS" \
+        --limit 200 \
+        --query 'events[].{timestamp:timestamp,message:message}' \
+        --output json
+    done
+    echo 'REALTIME_E2E_CONNECT_DIAGNOSTIC_VERIFIED=true'
     ;;
   *) echo "Unsupported Realtime E2E phase: $PHASE" >&2; exit 1 ;;
 esac
