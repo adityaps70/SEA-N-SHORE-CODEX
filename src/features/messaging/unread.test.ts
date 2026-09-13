@@ -11,6 +11,7 @@ describe('messaging unread count', () => {
       listInboxRows: vi.fn(async () => []),
       isParticipant: vi.fn(async () => true),
       listMessageRows: vi.fn(async () => []),
+      listMessageRowsAfter: vi.fn(async () => []),
       countUnreadConversations,
     }
     const queries = createMessagingQueries({
