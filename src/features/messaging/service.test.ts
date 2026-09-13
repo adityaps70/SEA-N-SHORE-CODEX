@@ -42,6 +42,7 @@ function makeMessagingRepository(overrides: Record<string, unknown> = {}) {
     findDirectConversationByPair: vi.fn(async () => null),
     insertDirectConversation: vi.fn(async () => CONVERSATION_ID),
     isParticipant: vi.fn(async () => true),
+    findOtherParticipantId: vi.fn(async () => TARGET_ID),
     findMessageByClientId: vi.fn(async () => null),
     insertMessage: vi.fn(async () => message()),
     updateConversationLastMessage: vi.fn(async () => undefined),
@@ -184,6 +185,62 @@ describe('messaging authorization and durability service', () => {
         body: 'Hello',
       }),
       'messaging_not_participant',
+    )
+
+    expect(context.messaging.insertMessage).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('rejects sending when the accepted relationship no longer exists', async () => {
+    const context = await service({
+      network: makeNetworkRepository({ findConnectionByPair: vi.fn(async () => null) }),
+    })
+
+    await expectCode(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Should not send',
+      }),
+      'messaging_not_allowed',
+    )
+
+    expect(context.messaging.insertMessage).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('rejects sending when the relationship is no longer accepted', async () => {
+    const context = await service({
+      network: makeNetworkRepository({
+        findConnectionByPair: vi.fn(async () => ({ ...acceptedConnection(), status: 'pending' as const })),
+      }),
+    })
+
+    await expectCode(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Should not send',
+      }),
+      'messaging_not_allowed',
+    )
+
+    expect(context.messaging.insertMessage).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('rejects sending when either participant has blocked the other', async () => {
+    const context = await service({
+      network: makeNetworkRepository({ isPairBlocked: vi.fn(async () => true) }),
+    })
+
+    await expectCode(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Should not send',
+      }),
+      'messaging_not_allowed',
     )
 
     expect(context.messaging.insertMessage).not.toHaveBeenCalled()
