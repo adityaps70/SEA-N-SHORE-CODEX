@@ -7,7 +7,11 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}', 'scripts/aws/check-terraform-plan.test.mjs'],
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'scripts/aws/check-terraform-plan.test.mjs',
+      'scripts/aws/realtime-infra-recovery.test.mjs',
+    ],
   },
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
 })
