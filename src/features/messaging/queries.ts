@@ -1,12 +1,16 @@
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 import { messagingRepository, type MessagingRepository } from './repository'
-import { messagePageRequestSchema } from './schemas'
+import { messageAfterRequestSchema, messagePageRequestSchema } from './schemas'
 import type { MessagingMessageRow } from './types'
 
 type MessagingQueryRepository = Pick<
   MessagingRepository,
-  'listInboxRows' | 'isParticipant' | 'listMessageRows' | 'countUnreadConversations'
+  | 'listInboxRows'
+  | 'isParticipant'
+  | 'listMessageRows'
+  | 'listMessageRowsAfter'
+  | 'countUnreadConversations'
 >
 
 type RequireMessagingUser = () => Promise<{ id: string }>
@@ -117,6 +121,30 @@ export function createMessagingQueries(input: {
         nextCursor,
       }
     },
+
+    async getConversationMessagesAfter(rawInput: unknown) {
+      const parsed = messageAfterRequestSchema.safeParse(rawInput)
+      if (!parsed.success) throw new Error('messaging_invalid_catchup_request')
+
+      const user = await input.requireUser()
+      if (!await input.repository.isParticipant(user.id, parsed.data.conversationId)) {
+        throw new Error('messaging_not_participant')
+      }
+
+      const rows = await input.repository.listMessageRowsAfter({
+        viewerProfileId: user.id,
+        ...parsed.data,
+      })
+      const newest = rows.at(-1)
+      const nextCursor = rows.length === parsed.data.limit && newest
+        ? { createdAt: iso(newest.created_at), id: newest.id }
+        : null
+
+      return {
+        messages: rows.map(messagingMessageDto),
+        nextCursor,
+      }
+    },
   }
 }
 
@@ -129,3 +157,4 @@ const productionMessagingQueries = createMessagingQueries({
 export const getConversationInbox = productionMessagingQueries.getConversationInbox
 export const getUnreadConversationCount = productionMessagingQueries.getUnreadConversationCount
 export const getConversationThread = productionMessagingQueries.getConversationThread
+export const getConversationMessagesAfter = productionMessagingQueries.getConversationMessagesAfter
