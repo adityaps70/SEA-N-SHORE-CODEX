@@ -18,6 +18,20 @@ function getRealtimeTicketSecret() {
   return secret
 }
 
+function getRealtimeWebsocketUrl() {
+  const value = process.env.REALTIME_WEBSOCKET_URL?.trim()
+  if (!value) {
+    throw new Error('Realtime WebSocket URL is not configured.')
+  }
+
+  const url = new URL(value)
+  if (url.protocol !== 'wss:') {
+    throw new Error('Realtime WebSocket URL must use wss.')
+  }
+
+  return url.toString().replace(/\/$/, '')
+}
+
 export async function POST() {
   try {
     const user = await requireAwsUser()
@@ -31,12 +45,18 @@ export async function POST() {
       now: new Date(),
     })
 
-    return Response.json(issued, {
-      status: 200,
-      headers: {
-        'Cache-Control': 'private, no-store',
+    return Response.json(
+      {
+        ...issued,
+        websocketUrl: getRealtimeWebsocketUrl(),
       },
-    })
+      {
+        status: 200,
+        headers: {
+          'Cache-Control': 'private, no-store',
+        },
+      },
+    )
   } catch (error) {
     if (error instanceof AwsAuthenticationRequiredError) {
       return Response.json(
