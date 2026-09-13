@@ -1,5 +1,5 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessagingRealtimeSignal } from '@/features/realtime/client'
 import type { MessagingMessageDto } from '../queries'
 
@@ -85,6 +85,8 @@ describe('MessageShell active realtime reconciliation', () => {
     realtime.listener = null
     vi.stubGlobal('fetch', vi.fn())
   })
+
+  afterEach(() => cleanup())
 
   it('fetches and merges canonical newer messages for the active conversation', async () => {
     const incoming = message({
