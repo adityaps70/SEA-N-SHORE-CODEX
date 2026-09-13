@@ -10,7 +10,8 @@ test('realtime messaging uses API Gateway WebSocket with ephemeral DynamoDB conn
   assert.match(terraform, /resource "aws_dynamodb_table" "realtime_connections"/)
   assert.match(terraform, /billing_mode\s*=\s*"PAY_PER_REQUEST"/)
   assert.match(terraform, /hash_key\s*=\s*"connection_id"/)
-  assert.match(terraform, /name\s*=\s*"profile_id-index"/)
+  assert.match(terraform, /realtime_profile_index\s*=\s*"profile_id-index"/)
+  assert.match(terraform, /name\s*=\s*local\.realtime_profile_index/)
   assert.match(terraform, /ttl\s*\{/)
   assert.match(terraform, /attribute_name\s*=\s*"expires_at"/)
 })
@@ -21,7 +22,11 @@ test('connect is authorizer-protected and client messages cannot become canonica
   assert.match(terraform, /authorization_type\s*=\s*"CUSTOM"/)
   assert.match(terraform, /route_key\s*=\s*"\$disconnect"/)
   assert.match(terraform, /route_key\s*=\s*"\$default"/)
-  assert.doesNotMatch(terraform, /sendMessage|markConversationRead|messages\s+insert/i)
+  assert.match(
+    terraform,
+    /resource "aws_apigatewayv2_route" "realtime_default"[\s\S]*?target\s*=\s*"integrations\/\$\{aws_apigatewayv2_integration\.realtime_connection\.id\}"/,
+  )
+  assert.doesNotMatch(terraform, /\bAURORA_|rds-data:|rds-db:/i)
 })
 
 test('messaging outbox events fan out through encrypted SQS with a DLQ', () => {
