@@ -100,8 +100,8 @@ with open(lock_path) as f:
     text = f.read()
 expected = {
     'registry.terraform.io/hashicorp/aws': '6.62.0',
-    'registry.terraform.io/hashicorp/archive': '2.8.0',
-    'registry.terraform.io/hashicorp/random': '3.9.0',
+    'registry.terraform.io/hashicorp/archive': '2.8.1',
+    'registry.terraform.io/hashicorp/random': '3.9.1',
 }
 for source, expected_version in expected.items():
     match = re.search(
