@@ -97,13 +97,40 @@ with open(sys.argv[2], 'w') as f:
     json.dump(values, f)
 PY
 
-PLUGIN_DIR="$HOME/SEA-N-SHORE-CODEX/infra/aws/app/.terraform/providers"
-[[ -x "$PLUGIN_DIR/registry.terraform.io/hashicorp/aws/6.62.0/linux_amd64/terraform-provider-aws_v6.62.0_x5" ]]
-terraform -chdir="$APP_DIR" init -input=false -no-color -lockfile=readonly -plugin-dir="$PLUGIN_DIR" \
+terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" \
   -backend-config="key=$STATE_KEY" \
   -backend-config="region=$AWS_REGION" \
   -backend-config=use_lockfile=true > "$WORK_DIR/init.log"
+
+python3 - "$APP_DIR/.terraform.lock.hcl" <<'PY'
+import re, sys
+lock_path = sys.argv[1]
+with open(lock_path) as f:
+    text = f.read()
+expected = {
+    'registry.terraform.io/hashicorp/aws': '6.62.0',
+    'registry.terraform.io/hashicorp/archive': '2.8.1',
+    'registry.terraform.io/hashicorp/random': '3.9.1',
+}
+for source, expected_version in expected.items():
+    match = re.search(
+        rf'provider\s+"{re.escape(source)}"\s*\{{(?P<body>.*?)\n\}}',
+        text,
+        re.S,
+    )
+    if not match:
+        raise SystemExit(f'Missing provider lock for {source}')
+    version_match = re.search(r'version\s*=\s*"([^"]+)"', match.group('body'))
+    if not version_match:
+        raise SystemExit(f'Missing locked version for {source}')
+    actual_version = version_match.group(1)
+    if actual_version != expected_version:
+        raise SystemExit(
+            f'Unexpected provider version for {source}: {actual_version}; expected {expected_version}'
+        )
+PY
+echo "ECS_TASK_AURORA_POLICY_PROVIDER_LOCK_VERIFIED=true"
 
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   -target="$RESOURCE" \
