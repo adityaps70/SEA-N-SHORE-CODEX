@@ -53,9 +53,23 @@ export function createMessagingService(input: { withTransaction: MessagingTransa
       if (!parsed.success) error('messaging_invalid_message')
       const data = parsed.data
 
-      return input.withTransaction(async ({ messaging, outbox }) => {
+      return input.withTransaction(async ({ messaging, network, outbox }) => {
         if (!await messaging.isParticipant(actorId, data.conversationId)) {
           error('messaging_not_participant')
+        }
+
+        const counterpartId = await messaging.findOtherParticipantId(
+          data.conversationId,
+          actorId,
+        )
+        if (!counterpartId) error('messaging_not_allowed')
+
+        const [connection, blocked] = await Promise.all([
+          network.findConnectionByPair(actorId, counterpartId),
+          network.isPairBlocked(actorId, counterpartId),
+        ])
+        if (!connection || connection.status !== 'accepted' || blocked) {
+          error('messaging_not_allowed')
         }
 
         const existing = await messaging.findMessageByClientId(actorId, data.clientMessageId)
