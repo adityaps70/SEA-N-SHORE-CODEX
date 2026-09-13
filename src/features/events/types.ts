@@ -11,6 +11,7 @@ export type SocialDomainEventType =
   | 'post.mentioned'
   | 'comment.mentioned'
   | 'message.created'
+  | 'conversation.read_cursor_advanced'
 
 export type SocialDomainEventPayload =
   | { eventType: 'user.followed'; actorId: string; targetId: string }
@@ -29,10 +30,18 @@ export type SocialDomainEventPayload =
       senderId: string
       recipientProfileIds: string[]
     }
+  | {
+      eventType: 'conversation.read_cursor_advanced'
+      conversationId: string
+      readerProfileId: string
+      lastReadMessageId: string
+      lastReadAt: string
+      participantProfileIds: string[]
+    }
 
 export type DomainEvent = {
   id: string
-  aggregateType: 'profile' | 'connection' | 'post' | 'comment' | 'message'
+  aggregateType: 'profile' | 'connection' | 'post' | 'comment' | 'message' | 'conversation'
   aggregateId: string
   eventType: SocialDomainEventType
   schemaVersion: 1
