@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
@@ -63,4 +64,137 @@ test('the ticket signing secret is generated and scoped to web plus authorizer',
 test('archive and random providers are pinned in the single app provider configuration', () => {
   assert.match(mainTerraform, /archive\s*=\s*\{[\s\S]*?source\s*=\s*"hashicorp\/archive"[\s\S]*?version\s*=\s*"~> 2\.7"/)
   assert.match(mainTerraform, /random\s*=\s*\{[\s\S]*?source\s*=\s*"hashicorp\/random"[\s\S]*?version\s*=\s*"~> 3\.7"/)
+})
+
+test('realtime infrastructure release is bounded, guarded, and executed through the bootstrap host', async () => {
+  const classifierUrl = new URL('./realtime-infra-plan-classifier.mjs', import.meta.url)
+  const scriptUrl = new URL('./realtime-infra.sh', import.meta.url)
+  const actionUrl = new URL('./realtime-infra-action.txt', import.meta.url)
+  const workflowUrl = new URL('../../.github/workflows/aws-realtime-infra.yml', import.meta.url)
+
+  assert.equal(existsSync(classifierUrl), true, 'missing realtime infrastructure plan classifier')
+  assert.equal(existsSync(scriptUrl), true, 'missing realtime infrastructure runner')
+  assert.equal(existsSync(actionUrl), true, 'missing realtime infrastructure action guard')
+  assert.equal(existsSync(workflowUrl), true, 'missing realtime infrastructure workflow')
+
+  const expectedCreateResources = [
+    'random_password.realtime_ticket',
+    'aws_secretsmanager_secret.realtime_ticket',
+    'aws_secretsmanager_secret_version.realtime_ticket',
+    'aws_iam_role_policy.ecs_execution_realtime_ticket_secret',
+    'aws_dynamodb_table.realtime_connections',
+    'aws_sqs_queue.realtime_dlq',
+    'aws_sqs_queue.realtime_events',
+    'aws_cloudwatch_event_rule.realtime_events',
+    'aws_cloudwatch_event_target.realtime_queue',
+    'aws_sqs_queue_policy.realtime_events',
+    'aws_iam_role.realtime_authorizer',
+    'aws_iam_role.realtime_connection',
+    'aws_iam_role.realtime_fanout',
+    'aws_iam_role_policy_attachment.realtime_authorizer_logs',
+    'aws_iam_role_policy_attachment.realtime_connection_logs',
+    'aws_iam_role_policy_attachment.realtime_fanout_logs',
+    'aws_iam_role_policy.realtime_authorizer',
+    'aws_iam_role_policy.realtime_connection',
+    'aws_iam_role_policy.realtime_fanout',
+    'aws_cloudwatch_log_group.realtime_authorizer',
+    'aws_cloudwatch_log_group.realtime_connection',
+    'aws_cloudwatch_log_group.realtime_fanout',
+    'aws_lambda_function.realtime_authorizer',
+    'aws_lambda_function.realtime_connection',
+    'aws_apigatewayv2_api.realtime',
+    'aws_lambda_permission.realtime_authorizer_apigateway',
+    'aws_apigatewayv2_authorizer.realtime_connect',
+    'aws_apigatewayv2_integration.realtime_connection',
+    'aws_apigatewayv2_route.realtime_connect',
+    'aws_apigatewayv2_route.realtime_disconnect',
+    'aws_apigatewayv2_route.realtime_default',
+    'aws_lambda_permission.realtime_connection_apigateway',
+    'aws_cloudwatch_log_group.realtime_api',
+    'aws_apigatewayv2_stage.realtime',
+    'aws_lambda_function.realtime_fanout',
+    'aws_lambda_event_source_mapping.realtime_events',
+    'aws_cloudwatch_metric_alarm.realtime_dlq_depth',
+    'aws_cloudwatch_metric_alarm.realtime_queue_age',
+  ]
+
+  const classifier = await import(classifierUrl.href)
+  assert.deepEqual(
+    new Set(classifier.REALTIME_INFRA_CREATE_RESOURCES),
+    new Set(expectedCreateResources),
+  )
+  assert.equal(classifier.REALTIME_WEB_TASK_RESOURCE, 'aws_ecs_task_definition.web')
+
+  const createPlan = {
+    resource_changes: [
+      ...expectedCreateResources.map((address) => ({
+        address,
+        mode: 'managed',
+        change: { actions: ['create'] },
+      })),
+      {
+        address: 'aws_ecs_task_definition.web',
+        mode: 'managed',
+        change: { actions: ['create', 'delete'] },
+      },
+    ],
+  }
+
+  assert.deepEqual(classifier.classifyRealtimeInfraPlan(createPlan, 'plan'), {
+    mode: 'create',
+    createCount: expectedCreateResources.length,
+    replaceCount: 1,
+  })
+  assert.deepEqual(classifier.classifyRealtimeInfraPlan({ resource_changes: [] }, 'plan'), {
+    mode: 'steady',
+    createCount: 0,
+    replaceCount: 0,
+  })
+  assert.throws(
+    () => classifier.classifyRealtimeInfraPlan({ resource_changes: [] }, 'apply-once'),
+    /apply-once requires the initial realtime infrastructure plan/,
+  )
+  assert.throws(
+    () => classifier.classifyRealtimeInfraPlan({
+      resource_changes: [{ address: 'aws_vpc.app', mode: 'managed', change: { actions: ['update'] } }],
+    }, 'plan'),
+    /Unexpected actual change outside realtime allowlist/,
+  )
+  assert.throws(
+    () => classifier.classifyRealtimeInfraPlan({
+      resource_changes: [{
+        address: 'aws_dynamodb_table.realtime_connections',
+        mode: 'managed',
+        change: { actions: ['update'] },
+      }],
+    }, 'plan'),
+    /Expected create-only realtime resource change/,
+  )
+
+  assert.equal((await readFile(actionUrl, 'utf8')).trim(), 'plan')
+
+  const script = await readFile(scriptUrl, 'utf8')
+  assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
+  assert.match(script, /STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"/)
+  assert.match(script, /realtime-infra-action\.txt/)
+  assert.match(script, /realtime-infra-plan-classifier\.mjs/)
+  assert.match(script, /plan\|apply-once/)
+  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /terraform[^\n]+plan/)
+  assert.match(script, /terraform[^\n]+apply/)
+  assert.match(script, /aws apigatewayv2 get-api/)
+  assert.match(script, /aws dynamodb describe-table/)
+  assert.match(script, /aws sqs get-queue-url/)
+  assert.match(script, /aws lambda get-function/)
+  assert.match(script, /REALTIME_INFRA_APPLY_VERIFIED=true/)
+
+  const workflow = await readFile(workflowUrl, 'utf8')
+  assert.match(workflow, /name: AWS Realtime Messaging Infrastructure/)
+  assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
+  assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+  assert.match(workflow, /role-to-assume: \$\{\{ vars\.AWS_ROLE_TO_ASSUME \}\}/)
+  assert.match(workflow, /aws ssm send-command/)
+  assert.match(workflow, /REALTIME_INFRA_EXPECTED_SHA/)
+  assert.match(workflow, /bash scripts\/aws\/realtime-infra\.sh/)
+  assert.doesNotMatch(workflow, /terraform\s+-chdir=/)
 })
