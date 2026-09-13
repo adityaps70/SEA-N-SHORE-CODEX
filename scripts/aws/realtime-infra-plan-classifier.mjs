@@ -35,6 +35,9 @@ export const REALTIME_INFRA_CREATE_RESOURCES = [
   'aws_apigatewayv2_route.realtime_default',
   'aws_lambda_permission.realtime_connection_apigateway',
   'aws_cloudwatch_log_group.realtime_api',
+  'aws_iam_role.realtime_api_gateway_logs',
+  'aws_iam_role_policy_attachment.realtime_api_gateway_logs',
+  'aws_api_gateway_account.realtime',
   'aws_apigatewayv2_stage.realtime',
   'aws_lambda_function.realtime_fanout',
   'aws_lambda_event_source_mapping.realtime_events',
@@ -50,6 +53,30 @@ const REPLACEMENT_ACTIONS = new Set([
   JSON.stringify(['delete', 'create']),
 ])
 
+const RECOVERY_ACTIONS = new Map([
+  ['aws_apigatewayv2_stage.realtime', JSON.stringify(['create'])],
+  [REALTIME_WEB_TASK_RESOURCE, JSON.stringify(['create'])],
+  ['aws_iam_role_policy.realtime_fanout', JSON.stringify(['create'])],
+  ['aws_lambda_event_source_mapping.realtime_events', JSON.stringify(['create'])],
+  ['aws_lambda_function.realtime_authorizer', JSON.stringify(['update'])],
+  ['aws_lambda_function.realtime_fanout', JSON.stringify(['create'])],
+  ['aws_iam_role.realtime_api_gateway_logs', JSON.stringify(['create'])],
+  ['aws_iam_role_policy_attachment.realtime_api_gateway_logs', JSON.stringify(['create'])],
+  ['aws_api_gateway_account.realtime', JSON.stringify(['create'])],
+])
+
+function isExactRecovery(changes) {
+  if (changes.length !== RECOVERY_ACTIONS.size) return false
+  const seen = new Set()
+  for (const resource of changes) {
+    const expected = RECOVERY_ACTIONS.get(resource.address)
+    const actual = JSON.stringify(resource?.change?.actions ?? [])
+    if (!expected || expected !== actual || seen.has(resource.address)) return false
+    seen.add(resource.address)
+  }
+  return seen.size === RECOVERY_ACTIONS.size
+}
+
 export function classifyRealtimeInfraPlan(plan, action) {
   if (!['plan', 'apply-once'].includes(action)) {
     throw new Error(`Unsupported realtime infrastructure action: ${action}`)
@@ -62,9 +89,18 @@ export function classifyRealtimeInfraPlan(plan, action) {
 
   if (changes.length === 0) {
     if (action === 'apply-once') {
-      throw new Error('apply-once requires the initial realtime infrastructure plan')
+      throw new Error('apply-once requires the initial or bounded recovery realtime infrastructure plan')
     }
     return { mode: 'steady', createCount: 0, replaceCount: 0 }
+  }
+
+  if (isExactRecovery(changes)) {
+    return {
+      mode: 'recovery',
+      createCount: 8,
+      updateCount: 1,
+      replaceCount: 0,
+    }
   }
 
   let replaceCount = 0
