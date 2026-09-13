@@ -17,6 +17,7 @@ type AllowedRow = QueryResultRow & { allowed?: boolean }
 type AdvancedRow = QueryResultRow & { advanced?: boolean }
 type CountRow = QueryResultRow & { count?: number | string }
 type ParticipantRow = QueryResultRow & { profile_id: string }
+type OtherParticipantRow = QueryResultRow & { other_profile_id: string }
 type ConversationRow = QueryResultRow & MessagingConversationRow
 type MessageRow = QueryResultRow & MessagingMessageRow
 type InboxRow = QueryResultRow & MessagingInboxRow
@@ -79,6 +80,22 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
       [conversationId, profileId],
     ) as AllowedRow[]
     return Boolean(rows[0]?.allowed)
+  }
+
+  async function findOtherParticipantId(conversationId: string, actorId: string) {
+    const rows = await queryRows(
+      `select other.profile_id as other_profile_id
+       from public.conversation_participants mine
+       join public.conversation_participants other
+         on other.conversation_id = mine.conversation_id
+        and other.profile_id <> mine.profile_id
+       where mine.conversation_id = $1
+         and mine.profile_id = $2
+       order by other.profile_id asc
+       limit 1`,
+      [conversationId, actorId],
+    ) as OtherParticipantRow[]
+    return rows[0]?.other_profile_id ?? null
   }
 
   async function listParticipantIds(conversationId: string) {
@@ -251,6 +268,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     findDirectConversationByPair,
     insertDirectConversation,
     isParticipant,
+    findOtherParticipantId,
     listParticipantIds,
     findMessageByClientId,
     insertMessage,
