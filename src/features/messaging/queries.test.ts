@@ -23,6 +23,8 @@ function makeRepository(overrides: Record<string, unknown> = {}) {
         last_message_at: new Date('2026-09-13T01:10:00.000Z'),
         last_read_message_id: OLDER_MESSAGE_ID,
         last_read_at: '2026-09-13T01:00:00.000Z',
+        other_last_read_message_id: OLDER_MESSAGE_ID,
+        other_last_read_at: new Date('2026-09-13T01:00:00.000Z'),
         unread: true,
       },
     ]),
@@ -69,7 +71,7 @@ function makeQueries(overrides: Record<string, unknown> = {}) {
 }
 
 describe('messaging queries', () => {
-  it('derives the inbox viewer from authenticated identity and signs avatar paths', async () => {
+  it('derives the inbox viewer from authenticated identity, signs avatar paths and exposes peer read cursor', async () => {
     const context = makeQueries()
 
     await expect(context.queries.getConversationInbox({ limit: 10 })).resolves.toEqual([
@@ -83,6 +85,8 @@ describe('messaging queries', () => {
         lastMessageBody: 'See you onboard.',
         lastMessageSenderId: OTHER_ID,
         lastMessageAt: '2026-09-13T01:10:00.000Z',
+        otherLastReadMessageId: OLDER_MESSAGE_ID,
+        otherLastReadAt: '2026-09-13T01:00:00.000Z',
         unread: true,
       },
     ])
@@ -114,7 +118,7 @@ describe('messaging queries', () => {
     })).resolves.toEqual({
       messages: [
         {
-          id: OLDER_MESSAGE_ID,
+          id: OLER_MESSAGE_ID,
           conversationId: CONVERSATION_ID,
           senderProfileId: VIEWER_ID,
           clientMessageId: CLIENT_MESSAGE_ID,
