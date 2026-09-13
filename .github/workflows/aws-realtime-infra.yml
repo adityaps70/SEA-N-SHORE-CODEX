@@ -106,7 +106,7 @@ jobs:
           export REALTIME_INFRA_EXPECTED_SHA={sha}
           bash scripts/aws/realtime-infra.sh
           """
-          print(json.dumps({{"executionTimeout": ["1800"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}}))
+          print(json.dumps({"executionTimeout": ["1800"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
           PYTHON
           COMMAND_ID=$(aws ssm send-command \
             --region "$AWS_REGION" \
