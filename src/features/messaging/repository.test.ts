@@ -115,6 +115,28 @@ describe('Aurora messaging repository', () => {
     ])
   })
 
+  it('advances the cached last message by the same created_at/id tuple ordering as thread pagination', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+    const createdAt = '2026-09-13T00:01:00.000Z'
+
+    await repository.updateConversationLastMessage(
+      CONVERSATION_ID,
+      MESSAGE_ID,
+      createdAt,
+    )
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('update public.conversations')
+    expect(text).toContain('last_message_at < $3::timestamptz')
+    expect(text).toContain('last_message_at = $3::timestamptz')
+    expect(text).toContain('last_message_id is null')
+    expect(text).toContain('last_message_id < $2::uuid')
+    expect(values).toEqual([CONVERSATION_ID, MESSAGE_ID, createdAt])
+  })
+
   it('loads thread history through participant authorization and a stable created_at/id cursor', async () => {
     const query = vi.fn(async () => [])
     const { createMessagingRepository } = await import('./repository')
