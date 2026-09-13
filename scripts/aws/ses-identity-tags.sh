@@ -7,6 +7,7 @@ EXPECTED_ACCOUNT="310356785722"
 AWS_REGION="${AWS_REGION:-ap-south-1}"
 SES_IDENTITY="seaandshore.in"
 SES_IDENTITY_ARN="arn:aws:ses:ap-south-1:310356785722:identity/seaandshore.in"
+BOOTSTRAP_ROLE_ARN="arn:aws:iam::310356785722:role/SeaNShore-Bootstrap-Role"
 ACTION_FILE="scripts/aws/ses-identity-tags-action.txt"
 DESIRED_TAGS='[{"Key":"Environment","Value":"staging"},{"Key":"ManagedBy","Value":"Terraform"},{"Key":"Project","Value":"Sea N Shore"}]'
 
@@ -19,14 +20,29 @@ DESIRED_TAGS='[{"Key":"Environment","Value":"staging"},{"Key":"ManagedBy","Value
 git diff --quiet HEAD -- \
   scripts/aws/ses-identity-tags.sh \
   scripts/aws/ses-identity-tags-action.txt \
+  scripts/aws/ses-identity-tags-permission.test.mjs \
   scripts/aws/phase5b-ses-terraform.test.mjs \
-  .github/workflows/aws-ses-identity-tags.yml
+  .github/workflows/aws-ses-identity-tags.yml \
+  .github/workflows/aws-infra-ci.yml
 
 CALLER_JSON="$(aws sts get-caller-identity --output json)"
 [[ "$(jq -r '.Account' <<<"$CALLER_JSON")" == "$EXPECTED_ACCOUNT" ]]
 CALLER_ARN="$(jq -r '.Arn' <<<"$CALLER_JSON")"
 [[ -n "$CALLER_ARN" && "$CALLER_ARN" != null ]]
+[[ "$CALLER_ARN" == arn:aws:sts::310356785722:assumed-role/SeaNShore-Bootstrap-Role/* ]] || {
+  echo "Unexpected SES identity tag execution principal: $CALLER_ARN" >&2
+  exit 1
+}
 echo "SES_IDENTITY_TAGS_CALLER_ARN=$CALLER_ARN"
+
+PERMISSION_JSON="$(aws iam simulate-principal-policy \
+  --policy-source-arn "$BOOTSTRAP_ROLE_ARN" \
+  --action-names ses:TagResource \
+  --resource-arns "$SES_IDENTITY_ARN" \
+  --output json)"
+PERMISSION_DECISION="$(jq -r '.EvaluationResults[0].EvalDecision // empty' <<<"$PERMISSION_JSON")"
+[[ -n "$PERMISSION_DECISION" ]]
+echo "SES_IDENTITY_TAGS_PERMISSION_DECISION=$PERMISSION_DECISION"
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported SES identity tags action." >&2; exit 1 ;; esac
@@ -86,7 +102,7 @@ if [[ "$LIVE_TAGS_BEFORE" == "$DESIRED_TAGS_SORTED" ]]; then
 fi
 
 if [[ "$ACTION" == "plan" ]]; then
-  if [[ "$LIVE_TAGS_BEFORE" == "[]" ]]; then
+  if [[ "$LIVE_TAGS_BEFORE" == "[]" && "$PERMISSION_DECISION" == "allowed" ]]; then
     echo "SES_IDENTITY_TAGS_APPLY_ELIGIBLE=true"
   else
     echo "SES_IDENTITY_TAGS_APPLY_ELIGIBLE=false"
@@ -95,6 +111,10 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
+[[ "$PERMISSION_DECISION" == "allowed" ]] || {
+  echo "Bootstrap role is not allowed to tag the exact SES identity; refusing mutation." >&2
+  exit 1
+}
 [[ "$LIVE_TAGS_BEFORE" == "[]" ]] || {
   echo "Live SES identity tags are not the observed empty set; refusing bounded tag reconciliation." >&2
   exit 1
