@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Check, Clock3, RefreshCcw } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { ArrowLeft, Check, CheckCheck, Clock3, RefreshCcw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { markConversationReadAction } from '../actions'
 import type { MessagingMessageDto } from '../queries'
+import { isMessageSeen, type MessagingReadCursor } from '../thread-realtime'
 import type { OptimisticMessagingMessage } from './message-composer'
 
 export type MessageThreadItem = MessagingMessageDto | OptimisticMessagingMessage
@@ -39,6 +40,7 @@ export function MessageThread({
   otherAvatarUrl,
   messages,
   nextCursor,
+  peerReadCursor,
 }: {
   viewerId: string
   conversationId: string
@@ -47,17 +49,66 @@ export function MessageThread({
   otherAvatarUrl: string | null
   messages: MessageThreadItem[]
   nextCursor: { createdAt: string; id: string } | null
+  peerReadCursor: MessagingReadCursor | null
 }) {
   const name = otherName ?? 'Sea N Shore member'
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const bottomSentinelRef = useRef<HTMLDivElement>(null)
+  const bottomVisibleRef = useRef(false)
+  const lastRequestedReadIdRef = useRef<string | null>(null)
   const latestReceived = useMemo(
     () => [...messages].reverse().find((message) => message.senderProfileId !== viewerId && !message.deletedAt),
     [messages, viewerId],
   )
 
-  useEffect(() => {
+  const attemptMarkRead = useCallback(() => {
     if (!latestReceived) return
-    void markConversationReadAction(conversationId, latestReceived.id)
-  }, [conversationId, latestReceived?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!bottomVisibleRef.current) return
+    if (document.visibilityState !== 'visible' || !document.hasFocus()) return
+    if (lastRequestedReadIdRef.current === latestReceived.id) return
+
+    const requestedId = latestReceived.id
+    lastRequestedReadIdRef.current = requestedId
+    void markConversationReadAction(conversationId, requestedId)
+      .then((result) => {
+        if (!result.ok && lastRequestedReadIdRef.current === requestedId) {
+          lastRequestedReadIdRef.current = null
+        }
+      })
+      .catch(() => {
+        if (lastRequestedReadIdRef.current === requestedId) {
+          lastRequestedReadIdRef.current = null
+        }
+      })
+  }, [conversationId, latestReceived])
+
+  useEffect(() => {
+    const sentinel = bottomSentinelRef.current
+    if (!sentinel || typeof IntersectionObserver === 'undefined') return
+
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0]
+      bottomVisibleRef.current = Boolean(entry?.isIntersecting)
+      if (entry?.isIntersecting) attemptMarkRead()
+    }, {
+      root: scrollContainerRef.current,
+      threshold: 0.9,
+    })
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [attemptMarkRead])
+
+  useEffect(() => {
+    const onPotentialView = () => attemptMarkRead()
+    document.addEventListener('visibilitychange', onPotentialView)
+    window.addEventListener('focus', onPotentialView)
+    attemptMarkRead()
+
+    return () => {
+      document.removeEventListener('visibilitychange', onPotentialView)
+      window.removeEventListener('focus', onPotentialView)
+    }
+  }, [attemptMarkRead])
 
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,white,var(--mist-50))]">
@@ -83,7 +134,7 @@ export function MessageThread({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6">
+      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6">
         {nextCursor ? (
           <div className="mb-5 flex justify-center">
             <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-muted">
@@ -97,6 +148,9 @@ export function MessageThread({
             {messages.map((message, index) => {
               const mine = message.senderProfileId === viewerId
               const state = deliveryState(message)
+              const canonicalStatus = mine && !state
+                ? (isMessageSeen(message, peerReadCursor) ? 'Seen' : 'Sent')
+                : null
               const previous = messages[index - 1]
               const showDay = !previous || dayKey(previous.createdAt) !== dayKey(message.createdAt)
               return (
@@ -117,7 +171,8 @@ export function MessageThread({
                         <span>{clock(message.createdAt)}</span>
                         {mine && state === 'sending' ? <><Clock3 aria-hidden="true" className="size-3" /><span>Sending</span></> : null}
                         {mine && state === 'failed' ? <><RefreshCcw aria-hidden="true" className="size-3" /><span>Not sent</span></> : null}
-                        {mine && !state ? <Check aria-label="Sent" className="size-3" /> : null}
+                        {canonicalStatus === 'Sent' ? <><Check aria-hidden="true" className="size-3" /><span>Sent</span></> : null}
+                        {canonicalStatus === 'Seen' ? <><CheckCheck aria-hidden="true" className="size-3" /><span>Seen</span></> : null}
                       </div>
                     </div>
                   </div>
@@ -136,6 +191,7 @@ export function MessageThread({
             </div>
           </div>
         )}
+        <div ref={bottomSentinelRef} data-testid="message-read-sentinel" className="h-px w-full" aria-hidden="true" />
       </div>
     </section>
   )
