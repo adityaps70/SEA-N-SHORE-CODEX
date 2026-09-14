@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   notFound: vi.fn(),
   capturedInitialValue: null as unknown,
   capturedCourseId: null as string | null,
+  capturedSubmitCourseId: null as string | null,
 }))
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }))
@@ -24,6 +25,12 @@ vi.mock('@/features/learning/components/course-form', () => ({
     mocks.capturedInitialValue = initialValue
     mocks.capturedCourseId = courseId ?? null
     return <div data-testid="course-form">Course form</div>
+  },
+}))
+vi.mock('@/features/learning/components/course-submit-control', () => ({
+  CourseSubmitControl: ({ courseId }: { courseId: string }) => {
+    mocks.capturedSubmitCourseId = courseId
+    return <div data-testid="course-submit-control">Submit control</div>
   },
 }))
 
@@ -63,6 +70,7 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     vi.clearAllMocks()
     mocks.capturedInitialValue = null
     mocks.capturedCourseId = null
+    mocks.capturedSubmitCourseId = null
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'mentor@example.com' })
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
@@ -84,8 +92,10 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     expect(screen.getByRole('link', { name: /mentor studio/i })).toHaveAttribute('href', '/learn/studio')
     expect(screen.getByText('SIRE 2.0 Readiness for Tanker Officers')).toBeInTheDocument()
     expect(screen.getByTestId('course-form')).toBeInTheDocument()
+    expect(screen.getByTestId('course-submit-control')).toBeInTheDocument()
     expect(mocks.getOwnedCourse).toHaveBeenCalledWith('user-1', courseId)
     expect(mocks.capturedCourseId).toBe(courseId)
+    expect(mocks.capturedSubmitCourseId).toBe(courseId)
     expect(mocks.capturedInitialValue).toEqual(expect.objectContaining({
       slug: draftCourse.slug,
       title: draftCourse.title,
@@ -109,6 +119,7 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
 
     expect(screen.getByText('Please make the learning outcomes more measurable and role-specific.')).toBeInTheDocument()
     expect(screen.getByTestId('course-form')).toBeInTheDocument()
+    expect(screen.getByTestId('course-submit-control')).toBeInTheDocument()
   })
 
   it('returns users without active mentor access to Teach before reading course data', async () => {
@@ -127,6 +138,7 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
 
     expect(mocks.notFound).toHaveBeenCalled()
     expect(mocks.capturedInitialValue).toBeNull()
+    expect(mocks.capturedSubmitCourseId).toBeNull()
   })
 
   it.each(['submitted', 'approved', 'published', 'archived'])('returns a non-editable %s course to Mentor Studio', async (status) => {
@@ -136,5 +148,6 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
 
     expect(mocks.redirect).toHaveBeenCalledWith('/learn/studio')
     expect(mocks.capturedInitialValue).toBeNull()
+    expect(mocks.capturedSubmitCourseId).toBeNull()
   })
 })
