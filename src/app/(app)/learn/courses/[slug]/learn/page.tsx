@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { CheckCircle2, Circle, FileText, PlayCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Circle, FileText, PlayCircle } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { LessonCompletionControl } from '@/features/learning/components/lesson-completion-control'
 import { ResumableLessonMedia } from '@/features/learning/components/resumable-lesson-media'
@@ -23,6 +23,10 @@ function allLessons(course: LearnerCourse) {
 function defaultLesson(course: LearnerCourse) {
   const lessons = allLessons(course)
   return lessons.find((lesson) => !lesson.completed) ?? lessons[0] ?? null
+}
+
+function lessonHref(slug: string, lessonId: string) {
+  return `/learn/courses/${slug}/learn?lesson=${lessonId}`
 }
 
 function activityLabel(lesson: LearnerLesson) {
@@ -134,6 +138,16 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
 
   if (requestedLessonId && !selectedLesson) return notFound()
 
+  const selectedLessonIndex = selectedLesson
+    ? lessons.findIndex((lesson) => lesson.id === selectedLesson.id)
+    : -1
+  const previousLesson = selectedLessonIndex > 0
+    ? lessons[selectedLessonIndex - 1]
+    : null
+  const nextLesson = selectedLessonIndex >= 0 && selectedLessonIndex < lessons.length - 1
+    ? lessons[selectedLessonIndex + 1]
+    : null
+
   const selectedMediaUrl = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
     ? await createMediaReadUrl(selectedLesson.assetPath)
     : null
@@ -168,6 +182,33 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
         </div>
       </header>
 
+      {course.enrollmentStatus === 'completed' ? (
+        <section
+          aria-label="Course completed"
+          className="mt-6 rounded-3xl border border-emerald-200 bg-emerald-50 p-6 shadow-sm sm:p-8"
+        >
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-800">
+                <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+                Learning milestone reached
+              </div>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Course completed</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-700">All {course.totalLessons} lessons are complete. You can continue reviewing any lesson from the curriculum below.</p>
+              {course.certificateEnabled ? (
+                <p className="mt-2 text-sm text-slate-600">Certificate issuance is not connected yet.</p>
+              ) : null}
+            </div>
+            <Link
+              href="/learn/my-learning"
+              className="inline-flex shrink-0 items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+            >
+              Back to My Learning
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       <div className="mt-6 grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <nav aria-label="Course curriculum" className="h-fit rounded-3xl border border-slate-200 bg-white p-4 shadow-sm lg:sticky lg:top-6">
           <div className="px-2 pb-3">
@@ -185,7 +226,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                     return (
                       <Link
                         key={lesson.id}
-                        href={`/learn/courses/${course.slug}/learn?lesson=${lesson.id}`}
+                        href={lessonHref(course.slug, lesson.id)}
                         aria-current={active ? 'page' : undefined}
                         className={`flex items-start gap-3 rounded-xl px-3 py-3 text-sm transition ${
                           active ? 'bg-slate-950 text-white' : 'text-slate-700 hover:bg-slate-50'
@@ -232,8 +273,36 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                     slug={course.slug}
                     lessonId={selectedLesson.id}
                     initiallyCompleted={selectedLesson.completed}
+                    nextLessonHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
                   />
                 </div>
+              ) : null}
+
+              {previousLesson || nextLesson ? (
+                <nav aria-label="Lesson navigation" className="mt-7 flex items-center justify-between gap-3 border-t border-slate-200 pt-6">
+                  <div>
+                    {previousLesson ? (
+                      <Link
+                        href={lessonHref(course.slug, previousLesson.id)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:bg-slate-50"
+                      >
+                        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                        Previous lesson
+                      </Link>
+                    ) : null}
+                  </div>
+                  <div>
+                    {nextLesson ? (
+                      <Link
+                        href={lessonHref(course.slug, nextLesson.id)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                      >
+                        Next lesson
+                        <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                      </Link>
+                    ) : null}
+                  </div>
+                </nav>
               ) : null}
             </section>
           ) : (
