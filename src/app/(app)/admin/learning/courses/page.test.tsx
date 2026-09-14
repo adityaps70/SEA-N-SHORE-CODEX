@@ -49,6 +49,7 @@ const course: CourseReviewItem = {
   status: 'submitted',
   adminReviewNote: null,
   updatedAt: '2026-09-14T12:00:00.000Z',
+  curriculum: [],
 }
 
 afterEach(() => {
@@ -81,7 +82,75 @@ describe('/admin/learning/courses', () => {
     expect(screen.getByText('Deck officers')).toBeInTheDocument()
     expect(screen.getByText('Free access')).toBeInTheDocument()
     expect(screen.getByText('Certificate enabled')).toBeInTheDocument()
+    expect(screen.getByText('No curriculum evidence is available for this course.')).toBeInTheDocument()
     expect(screen.getByTestId('course-review-controls')).toHaveTextContent(`${course.courseId}:submitted`)
+  })
+
+  it('renders frozen modules, lesson evidence and quiz correct answers for administrator review', async () => {
+    mocks.listCoursesForReview.mockResolvedValueOnce([{
+      ...course,
+      curriculum: [{
+        id: 'section-1',
+        title: 'Module 1 · Inspection readiness',
+        position: 0,
+        lessons: [
+          {
+            id: 'lesson-1',
+            title: 'Evidence preparation',
+            lessonType: 'article',
+            position: 0,
+            summary: 'Prepare evidence before the inspection.',
+            articleBody: 'Review records, procedures and interview evidence.',
+            assetPath: null,
+            externalUrl: null,
+            durationSeconds: 300,
+            isPreview: false,
+            isDownloadable: false,
+            quiz: null,
+          },
+          {
+            id: 'lesson-2',
+            title: 'SIRE knowledge check',
+            lessonType: 'quiz',
+            position: 1,
+            summary: 'Check core knowledge.',
+            articleBody: null,
+            assetPath: null,
+            externalUrl: null,
+            durationSeconds: null,
+            isPreview: false,
+            isDownloadable: false,
+            quiz: {
+              id: 'quiz-1',
+              passPercentage: 80,
+              instructions: 'Choose the best answer.',
+              questions: [{
+                id: 'question-1',
+                prompt: 'What should be prepared before inspection?',
+                position: 0,
+                options: [
+                  { id: 'option-1', label: 'Only certificates', position: 0, isCorrect: false },
+                  { id: 'option-2', label: 'Evidence, procedures and crew readiness', position: 1, isCorrect: true },
+                ],
+              }],
+            },
+          },
+        ],
+      }],
+    }])
+
+    render(await LearningCoursesAdminPage({ searchParams: Promise.resolve({}) }))
+
+    expect(screen.getByText('Curriculum & assessment')).toBeInTheDocument()
+    expect(screen.getByText('1 module · 2 lessons')).toBeInTheDocument()
+    expect(screen.getByText('Module 1 · Inspection readiness')).toBeInTheDocument()
+    expect(screen.getByText('Evidence preparation')).toBeInTheDocument()
+    expect(screen.getByText('Review records, procedures and interview evidence.')).toBeInTheDocument()
+    expect(screen.getByText('SIRE knowledge check')).toBeInTheDocument()
+    expect(screen.getByText('Pass mark 80%')).toBeInTheDocument()
+    expect(screen.getByText('What should be prepared before inspection?')).toBeInTheDocument()
+    expect(screen.getByText('Evidence, procedures and crew readiness')).toBeInTheDocument()
+    expect(screen.getByText('Correct answer')).toBeInTheDocument()
   })
 
   it('shows requested changes as review history without mutation controls', async () => {
