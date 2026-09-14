@@ -96,17 +96,16 @@ function ActiveConversationWorkspace({
     }
 
     const unsubscribe = subscribe((signal) => {
-      if (signal.payload.conversationId !== conversation.conversationId) return
-
       if (signal.eventType === 'message.created') {
+        if (signal.payload.conversationId !== conversation.conversationId) return
         void catchUpActiveConversation()
         return
       }
 
-      if (
-        signal.eventType === 'conversation.read_cursor_advanced'
-        && signal.payload.readerProfileId === conversation.otherProfileId
-      ) {
+      if (signal.eventType !== 'conversation.read_cursor_advanced') return
+      if (signal.payload.conversationId !== conversation.conversationId) return
+
+      if (signal.payload.readerProfileId === conversation.otherProfileId) {
         setPeerReadCursor((current) => laterReadCursor(current, {
           createdAt: signal.payload.lastReadAt,
           id: signal.payload.lastReadMessageId,
@@ -207,7 +206,7 @@ export function MessageShell({
               <div className="grid min-h-full flex-1 place-items-center bg-[linear-gradient(180deg,white,var(--mist-50))] p-8 text-center">
                 <div className="max-w-md">
                   <div className="mx-auto grid size-16 place-items-center rounded-[1.4rem] bg-ocean-50 text-ocean-700 ring-1 ring-ocean-100">
-                    <MessageCircleMore aria-hidden="true" className="size-7" />
+                    <MessageCircleMore aria-hidden="true" className="size-7 text-ocean-700" />
                   </div>
                   <h2 className="mt-5 text-xl font-bold text-navy-950">Select a conversation</h2>
                   <p className="mt-2 text-sm leading-6 text-muted">Choose a maritime professional from your inbox to continue a focused one-to-one conversation.</p>
