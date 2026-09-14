@@ -76,3 +76,13 @@ test('learning foundation models maritime course authoring and safe enrollment p
   assert.match(normalized, /create index if not exists learning_courses_marketplace_idx/)
   assert.match(normalized, /create index if not exists learning_mentor_applications_admin_queue_idx/)
 })
+
+test('course pricing never permits a negative base price when a discount is present', () => {
+  assert.equal(existsSync(migrationPath), true, `${migrationPath} should exist`)
+  const normalized = readFileSync(migrationPath, 'utf8').replace(/\s+/g, ' ').toLowerCase()
+
+  assert.match(
+    normalized,
+    /constraint learning_courses_price_check check \( price_minor >= 0 and \(discount_price_minor is null or discount_price_minor >= 0\) \)/,
+  )
+})
