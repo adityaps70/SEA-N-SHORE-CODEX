@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, GraduationCap } from 'lucide-react'
+import { ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Download, ExternalLink, GraduationCap } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   enrollmentRepository,
@@ -19,6 +19,7 @@ function formatLabel(format: LearnerCourseEnrollment['courseFormat']) {
 
 function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment }) {
   const completed = enrollment.enrollmentStatus === 'completed'
+  const certificateAvailable = completed && enrollment.certificateEnabled
 
   return (
     <article
@@ -80,12 +81,33 @@ function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment })
           </div>
         </div>
 
-        <Link
-          href={`/learn/courses/${enrollment.slug}/learn`}
-          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
-        >
-          {completed ? 'Review course' : 'Continue learning'} <ArrowRight aria-hidden="true" className="size-4" />
-        </Link>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link
+            href={`/learn/courses/${enrollment.slug}/learn`}
+            className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
+          >
+            {completed ? 'Review course' : 'Continue learning'} <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
+
+          {certificateAvailable ? (
+            <Link
+              href={`/api/learn/certificates/enrollment/${enrollment.enrollmentId}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-bold text-teal-900 transition hover:bg-teal-100"
+            >
+              <Download aria-hidden="true" className="size-4" />
+              {enrollment.certificateId ? 'Download certificate' : 'Generate certificate'}
+            </Link>
+          ) : null}
+
+          {certificateAvailable && enrollment.certificateVerificationCode ? (
+            <Link
+              href={`/certificates/${enrollment.certificateVerificationCode}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-mist-50"
+            >
+              Verify certificate <ExternalLink aria-hidden="true" className="size-4" />
+            </Link>
+          ) : null}
+        </div>
       </div>
     </article>
   )
