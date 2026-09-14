@@ -24,6 +24,38 @@ type MentorApplicationDetailRow = QueryResultRow & {
   profile_photo_path: string | null
   proposed_course_topics: string[] | null
 }
+type MentorApplicationStateRow = QueryResultRow & {
+  application_id: string
+  status: string
+  submitted_at: string | Date
+  updated_at: string | Date
+  admin_review_note: string | null
+  mentor_id: string | null
+  mentor_status: string | null
+}
+
+export type MentorApplicationState =
+  | { kind: 'none' }
+  | {
+      kind: 'application'
+      applicationId: string
+      status: MentorApplicationStatus
+      submittedAt: string
+      updatedAt: string
+      adminReviewNote: string | null
+      mentorId: null
+      mentorStatus: null
+    }
+  | {
+      kind: 'mentor'
+      applicationId: string
+      status: 'approved'
+      submittedAt: string
+      updatedAt: string
+      adminReviewNote: string | null
+      mentorId: string
+      mentorStatus: 'active' | 'suspended'
+    }
 
 function runtimeTransaction<T>(work: (query: LearningQuery) => Promise<T>) {
   return databaseTransaction(async (client: DatabaseQueryClient) => work(async (text, values) => {
@@ -35,6 +67,16 @@ function runtimeTransaction<T>(work: (query: LearningQuery) => Promise<T>) {
 function mentorApplicationStatus(value: string): MentorApplicationStatus {
   if (value === 'pending' || value === 'changes_requested' || value === 'approved' || value === 'rejected') return value
   throw new Error('mentor_application_status_invalid')
+}
+
+function mentorStatus(value: string | null): 'active' | 'suspended' | null {
+  if (value === null) return null
+  if (value === 'active' || value === 'suspended') return value
+  throw new Error('mentor_status_invalid')
+}
+
+function isoDateTime(value: string | Date) {
+  return value instanceof Date ? value.toISOString() : value
 }
 
 export function createLearningRepository(input: {
@@ -121,6 +163,56 @@ export function createLearningRepository(input: {
     }
   }
 
+  async function getMentorApplicationState(actorId: string): Promise<MentorApplicationState> {
+    const rows = await queryRows(
+      `select
+         application.id as application_id,
+         application.status,
+         application.submitted_at,
+         application.updated_at,
+         application.admin_review_note,
+         mentor.id as mentor_id,
+         mentor.status as mentor_status
+       from public.learning_mentor_applications application
+       left join public.learning_mentors mentor
+         on mentor.application_id = application.id
+       where application.user_id = $1
+       order by application.submitted_at desc, application.id desc
+       limit 1`,
+      [actorId],
+    ) as MentorApplicationStateRow[]
+    const row = rows[0]
+    if (!row) return { kind: 'none' }
+
+    const status = mentorApplicationStatus(row.status)
+    const activeMentorStatus = mentorStatus(row.mentor_status)
+    const base = {
+      applicationId: row.application_id,
+      submittedAt: isoDateTime(row.submitted_at),
+      updatedAt: isoDateTime(row.updated_at),
+      adminReviewNote: row.admin_review_note,
+    }
+
+    if (row.mentor_id && activeMentorStatus) {
+      if (status !== 'approved') throw new Error('mentor_application_state_inconsistent')
+      return {
+        kind: 'mentor',
+        ...base,
+        status,
+        mentorId: row.mentor_id,
+        mentorStatus: activeMentorStatus,
+      }
+    }
+
+    return {
+      kind: 'application',
+      ...base,
+      status,
+      mentorId: null,
+      mentorStatus: null,
+    }
+  }
+
   async function resubmitMentorApplication(actorId: string, applicationId: string, application: MentorApplicationInput) {
     return transaction(async (txQuery) => {
       const lockedRows = await txQuery(
@@ -181,6 +273,7 @@ export function createLearningRepository(input: {
   return {
     submitMentorApplication,
     getMentorApplication,
+    getMentorApplicationState,
     resubmitMentorApplication,
   }
 }
