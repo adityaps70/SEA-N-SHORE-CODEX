@@ -1,0 +1,136 @@
+import { describe, expect, it } from 'vitest'
+import { createCourseRepository } from './course-repository'
+
+const mentorUserId = '11111111-1111-4111-8111-111111111111'
+const mentorId = '22222222-2222-4222-8222-222222222222'
+const courseId = '33333333-3333-4333-8333-333333333333'
+
+const detailRow = {
+  id: courseId,
+  slug: 'sire-2-readiness-for-tanker-officers',
+  title: 'SIRE 2.0 Readiness for Tanker Officers',
+  subtitle: 'Practical preparation for inspections and onboard competency',
+  description: 'A practical maritime course that helps tanker officers understand SIRE 2.0 expectations, prepare evidence and improve onboard competency before an inspection.',
+  category: 'SIRE 2.0',
+  level: 'advanced',
+  language: 'English',
+  thumbnail_path: null,
+  trailer_path: null,
+  learning_outcomes: ['Understand SIRE 2.0 expectations', 'Prepare practical onboard evidence'],
+  requirements: ['Active or recent tanker experience'],
+  target_audience: ['Deck Officers', 'Marine Superintendents'],
+  price_minor: '0',
+  discount_price_minor: null,
+  currency: 'INR',
+  access_type: 'free',
+  certificate_enabled: true,
+  course_format: 'recorded',
+  status: 'changes_requested',
+  admin_review_note: 'Please make the inspection evidence outcome more specific.',
+  updated_at: new Date('2026-09-14T12:00:00.000Z'),
+}
+
+describe('learning course lifecycle repository', () => {
+  it('loads full editable course details only through active mentor ownership', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createCourseRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [detailRow]
+      },
+    })
+
+    await expect(repository.getOwnedCourse(mentorUserId, courseId)).resolves.toEqual({
+      id: courseId,
+      slug: 'sire-2-readiness-for-tanker-officers',
+      title: 'SIRE 2.0 Readiness for Tanker Officers',
+      subtitle: 'Practical preparation for inspections and onboard competency',
+      description: detailRow.description,
+      category: 'SIRE 2.0',
+      level: 'advanced',
+      language: 'English',
+      thumbnailPath: null,
+      trailerPath: null,
+      learningOutcomes: ['Understand SIRE 2.0 expectations', 'Prepare practical onboard evidence'],
+      requirements: ['Active or recent tanker experience'],
+      targetAudience: ['Deck Officers', 'Marine Superintendents'],
+      priceMinor: 0,
+      discountPriceMinor: null,
+      currency: 'INR',
+      accessType: 'free',
+      certificateEnabled: true,
+      courseFormat: 'recorded',
+      status: 'changes_requested',
+      adminReviewNote: 'Please make the inspection evidence outcome more specific.',
+      updatedAt: '2026-09-14T12:00:00.000Z',
+    })
+
+    expect(seen[0]?.text).toContain('mentor.user_id = $1')
+    expect(seen[0]?.text).toContain("mentor.status = 'active'")
+    expect(seen[0]?.text).toContain('course.id = $2')
+    expect(seen[0]?.values).toEqual([mentorUserId, courseId])
+  })
+
+  it('returns null when the active mentor does not own the course', async () => {
+    const repository = createCourseRepository({ query: async () => [] })
+    await expect(repository.getOwnedCourse(mentorUserId, courseId)).resolves.toBeNull()
+  })
+
+  it('submits an owned draft course for admin review atomically', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    let transactionCount = 0
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('for update')) return [{ id: courseId, status: 'draft', mentor_id: mentorId }]
+      if (text.includes('update public.learning_courses')) return [{ id: courseId }]
+      return []
+    }
+    const repository = createCourseRepository({
+      query,
+      transaction: async (work) => {
+        transactionCount += 1
+        return work(query)
+      },
+    })
+
+    await expect(repository.submitCourse(mentorUserId, courseId)).resolves.toBe(true)
+
+    expect(transactionCount).toBe(1)
+    const lock = seen.find((entry) => entry.text.includes('for update'))
+    expect(lock?.text).toContain('mentor.user_id = $2')
+    expect(lock?.text).toContain("mentor.status = 'active'")
+    expect(lock?.values).toEqual([courseId, mentorUserId])
+
+    const update = seen.find((entry) => entry.text.includes('update public.learning_courses'))
+    expect(update?.text).toContain("status = 'submitted'")
+    expect(update?.text).toContain('reviewed_by = null')
+    expect(update?.text).toContain('reviewed_at = null')
+    expect(update?.text).toContain('admin_review_note = null')
+    expect(update?.values).toContain(courseId)
+    expect(update?.values).toContain(mentorId)
+  })
+
+  it('allows resubmission after an administrator requests changes', async () => {
+    const query = async (text: string) => {
+      if (text.includes('for update')) return [{ id: courseId, status: 'changes_requested', mentor_id: mentorId }]
+      if (text.includes('update public.learning_courses')) return [{ id: courseId }]
+      return []
+    }
+    const repository = createCourseRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.submitCourse(mentorUserId, courseId)).resolves.toBe(true)
+  })
+
+  it('rejects mentor submission from a non-submittable state without updating the course', async () => {
+    const seen: string[] = []
+    const query = async (text: string) => {
+      seen.push(text)
+      if (text.includes('for update')) return [{ id: courseId, status: 'approved', mentor_id: mentorId }]
+      return []
+    }
+    const repository = createCourseRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.submitCourse(mentorUserId, courseId)).rejects.toThrow('course_submit_forbidden')
+    expect(seen.some((text) => text.includes('update public.learning_courses'))).toBe(false)
+  })
+})
