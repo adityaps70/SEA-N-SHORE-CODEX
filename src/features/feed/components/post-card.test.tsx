@@ -137,4 +137,20 @@ describe('PostCard', () => {
     expect(video).toHaveAttribute('controls')
     expect(video).toHaveAttribute('src', 'https://media.example/drill.mp4')
   })
+
+  it('reconciles local reaction and save state when canonical post props refresh', () => {
+    const { rerender } = render(<PostCard post={post} />)
+
+    rerender(<PostCard post={{
+      ...post,
+      viewerReaction: 'support',
+      reactionSummary: { like: 4, support: 2, respect: 0, on_point: 0 },
+      viewerSaved: true,
+    }} />)
+
+    const actions = screen.getByRole('group', { name: 'Post actions' })
+    expect(within(actions).getByRole('button', { name: /^Support$/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(actions).getByRole('button', { name: 'View 6 reactions' })).toHaveTextContent('6')
+    expect(within(actions).getByRole('button', { name: /^Save$/i })).toHaveAttribute('aria-pressed', 'true')
+  })
 })
