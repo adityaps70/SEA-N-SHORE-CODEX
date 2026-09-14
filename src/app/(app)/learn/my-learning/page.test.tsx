@@ -81,7 +81,7 @@ describe('/learn/my-learning', () => {
     expect(within(card).queryByText(/native lesson player is being connected/i)).not.toBeInTheDocument()
   })
 
-  it('shows a completed course honestly at 100 percent', async () => {
+  it('shows a completed course honestly at 100 percent with a review action', async () => {
     mocks.listLearnerEnrollments.mockResolvedValueOnce([
       {
         ...enrollment,
@@ -98,6 +98,11 @@ describe('/learn/my-learning', () => {
     expect(within(card).getByText('Completed')).toBeInTheDocument()
     expect(within(card).getByText('5 of 5 lessons completed')).toBeInTheDocument()
     expect(within(card).getByText('100%')).toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: 'Review course' })).toHaveAttribute(
+      'href',
+      `/learn/courses/${enrollment.slug}/learn`,
+    )
+    expect(within(card).queryByRole('link', { name: 'Continue learning' })).not.toBeInTheDocument()
   })
 
   it('renders an honest empty state with a marketplace route when the learner has no enrollments', async () => {
