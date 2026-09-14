@@ -16,6 +16,10 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
+vi.mock('@/features/realtime/provider', () => ({
+  MessagingRealtimeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}))
+
 vi.mock('@/features/auth/queries', () => ({
   getVerifiedUser: mocks.getVerifiedUser,
 }))
