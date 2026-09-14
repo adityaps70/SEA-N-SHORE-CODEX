@@ -49,6 +49,70 @@ type LockedCourseRow = QueryResultRow & {
   status: string
   mentor_id: string
 }
+type SubmissionReadinessRow = QueryResultRow & {
+  section_id: string
+  section_title: string
+  section_position: string | number
+  lesson_id: string | null
+  lesson_title: string | null
+  lesson_type: string | null
+  lesson_position: string | number | null
+  article_body: string | null
+  asset_path: string | null
+  external_url: string | null
+  quiz_id: string | null
+  pass_percentage: string | number | null
+  question_id: string | null
+  question_position: string | number | null
+  option_id: string | null
+  option_is_correct: boolean | null
+}
+
+type ReadinessLesson = {
+  id: string
+  title: string
+  lessonType: string
+  articleBody: string | null
+  assetPath: string | null
+  externalUrl: string | null
+  quiz: null | {
+    id: string
+    passPercentage: number
+    questions: Map<string, {
+      position: number
+      options: Map<string, boolean>
+    }>
+  }
+}
+
+type ReadinessSection = {
+  id: string
+  title: string
+  lessons: Map<string, ReadinessLesson>
+}
+
+export type CourseSubmissionReadinessCode =
+  | 'course_curriculum_empty'
+  | 'course_section_empty'
+  | 'course_lesson_content_missing'
+  | 'course_activity_not_supported'
+  | 'course_quiz_missing'
+  | 'course_quiz_pass_invalid'
+  | 'course_quiz_questions_missing'
+  | 'course_quiz_options_invalid'
+  | 'course_quiz_correct_answer_invalid'
+
+export class CourseSubmissionReadinessError extends Error {
+  readonly code: CourseSubmissionReadinessCode
+  readonly details: Record<string, string | number>
+
+  constructor(code: CourseSubmissionReadinessCode, details: Record<string, string | number> = {}) {
+    super(code)
+    this.name = 'CourseSubmissionReadinessError'
+    this.code = code
+    this.details = details
+  }
+}
 
 export type CourseDraftInput = {
   slug: string
@@ -137,6 +201,123 @@ function courseValues(mentorId: string, input: CourseDraftInput) {
     input.certificateEnabled,
     input.courseFormat,
   ] as const
+}
+
+function buildSubmissionReadiness(rows: SubmissionReadinessRow[]) {
+  const sections = new Map<string, ReadinessSection>()
+
+  for (const row of rows) {
+    let section = sections.get(row.section_id)
+    if (!section) {
+      section = { id: row.section_id, title: row.section_title, lessons: new Map() }
+      sections.set(row.section_id, section)
+    }
+
+    if (!row.lesson_id || !row.lesson_title || !row.lesson_type) continue
+
+    let lesson = section.lessons.get(row.lesson_id)
+    if (!lesson) {
+      lesson = {
+        id: row.lesson_id,
+        title: row.lesson_title,
+        lessonType: row.lesson_type,
+        articleBody: row.article_body,
+        assetPath: row.asset_path,
+        externalUrl: row.external_url,
+        quiz: row.quiz_id && row.pass_percentage !== null
+          ? {
+              id: row.quiz_id,
+              passPercentage: Number(row.pass_percentage),
+              questions: new Map(),
+            }
+          : null,
+      }
+      section.lessons.set(row.lesson_id, lesson)
+    }
+
+    if (!lesson.quiz || !row.question_id || row.question_position === null) continue
+    let question = lesson.quiz.questions.get(row.question_id)
+    if (!question) {
+      question = {
+        position: Number(row.question_position),
+        options: new Map(),
+      }
+      lesson.quiz.questions.set(row.question_id, question)
+    }
+    if (row.option_id && row.option_is_correct !== null) {
+      question.options.set(row.option_id, row.option_is_correct)
+    }
+  }
+
+  return sections
+}
+
+function validateSubmissionReadiness(rows: SubmissionReadinessRow[]) {
+  const sections = buildSubmissionReadiness(rows)
+  if (sections.size === 0) {
+    throw new CourseSubmissionReadinessError('course_curriculum_empty')
+  }
+
+  for (const section of sections.values()) {
+    if (section.lessons.size === 0) {
+      throw new CourseSubmissionReadinessError('course_section_empty', { sectionTitle: section.title })
+    }
+
+    for (const lesson of section.lessons.values()) {
+      if (lesson.lessonType === 'assignment' || lesson.lessonType === 'live_session') {
+        throw new CourseSubmissionReadinessError('course_activity_not_supported', {
+          lessonTitle: lesson.title,
+          lessonType: lesson.lessonType,
+        })
+      }
+
+      if (lesson.lessonType === 'article' && !lesson.articleBody?.trim()) {
+        throw new CourseSubmissionReadinessError('course_lesson_content_missing', {
+          lessonTitle: lesson.title,
+          lessonType: lesson.lessonType,
+        })
+      }
+
+      if (
+        ['video', 'audio', 'pdf', 'presentation_document', 'downloadable_resource'].includes(lesson.lessonType)
+        && !lesson.assetPath?.trim()
+        && !lesson.externalUrl?.trim()
+      ) {
+        throw new CourseSubmissionReadinessError('course_lesson_content_missing', {
+          lessonTitle: lesson.title,
+          lessonType: lesson.lessonType,
+        })
+      }
+
+      if (lesson.lessonType !== 'quiz') continue
+      if (!lesson.quiz) {
+        throw new CourseSubmissionReadinessError('course_quiz_missing', { lessonTitle: lesson.title })
+      }
+      if (!Number.isInteger(lesson.quiz.passPercentage) || lesson.quiz.passPercentage < 1 || lesson.quiz.passPercentage > 100) {
+        throw new CourseSubmissionReadinessError('course_quiz_pass_invalid', { lessonTitle: lesson.title })
+      }
+      if (lesson.quiz.questions.size === 0) {
+        throw new CourseSubmissionReadinessError('course_quiz_questions_missing', { lessonTitle: lesson.title })
+      }
+
+      for (const question of lesson.quiz.questions.values()) {
+        const questionNumber = question.position + 1
+        if (question.options.size < 2) {
+          throw new CourseSubmissionReadinessError('course_quiz_options_invalid', {
+            lessonTitle: lesson.title,
+            questionNumber,
+          })
+        }
+        const correctAnswers = [...question.options.values()].filter(Boolean).length
+        if (correctAnswers !== 1) {
+          throw new CourseSubmissionReadinessError('course_quiz_correct_answer_invalid', {
+            lessonTitle: lesson.title,
+            questionNumber,
+          })
+        }
+      }
+    }
+  }
 }
 
 export function createCourseRepository(input: {
@@ -369,6 +550,47 @@ export function createCourseRepository(input: {
       if (!canTransitionCourseStatus({ actor: 'mentor', current: currentStatus, next: 'submitted' })) {
         throw new Error('course_submit_forbidden')
       }
+
+      const readinessRows = await txQuery(
+        `select
+           section.id as section_id,
+           section.title as section_title,
+           section.position as section_position,
+           lesson.id as lesson_id,
+           lesson.title as lesson_title,
+           lesson.lesson_type,
+           lesson.position as lesson_position,
+           lesson.article_body,
+           lesson.asset_path,
+           lesson.external_url,
+           quiz.id as quiz_id,
+           quiz.pass_percentage,
+           question.id as question_id,
+           question.position as question_position,
+           option.id as option_id,
+           option.is_correct as option_is_correct
+         from public.learning_course_sections section
+         left join public.learning_lessons lesson
+           on lesson.section_id = section.id
+         left join public.learning_quizzes quiz
+           on quiz.lesson_id = lesson.id
+         left join public.learning_quiz_questions question
+           on question.quiz_id = quiz.id
+         left join public.learning_quiz_options option
+           on option.question_id = question.id
+         where section.course_id = $1
+         order by
+           section.position asc,
+           section.id asc,
+           lesson.position asc nulls last,
+           lesson.id asc nulls last,
+           question.position asc nulls last,
+           question.id asc nulls last,
+           option.position asc nulls last,
+           option.id asc nulls last`,
+        [courseId],
+      ) as SubmissionReadinessRow[]
+      validateSubmissionReadiness(readinessRows)
 
       const rows = await txQuery(
         `update public.learning_courses
