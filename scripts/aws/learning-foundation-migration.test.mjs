@@ -5,6 +5,7 @@ import test from 'node:test'
 const workflowPath = '.github/workflows/aws-learning-foundation-migration.yml'
 const runnerPath = 'scripts/aws/learning-foundation-migration.sh'
 const actionPath = 'scripts/aws/learning-foundation-migration-action.txt'
+const contractPath = 'scripts/aws/learning-foundation-migration.test.mjs'
 
 test('learning foundation migration is guarded, exact-head and one-shot', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
@@ -69,4 +70,15 @@ test('learning foundation migration verifies the exact seven-table additive shap
   assert.match(runner, /Partial or unexpected learning foundation schema detected/)
   assert.match(runner, /LEARNING_FOUNDATION_MIGRATION_ALREADY_APPLIED=true/)
   assert.match(runner, /LEARNING_FOUNDATION_MIGRATION_PLAN_VERIFIED=FULL_ADDITIVE_APPLY/)
+})
+
+test('learning foundation migration contract permits apply-once during exact-head CI', () => {
+  const contract = readFileSync(contractPath, 'utf8')
+
+  assert.match(contract, /\['plan', 'apply-once'\]\.includes\(action\)/)
+  assert.doesNotMatch(
+    contract,
+    /assert\.equal\(action,\s*['"]plan['"]/,
+    'The exact-head migration contract must permit the temporary apply-once guard value.',
+  )
 })
