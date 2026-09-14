@@ -115,7 +115,12 @@ resource "aws_cloudwatch_event_rule" "realtime_events" {
     source = ["sea-n-shore.social"]
     "detail-type" = [
       "message.created",
-      "conversation.read_cursor_advanced"
+      "conversation.read_cursor_advanced",
+      "feed.post_created",
+      "feed.post_reaction_changed",
+      "feed.post_comments_changed",
+      "feed.post_reposted",
+      "connection.accepted"
     ]
   })
 
@@ -256,6 +261,12 @@ resource "aws_iam_role_policy" "realtime_fanout" {
           aws_dynamodb_table.realtime_connections.arn,
           "${aws_dynamodb_table.realtime_connections.arn}/index/${local.realtime_profile_index}"
         ]
+      },
+      {
+        Sid      = "BroadcastFeedInvalidations"
+        Effect   = "Allow"
+        Action   = ["dynamodb:Scan"]
+        Resource = aws_dynamodb_table.realtime_connections.arn
       },
       {
         Sid    = "ConsumeRealtimeQueue"
