@@ -43,9 +43,9 @@ describe('durable post reposts', () => {
       insertRepost,
     }
     const social = {
-      enqueue: vi.fn(async (_event: unknown) => undefined),
-      upsertNotification: vi.fn(async (_event: unknown) => undefined),
-      deleteNotification: vi.fn(async (_recipientId: string, _dedupeKey: string) => undefined),
+      enqueue: vi.fn(async () => undefined),
+      upsertNotification: vi.fn(async () => undefined),
+      deleteNotification: vi.fn(async () => undefined),
     }
     const { createFeedService } = await import('./service')
     const service = createFeedService({
