@@ -270,6 +270,10 @@ export function CommentThread({ postId, comments, readOnly = false, composerOpen
   const [mentions, setMentions] = useState<SelectedMention[]>([])
   const [visibleRootCount, setVisibleRootCount] = useState(1)
 
+  useEffect(() => {
+    setThreadComments(comments)
+  }, [comments])
+
   function upsertComment(nextComment: FeedComment) {
     setThreadComments((current) => {
       const exists = current.some((comment) => comment.id === nextComment.id)
