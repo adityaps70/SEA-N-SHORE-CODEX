@@ -28,6 +28,7 @@ import {
   deleteCommentWithAurora,
   deletePostWithAurora,
   loadReactionDetailsWithAurora,
+  repostPostWithAurora,
   setCommentReactionWithAurora,
   setPollVoteWithAurora,
   setPostLikedWithAurora,
@@ -38,6 +39,7 @@ import {
 import { POST_CATEGORIES, type FeedComment, type FeedRequest, type PostCategory, type PostReactionType } from './types'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
+export type RepostActionResult = { ok: true; postId: string } | { ok: false; error: string }
 
 export type PostMediaUploadActionResult =
   | { ok: true; upload: Awaited<ReturnType<typeof createPendingPostMediaUpload>> }
@@ -251,6 +253,24 @@ export async function deletePost(postId: string): Promise<FeedActionResult> {
   revalidatePath('/saved')
   revalidateSocialFeed()
   return { ok: true }
+}
+
+export async function repostPost(postId: string): Promise<RepostActionResult> {
+  const parsedId = postIdSchema.safeParse(postId)
+  if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
+  const user = await requireAwsUser()
+  try {
+    const repostId = await repostPostWithAurora(user.id, parsedId.data)
+    revalidateSocialFeed()
+    return { ok: true, postId: repostId }
+  } catch (error) {
+    const code = safeErrorCode(error)
+    if (code === 'feed_repost_duplicate') return { ok: false, error: 'You already reposted this post.' }
+    if (code === 'feed_repost_source_unavailable' || code === 'feed_interaction_unavailable') {
+      return { ok: false, error: 'This post is no longer available to repost.' }
+    }
+    return { ok: false, error: 'We could not repost this post.' }
+  }
 }
 
 export async function setPostReaction(postId: string, reaction: PostReactionType | null): Promise<FeedActionResult> {
