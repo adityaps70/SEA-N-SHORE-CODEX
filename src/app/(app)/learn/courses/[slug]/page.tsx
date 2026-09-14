@@ -12,6 +12,9 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { EnrollFreeControl } from '@/features/learning/components/enroll-free-control'
+import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
 
 type PublishedCoursePageProps = {
@@ -51,6 +54,10 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
   const course = await marketplaceRepository.getPublishedCourseBySlug(slug)
 
   if (!course) return notFound()
+
+  const user = await requireAwsUser()
+  const enrollment = await enrollmentRepository.getLearnerEnrollment(user.id, course.id)
+  const initiallyEnrolled = enrollment?.status === 'active' || enrollment?.status === 'completed'
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -103,8 +110,12 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-200">Course access</p>
             <p className="mt-2 text-3xl font-extrabold tracking-tight">Free</p>
             <p className="mt-2 text-sm leading-6 text-white/65">
-              Phase 1 learning access is free. Enrollment and progress controls will appear only when the native learner workflow is connected.
+              Phase 1 learning access is free for signed-in Sea N Shore members. Enroll with your existing account; paid checkout is not active.
             </p>
+
+            <div className="mt-6">
+              <EnrollFreeControl courseId={course.id} initiallyEnrolled={initiallyEnrolled} />
+            </div>
 
             <div className="mt-6 rounded-[1.3rem] border border-white/10 bg-navy-950/45 p-4">
               <div className="flex items-center gap-3">
