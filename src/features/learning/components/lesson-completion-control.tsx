@@ -9,14 +9,14 @@ type LessonCompletionControlProps = {
   slug: string
   lessonId: string
   initiallyCompleted: boolean
-  nextLessonHref: string | null
+  nextLessonHref?: string | null
 }
 
 export function LessonCompletionControl({
   slug,
   lessonId,
   initiallyCompleted,
-  nextLessonHref,
+  nextLessonHref = null,
 }: LessonCompletionControlProps) {
   const router = useRouter()
   const [completed, setCompleted] = useState(initiallyCompleted)
