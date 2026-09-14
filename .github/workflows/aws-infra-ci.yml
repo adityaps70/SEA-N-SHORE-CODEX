@@ -72,6 +72,8 @@ jobs:
         run: node --test scripts/aws/jobs-intelligence-schema.test.mjs
       - name: Verify organization hiring approval schema contract
         run: node --test scripts/aws/organization-hiring-approval-schema.test.mjs
+      - name: Verify learning foundation schema contract
+        run: node --test scripts/aws/learning-foundation-schema.test.mjs
       - name: Verify jobs intelligence migration guard
         run: node --test scripts/aws/jobs-intelligence-migration.test.mjs
       - name: Verify organization hiring approval migration guard
