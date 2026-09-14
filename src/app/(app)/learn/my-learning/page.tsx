@@ -80,11 +80,8 @@ function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment })
           </div>
         </div>
 
-        <p className="mt-4 text-xs leading-5 text-muted">
-          Continue from the published course page while the native lesson player is being connected.
-        </p>
         <Link
-          href={`/learn/courses/${enrollment.slug}`}
+          href={`/learn/courses/${enrollment.slug}/learn`}
           className="mt-4 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
         >
           Continue learning <ArrowRight aria-hidden="true" className="size-4" />
