@@ -152,6 +152,22 @@ export default async function LearningAdminPage({
         </div>
       </section>
 
+      <nav aria-label="Learning administration" className="flex flex-wrap gap-2">
+        <Link
+          href="/admin/learning"
+          aria-current="page"
+          className="rounded-full bg-navy-950 px-4 py-2 text-sm font-bold text-white"
+        >
+          Mentor approvals
+        </Link>
+        <Link
+          href="/admin/learning/courses"
+          className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
+        >
+          Course review
+        </Link>
+      </nav>
+
       <nav aria-label="Mentor application status" className="flex flex-wrap gap-2">
         {statusFilters.map((filter) => (
           <Link
