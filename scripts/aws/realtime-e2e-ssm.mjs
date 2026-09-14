@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 
 const phase = process.argv[2]
-const allowed = new Set(['confirm', 'prepare', 'verify-durable', 'verify-infra', 'cleanup', 'diagnose-connect'])
+const allowed = new Set(['confirm', 'prepare', 'verify-durable', 'verify-social-durable', 'verify-infra', 'cleanup', 'diagnose-connect'])
 assert.ok(allowed.has(phase), `Unsupported Realtime E2E SSM phase: ${phase}`)
 const instanceId = process.env.INSTANCE_ID
 assert.match(instanceId ?? '', /^i-[0-9a-f]+$/)
@@ -12,8 +12,8 @@ const remoteScript = readFileSync('scripts/aws/realtime-e2e-remote.sh', 'utf8')
 const encoded = Buffer.from(remoteScript).toString('base64')
 const forwarded = [
   'AWS_REGION', 'COGNITO_POOL_NAME', 'E2E_SENDER_EMAIL', 'E2E_RECIPIENT_EMAIL',
-  'E2E_CONVERSATION_ID', 'E2E_MESSAGE_BODY', 'E2E_INJECTED_BODY', 'E2E_RUN_STARTED_AT',
-  'E2E_DIAGNOSTIC_START_MS', 'E2E_DIAGNOSTIC_END_MS',
+  'E2E_CONVERSATION_ID', 'E2E_MESSAGE_BODY', 'E2E_INJECTED_BODY', 'E2E_SOCIAL_POST_BODY',
+  'E2E_SOCIAL_COMMENT_BODY', 'E2E_RUN_STARTED_AT', 'E2E_DIAGNOSTIC_START_MS', 'E2E_DIAGNOSTIC_END_MS',
 ]
 const quote = (value) => `'${String(value).replaceAll("'", `'"'"'`)}'`
 const exports = forwarded
