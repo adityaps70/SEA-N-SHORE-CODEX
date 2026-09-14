@@ -3,6 +3,8 @@ import type {
   FeedComment,
   FeedMention,
   FeedPost,
+  FeedPostType,
+  FeedRepostSource,
   PostCategory,
   PostReactionType,
   ReactionSummary,
@@ -68,7 +70,9 @@ export type FeedPostRow = {
   id: string
   category: PostCategory
   body: string
-  post_type: 'standard' | 'poll'
+  post_type: FeedPostType
+  repost_of_post_id?: string | null
+  repost_source?: FeedPostRow | FeedPostRow[] | null
   created_at: string
   updated_at: string
   profiles: AuthorRow | AuthorRow[] | null
@@ -126,6 +130,10 @@ export function feedAuthorAvatarPath(row: AuthorRow | AuthorRow[] | null | undef
   return firstOrNull(row)?.avatar_path ?? null
 }
 
+export function feedPostMediaPath(row: FeedPostRow) {
+  return firstOrNull(row.post_media)?.storage_path ?? null
+}
+
 function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, string>): FeedAuthor {
   const author = firstOrNull(row)
   if (!author || !author.slug) throw new Error('Feed author is missing a completed professional identity.')
@@ -161,13 +169,20 @@ function mapComment(row: FeedCommentRow, signedUrls: Map<string, string>): FeedC
   }
 }
 
-export function mapFeedPost(
-  row: FeedPostRow,
-  viewer: FeedViewerState,
-  signedUrls: Map<string, string> = new Map(),
-  viewerProfileId = '',
-): FeedPost {
+function mapMedia(row: FeedPostRow, signedUrls: Map<string, string>) {
   const media = firstOrNull(row.post_media)
+  return media
+    ? {
+        storagePath: media.storage_path,
+        mimeType: media.mime_type,
+        altText: media.alt_text,
+        signedUrl: signedUrls.get(media.storage_path) ?? null,
+      }
+    : null
+}
+
+function mapPoll(row: FeedPostRow, viewer: FeedViewerState) {
+  if (row.post_type !== 'poll') return null
   const poll = firstOrNull(row.post_polls)
   const options = [...(poll?.post_poll_options ?? [])]
     .sort((a, b) => a.position - b.position)
@@ -177,12 +192,41 @@ export function mapFeedPost(
       position: option.position,
       voteCount: countRelation(option.post_poll_votes),
     }))
-  const totalVotes = options.reduce((total, option) => total + option.voteCount, 0)
+  return {
+    options,
+    totalVotes: options.reduce((total, option) => total + option.voteCount, 0),
+    viewerOptionId: viewer.pollVotes.get(row.id) ?? null,
+  }
+}
+
+function mapRepostSource(row: FeedPostRow | null, viewer: FeedViewerState, signedUrls: Map<string, string>): FeedRepostSource | null {
+  if (!row || row.post_type === 'repost') return null
+  return {
+    id: row.id,
+    category: row.category,
+    body: row.body,
+    postType: row.post_type,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    author: mapAuthor(row.profiles, signedUrls),
+    media: mapMedia(row, signedUrls),
+    poll: mapPoll(row, viewer),
+    mentions: mapMentions(row.post_mentions),
+  }
+}
+
+export function mapFeedPost(
+  row: FeedPostRow,
+  viewer: FeedViewerState,
+  signedUrls: Map<string, string> = new Map(),
+  viewerProfileId = '',
+): FeedPost {
   const author = mapAuthor(row.profiles, signedUrls)
   const comments = (row.post_comments ?? []).map((comment) => mapComment(comment, signedUrls))
   const reactionSummary = mapReactionSummary(row.post_reactions)
   const viewerReaction = viewer.postReactions?.get(row.id)
     ?? (viewer.likedPostIds?.has(row.id) ? 'like' : null)
+  const repostSource = row.post_type === 'repost' ? firstOrNull(row.repost_source) : null
 
   return {
     id: row.id,
@@ -192,21 +236,9 @@ export function mapFeedPost(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     author,
-    media: media
-      ? {
-          storagePath: media.storage_path,
-          mimeType: media.mime_type,
-          altText: media.alt_text,
-          signedUrl: signedUrls.get(media.storage_path) ?? null,
-        }
-      : null,
-    poll: row.post_type === 'poll'
-      ? {
-          options,
-          totalVotes,
-          viewerOptionId: viewer.pollVotes.get(row.id) ?? null,
-        }
-      : null,
+    media: mapMedia(row, signedUrls),
+    poll: mapPoll(row, viewer),
+    repostOf: mapRepostSource(repostSource, viewer, signedUrls),
     reactionSummary,
     reactionCount: reactionCount(reactionSummary),
     viewerReaction,
