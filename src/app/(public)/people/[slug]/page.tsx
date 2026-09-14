@@ -13,6 +13,7 @@ import { ProfileCredentialWallet } from '@/features/profiles/components/profile-
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { getProfilePortfolioById } from '@/features/profiles/profile-portfolio-queries'
 import { getPublicProfileBySlug } from '@/features/profiles/queries'
+import { MessagingRealtimeProvider } from '@/features/realtime/provider'
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
@@ -32,7 +33,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     ? `${relationship.following ? 1 : 0}:${relationship.connection.kind}:${relationship.connection.connectionId ?? ''}`
     : ''
 
-  return (
+  const profileContent = (
     <main className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-6 sm:px-6 sm:py-10 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="grid min-w-0 gap-5">
         <ProfileHeader
@@ -84,4 +85,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       ) : null}
     </main>
   )
+
+  return viewer ? (
+    <MessagingRealtimeProvider>{profileContent}</MessagingRealtimeProvider>
+  ) : profileContent
 }
