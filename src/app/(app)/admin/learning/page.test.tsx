@@ -60,6 +60,7 @@ describe('/admin/learning', () => {
 
     expect(mocks.listMentorApplications).toHaveBeenCalledWith('admin-1', 'pending')
     expect(screen.getByRole('heading', { name: 'Learning review' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Course review' })).toHaveAttribute('href', '/admin/learning/courses')
     expect(screen.getByText('Capt. Maya Singh')).toBeInTheDocument()
     expect(screen.getByText('Master Mariner')).toBeInTheDocument()
     expect(screen.getByText('18 years')).toBeInTheDocument()
