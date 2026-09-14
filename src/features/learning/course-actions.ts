@@ -3,7 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { courseRepository, type CourseDraftInput } from './course-repository'
+import {
+  CourseSubmissionReadinessError,
+  courseRepository,
+  type CourseDraftInput,
+} from './course-repository'
 
 const courseIdSchema = z.string().uuid()
 const courseCategories = new Set([
@@ -92,7 +96,52 @@ function validationError(error: z.ZodError) {
   return error.issues[0]?.message ?? 'Review the course details and try again.'
 }
 
+function detailText(error: CourseSubmissionReadinessError, key: string) {
+  const value = error.details[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function detailNumber(error: CourseSubmissionReadinessError, key: string) {
+  const value = error.details[key]
+  return typeof value === 'number' ? value : 0
+}
+
+function readinessErrorCopy(error: CourseSubmissionReadinessError) {
+  const lessonTitle = detailText(error, 'lessonTitle')
+  const lessonType = detailText(error, 'lessonType')
+  const sectionTitle = detailText(error, 'sectionTitle')
+  const questionNumber = detailNumber(error, 'questionNumber')
+
+  if (error.code === 'course_curriculum_empty') {
+    return 'Add at least one curriculum section before submitting for review.'
+  }
+  if (error.code === 'course_section_empty') {
+    return `Section “${sectionTitle}” needs at least one lesson.`
+  }
+  if (error.code === 'course_lesson_content_missing') {
+    if (lessonType === 'article') return `Lesson “${lessonTitle}” is missing required article content.`
+    return `Lesson “${lessonTitle}” needs an uploaded asset or external URL.`
+  }
+  if (error.code === 'course_activity_not_supported') {
+    return `Lesson “${lessonTitle}” uses ${lessonType.replaceAll('_', ' ')}, which cannot be published until its native learner completion flow is connected.`
+  }
+  if (error.code === 'course_quiz_missing') {
+    return `Quiz “${lessonTitle}” needs an assessment definition before submission.`
+  }
+  if (error.code === 'course_quiz_pass_invalid') {
+    return `Quiz “${lessonTitle}” needs a pass percentage from 1 to 100.`
+  }
+  if (error.code === 'course_quiz_questions_missing') {
+    return `Quiz “${lessonTitle}” needs at least one question.`
+  }
+  if (error.code === 'course_quiz_options_invalid') {
+    return `Question ${questionNumber} in quiz “${lessonTitle}” needs at least two answer options.`
+  }
+  return `Question ${questionNumber} in quiz “${lessonTitle}” must have exactly one correct answer.`
+}
+
 function mutationError(error: unknown) {
+  if (error instanceof CourseSubmissionReadinessError) return readinessErrorCopy(error)
   if (error instanceof Error) {
     if (error.message === 'mentor_required') return 'Approved mentor access is required to manage courses.'
     if (error.message === 'course_not_found') return 'We could not find this course in your Mentor Studio.'
