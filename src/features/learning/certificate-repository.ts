@@ -74,8 +74,16 @@ function mapCertificate(row: CertificateRow): LearningCertificate {
 }
 
 function publicCertificate(certificate: LearningCertificate): PublicLearningCertificate {
-  const { enrollmentId: _enrollmentId, courseId: _courseId, learnerId: _learnerId, ...publicEvidence } = certificate
-  return publicEvidence
+  return {
+    certificateId: certificate.certificateId,
+    certificateNumber: certificate.certificateNumber,
+    verificationCode: certificate.verificationCode,
+    learnerName: certificate.learnerName,
+    courseTitle: certificate.courseTitle,
+    mentorName: certificate.mentorName,
+    completedAt: certificate.completedAt,
+    issuedAt: certificate.issuedAt,
+  }
 }
 
 const CERTIFICATE_SELECT = `
