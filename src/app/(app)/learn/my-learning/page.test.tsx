@@ -70,16 +70,15 @@ describe('/learn/my-learning', () => {
     expect(within(card).getByRole('progressbar', { name: `${enrollment.title} progress` })).toHaveAttribute('aria-valuenow', '40')
   })
 
-  it('provides an honest continue-learning path without inventing a lesson player', async () => {
+  it('continues directly into the certified native learner player', async () => {
     render(await MyLearningPage())
 
     const card = screen.getByRole('article', { name: enrollment.title })
     expect(within(card).getByRole('link', { name: 'Continue learning' })).toHaveAttribute(
       'href',
-      `/learn/courses/${enrollment.slug}`,
+      `/learn/courses/${enrollment.slug}/learn`,
     )
-    expect(within(card).getByText(/course page while the native lesson player is being connected/i)).toBeInTheDocument()
-    expect(screen.queryByText(/lesson 1/i)).not.toBeInTheDocument()
+    expect(within(card).queryByText(/native lesson player is being connected/i)).not.toBeInTheDocument()
   })
 
   it('shows a completed course honestly at 100 percent', async () => {
