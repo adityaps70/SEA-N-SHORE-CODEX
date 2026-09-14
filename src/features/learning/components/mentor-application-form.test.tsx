@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MentorApplicationInput } from '../mentor-application'
 
 const mocks = vi.hoisted(() => ({
@@ -33,6 +33,8 @@ describe('MentorApplicationForm', () => {
     mocks.submitMentorApplication.mockResolvedValue({ ok: true, applicationId: '11111111-1111-4111-8111-111111111111' })
     mocks.resubmitMentorApplication.mockResolvedValue({ ok: true })
   })
+
+  afterEach(() => cleanup())
 
   it('prefills maritime profile data and keeps the mentor-specific fields editable', () => {
     render(<MentorApplicationForm initialValue={initial} />)
