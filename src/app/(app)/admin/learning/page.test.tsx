@@ -76,7 +76,7 @@ describe('/admin/learning', () => {
     render(await LearningAdminPage({ searchParams: Promise.resolve({ status: 'approved' }) }))
 
     expect(mocks.listMentorApplications).toHaveBeenCalledWith('admin-1', 'approved')
-    expect(screen.getByText('Approved')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Approved' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByText('Approved after credential review.')).toBeInTheDocument()
     expect(screen.queryByTestId('mentor-review-controls')).not.toBeInTheDocument()
   })
