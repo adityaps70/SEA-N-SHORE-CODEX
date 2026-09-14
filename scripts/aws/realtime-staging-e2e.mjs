@@ -7,6 +7,8 @@ const runId = process.env.GITHUB_RUN_ID
 const conversationId = process.env.E2E_CONVERSATION_ID
 const messageBody = process.env.E2E_MESSAGE_BODY
 const injectedBody = process.env.E2E_INJECTED_BODY
+const socialPostBody = process.env.E2E_SOCIAL_POST_BODY
+const socialCommentBody = process.env.E2E_SOCIAL_COMMENT_BODY
 const users = {
   sender: { email: process.env.E2E_SENDER_EMAIL, password: process.env.E2E_SENDER_PASSWORD, fullName: process.env.E2E_SENDER_NAME },
   recipient: { email: process.env.E2E_RECIPIENT_EMAIL, password: process.env.E2E_RECIPIENT_PASSWORD, fullName: process.env.E2E_RECIPIENT_NAME },
@@ -14,7 +16,7 @@ const users = {
 
 assert.ok(siteUrl)
 assert.ok(runId)
-assert.ok(['signup', 'onboarding', 'connect-probe', 'realtime'].includes(phase))
+assert.ok(['signup', 'onboarding', 'connect-probe', 'social', 'realtime'].includes(phase))
 for (const [key, user] of Object.entries(users)) {
   assert.match(user.email ?? '', new RegExp(`^sea-n-shore-realtime-e2e-[0-9]+-${key}@example\\.com$`))
   assert.ok((user.password ?? '').length >= 12)
@@ -24,6 +26,10 @@ if (phase === 'realtime') {
   assert.match(conversationId ?? '', /^[0-9a-f-]{36}$/)
   assert.ok(messageBody)
   assert.ok(injectedBody)
+}
+if (phase === 'social') {
+  assert.ok(socialPostBody)
+  assert.ok(socialCommentBody)
 }
 
 const browser = await chromium.launch()
@@ -101,6 +107,30 @@ async function closeProbeSocket(page, key) {
   }, key)
 }
 
+async function waitForSignal(page, key, eventType, minimumCount = 1) {
+  await page.waitForFunction(({ key, eventType, minimumCount }) => {
+    const signals = globalThis[`__realtime_${key}_signals`] ?? []
+    return signals.filter((signal) => signal?.eventType === eventType).length >= minimumCount
+  }, { key, eventType, minimumCount }, { timeout: 30_000 })
+  return await page.evaluate(({ key, eventType }) => {
+    const signals = globalThis[`__realtime_${key}_signals`] ?? []
+    return signals.filter((signal) => signal?.eventType === eventType).at(-1)
+  }, { key, eventType })
+}
+
+function assertSocialSignalMetadataOnly(signal, eventType, scope, forbiddenText = '') {
+  assert.ok(signal)
+  assert.equal(signal.eventType, eventType)
+  assert.equal(signal.scope, scope)
+  assert.equal(signal.schemaVersion, 1)
+  assert.match(signal.eventId ?? '', /^[0-9a-f-]{36}$/)
+  assert.ok(Number.isFinite(Date.parse(signal.occurredAt ?? '')))
+  assert.equal('aggregateId' in signal, false)
+  assert.equal('payload' in signal, false)
+  assert.deepEqual(Object.keys(signal).sort(), ['eventId', 'eventType', 'occurredAt', 'schemaVersion', 'scope'].sort())
+  if (forbiddenText) assert.equal(JSON.stringify(signal).includes(forbiddenText), false)
+}
+
 async function connectProbeJourney() {
   const senderContext = await browser.newContext()
   const senderPage = await senderContext.newPage()
@@ -125,6 +155,92 @@ async function connectProbeJourney() {
     console.log(`REALTIME_E2E_CONNECT_PROBE_RESULT=${result}`)
   } finally {
     await senderContext.close()
+  }
+}
+
+async function socialJourney() {
+  const senderContext = await browser.newContext()
+  const recipientContext = await browser.newContext()
+  const senderPage = await senderContext.newPage()
+  const recipientPage = await recipientContext.newPage()
+
+  try {
+    await signInCompleted(senderPage, users.sender)
+    await signInCompleted(recipientPage, users.recipient)
+    await senderPage.goto(`${siteUrl}/home`, { waitUntil: 'domcontentloaded' })
+    await recipientPage.goto(`${siteUrl}/home`, { waitUntil: 'domcontentloaded' })
+
+    const senderTicket = await openProbeSocket(senderPage, 'social_sender')
+    const recipientTicket = await openProbeSocket(recipientPage, 'social_recipient')
+    assert.match(senderTicket.webSocketUrl, /^wss:/)
+    assert.equal(senderTicket.webSocketUrl, recipientTicket.webSocketUrl)
+
+    await senderPage.getByRole('button', { name: 'Start a post' }).click()
+    await senderPage.getByLabel('Post to Sea N Shore').fill(socialPostBody)
+    await senderPage.getByRole('button', { name: 'Post', exact: true }).click()
+    await expect(senderPage.getByText(socialPostBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+
+    const createdSignal = await waitForSignal(recipientPage, 'social_recipient', 'feed.post_created')
+    assertSocialSignalMetadataOnly(createdSignal, 'feed.post_created', 'feed', socialPostBody)
+    await expect(recipientPage.getByText(socialPostBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_FEED_POST_CREATED_VERIFIED=true')
+
+    const recipientPost = recipientPage.locator('article').filter({ hasText: socialPostBody }).first()
+    await recipientPost.getByRole('button', { name: 'Like', exact: true }).click()
+    const reactionAdded = await waitForSignal(senderPage, 'social_sender', 'feed.post_reaction_changed', 1)
+    assertSocialSignalMetadataOnly(reactionAdded, 'feed.post_reaction_changed', 'feed', socialPostBody)
+    const senderPost = senderPage.locator('article').filter({ hasText: socialPostBody }).first()
+    await expect(senderPost.getByRole('button', { name: 'View 1 reaction' })).toBeVisible({ timeout: 30_000 })
+
+    await recipientPost.getByRole('button', { name: 'Like', exact: true }).click()
+    const reactionRemoved = await waitForSignal(senderPage, 'social_sender', 'feed.post_reaction_changed', 2)
+    assertSocialSignalMetadataOnly(reactionRemoved, 'feed.post_reaction_changed', 'feed', socialPostBody)
+    await expect(senderPost.getByRole('button', { name: 'View 1 reaction' })).toHaveCount(0, { timeout: 30_000 })
+    console.log('REALTIME_E2E_FEED_REACTION_TOGGLE_VERIFIED=true')
+
+    await recipientPost.getByRole('button', { name: 'Comment', exact: true }).click()
+    await recipientPost.getByLabel('Add a comment').fill(socialCommentBody)
+    await recipientPost.getByRole('button', { name: 'Comment', exact: true }).last().click()
+    await expect(recipientPost.getByText(socialCommentBody, { exact: true })).toBeVisible({ timeout: 20_000 })
+    const commentSignal = await waitForSignal(senderPage, 'social_sender', 'feed.post_comments_changed')
+    assertSocialSignalMetadataOnly(commentSignal, 'feed.post_comments_changed', 'feed', socialCommentBody)
+    await expect(senderPost.getByText(socialCommentBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_FEED_COMMENT_VERIFIED=true')
+
+    await recipientPost.getByRole('button', { name: 'Share', exact: true }).click()
+    await recipientPost.getByRole('menuitem', { name: 'Repost to feed' }).click()
+    const repostSignal = await waitForSignal(senderPage, 'social_sender', 'feed.post_reposted')
+    assertSocialSignalMetadataOnly(repostSignal, 'feed.post_reposted', 'feed', socialPostBody)
+    await senderPage.waitForFunction((body) => {
+      return Array.from(document.querySelectorAll('article')).filter((article) => article.textContent?.includes(body)).length >= 2
+    }, socialPostBody, { timeout: 30_000 })
+    console.log('REALTIME_E2E_FEED_REPOST_VERIFIED=true')
+
+    await senderPage.goto(`${siteUrl}/people/sns-realtime-recipient-${runId}`, { waitUntil: 'domcontentloaded' })
+    await senderPage.getByRole('button', { name: 'Connect', exact: true }).click()
+    await expect(senderPage.getByText('Pending', { exact: true })).toBeVisible({ timeout: 20_000 })
+
+    await recipientPage.goto(`${siteUrl}/people/sns-realtime-sender-${runId}`, { waitUntil: 'domcontentloaded' })
+    await recipientPage.getByRole('button', { name: 'Accept', exact: true }).click()
+    const senderConnectionSignal = await waitForSignal(senderPage, 'social_sender', 'connection.accepted')
+    const recipientConnectionSignal = await waitForSignal(recipientPage, 'social_recipient', 'connection.accepted')
+    assertSocialSignalMetadataOnly(senderConnectionSignal, 'connection.accepted', 'network')
+    assertSocialSignalMetadataOnly(recipientConnectionSignal, 'connection.accepted', 'network')
+    await expect(senderPage.getByText('Connected', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.getByText('Connected', { exact: true })).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_CONNECTION_ACCEPTED_VERIFIED=true')
+
+    await closeProbeSocket(senderPage, 'social_sender')
+    await closeProbeSocket(recipientPage, 'social_recipient')
+    await recipientPage.goto(`${siteUrl}/home`, { waitUntil: 'domcontentloaded' })
+    await expect(recipientPage.getByText(socialPostBody, { exact: true }).first()).toBeVisible({ timeout: 20_000 })
+    await expect(recipientPage.getByText(socialCommentBody, { exact: true }).first()).toBeVisible({ timeout: 20_000 })
+    await expect(recipientPage.getByText('reposted', { exact: true }).first()).toBeVisible({ timeout: 20_000 })
+    console.log('REALTIME_E2E_SOCIAL_RECONNECT_CONVERGENCE_VERIFIED=true')
+    console.log('REALTIME_E2E_SOCIAL_BROWSER_VERIFIED=true')
+  } finally {
+    await senderContext.close()
+    await recipientContext.close()
   }
 }
 
@@ -223,6 +339,8 @@ try {
     console.log('REALTIME_E2E_ONBOARDING_VERIFIED=true')
   } else if (phase === 'connect-probe') {
     await connectProbeJourney()
+  } else if (phase === 'social') {
+    await socialJourney()
   } else if (phase === 'realtime') {
     await realtimeJourney()
     console.log('REALTIME_E2E_BROWSER_VERIFIED=true')
