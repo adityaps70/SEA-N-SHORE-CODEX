@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { CheckCircle2, Circle, FileText, PlayCircle } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { LessonCompletionControl } from '@/features/learning/components/lesson-completion-control'
+import { ResumableLessonMedia } from '@/features/learning/components/resumable-lesson-media'
 import {
   learnerCourseRepository,
   type LearnerCourse,
@@ -43,7 +44,15 @@ function canManuallyCompleteLesson(lesson: LearnerLesson) {
   return !['quiz', 'assignment', 'live_session'].includes(lesson.lessonType)
 }
 
-function LessonContent({ lesson, mediaUrl }: { lesson: LearnerLesson; mediaUrl: string | null }) {
+function LessonContent({
+  lesson,
+  mediaUrl,
+  slug,
+}: {
+  lesson: LearnerLesson
+  mediaUrl: string | null
+  slug: string
+}) {
   if (lesson.lessonType === 'article') {
     return lesson.articleBody ? (
       <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
@@ -64,19 +73,17 @@ function LessonContent({ lesson, mediaUrl }: { lesson: LearnerLesson; mediaUrl: 
   }
 
   if (lesson.assetPath && mediaUrl) {
-    if (lesson.lessonType === 'video') {
+    if (lesson.lessonType === 'video' || lesson.lessonType === 'audio') {
       return (
-        <video
-          className="aspect-video w-full rounded-2xl bg-black"
-          controls
-          preload="metadata"
+        <ResumableLessonMedia
+          key={lesson.id}
+          kind={lesson.lessonType}
           src={mediaUrl}
+          slug={slug}
+          lessonId={lesson.id}
+          initialPositionSeconds={lesson.lastPositionSeconds}
         />
       )
-    }
-
-    if (lesson.lessonType === 'audio') {
-      return <audio className="w-full" controls preload="metadata" src={mediaUrl} />
     }
 
     return (
@@ -216,7 +223,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
               {selectedLesson.summary ? <p className="mt-3 text-sm leading-6 text-slate-600">{selectedLesson.summary}</p> : null}
 
               <div className="mt-7">
-                <LessonContent lesson={selectedLesson} mediaUrl={selectedMediaUrl} />
+                <LessonContent lesson={selectedLesson} mediaUrl={selectedMediaUrl} slug={course.slug} />
               </div>
 
               {canManuallyCompleteLesson(selectedLesson) ? (
