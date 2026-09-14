@@ -21,7 +21,7 @@ type ResumeRepository = ReturnType<typeof createLearnerProgressRepository> & {
 }
 
 describe('learner progress repository', () => {
-  it('idempotently completes a visible lesson and completes the enrollment when all lessons are done', async () => {
+  it('idempotently completes a visible lesson, completes the enrollment and issues an eligible certificate in the same transaction', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createLearnerProgressRepository({
       transaction: async (work) => work(async (text: string, values?: readonly unknown[]) => {
@@ -37,6 +37,32 @@ describe('learner progress repository', () => {
           return [{ total_lessons: '2', completed_lessons: '2' }]
         }
         if (text.includes('update public.learning_enrollments')) return [{ id: enrollmentId }]
+        if (text.includes('from public.learning_enrollments enrollment') && text.includes('learner.full_name')) {
+          return [{
+            enrollment_id: enrollmentId,
+            course_id: courseId,
+            learner_id: learnerId,
+            learner_name: 'Aarav Mehta',
+            course_title: 'SIRE 2.0 Readiness',
+            mentor_name: 'Capt. Maya Singh',
+            completed_at: new Date('2026-09-15T09:00:00.000Z'),
+          }]
+        }
+        if (text.includes('insert into public.learning_certificates')) {
+          return [{
+            id: '77777777-7777-4777-8777-777777777777',
+            enrollment_id: enrollmentId,
+            course_id: courseId,
+            learner_id: learnerId,
+            certificate_number: 'SNS-2026-A1B2C3D4E5F6',
+            verification_code: '88888888-8888-4888-8888-888888888888',
+            learner_name: 'Aarav Mehta',
+            course_title: 'SIRE 2.0 Readiness',
+            mentor_name: 'Capt. Maya Singh',
+            completed_at: new Date('2026-09-15T09:00:00.000Z'),
+            issued_at: new Date('2026-09-15T09:00:01.000Z'),
+          }]
+        }
         return []
       }),
     })
@@ -72,6 +98,32 @@ describe('learner progress repository', () => {
     expect(seen[3]?.values).toEqual([enrollmentId])
     expect(seen[3]?.text).toContain("status = 'completed'")
     expect(seen[3]?.text).toContain('completed_at = coalesce(completed_at, now())')
+
+    expect(seen.some(({ text, values }) => text.includes('learner.full_name') && values?.[0] === enrollmentId)).toBe(true)
+    expect(seen.some(({ text }) => text.includes('insert into public.learning_certificates'))).toBe(true)
+  })
+
+  it('does not attempt certificate issuance while the enrollment remains incomplete', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createLearnerProgressRepository({
+      transaction: async (work) => work(async (text: string, values?: readonly unknown[]) => {
+        seen.push({ text, values })
+        if (text.includes('for update of enrollment')) {
+          return [{ enrollment_id: enrollmentId, enrollment_status: 'active', course_id: courseId, lesson_id: lessonId }]
+        }
+        if (text.includes('insert into public.learning_progress')) return [{ completed_at: '2026-09-15T09:00:00.000Z' }]
+        if (text.includes('count(lesson.id)')) return [{ total_lessons: '3', completed_lessons: '2' }]
+        return []
+      }),
+    })
+
+    await expect(repository.completeLesson(learnerId, slug, lessonId)).resolves.toMatchObject({
+      progressPercent: 67,
+      enrollmentCompleted: false,
+    })
+    expect(seen.some(({ text }) => text.includes('update public.learning_enrollments'))).toBe(false)
+    expect(seen.some(({ text }) => text.includes('learning_certificates'))).toBe(false)
+    expect(seen.some(({ text }) => text.includes('learner.full_name'))).toBe(false)
   })
 
   it('fails closed before writing progress when the lesson is not accessible to the learner', async () => {
