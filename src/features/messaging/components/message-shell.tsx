@@ -206,13 +206,13 @@ export function MessageShell({
               <div className="grid min-h-full flex-1 place-items-center bg-[linear-gradient(180deg,white,var(--mist-50))] p-8 text-center">
                 <div className="max-w-md">
                   <div className="mx-auto grid size-16 place-items-center rounded-[1.4rem] bg-ocean-50 text-ocean-700 ring-1 ring-ocean-100">
-                    <MessageCircleMore aria-hidden="true" className="size-7 text-ocean-700" />
+                    <MessageCircleMore aria-hidden="true" className="size-7" />
                   </div>
                   <h2 className="mt-5 text-xl font-bold text-navy-950">Select a conversation</h2>
                   <p className="mt-2 text-sm leading-6 text-muted">Choose a maritime professional from your inbox to continue a focused one-to-one conversation.</p>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
