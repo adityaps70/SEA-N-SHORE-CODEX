@@ -1,12 +1,15 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LearnerCourse } from '@/features/learning/learner-course-repository'
+import type { LearnerQuiz } from '@/features/learning/learner-quiz-repository'
 
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getLearnerCourse: vi.fn(),
+  getQuizForLearner: vi.fn(),
   createMediaReadUrl: vi.fn(),
   lessonCompletionControl: vi.fn(),
+  quizLessonActivity: vi.fn(),
   resumableLessonMedia: vi.fn(),
   notFound: vi.fn(),
 }))
@@ -22,6 +25,15 @@ vi.mock('@/features/learning/learner-course-repository', async (importOriginal) 
     },
   }
 })
+vi.mock('@/features/learning/learner-quiz-repository', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/features/learning/learner-quiz-repository')>()
+  return {
+    ...original,
+    learnerQuizRepository: {
+      getQuizForLearner: mocks.getQuizForLearner,
+    },
+  }
+})
 vi.mock('@/features/learning/components/lesson-completion-control', () => ({
   LessonCompletionControl: (props: {
     slug: string
@@ -31,6 +43,18 @@ vi.mock('@/features/learning/components/lesson-completion-control', () => ({
   }) => {
     mocks.lessonCompletionControl(props)
     return <div data-testid="lesson-completion-control">Lesson completion control</div>
+  },
+}))
+vi.mock('@/features/learning/components/quiz-lesson-activity', () => ({
+  QuizLessonActivity: (props: {
+    quiz: LearnerQuiz
+    slug: string
+    lessonId: string
+    initiallyCompleted: boolean
+    nextLessonHref?: string | null
+  }) => {
+    mocks.quizLessonActivity(props)
+    return <div data-testid="quiz-lesson-activity">Native quiz activity</div>
   },
 }))
 vi.mock('@/features/learning/components/resumable-lesson-media', () => ({
@@ -130,6 +154,24 @@ const course: LearnerCourse = {
   ],
 }
 
+const quiz: LearnerQuiz = {
+  id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  lessonId: '88888888-8888-4888-8888-888888888888',
+  passPercentage: 70,
+  instructions: 'Choose the best answer for each question.',
+  questions: [
+    {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      prompt: 'What is the first priority before a SIRE 2.0 inspection?',
+      position: 0,
+      options: [
+        { id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1', label: 'Verify evidence and actual practice', position: 0 },
+        { id: 'cccccccc-cccc-4ccc-8ccc-ccccccccccc2', label: 'Prepare paperwork only', position: 1 },
+      ],
+    },
+  ],
+}
+
 afterEach(() => cleanup())
 
 describe('/learn/courses/[slug]/learn', () => {
@@ -137,6 +179,7 @@ describe('/learn/courses/[slug]/learn', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
     mocks.getLearnerCourse.mockResolvedValue(course)
+    mocks.getQuizForLearner.mockResolvedValue(quiz)
     mocks.createMediaReadUrl.mockResolvedValue('https://signed.example.com/bridge-readiness.mp4')
   })
 
@@ -166,6 +209,8 @@ describe('/learn/courses/[slug]/learn', () => {
     })
     expect(within(player).getByTestId('resumable-media')).toHaveAttribute('src', 'https://signed.example.com/bridge-readiness.mp4')
     expect(container.innerHTML).not.toContain('learning/courses/sire-2/bridge-readiness.mp4')
+    expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
+    expect(mocks.quizLessonActivity).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).toHaveBeenCalledWith({
       slug: course.slug,
       lessonId: '77777777-7777-4777-8777-777777777777',
@@ -206,6 +251,8 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(within(player).getByText('SIRE 2.0 uses a risk-based inspection framework.')).toBeInTheDocument()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
     expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
+    expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
+    expect(mocks.quizLessonActivity).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).toHaveBeenCalledWith({
       slug: course.slug,
       lessonId: '66666666-6666-4666-8666-666666666666',
@@ -219,7 +266,7 @@ describe('/learn/courses/[slug]/learn', () => {
     )
   })
 
-  it('shows an honest not-connected state for persisted activity types whose native engine is not built without allowing manual completion', async () => {
+  it('loads the learner-safe persisted quiz and renders the native quiz activity without media signing or manual completion', async () => {
     render(await LearnerCoursePage({
       params: Promise.resolve({ slug: course.slug }),
       searchParams: Promise.resolve({ lesson: '88888888-8888-4888-8888-888888888888' }),
@@ -227,8 +274,20 @@ describe('/learn/courses/[slug]/learn', () => {
 
     const player = screen.getByRole('region', { name: 'Current lesson' })
     expect(within(player).getByRole('heading', { name: 'Readiness knowledge check' })).toBeInTheDocument()
-    expect(within(player).getByText(/native quiz player is not connected yet/i)).toBeInTheDocument()
-    expect(screen.queryByText(/question 1/i)).not.toBeInTheDocument()
+    expect(mocks.getQuizForLearner).toHaveBeenCalledWith(
+      'learner-1',
+      course.slug,
+      '88888888-8888-4888-8888-888888888888',
+    )
+    expect(mocks.quizLessonActivity).toHaveBeenCalledWith({
+      quiz,
+      slug: course.slug,
+      lessonId: '88888888-8888-4888-8888-888888888888',
+      initiallyCompleted: false,
+      nextLessonHref: null,
+    })
+    expect(within(player).getByTestId('quiz-lesson-activity')).toHaveTextContent('Native quiz activity')
+    expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
     expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
     expect(within(player).queryByTestId('lesson-completion-control')).not.toBeInTheDocument()
@@ -237,6 +296,21 @@ describe('/learn/courses/[slug]/learn', () => {
       `/learn/courses/${course.slug}/learn?lesson=77777777-7777-4777-8777-777777777777`,
     )
     expect(within(player).queryByRole('link', { name: 'Next lesson' })).not.toBeInTheDocument()
+  })
+
+  it('fails closed with an honest state when a persisted quiz lesson has no available assessment definition', async () => {
+    mocks.getQuizForLearner.mockResolvedValueOnce(null)
+
+    render(await LearnerCoursePage({
+      params: Promise.resolve({ slug: course.slug }),
+      searchParams: Promise.resolve({ lesson: '88888888-8888-4888-8888-888888888888' }),
+    }))
+
+    const player = screen.getByRole('region', { name: 'Current lesson' })
+    expect(within(player).getByText('This quiz does not have a published assessment yet.')).toBeInTheDocument()
+    expect(mocks.quizLessonActivity).not.toHaveBeenCalled()
+    expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
+    expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
   })
 
   it('renders persisted course completion while keeping completed lessons reviewable and does not invent certificate issuance', async () => {
@@ -284,6 +358,8 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(mocks.notFound).toHaveBeenCalledOnce()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
     expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
+    expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
+    expect(mocks.quizLessonActivity).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
   })
 
@@ -296,6 +372,8 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(mocks.notFound).toHaveBeenCalledOnce()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
     expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
+    expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
+    expect(mocks.quizLessonActivity).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
   })
 })
