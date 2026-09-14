@@ -97,7 +97,7 @@ describe('feed realtime outbox events', () => {
 
     await service.createStandardPost(ACTOR_ID, {
       id: POST_ID,
-      category: 'General',
+      category: 'industry_opinion',
       body: 'Canonical post content stays out of realtime events.',
     })
 
@@ -109,7 +109,7 @@ describe('feed realtime outbox events', () => {
     const { repository, social, service } = createHarness()
 
     await service.createPollPost(ACTOR_ID, {
-      category: 'General',
+      category: 'industry_opinion',
       body: 'Which route would you choose?',
       pollOptions: ['Suez', 'Cape of Good Hope'],
     })
