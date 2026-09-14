@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { issueCertificateForCompletedEnrollmentWithQuery } from './certificate-repository'
 
 export type LearnerProgressQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type ProgressTransaction = <T>(work: (query: LearnerProgressQuery) => Promise<T>) => Promise<T>
@@ -129,6 +130,7 @@ export async function completeLearningLessonWithQuery(
        returning id`,
       [accessible.enrollment_id],
     )
+    await issueCertificateForCompletedEnrollmentWithQuery(query, accessible.enrollment_id)
   }
 
   return {
