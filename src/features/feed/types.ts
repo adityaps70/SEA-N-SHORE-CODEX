@@ -26,6 +26,7 @@ export const POST_REACTIONS = ['like', 'support', 'respect', 'on_point'] as cons
 export type PostReactionType = (typeof POST_REACTIONS)[number]
 export type ReactionSummary = Record<PostReactionType, number>
 export type ReactionTargetType = 'post' | 'comment'
+export type FeedPostType = 'standard' | 'poll' | 'repost'
 
 export const POST_REACTION_META: Record<PostReactionType, { label: string; emoji: string }> = {
   like: { label: 'Like', emoji: '👍' },
@@ -115,7 +116,7 @@ export type FeedComment = {
   replies?: FeedComment[]
 }
 
-export type FeedPost = {
+export type FeedRepostSource = {
   id: string
   category: PostCategory
   body: string
@@ -125,6 +126,20 @@ export type FeedPost = {
   author: FeedAuthor
   media: FeedMedia | null
   poll: FeedPoll | null
+  mentions?: FeedMention[]
+}
+
+export type FeedPost = {
+  id: string
+  category: PostCategory
+  body: string
+  postType: FeedPostType
+  createdAt: string
+  updatedAt: string
+  author: FeedAuthor
+  media: FeedMedia | null
+  poll: FeedPoll | null
+  repostOf?: FeedRepostSource | null
   reactionSummary?: ReactionSummary
   reactionCount?: number
   viewerReaction?: PostReactionType | null
