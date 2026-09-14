@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, FilePenLine } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CourseForm } from '@/features/learning/components/course-form'
+import { CourseSubmitControl } from '@/features/learning/components/course-submit-control'
 import { courseRepository, type CourseDraftInput } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
 
@@ -76,6 +77,10 @@ export default async function EditMentorCoursePage({
 
       <div className="mt-5">
         <CourseForm initialValue={initialValue} courseId={course.id} />
+      </div>
+
+      <div className="mt-5">
+        <CourseSubmitControl courseId={course.id} />
       </div>
     </main>
   )
