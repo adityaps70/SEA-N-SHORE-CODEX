@@ -15,6 +15,10 @@ type CompletionRow = QueryResultRow & {
   completed_at: string | Date
 }
 
+type PlaybackPositionRow = QueryResultRow & {
+  last_position_seconds: string | number
+}
+
 type ProgressCountRow = QueryResultRow & {
   total_lessons: string | number
   completed_lessons: string | number
@@ -138,7 +142,75 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
     })
   }
 
-  return { completeLesson }
+  async function savePlaybackPosition(
+    learnerId: string,
+    slug: string,
+    lessonId: string,
+    positionSeconds: number,
+  ) {
+    return transaction(async (query) => {
+      const accessRows = await query(
+        `select
+           enrollment.id as enrollment_id,
+           enrollment.status as enrollment_status,
+           course.id as course_id,
+           lesson.id as lesson_id
+         from public.learning_enrollments enrollment
+         inner join public.learning_courses course
+           on course.id = enrollment.course_id
+          and course.status = 'published'
+         inner join public.learning_mentors mentor
+           on mentor.id = course.mentor_id
+          and mentor.status = 'active'
+         inner join public.learning_mentor_applications application
+           on application.id = mentor.application_id
+          and application.user_id = mentor.user_id
+          and application.status = 'approved'
+         inner join public.learning_course_sections section
+           on section.course_id = course.id
+         inner join public.learning_lessons lesson
+           on lesson.section_id = section.id
+         where enrollment.learner_id = $1
+           and course.slug = $2
+           and lesson.id = $3
+           and lesson.lesson_type in ('video', 'audio')
+           and enrollment.status in ('active', 'completed')
+         for update of enrollment`,
+        [learnerId, slug, lessonId],
+      ) as AccessibleLessonRow[]
+
+      const accessible = accessRows[0]
+      if (!accessible) throw new Error('lesson_not_accessible')
+
+      const positionRows = await query(
+        `insert into public.learning_progress (
+           enrollment_id,
+           lesson_id,
+           last_position_seconds,
+           first_started_at,
+           updated_at
+         )
+         values ($1, $2, $3, now(), now())
+         on conflict (enrollment_id, lesson_id) do update
+         set last_position_seconds = excluded.last_position_seconds,
+             first_started_at = coalesce(public.learning_progress.first_started_at, excluded.first_started_at),
+             updated_at = now()
+         returning last_position_seconds`,
+        [accessible.enrollment_id, accessible.lesson_id, positionSeconds],
+      ) as PlaybackPositionRow[]
+
+      const position = positionRows[0]
+      if (!position) throw new Error('playback_position_save_failed')
+
+      return {
+        enrollmentId: accessible.enrollment_id,
+        lessonId: accessible.lesson_id,
+        lastPositionSeconds: Number(position.last_position_seconds),
+      }
+    })
+  }
+
+  return { completeLesson, savePlaybackPosition }
 }
 
 export const learnerProgressRepository = createLearnerProgressRepository()
