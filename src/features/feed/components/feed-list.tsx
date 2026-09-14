@@ -32,6 +32,15 @@ export function FeedList({ initialPage, category }: { initialPage: FeedPage; cat
   }, [category, cursor, pending])
 
   useEffect(() => {
+    const canonicalIds = new Set(initialPage.posts.map((post) => post.id))
+    setPosts((current) => [
+      ...initialPage.posts,
+      ...current.filter((post) => !canonicalIds.has(post.id)),
+    ])
+    setFreshPosts((current) => current.filter((post) => !canonicalIds.has(post.id)))
+  }, [initialPage.posts])
+
+  useEffect(() => {
     if (!cursor || typeof IntersectionObserver === 'undefined') return
     const node = sentinelRef.current
     if (!node) return
