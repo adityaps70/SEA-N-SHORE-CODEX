@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Bookmark, MessageCircle, Trash2 } from 'lucide-react'
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { deletePost, setPostReaction, setPostSaved } from '../actions'
 import {
@@ -54,6 +54,18 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
   const [deleted, setDeleted] = useState(false)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
+
+  useEffect(() => {
+    setReaction(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
+  }, [post.viewerReaction, post.viewerLiked])
+
+  useEffect(() => {
+    setSummary(post.reactionSummary ?? { ...EMPTY_REACTION_SUMMARY, like: post.likeCount })
+  }, [post.reactionSummary, post.likeCount])
+
+  useEffect(() => {
+    setSaved(post.viewerSaved)
+  }, [post.viewerSaved])
 
   function changeReaction(next: PostReactionType | null) {
     if (readOnly || pending) return
