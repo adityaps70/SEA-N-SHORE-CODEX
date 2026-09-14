@@ -5,11 +5,14 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getMentorApplicationState: vi.fn(),
   getOwnedCourse: vi.fn(),
+  getCurriculum: vi.fn(),
   redirect: vi.fn(),
   notFound: vi.fn(),
   capturedInitialValue: null as unknown,
   capturedCourseId: null as string | null,
   capturedSubmitCourseId: null as string | null,
+  capturedCurriculumCourseId: null as string | null,
+  capturedCurriculum: null as unknown,
 }))
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }))
@@ -20,11 +23,21 @@ vi.mock('@/features/learning/repository', () => ({
 vi.mock('@/features/learning/course-repository', () => ({
   courseRepository: { getOwnedCourse: mocks.getOwnedCourse },
 }))
+vi.mock('@/features/learning/mentor-curriculum-repository', () => ({
+  mentorCurriculumRepository: { getCurriculum: mocks.getCurriculum },
+}))
 vi.mock('@/features/learning/components/course-form', () => ({
   CourseForm: ({ initialValue, courseId }: { initialValue: unknown; courseId?: string }) => {
     mocks.capturedInitialValue = initialValue
     mocks.capturedCourseId = courseId ?? null
     return <div data-testid="course-form">Course form</div>
+  },
+}))
+vi.mock('@/features/learning/components/mentor-curriculum-editor', () => ({
+  MentorCurriculumEditor: ({ courseId, curriculum }: { courseId: string; curriculum: unknown }) => {
+    mocks.capturedCurriculumCourseId = courseId
+    mocks.capturedCurriculum = curriculum
+    return <div data-testid="mentor-curriculum-editor">Curriculum editor</div>
   },
 }))
 vi.mock('@/features/learning/components/course-submit-control', () => ({
@@ -65,12 +78,25 @@ const draftCourse = {
   updatedAt: '2026-09-14T15:00:00.000Z',
 } as const
 
+const curriculum = {
+  courseId,
+  status: 'draft',
+  sections: [{
+    id: '44444444-4444-4444-8444-444444444444',
+    title: 'Module 1',
+    position: 0,
+    lessons: [],
+  }],
+} as const
+
 describe('/learn/studio/courses/[courseId]/edit', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.capturedInitialValue = null
     mocks.capturedCourseId = null
     mocks.capturedSubmitCourseId = null
+    mocks.capturedCurriculumCourseId = null
+    mocks.capturedCurriculum = null
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'mentor@example.com' })
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
@@ -83,18 +109,23 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
       mentorStatus: 'active',
     })
     mocks.getOwnedCourse.mockResolvedValue(draftCourse)
+    mocks.getCurriculum.mockResolvedValue(curriculum)
   })
 
-  it('loads only the signed-in mentor owned draft and prefills the course form', async () => {
+  it('loads the signed-in mentor owned draft, curriculum and submission control in one editor', async () => {
     render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
 
     expect(screen.getByRole('heading', { name: 'Edit course' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /mentor studio/i })).toHaveAttribute('href', '/learn/studio')
     expect(screen.getByText('SIRE 2.0 Readiness for Tanker Officers')).toBeInTheDocument()
     expect(screen.getByTestId('course-form')).toBeInTheDocument()
+    expect(screen.getByTestId('mentor-curriculum-editor')).toBeInTheDocument()
     expect(screen.getByTestId('course-submit-control')).toBeInTheDocument()
     expect(mocks.getOwnedCourse).toHaveBeenCalledWith('user-1', courseId)
+    expect(mocks.getCurriculum).toHaveBeenCalledWith('user-1', courseId)
     expect(mocks.capturedCourseId).toBe(courseId)
+    expect(mocks.capturedCurriculumCourseId).toBe(courseId)
+    expect(mocks.capturedCurriculum).toEqual(curriculum)
     expect(mocks.capturedSubmitCourseId).toBe(courseId)
     expect(mocks.capturedInitialValue).toEqual(expect.objectContaining({
       slug: draftCourse.slug,
@@ -114,11 +145,13 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
       status: 'changes_requested',
       adminReviewNote: 'Please make the learning outcomes more measurable and role-specific.',
     })
+    mocks.getCurriculum.mockResolvedValue({ ...curriculum, status: 'changes_requested' })
 
     render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
 
     expect(screen.getByText('Please make the learning outcomes more measurable and role-specific.')).toBeInTheDocument()
     expect(screen.getByTestId('course-form')).toBeInTheDocument()
+    expect(screen.getByTestId('mentor-curriculum-editor')).toBeInTheDocument()
     expect(screen.getByTestId('course-submit-control')).toBeInTheDocument()
   })
 
@@ -129,6 +162,7 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
 
     expect(mocks.redirect).toHaveBeenCalledWith('/learn/teach')
     expect(mocks.getOwnedCourse).not.toHaveBeenCalled()
+    expect(mocks.getCurriculum).not.toHaveBeenCalled()
   })
 
   it('uses not found when the owned course does not exist', async () => {
@@ -137,16 +171,28 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     await EditMentorCoursePage({ params: Promise.resolve({ courseId }) })
 
     expect(mocks.notFound).toHaveBeenCalled()
+    expect(mocks.getCurriculum).not.toHaveBeenCalled()
     expect(mocks.capturedInitialValue).toBeNull()
     expect(mocks.capturedSubmitCourseId).toBeNull()
   })
 
-  it.each(['submitted', 'approved', 'published', 'archived'])('returns a non-editable %s course to Mentor Studio', async (status) => {
+  it('fails closed when the owned curriculum cannot be resolved', async () => {
+    mocks.getCurriculum.mockResolvedValue(null)
+
+    await EditMentorCoursePage({ params: Promise.resolve({ courseId }) })
+
+    expect(mocks.notFound).toHaveBeenCalled()
+    expect(mocks.capturedCurriculum).toBeNull()
+    expect(mocks.capturedSubmitCourseId).toBeNull()
+  })
+
+  it.each(['submitted', 'approved', 'published', 'archived'])('returns a non-editable %s course to Mentor Studio before reading curriculum', async (status) => {
     mocks.getOwnedCourse.mockResolvedValue({ ...draftCourse, status })
 
     await EditMentorCoursePage({ params: Promise.resolve({ courseId }) })
 
     expect(mocks.redirect).toHaveBeenCalledWith('/learn/studio')
+    expect(mocks.getCurriculum).not.toHaveBeenCalled()
     expect(mocks.capturedInitialValue).toBeNull()
     expect(mocks.capturedSubmitCourseId).toBeNull()
   })
