@@ -18,11 +18,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               <ShieldCheck aria-hidden="true" className="size-4" /> Sea N Shore Admin
             </p>
             <h1 className="mt-2 text-3xl font-bold">Platform administration</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">Review maritime organizations, verification decisions and hiring-access queues from one controlled workspace.</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">Review maritime organizations, mentor approvals, verification decisions and controlled platform-access queues from one workspace.</p>
           </div>
           <nav aria-label="Admin navigation" className="flex flex-wrap gap-2 text-sm font-bold">
             <Link href="/admin" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Overview</Link>
             <Link href="/admin/organizations" className="rounded-xl bg-white px-4 py-2.5 text-navy-950 transition hover:bg-mist-50">Organizations</Link>
+            <Link href="/admin/learning" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Learning</Link>
           </nav>
         </div>
       </header>
