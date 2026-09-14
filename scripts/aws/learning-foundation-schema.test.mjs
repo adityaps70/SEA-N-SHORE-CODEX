@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const migrationPath = 'infra/aws/database/migrations/0016_learning_foundation.sql'
 const quizMigrationPath = 'infra/aws/database/migrations/0017_learning_quiz_assessments.sql'
+const certificateMigrationPath = 'infra/aws/database/migrations/0018_learning_certificates.sql'
 
 const expectedTables = [
   'learning_mentor_applications',
@@ -134,4 +135,30 @@ test('learning quiz extension preserves server-authoritative single-answer scori
   assert.match(normalized, /create unique index if not exists learning_quiz_attempt_answers_attempt_question_uq/)
   assert.match(normalized, /create index if not exists learning_quiz_attempts_enrollment_idx/)
   assert.match(normalized, /create index if not exists learning_quiz_attempts_learner_idx/)
+})
+
+test('learning certificate extension creates immutable completion evidence additively', () => {
+  assert.equal(existsSync(certificateMigrationPath), true, `${certificateMigrationPath} should exist`)
+  const normalized = readFileSync(certificateMigrationPath, 'utf8').replace(/\s+/g, ' ').toLowerCase()
+
+  assert.match(normalized, /create table if not exists public\.learning_certificates\b/)
+  assert.match(normalized, /enrollment_id uuid not null unique references public\.learning_enrollments\(id\) on delete restrict/)
+  assert.match(normalized, /course_id uuid not null references public\.learning_courses\(id\) on delete restrict/)
+  assert.match(normalized, /learner_id uuid not null references public\.profiles\(id\) on delete restrict/)
+  assert.match(normalized, /certificate_number text not null unique/)
+  assert.match(normalized, /verification_code uuid not null unique default gen_random_uuid\(\)/)
+  assert.match(normalized, /learner_name text not null/)
+  assert.match(normalized, /course_title text not null/)
+  assert.match(normalized, /mentor_name text not null/)
+  assert.match(normalized, /completed_at timestamptz not null/)
+  assert.match(normalized, /issued_at timestamptz not null default now\(\)/)
+  assert.match(normalized, /constraint learning_certificates_number_check/)
+  assert.match(normalized, /create index if not exists learning_certificates_learner_idx/)
+  assert.match(normalized, /create index if not exists learning_certificates_verification_idx/)
+
+  assert.doesNotMatch(normalized, /\bdrop\s+(table|type|column)\b/)
+  assert.doesNotMatch(normalized, /\btruncate\b/)
+  assert.doesNotMatch(normalized, /\bdelete\s+from\b/)
+  assert.doesNotMatch(normalized, /\bupdate\s+public\./)
+  assert.doesNotMatch(normalized, /\binsert\s+into\b/)
 })
