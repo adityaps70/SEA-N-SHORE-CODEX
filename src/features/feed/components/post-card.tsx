@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { Bookmark, MessageCircle, Trash2 } from 'lucide-react'
-import { useEffect, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { deletePost, setPostReaction, setPostSaved } from '../actions'
 import {
@@ -46,6 +46,7 @@ function updateSummary(summary: ReactionSummary, previous: PostReactionType | nu
 }
 
 export function PostCard({ post, detail = false, readOnly = false }: { post: FeedPost; detail?: boolean; readOnly?: boolean }) {
+  const [canonicalPost, setCanonicalPost] = useState(post)
   const [reaction, setReaction] = useState<PostReactionType | null>(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
   const [summary, setSummary] = useState<ReactionSummary>(() => initialSummary(post))
   const [saved, setSaved] = useState(post.viewerSaved)
@@ -55,17 +56,12 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
 
-  useEffect(() => {
+  if (canonicalPost !== post) {
+    setCanonicalPost(post)
     setReaction(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
-  }, [post.viewerReaction, post.viewerLiked])
-
-  useEffect(() => {
-    setSummary(post.reactionSummary ?? { ...EMPTY_REACTION_SUMMARY, like: post.likeCount })
-  }, [post.reactionSummary, post.likeCount])
-
-  useEffect(() => {
+    setSummary(initialSummary(post))
     setSaved(post.viewerSaved)
-  }, [post.viewerSaved])
+  }
 
   function changeReaction(next: PostReactionType | null) {
     if (readOnly || pending) return
