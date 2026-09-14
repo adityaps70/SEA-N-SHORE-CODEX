@@ -105,7 +105,7 @@ async function LessonContent({ lesson }: { lesson: LearnerLesson }) {
 export default async function LearnerCoursePage({ params, searchParams }: LearnerCoursePageProps) {
   const [{ slug }, query, user] = await Promise.all([
     params,
-    searchParams ?? Promise.resolve({}),
+    searchParams ?? Promise.resolve<{ lesson?: string }>({}),
     requireAwsUser(),
   ])
 
