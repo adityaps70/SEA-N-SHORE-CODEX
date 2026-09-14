@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CourseDraftInput } from './course-repository'
+import { CourseSubmissionReadinessError, type CourseDraftInput } from './course-repository'
 
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
@@ -154,6 +154,56 @@ describe('learning course server actions', () => {
     await expect(submitCourseForReview(courseId)).resolves.toEqual({
       ok: false,
       error: 'This course cannot be submitted for review in its current state.',
+    })
+  })
+
+  it.each([
+    [
+      new CourseSubmissionReadinessError('course_curriculum_empty'),
+      'Add at least one curriculum section before submitting for review.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_section_empty', { sectionTitle: 'Module 1' }),
+      'Section “Module 1” needs at least one lesson.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_lesson_content_missing', { lessonTitle: 'Inspection evidence', lessonType: 'article' }),
+      'Lesson “Inspection evidence” is missing required article content.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_lesson_content_missing', { lessonTitle: 'Bridge walkthrough', lessonType: 'video' }),
+      'Lesson “Bridge walkthrough” needs an uploaded asset or external URL.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_activity_not_supported', { lessonTitle: 'Onboard task', lessonType: 'assignment' }),
+      'Lesson “Onboard task” uses assignment, which cannot be published until its native learner completion flow is connected.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_quiz_missing', { lessonTitle: 'SIRE knowledge check' }),
+      'Quiz “SIRE knowledge check” needs an assessment definition before submission.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_quiz_pass_invalid', { lessonTitle: 'SIRE knowledge check' }),
+      'Quiz “SIRE knowledge check” needs a pass percentage from 1 to 100.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_quiz_questions_missing', { lessonTitle: 'SIRE knowledge check' }),
+      'Quiz “SIRE knowledge check” needs at least one question.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_quiz_options_invalid', { lessonTitle: 'SIRE knowledge check', questionNumber: 2 }),
+      'Question 2 in quiz “SIRE knowledge check” needs at least two answer options.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_quiz_correct_answer_invalid', { lessonTitle: 'SIRE knowledge check', questionNumber: 3 }),
+      'Question 3 in quiz “SIRE knowledge check” must have exactly one correct answer.',
+    ],
+  ])('returns actionable curriculum readiness copy on submit', async (error, expectedCopy) => {
+    mocks.submitCourse.mockRejectedValueOnce(error)
+
+    await expect(submitCourseForReview(courseId)).resolves.toEqual({
+      ok: false,
+      error: expectedCopy,
     })
   })
 })
