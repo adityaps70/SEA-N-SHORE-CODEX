@@ -140,7 +140,7 @@ create table if not exists public.learning_courses (
   constraint learning_courses_requirements_check check (cardinality(requirements) <= 30),
   constraint learning_courses_audience_check check (cardinality(target_audience) <= 30),
   constraint learning_courses_price_check check (
-    price_minor >= 0 and discount_price_minor is null or discount_price_minor >= 0
+    price_minor >= 0 and (discount_price_minor is null or discount_price_minor >= 0)
   ),
   constraint learning_courses_discount_check check (
     discount_price_minor is null or discount_price_minor <= price_minor
