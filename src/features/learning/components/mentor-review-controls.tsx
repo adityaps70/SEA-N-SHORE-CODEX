@@ -12,11 +12,17 @@ export function MentorReviewControls({ applicationId }: { applicationId: string 
 
   function submit(decision: MentorReviewDecision) {
     setFeedback(null)
+    const normalizedNote = reviewerNote.trim()
+    if (decision !== 'approved' && !normalizedNote) {
+      setFeedback({ tone: 'error', message: 'A reviewer note is required for this decision.' })
+      return
+    }
+
     startTransition(async () => {
       const result = await reviewMentorApplication(
         applicationId,
         decision,
-        reviewerNote.trim() || null,
+        normalizedNote || null,
       )
       if (!result.ok) {
         setFeedback({ tone: 'error', message: result.error })
