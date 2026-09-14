@@ -65,6 +65,12 @@ const RECOVERY_ACTIONS = new Map([
   ['aws_api_gateway_account.realtime', JSON.stringify(['create'])],
 ])
 
+const SOCIAL_MAINTENANCE_ACTIONS = new Map([
+  ['aws_cloudwatch_event_rule.realtime_events', JSON.stringify(['update'])],
+  ['aws_iam_role_policy.realtime_fanout', JSON.stringify(['update'])],
+  ['aws_lambda_function.realtime_fanout', JSON.stringify(['update'])],
+])
+
 export function resolveRealtimeInfraTargets(state) {
   const tracked = new Set(
     (state.resources ?? [])
@@ -80,16 +86,24 @@ export function resolveRealtimeInfraTargets(state) {
   return [...REALTIME_INFRA_CREATE_RESOURCES, REALTIME_WEB_TASK_RESOURCE]
 }
 
-function isExactRecovery(changes) {
-  if (changes.length !== RECOVERY_ACTIONS.size) return false
+function matchesExactActions(changes, expectedActions) {
+  if (changes.length !== expectedActions.size) return false
   const seen = new Set()
   for (const resource of changes) {
-    const expected = RECOVERY_ACTIONS.get(resource.address)
+    const expected = expectedActions.get(resource.address)
     const actual = JSON.stringify(resource?.change?.actions ?? [])
     if (!expected || expected !== actual || seen.has(resource.address)) return false
     seen.add(resource.address)
   }
-  return seen.size === RECOVERY_ACTIONS.size
+  return seen.size === expectedActions.size
+}
+
+function isExactRecovery(changes) {
+  return matchesExactActions(changes, RECOVERY_ACTIONS)
+}
+
+function isExactSocialMaintenance(changes) {
+  return matchesExactActions(changes, SOCIAL_MAINTENANCE_ACTIONS)
 }
 
 function isExactAuthorizerMaintenance(changes) {
@@ -111,7 +125,7 @@ export function classifyRealtimeInfraPlan(plan, action) {
 
   if (changes.length === 0) {
     if (action === 'apply-once') {
-      throw new Error('apply-once requires the initial realtime infrastructure plan or the exact bounded recovery plan')
+      throw new Error('apply-once requires the initial realtime infrastructure plan, an exact bounded recovery plan, or an exact bounded maintenance plan')
     }
     return { mode: 'steady', createCount: 0, replaceCount: 0 }
   }
@@ -121,6 +135,15 @@ export function classifyRealtimeInfraPlan(plan, action) {
       mode: 'maintenance',
       createCount: 0,
       updateCount: 1,
+      replaceCount: 0,
+    }
+  }
+
+  if (isExactSocialMaintenance(changes)) {
+    return {
+      mode: 'social-maintenance',
+      createCount: 0,
+      updateCount: 3,
       replaceCount: 0,
     }
   }
