@@ -97,6 +97,7 @@ function mutationError(error: unknown) {
     if (error.message === 'mentor_required') return 'Approved mentor access is required to manage courses.'
     if (error.message === 'course_not_found') return 'We could not find this course in your Mentor Studio.'
     if (error.message === 'course_edit_forbidden') return 'This course cannot be edited while it is in review or published.'
+    if (error.message === 'course_submit_forbidden') return 'This course cannot be submitted for review in its current state.'
   }
   if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {
     return 'A course with this URL slug already exists.'
@@ -134,6 +135,21 @@ export async function updateCourseDraft(courseId: string, input: CourseDraftInpu
     const user = await requireAwsUser()
     await courseRepository.updateCourse(user.id, parsedId.data, parsed.data)
     refreshStudio()
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: mutationError(error) }
+  }
+}
+
+export async function submitCourseForReview(courseId: string): Promise<CourseActionResult> {
+  const parsedId = courseIdSchema.safeParse(courseId)
+  if (!parsedId.success) return { ok: false, error: 'Invalid course.' }
+
+  try {
+    const user = await requireAwsUser()
+    await courseRepository.submitCourse(user.id, parsedId.data)
+    refreshStudio()
+    revalidatePath(`/learn/studio/courses/${parsedId.data}/edit`)
     return { ok: true }
   } catch (error) {
     return { ok: false, error: mutationError(error) }
