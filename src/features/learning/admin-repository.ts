@@ -9,6 +9,25 @@ type LearningAdminQuery = (text: string, values?: readonly unknown[]) => Promise
 type LearningAdminTransaction = <T>(work: (query: LearningAdminQuery) => Promise<T>) => Promise<T>
 export type MentorReviewDecision = 'approved' | 'changes_requested' | 'rejected'
 
+export type MentorApplicationReviewItem = {
+  applicationId: string
+  userId: string
+  name: string
+  currentLastRank: string
+  yearsExperience: number
+  vesselTypes: string[]
+  specialization: string
+  certifications: string[]
+  linkedInUrl: string | null
+  shortBio: string
+  profilePhotoPath: string | null
+  proposedCourseTopics: string[]
+  status: MentorApplicationStatus
+  submittedAt: string
+  updatedAt: string
+  adminReviewNote: string | null
+}
+
 type AdminAuthorizationRow = QueryResultRow & { allowed?: boolean }
 type LockedMentorApplicationRow = QueryResultRow & {
   id: string
@@ -16,6 +35,24 @@ type LockedMentorApplicationRow = QueryResultRow & {
   status: string
 }
 type ReturningIdRow = QueryResultRow & { id: string }
+type MentorApplicationReviewRow = QueryResultRow & {
+  application_id: string
+  user_id: string
+  applicant_name: string
+  current_last_rank: string
+  years_experience: string | number
+  vessel_types: string[] | null
+  specialization: string
+  certifications: string[] | null
+  linkedin_url: string | null
+  short_bio: string
+  profile_photo_path: string | null
+  proposed_course_topics: string[] | null
+  status: string
+  submitted_at: string | Date
+  updated_at: string | Date
+  admin_review_note: string | null
+}
 
 function runtimeTransaction<T>(work: (query: LearningAdminQuery) => Promise<T>) {
   return databaseTransaction(async (client: DatabaseQueryClient) => work(async (text, values) => {
@@ -27,6 +64,10 @@ function runtimeTransaction<T>(work: (query: LearningAdminQuery) => Promise<T>) 
 function mentorApplicationStatus(value: string): MentorApplicationStatus {
   if (value === 'pending' || value === 'changes_requested' || value === 'approved' || value === 'rejected') return value
   throw new Error('mentor_application_status_invalid')
+}
+
+function isoDateTime(value: string | Date) {
+  return value instanceof Date ? value.toISOString() : value
 }
 
 export function createLearningAdminRepository(input: {
@@ -57,6 +98,52 @@ export function createLearningAdminRepository(input: {
 
   async function isPlatformAdministrator(userId: string) {
     return isPlatformAdministratorWithQuery(queryRows, userId)
+  }
+
+  async function listMentorApplications(adminId: string, status: MentorApplicationStatus): Promise<MentorApplicationReviewItem[]> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const rows = await queryRows(
+      `select
+         application.id as application_id,
+         application.user_id,
+         application.applicant_name,
+         application.current_last_rank,
+         application.years_experience,
+         application.vessel_types,
+         application.specialization,
+         application.certifications,
+         application.linkedin_url,
+         application.short_bio,
+         application.profile_photo_path,
+         application.proposed_course_topics,
+         application.status,
+         application.submitted_at,
+         application.updated_at,
+         application.admin_review_note
+       from public.learning_mentor_applications application
+       where application.status = $1
+       order by application.submitted_at asc, application.id asc`,
+      [status],
+    ) as MentorApplicationReviewRow[]
+
+    return rows.map((row) => ({
+      applicationId: row.application_id,
+      userId: row.user_id,
+      name: row.applicant_name,
+      currentLastRank: row.current_last_rank,
+      yearsExperience: Number(row.years_experience),
+      vesselTypes: row.vessel_types ?? [],
+      specialization: row.specialization,
+      certifications: row.certifications ?? [],
+      linkedInUrl: row.linkedin_url,
+      shortBio: row.short_bio,
+      profilePhotoPath: row.profile_photo_path,
+      proposedCourseTopics: row.proposed_course_topics ?? [],
+      status: mentorApplicationStatus(row.status),
+      submittedAt: isoDateTime(row.submitted_at),
+      updatedAt: isoDateTime(row.updated_at),
+      adminReviewNote: row.admin_review_note,
+    }))
   }
 
   async function reviewMentorApplication(
@@ -151,6 +238,7 @@ export function createLearningAdminRepository(input: {
 
   return {
     isPlatformAdministrator,
+    listMentorApplications,
     reviewMentorApplication,
   }
 }
