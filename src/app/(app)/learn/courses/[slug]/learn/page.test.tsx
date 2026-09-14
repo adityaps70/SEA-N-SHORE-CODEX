@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getLearnerCourse: vi.fn(),
   createMediaReadUrl: vi.fn(),
   lessonCompletionControl: vi.fn(),
+  resumableLessonMedia: vi.fn(),
   notFound: vi.fn(),
 }))
 
@@ -25,6 +26,20 @@ vi.mock('@/features/learning/components/lesson-completion-control', () => ({
   LessonCompletionControl: (props: { slug: string; lessonId: string; initiallyCompleted: boolean }) => {
     mocks.lessonCompletionControl(props)
     return <div data-testid="lesson-completion-control">Lesson completion control</div>
+  },
+}))
+vi.mock('@/features/learning/components/resumable-lesson-media', () => ({
+  ResumableLessonMedia: (props: {
+    kind: 'video' | 'audio'
+    src: string
+    slug: string
+    lessonId: string
+    initialPositionSeconds: number
+  }) => {
+    mocks.resumableLessonMedia(props)
+    return props.kind === 'video'
+      ? <video data-testid="resumable-media" src={props.src} />
+      : <audio data-testid="resumable-media" src={props.src} />
   },
 }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
@@ -137,7 +152,14 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(within(player).getByRole('heading', { name: 'Bridge readiness walkthrough' })).toBeInTheDocument()
     expect(within(player).getByText('Walk through the bridge evidence expected before inspection.')).toBeInTheDocument()
     expect(mocks.createMediaReadUrl).toHaveBeenCalledWith('learning/courses/sire-2/bridge-readiness.mp4')
-    expect(container.querySelector('video')).toHaveAttribute('src', 'https://signed.example.com/bridge-readiness.mp4')
+    expect(mocks.resumableLessonMedia).toHaveBeenCalledWith({
+      kind: 'video',
+      src: 'https://signed.example.com/bridge-readiness.mp4',
+      slug: course.slug,
+      lessonId: '77777777-7777-4777-8777-777777777777',
+      initialPositionSeconds: 125,
+    })
+    expect(within(player).getByTestId('resumable-media')).toHaveAttribute('src', 'https://signed.example.com/bridge-readiness.mp4')
     expect(container.innerHTML).not.toContain('learning/courses/sire-2/bridge-readiness.mp4')
     expect(mocks.lessonCompletionControl).toHaveBeenCalledWith({
       slug: course.slug,
@@ -169,6 +191,7 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(within(player).getByRole('heading', { name: 'How SIRE 2.0 changes readiness' })).toBeInTheDocument()
     expect(within(player).getByText('SIRE 2.0 uses a risk-based inspection framework.')).toBeInTheDocument()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
+    expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).toHaveBeenCalledWith({
       slug: course.slug,
       lessonId: '66666666-6666-4666-8666-666666666666',
@@ -186,6 +209,7 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(within(player).getByRole('heading', { name: 'Readiness knowledge check' })).toBeInTheDocument()
     expect(within(player).getByText(/native quiz player is not connected yet/i)).toBeInTheDocument()
     expect(screen.queryByText(/question 1/i)).not.toBeInTheDocument()
+    expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
     expect(within(player).queryByTestId('lesson-completion-control')).not.toBeInTheDocument()
   })
@@ -200,6 +224,7 @@ describe('/learn/courses/[slug]/learn', () => {
 
     expect(mocks.notFound).toHaveBeenCalledOnce()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
+    expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
   })
 
@@ -211,6 +236,7 @@ describe('/learn/courses/[slug]/learn', () => {
 
     expect(mocks.notFound).toHaveBeenCalledOnce()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
+    expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
   })
 })
