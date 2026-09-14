@@ -80,6 +80,8 @@ jobs:
         run: node --test scripts/aws/organization-hiring-approval-migration.test.mjs
       - name: Verify learning foundation migration guard
         run: node --test scripts/aws/learning-foundation-migration.test.mjs
+      - name: Verify learning launch migration guard
+        run: node --test scripts/aws/learning-launch-migration.test.mjs
       - name: Verify messaging migration guard
         run: node --test scripts/aws/messaging-migration.test.mjs
       - name: Verify post repost migration guard
