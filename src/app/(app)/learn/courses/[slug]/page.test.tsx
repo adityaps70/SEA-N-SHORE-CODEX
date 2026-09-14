@@ -4,10 +4,13 @@ import type { MarketplaceCourse } from '@/features/learning/marketplace-reposito
 
 const mocks = vi.hoisted(() => ({
   getPublishedCourseBySlug: vi.fn(),
+  getLearnerEnrollment: vi.fn(),
+  requireAwsUser: vi.fn(),
   notFound: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound }))
+vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/learning/marketplace-repository')>()
   return {
@@ -17,6 +20,22 @@ vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => 
     },
   }
 })
+vi.mock('@/features/learning/enrollment-repository', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/features/learning/enrollment-repository')>()
+  return {
+    ...original,
+    enrollmentRepository: {
+      getLearnerEnrollment: mocks.getLearnerEnrollment,
+    },
+  }
+})
+vi.mock('@/features/learning/components/enroll-free-control', () => ({
+  EnrollFreeControl: ({ courseId, initiallyEnrolled }: { courseId: string; initiallyEnrolled: boolean }) => (
+    <div data-testid="enroll-free-control" data-course-id={courseId}>
+      {initiallyEnrolled ? <span>You are enrolled in this course.</span> : <button type="button">Enroll free</button>}
+    </div>
+  ),
+}))
 
 import PublishedCoursePage from './page'
 
@@ -53,12 +72,16 @@ describe('/learn/courses/[slug]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.getPublishedCourseBySlug.mockResolvedValue(course)
+    mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
+    mocks.getLearnerEnrollment.mockResolvedValue(null)
   })
 
   it('loads the published course by slug and presents its verified maritime learning evidence', async () => {
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
 
     expect(mocks.getPublishedCourseBySlug).toHaveBeenCalledWith(course.slug)
+    expect(mocks.requireAwsUser).toHaveBeenCalledOnce()
+    expect(mocks.getLearnerEnrollment).toHaveBeenCalledWith('learner-1', course.id)
     expect(screen.getByRole('link', { name: 'Explore courses' })).toHaveAttribute('href', '/learn')
     expect(screen.getByRole('heading', { name: course.title })).toBeInTheDocument()
     expect(screen.getByText(course.subtitle!)).toBeInTheDocument()
@@ -73,8 +96,12 @@ describe('/learn/courses/[slug]', () => {
     expect(screen.getByText('Certificate')).toBeInTheDocument()
   })
 
-  it('renders all learning outcomes, requirements and intended learners without fake curriculum', async () => {
+  it('offers real free enrollment without fabricating curriculum for a learner who has not enrolled', async () => {
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
+
+    const control = screen.getByTestId('enroll-free-control')
+    expect(control).toHaveAttribute('data-course-id', course.id)
+    expect(within(control).getByRole('button', { name: 'Enroll free' })).toBeInTheDocument()
 
     const outcomes = screen.getByRole('region', { name: 'What you will learn' })
     expect(within(outcomes).getByText('Prepare evidence for SIRE 2.0 interviews')).toBeInTheDocument()
@@ -89,15 +116,33 @@ describe('/learn/courses/[slug]', () => {
     expect(within(audience).getByText('Marine superintendents')).toBeInTheDocument()
 
     expect(screen.queryByText(/lesson 1/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /enroll/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('Course curriculum')).not.toBeInTheDocument()
   })
 
-  it('uses not found when the slug is not currently visible in the published marketplace', async () => {
+  it('shows the persisted enrolled state instead of another enrollment action', async () => {
+    mocks.getLearnerEnrollment.mockResolvedValueOnce({
+      enrollmentId: '33333333-3333-4333-8333-333333333333',
+      status: 'active',
+      enrollmentSource: 'free',
+      enrolledAt: '2026-09-14T12:30:00.000Z',
+      completedAt: null,
+      revokedAt: null,
+    })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
+
+    expect(screen.getByText('You are enrolled in this course.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Enroll free' })).not.toBeInTheDocument()
+  })
+
+  it('uses not found before learner lookup when the slug is not currently visible in the published marketplace', async () => {
     mocks.getPublishedCourseBySlug.mockResolvedValueOnce(null)
 
     await PublishedCoursePage({ params: Promise.resolve({ slug: 'missing-course' }) })
 
     expect(mocks.getPublishedCourseBySlug).toHaveBeenCalledWith('missing-course')
     expect(mocks.notFound).toHaveBeenCalledOnce()
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.getLearnerEnrollment).not.toHaveBeenCalled()
   })
 })
