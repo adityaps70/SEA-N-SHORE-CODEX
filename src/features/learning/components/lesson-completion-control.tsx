@@ -9,12 +9,14 @@ type LessonCompletionControlProps = {
   slug: string
   lessonId: string
   initiallyCompleted: boolean
+  nextLessonHref: string | null
 }
 
 export function LessonCompletionControl({
   slug,
   lessonId,
   initiallyCompleted,
+  nextLessonHref,
 }: LessonCompletionControlProps) {
   const router = useRouter()
   const [completed, setCompleted] = useState(initiallyCompleted)
@@ -35,7 +37,11 @@ export function LessonCompletionControl({
       }
 
       setCompleted(true)
-      router.refresh()
+      if (!result.enrollmentCompleted && nextLessonHref) {
+        router.push(nextLessonHref)
+      } else {
+        router.refresh()
+      }
     } catch {
       setError('We could not update your lesson progress. Please try again.')
     } finally {
