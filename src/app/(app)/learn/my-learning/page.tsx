@@ -84,7 +84,7 @@ function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment })
           href={`/learn/courses/${enrollment.slug}/learn`}
           className="mt-4 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
         >
-          Continue learning <ArrowRight aria-hidden="true" className="size-4" />
+          {completed ? 'Review course' : 'Continue learning'} <ArrowRight aria-hidden="true" className="size-4" />
         </Link>
       </div>
     </article>
