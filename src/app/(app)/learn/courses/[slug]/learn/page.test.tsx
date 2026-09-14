@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getLearnerCourse: vi.fn(),
   createMediaReadUrl: vi.fn(),
+  lessonCompletionControl: vi.fn(),
   notFound: vi.fn(),
 }))
 
@@ -20,6 +21,12 @@ vi.mock('@/features/learning/learner-course-repository', async (importOriginal) 
     },
   }
 })
+vi.mock('@/features/learning/components/lesson-completion-control', () => ({
+  LessonCompletionControl: (props: { slug: string; lessonId: string; initiallyCompleted: boolean }) => {
+    mocks.lessonCompletionControl(props)
+    return <div data-testid="lesson-completion-control">Lesson completion control</div>
+  },
+}))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
 
 import LearnerCoursePage from './page'
@@ -132,9 +139,15 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(mocks.createMediaReadUrl).toHaveBeenCalledWith('learning/courses/sire-2/bridge-readiness.mp4')
     expect(container.querySelector('video')).toHaveAttribute('src', 'https://signed.example.com/bridge-readiness.mp4')
     expect(container.innerHTML).not.toContain('learning/courses/sire-2/bridge-readiness.mp4')
+    expect(mocks.lessonCompletionControl).toHaveBeenCalledWith({
+      slug: course.slug,
+      lessonId: '77777777-7777-4777-8777-777777777777',
+      initiallyCompleted: false,
+    })
+    expect(within(player).getByTestId('lesson-completion-control')).toBeInTheDocument()
   })
 
-  it('renders persisted curriculum navigation and an explicitly selected article lesson without signing media', async () => {
+  it('renders persisted curriculum navigation and an explicitly selected completed article lesson without signing media', async () => {
     render(await LearnerCoursePage({
       params: Promise.resolve({ slug: course.slug }),
       searchParams: Promise.resolve({ lesson: '66666666-6666-4666-8666-666666666666' }),
@@ -156,9 +169,14 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(within(player).getByRole('heading', { name: 'How SIRE 2.0 changes readiness' })).toBeInTheDocument()
     expect(within(player).getByText('SIRE 2.0 uses a risk-based inspection framework.')).toBeInTheDocument()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
+    expect(mocks.lessonCompletionControl).toHaveBeenCalledWith({
+      slug: course.slug,
+      lessonId: '66666666-6666-4666-8666-666666666666',
+      initiallyCompleted: true,
+    })
   })
 
-  it('shows an honest not-connected state for persisted activity types whose native engine is not built', async () => {
+  it('shows an honest not-connected state for persisted activity types whose native engine is not built without allowing manual completion', async () => {
     render(await LearnerCoursePage({
       params: Promise.resolve({ slug: course.slug }),
       searchParams: Promise.resolve({ lesson: '88888888-8888-4888-8888-888888888888' }),
@@ -168,6 +186,8 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(within(player).getByRole('heading', { name: 'Readiness knowledge check' })).toBeInTheDocument()
     expect(within(player).getByText(/native quiz player is not connected yet/i)).toBeInTheDocument()
     expect(screen.queryByText(/question 1/i)).not.toBeInTheDocument()
+    expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
+    expect(within(player).queryByTestId('lesson-completion-control')).not.toBeInTheDocument()
   })
 
   it('fails closed when the learner cannot access the published course', async () => {
@@ -180,6 +200,7 @@ describe('/learn/courses/[slug]/learn', () => {
 
     expect(mocks.notFound).toHaveBeenCalledOnce()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
+    expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
   })
 
   it('fails closed when a requested lesson id is not part of the persisted enrolled curriculum', async () => {
@@ -190,5 +211,6 @@ describe('/learn/courses/[slug]/learn', () => {
 
     expect(mocks.notFound).toHaveBeenCalledOnce()
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
+    expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
   })
 })
