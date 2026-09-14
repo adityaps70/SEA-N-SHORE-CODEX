@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const migrationPath = 'infra/aws/database/migrations/0016_learning_foundation.sql'
+const quizMigrationPath = 'infra/aws/database/migrations/0017_learning_quiz_assessments.sql'
 
 const expectedTables = [
   'learning_mentor_applications',
@@ -85,4 +86,52 @@ test('course pricing never permits a negative base price when a discount is pres
     normalized,
     /constraint learning_courses_price_check check \( price_minor >= 0 and \(discount_price_minor is null or discount_price_minor >= 0\) \)/,
   )
+})
+
+test('learning quiz extension creates the normalized assessment graph additively', () => {
+  assert.equal(existsSync(quizMigrationPath), true, `${quizMigrationPath} should exist`)
+  const normalized = readFileSync(quizMigrationPath, 'utf8').replace(/\s+/g, ' ').toLowerCase()
+
+  for (const table of [
+    'learning_quizzes',
+    'learning_quiz_questions',
+    'learning_quiz_options',
+    'learning_quiz_attempts',
+    'learning_quiz_attempt_answers',
+  ]) {
+    assert.match(normalized, new RegExp(`create table if not exists public\\.${table}\\b`))
+  }
+
+  assert.match(normalized, /lesson_id uuid not null unique references public\.learning_lessons\(id\) on delete cascade/)
+  assert.match(normalized, /quiz_id uuid not null references public\.learning_quizzes\(id\) on delete cascade/)
+  assert.match(normalized, /question_id uuid not null references public\.learning_quiz_questions\(id\) on delete cascade/)
+  assert.match(normalized, /enrollment_id uuid not null references public\.learning_enrollments\(id\) on delete cascade/)
+  assert.match(normalized, /learner_id uuid not null references public\.profiles\(id\) on delete cascade/)
+  assert.match(normalized, /attempt_id uuid not null references public\.learning_quiz_attempts\(id\) on delete cascade/)
+  assert.match(normalized, /selected_option_id uuid not null references public\.learning_quiz_options\(id\) on delete restrict/)
+
+  assert.doesNotMatch(normalized, /\bdrop\s+(table|type|column)\b/)
+  assert.doesNotMatch(normalized, /\btruncate\b/)
+  assert.doesNotMatch(normalized, /\bdelete\s+from\b/)
+  assert.doesNotMatch(normalized, /\bupdate\s+public\./)
+})
+
+test('learning quiz extension preserves server-authoritative single-answer scoring and attempt snapshots', () => {
+  assert.equal(existsSync(quizMigrationPath), true, `${quizMigrationPath} should exist`)
+  const normalized = readFileSync(quizMigrationPath, 'utf8').replace(/\s+/g, ' ').toLowerCase()
+
+  assert.match(normalized, /pass_percentage integer not null default 70/)
+  assert.match(normalized, /pass_percentage between 1 and 100/)
+  assert.match(normalized, /is_correct boolean not null default false/)
+  assert.match(normalized, /create unique index if not exists learning_quiz_options_single_correct_uq on public\.learning_quiz_options \(question_id\) where is_correct = true/)
+  assert.match(normalized, /create unique index if not exists learning_quiz_questions_quiz_position_uq/)
+  assert.match(normalized, /create unique index if not exists learning_quiz_options_question_position_uq/)
+  assert.match(normalized, /score integer not null/)
+  assert.match(normalized, /total_questions integer not null/)
+  assert.match(normalized, /percentage integer not null/)
+  assert.match(normalized, /passed boolean not null/)
+  assert.match(normalized, /submitted_at timestamptz not null default now\(\)/)
+  assert.match(normalized, /create unique index if not exists learning_quiz_attempt_answers_attempt_question_uq/)
+  assert.match(normalized, /create index if not exists learning_quiz_attempts_enrollment_idx/)
+  assert.match(normalized, /create index if not exists learning_quiz_attempts_learner_idx/)
 })
