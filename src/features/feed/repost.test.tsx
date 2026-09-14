@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FeedRepository } from './repository'
 import type { FeedSocialWriter } from './social-writer'
@@ -25,7 +26,7 @@ afterEach(() => {
 describe('durable post reposts', () => {
   it('defines a canonical repost post type without copying original post content', async () => {
     const migration = await readFile(
-      new URL('../../../infra/aws/database/migrations/0015_post_reposts.sql', import.meta.url),
+      resolve(process.cwd(), 'infra/aws/database/migrations/0015_post_reposts.sql'),
       'utf8',
     )
 
