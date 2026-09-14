@@ -55,6 +55,10 @@ export function createLearningAdminRepository(input: {
     if (!await isPlatformAdministratorWithQuery(query, userId, lock)) throw new Error('admin_forbidden')
   }
 
+  async function isPlatformAdministrator(userId: string) {
+    return isPlatformAdministratorWithQuery(queryRows, userId)
+  }
+
   async function reviewMentorApplication(
     adminId: string,
     applicationId: string,
@@ -146,6 +150,7 @@ export function createLearningAdminRepository(input: {
   }
 
   return {
+    isPlatformAdministrator,
     reviewMentorApplication,
   }
 }
