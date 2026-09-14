@@ -31,6 +31,11 @@ type ReactionDetailsRequest = {
   limit: number
 }
 
+type FeedInvalidationEventType =
+  | 'feed.post_created'
+  | 'feed.post_reaction_changed'
+  | 'feed.post_comments_changed'
+
 function serviceError(code: string): never {
   throw new Error(code)
 }
@@ -69,6 +74,49 @@ function normalizePollOptions(options: string[]) {
   }
   if (normalized.length < 2 || normalized.length > 6) serviceError('feed_poll_options_invalid')
   return normalized
+}
+
+async function enqueueFeedInvalidation(
+  social: FeedSocialWriter | undefined,
+  eventType: FeedInvalidationEventType,
+  actorId: string,
+  postId: string,
+) {
+  if (!social) return
+  switch (eventType) {
+    case 'feed.post_created':
+      await social.enqueue({
+        id: randomUUID(),
+        aggregateType: 'post',
+        aggregateId: postId,
+        eventType: 'feed.post_created',
+        schemaVersion: 1,
+        occurredAt: occurredAt(),
+        payload: { eventType: 'feed.post_created', actorId, postId },
+      })
+      return
+    case 'feed.post_reaction_changed':
+      await social.enqueue({
+        id: randomUUID(),
+        aggregateType: 'post',
+        aggregateId: postId,
+        eventType: 'feed.post_reaction_changed',
+        schemaVersion: 1,
+        occurredAt: occurredAt(),
+        payload: { eventType: 'feed.post_reaction_changed', actorId, postId },
+      })
+      return
+    case 'feed.post_comments_changed':
+      await social.enqueue({
+        id: randomUUID(),
+        aggregateType: 'post',
+        aggregateId: postId,
+        eventType: 'feed.post_comments_changed',
+        schemaVersion: 1,
+        occurredAt: occurredAt(),
+        payload: { eventType: 'feed.post_comments_changed', actorId, postId },
+      })
+  }
 }
 
 async function notifyPostMentions(
@@ -147,6 +195,7 @@ export function createFeedService(input: {
         ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
         : []
       await notifyPostMentions(social, actorId, id, mentions)
+      await enqueueFeedInvalidation(social, 'feed.post_created', actorId, id)
       return id
     })
   }
@@ -170,6 +219,7 @@ export function createFeedService(input: {
         ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
         : []
       await notifyPostMentions(social, actorId, id, mentions)
+      await enqueueFeedInvalidation(social, 'feed.post_created', actorId, id)
       return id
     })
   }
@@ -217,6 +267,7 @@ export function createFeedService(input: {
     return input.withTransaction(async (repository, social) => {
       const post = await assertInteractablePost(repository, actorId, postId)
       await repository.setPostReaction(actorId, postId, reaction)
+      await enqueueFeedInvalidation(social, 'feed.post_reaction_changed', actorId, postId)
       if (!social || post.authorId === actorId) return true
       const dedupeKey = `post-reaction:${postId}:${actorId}`
       if (!reaction) {
@@ -245,9 +296,10 @@ export function createFeedService(input: {
   }
 
   async function setLiked(actorId: string, postId: string, liked: boolean) {
-    return input.withTransaction(async (repository) => {
+    return input.withTransaction(async (repository, social) => {
       await assertInteractablePost(repository, actorId, postId)
       await repository.setLiked(actorId, postId, liked)
+      await enqueueFeedInvalidation(social, 'feed.post_reaction_changed', actorId, postId)
       return true
     })
   }
@@ -325,6 +377,7 @@ export function createFeedService(input: {
       }
 
       await notifyCommentMentions(social, actorId, postId, commentId, mentions)
+      await enqueueFeedInvalidation(social, 'feed.post_comments_changed', actorId, postId)
       return commentId
     })
   }
