@@ -30,6 +30,49 @@ export type MentorApplicationReviewItem = {
   adminReviewNote: string | null
 }
 
+export type CourseReviewQuizOption = {
+  id: string
+  label: string
+  position: number
+  isCorrect: boolean
+}
+
+export type CourseReviewQuizQuestion = {
+  id: string
+  prompt: string
+  position: number
+  options: CourseReviewQuizOption[]
+}
+
+export type CourseReviewQuiz = {
+  id: string
+  passPercentage: number
+  instructions: string | null
+  questions: CourseReviewQuizQuestion[]
+}
+
+export type CourseReviewLesson = {
+  id: string
+  title: string
+  lessonType: string
+  position: number
+  summary: string | null
+  articleBody: string | null
+  assetPath: string | null
+  externalUrl: string | null
+  durationSeconds: number | null
+  isPreview: boolean
+  isDownloadable: boolean
+  quiz: CourseReviewQuiz | null
+}
+
+export type CourseReviewSection = {
+  id: string
+  title: string
+  position: number
+  lessons: CourseReviewLesson[]
+}
+
 export type CourseReviewItem = {
   courseId: string
   mentorId: string
@@ -54,6 +97,7 @@ export type CourseReviewItem = {
   status: CourseStatus
   adminReviewNote: string | null
   updatedAt: string
+  curriculum: CourseReviewSection[]
 }
 
 type AdminAuthorizationRow = QueryResultRow & { allowed?: boolean }
@@ -110,6 +154,33 @@ type CourseReviewRow = QueryResultRow & {
   status: string
   admin_review_note: string | null
   updated_at: string | Date
+}
+type CourseCurriculumReviewRow = QueryResultRow & {
+  course_id: string
+  section_id: string
+  section_title: string
+  section_position: string | number
+  lesson_id: string | null
+  lesson_title: string | null
+  lesson_type: string | null
+  lesson_position: string | number | null
+  lesson_summary: string | null
+  article_body: string | null
+  asset_path: string | null
+  external_url: string | null
+  duration_seconds: string | number | null
+  is_preview: boolean | null
+  is_downloadable: boolean | null
+  quiz_id: string | null
+  pass_percentage: string | number | null
+  quiz_instructions: string | null
+  question_id: string | null
+  question_prompt: string | null
+  question_position: string | number | null
+  option_id: string | null
+  option_label: string | null
+  option_position: string | number | null
+  option_is_correct: boolean | null
 }
 
 function runtimeTransaction<T>(work: (query: LearningAdminQuery) => Promise<T>) {
@@ -216,6 +287,133 @@ export function createLearningAdminRepository(input: {
     }))
   }
 
+  async function loadCourseCurriculum(courseIds: string[]) {
+    const byCourse = new Map<string, CourseReviewSection[]>()
+    if (!courseIds.length) return byCourse
+
+    const rows = await queryRows(
+      `select
+         section.course_id,
+         section.id as section_id,
+         section.title as section_title,
+         section.position as section_position,
+         lesson.id as lesson_id,
+         lesson.title as lesson_title,
+         lesson.lesson_type,
+         lesson.position as lesson_position,
+         lesson.summary as lesson_summary,
+         lesson.article_body,
+         lesson.asset_path,
+         lesson.external_url,
+         lesson.duration_seconds,
+         lesson.is_preview,
+         lesson.is_downloadable,
+         quiz.id as quiz_id,
+         quiz.pass_percentage,
+         quiz.instructions as quiz_instructions,
+         question.id as question_id,
+         question.prompt as question_prompt,
+         question.position as question_position,
+         option.id as option_id,
+         option.label as option_label,
+         option.position as option_position,
+         option.is_correct as option_is_correct
+       from public.learning_course_sections section
+       left join public.learning_lessons lesson
+         on lesson.section_id = section.id
+       left join public.learning_quizzes quiz
+         on quiz.lesson_id = lesson.id
+       left join public.learning_quiz_questions question
+         on question.quiz_id = quiz.id
+       left join public.learning_quiz_options option
+         on option.question_id = question.id
+       where section.course_id = any($1::uuid[])
+       order by section.course_id, section.position, lesson.position, question.position, option.position`,
+      [courseIds],
+    ) as CourseCurriculumReviewRow[]
+
+    const sectionBuilders = new Map<string, CourseReviewSection>()
+    const lessonBuilders = new Map<string, CourseReviewLesson>()
+    const questionBuilders = new Map<string, CourseReviewQuizQuestion>()
+
+    for (const row of rows) {
+      let sections = byCourse.get(row.course_id)
+      if (!sections) {
+        sections = []
+        byCourse.set(row.course_id, sections)
+      }
+
+      const sectionKey = `${row.course_id}:${row.section_id}`
+      let section = sectionBuilders.get(sectionKey)
+      if (!section) {
+        section = {
+          id: row.section_id,
+          title: row.section_title,
+          position: Number(row.section_position),
+          lessons: [],
+        }
+        sectionBuilders.set(sectionKey, section)
+        sections.push(section)
+      }
+
+      if (!row.lesson_id || !row.lesson_title || !row.lesson_type || row.lesson_position === null) continue
+
+      const lessonKey = row.lesson_id
+      let lesson = lessonBuilders.get(lessonKey)
+      if (!lesson) {
+        lesson = {
+          id: row.lesson_id,
+          title: row.lesson_title,
+          lessonType: row.lesson_type,
+          position: Number(row.lesson_position),
+          summary: row.lesson_summary,
+          articleBody: row.article_body,
+          assetPath: row.asset_path,
+          externalUrl: row.external_url,
+          durationSeconds: row.duration_seconds === null ? null : Number(row.duration_seconds),
+          isPreview: Boolean(row.is_preview),
+          isDownloadable: Boolean(row.is_downloadable),
+          quiz: row.quiz_id && row.pass_percentage !== null
+            ? {
+                id: row.quiz_id,
+                passPercentage: Number(row.pass_percentage),
+                instructions: row.quiz_instructions,
+                questions: [],
+              }
+            : null,
+        }
+        lessonBuilders.set(lessonKey, lesson)
+        section.lessons.push(lesson)
+      }
+
+      if (!lesson.quiz || !row.question_id || !row.question_prompt || row.question_position === null) continue
+
+      const questionKey = row.question_id
+      let question = questionBuilders.get(questionKey)
+      if (!question) {
+        question = {
+          id: row.question_id,
+          prompt: row.question_prompt,
+          position: Number(row.question_position),
+          options: [],
+        }
+        questionBuilders.set(questionKey, question)
+        lesson.quiz.questions.push(question)
+      }
+
+      if (row.option_id && row.option_label !== null && row.option_position !== null) {
+        question.options.push({
+          id: row.option_id,
+          label: row.option_label,
+          position: Number(row.option_position),
+          isCorrect: Boolean(row.option_is_correct),
+        })
+      }
+    }
+
+    return byCourse
+  }
+
   async function listCoursesForReview(adminId: string, status: CourseStatus): Promise<CourseReviewItem[]> {
     await requirePlatformAdministrator(queryRows, adminId)
     const rows = await queryRows(
@@ -253,6 +451,8 @@ export function createLearningAdminRepository(input: {
       [status],
     ) as CourseReviewRow[]
 
+    const curriculumByCourse = await loadCourseCurriculum(rows.map((row) => row.course_id))
+
     return rows.map((row) => ({
       courseId: row.course_id,
       mentorId: row.mentor_id,
@@ -277,6 +477,7 @@ export function createLearningAdminRepository(input: {
       status: courseStatus(row.status),
       adminReviewNote: row.admin_review_note,
       updatedAt: isoDateTime(row.updated_at),
+      curriculum: curriculumByCourse.get(row.course_id) ?? [],
     }))
   }
 
