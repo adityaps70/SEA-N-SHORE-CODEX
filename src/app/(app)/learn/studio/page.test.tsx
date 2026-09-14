@@ -73,7 +73,7 @@ describe('/learn/studio', () => {
     expect(screen.getByText('SIRE 2.0 Readiness for Tanker Officers')).toBeInTheDocument()
     expect(screen.getByText('Bridge Leadership Under Pressure')).toBeInTheDocument()
     expect(screen.getByText('Draft')).toBeInTheDocument()
-    expect(screen.getByText('In review')).toBeInTheDocument()
+    expect(screen.getAllByText('In review')).toHaveLength(2)
     expect(screen.getByRole('link', { name: /edit sire 2.0 readiness for tanker officers/i })).toHaveAttribute(
       'href',
       '/learn/studio/courses/33333333-3333-4333-8333-333333333333/edit',
