@@ -51,7 +51,7 @@ export function createFeedQueries(input: {
     const [viewer, comments, repostSources] = await Promise.all([
       input.repository.getViewerState(viewerId, allViewerStateIds),
       input.repository.getComments(postIds, viewerId),
-      input.repository.listRepostSourceRows(viewerId, sourceIds),
+      sourceIds.length ? input.repository.listRepostSourceRows(viewerId, sourceIds) : Promise.resolve([]),
     ])
     const paths = [...new Set([
       ...rows.map(mediaPath),
@@ -82,7 +82,7 @@ export function createFeedQueries(input: {
     const sourceIds = repostSourceIds(rows)
     const [comments, repostSources] = await Promise.all([
       input.repository.getComments(postIds),
-      input.repository.listRepostSourceRows(viewerId, sourceIds),
+      sourceIds.length ? input.repository.listRepostSourceRows(viewerId, sourceIds) : Promise.resolve([]),
     ])
     const paths = [...new Set([
       ...rows.map(mediaPath),
