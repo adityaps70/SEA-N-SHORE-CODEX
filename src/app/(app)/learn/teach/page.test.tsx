@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MentorApplicationInput } from '@/features/learning/mentor-application'
 
 const mocks = vi.hoisted(() => ({
@@ -72,6 +72,10 @@ const profile = {
   contactVisibility: 'members' as const,
   onboardingCompletedAt: '2026-01-01T00:00:00.000Z',
 }
+
+afterEach(() => {
+  cleanup()
+})
 
 describe('/learn/teach', () => {
   beforeEach(() => {
