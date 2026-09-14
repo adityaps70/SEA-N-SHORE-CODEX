@@ -160,6 +160,7 @@ describe('MentorCurriculumEditor', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Move SIRE knowledge check up' }))
     await waitFor(() => expect(mocks.moveLesson).toHaveBeenCalledWith(courseId, quizLessonId, 'up'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete Evidence and crew preparation' })).toBeEnabled())
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete Evidence and crew preparation' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete Evidence and crew preparation' }))
