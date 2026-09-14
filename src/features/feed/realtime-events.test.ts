@@ -37,9 +37,16 @@ function createHarness() {
   }
 
   const social = {
-    enqueue: vi.fn(async (_event: unknown) => undefined),
-    upsertNotification: vi.fn(async (_notification: unknown) => undefined),
-    deleteNotification: vi.fn(async (_recipientId: string, _dedupeKey: string) => undefined),
+    enqueue: vi.fn(async (event: unknown) => {
+      void event
+    }),
+    upsertNotification: vi.fn(async (notification: unknown) => {
+      void notification
+    }),
+    deleteNotification: vi.fn(async (recipientId: string, dedupeKey: string) => {
+      void recipientId
+      void dedupeKey
+    }),
   }
 
   const service = createFeedService({
