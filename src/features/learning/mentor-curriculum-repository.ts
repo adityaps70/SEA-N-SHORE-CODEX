@@ -122,7 +122,11 @@ type LockedCourseRow = QueryResultRow & {
 type IdRow = QueryResultRow & { id: string }
 type PositionRow = QueryResultRow & { id: string; position: string | number }
 type NextPositionRow = QueryResultRow & { next_position: string | number }
-type LessonOwnershipRow = QueryResultRow & { id: string; lesson_type: string }
+type LessonOwnershipRow = QueryResultRow & {
+  id: string
+  lesson_type: string
+  section_id?: string
+}
 
 function runtimeTransaction<T>(work: (query: CurriculumQuery) => Promise<T>) {
   return databaseTransaction(async (client: DatabaseQueryClient) => work(async (text, values) => {
@@ -162,6 +166,20 @@ function numberOrNull(value: string | number | null) {
   return value === null ? null : Number(value)
 }
 
+function lessonDraftValues(draft: MentorLessonDraft) {
+  return [
+    draft.title,
+    draft.lessonType,
+    draft.summary,
+    draft.articleBody,
+    draft.assetPath,
+    draft.externalUrl,
+    draft.durationSeconds,
+    draft.isPreview,
+    draft.isDownloadable,
+  ] as const
+}
+
 async function requireEditableOwnedCourse(
   query: CurriculumQuery,
   actorId: string,
@@ -182,6 +200,66 @@ async function requireEditableOwnedCourse(
   if (!course) throw new Error('course_not_found')
   if (!canMentorEditCourse(asCourseStatus(course.status))) throw new Error('course_edit_forbidden')
   return course
+}
+
+async function compactPositions(
+  query: CurriculumQuery,
+  table: 'learning_course_sections' | 'learning_lessons',
+  rows: PositionRow[],
+) {
+  for (const [position, row] of rows.entries()) {
+    if (Number(row.position) === position) continue
+    await query(
+      `update public.${table}
+       set position = $2, updated_at = now()
+       where id = $1
+       returning id`,
+      [row.id, position],
+    )
+  }
+}
+
+async function swapAdjacentPositions(
+  query: CurriculumQuery,
+  table: 'learning_course_sections' | 'learning_lessons',
+  rows: PositionRow[],
+  itemId: string,
+  direction: 'up' | 'down',
+  notFoundError: string,
+) {
+  const currentIndex = rows.findIndex((row) => row.id === itemId)
+  if (currentIndex < 0) throw new Error(notFoundError)
+  const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+  if (targetIndex < 0 || targetIndex >= rows.length) return false
+
+  const current = rows[currentIndex]!
+  const target = rows[targetIndex]!
+  const currentPosition = Number(current.position)
+  const targetPosition = Number(target.position)
+  const temporaryPosition = Math.max(...rows.map((row) => Number(row.position))) + 1
+
+  await query(
+    `update public.${table}
+     set position = $2, updated_at = now()
+     where id = $1
+     returning id`,
+    [current.id, temporaryPosition],
+  )
+  await query(
+    `update public.${table}
+     set position = $2, updated_at = now()
+     where id = $1
+     returning id`,
+    [target.id, currentPosition],
+  )
+  await query(
+    `update public.${table}
+     set position = $2, updated_at = now()
+     where id = $1
+     returning id`,
+    [current.id, targetPosition],
+  )
+  return true
 }
 
 function buildCurriculum(rows: CurriculumRow[]): MentorCurriculum | null {
@@ -375,6 +453,47 @@ export function createMentorCurriculumRepository(input: {
     })
   }
 
+  async function updateSection(actorId: string, courseId: string, sectionId: string, title: string) {
+    return transaction(async (query) => {
+      await requireEditableOwnedCourse(query, actorId, courseId)
+      const rows = await query(
+        `update public.learning_course_sections as section
+         set title = $3, updated_at = now()
+         where section.id = $1
+           and section.course_id = $2
+         returning section.id`,
+        [sectionId, courseId, title],
+      ) as IdRow[]
+      if (!rows[0]) throw new Error('section_not_found')
+      return true
+    })
+  }
+
+  async function deleteSection(actorId: string, courseId: string, sectionId: string) {
+    return transaction(async (query) => {
+      await requireEditableOwnedCourse(query, actorId, courseId)
+      const deleted = await query(
+        `delete from public.learning_course_sections
+         where id = $1
+           and course_id = $2
+         returning id`,
+        [sectionId, courseId],
+      ) as IdRow[]
+      if (!deleted[0]) throw new Error('section_not_found')
+
+      const remaining = await query(
+        `select id, position
+         from public.learning_course_sections
+         where course_id = $1
+         order by position asc, id asc
+         for update`,
+        [courseId],
+      ) as PositionRow[]
+      await compactPositions(query, 'learning_course_sections', remaining)
+      return true
+    })
+  }
+
   async function createLesson(
     actorId: string,
     courseId: string,
@@ -419,22 +538,79 @@ export function createMentorCurriculumRepository(input: {
          )
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now())
          returning id`,
-        [
-          sectionId,
-          draft.title,
-          draft.lessonType,
-          nextPosition,
-          draft.summary,
-          draft.articleBody,
-          draft.assetPath,
-          draft.externalUrl,
-          draft.durationSeconds,
-          draft.isPreview,
-          draft.isDownloadable,
-        ],
+        [sectionId, draft.title, draft.lessonType, nextPosition, ...lessonDraftValues(draft).slice(2)],
       ) as IdRow[]
       if (!inserted[0]) throw new Error('lesson_create_failed')
       return { lessonId: inserted[0].id }
+    })
+  }
+
+  async function updateLesson(
+    actorId: string,
+    courseId: string,
+    lessonId: string,
+    draft: MentorLessonDraft,
+  ) {
+    return transaction(async (query) => {
+      await requireEditableOwnedCourse(query, actorId, courseId)
+      const rows = await query(
+        `update public.learning_lessons as lesson
+         set title = $3,
+             lesson_type = $4,
+             summary = $5,
+             article_body = $6,
+             asset_path = $7,
+             external_url = $8,
+             duration_seconds = $9,
+             is_preview = $10,
+             is_downloadable = $11,
+             updated_at = now()
+         from public.learning_course_sections section
+         where lesson.id = $1
+           and section.course_id = $2
+           and section.id = lesson.section_id
+         returning lesson.id`,
+        [lessonId, courseId, ...lessonDraftValues(draft)],
+      ) as IdRow[]
+      if (!rows[0]) throw new Error('lesson_not_found')
+      return true
+    })
+  }
+
+  async function deleteLesson(actorId: string, courseId: string, lessonId: string) {
+    return transaction(async (query) => {
+      await requireEditableOwnedCourse(query, actorId, courseId)
+      const ownedRows = await query(
+        `select lesson.id, lesson.section_id, lesson.lesson_type
+         from public.learning_lessons lesson
+         inner join public.learning_course_sections section
+           on section.id = lesson.section_id
+         where lesson.id = $1
+           and section.course_id = $2
+         for update`,
+        [lessonId, courseId],
+      ) as LessonOwnershipRow[]
+      const lesson = ownedRows[0]
+      if (!lesson?.section_id) throw new Error('lesson_not_found')
+
+      const deleted = await query(
+        `delete from public.learning_lessons
+         where id = $1
+         returning id`,
+        [lessonId],
+      ) as IdRow[]
+      if (!deleted[0]) throw new Error('lesson_delete_failed')
+
+      const remaining = await query(
+        `select id, position
+         from public.learning_lessons
+         where section_id = $1
+         order by position asc, id asc
+         for update`,
+        [lesson.section_id],
+      ) as PositionRow[]
+      await compactPositions(query, 'learning_lessons', remaining)
+      return true
     })
   }
 
@@ -454,40 +630,40 @@ export function createMentorCurriculumRepository(input: {
          for update`,
         [courseId],
       ) as PositionRow[]
+      return swapAdjacentPositions(query, 'learning_course_sections', sections, sectionId, direction, 'section_not_found')
+    })
+  }
 
-      const currentIndex = sections.findIndex((section) => section.id === sectionId)
-      if (currentIndex < 0) throw new Error('section_not_found')
-      const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
-      if (targetIndex < 0 || targetIndex >= sections.length) return false
+  async function moveLesson(
+    actorId: string,
+    courseId: string,
+    lessonId: string,
+    direction: 'up' | 'down',
+  ) {
+    return transaction(async (query) => {
+      await requireEditableOwnedCourse(query, actorId, courseId)
+      const ownedRows = await query(
+        `select lesson.id, lesson.section_id, lesson.lesson_type
+         from public.learning_lessons lesson
+         inner join public.learning_course_sections section
+           on section.id = lesson.section_id
+         where lesson.id = $1
+           and section.course_id = $2
+         for update`,
+        [lessonId, courseId],
+      ) as LessonOwnershipRow[]
+      const lesson = ownedRows[0]
+      if (!lesson?.section_id) throw new Error('lesson_not_found')
 
-      const current = sections[currentIndex]!
-      const target = sections[targetIndex]!
-      const currentPosition = Number(current.position)
-      const targetPosition = Number(target.position)
-      const temporaryPosition = Math.max(...sections.map((section) => Number(section.position))) + 1
-
-      await query(
-        `update public.learning_course_sections
-         set position = $2, updated_at = now()
-         where id = $1
-         returning id`,
-        [current.id, temporaryPosition],
-      )
-      await query(
-        `update public.learning_course_sections
-         set position = $2, updated_at = now()
-         where id = $1
-         returning id`,
-        [target.id, currentPosition],
-      )
-      await query(
-        `update public.learning_course_sections
-         set position = $2, updated_at = now()
-         where id = $1
-         returning id`,
-        [current.id, targetPosition],
-      )
-      return true
+      const lessons = await query(
+        `select id, position
+         from public.learning_lessons
+         where section_id = $1
+         order by position asc, id asc
+         for update`,
+        [lesson.section_id],
+      ) as PositionRow[]
+      return swapAdjacentPositions(query, 'learning_lessons', lessons, lessonId, direction, 'lesson_not_found')
     })
   }
 
@@ -574,8 +750,13 @@ export function createMentorCurriculumRepository(input: {
   return {
     getCurriculum,
     createSection,
+    updateSection,
+    deleteSection,
     createLesson,
+    updateLesson,
+    deleteLesson,
     moveSection,
+    moveLesson,
     saveQuizDefinition,
   }
 }
