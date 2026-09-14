@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CheckCircle2, Circle, FileText, PlayCircle } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { LessonCompletionControl } from '@/features/learning/components/lesson-completion-control'
 import {
   learnerCourseRepository,
   type LearnerCourse,
@@ -36,6 +37,10 @@ function unavailableActivityCopy(lesson: LearnerLesson) {
 
 function shouldSignLessonAsset(lesson: LearnerLesson) {
   return !['article', 'quiz', 'assignment', 'live_session'].includes(lesson.lessonType)
+}
+
+function canManuallyCompleteLesson(lesson: LearnerLesson) {
+  return !['quiz', 'assignment', 'live_session'].includes(lesson.lessonType)
 }
 
 function LessonContent({ lesson, mediaUrl }: { lesson: LearnerLesson; mediaUrl: string | null }) {
@@ -213,6 +218,16 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
               <div className="mt-7">
                 <LessonContent lesson={selectedLesson} mediaUrl={selectedMediaUrl} />
               </div>
+
+              {canManuallyCompleteLesson(selectedLesson) ? (
+                <div className="mt-7 border-t border-slate-200 pt-6">
+                  <LessonCompletionControl
+                    slug={course.slug}
+                    lessonId={selectedLesson.id}
+                    initiallyCompleted={selectedLesson.completed}
+                  />
+                </div>
+              ) : null}
             </section>
           ) : (
             <section aria-label="Current lesson" className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
