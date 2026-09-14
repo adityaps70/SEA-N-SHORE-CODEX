@@ -4,7 +4,9 @@ import { AlertTriangle, ArrowLeft, FilePenLine } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CourseForm } from '@/features/learning/components/course-form'
 import { CourseSubmitControl } from '@/features/learning/components/course-submit-control'
+import { MentorCurriculumEditor } from '@/features/learning/components/mentor-curriculum-editor'
 import { courseRepository, type CourseDraftInput } from '@/features/learning/course-repository'
+import { mentorCurriculumRepository } from '@/features/learning/mentor-curriculum-repository'
 import { learningRepository } from '@/features/learning/repository'
 
 export default async function EditMentorCoursePage({
@@ -26,6 +28,9 @@ export default async function EditMentorCoursePage({
   if (course.status !== 'draft' && course.status !== 'changes_requested') {
     return redirect('/learn/studio')
   }
+
+  const curriculum = await mentorCurriculumRepository.getCurriculum(user.id, courseId)
+  if (!curriculum) return notFound()
 
   const initialValue: CourseDraftInput = {
     slug: course.slug,
@@ -61,7 +66,7 @@ export default async function EditMentorCoursePage({
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-navy-950 sm:text-4xl">Edit course</h1>
         <p className="mt-2 text-lg font-semibold text-navy-900">{course.title}</p>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-          Refine the course foundation before submitting it for Sea N Shore review. Learners cannot access this course while it remains editable in Mentor Studio.
+          Refine the course foundation and curriculum before submitting it for Sea N Shore review. Learners cannot access this course while it remains editable in Mentor Studio.
         </p>
       </section>
 
@@ -77,6 +82,10 @@ export default async function EditMentorCoursePage({
 
       <div className="mt-5">
         <CourseForm initialValue={initialValue} courseId={course.id} />
+      </div>
+
+      <div className="mt-5">
+        <MentorCurriculumEditor courseId={course.id} curriculum={curriculum} />
       </div>
 
       <div className="mt-5">
