@@ -7,6 +7,7 @@ import { learnerProgressRepository } from './learner-progress-repository'
 
 const slugSchema = z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
 const lessonIdSchema = z.string().uuid()
+const playbackPositionSchema = z.number().int().nonnegative()
 
 type CompleteLessonActionResult =
   | {
@@ -19,11 +20,26 @@ type CompleteLessonActionResult =
     }
   | { ok: false; error: string }
 
+type SavePlaybackPositionActionResult =
+  | {
+      ok: true
+      lessonId: string
+      lastPositionSeconds: number
+    }
+  | { ok: false; error: string }
+
 function progressError(error: unknown) {
   if (error instanceof Error && error.message === 'lesson_not_accessible') {
     return 'This lesson is not available in your learning enrollment.'
   }
   return 'We could not update your lesson progress. Please try again.'
+}
+
+function playbackPositionError(error: unknown) {
+  if (error instanceof Error && error.message === 'lesson_not_accessible') {
+    return 'This lesson is not available in your learning enrollment.'
+  }
+  return 'We could not save your playback position. Please try again.'
 }
 
 export async function completeLearningLesson(
@@ -57,5 +73,40 @@ export async function completeLearningLesson(
     }
   } catch (error) {
     return { ok: false, error: progressError(error) }
+  }
+}
+
+export async function saveLearningPlaybackPosition(
+  slug: string,
+  lessonId: string,
+  positionSeconds: number,
+): Promise<SavePlaybackPositionActionResult> {
+  const parsedSlug = slugSchema.safeParse(slug)
+  const parsedLessonId = lessonIdSchema.safeParse(lessonId)
+  const parsedPosition = playbackPositionSchema.safeParse(positionSeconds)
+
+  if (!parsedSlug.success || !parsedLessonId.success) {
+    return { ok: false, error: 'Invalid course or lesson.' }
+  }
+  if (!parsedPosition.success) {
+    return { ok: false, error: 'Invalid playback position.' }
+  }
+
+  try {
+    const user = await requireAwsUser()
+    const result = await learnerProgressRepository.savePlaybackPosition(
+      user.id,
+      parsedSlug.data,
+      parsedLessonId.data,
+      parsedPosition.data,
+    )
+
+    return {
+      ok: true,
+      lessonId: result.lessonId,
+      lastPositionSeconds: result.lastPositionSeconds,
+    }
+  } catch (error) {
+    return { ok: false, error: playbackPositionError(error) }
   }
 }
