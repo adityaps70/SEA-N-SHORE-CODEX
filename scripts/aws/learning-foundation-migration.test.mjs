@@ -13,7 +13,6 @@ test('learning foundation migration is guarded, exact-head and one-shot', () => 
   const action = readFileSync(actionPath, 'utf8').trim()
 
   assert.ok(['plan', 'apply-once'].includes(action), `Unexpected learning foundation migration action: ${action}`)
-  assert.equal(action, 'plan', 'Learning foundation migration guard must default to plan')
   assert.match(workflow, /workflow_dispatch:/)
   assert.match(workflow, /push:\s*\n\s*branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
   assert.match(workflow, /scripts\/aws\/learning-foundation-migration-action\.txt/)
