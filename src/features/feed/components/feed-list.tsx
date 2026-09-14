@@ -7,12 +7,24 @@ import type { FeedPage, FeedPost, PostCategory } from '../types'
 import { PostCard } from './post-card'
 
 export function FeedList({ initialPage, category }: { initialPage: FeedPage; category?: PostCategory }) {
+  const [canonicalPage, setCanonicalPage] = useState(initialPage)
   const [posts, setPosts] = useState(initialPage.posts)
   const [cursor, setCursor] = useState(initialPage.nextCursor)
   const [freshPosts, setFreshPosts] = useState<FeedPost[]>([])
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  if (canonicalPage !== initialPage) {
+    const canonicalIds = new Set(initialPage.posts.map((post) => post.id))
+    setCanonicalPage(initialPage)
+    setPosts((current) => [
+      ...initialPage.posts,
+      ...current.filter((post) => !canonicalIds.has(post.id)),
+    ])
+    setFreshPosts((current) => current.filter((post) => !canonicalIds.has(post.id)))
+    setCursor((current) => current === canonicalPage.nextCursor ? initialPage.nextCursor : current)
+  }
 
   const loadMore = useCallback(() => {
     if (!cursor || pending) return
@@ -30,15 +42,6 @@ export function FeedList({ initialPage, category }: { initialPage: FeedPage; cat
       setCursor(result.page.nextCursor)
     })
   }, [category, cursor, pending])
-
-  useEffect(() => {
-    const canonicalIds = new Set(initialPage.posts.map((post) => post.id))
-    setPosts((current) => [
-      ...initialPage.posts,
-      ...current.filter((post) => !canonicalIds.has(post.id)),
-    ])
-    setFreshPosts((current) => current.filter((post) => !canonicalIds.has(post.id)))
-  }, [initialPage.posts])
 
   useEffect(() => {
     if (!cursor || typeof IntersectionObserver === 'undefined') return
