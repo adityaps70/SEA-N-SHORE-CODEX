@@ -89,4 +89,15 @@ describe('FeedList incremental freshness', () => {
     expect(await screen.findByText('Fresh post')).toBeInTheDocument()
     expect(screen.getByText('Current post')).toBeInTheDocument()
   })
+
+  it('reconciles mounted posts from canonical first-page props after a realtime router refresh', () => {
+    const { rerender } = render(<FeedList initialPage={{ posts: [first], nextCursor: cursor }} />)
+    const refreshedFirst = { ...first, body: 'Current post refreshed from canonical state.' }
+
+    rerender(<FeedList initialPage={{ posts: [fresh, refreshedFirst], nextCursor: cursor }} />)
+
+    expect(screen.getByText('Fresh post')).toBeInTheDocument()
+    expect(screen.getByText('Current post refreshed from canonical state.')).toBeInTheDocument()
+    expect(screen.queryByText('Current post')).not.toBeInTheDocument()
+  })
 })
