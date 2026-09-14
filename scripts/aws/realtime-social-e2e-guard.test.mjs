@@ -31,6 +31,19 @@ test('realtime staging e2e proves all metadata-only social invalidations through
   expect(browser).toMatch(/REALTIME_E2E_SOCIAL_BROWSER_VERIFIED=true/)
 })
 
+test('connection journey waits for the sender request to reach canonical state before recipient reload', () => {
+  const browser = readFileSync(browserPath, 'utf8')
+  const connectIndex = browser.indexOf("name: 'Connect'")
+  const cancelIndex = browser.indexOf("name: 'Cancel'", connectIndex)
+  const enabledIndex = browser.indexOf('toBeEnabled', cancelIndex)
+  const recipientReloadIndex = browser.indexOf('await recipientPage.reload', connectIndex)
+
+  expect(connectIndex).toBeGreaterThanOrEqual(0)
+  expect(cancelIndex).toBeGreaterThan(connectIndex)
+  expect(enabledIndex).toBeGreaterThan(cancelIndex)
+  expect(recipientReloadIndex).toBeGreaterThan(enabledIndex)
+})
+
 test('social realtime e2e verifies durable Aurora state, privacy, infra health and cleanup', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const remote = readFileSync(remotePath, 'utf8')
