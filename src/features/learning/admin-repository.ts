@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { canTransitionCourseStatus, type CourseStatus } from './course-workflow'
 import {
   canTransitionMentorApplicationStatus,
   type MentorApplicationStatus,
@@ -8,6 +9,7 @@ import {
 type LearningAdminQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type LearningAdminTransaction = <T>(work: (query: LearningAdminQuery) => Promise<T>) => Promise<T>
 export type MentorReviewDecision = 'approved' | 'changes_requested' | 'rejected'
+export type CourseAdminDecision = 'changes_requested' | 'approved' | 'published' | 'archived'
 
 export type MentorApplicationReviewItem = {
   applicationId: string
@@ -28,10 +30,41 @@ export type MentorApplicationReviewItem = {
   adminReviewNote: string | null
 }
 
+export type CourseReviewItem = {
+  courseId: string
+  mentorId: string
+  mentorUserId: string
+  mentorName: string
+  slug: string
+  title: string
+  subtitle: string | null
+  description: string
+  category: string
+  level: 'beginner' | 'intermediate' | 'advanced' | 'all_levels'
+  language: string
+  learningOutcomes: string[]
+  requirements: string[]
+  targetAudience: string[]
+  priceMinor: number
+  discountPriceMinor: number | null
+  currency: string
+  accessType: 'free' | 'paid'
+  certificateEnabled: boolean
+  courseFormat: 'recorded' | 'live_cohort' | 'hybrid'
+  status: CourseStatus
+  adminReviewNote: string | null
+  updatedAt: string
+}
+
 type AdminAuthorizationRow = QueryResultRow & { allowed?: boolean }
 type LockedMentorApplicationRow = QueryResultRow & {
   id: string
   user_id: string
+  status: string
+}
+type LockedCourseReviewRow = QueryResultRow & {
+  id: string
+  mentor_id: string
   status: string
 }
 type ReturningIdRow = QueryResultRow & { id: string }
@@ -53,6 +86,31 @@ type MentorApplicationReviewRow = QueryResultRow & {
   updated_at: string | Date
   admin_review_note: string | null
 }
+type CourseReviewRow = QueryResultRow & {
+  course_id: string
+  mentor_id: string
+  mentor_user_id: string
+  mentor_name: string
+  slug: string
+  title: string
+  subtitle: string | null
+  description: string
+  category: string
+  level: CourseReviewItem['level']
+  language: string
+  learning_outcomes: string[] | null
+  requirements: string[] | null
+  target_audience: string[] | null
+  price_minor: string | number
+  discount_price_minor: string | number | null
+  currency: string
+  access_type: CourseReviewItem['accessType']
+  certificate_enabled: boolean
+  course_format: CourseReviewItem['courseFormat']
+  status: string
+  admin_review_note: string | null
+  updated_at: string | Date
+}
 
 function runtimeTransaction<T>(work: (query: LearningAdminQuery) => Promise<T>) {
   return databaseTransaction(async (client: DatabaseQueryClient) => work(async (text, values) => {
@@ -64,6 +122,18 @@ function runtimeTransaction<T>(work: (query: LearningAdminQuery) => Promise<T>) 
 function mentorApplicationStatus(value: string): MentorApplicationStatus {
   if (value === 'pending' || value === 'changes_requested' || value === 'approved' || value === 'rejected') return value
   throw new Error('mentor_application_status_invalid')
+}
+
+function courseStatus(value: string): CourseStatus {
+  if (
+    value === 'draft'
+    || value === 'submitted'
+    || value === 'changes_requested'
+    || value === 'approved'
+    || value === 'published'
+    || value === 'archived'
+  ) return value
+  throw new Error('course_status_invalid')
 }
 
 function isoDateTime(value: string | Date) {
@@ -143,6 +213,70 @@ export function createLearningAdminRepository(input: {
       submittedAt: isoDateTime(row.submitted_at),
       updatedAt: isoDateTime(row.updated_at),
       adminReviewNote: row.admin_review_note,
+    }))
+  }
+
+  async function listCoursesForReview(adminId: string, status: CourseStatus): Promise<CourseReviewItem[]> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const rows = await queryRows(
+      `select
+         course.id as course_id,
+         mentor.id as mentor_id,
+         mentor.user_id as mentor_user_id,
+         application.applicant_name as mentor_name,
+         course.slug,
+         course.title,
+         course.subtitle,
+         course.description,
+         course.category,
+         course.level,
+         course.language,
+         course.learning_outcomes,
+         course.requirements,
+         course.target_audience,
+         course.price_minor,
+         course.discount_price_minor,
+         course.currency,
+         course.access_type,
+         course.certificate_enabled,
+         course.course_format,
+         course.status,
+         course.admin_review_note,
+         course.updated_at
+       from public.learning_courses course
+       inner join public.learning_mentors mentor
+         on mentor.id = course.mentor_id
+       inner join public.learning_mentor_applications application
+         on application.id = mentor.application_id
+       where course.status = $1
+       order by course.updated_at asc, course.id asc`,
+      [status],
+    ) as CourseReviewRow[]
+
+    return rows.map((row) => ({
+      courseId: row.course_id,
+      mentorId: row.mentor_id,
+      mentorUserId: row.mentor_user_id,
+      mentorName: row.mentor_name,
+      slug: row.slug,
+      title: row.title,
+      subtitle: row.subtitle,
+      description: row.description,
+      category: row.category,
+      level: row.level,
+      language: row.language,
+      learningOutcomes: row.learning_outcomes ?? [],
+      requirements: row.requirements ?? [],
+      targetAudience: row.target_audience ?? [],
+      priceMinor: Number(row.price_minor),
+      discountPriceMinor: row.discount_price_minor === null ? null : Number(row.discount_price_minor),
+      currency: row.currency,
+      accessType: row.access_type,
+      certificateEnabled: row.certificate_enabled,
+      courseFormat: row.course_format,
+      status: courseStatus(row.status),
+      adminReviewNote: row.admin_review_note,
+      updatedAt: isoDateTime(row.updated_at),
     }))
   }
 
@@ -236,10 +370,90 @@ export function createLearningAdminRepository(input: {
     })
   }
 
+  async function reviewCourse(
+    adminId: string,
+    courseId: string,
+    decision: CourseAdminDecision,
+    reviewerNote: string | null,
+  ) {
+    return transaction(async (txQuery) => {
+      await requirePlatformAdministrator(txQuery, adminId, true)
+
+      const lockedRows = await txQuery(
+        `select id, mentor_id, status
+         from public.learning_courses
+         where id = $1
+         for update`,
+        [courseId],
+      ) as LockedCourseReviewRow[]
+      const course = lockedRows[0]
+      if (!course) throw new Error('course_not_found')
+
+      const current = courseStatus(course.status)
+      if (!canTransitionCourseStatus({ actor: 'administrator', current, next: decision })) {
+        throw new Error('course_transition_forbidden')
+      }
+      if (decision === 'changes_requested' && !reviewerNote?.trim()) {
+        throw new Error('course_review_note_required')
+      }
+
+      let updateSql = `update public.learning_courses
+         set status = $2,
+             reviewed_by = $3,
+             reviewed_at = now(),
+             admin_review_note = $4,
+             updated_at = now()`
+
+      if (decision === 'changes_requested') {
+        updateSql += `,
+             approved_at = null,
+             published_at = null`
+      } else if (decision === 'approved') {
+        updateSql += `,
+             approved_at = now(),
+             published_at = null`
+      } else if (decision === 'published') {
+        updateSql += `,
+             published_at = now()`
+      }
+
+      updateSql += `
+         where id = $1
+         returning id`
+
+      const courseRows = await txQuery(
+        updateSql,
+        [courseId, decision, adminId, reviewerNote],
+      ) as ReturningIdRow[]
+      if (!courseRows[0]) throw new Error('course_not_found')
+
+      await txQuery(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          adminId,
+          `learning.course.${decision}`,
+          'learning_course',
+          courseId,
+          JSON.stringify({
+            mentorId: course.mentor_id,
+            fromStatus: current,
+            toStatus: decision,
+            reviewerNote,
+          }),
+        ],
+      )
+
+      return { courseId, status: decision }
+    })
+  }
+
   return {
     isPlatformAdministrator,
     listMentorApplications,
+    listCoursesForReview,
     reviewMentorApplication,
+    reviewCourse,
   }
 }
 
