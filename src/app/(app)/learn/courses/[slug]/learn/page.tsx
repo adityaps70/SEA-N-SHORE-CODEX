@@ -34,7 +34,11 @@ function unavailableActivityCopy(lesson: LearnerLesson) {
   return 'This lesson activity is recorded in the curriculum, but its native player is not connected yet.'
 }
 
-async function LessonContent({ lesson }: { lesson: LearnerLesson }) {
+function shouldSignLessonAsset(lesson: LearnerLesson) {
+  return !['article', 'quiz', 'assignment', 'live_session'].includes(lesson.lessonType)
+}
+
+function LessonContent({ lesson, mediaUrl }: { lesson: LearnerLesson; mediaUrl: string | null }) {
   if (lesson.lessonType === 'article') {
     return lesson.articleBody ? (
       <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
@@ -54,9 +58,7 @@ async function LessonContent({ lesson }: { lesson: LearnerLesson }) {
     )
   }
 
-  if (lesson.assetPath) {
-    const mediaUrl = await createMediaReadUrl(lesson.assetPath)
-
+  if (lesson.assetPath && mediaUrl) {
     if (lesson.lessonType === 'video') {
       return (
         <video
@@ -119,6 +121,10 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     : defaultLesson(course)
 
   if (requestedLessonId && !selectedLesson) return notFound()
+
+  const selectedMediaUrl = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
+    ? await createMediaReadUrl(selectedLesson.assetPath)
+    : null
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -205,7 +211,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
               {selectedLesson.summary ? <p className="mt-3 text-sm leading-6 text-slate-600">{selectedLesson.summary}</p> : null}
 
               <div className="mt-7">
-                <LessonContent lesson={selectedLesson} />
+                <LessonContent lesson={selectedLesson} mediaUrl={selectedMediaUrl} />
               </div>
             </section>
           ) : (
