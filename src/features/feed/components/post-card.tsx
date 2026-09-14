@@ -8,6 +8,7 @@ import { deletePost, setPostReaction, setPostSaved } from '../actions'
 import {
   EMPTY_REACTION_SUMMARY,
   type FeedPost,
+  type FeedRepostSource,
   type PostReactionType,
   type ReactionSummary,
 } from '../types'
@@ -43,6 +44,67 @@ function updateSummary(summary: ReactionSummary, previous: PostReactionType | nu
   if (previous) updated[previous] = Math.max(0, updated[previous] - 1)
   if (next) updated[next] += 1
   return updated
+}
+
+function RepostSourcePoll({ source }: { source: FeedRepostSource }) {
+  if (!source.poll) return null
+  const totalVotes = source.poll.options.reduce((total, option) => total + option.voteCount, 0)
+  return (
+    <div className="mt-4 rounded-2xl border border-mist-100 bg-mist-50/60 p-4" aria-label="Original post poll">
+      <p className="text-sm font-semibold text-navy-950">Technical poll</p>
+      <div className="mt-2 space-y-2">
+        {source.poll.options.map((option) => {
+          const percentage = totalVotes ? Math.round((option.voteCount / totalVotes) * 100) : 0
+          return (
+            <div key={option.id} className="flex min-h-10 items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm text-navy-900">
+              <span className="font-medium">{option.label}</span>
+              <span className="shrink-0 text-xs font-semibold text-muted">{percentage}% · {option.voteCount}</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="mt-2 text-xs text-muted">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} · Open the original post to vote.</p>
+    </div>
+  )
+}
+
+function RepostSourceCard({ source }: { source: FeedRepostSource }) {
+  return (
+    <section
+      role="region"
+      aria-label={`Original post by ${source.author.fullName}`}
+      className="rounded-2xl border border-mist-100 bg-mist-50/35 p-4 sm:p-5"
+    >
+      <div className="flex items-start gap-3">
+        <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-mist-100 text-xs font-semibold text-navy-950 ring-1 ring-mist-100">
+          {source.author.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={source.author.avatarUrl} alt={`${source.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
+          ) : initials(source.author.fullName)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <Link href={`/people/${source.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
+            {source.author.fullName}
+          </Link>
+          <p className="mt-0.5 truncate text-xs text-muted">
+            {[source.author.rank ?? source.author.headline, source.author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
+          </p>
+          <time suppressHydrationWarning dateTime={source.createdAt} title={new Date(source.createdAt).toISOString()} className="mt-1 block text-xs text-muted">
+            {relativeTime(source.createdAt)}
+          </time>
+        </div>
+      </div>
+
+      <p className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-ink">
+        <MentionText body={source.body} mentions={source.mentions} />
+      </p>
+      {source.media?.signedUrl ? <PostMedia media={source.media} authorName={source.author.fullName} /> : null}
+      <RepostSourcePoll source={source} />
+      <Link href={`/posts/${source.id}`} className="mt-4 inline-flex text-sm font-semibold text-ocean-700 hover:text-ocean-800">
+        View original post
+      </Link>
+    </section>
+  )
 }
 
 export function PostCard({ post, detail = false, readOnly = false }: { post: FeedPost; detail?: boolean; readOnly?: boolean }) {
@@ -110,6 +172,8 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
 
   if (deleted) return null
 
+  const isRepost = post.postType === 'repost'
+
   return (
     <Card className="overflow-visible border border-mist-100">
       <article aria-labelledby={`post-author-${post.id}`}>
@@ -121,9 +185,12 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
             ) : initials(post.author.fullName)}
           </div>
           <div className="min-w-0 flex-1">
-            <Link id={`post-author-${post.id}`} href={`/people/${post.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
-              {post.author.fullName}
-            </Link>
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <Link id={`post-author-${post.id}`} href={`/people/${post.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
+                {post.author.fullName}
+              </Link>
+              {isRepost ? <span className="text-xs font-medium text-muted">reposted</span> : null}
+            </div>
             <p className="mt-0.5 truncate text-sm text-muted">
               {[post.author.rank ?? post.author.headline, post.author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
             </p>
@@ -139,13 +206,21 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
         </header>
 
         <div className="px-4 pb-4 pt-4 sm:px-5">
-          <p className="whitespace-pre-wrap text-[15px] leading-7 text-ink"><MentionText body={post.body} mentions={post.mentions} /></p>
-          {post.media?.signedUrl ? <PostMedia media={post.media} authorName={post.author.fullName} /> : null}
-          {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
+          {isRepost && post.repostOf ? (
+            <RepostSourceCard source={post.repostOf} />
+          ) : (
+            <>
+              <p className="whitespace-pre-wrap text-[15px] leading-7 text-ink"><MentionText body={post.body} mentions={post.mentions} /></p>
+              {post.media?.signedUrl ? <PostMedia media={post.media} authorName={post.author.fullName} /> : null}
+              {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
+            </>
+          )}
         </div>
 
         {readOnly ? (
-          <div className="border-t border-mist-100 px-4 py-2 sm:px-5"><SharePostButton postId={post.id} /></div>
+          <div className="border-t border-mist-100 px-4 py-2 sm:px-5">
+            <SharePostButton postId={post.id} allowRepost={false} />
+          </div>
         ) : (
           <div
             role="group"
@@ -165,7 +240,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
                 <MessageCircle aria-hidden="true" className="size-5" />
                 <span>{post.commentCount}</span>
               </button>
-              <SharePostButton postId={post.id} iconOnly />
+              <SharePostButton postId={post.id} iconOnly allowRepost={!isRepost} />
               <button
                 type="button"
                 aria-label="Save"
