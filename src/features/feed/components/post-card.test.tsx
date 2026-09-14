@@ -10,6 +10,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('../actions', () => ({
   loadReactionDetails: vi.fn(async () => ({ ok: true, page: { reactors: [], nextCursor: null } })),
   deletePost: vi.fn(async () => ({ ok: true })),
+  repostPost: vi.fn(async () => ({ ok: true, postId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' })),
   setPostReaction: vi.fn(async () => ({ ok: true })),
   setPostLiked: vi.fn(async () => ({ ok: true })),
   setPostSaved: vi.fn(async () => ({ ok: true })),
@@ -136,6 +137,49 @@ describe('PostCard', () => {
     expect(video).not.toBeNull()
     expect(video).toHaveAttribute('controls')
     expect(video).toHaveAttribute('src', 'https://media.example/drill.mp4')
+  })
+
+  it('renders a repost actor with the canonical original post nested inside', () => {
+    const sourceId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    render(<PostCard post={{
+      ...post,
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      body: '',
+      postType: 'repost',
+      author: {
+        ...post.author,
+        id: '22222222-2222-4222-8222-222222222222',
+        slug: 'member-b',
+        fullName: 'Member B',
+      },
+      repostOf: {
+        id: sourceId,
+        category: 'safety_lessons',
+        body: 'Original enclosed-space safety lesson.',
+        postType: 'standard',
+        createdAt: '2026-09-01T08:00:00.000Z',
+        updatedAt: '2026-09-01T08:00:00.000Z',
+        author: post.author,
+        media: {
+          storagePath: 'member-a/posts/source.jpg',
+          mimeType: 'image/jpeg',
+          altText: 'Original safety diagram',
+          signedUrl: 'https://media.example/source.jpg',
+        },
+        poll: null,
+        mentions: [],
+      },
+      likeCount: 0,
+      commentCount: 0,
+    }} />)
+
+    expect(screen.getByRole('link', { name: 'Member B' })).toHaveAttribute('href', '/people/member-b')
+    expect(screen.getByText('reposted')).toBeInTheDocument()
+    const original = screen.getByRole('region', { name: 'Original post by Member A' })
+    expect(within(original).getByRole('link', { name: 'Member A' })).toHaveAttribute('href', '/people/member-a')
+    expect(within(original).getByText('Original enclosed-space safety lesson.')).toBeInTheDocument()
+    expect(within(original).getByRole('img', { name: 'Original safety diagram' })).toHaveAttribute('src', 'https://media.example/source.jpg')
+    expect(within(original).getByRole('link', { name: /View original post/i })).toHaveAttribute('href', `/posts/${sourceId}`)
   })
 
   it('reconciles local reaction and save state when canonical post props refresh', () => {
