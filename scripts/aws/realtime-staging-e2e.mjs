@@ -223,6 +223,7 @@ async function socialJourney() {
     await openProbeSocket(senderPage, 'social_sender_connection')
     await senderPage.getByRole('button', { name: 'Connect', exact: true }).click()
     await expect(senderPage.getByText('Pending', { exact: true })).toBeVisible({ timeout: 20_000 })
+    await expect(senderPage.getByRole('button', { name: 'Cancel', exact: true })).toBeEnabled({ timeout: 20_000 })
 
     await recipientPage.goto(`${siteUrl}/people/sns-realtime-sender-${runId}`, { waitUntil: 'domcontentloaded' })
     await openProbeSocket(recipientPage, 'social_recipient_connection')
