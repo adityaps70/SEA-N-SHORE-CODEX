@@ -29,11 +29,33 @@ export type ConversationReadRealtimeSignal = {
   }
 }
 
+export type SocialInvalidationRealtimeSignal = {
+  eventId: string
+  eventType:
+    | 'feed.post_created'
+    | 'feed.post_reaction_changed'
+    | 'feed.post_comments_changed'
+    | 'feed.post_reposted'
+    | 'connection.accepted'
+  schemaVersion: number
+  occurredAt: string
+  scope: 'feed' | 'network'
+}
+
 export type MessagingRealtimeSignal =
   | MessageCreatedRealtimeSignal
   | ConversationReadRealtimeSignal
+  | SocialInvalidationRealtimeSignal
 
 type JsonRecord = Record<string, unknown>
+
+const SOCIAL_INVALIDATION_SCOPES = {
+  'feed.post_created': 'feed',
+  'feed.post_reaction_changed': 'feed',
+  'feed.post_comments_changed': 'feed',
+  'feed.post_reposted': 'feed',
+  'connection.accepted': 'network',
+} as const
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -55,6 +77,16 @@ function hasSignalEnvelope(value: JsonRecord) {
     && !Number.isNaN(Date.parse(value.occurredAt))
     && isNonEmptyString(value.aggregateId)
     && isRecord(value.payload)
+}
+
+function hasMetadataOnlyEnvelope(value: JsonRecord) {
+  return isNonEmptyString(value.eventId)
+    && typeof value.schemaVersion === 'number'
+    && Number.isFinite(value.schemaVersion)
+    && isNonEmptyString(value.occurredAt)
+    && !Number.isNaN(Date.parse(value.occurredAt))
+    && !('aggregateId' in value)
+    && !('payload' in value)
 }
 
 function parseMessageCreated(value: JsonRecord): MessageCreatedRealtimeSignal | null {
@@ -87,6 +119,17 @@ function parseConversationRead(value: JsonRecord): ConversationReadRealtimeSigna
   return value as unknown as ConversationReadRealtimeSignal
 }
 
+function parseSocialInvalidation(value: JsonRecord): SocialInvalidationRealtimeSignal | null {
+  if (!hasMetadataOnlyEnvelope(value) || !isNonEmptyString(value.eventType)) return null
+
+  const scope = SOCIAL_INVALIDATION_SCOPES[
+    value.eventType as keyof typeof SOCIAL_INVALIDATION_SCOPES
+  ]
+  if (!scope || value.scope !== scope) return null
+
+  return value as SocialInvalidationRealtimeSignal
+}
+
 export function buildRealtimeWebSocketUrl(webSocketUrl: string, ticket: string) {
   let url: URL
   try {
@@ -115,7 +158,9 @@ export function parseRealtimeSignal(raw: unknown): MessagingRealtimeSignal | nul
   }
   if (!isRecord(parsed)) return null
 
-  return parseMessageCreated(parsed) ?? parseConversationRead(parsed)
+  return parseMessageCreated(parsed)
+    ?? parseConversationRead(parsed)
+    ?? parseSocialInvalidation(parsed)
 }
 
 export function createRealtimeEventDedupe(maxEntries = 512) {
