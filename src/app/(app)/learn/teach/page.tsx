@@ -41,7 +41,9 @@ function StatusCard({
   )
 }
 
-function firstApplicationValue(profile: Awaited<ReturnType<typeof getAwsOwnProfile>>): MentorApplicationInput {
+function firstApplicationValue(
+  profile: NonNullable<Awaited<ReturnType<typeof getAwsOwnProfile>>>,
+): MentorApplicationInput {
   const experience = profile.sailingExperienceYears ?? 0
   const skillSummary = profile.skills.length ? profile.skills.join(', ') : profile.summary ?? ''
 
@@ -67,10 +69,17 @@ export default async function TeachPage() {
 
   if (state.kind === 'none') {
     const profile = await getAwsOwnProfile()
-    content = (
+    content = profile ? (
       <SectionShell>
         <MentorApplicationForm initialValue={firstApplicationValue(profile)} />
       </SectionShell>
+    ) : (
+      <StatusCard
+        eyebrow="Profile required"
+        title="Complete your Sea N Shore profile before applying"
+        copy="Your mentor application is connected to your verified Sea N Shore identity. Complete your professional profile first so your maritime rank, experience and vessel background can be carried into the application safely."
+        icon={ShieldAlert}
+      />
     )
   } else if (state.kind === 'mentor' && state.mentorStatus === 'active') {
     content = (
