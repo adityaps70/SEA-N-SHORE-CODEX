@@ -1,6 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
-import { canMentorEditCourse, type CourseStatus } from './course-workflow'
+import { canMentorEditCourse, canTransitionCourseStatus, type CourseStatus } from './course-workflow'
 
 type CourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type CourseTransaction = <T>(work: (query: CourseQuery) => Promise<T>) => Promise<T>
@@ -16,6 +16,30 @@ type OwnedCourseRow = QueryResultRow & {
   level: CourseDraftInput['level']
   course_format: CourseDraftInput['courseFormat']
   access_type: CourseDraftInput['accessType']
+  status: string
+  admin_review_note: string | null
+  updated_at: string | Date
+}
+type OwnedCourseDetailRow = QueryResultRow & {
+  id: string
+  slug: string
+  title: string
+  subtitle: string | null
+  description: string
+  category: string
+  level: CourseDraftInput['level']
+  language: string
+  thumbnail_path: string | null
+  trailer_path: string | null
+  learning_outcomes: string[] | null
+  requirements: string[] | null
+  target_audience: string[] | null
+  price_minor: string | number
+  discount_price_minor: string | number | null
+  currency: string
+  access_type: CourseDraftInput['accessType']
+  certificate_enabled: boolean
+  course_format: CourseDraftInput['courseFormat']
   status: string
   admin_review_note: string | null
   updated_at: string | Date
@@ -56,6 +80,13 @@ export type MentorCourseSummary = {
   level: CourseDraftInput['level']
   courseFormat: CourseDraftInput['courseFormat']
   accessType: CourseDraftInput['accessType']
+  status: CourseStatus
+  adminReviewNote: string | null
+  updatedAt: string
+}
+
+export type MentorOwnedCourseDetail = CourseDraftInput & {
+  id: string
   status: CourseStatus
   adminReviewNote: string | null
   updatedAt: string
@@ -207,6 +238,69 @@ export function createCourseRepository(input: {
     }))
   }
 
+  async function getOwnedCourse(actorId: string, courseId: string): Promise<MentorOwnedCourseDetail | null> {
+    const rows = await queryRows(
+      `select
+         course.id,
+         course.slug,
+         course.title,
+         course.subtitle,
+         course.description,
+         course.category,
+         course.level,
+         course.language,
+         course.thumbnail_path,
+         course.trailer_path,
+         course.learning_outcomes,
+         course.requirements,
+         course.target_audience,
+         course.price_minor,
+         course.discount_price_minor,
+         course.currency,
+         course.access_type,
+         course.certificate_enabled,
+         course.course_format,
+         course.status,
+         course.admin_review_note,
+         course.updated_at
+       from public.learning_courses course
+       inner join public.learning_mentors mentor
+         on mentor.id = course.mentor_id
+       where mentor.user_id = $1
+         and mentor.status = 'active'
+         and course.id = $2
+       limit 1`,
+      [actorId, courseId],
+    ) as OwnedCourseDetailRow[]
+    const row = rows[0]
+    if (!row) return null
+
+    return {
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      subtitle: row.subtitle,
+      description: row.description,
+      category: row.category,
+      level: row.level,
+      language: row.language,
+      thumbnailPath: row.thumbnail_path,
+      trailerPath: row.trailer_path,
+      learningOutcomes: row.learning_outcomes ?? [],
+      requirements: row.requirements ?? [],
+      targetAudience: row.target_audience ?? [],
+      priceMinor: Number(row.price_minor),
+      discountPriceMinor: row.discount_price_minor === null ? null : Number(row.discount_price_minor),
+      currency: row.currency,
+      accessType: row.access_type,
+      certificateEnabled: row.certificate_enabled,
+      courseFormat: row.course_format,
+      status: asCourseStatus(row.status),
+      adminReviewNote: row.admin_review_note,
+      updatedAt: isoDateTime(row.updated_at),
+    }
+  }
+
   async function updateCourse(actorId: string, courseId: string, draft: CourseDraftInput) {
     return transaction(async (txQuery) => {
       const lockedRows = await txQuery(
@@ -255,10 +349,51 @@ export function createCourseRepository(input: {
     })
   }
 
+  async function submitCourse(actorId: string, courseId: string) {
+    return transaction(async (txQuery) => {
+      const lockedRows = await txQuery(
+        `select course.id, course.status, course.mentor_id
+         from public.learning_courses course
+         inner join public.learning_mentors mentor
+           on mentor.id = course.mentor_id
+         where course.id = $1
+           and mentor.user_id = $2
+           and mentor.status = 'active'
+         for update`,
+        [courseId, actorId],
+      ) as LockedCourseRow[]
+      const current = lockedRows[0]
+      if (!current) throw new Error('course_not_found')
+
+      const currentStatus = asCourseStatus(current.status)
+      if (!canTransitionCourseStatus({ actor: 'mentor', current: currentStatus, next: 'submitted' })) {
+        throw new Error('course_submit_forbidden')
+      }
+
+      const rows = await txQuery(
+        `update public.learning_courses
+         set status = 'submitted',
+             reviewed_by = null,
+             reviewed_at = null,
+             admin_review_note = null,
+             approved_at = null,
+             updated_at = now()
+         where id = $1
+           and mentor_id = $2
+         returning id`,
+        [courseId, current.mentor_id],
+      ) as ReturningIdRow[]
+      if (!rows[0]) throw new Error('course_submit_failed')
+      return true
+    })
+  }
+
   return {
     createCourse,
     listOwnedCourses,
+    getOwnedCourse,
     updateCourse,
+    submitCourse,
   }
 }
 
