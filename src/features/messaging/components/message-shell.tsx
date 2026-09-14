@@ -212,7 +212,7 @@ export function MessageShell({
                   <p className="mt-2 text-sm leading-6 text-muted">Choose a maritime professional from your inbox to continue a focused one-to-one conversation.</p>
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
         </div>
       </div>
