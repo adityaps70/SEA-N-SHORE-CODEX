@@ -105,4 +105,15 @@ describe('CommentThread social metrics', () => {
     expect(screen.getByTestId(`reply-thread-${replyOneId}`)).toBeInTheDocument()
     expect(item(replyOneId).queryByLabelText('0 replies')).not.toBeInTheDocument()
   })
+
+  it('reconciles canonical comments when refreshed props add a remote reply', () => {
+    const root = comment()
+    const remoteReply = comment({ id: replyOneId, body: 'Remote reply from canonical refresh.', parentCommentId: rootId })
+    const { rerender } = render(<CommentThread postId={postId} comments={[root]} />)
+
+    rerender(<CommentThread postId={postId} comments={[root, remoteReply]} />)
+
+    expect(screen.getByText('Remote reply from canonical refresh.')).toBeInTheDocument()
+    expect(item(rootId).getByLabelText('1 reply')).toHaveTextContent('1')
+  })
 })
