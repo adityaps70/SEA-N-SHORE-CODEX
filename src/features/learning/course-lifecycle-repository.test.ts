@@ -4,6 +4,8 @@ import { createCourseRepository } from './course-repository'
 const mentorUserId = '11111111-1111-4111-8111-111111111111'
 const mentorId = '22222222-2222-4222-8222-222222222222'
 const courseId = '33333333-3333-4333-8333-333333333333'
+const sectionId = '44444444-4444-4444-8444-444444444444'
+const lessonId = '55555555-5555-4555-8555-555555555555'
 
 const detailRow = {
   id: courseId,
@@ -28,6 +30,29 @@ const detailRow = {
   status: 'changes_requested',
   admin_review_note: 'Please make the inspection evidence outcome more specific.',
   updated_at: new Date('2026-09-14T12:00:00.000Z'),
+}
+
+const validSubmissionCurriculumRow = {
+  section_id: sectionId,
+  section_title: 'Module 1 · Inspection foundations',
+  section_position: 0,
+  lesson_id: lessonId,
+  lesson_title: 'Inspection evidence and crew readiness',
+  lesson_type: 'article',
+  lesson_position: 0,
+  article_body: 'Review records, procedures and crew readiness before the inspection.',
+  asset_path: null,
+  external_url: null,
+  quiz_id: null,
+  pass_percentage: null,
+  question_id: null,
+  question_position: null,
+  option_id: null,
+  option_is_correct: null,
+}
+
+function isSubmissionReadinessQuery(text: string) {
+  return text.includes('learning_course_sections section') && text.includes('learning_lessons lesson')
 }
 
 describe('learning course lifecycle repository', () => {
@@ -76,12 +101,13 @@ describe('learning course lifecycle repository', () => {
     await expect(repository.getOwnedCourse(mentorUserId, courseId)).resolves.toBeNull()
   })
 
-  it('submits an owned draft course for admin review atomically', async () => {
+  it('submits an owned draft course with valid curriculum for admin review atomically', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     let transactionCount = 0
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
       if (text.includes('for update')) return [{ id: courseId, status: 'draft', mentor_id: mentorId }]
+      if (isSubmissionReadinessQuery(text)) return [validSubmissionCurriculumRow]
       if (text.includes('update public.learning_courses')) return [{ id: courseId }]
       return []
     }
@@ -101,6 +127,9 @@ describe('learning course lifecycle repository', () => {
     expect(lock?.text).toContain("mentor.status = 'active'")
     expect(lock?.values).toEqual([courseId, mentorUserId])
 
+    const readiness = seen.find((entry) => isSubmissionReadinessQuery(entry.text))
+    expect(readiness?.values).toEqual([courseId])
+
     const update = seen.find((entry) => entry.text.includes('update public.learning_courses'))
     expect(update?.text).toContain("status = 'submitted'")
     expect(update?.text).toContain('reviewed_by = null')
@@ -110,9 +139,10 @@ describe('learning course lifecycle repository', () => {
     expect(update?.values).toContain(mentorId)
   })
 
-  it('allows resubmission after an administrator requests changes', async () => {
+  it('allows resubmission after an administrator requests changes when curriculum is valid', async () => {
     const query = async (text: string) => {
       if (text.includes('for update')) return [{ id: courseId, status: 'changes_requested', mentor_id: mentorId }]
+      if (isSubmissionReadinessQuery(text)) return [validSubmissionCurriculumRow]
       if (text.includes('update public.learning_courses')) return [{ id: courseId }]
       return []
     }
@@ -132,5 +162,6 @@ describe('learning course lifecycle repository', () => {
 
     await expect(repository.submitCourse(mentorUserId, courseId)).rejects.toThrow('course_submit_forbidden')
     expect(seen.some((text) => text.includes('update public.learning_courses'))).toBe(false)
+    expect(seen.some((text) => isSubmissionReadinessQuery(text))).toBe(false)
   })
 })
