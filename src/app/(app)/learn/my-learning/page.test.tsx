@@ -36,6 +36,8 @@ const enrollment: LearnerCourseEnrollment = {
   courseFormat: 'recorded',
   certificateEnabled: true,
   mentorName: 'Capt. Maya Singh',
+  certificateId: null,
+  certificateVerificationCode: null,
   totalLessons: 5,
   completedLessons: 2,
   progressPercent: 40,
@@ -81,7 +83,8 @@ describe('/learn/my-learning', () => {
     expect(within(card).queryByText(/native lesson player is being connected/i)).not.toBeInTheDocument()
   })
 
-  it('shows a completed course honestly at 100 percent with a review action', async () => {
+  it('shows a completed certificate-enabled course with download and public verification actions', async () => {
+    const verificationCode = '55555555-5555-4555-8555-555555555555'
     mocks.listLearnerEnrollments.mockResolvedValueOnce([
       {
         ...enrollment,
@@ -89,6 +92,8 @@ describe('/learn/my-learning', () => {
         completedAt: '2026-09-15T12:00:00.000Z',
         completedLessons: 5,
         progressPercent: 100,
+        certificateId: '44444444-4444-4444-8444-444444444444',
+        certificateVerificationCode: verificationCode,
       },
     ])
 
@@ -102,7 +107,35 @@ describe('/learn/my-learning', () => {
       'href',
       `/learn/courses/${enrollment.slug}/learn`,
     )
+    expect(within(card).getByRole('link', { name: 'Download certificate' })).toHaveAttribute(
+      'href',
+      `/api/learn/certificates/enrollment/${enrollment.enrollmentId}`,
+    )
+    expect(within(card).getByRole('link', { name: 'Verify certificate' })).toHaveAttribute(
+      'href',
+      `/certificates/${verificationCode}`,
+    )
     expect(within(card).queryByRole('link', { name: 'Continue learning' })).not.toBeInTheDocument()
+  })
+
+  it('lets a legacy completed eligible learner generate their certificate through the download route', async () => {
+    mocks.listLearnerEnrollments.mockResolvedValueOnce([{
+      ...enrollment,
+      enrollmentStatus: 'completed',
+      completedAt: '2026-09-15T12:00:00.000Z',
+      completedLessons: 5,
+      progressPercent: 100,
+      certificateId: null,
+      certificateVerificationCode: null,
+    }])
+
+    render(await MyLearningPage())
+    const card = screen.getByRole('article', { name: enrollment.title })
+    expect(within(card).getByRole('link', { name: 'Generate certificate' })).toHaveAttribute(
+      'href',
+      `/api/learn/certificates/enrollment/${enrollment.enrollmentId}`,
+    )
+    expect(within(card).queryByRole('link', { name: 'Verify certificate' })).not.toBeInTheDocument()
   })
 
   it('renders an honest empty state with a marketplace route when the learner has no enrollments', async () => {
