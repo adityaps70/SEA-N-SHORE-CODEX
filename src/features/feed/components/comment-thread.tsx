@@ -265,14 +265,16 @@ export function CommentThread({ postId, comments, readOnly = false, composerOpen
   readOnly?: boolean
   composerOpen?: boolean
 }) {
+  const [canonicalComments, setCanonicalComments] = useState(comments)
   const [threadComments, setThreadComments] = useState(comments)
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
   const [visibleRootCount, setVisibleRootCount] = useState(1)
 
-  useEffect(() => {
+  if (canonicalComments !== comments) {
+    setCanonicalComments(comments)
     setThreadComments(comments)
-  }, [comments])
+  }
 
   function upsertComment(nextComment: FeedComment) {
     setThreadComments((current) => {
