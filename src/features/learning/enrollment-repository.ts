@@ -33,6 +33,8 @@ type LearnerCourseRow = QueryResultRow & {
   course_format: CourseFormat
   certificate_enabled: boolean
   mentor_name: string
+  certificate_id: string | null
+  certificate_verification_code: string | null
   total_lessons: string | number
   completed_lessons: string | number
 }
@@ -62,6 +64,8 @@ export type LearnerCourseEnrollment = {
   courseFormat: CourseFormat
   certificateEnabled: boolean
   mentorName: string
+  certificateId: string | null
+  certificateVerificationCode: string | null
   totalLessons: number
   completedLessons: number
   progressPercent: number
@@ -202,6 +206,8 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          course.course_format,
          course.certificate_enabled,
          application.applicant_name as mentor_name,
+         certificate.id as certificate_id,
+         certificate.verification_code as certificate_verification_code,
          count(distinct lesson.id)::bigint as total_lessons,
          count(distinct progress.lesson_id) filter (where progress.completed = true)::bigint as completed_lessons
        from public.learning_enrollments enrollment
@@ -222,6 +228,9 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
        left join public.learning_progress progress
          on progress.enrollment_id = enrollment.id
         and progress.lesson_id = lesson.id
+       left join public.learning_certificates certificate
+         on certificate.enrollment_id = enrollment.id
+        and certificate.learner_id = enrollment.learner_id
        where enrollment.learner_id = $1
          and enrollment.status in ('active', 'completed')
        group by
@@ -239,7 +248,9 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          course.thumbnail_path,
          course.course_format,
          course.certificate_enabled,
-         application.applicant_name
+         application.applicant_name,
+         certificate.id,
+         certificate.verification_code
        order by enrollment.updated_at desc, enrollment.id desc`,
       [learnerId],
     ) as LearnerCourseRow[]
@@ -270,6 +281,8 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
         courseFormat: row.course_format,
         certificateEnabled: row.certificate_enabled,
         mentorName: row.mentor_name,
+        certificateId: row.certificate_id,
+        certificateVerificationCode: row.certificate_verification_code,
         totalLessons,
         completedLessons,
         progressPercent,
