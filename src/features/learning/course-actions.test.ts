@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   createCourse: vi.fn(),
   updateCourse: vi.fn(),
+  submitCourse: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
@@ -17,11 +18,12 @@ vi.mock('./course-repository', async (importOriginal) => {
     courseRepository: {
       createCourse: mocks.createCourse,
       updateCourse: mocks.updateCourse,
+      submitCourse: mocks.submitCourse,
     },
   }
 })
 
-import { createCourseDraft, updateCourseDraft } from './course-actions'
+import { createCourseDraft, submitCourseForReview, updateCourseDraft } from './course-actions'
 
 const courseId = '33333333-3333-4333-8333-333333333333'
 
@@ -55,6 +57,7 @@ describe('learning course server actions', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'captain@example.com' })
     mocks.createCourse.mockResolvedValue({ courseId })
     mocks.updateCourse.mockResolvedValue(true)
+    mocks.submitCourse.mockResolvedValue(true)
   })
 
   it('rejects inconsistent paid pricing before authentication or mutation', async () => {
@@ -111,6 +114,22 @@ describe('learning course server actions', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/studio/courses')
   })
 
+  it('rejects an invalid course id before authentication on submit', async () => {
+    await expect(submitCourseForReview('not-a-uuid')).resolves.toEqual({ ok: false, error: 'Invalid course.' })
+
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.submitCourse).not.toHaveBeenCalled()
+  })
+
+  it('submits an owned editable course for review and refreshes its Studio surfaces', async () => {
+    await expect(submitCourseForReview(courseId)).resolves.toEqual({ ok: true })
+
+    expect(mocks.submitCourse).toHaveBeenCalledWith('user-1', courseId)
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/studio')
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/studio/courses')
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/learn/studio/courses/${courseId}/edit`)
+  })
+
   it('returns safe copy when mentor access is unavailable', async () => {
     mocks.createCourse.mockRejectedValueOnce(new Error('mentor_required'))
 
@@ -126,6 +145,15 @@ describe('learning course server actions', () => {
     await expect(updateCourseDraft(courseId, validInput())).resolves.toEqual({
       ok: false,
       error: 'This course cannot be edited while it is in review or published.',
+    })
+  })
+
+  it('returns safe copy when course workflow no longer permits submission', async () => {
+    mocks.submitCourse.mockRejectedValueOnce(new Error('course_submit_forbidden'))
+
+    await expect(submitCourseForReview(courseId)).resolves.toEqual({
+      ok: false,
+      error: 'This course cannot be submitted for review in its current state.',
     })
   })
 })
