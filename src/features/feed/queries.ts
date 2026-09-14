@@ -33,6 +33,10 @@ function mediaPath(row: FeedPostRow) {
   return value?.storage_path ?? null
 }
 
+function repostSourceIds(rows: FeedPostRow[]) {
+  return [...new Set(rows.flatMap((row) => row.repost_of_post_id ? [row.repost_of_post_id] : []))]
+}
+
 export function createFeedQueries(input: {
   requireUser: RequireUser
   repository: FeedRepository
@@ -42,13 +46,18 @@ export function createFeedQueries(input: {
   async function hydratePosts(rows: FeedPostRow[], viewerId: string): Promise<FeedPost[]> {
     if (!rows.length) return []
     const postIds = rows.map((row) => row.id)
-    const [viewer, comments] = await Promise.all([
-      input.repository.getViewerState(viewerId, postIds),
+    const sourceIds = repostSourceIds(rows)
+    const allViewerStateIds = [...new Set([...postIds, ...sourceIds])]
+    const [viewer, comments, repostSources] = await Promise.all([
+      input.repository.getViewerState(viewerId, allViewerStateIds),
       input.repository.getComments(postIds, viewerId),
+      input.repository.listRepostSourceRows(viewerId, sourceIds),
     ])
     const paths = [...new Set([
       ...rows.map(mediaPath),
       ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
+      ...repostSources.map(mediaPath),
+      ...repostSources.map((row) => feedAuthorAvatarPath(row.profiles)),
       ...comments.map((comment) => feedAuthorAvatarPath(comment.profiles)),
     ].filter((path): path is string => Boolean(path)))]
     const signedUrls = await input.resolveMediaUrls(paths)
@@ -59,16 +68,27 @@ export function createFeedQueries(input: {
       existing.push(comment)
       commentsByPost.set(comment.post_id, existing)
     }
-    return rows.map((row) => mapFeedPost({ ...row, post_comments: commentsByPost.get(row.id) ?? [] }, viewer, signedUrls, viewerId))
+    const sourceById = new Map(repostSources.map((row) => [row.id, row] as const))
+    return rows.map((row) => mapFeedPost({
+      ...row,
+      post_comments: commentsByPost.get(row.id) ?? [],
+      repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
+    }, viewer, signedUrls, viewerId))
   }
 
-  async function hydratePublicPosts(rows: FeedPostRow[]): Promise<FeedPost[]> {
+  async function hydratePublicPosts(rows: FeedPostRow[], viewerId: string): Promise<FeedPost[]> {
     if (!rows.length) return []
     const postIds = rows.map((row) => row.id)
-    const comments = await input.repository.getComments(postIds)
+    const sourceIds = repostSourceIds(rows)
+    const [comments, repostSources] = await Promise.all([
+      input.repository.getComments(postIds),
+      input.repository.listRepostSourceRows(viewerId, sourceIds),
+    ])
     const paths = [...new Set([
       ...rows.map(mediaPath),
       ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
+      ...repostSources.map(mediaPath),
+      ...repostSources.map((row) => feedAuthorAvatarPath(row.profiles)),
       ...comments.map((comment) => feedAuthorAvatarPath(comment.profiles)),
     ].filter((path): path is string => Boolean(path)))]
     const signedUrls = await input.resolveMediaUrls(paths)
@@ -79,8 +99,13 @@ export function createFeedQueries(input: {
       existing.push(comment)
       commentsByPost.set(comment.post_id, existing)
     }
+    const sourceById = new Map(repostSources.map((row) => [row.id, row] as const))
     const emptyViewer = { postReactions: new Map(), likedPostIds: new Set<string>(), savedPostIds: new Set<string>(), pollVotes: new Map<string, string>() }
-    return rows.map((row) => mapFeedPost({ ...row, post_comments: commentsByPost.get(row.id) ?? [] }, emptyViewer, signedUrls))
+    return rows.map((row) => mapFeedPost({
+      ...row,
+      post_comments: commentsByPost.get(row.id) ?? [],
+      repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
+    }, emptyViewer, signedUrls))
   }
 
   async function getFeedPage(request: FeedRequest = {}): Promise<FeedPage> {
@@ -114,7 +139,7 @@ export function createFeedQueries(input: {
 
   async function getPublicPostsByAuthor(authorProfileId: string): Promise<FeedPost[]> {
     const rows = await input.repository.listAuthorRows({ viewerProfileId: authorProfileId, authorProfileId, limit: 30 })
-    return hydratePublicPosts(rows)
+    return hydratePublicPosts(rows, authorProfileId)
   }
 
   async function getMyActivityPosts(): Promise<FeedPost[]> {
