@@ -7,6 +7,20 @@ const ACTOR_ID = '11111111-1111-4111-8111-111111111111'
 const POST_ID = '22222222-2222-4222-8222-222222222222'
 const COMMENT_ID = '33333333-3333-4333-8333-333333333333'
 
+type FeedInvalidationType =
+  | 'feed.post_created'
+  | 'feed.post_reaction_changed'
+  | 'feed.post_comments_changed'
+
+type ObservedEvent = {
+  aggregateType?: unknown
+  aggregateId?: unknown
+  eventType?: unknown
+  schemaVersion?: unknown
+  occurredAt?: unknown
+  payload?: unknown
+}
+
 function createHarness() {
   const repository = {
     isMemberReady: vi.fn(async () => true),
@@ -20,25 +34,32 @@ function createHarness() {
     setPostReaction: vi.fn(async () => undefined),
     setLiked: vi.fn(async () => undefined),
     addComment: vi.fn(async () => COMMENT_ID),
-  } as unknown as FeedRepository
+  }
 
   const social = {
-    enqueue: vi.fn(async () => undefined),
-    upsertNotification: vi.fn(async () => undefined),
-    deleteNotification: vi.fn(async () => undefined),
-  } as unknown as FeedSocialWriter
+    enqueue: vi.fn(async (_event: unknown) => undefined),
+    upsertNotification: vi.fn(async (_notification: unknown) => undefined),
+    deleteNotification: vi.fn(async (_recipientId: string, _dedupeKey: string) => undefined),
+  }
 
   const service = createFeedService({
     createId: () => POST_ID,
-    withTransaction: async (fn) => fn(repository, social),
+    withTransaction: async (fn) => fn(
+      repository as unknown as FeedRepository,
+      social as unknown as FeedSocialWriter,
+    ),
   })
 
   return { repository, social, service }
 }
 
+function expectMutationBeforeEvent(mutation: { mock: { invocationCallOrder: number[] } }, social: ReturnType<typeof createHarness>['social']) {
+  expect(mutation.mock.invocationCallOrder[0]).toBeLessThan(social.enqueue.mock.invocationCallOrder[0])
+}
+
 function expectFeedEvent(
-  social: FeedSocialWriter,
-  eventType: 'feed.post_created' | 'feed.post_reaction_changed' | 'feed.post_comments_changed',
+  social: ReturnType<typeof createHarness>['social'],
+  eventType: FeedInvalidationType,
 ) {
   expect(social.enqueue).toHaveBeenCalledWith(expect.objectContaining({
     aggregateType: 'post',
@@ -53,10 +74,10 @@ function expectFeedEvent(
     },
   }))
 
-  const events = vi.mocked(social.enqueue).mock.calls.map(([event]) => event)
+  const events = social.enqueue.mock.calls.map(([event]) => event as ObservedEvent)
   const invalidation = events.find((event) => event.eventType === eventType)
-  expect(invalidation?.payload).not.toHaveProperty('body')
-  expect(invalidation?.payload).not.toHaveProperty('commentBody')
+  expect(invalidation?.payload).not.toEqual(expect.objectContaining({ body: expect.anything() }))
+  expect(invalidation?.payload).not.toEqual(expect.objectContaining({ commentBody: expect.anything() }))
 }
 
 describe('feed realtime outbox events', () => {
@@ -73,7 +94,7 @@ describe('feed realtime outbox events', () => {
       body: 'Canonical post content stays out of realtime events.',
     })
 
-    expect(repository.insertStandardPost).toHaveBeenCalledBefore(vi.mocked(social.enqueue))
+    expectMutationBeforeEvent(repository.insertStandardPost, social)
     expectFeedEvent(social, 'feed.post_created')
   })
 
@@ -86,7 +107,7 @@ describe('feed realtime outbox events', () => {
       pollOptions: ['Suez', 'Cape of Good Hope'],
     })
 
-    expect(repository.insertPollPost).toHaveBeenCalledBefore(vi.mocked(social.enqueue))
+    expectMutationBeforeEvent(repository.insertPollPost, social)
     expectFeedEvent(social, 'feed.post_created')
   })
 
@@ -98,7 +119,7 @@ describe('feed realtime outbox events', () => {
       await service.setPostReaction(ACTOR_ID, POST_ID, reaction)
 
       expect(repository.setPostReaction).toHaveBeenCalledWith(ACTOR_ID, POST_ID, reaction)
-      expect(repository.setPostReaction).toHaveBeenCalledBefore(vi.mocked(social.enqueue))
+      expectMutationBeforeEvent(repository.setPostReaction, social)
       expectFeedEvent(social, 'feed.post_reaction_changed')
     },
   )
@@ -111,7 +132,7 @@ describe('feed realtime outbox events', () => {
       await service.setLiked(ACTOR_ID, POST_ID, liked)
 
       expect(repository.setLiked).toHaveBeenCalledWith(ACTOR_ID, POST_ID, liked)
-      expect(repository.setLiked).toHaveBeenCalledBefore(vi.mocked(social.enqueue))
+      expectMutationBeforeEvent(repository.setLiked, social)
       expectFeedEvent(social, 'feed.post_reaction_changed')
     },
   )
@@ -131,7 +152,7 @@ describe('feed realtime outbox events', () => {
       'This body remains canonical and must not become realtime payload content.',
       null,
     )
-    expect(repository.addComment).toHaveBeenCalledBefore(vi.mocked(social.enqueue))
+    expectMutationBeforeEvent(repository.addComment, social)
     expectFeedEvent(social, 'feed.post_comments_changed')
   })
 })
