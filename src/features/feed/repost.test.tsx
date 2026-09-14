@@ -43,7 +43,7 @@ describe('durable post reposts', () => {
       insertRepost,
     }
     const social = {
-      enqueue: vi.fn(async () => undefined),
+      enqueue: vi.fn(async (event: unknown) => { void event }),
       upsertNotification: vi.fn(async () => undefined),
       deleteNotification: vi.fn(async () => undefined),
     }
