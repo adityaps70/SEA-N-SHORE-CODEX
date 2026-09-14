@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import type { FeedCommentRow, FeedPostRow, FeedViewerState } from './mappers'
-import type { FeedCursor, PostCategory, PostReactionType, ReactionTargetType } from './types'
+import type { FeedCursor, FeedPostType, PostCategory, PostReactionType, ReactionTargetType } from './types'
 
 type FeedQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
 type FeedRow = QueryResultRow & FeedPostRow
 type CommentRow = QueryResultRow & FeedCommentRow
-type PostInteractionRow = QueryResultRow & { id: string; author_id: string; post_type: 'standard' | 'poll' }
+type PostInteractionRow = QueryResultRow & { id: string; author_id: string; post_type: FeedPostType }
 type CommentInteractionRow = QueryResultRow & {
   id: string
   post_id: string
@@ -66,6 +66,7 @@ const FEED_ROW_SELECT = `
     p.category::text as category,
     p.body,
     p.post_type::text as post_type,
+    p.repost_of_post_id,
     p.created_at,
     p.updated_at,
     json_build_object(
@@ -127,6 +128,34 @@ const FEED_ROW_SELECT = `
   left join public.maritime_profiles maritime on maritime.user_id = author.id
 ` as const
 
+function repostSourceVisibilitySql() {
+  return `
+    and (
+      p.post_type <> 'repost'
+      or exists (
+        select 1
+        from public.posts source
+        join public.profiles source_author on source_author.id = source.author_id
+        where source.id = p.repost_of_post_id
+          and source.deleted_at is null
+          and source.post_type <> 'repost'
+          and (
+            source.author_id = $1
+            or (
+              source_author.account_status = 'active'
+              and source_author.onboarding_completed_at is not null
+              and not exists (
+                select 1 from public.user_blocks source_block
+                where (source_block.blocker_id = $1 and source_block.blocked_id = source.author_id)
+                   or (source_block.blocker_id = source.author_id and source_block.blocked_id = $1)
+              )
+            )
+          )
+      )
+    )
+  `
+}
+
 function visibilitySql() {
   return `
     exists (
@@ -147,6 +176,7 @@ function visibilitySql() {
         )
       )
     )
+    ${repostSourceVisibilitySql()}
   `
 }
 
@@ -255,6 +285,18 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       [viewerProfileId, postId],
     ) as FeedRow[]
     return rows[0] ?? null
+  }
+
+  async function listRepostSourceRows(viewerProfileId: string, postIds: string[]): Promise<FeedPostRow[]> {
+    if (!postIds.length) return []
+    return await queryRows(
+      `${FEED_ROW_SELECT}
+       where p.id = any($2::uuid[])
+         and p.deleted_at is null
+         and p.post_type <> 'repost'
+         and ${visibilitySql()}`,
+      [viewerProfileId, postIds],
+    ) as FeedRow[]
   }
 
   async function getViewerState(viewerProfileId: string, postIds: string[]): Promise<FeedViewerState> {
@@ -458,6 +500,22 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
            author.account_status = 'active' and author.onboarding_completed_at is not null
            and not exists (select 1 from public.user_blocks b where (b.blocker_id = $2 and b.blocked_id = p.author_id) or (b.blocker_id = p.author_id and b.blocked_id = $2))
          ))
+         and (
+           p.post_type <> 'repost'
+           or exists (
+             select 1
+             from public.posts source
+             join public.profiles source_author on source_author.id = source.author_id
+             where source.id = p.repost_of_post_id
+               and source.deleted_at is null
+               and source.post_type <> 'repost'
+               and (source.author_id = $2 or (
+                 source_author.account_status = 'active'
+                 and source_author.onboarding_completed_at is not null
+                 and not exists (select 1 from public.user_blocks source_block where (source_block.blocker_id = $2 and source_block.blocked_id = source.author_id) or (source_block.blocker_id = source.author_id and source_block.blocked_id = $2))
+               ))
+           )
+         )
        limit 1`,
       [input.postId, input.viewerProfileId],
     ) as PostInteractionRow[]
@@ -541,6 +599,21 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
 
   async function insertPollOption(postId: string, label: string, position: number) {
     await queryRows(`insert into public.post_poll_options (post_id, label, position) values ($1, $2, $3)`, [postId, label, position])
+  }
+
+  async function insertRepost(input: { id: string; authorId: string; sourcePostId: string }) {
+    const rows = await queryRows(
+      `insert into public.posts (id, author_id, category, body, post_type, repost_of_post_id)
+       select $1, $2, source.category, '', 'repost', source.id
+       from public.posts source
+       where source.id = $3
+         and source.deleted_at is null
+         and source.post_type <> 'repost'
+       on conflict (author_id, repost_of_post_id) where post_type = 'repost' and deleted_at is null do nothing
+       returning id`,
+      [input.id, input.authorId, input.sourcePostId],
+    ) as IdRow[]
+    if (!rows[0]?.id) throw new Error('feed_repost_duplicate')
   }
 
   async function setPostReaction(viewerProfileId: string, postId: string, reaction: PostReactionType | null) {
@@ -674,6 +747,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     listAuthorRows,
     listCommentedRows,
     getPostRow,
+    listRepostSourceRows,
     getViewerState,
     listReactionDetails,
     getComments,
@@ -691,6 +765,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     isPostMediaAttached,
     insertPollPost,
     insertPollOption,
+    insertRepost,
     setPostReaction,
     setLiked,
     setCommentReaction,
