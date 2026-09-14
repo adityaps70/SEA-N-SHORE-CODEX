@@ -35,6 +35,7 @@ type FeedInvalidationEventType =
   | 'feed.post_created'
   | 'feed.post_reaction_changed'
   | 'feed.post_comments_changed'
+  | 'feed.post_reposted'
 
 function serviceError(code: string): never {
   throw new Error(code)
@@ -115,6 +116,17 @@ async function enqueueFeedInvalidation(
         schemaVersion: 1,
         occurredAt: occurredAt(),
         payload: { eventType: 'feed.post_comments_changed', actorId, postId },
+      })
+      return
+    case 'feed.post_reposted':
+      await social.enqueue({
+        id: randomUUID(),
+        aggregateType: 'post',
+        aggregateId: postId,
+        eventType: 'feed.post_reposted',
+        schemaVersion: 1,
+        occurredAt: occurredAt(),
+        payload: { eventType: 'feed.post_reposted', actorId, postId },
       })
   }
 }
@@ -220,6 +232,17 @@ export function createFeedService(input: {
         : []
       await notifyPostMentions(social, actorId, id, mentions)
       await enqueueFeedInvalidation(social, 'feed.post_created', actorId, id)
+      return id
+    })
+  }
+
+  async function repostPost(actorId: string, sourcePostId: string) {
+    return input.withTransaction(async (repository, social) => {
+      const source = await assertInteractablePost(repository, actorId, sourcePostId)
+      if (source.postType === 'repost') serviceError('feed_repost_source_unavailable')
+      const id = createId()
+      await repository.insertRepost({ id, authorId: actorId, sourcePostId })
+      await enqueueFeedInvalidation(social, 'feed.post_reposted', actorId, id)
       return id
     })
   }
@@ -461,6 +484,7 @@ export function createFeedService(input: {
     createStandardPost,
     assertPendingMediaDiscardable,
     createPollPost,
+    repostPost,
     deletePost,
     getReactionDetails,
     setPostReaction,
@@ -484,6 +508,7 @@ const productionService = createFeedService({
 export const createStandardPostWithAurora = productionService.createStandardPost
 export const assertPendingMediaDiscardableWithAurora = productionService.assertPendingMediaDiscardable
 export const createPollPostWithAurora = productionService.createPollPost
+export const repostPostWithAurora = productionService.repostPost
 export const deletePostWithAurora = productionService.deletePost
 export const loadReactionDetailsWithAurora = productionService.getReactionDetails
 export const setPostReactionWithAurora = productionService.setPostReaction
