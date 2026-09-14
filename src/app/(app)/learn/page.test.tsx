@@ -42,6 +42,20 @@ const course: MarketplaceCourse = {
   publishedAt: '2026-09-14T12:00:00.000Z',
 }
 
+type LearnPageSearch = {
+  category?: string
+  search?: string
+}
+
+type TestLearnPage = (props: {
+  searchParams: Promise<LearnPageSearch>
+}) => ReturnType<typeof LearnPage> | Promise<ReturnType<typeof LearnPage>>
+
+async function renderLearnPage(searchParams: LearnPageSearch = {}) {
+  const page = LearnPage as unknown as TestLearnPage
+  render(await page({ searchParams: Promise.resolve(searchParams) }))
+}
+
 afterEach(() => {
   cleanup()
 })
@@ -53,7 +67,7 @@ describe('/learn marketplace', () => {
   })
 
   it('renders real published courses from verified maritime mentors', async () => {
-    render(await LearnPage({ searchParams: Promise.resolve({}) }))
+    await renderLearnPage()
 
     expect(mocks.listPublishedCourses).toHaveBeenCalledWith({ category: null, search: null })
     expect(screen.getByRole('heading', { name: 'Learn from verified maritime professionals.' })).toBeInTheDocument()
@@ -74,9 +88,7 @@ describe('/learn marketplace', () => {
   })
 
   it('passes normalized search and category filters into the published marketplace query', async () => {
-    render(await LearnPage({
-      searchParams: Promise.resolve({ category: ' SIRE 2.0 ', search: ' tanker readiness ' }),
-    }))
+    await renderLearnPage({ category: ' SIRE 2.0 ', search: ' tanker readiness ' })
 
     expect(mocks.listPublishedCourses).toHaveBeenCalledWith({
       category: 'SIRE 2.0',
@@ -88,7 +100,7 @@ describe('/learn marketplace', () => {
   })
 
   it('preserves the active text search when switching categories', async () => {
-    render(await LearnPage({ searchParams: Promise.resolve({ search: 'leadership' }) }))
+    await renderLearnPage({ search: 'leadership' })
 
     expect(screen.getByRole('link', { name: 'Leadership' })).toHaveAttribute(
       'href',
@@ -99,7 +111,7 @@ describe('/learn marketplace', () => {
   it('shows a useful no-results state without inventing courses', async () => {
     mocks.listPublishedCourses.mockResolvedValueOnce([])
 
-    render(await LearnPage({ searchParams: Promise.resolve({ category: 'LNG/LPG' }) }))
+    await renderLearnPage({ category: 'LNG/LPG' })
 
     expect(screen.getByText('No published courses match these filters yet.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Clear filters' })).toHaveAttribute('href', '/learn')
