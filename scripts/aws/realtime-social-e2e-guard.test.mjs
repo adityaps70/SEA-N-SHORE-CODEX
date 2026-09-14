@@ -23,7 +23,9 @@ test('realtime staging e2e proves all metadata-only social invalidations through
   expect(browser).toMatch(/aggregateId/)
   expect(browser).toMatch(/payload/)
   expect(browser).toMatch(/Repost to feed/)
-  expect(browser).toMatch(/Add a professional comment/)
+  expect(browser).toMatch(/Add a comment/)
+  expect(browser).toMatch(/social_sender_connection/)
+  expect(browser).toMatch(/social_recipient_connection/)
   expect(browser).toMatch(/Connect/)
   expect(browser).toMatch(/Accept/)
   expect(browser).toMatch(/REALTIME_E2E_SOCIAL_BROWSER_VERIFIED=true/)
@@ -35,8 +37,9 @@ test('social realtime e2e verifies durable Aurora state, privacy, infra health a
 
   expect(workflow).toMatch(/verify-social-durable/)
   expect(remote).toMatch(/public\.posts/i)
-  expect(remote).toMatch(/public\.comments/i)
+  expect(remote).toMatch(/public\.post_comments/i)
   expect(remote).toMatch(/public\.post_reactions/i)
+  expect(remote).toMatch(/post_reactions[^\n]*user_id/i)
   for (const eventType of socialEventTypes) {
     expect(remote).toMatch(new RegExp(eventType.replaceAll('.', '\\.')))
   }
@@ -44,6 +47,6 @@ test('social realtime e2e verifies durable Aurora state, privacy, infra health a
   expect(remote).toMatch(/REALTIME_INFRA_DIAG_SOCIAL_BODY_LOG_HITS=/)
   expect(remote).toMatch(/REALTIME_E2E_SOCIAL_PRIVACY_VERIFIED=true/)
   expect(remote).toMatch(/DELETE FROM public\.post_reactions/i)
-  expect(remote).toMatch(/DELETE FROM public\.comments/i)
+  expect(remote).toMatch(/DELETE FROM public\.post_comments/i)
   expect(remote).toMatch(/DELETE FROM public\.posts/i)
 })
