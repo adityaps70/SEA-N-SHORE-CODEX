@@ -33,10 +33,7 @@ describe('MentorReviewControls', () => {
     expect(await screen.findByText('Mentor approved. The verified mentor workspace is now active.')).toBeInTheDocument()
   })
 
-  it.each([
-    ['Request changes', 'changes_requested'],
-    ['Reject application', 'rejected'],
-  ] as const)('requires a reviewer note before %s', async (buttonName) => {
+  it.each(['Request changes', 'Reject application'] as const)('requires a reviewer note before %s', async (buttonName) => {
     render(<MentorReviewControls applicationId={applicationId} />)
 
     fireEvent.click(screen.getByRole('button', { name: buttonName }))
