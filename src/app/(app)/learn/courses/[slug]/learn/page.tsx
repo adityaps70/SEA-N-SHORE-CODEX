@@ -3,12 +3,17 @@ import { notFound } from 'next/navigation'
 import { ArrowLeft, ArrowRight, CheckCircle2, Circle, FileText, PlayCircle } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { LessonCompletionControl } from '@/features/learning/components/lesson-completion-control'
+import { QuizLessonActivity } from '@/features/learning/components/quiz-lesson-activity'
 import { ResumableLessonMedia } from '@/features/learning/components/resumable-lesson-media'
 import {
   learnerCourseRepository,
   type LearnerCourse,
   type LearnerLesson,
 } from '@/features/learning/learner-course-repository'
+import {
+  learnerQuizRepository,
+  type LearnerQuiz,
+} from '@/features/learning/learner-quiz-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 
 type LearnerCoursePageProps = {
@@ -34,7 +39,6 @@ function activityLabel(lesson: LearnerLesson) {
 }
 
 function unavailableActivityCopy(lesson: LearnerLesson) {
-  if (lesson.lessonType === 'quiz') return 'The native quiz player is not connected yet.'
   if (lesson.lessonType === 'assignment') return 'The native assignment workspace is not connected yet.'
   if (lesson.lessonType === 'live_session') return 'The native live session experience is not connected yet.'
   return 'This lesson activity is recorded in the curriculum, but its native player is not connected yet.'
@@ -52,10 +56,14 @@ function LessonContent({
   lesson,
   mediaUrl,
   slug,
+  quiz,
+  nextLessonHref,
 }: {
   lesson: LearnerLesson
   mediaUrl: string | null
   slug: string
+  quiz: LearnerQuiz | null
+  nextLessonHref: string | null
 }) {
   if (lesson.lessonType === 'article') {
     return lesson.articleBody ? (
@@ -67,7 +75,24 @@ function LessonContent({
     )
   }
 
-  if (lesson.lessonType === 'quiz' || lesson.lessonType === 'assignment' || lesson.lessonType === 'live_session') {
+  if (lesson.lessonType === 'quiz') {
+    return quiz ? (
+      <QuizLessonActivity
+        quiz={quiz}
+        slug={slug}
+        lessonId={lesson.id}
+        initiallyCompleted={lesson.completed}
+        nextLessonHref={nextLessonHref}
+      />
+    ) : (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6">
+        <p className="text-sm font-medium text-slate-900">This quiz does not have a published assessment yet.</p>
+        <p className="mt-2 text-sm text-slate-500">No assessment content has been invented for this lesson.</p>
+      </div>
+    )
+  }
+
+  if (lesson.lessonType === 'assignment' || lesson.lessonType === 'live_session') {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6">
         <p className="text-sm font-medium text-slate-900">{unavailableActivityCopy(lesson)}</p>
@@ -148,6 +173,9 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     ? lessons[selectedLessonIndex + 1]
     : null
 
+  const selectedQuiz = selectedLesson?.lessonType === 'quiz'
+    ? await learnerQuizRepository.getQuizForLearner(user.id, course.slug, selectedLesson.id)
+    : null
   const selectedMediaUrl = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
     ? await createMediaReadUrl(selectedLesson.assetPath)
     : null
@@ -264,7 +292,13 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
               {selectedLesson.summary ? <p className="mt-3 text-sm leading-6 text-slate-600">{selectedLesson.summary}</p> : null}
 
               <div className="mt-7">
-                <LessonContent lesson={selectedLesson} mediaUrl={selectedMediaUrl} slug={course.slug} />
+                <LessonContent
+                  lesson={selectedLesson}
+                  mediaUrl={selectedMediaUrl}
+                  slug={course.slug}
+                  quiz={selectedQuiz}
+                  nextLessonHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
+                />
               </div>
 
               {canManuallyCompleteLesson(selectedLesson) ? (
