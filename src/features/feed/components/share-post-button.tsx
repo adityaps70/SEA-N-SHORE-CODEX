@@ -4,6 +4,15 @@ import { useState, useTransition } from 'react'
 import { Link2, Repeat2, Share2 } from 'lucide-react'
 import { repostPost } from '../actions'
 
+type OptionalNativeShare = {
+  share?: (data?: ShareData) => Promise<void>
+}
+
+function nativeShare() {
+  if (typeof navigator === 'undefined') return undefined
+  return (navigator as unknown as OptionalNativeShare).share
+}
+
 export function SharePostButton({
   postId,
   iconOnly = false,
@@ -43,11 +52,12 @@ export function SharePostButton({
 
   async function shareExternally() {
     try {
-      if (!navigator.share) {
+      const share = nativeShare()
+      if (!share) {
         await copyLink()
         return
       }
-      await navigator.share({
+      await share.call(navigator, {
         title: 'Sea N Shore maritime post',
         text: 'View this maritime discussion on Sea N Shore.',
         url: postUrl(),
@@ -91,7 +101,7 @@ export function SharePostButton({
               {pending ? 'Reposting…' : 'Repost to feed'}
             </button>
           ) : null}
-          {typeof navigator !== 'undefined' && navigator.share ? (
+          {nativeShare() ? (
             <button
               type="button"
               role="menuitem"
