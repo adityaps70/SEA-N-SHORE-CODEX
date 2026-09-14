@@ -23,7 +23,7 @@
 - Create `src/features/learning/course-workflow.test.ts`
 - Create `src/features/learning/course-workflow.ts`
 - Create mentor application schema/types/repository/action tests and implementations under `src/features/learning/`
-- Create `infra/aws/database/migrations/0015_learning_foundation.sql` (use the next live migration number after rechecking the repository)
+- Create `infra/aws/database/migrations/0016_learning_foundation.sql`
 - Create `scripts/aws/learning-foundation-migration-action.txt` with `plan`
 - Create migration/schema guard tests and migration runner
 - Add the new contract tests to `.github/workflows/aws-infra-ci.yml`
