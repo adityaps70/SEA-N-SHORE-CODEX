@@ -21,6 +21,14 @@ const MESSAGE_SIGNAL = {
   },
 } as const
 
+const SOCIAL_INVALIDATION_TYPES = [
+  ['feed.post_created', 'feed'],
+  ['feed.post_reaction_changed', 'feed'],
+  ['feed.post_comments_changed', 'feed'],
+  ['feed.post_reposted', 'feed'],
+  ['connection.accepted', 'network'],
+] as const
+
 describe('realtime browser client primitives', () => {
   it('adds the short-lived ticket to a WebSocket URL without losing existing query parameters', () => {
     expect(buildRealtimeWebSocketUrl(
@@ -66,6 +74,29 @@ describe('realtime browser client primitives', () => {
     expect(parseRealtimeSignal(JSON.stringify({ ...MESSAGE_SIGNAL, payload: null }))).toBeNull()
     expect(parseRealtimeSignal(new ArrayBuffer(8))).toBeNull()
   })
+
+  it.each(SOCIAL_INVALIDATION_TYPES)(
+    'parses metadata-only %s invalidation signals without exposing domain payloads',
+    (eventType, scope) => {
+      const signal = {
+        eventId: `event-${eventType}`,
+        eventType,
+        schemaVersion: 1,
+        occurredAt: '2026-09-14T08:30:00.000Z',
+        scope,
+      }
+
+      expect(parseRealtimeSignal(JSON.stringify(signal))).toEqual(signal)
+      expect(parseRealtimeSignal(JSON.stringify({
+        ...signal,
+        aggregateId: '33333333-3333-4333-8333-333333333333',
+      }))).toBeNull()
+      expect(parseRealtimeSignal(JSON.stringify({
+        ...signal,
+        payload: { body: 'must never cross the realtime boundary' },
+      }))).toBeNull()
+    },
+  )
 
   it('suppresses duplicate event ids with bounded memory and allows an evicted id again', () => {
     const accept = createRealtimeEventDedupe(2)
