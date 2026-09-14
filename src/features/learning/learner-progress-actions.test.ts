@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   completeLesson: vi.fn(),
+  savePlaybackPosition: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
@@ -14,11 +15,26 @@ vi.mock('./learner-progress-repository', async (importOriginal) => {
     ...original,
     learnerProgressRepository: {
       completeLesson: mocks.completeLesson,
+      savePlaybackPosition: mocks.savePlaybackPosition,
     },
   }
 })
 
-import { completeLearningLesson } from './learner-progress-actions'
+import * as learnerProgressActions from './learner-progress-actions'
+
+const completeLearningLesson = learnerProgressActions.completeLearningLesson
+const saveLearningPlaybackPosition = (
+  learnerProgressActions as typeof learnerProgressActions & {
+    saveLearningPlaybackPosition: (
+      slug: string,
+      lessonId: string,
+      positionSeconds: number,
+    ) => Promise<
+      | { ok: true; lessonId: string; lastPositionSeconds: number }
+      | { ok: false; error: string }
+    >
+  }
+).saveLearningPlaybackPosition
 
 const slug = 'sire-2-readiness-for-tanker-officers'
 const lessonId = '66666666-6666-4666-8666-666666666666'
@@ -36,6 +52,11 @@ describe('learner progress server action', () => {
       completedLessons: 3,
       progressPercent: 60,
       enrollmentCompleted: false,
+    })
+    mocks.savePlaybackPosition.mockResolvedValue({
+      enrollmentId,
+      lessonId,
+      lastPositionSeconds: 125,
     })
   })
 
@@ -105,6 +126,50 @@ describe('learner progress server action', () => {
     await expect(completeLearningLesson(slug, lessonId)).resolves.toEqual({
       ok: false,
       error: 'We could not update your lesson progress. Please try again.',
+    })
+  })
+
+  it('rejects invalid playback position before authentication or mutation', async () => {
+    await expect(saveLearningPlaybackPosition(slug, lessonId, -1)).resolves.toEqual({
+      ok: false,
+      error: 'Invalid playback position.',
+    })
+    await expect(saveLearningPlaybackPosition(slug, lessonId, 12.5)).resolves.toEqual({
+      ok: false,
+      error: 'Invalid playback position.',
+    })
+
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.savePlaybackPosition).not.toHaveBeenCalled()
+  })
+
+  it('saves playback position only for the authenticated learner without revalidating views', async () => {
+    await expect(saveLearningPlaybackPosition(slug, lessonId, 125)).resolves.toEqual({
+      ok: true,
+      lessonId,
+      lastPositionSeconds: 125,
+    })
+
+    expect(mocks.requireAwsUser).toHaveBeenCalledOnce()
+    expect(mocks.savePlaybackPosition).toHaveBeenCalledWith('learner-1', slug, lessonId, 125)
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('returns safe copy when playback position is saved outside the learner enrollment', async () => {
+    mocks.savePlaybackPosition.mockRejectedValueOnce(new Error('lesson_not_accessible'))
+
+    await expect(saveLearningPlaybackPosition(slug, lessonId, 125)).resolves.toEqual({
+      ok: false,
+      error: 'This lesson is not available in your learning enrollment.',
+    })
+  })
+
+  it('returns safe generic copy for unexpected playback position failures', async () => {
+    mocks.savePlaybackPosition.mockRejectedValueOnce(new Error('database_unavailable'))
+
+    await expect(saveLearningPlaybackPosition(slug, lessonId, 125)).resolves.toEqual({
+      ok: false,
+      error: 'We could not save your playback position. Please try again.',
     })
   })
 })
