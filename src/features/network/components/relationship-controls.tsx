@@ -14,6 +14,10 @@ import {
 } from '../actions'
 import type { RelationshipState } from '../types'
 
+function relationshipStateKey(relationship: RelationshipState) {
+  return `${relationship.following ? '1' : '0'}:${relationship.connection.kind}:${relationship.connection.connectionId ?? ''}`
+}
+
 export function RelationshipControls({
   profileId,
   initialRelationship,
@@ -24,10 +28,18 @@ export function RelationshipControls({
   compact?: boolean
 }) {
   const router = useRouter()
+  const canonicalRelationshipKey = relationshipStateKey(initialRelationship)
+  const [lastCanonicalRelationshipKey, setLastCanonicalRelationshipKey] = useState(canonicalRelationshipKey)
   const [relationship, setRelationship] = useState(initialRelationship)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
   const [awaitingRefresh, setAwaitingRefresh] = useState(false)
+
+  if (lastCanonicalRelationshipKey !== canonicalRelationshipKey) {
+    setLastCanonicalRelationshipKey(canonicalRelationshipKey)
+    setRelationship(initialRelationship)
+    setAwaitingRefresh(false)
+  }
 
   function refreshAfterSuccess() {
     setAwaitingRefresh(true)
