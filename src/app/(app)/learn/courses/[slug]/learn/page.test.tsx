@@ -23,7 +23,12 @@ vi.mock('@/features/learning/learner-course-repository', async (importOriginal) 
   }
 })
 vi.mock('@/features/learning/components/lesson-completion-control', () => ({
-  LessonCompletionControl: (props: { slug: string; lessonId: string; initiallyCompleted: boolean }) => {
+  LessonCompletionControl: (props: {
+    slug: string
+    lessonId: string
+    initiallyCompleted: boolean
+    nextLessonHref?: string | null
+  }) => {
     mocks.lessonCompletionControl(props)
     return <div data-testid="lesson-completion-control">Lesson completion control</div>
   },
@@ -165,8 +170,17 @@ describe('/learn/courses/[slug]/learn', () => {
       slug: course.slug,
       lessonId: '77777777-7777-4777-8777-777777777777',
       initiallyCompleted: false,
+      nextLessonHref: `/learn/courses/${course.slug}/learn?lesson=88888888-8888-4888-8888-888888888888`,
     })
     expect(within(player).getByTestId('lesson-completion-control')).toBeInTheDocument()
+    expect(within(player).getByRole('link', { name: 'Previous lesson' })).toHaveAttribute(
+      'href',
+      `/learn/courses/${course.slug}/learn?lesson=66666666-6666-4666-8666-666666666666`,
+    )
+    expect(within(player).getByRole('link', { name: 'Next lesson' })).toHaveAttribute(
+      'href',
+      `/learn/courses/${course.slug}/learn?lesson=88888888-8888-4888-8888-888888888888`,
+    )
   })
 
   it('renders persisted curriculum navigation and an explicitly selected completed article lesson without signing media', async () => {
@@ -196,7 +210,13 @@ describe('/learn/courses/[slug]/learn', () => {
       slug: course.slug,
       lessonId: '66666666-6666-4666-8666-666666666666',
       initiallyCompleted: true,
+      nextLessonHref: `/learn/courses/${course.slug}/learn?lesson=77777777-7777-4777-8777-777777777777`,
     })
+    expect(within(player).queryByRole('link', { name: 'Previous lesson' })).not.toBeInTheDocument()
+    expect(within(player).getByRole('link', { name: 'Next lesson' })).toHaveAttribute(
+      'href',
+      `/learn/courses/${course.slug}/learn?lesson=77777777-7777-4777-8777-777777777777`,
+    )
   })
 
   it('shows an honest not-connected state for persisted activity types whose native engine is not built without allowing manual completion', async () => {
@@ -212,6 +232,45 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(mocks.resumableLessonMedia).not.toHaveBeenCalled()
     expect(mocks.lessonCompletionControl).not.toHaveBeenCalled()
     expect(within(player).queryByTestId('lesson-completion-control')).not.toBeInTheDocument()
+    expect(within(player).getByRole('link', { name: 'Previous lesson' })).toHaveAttribute(
+      'href',
+      `/learn/courses/${course.slug}/learn?lesson=77777777-7777-4777-8777-777777777777`,
+    )
+    expect(within(player).queryByRole('link', { name: 'Next lesson' })).not.toBeInTheDocument()
+  })
+
+  it('renders persisted course completion while keeping completed lessons reviewable and does not invent certificate issuance', async () => {
+    const completedCourse: LearnerCourse = {
+      ...course,
+      enrollmentStatus: 'completed',
+      completedLessons: 3,
+      progressPercent: 100,
+      sections: course.sections.map((section) => ({
+        ...section,
+        lessons: section.lessons.map((lesson) => ({
+          ...lesson,
+          completed: true,
+          completedAt: lesson.completedAt ?? '2026-09-15T12:00:00.000Z',
+        })),
+      })),
+    }
+    mocks.getLearnerCourse.mockResolvedValueOnce(completedCourse)
+
+    render(await LearnerCoursePage({
+      params: Promise.resolve({ slug: course.slug }),
+      searchParams: Promise.resolve({ lesson: '77777777-7777-4777-8777-777777777777' }),
+    }))
+
+    const completion = screen.getByRole('region', { name: 'Course completed' })
+    expect(within(completion).getByRole('heading', { name: 'Course completed' })).toBeInTheDocument()
+    expect(within(completion).getByText(/all 3 lessons are complete/i)).toBeInTheDocument()
+    expect(within(completion).getByRole('link', { name: 'Back to My Learning' })).toHaveAttribute('href', '/learn/my-learning')
+    expect(within(completion).getByText(/certificate issuance is not connected yet/i)).toBeInTheDocument()
+    expect(within(completion).queryByRole('link', { name: /download certificate/i })).not.toBeInTheDocument()
+
+    const player = screen.getByRole('region', { name: 'Current lesson' })
+    expect(within(player).getByRole('heading', { name: 'Bridge readiness walkthrough' })).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: `${course.title} progress` })).toHaveAttribute('aria-valuenow', '100')
   })
 
   it('fails closed when the learner cannot access the published course', async () => {
