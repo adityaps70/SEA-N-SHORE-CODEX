@@ -6,7 +6,6 @@ import {
   BadgeCheck,
   BookOpen,
   CheckCircle2,
-  Clock3,
   Globe2,
   GraduationCap,
   ShieldCheck,
@@ -91,9 +90,6 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
             <div className="mt-7 flex flex-wrap gap-2 text-xs font-bold text-white/82">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
                 <Globe2 aria-hidden="true" className="size-3.5 text-teal-200" /> {course.language}
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                <Clock3 aria-hidden="true" className="size-3.5 text-teal-200" /> {formatLabel(course.courseFormat)}
               </span>
               {course.certificateEnabled ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
