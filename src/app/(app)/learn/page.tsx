@@ -268,7 +268,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
               href="/learn"
               className="mt-5 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
             >
-              Clear filters <ArrowRight aria-hidden="true" className="size-4" />
+              Browse all courses <ArrowRight aria-hidden="true" className="size-4" />
             </Link>
           </div>
         )}
