@@ -16,6 +16,14 @@ const questionA = '88888888-8888-4888-8888-888888888888'
 const optionA = '99999999-9999-4999-8999-999999999999'
 const optionB = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
+type TestRow = Record<string, unknown>
+type TestQuery = (text: string, values?: readonly unknown[]) => Promise<TestRow[]>
+type TestTransaction = <T>(work: (query: TestQuery) => Promise<T>) => Promise<T>
+
+function passThroughTransaction(query: TestQuery): TestTransaction {
+  return async <T>(work: (query: TestQuery) => Promise<T>) => work(query)
+}
+
 function articleLesson(overrides: Partial<MentorLessonDraft> = {}): MentorLessonDraft {
   return {
     title: 'Preparing for the inspection',
@@ -51,7 +59,7 @@ describe('mentor curriculum repository', () => {
   it('reads only curriculum owned by an active mentor and nests quiz definitions in persisted order', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMentorCurriculumRepository({
-      query: async (text, values) => {
+      query: async (text: string, values?: readonly unknown[]) => {
         seen.push({ text, values })
         return [
           {
@@ -165,7 +173,7 @@ describe('mentor curriculum repository', () => {
 
   it('creates sections at the next dense position only while the owned course is editable', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
-    const query = async (text: string, values?: readonly unknown[]) => {
+    const query: TestQuery = async (text, values) => {
       seen.push({ text, values })
       if (text.includes('for update') && text.includes('learning_courses')) {
         return [{ id: courseId, mentor_id: mentorId, status: 'draft' }]
@@ -174,7 +182,7 @@ describe('mentor curriculum repository', () => {
       if (text.includes('insert into public.learning_course_sections')) return [{ id: sectionB }]
       return []
     }
-    const repository = createMentorCurriculumRepository({ query, transaction: async (work) => work(query) })
+    const repository = createMentorCurriculumRepository({ query, transaction: passThroughTransaction(query) })
 
     await expect(repository.createSection(mentorUserId, courseId, 'Module 2')).resolves.toEqual({ sectionId: sectionB })
 
@@ -189,14 +197,14 @@ describe('mentor curriculum repository', () => {
 
   it('fails closed when curriculum mutation targets a submitted course', async () => {
     const seen: string[] = []
-    const query = async (text: string) => {
+    const query: TestQuery = async (text) => {
       seen.push(text)
       if (text.includes('for update') && text.includes('learning_courses')) {
         return [{ id: courseId, mentor_id: mentorId, status: 'submitted' }]
       }
       return []
     }
-    const repository = createMentorCurriculumRepository({ query, transaction: async (work) => work(query) })
+    const repository = createMentorCurriculumRepository({ query, transaction: passThroughTransaction(query) })
 
     await expect(repository.createSection(mentorUserId, courseId, 'Should not save')).rejects.toThrow('course_edit_forbidden')
     expect(seen.some((text) => text.includes('insert into public.learning_course_sections'))).toBe(false)
@@ -204,7 +212,7 @@ describe('mentor curriculum repository', () => {
 
   it('creates lessons inside an owned section at the next persisted position', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
-    const query = async (text: string, values?: readonly unknown[]) => {
+    const query: TestQuery = async (text, values) => {
       seen.push({ text, values })
       if (text.includes('for update') && text.includes('learning_courses')) {
         return [{ id: courseId, mentor_id: mentorId, status: 'changes_requested' }]
@@ -216,7 +224,7 @@ describe('mentor curriculum repository', () => {
       if (text.includes('insert into public.learning_lessons')) return [{ id: lessonId }]
       return []
     }
-    const repository = createMentorCurriculumRepository({ query, transaction: async (work) => work(query) })
+    const repository = createMentorCurriculumRepository({ query, transaction: passThroughTransaction(query) })
 
     await expect(repository.createLesson(mentorUserId, courseId, sectionA, articleLesson())).resolves.toEqual({ lessonId })
 
@@ -238,7 +246,7 @@ describe('mentor curriculum repository', () => {
 
   it('moves sections by swapping adjacent persisted positions without changing ownership', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
-    const query = async (text: string, values?: readonly unknown[]) => {
+    const query: TestQuery = async (text, values) => {
       seen.push({ text, values })
       if (text.includes('for update') && text.includes('learning_courses')) {
         return [{ id: courseId, mentor_id: mentorId, status: 'draft' }]
@@ -252,7 +260,7 @@ describe('mentor curriculum repository', () => {
       if (text.includes('update public.learning_course_sections')) return [{ id: sectionB }]
       return []
     }
-    const repository = createMentorCurriculumRepository({ query, transaction: async (work) => work(query) })
+    const repository = createMentorCurriculumRepository({ query, transaction: passThroughTransaction(query) })
 
     await expect(repository.moveSection(mentorUserId, courseId, sectionB, 'up')).resolves.toBe(true)
 
@@ -267,7 +275,7 @@ describe('mentor curriculum repository', () => {
 
   it('replaces a quiz definition atomically for an owned editable quiz lesson', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
-    const query = async (text: string, values?: readonly unknown[]) => {
+    const query: TestQuery = async (text, values) => {
       seen.push({ text, values })
       if (text.includes('for update') && text.includes('learning_courses')) {
         return [{ id: courseId, mentor_id: mentorId, status: 'draft' }]
@@ -281,13 +289,11 @@ describe('mentor curriculum repository', () => {
       return []
     }
     let transactionCalls = 0
-    const repository = createMentorCurriculumRepository({
-      query,
-      transaction: async (work) => {
-        transactionCalls += 1
-        return work(query)
-      },
-    })
+    const transaction: TestTransaction = async <T>(work: (query: TestQuery) => Promise<T>) => {
+      transactionCalls += 1
+      return work(query)
+    }
+    const repository = createMentorCurriculumRepository({ query, transaction })
 
     await expect(repository.saveQuizDefinition(mentorUserId, courseId, lessonId, quizDefinition())).resolves.toBe(true)
 
