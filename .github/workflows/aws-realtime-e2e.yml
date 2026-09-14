@@ -170,6 +170,8 @@ jobs:
             echo "E2E_RECIPIENT_PASSWORD=$RECIPIENT_PASSWORD"
             echo "E2E_MESSAGE_BODY=Realtime canonical message ${GITHUB_RUN_ID}"
             echo "E2E_INJECTED_BODY=Realtime forbidden socket write ${GITHUB_RUN_ID}"
+            echo "E2E_SOCIAL_POST_BODY=Realtime social canonical post ${GITHUB_RUN_ID}"
+            echo "E2E_SOCIAL_COMMENT_BODY=Realtime social canonical comment ${GITHUB_RUN_ID}"
             echo "E2E_RUN_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } >> "$GITHUB_ENV"
 
@@ -188,8 +190,10 @@ jobs:
         run: node scripts/aws/realtime-e2e-ssm.mjs confirm
       - name: Complete authenticated maritime onboarding
         run: E2E_PHASE=onboarding node scripts/aws/realtime-staging-e2e.mjs
+      - name: Verify live authenticated social realtime invalidations
+        run: E2E_PHASE=social node scripts/aws/realtime-staging-e2e.mjs
 
-      - name: Prepare accepted disposable connection and conversation
+      - name: Prepare UI-accepted disposable connection and conversation
         shell: bash
         run: |
           set -euo pipefail
@@ -203,7 +207,9 @@ jobs:
         run: E2E_PHASE=realtime node scripts/aws/realtime-staging-e2e.mjs
       - name: Verify canonical Aurora message and outbox state
         run: node scripts/aws/realtime-e2e-ssm.mjs verify-durable
-      - name: Verify realtime DynamoDB SQS and CloudWatch health
+      - name: verify-social-durable Aurora social and outbox state
+        run: node scripts/aws/realtime-e2e-ssm.mjs verify-social-durable
+      - name: Verify realtime DynamoDB SQS CloudWatch and privacy health
         run: node scripts/aws/realtime-e2e-ssm.mjs verify-infra
 
       - name: Cleanup disposable Realtime E2E data
