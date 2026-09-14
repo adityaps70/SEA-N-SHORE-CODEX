@@ -32,7 +32,7 @@ describe('learning marketplace repository', () => {
   it('lists only published Phase 1 free courses from active verified mentors, newest first', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
-      query: async (text, values) => {
+      query: async (text: string, values?: readonly unknown[]) => {
         seen.push({ text, values })
         return [publishedRow]
       },
@@ -74,7 +74,7 @@ describe('learning marketplace repository', () => {
   it('supports category and text discovery without weakening publication visibility', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
-      query: async (text, values) => {
+      query: async (text: string, values?: readonly unknown[]) => {
         seen.push({ text, values })
         return []
       },
@@ -93,7 +93,7 @@ describe('learning marketplace repository', () => {
   it('loads a published course by slug using the same mentor and Phase 1 visibility guards', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
-      query: async (text, values) => {
+      query: async (text: string, values?: readonly unknown[]) => {
         seen.push({ text, values })
         return [publishedRow]
       },
