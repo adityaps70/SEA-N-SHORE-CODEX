@@ -2,6 +2,7 @@ import {
   DeleteItemCommand,
   DynamoDBClient,
   QueryCommand,
+  ScanCommand,
 } from '@aws-sdk/client-dynamodb'
 import {
   ApiGatewayManagementApiClient,
@@ -15,6 +16,13 @@ const managementEndpoint = process.env.REALTIME_MANAGEMENT_ENDPOINT
 const websocket = managementEndpoint
   ? new ApiGatewayManagementApiClient({ endpoint: managementEndpoint })
   : null
+
+const FEED_INVALIDATION_EVENT_TYPES = new Set([
+  'feed.post_created',
+  'feed.post_reaction_changed',
+  'feed.post_comments_changed',
+  'feed.post_reposted',
+])
 
 function getAudience(event) {
   if (event?.eventType === 'message.created') {
@@ -32,10 +40,34 @@ function getAudience(event) {
     return [...new Set(participants.filter(Boolean))]
   }
 
+  if (event?.eventType === 'connection.accepted') {
+    const actorId = event.payload?.actorId
+    const targetId = event.payload?.targetId
+    return [...new Set([actorId, targetId].filter(Boolean))]
+  }
+
   return []
 }
 
+function toInvalidationSignal(event, scope) {
+  return {
+    eventId: event.id,
+    eventType: event.eventType,
+    schemaVersion: event.schemaVersion,
+    occurredAt: event.occurredAt,
+    scope,
+  }
+}
+
 function toRealtimeSignal(event) {
+  if (FEED_INVALIDATION_EVENT_TYPES.has(event?.eventType)) {
+    return toInvalidationSignal(event, 'feed')
+  }
+
+  if (event?.eventType === 'connection.accepted') {
+    return toInvalidationSignal(event, 'network')
+  }
+
   return {
     eventId: event.id,
     eventType: event.eventType,
@@ -90,30 +122,58 @@ async function pushSignal(connectionId, data) {
   }
 }
 
+async function pushConnectionItems(items, data, nowSeconds) {
+  for (const item of items) {
+    const connectionId = item.connection_id?.S
+    const expiresAt = Number(item.expires_at?.N)
+    if (!connectionId) continue
+
+    if (!Number.isFinite(expiresAt) || expiresAt <= nowSeconds) {
+      await deleteConnection(connectionId)
+      continue
+    }
+
+    await pushSignal(connectionId, data)
+  }
+}
+
+async function broadcastSignal(data, nowSeconds) {
+  let ExclusiveStartKey
+
+  do {
+    const response = await dynamodb.send(new ScanCommand({
+      TableName: tableName,
+      ExpressionAttributeNames: {
+        '#connectionId': 'connection_id',
+        '#expiresAt': 'expires_at',
+      },
+      ProjectionExpression: '#connectionId, #expiresAt',
+      ExclusiveStartKey,
+    }))
+
+    await pushConnectionItems(response.Items ?? [], data, nowSeconds)
+    ExclusiveStartKey = response.LastEvaluatedKey
+  } while (ExclusiveStartKey)
+}
+
 async function fanout(event) {
   if (!tableName) throw new Error('REALTIME_CONNECTIONS_TABLE is required')
   if (!websocket) throw new Error('REALTIME_MANAGEMENT_ENDPOINT is required')
 
-  const audience = getAudience(event)
-  if (audience.length === 0) return
-
   const data = Buffer.from(JSON.stringify(toRealtimeSignal(event)))
   const nowSeconds = Math.floor(Date.now() / 1000)
 
+  if (FEED_INVALIDATION_EVENT_TYPES.has(event?.eventType)) {
+    await broadcastSignal(data, nowSeconds)
+    return
+  }
+
+  const audience = getAudience(event)
+  if (audience.length === 0) return
+
   for (const profileId of audience) {
     const connections = await listConnections(profileId)
-    for (const item of connections) {
-      const connectionId = item.connection_id?.S
-      const expiresAt = Number(item.expires_at?.N)
-      if (!connectionId) continue
-
-      if (!Number.isFinite(expiresAt) || expiresAt <= nowSeconds) {
-        await deleteConnection(connectionId)
-        continue
-      }
-
-      await pushSignal(connectionId, data)
-    }
+    await pushConnectionItems(connections, data, nowSeconds)
   }
 }
 
