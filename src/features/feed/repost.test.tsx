@@ -92,7 +92,7 @@ describe('durable post reposts', () => {
     render(<SharePostButton postId={SOURCE_POST_ID} />)
     fireEvent.click(screen.getByRole('button', { name: /^Share$/i }))
 
-    expect(screen.getByRole('button', { name: /Repost to feed/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Copy link/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Repost to feed/i })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /Copy link/i })).toBeInTheDocument()
   })
 })
