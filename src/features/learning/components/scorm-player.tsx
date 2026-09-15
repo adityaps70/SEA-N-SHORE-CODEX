@@ -76,7 +76,7 @@ export function ScormPlayer({
     }
     const finish = () => commit()
 
-    // SCORM 1.2 runtime API
+    // SCORM 1.2 discovers window.API; SCORM 2004 discovers window.API_1484_11.
     const API: ScormApi = {
       LMSInitialize: () => 'true',
       LMSFinish: finish,
@@ -87,7 +87,6 @@ export function ScormPlayer({
       LMSGetErrorString: () => '',
       LMSGetDiagnostic: () => '',
     }
-    // SCORM 2004 runtime API
     const API_1484_11: ScormApi = {
       Initialize: () => 'true',
       Terminate: finish,
