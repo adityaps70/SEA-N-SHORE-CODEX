@@ -1,0 +1,129 @@
+name: AWS Learning SIRE Course Seed
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - scripts/aws/learning-sire-course-seed-action.txt
+      - scripts/aws/learning-sire-course-seed.cjs
+      - scripts/aws/learning-sire-course-seed-remote.sh
+      - src/features/learning/sire-course-seed-contract.test.ts
+      - .github/workflows/aws-learning-sire-course-seed.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-learning-sire-course-seed
+  cancel-in-progress: false
+
+jobs:
+  learning-sire-course-seed:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 25
+    env:
+      AWS_REGION: ap-south-1
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Resolve SIRE course seed action
+        id: action
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(tr -d '[:space:]' < scripts/aws/learning-sire-course-seed-action.txt)"
+          echo "LEARNING_SIRE_COURSE_SEED_ACTION=$ACTION" >> "$GITHUB_ENV"
+          case "$ACTION" in
+            plan)
+              echo "run_seed=false" >> "$GITHUB_OUTPUT"
+              ;;
+            seed-once)
+              [[ "$GITHUB_EVENT_NAME" == push ]] || { echo "seed-once is permitted only from an exact branch push." >&2; exit 1; }
+              [[ "$GITHUB_REF" == refs/heads/feat/aws-native-phase-0-1 ]] || { echo "seed-once is restricted to feat/aws-native-phase-0-1." >&2; exit 1; }
+              echo "run_seed=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported SIRE course seed action: $ACTION" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        if: steps.action.outputs.run_seed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == completed ]]; then
+              [[ "$CONCLUSION" == success ]] || { echo "Exact-head AWS Infrastructure CI is not green." >&2; exit 1; }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Guard seed against a moved branch
+        if: steps.action.outputs.run_seed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_HEAD="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
+          [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || { echo "Branch moved after SIRE seed started; refusing stale execution." >&2; exit 1; }
+
+      - name: Configure AWS credentials with GitHub OIDC
+        if: steps.action.outputs.run_seed == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Verify staging AWS account
+        if: steps.action.outputs.run_seed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT_ID" == 310356785722 ]] || { echo "Refusing SIRE seed in unexpected AWS account $ACCOUNT_ID." >&2; exit 1; }
+
+      - name: Discover bootstrap instance
+        if: steps.action.outputs.run_seed == 'true'
+        id: instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTANCE_IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)
+          COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
+          [[ "$COUNT" -eq 1 ]] || { echo "Expected exactly one running bootstrap; found $COUNT." >&2; exit 1; }
+          echo "instance_id=$(jq -r '.[0]' <<<"$INSTANCE_IDS")" >> "$GITHUB_OUTPUT"
+
+      - name: Use Node 22 for SSM seed wrapper
+        if: steps.action.outputs.run_seed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Seed SIRE 2.0 course into staging
+        if: steps.action.outputs.run_seed == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        run: node scripts/aws/learning-sire-course-seed.cjs
+
+      - name: Plan-only guard status
+        if: steps.action.outputs.run_seed != 'true'
+        run: echo 'LEARNING_SIRE_COURSE_SEED_PLAN_ONLY=true'
