@@ -42,9 +42,18 @@ export function AssignmentActivity({
   }
 
   useEffect(() => {
-    void refreshState()
-    // Server action identity is stable for this mounted material; slug/lessonId are the state key.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false
+
+    void getLearningAssignmentState(slug, lessonId).then((result) => {
+      if (cancelled) return
+      if (result.ok) setState(result.state)
+      else setError(result.error)
+      setLoadingState(false)
+    })
+
+    return () => {
+      cancelled = true
+    }
   }, [slug, lessonId])
 
   const attemptsRemaining = state?.attemptsRemaining
