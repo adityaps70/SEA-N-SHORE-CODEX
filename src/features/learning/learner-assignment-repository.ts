@@ -78,6 +78,11 @@ function asStatus(value: string): 'submitted' | 'graded' {
   throw new Error('assignment_attempt_status_invalid')
 }
 
+function asSubmittedStatus(value: string): 'submitted' {
+  if (value === 'submitted') return value
+  throw new Error('assignment_attempt_status_invalid')
+}
+
 function mapAttempt(row: AttemptRow): LearnerAssignmentAttempt {
   return {
     id: row.id,
@@ -295,7 +300,7 @@ export function createLearnerAssignmentRepository(input: {
       return {
         attemptId: attempt.id,
         attemptNumber: Number(attempt.attempt_number),
-        status: asStatus(attempt.status),
+        status: asSubmittedStatus(attempt.status),
         submittedAt: iso(attempt.submitted_at)!,
         completed: false as const,
       }
