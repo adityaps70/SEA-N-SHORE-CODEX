@@ -67,6 +67,8 @@ describe('learner quiz repository', () => {
       lessonId,
       passPercentage: 70,
       instructions: 'Choose the best answer for each question.',
+      maxAttempts: null,
+      attemptsUsed: 0,
       questions: [
         {
           id: questionOneId,
