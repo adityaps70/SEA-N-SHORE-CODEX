@@ -20,6 +20,8 @@ type SubmitLearningQuizActionResult =
   | ({ ok: true } & LearnerQuizAttemptResult)
   | { ok: false; error: string }
 
+type SubmissionUuid = `${string}-${string}-${string}-${string}-${string}`
+
 function quizSubmissionError(error: unknown) {
   if (error instanceof Error) {
     if (error.message === 'quiz_not_accessible') {
@@ -57,7 +59,7 @@ export async function submitLearningQuiz(
       parsedSlug.data,
       parsedLessonId.data,
       parsedAnswers.data,
-      parsedSubmissionKey.data,
+      parsedSubmissionKey.data as SubmissionUuid,
     )
 
     revalidatePath('/learn/my-learning')
