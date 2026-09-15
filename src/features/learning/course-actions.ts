@@ -108,23 +108,37 @@ function detailNumber(error: CourseSubmissionReadinessError, key: string) {
 }
 
 function readinessErrorCopy(error: CourseSubmissionReadinessError) {
-  const lessonTitle = detailText(error, 'lessonTitle')
-  const lessonType = detailText(error, 'lessonType')
+  const materialTitle = detailText(error, 'materialTitle') || detailText(error, 'lessonTitle')
+  const materialType = detailText(error, 'materialType') || detailText(error, 'lessonType')
   const sectionTitle = detailText(error, 'sectionTitle')
   const questionNumber = detailNumber(error, 'questionNumber')
 
   if (error.code === 'course_curriculum_empty') return 'Add at least one curriculum section before submitting for review.'
-  if (error.code === 'course_section_empty') return `Section “${sectionTitle}” needs at least one lesson.`
+  if (error.code === 'course_section_empty') return `Section “${sectionTitle}” needs at least one published material.`
   if (error.code === 'course_lesson_content_missing') {
-    if (lessonType === 'article') return `Lesson “${lessonTitle}” is missing required article content.`
-    return `Lesson “${lessonTitle}” needs an uploaded asset or external URL.`
+    if (materialType === 'article') return `Material “${materialTitle}” is missing required article content.`
+    return `Material “${materialTitle}” needs its required content or uploaded file.`
   }
-  if (error.code === 'course_activity_not_supported') return `Lesson “${lessonTitle}” uses ${lessonType.replaceAll('_', ' ')}, which cannot be published until its native learner completion flow is connected.`
-  if (error.code === 'course_quiz_missing') return `Quiz “${lessonTitle}” needs an assessment definition before submission.`
-  if (error.code === 'course_quiz_pass_invalid') return `Quiz “${lessonTitle}” needs a pass percentage from 1 to 100.`
-  if (error.code === 'course_quiz_questions_missing') return `Quiz “${lessonTitle}” needs at least one question.`
-  if (error.code === 'course_quiz_options_invalid') return `Question ${questionNumber} in quiz “${lessonTitle}” needs at least two answer options.`
-  return `Question ${questionNumber} in quiz “${lessonTitle}” must have exactly one correct answer.`
+  if (error.code === 'course_material_content_missing') {
+    if (materialType === 'article') return `Material “${materialTitle}” is missing required article content.`
+    if (materialType === 'external_embed') return `Material “${materialTitle}” needs an embeddable URL.`
+    return `Material “${materialTitle}” needs its required content or uploaded file.`
+  }
+  if (error.code === 'course_material_release_invalid') return `Material “${materialTitle}” has an invalid release schedule.`
+  if (error.code === 'course_material_prerequisite_invalid') return `Material “${materialTitle}” must depend on another published material in this course.`
+  if (error.code === 'course_material_completion_invalid') return `Material “${materialTitle}” has a completion rule that does not match its material type.`
+  if (error.code === 'course_assignment_missing') return `Assignment “${materialTitle}” needs instructions before submission.`
+  if (error.code === 'course_scorm_not_ready') return `SCORM material “${materialTitle}” must finish processing successfully before submission.`
+  if (error.code === 'course_activity_not_supported') {
+    if (materialType === 'live_session') return `Material “${materialTitle}” uses live session, which cannot be published until native attendance completion is connected.`
+    return `Material “${materialTitle}” uses ${materialType.replaceAll('_', ' ')}, which cannot be published until its native learner completion flow is connected.`
+  }
+  if (error.code === 'course_quiz_missing') return `Quiz “${materialTitle}” needs an assessment definition before submission.`
+  if (error.code === 'course_quiz_pass_invalid') return `Quiz “${materialTitle}” needs a pass percentage from 1 to 100.`
+  if (error.code === 'course_quiz_questions_missing') return `Quiz “${materialTitle}” needs at least one question.`
+  if (error.code === 'course_quiz_options_invalid') return `Question ${questionNumber} in quiz “${materialTitle}” needs at least two answer options.`
+  if (error.code === 'course_quiz_correct_answer_invalid') return `Question ${questionNumber} in quiz “${materialTitle}” must have exactly one correct answer.`
+  return 'Review the published curriculum materials and try again.'
 }
 
 function mutationError(error: unknown) {
