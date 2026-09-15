@@ -8,6 +8,7 @@ import {
   courseRepository,
   type CourseDraftInput,
 } from './course-repository'
+import { verifyLearningMediaObject } from './media'
 
 const courseIdSchema = z.string().uuid()
 const courseCategories = new Set([
@@ -112,31 +113,17 @@ function readinessErrorCopy(error: CourseSubmissionReadinessError) {
   const sectionTitle = detailText(error, 'sectionTitle')
   const questionNumber = detailNumber(error, 'questionNumber')
 
-  if (error.code === 'course_curriculum_empty') {
-    return 'Add at least one curriculum section before submitting for review.'
-  }
-  if (error.code === 'course_section_empty') {
-    return `Section “${sectionTitle}” needs at least one lesson.`
-  }
+  if (error.code === 'course_curriculum_empty') return 'Add at least one curriculum section before submitting for review.'
+  if (error.code === 'course_section_empty') return `Section “${sectionTitle}” needs at least one lesson.`
   if (error.code === 'course_lesson_content_missing') {
     if (lessonType === 'article') return `Lesson “${lessonTitle}” is missing required article content.`
     return `Lesson “${lessonTitle}” needs an uploaded asset or external URL.`
   }
-  if (error.code === 'course_activity_not_supported') {
-    return `Lesson “${lessonTitle}” uses ${lessonType.replaceAll('_', ' ')}, which cannot be published until its native learner completion flow is connected.`
-  }
-  if (error.code === 'course_quiz_missing') {
-    return `Quiz “${lessonTitle}” needs an assessment definition before submission.`
-  }
-  if (error.code === 'course_quiz_pass_invalid') {
-    return `Quiz “${lessonTitle}” needs a pass percentage from 1 to 100.`
-  }
-  if (error.code === 'course_quiz_questions_missing') {
-    return `Quiz “${lessonTitle}” needs at least one question.`
-  }
-  if (error.code === 'course_quiz_options_invalid') {
-    return `Question ${questionNumber} in quiz “${lessonTitle}” needs at least two answer options.`
-  }
+  if (error.code === 'course_activity_not_supported') return `Lesson “${lessonTitle}” uses ${lessonType.replaceAll('_', ' ')}, which cannot be published until its native learner completion flow is connected.`
+  if (error.code === 'course_quiz_missing') return `Quiz “${lessonTitle}” needs an assessment definition before submission.`
+  if (error.code === 'course_quiz_pass_invalid') return `Quiz “${lessonTitle}” needs a pass percentage from 1 to 100.`
+  if (error.code === 'course_quiz_questions_missing') return `Quiz “${lessonTitle}” needs at least one question.`
+  if (error.code === 'course_quiz_options_invalid') return `Question ${questionNumber} in quiz “${lessonTitle}” needs at least two answer options.`
   return `Question ${questionNumber} in quiz “${lessonTitle}” must have exactly one correct answer.`
 }
 
@@ -148,9 +135,7 @@ function mutationError(error: unknown) {
     if (error.message === 'course_edit_forbidden') return 'This course cannot be edited while it is in review or published.'
     if (error.message === 'course_submit_forbidden') return 'This course cannot be submitted for review in its current state.'
   }
-  if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') {
-    return 'A course with this URL slug already exists.'
-  }
+  if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') return 'A course with this URL slug already exists.'
   return 'We could not save the course. Please try again.'
 }
 
@@ -162,6 +147,9 @@ function refreshStudio() {
 export async function createCourseDraft(input: CourseDraftInput): Promise<CourseCreateActionResult> {
   const parsed = courseDraftSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  if (parsed.data.thumbnailPath || parsed.data.trailerPath) {
+    return { ok: false, error: 'Create the draft course first, then add its thumbnail and trailer.' }
+  }
 
   try {
     const user = await requireAwsUser()
@@ -176,12 +164,25 @@ export async function createCourseDraft(input: CourseDraftInput): Promise<Course
 export async function updateCourseDraft(courseId: string, input: CourseDraftInput): Promise<CourseActionResult> {
   const parsedId = courseIdSchema.safeParse(courseId)
   if (!parsedId.success) return { ok: false, error: 'Invalid course.' }
-
   const parsed = courseDraftSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
 
   try {
     const user = await requireAwsUser()
+    if (parsed.data.thumbnailPath) {
+      try {
+        await verifyLearningMediaObject({ userId: user.id, courseId: parsedId.data, kind: 'course_thumbnail', storagePath: parsed.data.thumbnailPath })
+      } catch {
+        return { ok: false, error: 'We could not verify the uploaded course thumbnail. Please upload it again.' }
+      }
+    }
+    if (parsed.data.trailerPath) {
+      try {
+        await verifyLearningMediaObject({ userId: user.id, courseId: parsedId.data, kind: 'course_trailer', storagePath: parsed.data.trailerPath })
+      } catch {
+        return { ok: false, error: 'We could not verify the uploaded course trailer. Please upload it again.' }
+      }
+    }
     await courseRepository.updateCourse(user.id, parsedId.data, parsed.data)
     refreshStudio()
     return { ok: true }

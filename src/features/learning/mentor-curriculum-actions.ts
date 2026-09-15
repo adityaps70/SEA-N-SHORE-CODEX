@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { verifyLearningMediaObject } from './media'
 import {
   mentorCurriculumRepository,
   type MentorLessonDraft,
@@ -12,15 +13,7 @@ import {
 const uuidSchema = z.string().uuid()
 const directionSchema = z.enum(['up', 'down'])
 const lessonTypeSchema = z.enum([
-  'video',
-  'article',
-  'pdf',
-  'presentation_document',
-  'audio',
-  'quiz',
-  'assignment',
-  'downloadable_resource',
-  'live_session',
+  'video', 'article', 'pdf', 'presentation_document', 'audio', 'quiz', 'assignment', 'downloadable_resource', 'live_session',
 ])
 
 const nullableText = (max: number) => z.union([
@@ -60,29 +53,15 @@ const lessonSchema = z.object({
   if (lesson.lessonType === 'article' && !lesson.articleBody) {
     context.addIssue({ code: 'custom', path: ['articleBody'], message: 'Article lessons require article content.' })
   }
-
   const sourceLabels: Partial<Record<MentorLessonDraft['lessonType'], string>> = {
-    video: 'Video',
-    audio: 'Audio',
-    pdf: 'PDF',
-    presentation_document: 'Presentation/document',
-    downloadable_resource: 'Downloadable resource',
+    video: 'Video', audio: 'Audio', pdf: 'PDF', presentation_document: 'Presentation/document', downloadable_resource: 'Downloadable resource',
   }
   const sourceLabel = sourceLabels[lesson.lessonType]
   if (sourceLabel && !lesson.assetPath && !lesson.externalUrl) {
-    context.addIssue({
-      code: 'custom',
-      path: ['assetPath'],
-      message: `${sourceLabel} lessons require an uploaded asset or external URL.`,
-    })
+    context.addIssue({ code: 'custom', path: ['assetPath'], message: `${sourceLabel} lessons require an uploaded asset or external URL.` })
   }
-
   if (lesson.lessonType === 'live_session' && !lesson.externalUrl) {
-    context.addIssue({
-      code: 'custom',
-      path: ['externalUrl'],
-      message: 'Live session lessons require an external meeting URL.',
-    })
+    context.addIssue({ code: 'custom', path: ['externalUrl'], message: 'Live session lessons require an external meeting URL.' })
   }
 })
 
@@ -100,11 +79,7 @@ const quizSchema = z.object({
   for (const [questionIndex, question] of quiz.questions.entries()) {
     const correctCount = question.options.filter((option) => option.isCorrect).length
     if (correctCount !== 1) {
-      context.addIssue({
-        code: 'custom',
-        path: ['questions', questionIndex, 'options'],
-        message: 'Each quiz question must have exactly one correct answer.',
-      })
+      context.addIssue({ code: 'custom', path: ['questions', questionIndex, 'options'], message: 'Each quiz question must have exactly one correct answer.' })
     }
   }
 })
@@ -139,15 +114,23 @@ function parseCourseId(courseId: string): { ok: true; id: string } | { ok: false
   const parsed = uuidSchema.safeParse(courseId)
   return parsed.success ? { ok: true, id: parsed.data } : { ok: false, error: 'Invalid course.' }
 }
-
 function parseSectionId(sectionId: string): { ok: true; id: string } | { ok: false; error: string } {
   const parsed = uuidSchema.safeParse(sectionId)
   return parsed.success ? { ok: true, id: parsed.data } : { ok: false, error: 'Invalid section.' }
 }
-
 function parseLessonId(lessonId: string): { ok: true; id: string } | { ok: false; error: string } {
   const parsed = uuidSchema.safeParse(lessonId)
   return parsed.success ? { ok: true, id: parsed.data } : { ok: false, error: 'Invalid lesson.' }
+}
+
+async function verifyVideoUpload(userId: string, courseId: string, lesson: MentorLessonDraft): Promise<ActionResult> {
+  if (lesson.lessonType !== 'video' || !lesson.assetPath) return { ok: true }
+  try {
+    await verifyLearningMediaObject({ userId, courseId, kind: 'lesson_video', storagePath: lesson.assetPath })
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'We could not verify the uploaded lesson video. Please upload it again.' }
+  }
 }
 
 export async function createCurriculumSection(courseId: string, title: string): Promise<CreateSectionResult> {
@@ -155,7 +138,6 @@ export async function createCurriculumSection(courseId: string, title: string): 
   if (!parsedCourse.ok) return parsedCourse
   const parsedTitle = sectionTitleSchema.safeParse(title)
   if (!parsedTitle.success) return { ok: false, error: validationError(parsedTitle.error) }
-
   try {
     const user = await requireAwsUser()
     const result = await mentorCurriculumRepository.createSection(user.id, parsedCourse.id, parsedTitle.data)
@@ -173,7 +155,6 @@ export async function updateCurriculumSection(courseId: string, sectionId: strin
   if (!parsedSection.ok) return parsedSection
   const parsedTitle = sectionTitleSchema.safeParse(title)
   if (!parsedTitle.success) return { ok: false, error: validationError(parsedTitle.error) }
-
   try {
     const user = await requireAwsUser()
     await mentorCurriculumRepository.updateSection(user.id, parsedCourse.id, parsedSection.id, parsedTitle.data)
@@ -189,7 +170,6 @@ export async function deleteCurriculumSection(courseId: string, sectionId: strin
   if (!parsedCourse.ok) return parsedCourse
   const parsedSection = parseSectionId(sectionId)
   if (!parsedSection.ok) return parsedSection
-
   try {
     const user = await requireAwsUser()
     await mentorCurriculumRepository.deleteSection(user.id, parsedCourse.id, parsedSection.id)
@@ -200,18 +180,13 @@ export async function deleteCurriculumSection(courseId: string, sectionId: strin
   }
 }
 
-export async function moveCurriculumSection(
-  courseId: string,
-  sectionId: string,
-  direction: 'up' | 'down',
-): Promise<ActionResult> {
+export async function moveCurriculumSection(courseId: string, sectionId: string, direction: 'up' | 'down'): Promise<ActionResult> {
   const parsedCourse = parseCourseId(courseId)
   if (!parsedCourse.ok) return parsedCourse
   const parsedSection = parseSectionId(sectionId)
   if (!parsedSection.ok) return parsedSection
   const parsedDirection = directionSchema.safeParse(direction)
   if (!parsedDirection.success) return { ok: false, error: 'Invalid move direction.' }
-
   try {
     const user = await requireAwsUser()
     await mentorCurriculumRepository.moveSection(user.id, parsedCourse.id, parsedSection.id, parsedDirection.data)
@@ -222,20 +197,17 @@ export async function moveCurriculumSection(
   }
 }
 
-export async function createCurriculumLesson(
-  courseId: string,
-  sectionId: string,
-  input: MentorLessonDraft,
-): Promise<CreateLessonResult> {
+export async function createCurriculumLesson(courseId: string, sectionId: string, input: MentorLessonDraft): Promise<CreateLessonResult> {
   const parsedCourse = parseCourseId(courseId)
   if (!parsedCourse.ok) return parsedCourse
   const parsedSection = parseSectionId(sectionId)
   if (!parsedSection.ok) return parsedSection
   const parsedLesson = lessonSchema.safeParse(input)
   if (!parsedLesson.success) return { ok: false, error: validationError(parsedLesson.error) }
-
   try {
     const user = await requireAwsUser()
+    const media = await verifyVideoUpload(user.id, parsedCourse.id, parsedLesson.data)
+    if (!media.ok) return media
     const result = await mentorCurriculumRepository.createLesson(user.id, parsedCourse.id, parsedSection.id, parsedLesson.data)
     refreshCurriculum(parsedCourse.id)
     return { ok: true, lessonId: result.lessonId }
@@ -244,20 +216,17 @@ export async function createCurriculumLesson(
   }
 }
 
-export async function updateCurriculumLesson(
-  courseId: string,
-  lessonId: string,
-  input: MentorLessonDraft,
-): Promise<ActionResult> {
+export async function updateCurriculumLesson(courseId: string, lessonId: string, input: MentorLessonDraft): Promise<ActionResult> {
   const parsedCourse = parseCourseId(courseId)
   if (!parsedCourse.ok) return parsedCourse
   const parsedLessonId = parseLessonId(lessonId)
   if (!parsedLessonId.ok) return parsedLessonId
   const parsedLesson = lessonSchema.safeParse(input)
   if (!parsedLesson.success) return { ok: false, error: validationError(parsedLesson.error) }
-
   try {
     const user = await requireAwsUser()
+    const media = await verifyVideoUpload(user.id, parsedCourse.id, parsedLesson.data)
+    if (!media.ok) return media
     await mentorCurriculumRepository.updateLesson(user.id, parsedCourse.id, parsedLessonId.id, parsedLesson.data)
     refreshCurriculum(parsedCourse.id)
     return { ok: true }
@@ -271,7 +240,6 @@ export async function deleteCurriculumLesson(courseId: string, lessonId: string)
   if (!parsedCourse.ok) return parsedCourse
   const parsedLesson = parseLessonId(lessonId)
   if (!parsedLesson.ok) return parsedLesson
-
   try {
     const user = await requireAwsUser()
     await mentorCurriculumRepository.deleteLesson(user.id, parsedCourse.id, parsedLesson.id)
@@ -282,18 +250,13 @@ export async function deleteCurriculumLesson(courseId: string, lessonId: string)
   }
 }
 
-export async function moveCurriculumLesson(
-  courseId: string,
-  lessonId: string,
-  direction: 'up' | 'down',
-): Promise<ActionResult> {
+export async function moveCurriculumLesson(courseId: string, lessonId: string, direction: 'up' | 'down'): Promise<ActionResult> {
   const parsedCourse = parseCourseId(courseId)
   if (!parsedCourse.ok) return parsedCourse
   const parsedLesson = parseLessonId(lessonId)
   if (!parsedLesson.ok) return parsedLesson
   const parsedDirection = directionSchema.safeParse(direction)
   if (!parsedDirection.success) return { ok: false, error: 'Invalid move direction.' }
-
   try {
     const user = await requireAwsUser()
     await mentorCurriculumRepository.moveLesson(user.id, parsedCourse.id, parsedLesson.id, parsedDirection.data)
@@ -304,18 +267,13 @@ export async function moveCurriculumLesson(
   }
 }
 
-export async function saveCurriculumQuiz(
-  courseId: string,
-  lessonId: string,
-  input: MentorQuizDefinitionInput,
-): Promise<ActionResult> {
+export async function saveCurriculumQuiz(courseId: string, lessonId: string, input: MentorQuizDefinitionInput): Promise<ActionResult> {
   const parsedCourse = parseCourseId(courseId)
   if (!parsedCourse.ok) return parsedCourse
   const parsedLesson = parseLessonId(lessonId)
   if (!parsedLesson.ok) return parsedLesson
   const parsedQuiz = quizSchema.safeParse(input)
   if (!parsedQuiz.success) return { ok: false, error: validationError(parsedQuiz.error) }
-
   try {
     const user = await requireAwsUser()
     await mentorCurriculumRepository.saveQuizDefinition(user.id, parsedCourse.id, parsedLesson.id, parsedQuiz.data)
