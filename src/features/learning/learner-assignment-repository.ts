@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { completeLearningLessonWithQuery } from './learner-progress-repository'
 
 export type AssignmentQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type AssignmentTransaction = <T>(work: (query: AssignmentQuery) => Promise<T>) => Promise<T>
@@ -41,7 +42,7 @@ export function createLearnerAssignmentRepository(input: { transaction?: Assignm
            enrollment.id as enrollment_id,
            lesson.id as lesson_id,
            lesson.max_attempts,
-           count(attempt.id)::bigint as attempts_used
+           coalesce(attempt_stats.attempts_used, 0)::bigint as attempts_used
          from public.learning_enrollments enrollment
          inner join public.learning_courses course
            on course.id = enrollment.course_id
@@ -51,6 +52,7 @@ export function createLearnerAssignmentRepository(input: { transaction?: Assignm
           and mentor.status = 'active'
          inner join public.learning_mentor_applications application
            on application.id = mentor.application_id
+          and application.user_id = mentor.user_id
           and application.status = 'approved'
          inner join public.learning_course_sections section
            on section.course_id = course.id
@@ -60,12 +62,15 @@ export function createLearnerAssignmentRepository(input: { transaction?: Assignm
           and lesson.is_published = true
          inner join public.learning_assignments assignment
            on assignment.lesson_id = lesson.id
-         left join public.learning_assignment_attempts attempt
-           on attempt.enrollment_id = enrollment.id
-          and attempt.lesson_id = lesson.id
          left join public.learning_progress prerequisite_progress
            on prerequisite_progress.enrollment_id = enrollment.id
           and prerequisite_progress.lesson_id = lesson.prerequisite_lesson_id
+         left join lateral (
+           select count(*)::bigint as attempts_used
+           from public.learning_assignment_attempts attempt
+           where attempt.enrollment_id = enrollment.id
+             and attempt.lesson_id = lesson.id
+         ) attempt_stats on true
          where enrollment.learner_id = $1
            and enrollment.status in ('active', 'completed')
            and course.slug = $2
@@ -76,7 +81,26 @@ export function createLearnerAssignmentRepository(input: { transaction?: Assignm
              or (lesson.release_mode = 'drip' and enrollment.enrolled_at + make_interval(days => lesson.drip_delay_days) <= now())
            )
            and (lesson.prerequisite_lesson_id is null or prerequisite_progress.completed = true)
-         group by assignment.id, enrollment.id, lesson.id, lesson.max_attempts
+           and (
+             course.navigation_mode = 'free'
+             or lesson.prerequisite_lesson_id is not null
+             or not exists (
+               select 1
+               from public.learning_course_sections previous_section
+               inner join public.learning_lessons previous_lesson
+                 on previous_lesson.section_id = previous_section.id
+                and previous_lesson.is_published = true
+               left join public.learning_progress previous_progress
+                 on previous_progress.enrollment_id = enrollment.id
+                and previous_progress.lesson_id = previous_lesson.id
+               where previous_section.course_id = course.id
+                 and (
+                   previous_section.position < section.position
+                   or (previous_section.position = section.position and previous_lesson.position < lesson.position)
+                 )
+                 and coalesce(previous_progress.completed, false) = false
+             )
+           )
          for update of enrollment, lesson`,
         [learnerId, slug, lessonId],
       ) as AssignmentAccessRow[]
@@ -115,42 +139,24 @@ export function createLearnerAssignmentRepository(input: { transaction?: Assignm
 
       await query(
         `insert into public.learning_progress (
-           enrollment_id, lesson_id, completed, completed_at, first_started_at, viewed_at, attempts_used, updated_at
-         ) values ($1, $2, true, now(), now(), now(), $3, now())
+           enrollment_id, lesson_id, first_started_at, viewed_at, attempts_used, updated_at
+         ) values ($1, $2, now(), now(), $3, now())
          on conflict (enrollment_id, lesson_id) do update
-         set completed = true,
-             completed_at = coalesce(public.learning_progress.completed_at, excluded.completed_at),
-             first_started_at = coalesce(public.learning_progress.first_started_at, excluded.first_started_at),
+         set first_started_at = coalesce(public.learning_progress.first_started_at, excluded.first_started_at),
              viewed_at = coalesce(public.learning_progress.viewed_at, excluded.viewed_at),
              attempts_used = greatest(public.learning_progress.attempts_used, excluded.attempts_used),
              updated_at = now()`,
         [access.enrollment_id, access.lesson_id, attemptNumber],
       )
 
-      await query(
-        `update public.learning_enrollments enrollment
-         set status = 'completed',
-             completed_at = coalesce(enrollment.completed_at, now()),
-             updated_at = now()
-         where enrollment.id = $1
-           and not exists (
-             select 1
-             from public.learning_course_sections section
-             inner join public.learning_lessons lesson on lesson.section_id = section.id
-             left join public.learning_progress progress
-               on progress.enrollment_id = enrollment.id
-              and progress.lesson_id = lesson.id
-             where section.course_id = enrollment.course_id
-               and lesson.is_published = true
-               and coalesce(progress.completed, false) = false
-           )`,
-        [access.enrollment_id],
-      )
+      const completion = await completeLearningLessonWithQuery(query, learnerId, slug, lessonId)
 
       return {
         attemptId: attempt.id,
         attemptNumber: Number(attempt.attempt_number),
         completed: true,
+        enrollmentCompleted: completion.enrollmentCompleted,
+        progressPercent: completion.progressPercent,
       }
     })
   }
