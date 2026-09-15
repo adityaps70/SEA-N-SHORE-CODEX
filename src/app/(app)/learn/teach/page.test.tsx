@@ -7,8 +7,12 @@ const mocks = vi.hoisted(() => ({
   getAwsOwnProfile: vi.fn(),
   getMentorApplicationState: vi.fn(),
   getMentorApplication: vi.fn(),
+  redirect: vi.fn(),
 }))
 
+vi.mock('next/navigation', () => ({
+  redirect: mocks.redirect,
+}))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/profiles/aws-queries', () => ({ getAwsOwnProfile: mocks.getAwsOwnProfile }))
 vi.mock('@/features/learning/repository', () => ({
@@ -83,6 +87,9 @@ describe('/learn/teach', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'maya@example.com' })
     mocks.getAwsOwnProfile.mockResolvedValue(profile)
     mocks.getMentorApplication.mockResolvedValue(storedApplication)
+    mocks.redirect.mockImplementation((href: string) => {
+      throw new Error(`redirect:${href}`)
+    })
   })
 
   it('prefills a first mentor application from the signed-in maritime profile', async () => {
@@ -125,16 +132,14 @@ describe('/learn/teach', () => {
     expect(screen.getByTestId('mentor-form')).toHaveTextContent(note)
   })
 
-  it('shows Mentor Studio access for an approved active mentor', async () => {
+  it('redirects an approved active mentor straight to Mentor Studio', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor', applicationId, status: 'approved', submittedAt: '2026-09-14T12:00:00.000Z', updatedAt: '2026-09-14T14:00:00.000Z', adminReviewNote: 'Approved after credential review.', mentorId: 'mentor-1', mentorStatus: 'active',
     })
 
-    render(await TeachPage())
+    await expect(TeachPage()).rejects.toThrow('redirect:/learn/studio')
 
-    expect(screen.getByText('You are an approved Sea N Shore mentor')).toBeInTheDocument()
-    expect(screen.getByText(/Mentor Studio/i)).toBeInTheDocument()
-    expect(screen.queryByTestId('mentor-form')).not.toBeInTheDocument()
+    expect(mocks.redirect).toHaveBeenCalledWith('/learn/studio')
   })
 
   it('keeps Mentor Studio locked when a mentor is suspended', async () => {
@@ -146,5 +151,6 @@ describe('/learn/teach', () => {
 
     expect(screen.getByText('Mentor access is temporarily suspended')).toBeInTheDocument()
     expect(screen.queryByTestId('mentor-form')).not.toBeInTheDocument()
+    expect(mocks.redirect).not.toHaveBeenCalled()
   })
 })
