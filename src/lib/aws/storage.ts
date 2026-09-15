@@ -61,6 +61,31 @@ export async function headMediaObject(key: string): Promise<{
   }
 }
 
+export async function getMediaObject(input: {
+  key: string
+  maxBytes?: number
+}): Promise<{
+  body: Uint8Array
+  contentType: string | null
+  contentLength: number
+}> {
+  const maximum = input.maxBytes ?? 250 * 1024 * 1024
+  const response = await getS3Client().send(new GetObjectCommand({
+    Bucket: getMediaBucketName(),
+    Key: input.key,
+  }))
+  const contentLength = typeof response.ContentLength === 'number' ? response.ContentLength : null
+  if (contentLength !== null && contentLength > maximum) throw new Error('media_object_too_large')
+  if (!response.Body) throw new Error('media_object_body_missing')
+  const body = await response.Body.transformToByteArray()
+  if (body.byteLength > maximum) throw new Error('media_object_too_large')
+  return {
+    body,
+    contentType: response.ContentType ?? null,
+    contentLength: body.byteLength,
+  }
+}
+
 export async function putMediaObject(input: {
   key: string
   body: Uint8Array | Buffer
