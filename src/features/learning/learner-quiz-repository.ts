@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import {
@@ -7,6 +8,16 @@ import {
 
 export type LearnerQuizOption = { id: string; label: string; position: number }
 export type LearnerQuizQuestion = { id: string; prompt: string; position: number; options: LearnerQuizOption[] }
+export type LearnerQuizAttemptSummary = {
+  attemptId: string
+  attemptNumber: number
+  submittedAt: string
+  score: number
+  totalQuestions: number
+  percentage: number
+  passPercentage: number
+  passed: boolean
+}
 export type LearnerQuiz = {
   id: string
   lessonId: string
@@ -15,6 +26,7 @@ export type LearnerQuiz = {
   maxAttempts: number | null
   attemptsUsed: number
   questions: LearnerQuizQuestion[]
+  attemptHistory?: LearnerQuizAttemptSummary[]
 }
 export type LearnerQuizAnswerInput = { questionId: string; optionId: string }
 export type LearnerQuizAttemptAnswerResult = {
@@ -25,6 +37,7 @@ export type LearnerQuizAttemptAnswerResult = {
 }
 export type LearnerQuizAttemptResult = {
   attemptId: string
+  attemptNumber: number
   submittedAt: string
   score: number
   totalQuestions: number
@@ -55,7 +68,22 @@ type QuizAccessRow = QueryResultRow & {
 type QuizQuestionRow = QueryResultRow & { id: string; prompt: string; position: string | number }
 type QuizOptionRow = QueryResultRow & { id: string; question_id: string; label: string; position: string | number }
 type QuizScoringOptionRow = QuizOptionRow & { is_correct: boolean }
-type QuizAttemptRow = QueryResultRow & { id: string; submitted_at: string | Date }
+type QuizAttemptRow = QueryResultRow & {
+  id: string
+  attempt_number?: string | number
+  submitted_at: string | Date
+  score?: string | number
+  total_questions?: string | number
+  percentage?: string | number
+  pass_percentage?: string | number
+  passed?: boolean
+}
+type QuizAttemptAnswerSnapshotRow = QueryResultRow & {
+  question_id: string
+  selected_option_id: string
+  correct_option_id: string
+  is_correct: boolean
+}
 
 function runtimeTransaction<T>(work: (query: QuizQuery) => Promise<T>) {
   return databaseTransaction(async (client: DatabaseQueryClient) => work(async (text, values) => {
@@ -63,7 +91,7 @@ function runtimeTransaction<T>(work: (query: QuizQuery) => Promise<T>) {
     return result.rows
   }))
 }
-function isoDateTime(value: string | Date) { return value instanceof Date ? value.toISOString() : value }
+function isoDateTime(value: string | Date) { return value instanceof Date ? value.toISOString() : new Date(value).toISOString() }
 
 function quizAccessQuery(lockEnrollment: boolean) {
   return `select
@@ -159,6 +187,35 @@ async function loadScoringOptions(query: QuizQuery, questionIds: string[]) {
      where option.question_id = any($1::uuid[])
      order by option.question_id asc, option.position asc, option.id asc`, [questionIds]) as Promise<QuizScoringOptionRow[]>
 }
+async function loadAttemptHistory(query: QuizQuery, enrollmentId: string, quizId: string, learnerId: string) {
+  const rows = await query(
+    `select
+       attempt.id,
+       attempt.attempt_number,
+       attempt.submitted_at,
+       attempt.score,
+       attempt.total_questions,
+       attempt.percentage,
+       attempt.pass_percentage,
+       attempt.passed
+     from public.learning_quiz_attempts attempt
+     where attempt.enrollment_id = $1
+       and attempt.quiz_id = $2
+       and attempt.learner_id = $3
+     order by attempt.attempt_number desc`,
+    [enrollmentId, quizId, learnerId],
+  ) as QuizAttemptRow[]
+  return rows.map((attempt) => ({
+    attemptId: attempt.id,
+    attemptNumber: Number(attempt.attempt_number),
+    submittedAt: isoDateTime(attempt.submitted_at),
+    score: Number(attempt.score),
+    totalQuestions: Number(attempt.total_questions),
+    percentage: Number(attempt.percentage),
+    passPercentage: Number(attempt.pass_percentage),
+    passed: Boolean(attempt.passed),
+  })) satisfies LearnerQuizAttemptSummary[]
+}
 function buildLearnerQuestions(questionRows: QuizQuestionRow[], optionRows: QuizOptionRow[]) {
   const optionsByQuestion = new Map<string, LearnerQuizOption[]>()
   for (const option of optionRows) {
@@ -171,6 +228,14 @@ function buildLearnerQuestions(questionRows: QuizQuestionRow[], optionRows: Quiz
     prompt: question.prompt,
     position: Number(question.position),
     options: optionsByQuestion.get(question.id) ?? [],
+  }))
+}
+function mapPersistedAnswers(rows: QuizAttemptAnswerSnapshotRow[]): LearnerQuizAttemptAnswerResult[] {
+  return rows.map((answer) => ({
+    questionId: answer.question_id,
+    selectedOptionId: answer.selected_option_id,
+    correctOptionId: answer.correct_option_id,
+    isCorrect: answer.is_correct,
   }))
 }
 
@@ -189,6 +254,7 @@ export function createLearnerQuizRepository(input: {
     if (!access) return null
     const questions = await loadQuestions(queryRows, access.quiz_id)
     const options = await loadSafeOptions(queryRows, questions.map((question) => question.id))
+    const attemptHistory = await loadAttemptHistory(queryRows, access.enrollment_id, access.quiz_id, learnerId)
     return {
       id: access.quiz_id,
       lessonId: access.lesson_id,
@@ -197,6 +263,7 @@ export function createLearnerQuizRepository(input: {
       maxAttempts: access.max_attempts === undefined || access.max_attempts === null ? null : Number(access.max_attempts),
       attemptsUsed: Number(access.attempts_used ?? 0),
       questions: buildLearnerQuestions(questions, options),
+      ...(attemptHistory.length > 0 ? { attemptHistory } : {}),
     }
   }
 
@@ -205,14 +272,73 @@ export function createLearnerQuizRepository(input: {
     slug: string,
     lessonId: string,
     answers: LearnerQuizAnswerInput[],
+    submissionKey = randomUUID(),
   ): Promise<LearnerQuizAttemptResult> {
     return transaction(async (query) => {
       const accessRows = await query(quizAccessQuery(true), [learnerId, slug, lessonId]) as QuizAccessRow[]
       const access = accessRows[0]
       if (!access) throw new Error('quiz_not_accessible')
-      const attemptsUsed = Number(access.attempts_used ?? 0)
+
+      const existingAttempts = await query(
+        `select
+           attempt.id,
+           attempt.attempt_number,
+           attempt.submitted_at,
+           attempt.score,
+           attempt.total_questions,
+           attempt.percentage,
+           attempt.pass_percentage,
+           attempt.passed
+         from public.learning_quiz_attempts attempt
+         where attempt.enrollment_id = $1
+           and attempt.quiz_id = $2
+           and attempt.learner_id = $3
+           and attempt.submission_key = $4
+         limit 1`,
+        [access.enrollment_id, access.quiz_id, learnerId, submissionKey],
+      ) as QuizAttemptRow[]
+      const existingAttempt = existingAttempts[0]
+      if (existingAttempt) {
+        const persistedAnswers = await query(
+          `select
+             answer.question_id,
+             answer.selected_option_id,
+             answer.correct_option_id,
+             answer.is_correct
+           from public.learning_quiz_attempt_answers answer
+           where answer.attempt_id = $1
+           order by answer.id asc`,
+          [existingAttempt.id],
+        ) as QuizAttemptAnswerSnapshotRow[]
+        return {
+          attemptId: existingAttempt.id,
+          attemptNumber: Number(existingAttempt.attempt_number),
+          submittedAt: isoDateTime(existingAttempt.submitted_at),
+          score: Number(existingAttempt.score),
+          totalQuestions: Number(existingAttempt.total_questions),
+          percentage: Number(existingAttempt.percentage),
+          passPercentage: Number(existingAttempt.pass_percentage),
+          passed: Boolean(existingAttempt.passed),
+          enrollmentCompleted: false,
+          completedLessons: null,
+          totalLessons: null,
+          progressPercent: null,
+          answers: mapPersistedAnswers(persistedAnswers),
+        }
+      }
+
+      const attemptCountRows = await query(
+        `select count(*)::bigint as attempts_used
+         from public.learning_quiz_attempts attempt
+         where attempt.enrollment_id = $1
+           and attempt.quiz_id = $2
+           and attempt.learner_id = $3`,
+        [access.enrollment_id, access.quiz_id, learnerId],
+      ) as Array<QueryResultRow & { attempts_used: string | number }>
+      const attemptsUsed = Number(attemptCountRows[0]?.attempts_used ?? 0)
       const maxAttempts = access.max_attempts === undefined || access.max_attempts === null ? null : Number(access.max_attempts)
       if (maxAttempts !== null && attemptsUsed >= maxAttempts) throw new Error('learning_attempt_limit_reached')
+      const attemptNumber = attemptsUsed + 1
 
       const questionRows = await loadQuestions(query, access.quiz_id)
       if (questionRows.length === 0) throw new Error('quiz_not_ready')
@@ -259,10 +385,22 @@ export function createLearnerQuizRepository(input: {
       const passed = percentage >= passPercentage
       const attemptRows = await query(
         `insert into public.learning_quiz_attempts (
-           quiz_id, enrollment_id, learner_id, score, total_questions, percentage, pass_percentage, passed, submitted_at
-         ) values ($1, $2, $3, $4, $5, $6, $7, $8, now())
-         returning id, submitted_at`,
-        [access.quiz_id, access.enrollment_id, learnerId, score, totalQuestions, percentage, passPercentage, passed],
+           quiz_id, enrollment_id, learner_id, attempt_number, submission_key,
+           score, total_questions, percentage, pass_percentage, passed, submitted_at
+         ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+         returning id, attempt_number, submitted_at`,
+        [
+          access.quiz_id,
+          access.enrollment_id,
+          learnerId,
+          attemptNumber,
+          submissionKey,
+          score,
+          totalQuestions,
+          percentage,
+          passPercentage,
+          passed,
+        ],
       ) as QuizAttemptRow[]
       const attempt = attemptRows[0]
       if (!attempt) throw new Error('quiz_attempt_create_failed')
@@ -270,9 +408,9 @@ export function createLearnerQuizRepository(input: {
       for (const answer of answerResults) {
         await query(
           `insert into public.learning_quiz_attempt_answers (
-             attempt_id, question_id, selected_option_id, is_correct, created_at
-           ) values ($1, $2, $3, $4, now())`,
-          [attempt.id, answer.questionId, answer.selectedOptionId, answer.isCorrect],
+             attempt_id, question_id, selected_option_id, correct_option_id, is_correct, created_at
+           ) values ($1, $2, $3, $4, $5, now())`,
+          [attempt.id, answer.questionId, answer.selectedOptionId, answer.correctOptionId, answer.isCorrect],
         )
       }
 
@@ -285,12 +423,13 @@ export function createLearnerQuizRepository(input: {
              viewed_at = coalesce(public.learning_progress.viewed_at, excluded.viewed_at),
              attempts_used = greatest(public.learning_progress.attempts_used, excluded.attempts_used),
              updated_at = now()`,
-        [access.enrollment_id, access.lesson_id, attemptsUsed + 1],
+        [access.enrollment_id, access.lesson_id, attemptNumber],
       )
 
       const completion = passed ? await completeLesson(query, learnerId, slug, lessonId) : null
       return {
         attemptId: attempt.id,
+        attemptNumber: Number(attempt.attempt_number ?? attemptNumber),
         submittedAt: isoDateTime(attempt.submitted_at),
         score,
         totalQuestions,
