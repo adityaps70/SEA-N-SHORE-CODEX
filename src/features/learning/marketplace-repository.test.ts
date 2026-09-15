@@ -63,6 +63,7 @@ describe('learning marketplace repository', () => {
     }])
 
     const query = seen[0]
+    expect(query?.text).toContain('application.applicant_name as mentor_name')
     expect(query?.text).toContain("course.status = 'published'")
     expect(query?.text).toContain("mentor.status = 'active'")
     expect(query?.text).toContain("application.status = 'approved'")
@@ -86,7 +87,7 @@ describe('learning marketplace repository', () => {
     expect(seen[0]?.text).toContain('course.category = $1')
     expect(seen[0]?.text).toContain('course.title ilike $2')
     expect(seen[0]?.text).toContain('course.description ilike $2')
-    expect(seen[0]?.text).toContain('application.name ilike $2')
+    expect(seen[0]?.text).toContain('application.applicant_name ilike $2')
     expect(seen[0]?.text).toContain("course.status = 'published'")
   })
 
