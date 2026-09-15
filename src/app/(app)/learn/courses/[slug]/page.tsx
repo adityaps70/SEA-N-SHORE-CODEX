@@ -122,7 +122,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
             <p className="mt-2 text-sm leading-6 text-white/65">
               {isFree
                 ? 'Learning access is free for signed-in Sea N Shore members. Enroll with your existing account.'
-                : 'This is a paid course. Paid enrollment is not available yet.'}
+                : 'Paid enrollment is not available yet.'}
             </p>
 
             {isFree ? (
