@@ -68,6 +68,15 @@ function formatLabel(format: MarketplaceCourse['courseFormat']) {
   return 'Recorded'
 }
 
+function pricingLabel(course: MarketplaceCourse) {
+  if (course.accessType === 'free' || course.priceMinor === 0) return 'Free'
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: course.currency,
+    maximumFractionDigits: 0,
+  }).format(course.priceMinor / 100)
+}
+
 function CourseCard({ course }: { course: MarketplaceCourse }) {
   const firstOutcome = course.learningOutcomes[0] ?? null
 
@@ -82,7 +91,7 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
               <BookOpen aria-hidden="true" className="size-3.5" /> Category · {course.category}
             </span>
             <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.1em] text-navy-950">
-              Free
+              {pricingLabel(course)}
             </span>
           </div>
           <div>
