@@ -27,6 +27,7 @@ const questionTwoId = '77777777-7777-4777-8777-777777777777'
 const optionOneId = '88888888-8888-4888-8888-888888888881'
 const optionTwoId = '99999999-9999-4999-8999-999999999991'
 const attemptId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const submissionKey = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 
 const answers = [
   { questionId: questionOneId, optionId: optionOneId },
@@ -35,6 +36,7 @@ const answers = [
 
 const attemptResult = {
   attemptId,
+  attemptNumber: 2,
   submittedAt: '2026-09-15T10:00:00.000Z',
   score: 2,
   totalQuestions: 2,
@@ -51,6 +53,14 @@ const attemptResult = {
   ],
 }
 
+type SubmitWithKey = (
+  slug: string,
+  lessonId: string,
+  answers: Array<{ questionId: string; optionId: string }>,
+  submissionKey: string,
+) => ReturnType<typeof submitLearningQuiz>
+const submitWithKey = submitLearningQuiz as unknown as SubmitWithKey
+
 describe('learner quiz server action', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -58,20 +68,24 @@ describe('learner quiz server action', () => {
     mocks.submitQuizAttempt.mockResolvedValue(attemptResult)
   })
 
-  it('rejects malformed course, lesson, or answer payloads before authentication or mutation', async () => {
-    await expect(submitLearningQuiz('Invalid Slug', lessonId, answers)).resolves.toEqual({
+  it('rejects malformed course, lesson, answer, or submission-key payloads before authentication or mutation', async () => {
+    await expect(submitWithKey('Invalid Slug', lessonId, answers, submissionKey)).resolves.toEqual({
       ok: false,
       error: 'Invalid quiz submission.',
     })
-    await expect(submitLearningQuiz(slug, 'not-a-uuid', answers)).resolves.toEqual({
+    await expect(submitWithKey(slug, 'not-a-uuid', answers, submissionKey)).resolves.toEqual({
       ok: false,
       error: 'Invalid quiz submission.',
     })
-    await expect(submitLearningQuiz(slug, lessonId, [])).resolves.toEqual({
+    await expect(submitWithKey(slug, lessonId, [], submissionKey)).resolves.toEqual({
       ok: false,
       error: 'Invalid quiz submission.',
     })
-    await expect(submitLearningQuiz(slug, lessonId, [{ questionId: 'bad-id', optionId: optionOneId }])).resolves.toEqual({
+    await expect(submitWithKey(slug, lessonId, [{ questionId: 'bad-id', optionId: optionOneId }], submissionKey)).resolves.toEqual({
+      ok: false,
+      error: 'Invalid quiz submission.',
+    })
+    await expect(submitWithKey(slug, lessonId, answers, 'not-a-uuid')).resolves.toEqual({
       ok: false,
       error: 'Invalid quiz submission.',
     })
@@ -80,14 +94,14 @@ describe('learner quiz server action', () => {
     expect(mocks.submitQuizAttempt).not.toHaveBeenCalled()
   })
 
-  it('submits only for the authenticated learner and returns the persisted server score', async () => {
-    await expect(submitLearningQuiz(slug, lessonId, answers)).resolves.toEqual({
+  it('submits only for the authenticated learner, forwards the idempotency key, and returns the persisted server score', async () => {
+    await expect(submitWithKey(slug, lessonId, answers, submissionKey)).resolves.toEqual({
       ok: true,
       ...attemptResult,
     })
 
     expect(mocks.requireAwsUser).toHaveBeenCalledOnce()
-    expect(mocks.submitQuizAttempt).toHaveBeenCalledWith('learner-1', slug, lessonId, answers)
+    expect(mocks.submitQuizAttempt).toHaveBeenCalledWith('learner-1', slug, lessonId, answers, submissionKey)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/my-learning')
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/learn/courses/${slug}/learn`)
   })
@@ -108,26 +122,26 @@ describe('learner quiz server action', () => {
       ],
     })
 
-    const result = await submitLearningQuiz(slug, lessonId, answers)
-    expect(result).toMatchObject({ ok: true, attemptId, percentage: 50, passPercentage: 70, passed: false })
+    const result = await submitWithKey(slug, lessonId, answers, submissionKey)
+    expect(result).toMatchObject({ ok: true, attemptId, attemptNumber: 2, percentage: 50, passPercentage: 70, passed: false })
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/learn/courses/${slug}/learn`)
   })
 
   it('returns safe copy for inaccessible, invalid, or unpublished quiz definitions', async () => {
     mocks.submitQuizAttempt.mockRejectedValueOnce(new Error('quiz_not_accessible'))
-    await expect(submitLearningQuiz(slug, lessonId, answers)).resolves.toEqual({
+    await expect(submitWithKey(slug, lessonId, answers, submissionKey)).resolves.toEqual({
       ok: false,
       error: 'This quiz is not available in your learning enrollment.',
     })
 
     mocks.submitQuizAttempt.mockRejectedValueOnce(new Error('quiz_answers_invalid'))
-    await expect(submitLearningQuiz(slug, lessonId, answers)).resolves.toEqual({
+    await expect(submitWithKey(slug, lessonId, answers, submissionKey)).resolves.toEqual({
       ok: false,
       error: 'Please answer every quiz question with a valid option.',
     })
 
     mocks.submitQuizAttempt.mockRejectedValueOnce(new Error('quiz_not_ready'))
-    await expect(submitLearningQuiz(slug, lessonId, answers)).resolves.toEqual({
+    await expect(submitWithKey(slug, lessonId, answers, submissionKey)).resolves.toEqual({
       ok: false,
       error: 'This quiz is not ready for assessment yet.',
     })
@@ -136,7 +150,7 @@ describe('learner quiz server action', () => {
   it('returns safe generic copy for unexpected quiz submission failures', async () => {
     mocks.submitQuizAttempt.mockRejectedValueOnce(new Error('database_unavailable'))
 
-    await expect(submitLearningQuiz(slug, lessonId, answers)).resolves.toEqual({
+    await expect(submitWithKey(slug, lessonId, answers, submissionKey)).resolves.toEqual({
       ok: false,
       error: 'We could not submit this quiz. Please try again.',
     })
