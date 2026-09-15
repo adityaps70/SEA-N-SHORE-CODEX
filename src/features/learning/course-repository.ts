@@ -60,6 +60,22 @@ type SubmissionReadinessRow = QueryResultRow & {
   article_body: string | null
   asset_path: string | null
   external_url: string | null
+  is_published: boolean | null
+  release_mode: string | null
+  release_at: string | Date | null
+  drip_delay_days: string | number | null
+  prerequisite_lesson_id: string | null
+  completion_rule: string | null
+  completion_threshold: string | number | null
+  max_attempts: string | number | null
+  embed_kind: string | null
+  assignment_instructions: string | null
+  assignment_extensions: string[] | null
+  assignment_max_upload_bytes: string | number | null
+  scorm_status: string | null
+  scorm_source_zip_path: string | null
+  scorm_launch_path: string | null
+  scorm_processing_error: string | null
   quiz_id: string | null
   pass_percentage: string | number | null
   question_id: string | null
@@ -68,13 +84,33 @@ type SubmissionReadinessRow = QueryResultRow & {
   option_is_correct: boolean | null
 }
 
-type ReadinessLesson = {
+type ReadinessMaterial = {
   id: string
   title: string
-  lessonType: string
+  materialType: string
   articleBody: string | null
   assetPath: string | null
   externalUrl: string | null
+  isPublished: boolean
+  releaseMode: string
+  releaseAt: string | Date | null
+  dripDelayDays: number | null
+  prerequisiteLessonId: string | null
+  completionRule: string
+  completionThreshold: number | null
+  maxAttempts: number | null
+  embedKind: string | null
+  assignment: null | {
+    instructions: string
+    acceptedExtensions: string[]
+    maxUploadBytes: number
+  }
+  scorm: null | {
+    status: string
+    sourceZipPath: string | null
+    launchPath: string | null
+    processingError: string | null
+  }
   quiz: null | {
     id: string
     passPercentage: number
@@ -88,13 +124,19 @@ type ReadinessLesson = {
 type ReadinessSection = {
   id: string
   title: string
-  lessons: Map<string, ReadinessLesson>
+  materials: Map<string, ReadinessMaterial>
 }
 
 export type CourseSubmissionReadinessCode =
   | 'course_curriculum_empty'
   | 'course_section_empty'
   | 'course_lesson_content_missing'
+  | 'course_material_content_missing'
+  | 'course_material_release_invalid'
+  | 'course_material_prerequisite_invalid'
+  | 'course_material_completion_invalid'
+  | 'course_assignment_missing'
+  | 'course_scorm_not_ready'
   | 'course_activity_not_supported'
   | 'course_quiz_missing'
   | 'course_quiz_pass_invalid'
@@ -209,21 +251,45 @@ function buildSubmissionReadiness(rows: SubmissionReadinessRow[]) {
   for (const row of rows) {
     let section = sections.get(row.section_id)
     if (!section) {
-      section = { id: row.section_id, title: row.section_title, lessons: new Map() }
+      section = { id: row.section_id, title: row.section_title, materials: new Map() }
       sections.set(row.section_id, section)
     }
 
     if (!row.lesson_id || !row.lesson_title || !row.lesson_type) continue
 
-    let lesson = section.lessons.get(row.lesson_id)
-    if (!lesson) {
-      lesson = {
+    let material = section.materials.get(row.lesson_id)
+    if (!material) {
+      material = {
         id: row.lesson_id,
         title: row.lesson_title,
-        lessonType: row.lesson_type,
+        materialType: row.lesson_type,
         articleBody: row.article_body,
         assetPath: row.asset_path,
         externalUrl: row.external_url,
+        isPublished: row.is_published === true,
+        releaseMode: row.release_mode ?? 'immediate',
+        releaseAt: row.release_at,
+        dripDelayDays: row.drip_delay_days === null ? null : Number(row.drip_delay_days),
+        prerequisiteLessonId: row.prerequisite_lesson_id,
+        completionRule: row.completion_rule ?? 'manual',
+        completionThreshold: row.completion_threshold === null ? null : Number(row.completion_threshold),
+        maxAttempts: row.max_attempts === null ? null : Number(row.max_attempts),
+        embedKind: row.embed_kind,
+        assignment: row.assignment_instructions === null || row.assignment_max_upload_bytes === null
+          ? null
+          : {
+              instructions: row.assignment_instructions,
+              acceptedExtensions: row.assignment_extensions ?? [],
+              maxUploadBytes: Number(row.assignment_max_upload_bytes),
+            },
+        scorm: row.scorm_status === null
+          ? null
+          : {
+              status: row.scorm_status,
+              sourceZipPath: row.scorm_source_zip_path,
+              launchPath: row.scorm_launch_path,
+              processingError: row.scorm_processing_error,
+            },
         quiz: row.quiz_id && row.pass_percentage !== null
           ? {
               id: row.quiz_id,
@@ -232,17 +298,17 @@ function buildSubmissionReadiness(rows: SubmissionReadinessRow[]) {
             }
           : null,
       }
-      section.lessons.set(row.lesson_id, lesson)
+      section.materials.set(row.lesson_id, material)
     }
 
-    if (!lesson.quiz || !row.question_id || row.question_position === null) continue
-    let question = lesson.quiz.questions.get(row.question_id)
+    if (!material.quiz || !row.question_id || row.question_position === null) continue
+    let question = material.quiz.questions.get(row.question_id)
     if (!question) {
       question = {
         position: Number(row.question_position),
         options: new Map(),
       }
-      lesson.quiz.questions.set(row.question_id, question)
+      material.quiz.questions.set(row.question_id, question)
     }
     if (row.option_id && row.option_is_correct !== null) {
       question.options.set(row.option_id, row.option_is_correct)
@@ -252,70 +318,167 @@ function buildSubmissionReadiness(rows: SubmissionReadinessRow[]) {
   return sections
 }
 
+function releasePolicyIsValid(material: ReadinessMaterial) {
+  if (material.releaseMode === 'immediate') {
+    return material.releaseAt === null && material.dripDelayDays === null
+  }
+  if (material.releaseMode === 'scheduled') {
+    return material.releaseAt !== null && material.dripDelayDays === null
+  }
+  if (material.releaseMode === 'drip') {
+    return material.releaseAt === null
+      && material.dripDelayDays !== null
+      && Number.isInteger(material.dripDelayDays)
+      && material.dripDelayDays >= 0
+  }
+  return false
+}
+
+function completionPolicyIsValid(material: ReadinessMaterial) {
+  if (material.maxAttempts !== null && (!Number.isInteger(material.maxAttempts) || material.maxAttempts <= 0)) return false
+
+  if (material.completionRule === 'media_percentage') {
+    return ['video', 'audio'].includes(material.materialType)
+      && material.completionThreshold !== null
+      && Number.isInteger(material.completionThreshold)
+      && material.completionThreshold >= 1
+      && material.completionThreshold <= 100
+  }
+  if (material.completionRule === 'quiz_pass') return material.materialType === 'quiz' && material.completionThreshold === null
+  if (material.completionRule === 'assignment_submit') return material.materialType === 'assignment' && material.completionThreshold === null
+  if (material.completionRule === 'scorm_completion') return material.materialType === 'scorm' && material.completionThreshold === null
+  if (material.completionRule !== 'manual' && material.completionRule !== 'view') return false
+  if (material.completionThreshold !== null) return false
+  return !['quiz', 'assignment', 'scorm'].includes(material.materialType)
+}
+
+function validateMaterialContent(material: ReadinessMaterial) {
+  const details = { materialTitle: material.title, materialType: material.materialType }
+
+  if (material.materialType === 'live_session') {
+    throw new CourseSubmissionReadinessError('course_activity_not_supported', details)
+  }
+
+  if (material.materialType === 'article' && !material.articleBody?.trim()) {
+    throw new CourseSubmissionReadinessError('course_material_content_missing', details)
+  }
+
+  if (material.materialType === 'image' && !material.assetPath?.trim()) {
+    throw new CourseSubmissionReadinessError('course_material_content_missing', details)
+  }
+
+  if (
+    ['video', 'audio', 'pdf', 'presentation_document', 'downloadable_resource'].includes(material.materialType)
+    && !material.assetPath?.trim()
+    && !material.externalUrl?.trim()
+  ) {
+    throw new CourseSubmissionReadinessError('course_material_content_missing', details)
+  }
+
+  if (
+    material.materialType === 'external_embed'
+    && (
+      !material.externalUrl?.trim()
+      || !material.embedKind
+      || !['youtube', 'vimeo', 'generic'].includes(material.embedKind)
+    )
+  ) {
+    throw new CourseSubmissionReadinessError('course_material_content_missing', details)
+  }
+
+  if (material.materialType === 'assignment') {
+    if (
+      !material.assignment?.instructions.trim()
+      || !Number.isFinite(material.assignment.maxUploadBytes)
+      || material.assignment.maxUploadBytes <= 0
+    ) {
+      throw new CourseSubmissionReadinessError('course_assignment_missing', { materialTitle: material.title })
+    }
+  }
+
+  if (material.materialType === 'scorm') {
+    if (
+      !material.assetPath?.trim()
+      || !material.scorm
+      || material.scorm.status !== 'ready'
+      || !material.scorm.sourceZipPath?.trim()
+      || !material.scorm.launchPath?.trim()
+    ) {
+      throw new CourseSubmissionReadinessError('course_scorm_not_ready', { materialTitle: material.title })
+    }
+  }
+}
+
+function validateQuiz(material: ReadinessMaterial) {
+  if (!material.quiz) {
+    throw new CourseSubmissionReadinessError('course_quiz_missing', { materialTitle: material.title })
+  }
+  if (!Number.isInteger(material.quiz.passPercentage) || material.quiz.passPercentage < 1 || material.quiz.passPercentage > 100) {
+    throw new CourseSubmissionReadinessError('course_quiz_pass_invalid', { materialTitle: material.title })
+  }
+  if (material.quiz.questions.size === 0) {
+    throw new CourseSubmissionReadinessError('course_quiz_questions_missing', { materialTitle: material.title })
+  }
+
+  for (const question of material.quiz.questions.values()) {
+    const questionNumber = question.position + 1
+    if (question.options.size < 2) {
+      throw new CourseSubmissionReadinessError('course_quiz_options_invalid', {
+        materialTitle: material.title,
+        questionNumber,
+      })
+    }
+    const correctAnswers = [...question.options.values()].filter(Boolean).length
+    if (correctAnswers !== 1) {
+      throw new CourseSubmissionReadinessError('course_quiz_correct_answer_invalid', {
+        materialTitle: material.title,
+        questionNumber,
+      })
+    }
+  }
+}
+
 function validateSubmissionReadiness(rows: SubmissionReadinessRow[]) {
   const sections = buildSubmissionReadiness(rows)
   if (sections.size === 0) {
     throw new CourseSubmissionReadinessError('course_curriculum_empty')
   }
 
+  const publishedMaterialIds = new Set<string>()
   for (const section of sections.values()) {
-    if (section.lessons.size === 0) {
+    for (const material of section.materials.values()) {
+      if (material.isPublished) publishedMaterialIds.add(material.id)
+    }
+  }
+
+  for (const section of sections.values()) {
+    const publishedMaterials = [...section.materials.values()].filter((material) => material.isPublished)
+    if (publishedMaterials.length === 0) {
       throw new CourseSubmissionReadinessError('course_section_empty', { sectionTitle: section.title })
     }
 
-    for (const lesson of section.lessons.values()) {
-      if (lesson.lessonType === 'assignment' || lesson.lessonType === 'live_session') {
-        throw new CourseSubmissionReadinessError('course_activity_not_supported', {
-          lessonTitle: lesson.title,
-          lessonType: lesson.lessonType,
-        })
-      }
+    for (const material of publishedMaterials) {
+      validateMaterialContent(material)
 
-      if (lesson.lessonType === 'article' && !lesson.articleBody?.trim()) {
-        throw new CourseSubmissionReadinessError('course_lesson_content_missing', {
-          lessonTitle: lesson.title,
-          lessonType: lesson.lessonType,
-        })
+      if (!releasePolicyIsValid(material)) {
+        throw new CourseSubmissionReadinessError('course_material_release_invalid', { materialTitle: material.title })
       }
 
       if (
-        ['video', 'audio', 'pdf', 'presentation_document', 'downloadable_resource'].includes(lesson.lessonType)
-        && !lesson.assetPath?.trim()
-        && !lesson.externalUrl?.trim()
+        material.prerequisiteLessonId !== null
+        && (
+          material.prerequisiteLessonId === material.id
+          || !publishedMaterialIds.has(material.prerequisiteLessonId)
+        )
       ) {
-        throw new CourseSubmissionReadinessError('course_lesson_content_missing', {
-          lessonTitle: lesson.title,
-          lessonType: lesson.lessonType,
-        })
+        throw new CourseSubmissionReadinessError('course_material_prerequisite_invalid', { materialTitle: material.title })
       }
 
-      if (lesson.lessonType !== 'quiz') continue
-      if (!lesson.quiz) {
-        throw new CourseSubmissionReadinessError('course_quiz_missing', { lessonTitle: lesson.title })
-      }
-      if (!Number.isInteger(lesson.quiz.passPercentage) || lesson.quiz.passPercentage < 1 || lesson.quiz.passPercentage > 100) {
-        throw new CourseSubmissionReadinessError('course_quiz_pass_invalid', { lessonTitle: lesson.title })
-      }
-      if (lesson.quiz.questions.size === 0) {
-        throw new CourseSubmissionReadinessError('course_quiz_questions_missing', { lessonTitle: lesson.title })
+      if (!completionPolicyIsValid(material)) {
+        throw new CourseSubmissionReadinessError('course_material_completion_invalid', { materialTitle: material.title })
       }
 
-      for (const question of lesson.quiz.questions.values()) {
-        const questionNumber = question.position + 1
-        if (question.options.size < 2) {
-          throw new CourseSubmissionReadinessError('course_quiz_options_invalid', {
-            lessonTitle: lesson.title,
-            questionNumber,
-          })
-        }
-        const correctAnswers = [...question.options.values()].filter(Boolean).length
-        if (correctAnswers !== 1) {
-          throw new CourseSubmissionReadinessError('course_quiz_correct_answer_invalid', {
-            lessonTitle: lesson.title,
-            questionNumber,
-          })
-        }
-      }
+      if (material.materialType === 'quiz') validateQuiz(material)
     }
   }
 }
@@ -563,6 +726,22 @@ export function createCourseRepository(input: {
            lesson.article_body,
            lesson.asset_path,
            lesson.external_url,
+           lesson.is_published,
+           lesson.release_mode,
+           lesson.release_at,
+           lesson.drip_delay_days,
+           lesson.prerequisite_lesson_id,
+           lesson.completion_rule,
+           lesson.completion_threshold,
+           lesson.max_attempts,
+           lesson.embed_kind,
+           assignment.instructions as assignment_instructions,
+           assignment.accepted_extensions as assignment_extensions,
+           assignment.max_upload_bytes as assignment_max_upload_bytes,
+           scorm.status as scorm_status,
+           scorm.source_zip_path as scorm_source_zip_path,
+           scorm.launch_path as scorm_launch_path,
+           scorm.processing_error as scorm_processing_error,
            quiz.id as quiz_id,
            quiz.pass_percentage,
            question.id as question_id,
@@ -572,6 +751,10 @@ export function createCourseRepository(input: {
          from public.learning_course_sections section
          left join public.learning_lessons lesson
            on lesson.section_id = section.id
+         left join public.learning_assignments assignment
+           on assignment.lesson_id = lesson.id
+         left join public.learning_scorm_packages scorm
+           on scorm.lesson_id = lesson.id
          left join public.learning_quizzes quiz
            on quiz.lesson_id = lesson.id
          left join public.learning_quiz_questions question
