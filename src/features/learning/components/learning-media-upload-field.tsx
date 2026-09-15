@@ -61,14 +61,7 @@ export function LearningMediaUploadField({
   useEffect(() => () => revokeLocalPreview(), [])
 
   useEffect(() => {
-    if (!value) {
-      if (!localPreviewRef.current) setPreviewUrl(null)
-      return
-    }
-    if (previewType === 'file') {
-      setPreviewUrl(null)
-      return
-    }
+    if (!value || previewType === 'file') return
     if (value === pendingPath && localPreviewRef.current) return
 
     let cancelled = false
@@ -163,6 +156,7 @@ export function LearningMediaUploadField({
   }
 
   const UploadIcon = previewType === 'image' ? ImageIcon : previewType === 'video' ? PlayCircle : FileUp
+  const visiblePreviewUrl = value && previewType !== 'file' ? previewUrl : null
 
   return (
     <div className="rounded-2xl border border-mist-200 bg-mist-50/40 p-4">
@@ -196,12 +190,12 @@ export function LearningMediaUploadField({
         }}
       />
 
-      {previewUrl ? (
+      {visiblePreviewUrl ? (
         <div className="mt-4 overflow-hidden rounded-xl border border-mist-200 bg-white">
           {previewType === 'image' ? (
-            <img src={previewUrl} alt={`${label} preview`} className="aspect-video w-full object-cover" />
+            <img src={visiblePreviewUrl} alt={`${label} preview`} className="aspect-video w-full object-cover" />
           ) : (
-            <video src={previewUrl} controls preload="metadata" className="aspect-video w-full bg-black object-contain" />
+            <video src={visiblePreviewUrl} controls preload="metadata" className="aspect-video w-full bg-black object-contain" />
           )}
         </div>
       ) : null}
