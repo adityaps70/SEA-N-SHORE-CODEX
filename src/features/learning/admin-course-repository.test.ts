@@ -281,7 +281,7 @@ describe('learning admin course review repository', () => {
     expect(audit?.values).toContain(administratorId)
   })
 
-  it('approves a submitted course and stamps approval metadata without publishing it', async () => {
+  it('approves and publishes a submitted course atomically', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
@@ -296,14 +296,16 @@ describe('learning admin course review repository', () => {
 
     await expect(repository.reviewCourse(administratorId, courseId, 'approved', null)).resolves.toEqual({
       courseId,
-      status: 'approved',
+      status: 'published',
     })
 
     const update = seen.find((entry) => entry.text.includes('update public.learning_courses'))
     expect(update?.text).toContain('approved_at = now()')
-    expect(update?.text).toContain('published_at = null')
-    expect(update?.values).toEqual([courseId, 'approved', administratorId, null])
-    expect(seen.find((entry) => entry.text.includes('insert into public.audit_events'))?.values).toContain('learning.course.approved')
+    expect(update?.text).toContain('published_at = now()')
+    expect(update?.values).toEqual([courseId, 'published', administratorId, null])
+    const audit = seen.find((entry) => entry.text.includes('insert into public.audit_events'))
+    expect(audit?.values).toContain('learning.course.approved')
+    expect(audit?.values?.some((value) => typeof value === 'string' && value.includes('"toStatus":"published"'))).toBe(true)
   })
 
   it('publishes only from approved and stamps published_at', async () => {
