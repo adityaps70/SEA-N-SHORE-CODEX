@@ -598,6 +598,8 @@ export function createLearningAdminRepository(input: {
         throw new Error('course_review_note_required')
       }
 
+      const persistedStatus: CourseStatus = decision === 'approved' ? 'published' : decision
+
       let updateSql = `update public.learning_courses
          set status = $2,
              reviewed_by = $3,
@@ -612,7 +614,7 @@ export function createLearningAdminRepository(input: {
       } else if (decision === 'approved') {
         updateSql += `,
              approved_at = now(),
-             published_at = null`
+             published_at = now()`
       } else if (decision === 'published') {
         updateSql += `,
              published_at = now()`
@@ -624,7 +626,7 @@ export function createLearningAdminRepository(input: {
 
       const courseRows = await txQuery(
         updateSql,
-        [courseId, decision, adminId, reviewerNote],
+        [courseId, persistedStatus, adminId, reviewerNote],
       ) as ReturningIdRow[]
       if (!courseRows[0]) throw new Error('course_not_found')
 
@@ -639,13 +641,14 @@ export function createLearningAdminRepository(input: {
           JSON.stringify({
             mentorId: course.mentor_id,
             fromStatus: current,
-            toStatus: decision,
+            toStatus: persistedStatus,
+            reviewDecision: decision,
             reviewerNote,
           }),
         ],
       )
 
-      return { courseId, status: decision }
+      return { courseId, status: persistedStatus }
     })
   }
 
