@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const sql = fs.readFileSync('infra/aws/database/migrations/0020_learning_assignment_grading.sql', 'utf8')
+const script = fs.readFileSync('scripts/aws/learning-lms-phase-2a-migration.sh', 'utf8')
+const guard = fs.readFileSync('scripts/aws/learning-lms-phase-2a-migration-action.txt', 'utf8').trim()
+const workflow = fs.readFileSync('.github/workflows/aws-learning-lms-phase-2a-migration.yml', 'utf8')
+
+assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.match(sql, /max_points/)
+assert.match(sql, /passing_percentage/)
+assert.match(sql, /status text not null default 'submitted'/)
+assert.match(sql, /score_points/)
+assert.match(sql, /passed boolean/)
+assert.match(sql, /feedback text/)
+assert.match(sql, /graded_at/)
+assert.match(sql, /pending_review_idx/)
+assert.doesNotMatch(sql, /drop table/i)
+assert.doesNotMatch(sql, /delete from/i)
+assert.match(script, /310356785722/)
+assert.match(script, /migrate-once/)
+assert.match(script, /LEARNING_LMS_PHASE_2A_MIGRATION_APPLY_VERIFIED=true/)
+assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.match(workflow, /AWS Infrastructure CI/)
+assert.match(workflow, /310356785722/)
+assert.match(workflow, /migrate-once/)
+assert.match(workflow, /github\.sha/)
+assert.match(workflow, /mktemp -d \/var\/tmp\/sea-n-shore-learning-lms-phase-2a\.XXXXXXXX/)
+assert.match(workflow, /get-command-invocation/)
+assert.doesNotMatch(script, /992382634586/)
+assert.doesNotMatch(workflow, /992382634586/)
+
+console.log('LEARNING_LMS_PHASE_2A_MIGRATION_CONTRACT_VERIFIED=true')
