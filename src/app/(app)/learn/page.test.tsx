@@ -3,9 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarketplaceCourse } from '@/features/learning/marketplace-repository'
 
 const mocks = vi.hoisted(() => ({
+  requireAwsUser: vi.fn(),
+  getMentorApplicationState: vi.fn(),
   listPublishedCourses: vi.fn(),
 }))
 
+vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/learning/repository', () => ({
+  learningRepository: {
+    getMentorApplicationState: mocks.getMentorApplicationState,
+  },
+}))
 vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/learning/marketplace-repository')>()
   return {
@@ -63,6 +71,8 @@ afterEach(() => {
 describe('/learn marketplace', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'maya@example.com' })
+    mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
     mocks.listPublishedCourses.mockResolvedValue([course])
   })
 
@@ -85,6 +95,42 @@ describe('/learn marketplace', () => {
     expect(screen.getByText('Certificate')).toBeInTheDocument()
     expect(screen.getByText('Prepare evidence for SIRE 2.0 interviews')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Teach on Sea N Shore' })).toHaveAttribute('href', '/learn/teach')
+  })
+
+  it('replaces the teaching application CTA with Mentor Studio for an approved active mentor', async () => {
+    mocks.getMentorApplicationState.mockResolvedValue({
+      kind: 'mentor',
+      applicationId: '33333333-3333-4333-8333-333333333333',
+      status: 'approved',
+      submittedAt: '2026-09-14T12:00:00.000Z',
+      updatedAt: '2026-09-14T14:00:00.000Z',
+      adminReviewNote: 'Approved after credential review.',
+      mentorId: 'mentor-1',
+      mentorStatus: 'active',
+    })
+
+    await renderLearnPage()
+
+    expect(screen.getByRole('link', { name: 'Mentor Studio' })).toHaveAttribute('href', '/learn/studio')
+    expect(screen.queryByRole('link', { name: 'Teach on Sea N Shore' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the teaching application CTA when mentor access is suspended', async () => {
+    mocks.getMentorApplicationState.mockResolvedValue({
+      kind: 'mentor',
+      applicationId: '33333333-3333-4333-8333-333333333333',
+      status: 'approved',
+      submittedAt: '2026-09-14T12:00:00.000Z',
+      updatedAt: '2026-09-14T14:00:00.000Z',
+      adminReviewNote: 'Access review in progress.',
+      mentorId: 'mentor-1',
+      mentorStatus: 'suspended',
+    })
+
+    await renderLearnPage()
+
+    expect(screen.getByRole('link', { name: 'Teach on Sea N Shore' })).toHaveAttribute('href', '/learn/teach')
+    expect(screen.queryByRole('link', { name: 'Mentor Studio' })).not.toBeInTheDocument()
   })
 
   it('passes normalized search and category filters into the published marketplace query', async () => {
