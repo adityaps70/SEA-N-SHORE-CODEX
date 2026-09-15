@@ -143,7 +143,7 @@ jobs:
           export AWS_REGION=ap-south-1
           bash scripts/aws/learning-quiz-resilience-migration.sh
           """
-          print(json.dumps({{"executionTimeout": ["1200"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}}))
+          print(json.dumps({"executionTimeout": ["1200"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
           PYTHON
           COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore learning quiz resilience migration $TRIGGER_SHA" --timeout-seconds 1200 --parameters file:///tmp/ssm-parameters.json --query 'Command.CommandId' --output text)
           test -n "$COMMAND_ID"
