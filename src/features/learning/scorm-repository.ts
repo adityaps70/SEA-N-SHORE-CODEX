@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
 import {
   createScormRuntimeState,
   isScormCompletionTerminal,
@@ -28,6 +29,7 @@ type AttemptRow = QueryResultRow & {
 type LockedAttemptRow = QueryResultRow & {
   id: string
   enrollment_id: string
+  course_id: string
   lesson_id: string
   scorm_version: '1.2' | '2004'
   completion_status: string
@@ -161,6 +163,7 @@ export function createScormRepository(input: { transaction?: ScormTransaction } 
         `select
            attempt.id,
            attempt.enrollment_id,
+           enrollment.course_id,
            attempt.lesson_id,
            package.scorm_version,
            attempt.completion_status,
@@ -236,6 +239,7 @@ export function createScormRepository(input: { transaction?: ScormTransaction } 
                updated_at = now()`,
           [attempt.enrollment_id, attempt.lesson_id],
         )
+        await finalizeEnrollmentIfComplete(query, attempt.enrollment_id, attempt.course_id)
       }
 
       return { completed, state }
