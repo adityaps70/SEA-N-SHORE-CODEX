@@ -15,7 +15,16 @@ import {
 } from './media-policy'
 
 const courseIdSchema = z.string().uuid()
-const kindSchema = z.enum(['course_thumbnail', 'course_trailer', 'lesson_video'])
+const kindSchema = z.enum([
+  'course_thumbnail',
+  'course_trailer',
+  'lesson_video',
+  'lesson_image',
+  'lesson_audio',
+  'lesson_document',
+  'lesson_resource',
+  'scorm_package',
+])
 const storagePathSchema = z.string().min(1).max(1024)
 
 type ActionResult = { ok: true } | { ok: false; error: string }
