@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   submitLearningQuiz: vi.fn(),
+  refresh: vi.fn(),
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: mocks.refresh }),
 }))
 
 vi.mock('../learner-quiz-actions', () => ({
@@ -108,6 +113,7 @@ describe('QuizLessonActivity resilience', () => {
     const secondKey = mocks.submitLearningQuiz.mock.calls[1]?.[3]
     expect(firstKey).toMatch(uuidPattern)
     expect(secondKey).toBe(firstKey)
+    expect(mocks.refresh).toHaveBeenCalledOnce()
   })
 
   it('starts a fresh submission UUID only after a persisted failed attempt and explicit learner retry', async () => {
