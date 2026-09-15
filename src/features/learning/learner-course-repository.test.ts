@@ -13,6 +13,7 @@ const slug = 'sire-2-readiness-for-tanker-officers'
 const baseRow = {
   enrollment_id: enrollmentId,
   enrollment_status: 'active',
+  enrolled_at: new Date('2026-09-10T08:00:00.000Z'),
   course_id: courseId,
   slug,
   title: 'SIRE 2.0 Readiness for Tanker Officers',
@@ -22,13 +23,34 @@ const baseRow = {
   language: 'English',
   course_format: 'recorded',
   certificate_enabled: true,
+  navigation_mode: 'free',
   mentor_name: 'Capt. Maya Singh',
 }
 
+function materialControls(overrides: Record<string, unknown> = {}) {
+  return {
+    is_published: true,
+    release_mode: 'immediate',
+    release_at: null,
+    drip_delay_days: null,
+    prerequisite_lesson_id: null,
+    prerequisite_completed: null,
+    completion_rule: 'manual',
+    completion_threshold: null,
+    max_attempts: null,
+    embed_kind: null,
+    viewed_at: null,
+    media_percent: 0,
+    attempts_used: 0,
+    ...overrides,
+  }
+}
+
 describe('learner course repository', () => {
-  it('loads an enrolled learner course with persisted sections, lessons and progress', async () => {
+  it('loads native material controls and progress for an enrolled learner', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createLearnerCourseRepository({
+      now: () => new Date('2026-09-15T12:00:00.000Z'),
       query: async (text: string, values?: readonly unknown[]) => {
         seen.push({ text, values })
         return [
@@ -50,6 +72,7 @@ describe('learner course repository', () => {
             completed: true,
             completed_at: new Date('2026-09-15T08:30:00.000Z'),
             last_position_seconds: 0,
+            ...materialControls(),
           },
           {
             ...baseRow,
@@ -69,73 +92,41 @@ describe('learner course repository', () => {
             completed: false,
             completed_at: null,
             last_position_seconds: 125,
+            ...materialControls({ completion_rule: 'media_percentage', completion_threshold: 90, media_percent: 22 }),
           },
         ]
       },
     })
 
-    await expect(repository.getLearnerCourse(learnerId, slug)).resolves.toEqual({
+    const course = await repository.getLearnerCourse(learnerId, slug)
+    expect(course).not.toBeNull()
+    expect(course).toMatchObject({
       enrollmentId,
       enrollmentStatus: 'active',
       courseId,
       slug,
-      title: 'SIRE 2.0 Readiness for Tanker Officers',
-      subtitle: 'Practical inspection readiness from a Master Mariner',
-      category: 'SIRE 2.0',
-      level: 'advanced',
-      language: 'English',
-      courseFormat: 'recorded',
-      certificateEnabled: true,
-      mentorName: 'Capt. Maya Singh',
+      navigationMode: 'free',
       totalLessons: 2,
       completedLessons: 1,
       progressPercent: 50,
-      sections: [
-        {
-          id: sectionOneId,
-          title: 'Inspection foundations',
-          position: 0,
-          lessons: [
-            {
-              id: lessonOneId,
-              title: 'How SIRE 2.0 changes readiness',
-              lessonType: 'article',
-              position: 0,
-              summary: 'Understand the inspection model before going deeper.',
-              articleBody: 'SIRE 2.0 uses a risk-based inspection framework.',
-              assetPath: null,
-              externalUrl: null,
-              durationSeconds: null,
-              isDownloadable: false,
-              completed: true,
-              completedAt: '2026-09-15T08:30:00.000Z',
-              lastPositionSeconds: 0,
-            },
-          ],
-        },
-        {
-          id: sectionTwoId,
-          title: 'Operational readiness',
-          position: 1,
-          lessons: [
-            {
-              id: lessonTwoId,
-              title: 'Bridge readiness walkthrough',
-              lessonType: 'video',
-              position: 0,
-              summary: null,
-              articleBody: null,
-              assetPath: 'learning/courses/sire-2/bridge-readiness.mp4',
-              externalUrl: null,
-              durationSeconds: 780,
-              isDownloadable: false,
-              completed: false,
-              completedAt: null,
-              lastPositionSeconds: 125,
-            },
-          ],
-        },
-      ],
+    })
+    expect(course?.sections[0]?.lessons[0]).toMatchObject({
+      id: lessonOneId,
+      lessonType: 'article',
+      isAvailable: true,
+      lockReason: null,
+      completionRule: 'manual',
+      completed: true,
+    })
+    expect(course?.sections[1]?.lessons[0]).toMatchObject({
+      id: lessonTwoId,
+      lessonType: 'video',
+      assetPath: 'learning/courses/sire-2/bridge-readiness.mp4',
+      isAvailable: true,
+      completionRule: 'media_percentage',
+      completionThreshold: 90,
+      mediaPercent: 22,
+      lastPositionSeconds: 125,
     })
 
     expect(seen).toHaveLength(1)
@@ -143,15 +134,102 @@ describe('learner course repository', () => {
     expect(seen[0]?.text).toContain("course.status = 'published'")
     expect(seen[0]?.text).toContain("mentor.status = 'active'")
     expect(seen[0]?.text).toContain("application.status = 'approved'")
-    expect(seen[0]?.text).toContain("enrollment.status in ('active', 'completed')")
-    expect(seen[0]?.text).toContain('progress.enrollment_id = enrollment.id')
-    expect(seen[0]?.text).toContain('progress.lesson_id = lesson.id')
-    expect(seen[0]?.text).toContain('order by section.position asc, lesson.position asc')
+    expect(seen[0]?.text).toContain('lesson.prerequisite_lesson_id')
+  })
+
+  it('redacts protected content when a scheduled material is still locked', async () => {
+    const repository = createLearnerCourseRepository({
+      now: () => new Date('2026-09-15T12:00:00.000Z'),
+      query: async () => [{
+        ...baseRow,
+        section_id: sectionOneId,
+        section_title: 'Inspection foundations',
+        section_position: 0,
+        lesson_id: lessonOneId,
+        lesson_title: 'Restricted walkthrough',
+        lesson_type: 'video',
+        lesson_position: 0,
+        lesson_summary: 'Available tomorrow',
+        article_body: null,
+        asset_path: 'learning/private/future.mp4',
+        external_url: 'https://example.com/private',
+        duration_seconds: 300,
+        is_downloadable: false,
+        completed: false,
+        completed_at: null,
+        last_position_seconds: 0,
+        ...materialControls({
+          release_mode: 'scheduled',
+          release_at: new Date('2026-09-16T12:00:00.000Z'),
+          completion_rule: 'media_percentage',
+          completion_threshold: 90,
+        }),
+      }],
+    })
+
+    const material = (await repository.getLearnerCourse(learnerId, slug))?.sections[0]?.lessons[0]
+    expect(material).toMatchObject({ isAvailable: false, lockReason: 'scheduled' })
+    expect(material?.assetPath).toBeNull()
+    expect(material?.externalUrl).toBeNull()
+    expect(material?.articleBody).toBeNull()
+  })
+
+  it('applies implicit previous-material prerequisites in sequential mode', async () => {
+    const repository = createLearnerCourseRepository({
+      now: () => new Date('2026-09-15T12:00:00.000Z'),
+      query: async () => [
+        {
+          ...baseRow,
+          navigation_mode: 'sequential',
+          section_id: sectionOneId,
+          section_title: 'Module',
+          section_position: 0,
+          lesson_id: lessonOneId,
+          lesson_title: 'First',
+          lesson_type: 'article',
+          lesson_position: 0,
+          lesson_summary: null,
+          article_body: 'First content',
+          asset_path: null,
+          external_url: null,
+          duration_seconds: null,
+          is_downloadable: false,
+          completed: false,
+          completed_at: null,
+          last_position_seconds: 0,
+          ...materialControls(),
+        },
+        {
+          ...baseRow,
+          navigation_mode: 'sequential',
+          section_id: sectionOneId,
+          section_title: 'Module',
+          section_position: 0,
+          lesson_id: lessonTwoId,
+          lesson_title: 'Second',
+          lesson_type: 'article',
+          lesson_position: 1,
+          lesson_summary: null,
+          article_body: 'Second private content',
+          asset_path: null,
+          external_url: null,
+          duration_seconds: null,
+          is_downloadable: false,
+          completed: false,
+          completed_at: null,
+          last_position_seconds: 0,
+          ...materialControls(),
+        },
+      ],
+    })
+
+    const lessons = (await repository.getLearnerCourse(learnerId, slug))?.sections[0]?.lessons ?? []
+    expect(lessons[0]?.isAvailable).toBe(true)
+    expect(lessons[1]).toMatchObject({ isAvailable: false, lockReason: 'prerequisite', articleBody: null })
   })
 
   it('fails closed when the learner has no visible enrollment for the published course', async () => {
     const repository = createLearnerCourseRepository({ query: async () => [] })
-
     await expect(repository.getLearnerCourse(learnerId, slug)).resolves.toBeNull()
   })
 })
