@@ -15,8 +15,9 @@ export async function GET(
     const relativePath = path.map((segment) => decodeURIComponent(segment)).join('/')
     const key = await resolveLearnerScormContentKey(user.id, lessonId, relativePath)
     const object = await getMediaObject({ key, maxBytes: 100 * 1024 * 1024 })
+    const responseBody = Uint8Array.from(object.body).buffer
 
-    return new Response(object.body, {
+    return new Response(responseBody, {
       status: 200,
       headers: {
         'Content-Type': object.contentType ?? 'application/octet-stream',
