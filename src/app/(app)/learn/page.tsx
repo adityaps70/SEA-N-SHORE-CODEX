@@ -10,7 +10,9 @@ import {
   ShieldCheck,
   Sparkles,
 } from 'lucide-react'
+import { requireAwsUser } from '@/features/auth/aws-queries'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
+import { learningRepository } from '@/features/learning/repository'
 
 const categories = [
   'Deck',
@@ -137,7 +139,12 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   const params = await searchParams
   const category = normalizeParam(params.category)
   const search = normalizeParam(params.search)
-  const courses = await marketplaceRepository.listPublishedCourses({ category, search })
+  const user = await requireAwsUser()
+  const [courses, mentorState] = await Promise.all([
+    marketplaceRepository.listPublishedCourses({ category, search }),
+    learningRepository.getMentorApplicationState(user.id),
+  ])
+  const isActiveMentor = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
   const hasFilters = Boolean(category || search)
 
   return (
@@ -168,17 +175,35 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
           </div>
 
           <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-200">Teach what you know</p>
-            <p className="mt-2 text-lg font-bold">Experienced maritime professional?</p>
-            <p className="mt-2 text-sm leading-6 text-white/68">
-              Apply to become a Sea N Shore mentor. Approved mentors can build structured courses and submit them for quality review.
-            </p>
-            <Link
-              href="/learn/teach"
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50"
-            >
-              Teach on Sea N Shore <ArrowRight aria-hidden="true" className="size-4" />
-            </Link>
+            {isActiveMentor ? (
+              <>
+                <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-200">Mentor workspace</p>
+                <p className="mt-2 text-lg font-bold">Build and manage your courses</p>
+                <p className="mt-2 text-sm leading-6 text-white/68">
+                  Open Mentor Studio to create courses, organize curriculum and submit learning experiences for Sea N Shore review.
+                </p>
+                <Link
+                  href="/learn/studio"
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50"
+                >
+                  Mentor Studio <ArrowRight aria-hidden="true" className="size-4" />
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-200">Teach what you know</p>
+                <p className="mt-2 text-lg font-bold">Experienced maritime professional?</p>
+                <p className="mt-2 text-sm leading-6 text-white/68">
+                  Apply to become a Sea N Shore mentor. Approved mentors can build structured courses and submit them for quality review.
+                </p>
+                <Link
+                  href="/learn/teach"
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50"
+                >
+                  Teach on Sea N Shore <ArrowRight aria-hidden="true" className="size-4" />
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </section>
