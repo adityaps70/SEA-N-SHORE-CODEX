@@ -26,6 +26,7 @@ const questionOneWrongId = '88888888-8888-4888-8888-888888888882'
 const questionTwoCorrectId = '99999999-9999-4999-8999-999999999991'
 const questionTwoWrongId = '99999999-9999-4999-8999-999999999992'
 const nextLessonHref = '/learn/courses/sire-2-readiness/learn?lesson=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const quiz: LearnerQuiz = {
   id: '55555555-5555-4555-8555-555555555555',
@@ -63,10 +64,11 @@ describe('QuizLessonActivity', () => {
 
   afterEach(() => cleanup())
 
-  it('keeps submission disabled until every question has one answer and sends only ids', async () => {
+  it('keeps submission disabled until every question has one answer and sends only ids plus a retry-safe key', async () => {
     mocks.submitLearningQuiz.mockResolvedValueOnce({
       ok: true,
       attemptId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      attemptNumber: 1,
       submittedAt: '2026-09-15T10:00:00.000Z',
       score: 2,
       totalQuestions: 2,
@@ -101,12 +103,20 @@ describe('QuizLessonActivity', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Submit quiz' }))
 
-    await waitFor(() => expect(mocks.submitLearningQuiz).toHaveBeenCalledWith(slug, lessonId, [
-      { questionId: questionOneId, optionId: questionOneCorrectId },
-      { questionId: questionTwoId, optionId: questionTwoCorrectId },
-    ]))
+    await waitFor(() => expect(mocks.submitLearningQuiz).toHaveBeenCalledOnce())
+    const call = mocks.submitLearningQuiz.mock.calls[0]
+    expect(call?.slice(0, 3)).toEqual([
+      slug,
+      lessonId,
+      [
+        { questionId: questionOneId, optionId: questionOneCorrectId },
+        { questionId: questionTwoId, optionId: questionTwoCorrectId },
+      ],
+    ])
+    expect(call?.[3]).toMatch(uuidPattern)
     expect(await screen.findByText('Assessment passed')).toBeInTheDocument()
     expect(screen.getByText('100%')).toBeInTheDocument()
+    expect(screen.getByText('Attempt 1')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Continue to next lesson' })).toHaveAttribute('href', nextLessonHref)
     expect(mocks.refresh).toHaveBeenCalledOnce()
   })
@@ -115,6 +125,7 @@ describe('QuizLessonActivity', () => {
     mocks.submitLearningQuiz.mockResolvedValueOnce({
       ok: true,
       attemptId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      attemptNumber: 1,
       submittedAt: '2026-09-15T10:00:00.000Z',
       score: 1,
       totalQuestions: 2,
@@ -150,6 +161,7 @@ describe('QuizLessonActivity', () => {
     expect(screen.getByText('50%')).toBeInTheDocument()
     expect(screen.getByText('Pass mark 70%')).toBeInTheDocument()
     expect(screen.getByText('Correct answer: Verify evidence and actual practice')).toBeInTheDocument()
+    expect(screen.getByText('Attempt 1')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Continue to next lesson' })).not.toBeInTheDocument()
 
