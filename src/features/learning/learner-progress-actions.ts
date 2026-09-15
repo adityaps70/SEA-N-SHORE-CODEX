@@ -8,6 +8,7 @@ import { learnerProgressRepository } from './learner-progress-repository'
 const slugSchema = z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
 const lessonIdSchema = z.string().uuid()
 const playbackPositionSchema = z.number().int().nonnegative()
+const playbackDurationSchema = z.number().positive().max(24 * 60 * 60)
 
 type CompleteLessonActionResult =
   | {
@@ -80,15 +81,19 @@ export async function saveLearningPlaybackPosition(
   slug: string,
   lessonId: string,
   positionSeconds: number,
+  durationSeconds?: number,
 ): Promise<SavePlaybackPositionActionResult> {
   const parsedSlug = slugSchema.safeParse(slug)
   const parsedLessonId = lessonIdSchema.safeParse(lessonId)
   const parsedPosition = playbackPositionSchema.safeParse(positionSeconds)
+  const parsedDuration = durationSeconds === undefined
+    ? { success: true as const, data: undefined }
+    : playbackDurationSchema.safeParse(durationSeconds)
 
   if (!parsedSlug.success || !parsedLessonId.success) {
     return { ok: false, error: 'Invalid course or lesson.' }
   }
-  if (!parsedPosition.success) {
+  if (!parsedPosition.success || !parsedDuration.success) {
     return { ok: false, error: 'Invalid playback position.' }
   }
 
@@ -99,7 +104,11 @@ export async function saveLearningPlaybackPosition(
       parsedSlug.data,
       parsedLessonId.data,
       parsedPosition.data,
+      parsedDuration.data,
     )
+
+    revalidatePath('/learn/my-learning')
+    revalidatePath(`/learn/courses/${parsedSlug.data}/learn`)
 
     return {
       ok: true,
