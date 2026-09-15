@@ -59,7 +59,7 @@ export type MarketplaceCourseFilters = {
 const marketplaceSelect = `select
   course.id,
   course.mentor_id,
-  application.name as mentor_name,
+  application.applicant_name as mentor_name,
   course.slug,
   course.title,
   course.subtitle,
@@ -141,7 +141,7 @@ export function createMarketplaceRepository(input: { query?: MarketplaceQuery } 
       discoveryClauses.push(`(
         course.title ilike ${placeholder}
         or course.description ilike ${placeholder}
-        or application.name ilike ${placeholder}
+        or application.applicant_name ilike ${placeholder}
       )`)
     }
 
