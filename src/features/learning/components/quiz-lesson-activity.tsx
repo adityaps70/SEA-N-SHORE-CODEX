@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   ArrowRight,
   CheckCircle2,
@@ -12,7 +12,11 @@ import {
   XCircle,
 } from 'lucide-react'
 import { submitLearningQuiz } from '../learner-quiz-actions'
-import type { LearnerQuiz, LearnerQuizAttemptResult } from '../learner-quiz-repository'
+import type {
+  LearnerQuiz,
+  LearnerQuizAttemptResult,
+  LearnerQuizAttemptSummary,
+} from '../learner-quiz-repository'
 
 type QuizLessonActivityProps = {
   quiz: LearnerQuiz
@@ -46,6 +50,46 @@ function ContinueLink({ nextLessonHref }: { nextLessonHref?: string | null }) {
   )
 }
 
+function formatAttemptDate(value: string) {
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(value))
+}
+
+function AttemptHistory({ history }: { history: LearnerQuizAttemptSummary[] }) {
+  if (history.length === 0) return null
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5" aria-label="Quiz attempt history">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Your results</p>
+          <h3 className="mt-1 text-base font-semibold text-slate-950">Attempt history</h3>
+        </div>
+        <p className="text-xs text-slate-500">Times shown in UTC</p>
+      </div>
+      <div className="mt-4 divide-y divide-slate-100">
+        {history.map((attempt) => (
+          <div key={attempt.attemptId} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+            <div>
+              <p className="text-sm font-semibold text-slate-950">Attempt {attempt.attemptNumber}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{formatAttemptDate(attempt.submittedAt)}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-semibold text-slate-950">{attempt.percentage}%</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${attempt.passed ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
+                {attempt.passed ? 'Passed' : 'Not passed'}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export function QuizLessonActivity({
   quiz,
   slug,
@@ -56,8 +100,10 @@ export function QuizLessonActivity({
   const router = useRouter()
   const [selected, setSelected] = useState<Record<string, string>>({})
   const [result, setResult] = useState<LearnerQuizAttemptResult | null>(null)
+  const [attemptHistory, setAttemptHistory] = useState<LearnerQuizAttemptSummary[]>(quiz.attemptHistory ?? [])
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const submissionKeyRef = useRef<string | null>(null)
 
   const allAnswered = quiz.questions.length > 0
     && quiz.questions.every((question) => Boolean(selected[question.id]))
@@ -78,13 +124,29 @@ export function QuizLessonActivity({
         questionId: question.id,
         optionId: selected[question.id],
       }))
-      const submission = await submitLearningQuiz(slug, lessonId, answers)
+      const submissionKey = submissionKeyRef.current ?? globalThis.crypto.randomUUID()
+      submissionKeyRef.current = submissionKey
+      const submission = await submitLearningQuiz(slug, lessonId, answers, submissionKey)
 
       if (!submission.ok) {
         setError(submission.error)
         return
       }
 
+      submissionKeyRef.current = null
+      setAttemptHistory((current) => {
+        if (current.some((attempt) => attempt.attemptId === submission.attemptId)) return current
+        return [{
+          attemptId: submission.attemptId,
+          attemptNumber: submission.attemptNumber,
+          submittedAt: submission.submittedAt,
+          score: submission.score,
+          totalQuestions: submission.totalQuestions,
+          percentage: submission.percentage,
+          passPercentage: submission.passPercentage,
+          passed: submission.passed,
+        }, ...current]
+      })
       setResult(submission)
       router.refresh()
     } catch {
@@ -95,6 +157,7 @@ export function QuizLessonActivity({
   }
 
   function onRetry() {
+    submissionKeyRef.current = null
     setSelected({})
     setResult(null)
     setError(null)
@@ -102,18 +165,21 @@ export function QuizLessonActivity({
 
   if (initiallyCompleted) {
     return (
-      <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-6" aria-label="Quiz result">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-700" aria-hidden="true" />
-          <div>
-            <h3 className="text-lg font-semibold text-emerald-950">Assessment passed</h3>
-            <p className="mt-1 text-sm text-emerald-900">This quiz lesson is already complete.</p>
+      <div className="space-y-4">
+        <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-6" aria-label="Quiz result">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-6 w-6 shrink-0 text-emerald-700" aria-hidden="true" />
+            <div>
+              <h3 className="text-lg font-semibold text-emerald-950">Assessment passed</h3>
+              <p className="mt-1 text-sm text-emerald-900">This quiz lesson is already complete.</p>
+            </div>
           </div>
-        </div>
-        <div className="mt-5">
-          <ContinueLink nextLessonHref={nextLessonHref} />
-        </div>
-      </section>
+          <div className="mt-5">
+            <ContinueLink nextLessonHref={nextLessonHref} />
+          </div>
+        </section>
+        <AttemptHistory history={attemptHistory} />
+      </div>
     )
   }
 
@@ -130,9 +196,15 @@ export function QuizLessonActivity({
             <XCircle className="mt-0.5 h-6 w-6 shrink-0 text-amber-700" aria-hidden="true" />
           )}
           <div className="min-w-0 flex-1">
-            <h3 className={`text-lg font-semibold ${result.passed ? 'text-emerald-950' : 'text-amber-950'}`}>
-              {result.passed ? 'Assessment passed' : 'Not passed yet'}
-            </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className={`text-lg font-semibold ${result.passed ? 'text-emerald-950' : 'text-amber-950'}`}>
+                {result.passed ? 'Assessment passed' : 'Not passed yet'}
+              </h3>
+              <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${result.passed ? 'border-emerald-200 bg-white/80 text-emerald-800' : 'border-amber-200 bg-white/80 text-amber-900'}`}>
+                Attempt {result.attemptNumber}
+              </span>
+            </div>
+            {!result.passed ? <p className="mt-1 text-sm font-medium text-amber-900">Attempt not passed</p> : null}
             <div className="mt-3 flex flex-wrap items-end gap-x-5 gap-y-2">
               <span className={`text-4xl font-bold tracking-tight ${result.passed ? 'text-emerald-950' : 'text-amber-950'}`}>
                 {result.percentage}%
@@ -201,6 +273,8 @@ export function QuizLessonActivity({
         </div>
         {quiz.instructions ? <p className="mt-3 text-sm leading-6 text-slate-600">{quiz.instructions}</p> : null}
       </div>
+
+      <AttemptHistory history={attemptHistory} />
 
       <div className="space-y-5">
         {quiz.questions.map((question, index) => (
