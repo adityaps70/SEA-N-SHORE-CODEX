@@ -86,9 +86,7 @@ inner join public.learning_mentor_applications application
  and application.status = 'approved'`
 
 const marketplaceVisibility = `course.status = 'published'
-  and mentor.status = 'active'
-  and course.access_type = 'free'
-  and course.price_minor = 0`
+  and mentor.status = 'active'`
 
 function isoDateTime(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value
