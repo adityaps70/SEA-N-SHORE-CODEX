@@ -33,6 +33,8 @@ assert.match(workflow, /migrate-once/)
 assert.match(workflow, /github\.sha/)
 assert.match(workflow, /runuser -u ssm-user/)
 assert.match(workflow, /get-command-invocation/)
+assert.match(workflow, /print\(json\.dumps\(\{"executionTimeout": \["1200"\], "commands": \[/)
+assert.doesNotMatch(workflow, /print\(json\.dumps\(\{\{/)
 assert.doesNotMatch(workflow, /992382634586/)
 
 console.log('LEARNING_QUIZ_RESILIENCE_MIGRATION_CONTRACT_VERIFIED=true')
