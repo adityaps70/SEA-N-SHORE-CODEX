@@ -18,7 +18,7 @@ afterEach(() => cleanup())
 describe('CourseReviewControls', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.reviewCourse.mockResolvedValue({ ok: true, status: 'approved' })
+    mocks.reviewCourse.mockResolvedValue({ ok: true, status: 'published' })
   })
 
   it('shows review actions for a submitted course and approves without requiring a note', async () => {
@@ -32,7 +32,7 @@ describe('CourseReviewControls', () => {
 
     await waitFor(() => expect(mocks.reviewCourse).toHaveBeenCalledTimes(1))
     expect(mocks.reviewCourse).toHaveBeenCalledWith(courseId, 'approved', null)
-    expect(await screen.findByText('Course approved. It is ready for final publishing.')).toBeInTheDocument()
+    expect(await screen.findByText('Course approved and published. It is now visible in Learn.')).toBeInTheDocument()
   })
 
   it('requires a reviewer note locally before requesting changes', async () => {
