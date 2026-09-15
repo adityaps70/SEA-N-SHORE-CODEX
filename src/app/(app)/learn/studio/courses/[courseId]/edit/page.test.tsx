@@ -23,8 +23,8 @@ vi.mock('@/features/learning/repository', () => ({
 vi.mock('@/features/learning/course-repository', () => ({
   courseRepository: { getOwnedCourse: mocks.getOwnedCourse },
 }))
-vi.mock('@/features/learning/mentor-curriculum-repository', () => ({
-  mentorCurriculumRepository: { getCurriculum: mocks.getCurriculum },
+vi.mock('@/features/learning/mentor-material-repository', () => ({
+  mentorMaterialRepository: { getCurriculum: mocks.getCurriculum },
 }))
 vi.mock('@/features/learning/components/course-form', () => ({
   CourseForm: ({ initialValue, courseId }: { initialValue: unknown; courseId?: string }) => {
@@ -81,11 +81,12 @@ const draftCourse = {
 const curriculum = {
   courseId,
   status: 'draft',
+  navigationMode: 'free',
   sections: [{
     id: '44444444-4444-4444-8444-444444444444',
     title: 'Module 1',
     position: 0,
-    lessons: [],
+    materials: [],
   }],
 } as const
 
