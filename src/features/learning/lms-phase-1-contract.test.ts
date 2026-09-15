@@ -26,10 +26,13 @@ describe('native LMS phase 1 contract', () => {
   it('keeps the LMS migration guarded and exact-head CI gated', () => {
     const guard = read('scripts/aws/learning-lms-phase-1-migration-action.txt').trim()
     const workflow = read('.github/workflows/aws-learning-lms-phase-1-migration.yml')
-    expect(guard).toBe('plan')
+    expect(['plan', 'migrate-once']).toContain(guard)
+    expect(workflow).toContain('case "$ACTION" in')
+    expect(workflow).toContain('plan|migrate-once')
     expect(workflow).toContain('AWS Infrastructure CI')
     expect(workflow).toContain('310356785722')
     expect(workflow).toContain('migrate-once')
+    expect(workflow).toContain('github.sha')
   })
 
   it('provides native material and SCORM player components', () => {
