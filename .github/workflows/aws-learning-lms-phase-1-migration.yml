@@ -113,11 +113,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          IDS="$(aws ec2 describe-instances --region "$AWS_REGION" --filters 'Name=instance-state-name,Values=running' 'Name=tag:Name,Values=*staging*bootstrap*' --query 'Reservations[].Instances[].InstanceId' --output text)"
-          read -ra PARTS <<< "$IDS"
-          [[ "${#PARTS[@]}" -eq 1 ]]
-          echo "instance_id=${PARTS[0]}" >> "$GITHUB_OUTPUT"
-          echo "BOOTSTRAP_INSTANCE=${PARTS[0]}"
+          IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)
+          [[ "$(jq 'length' <<<"$IDS")" -eq 1 ]]
+          INSTANCE_ID="$(jq -r '.[0]' <<<"$IDS")"
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "BOOTSTRAP_INSTANCE=$INSTANCE_ID"
 
       - name: Run exact-head LMS Phase 1 migration over SSM
         if: steps.guard.outputs.action == 'migrate-once'
