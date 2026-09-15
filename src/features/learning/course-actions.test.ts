@@ -164,41 +164,65 @@ describe('learning course server actions', () => {
     ],
     [
       new CourseSubmissionReadinessError('course_section_empty', { sectionTitle: 'Module 1' }),
-      'Section “Module 1” needs at least one lesson.',
+      'Section “Module 1” needs at least one published material.',
     ],
     [
-      new CourseSubmissionReadinessError('course_lesson_content_missing', { lessonTitle: 'Inspection evidence', lessonType: 'article' }),
-      'Lesson “Inspection evidence” is missing required article content.',
+      new CourseSubmissionReadinessError('course_material_content_missing', { materialTitle: 'Inspection evidence', materialType: 'article' }),
+      'Material “Inspection evidence” is missing required article content.',
     ],
     [
-      new CourseSubmissionReadinessError('course_lesson_content_missing', { lessonTitle: 'Bridge walkthrough', lessonType: 'video' }),
-      'Lesson “Bridge walkthrough” needs an uploaded asset or external URL.',
+      new CourseSubmissionReadinessError('course_material_content_missing', { materialTitle: 'Bridge walkthrough', materialType: 'video' }),
+      'Material “Bridge walkthrough” needs its required content or uploaded file.',
     ],
     [
-      new CourseSubmissionReadinessError('course_activity_not_supported', { lessonTitle: 'Onboard task', lessonType: 'assignment' }),
-      'Lesson “Onboard task” uses assignment, which cannot be published until its native learner completion flow is connected.',
+      new CourseSubmissionReadinessError('course_material_content_missing', { materialTitle: 'OCIMF explainer', materialType: 'external_embed' }),
+      'Material “OCIMF explainer” needs an embeddable URL.',
     ],
     [
-      new CourseSubmissionReadinessError('course_quiz_missing', { lessonTitle: 'SIRE knowledge check' }),
+      new CourseSubmissionReadinessError('course_material_release_invalid', { materialTitle: 'Day 3 drill' }),
+      'Material “Day 3 drill” has an invalid release schedule.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_material_prerequisite_invalid', { materialTitle: 'Assessment' }),
+      'Material “Assessment” must depend on another published material in this course.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_material_completion_invalid', { materialTitle: 'Bridge walkthrough' }),
+      'Material “Bridge walkthrough” has a completion rule that does not match its material type.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_assignment_missing', { materialTitle: 'Onboard task' }),
+      'Assignment “Onboard task” needs instructions before submission.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_scorm_not_ready', { materialTitle: 'Interactive SIRE drill' }),
+      'SCORM material “Interactive SIRE drill” must finish processing successfully before submission.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_activity_not_supported', { materialTitle: 'Live mentor session', materialType: 'live_session' }),
+      'Material “Live mentor session” uses live session, which cannot be published until native attendance completion is connected.',
+    ],
+    [
+      new CourseSubmissionReadinessError('course_quiz_missing', { materialTitle: 'SIRE knowledge check' }),
       'Quiz “SIRE knowledge check” needs an assessment definition before submission.',
     ],
     [
-      new CourseSubmissionReadinessError('course_quiz_pass_invalid', { lessonTitle: 'SIRE knowledge check' }),
+      new CourseSubmissionReadinessError('course_quiz_pass_invalid', { materialTitle: 'SIRE knowledge check' }),
       'Quiz “SIRE knowledge check” needs a pass percentage from 1 to 100.',
     ],
     [
-      new CourseSubmissionReadinessError('course_quiz_questions_missing', { lessonTitle: 'SIRE knowledge check' }),
+      new CourseSubmissionReadinessError('course_quiz_questions_missing', { materialTitle: 'SIRE knowledge check' }),
       'Quiz “SIRE knowledge check” needs at least one question.',
     ],
     [
-      new CourseSubmissionReadinessError('course_quiz_options_invalid', { lessonTitle: 'SIRE knowledge check', questionNumber: 2 }),
+      new CourseSubmissionReadinessError('course_quiz_options_invalid', { materialTitle: 'SIRE knowledge check', questionNumber: 2 }),
       'Question 2 in quiz “SIRE knowledge check” needs at least two answer options.',
     ],
     [
-      new CourseSubmissionReadinessError('course_quiz_correct_answer_invalid', { lessonTitle: 'SIRE knowledge check', questionNumber: 3 }),
+      new CourseSubmissionReadinessError('course_quiz_correct_answer_invalid', { materialTitle: 'SIRE knowledge check', questionNumber: 3 }),
       'Question 3 in quiz “SIRE knowledge check” must have exactly one correct answer.',
     ],
-  ])('returns actionable curriculum readiness copy on submit', async (error, expectedCopy) => {
+  ])('returns actionable native material readiness copy on submit', async (error, expectedCopy) => {
     mocks.submitCourse.mockRejectedValueOnce(error)
 
     await expect(submitCourseForReview(courseId)).resolves.toEqual({
