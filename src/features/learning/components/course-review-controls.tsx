@@ -39,7 +39,7 @@ export function CourseReviewControls({
       const message = decision === 'changes_requested'
         ? 'Changes requested. The mentor can revise and resubmit the course.'
         : decision === 'approved'
-          ? 'Course approved. It is ready for final publishing.'
+          ? 'Course approved and published. It is now visible in Learn.'
           : decision === 'published'
             ? 'Course published. It is now eligible for the learning marketplace.'
             : 'Course archived. It has been removed from active marketplace circulation.'
