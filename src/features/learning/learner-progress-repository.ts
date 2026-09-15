@@ -112,7 +112,7 @@ async function courseProgress(
   }
 }
 
-async function finalizeEnrollmentIfComplete(
+export async function finalizeEnrollmentIfComplete(
   query: LearnerProgressQuery,
   enrollmentId: string,
   courseId: string,
