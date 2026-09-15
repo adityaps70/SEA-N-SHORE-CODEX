@@ -42,7 +42,9 @@ export function ResumableLessonMedia({
 
           if (next.position === lastPersistedPositionRef.current) continue
 
-          const result = await saveLearningPlaybackPosition(slug, lessonId, next.position, next.duration)
+          const result = next.duration === undefined
+            ? await saveLearningPlaybackPosition(slug, lessonId, next.position)
+            : await saveLearningPlaybackPosition(slug, lessonId, next.position, next.duration)
           if (result.ok) {
             lastPersistedPositionRef.current = wholeSeconds(result.lastPositionSeconds)
           }
