@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { LearnerQuiz } from '../learner-quiz-repository'
 
 const mocks = vi.hoisted(() => ({
   submitLearningQuiz: vi.fn(),
@@ -26,11 +27,13 @@ const questionTwoCorrectId = '99999999-9999-4999-8999-999999999991'
 const questionTwoWrongId = '99999999-9999-4999-8999-999999999992'
 const nextLessonHref = '/learn/courses/sire-2-readiness/learn?lesson=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
-const quiz = {
+const quiz: LearnerQuiz = {
   id: '55555555-5555-4555-8555-555555555555',
   lessonId,
   passPercentage: 70,
   instructions: 'Choose the best answer for each question.',
+  maxAttempts: null,
+  attemptsUsed: 0,
   questions: [
     {
       id: questionOneId,
