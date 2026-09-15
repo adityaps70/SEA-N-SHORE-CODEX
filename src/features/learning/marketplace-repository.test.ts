@@ -22,14 +22,14 @@ const publishedRow = {
   target_audience: ['Deck officers', 'Marine superintendents'],
   certificate_enabled: true,
   course_format: 'recorded',
-  access_type: 'free',
-  price_minor: 0,
+  access_type: 'paid',
+  price_minor: 2_000_000,
   currency: 'INR',
   published_at: new Date('2026-09-14T12:00:00.000Z'),
 }
 
 describe('learning marketplace repository', () => {
-  it('lists only published Phase 1 free courses from active verified mentors, newest first', async () => {
+  it('lists published courses from active verified mentors, including paid courses, newest first', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
       query: async (text: string, values?: readonly unknown[]) => {
@@ -56,8 +56,8 @@ describe('learning marketplace repository', () => {
       targetAudience: publishedRow.target_audience,
       certificateEnabled: true,
       courseFormat: 'recorded',
-      accessType: 'free',
-      priceMinor: 0,
+      accessType: 'paid',
+      priceMinor: 2_000_000,
       currency: 'INR',
       publishedAt: '2026-09-14T12:00:00.000Z',
     }])
@@ -67,8 +67,8 @@ describe('learning marketplace repository', () => {
     expect(query?.text).toContain("course.status = 'published'")
     expect(query?.text).toContain("mentor.status = 'active'")
     expect(query?.text).toContain("application.status = 'approved'")
-    expect(query?.text).toContain("course.access_type = 'free'")
-    expect(query?.text).toContain('course.price_minor = 0')
+    expect(query?.text).not.toContain("course.access_type = 'free'")
+    expect(query?.text).not.toContain('course.price_minor = 0')
     expect(query?.text).toContain('order by course.published_at desc, course.id desc')
   })
 
@@ -91,7 +91,7 @@ describe('learning marketplace repository', () => {
     expect(seen[0]?.text).toContain("course.status = 'published'")
   })
 
-  it('loads a published course by slug using the same mentor and Phase 1 visibility guards', async () => {
+  it('loads a published paid course by slug using the same mentor visibility guards', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
       query: async (text: string, values?: readonly unknown[]) => {
@@ -104,8 +104,8 @@ describe('learning marketplace repository', () => {
       id: courseId,
       slug: 'sire-2-readiness-for-tanker-officers',
       mentorName: 'Capt. Maya Singh',
-      accessType: 'free',
-      priceMinor: 0,
+      accessType: 'paid',
+      priceMinor: 2_000_000,
     })
 
     expect(seen[0]?.values).toEqual(['sire-2-readiness-for-tanker-officers'])
@@ -113,8 +113,8 @@ describe('learning marketplace repository', () => {
     expect(seen[0]?.text).toContain("course.status = 'published'")
     expect(seen[0]?.text).toContain("mentor.status = 'active'")
     expect(seen[0]?.text).toContain("application.status = 'approved'")
-    expect(seen[0]?.text).toContain("course.access_type = 'free'")
-    expect(seen[0]?.text).toContain('course.price_minor = 0')
+    expect(seen[0]?.text).not.toContain("course.access_type = 'free'")
+    expect(seen[0]?.text).not.toContain('course.price_minor = 0')
   })
 
   it('returns null when the published slug is not visible', async () => {
