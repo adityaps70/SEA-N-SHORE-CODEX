@@ -39,8 +39,9 @@ describe('learner assignment repository', () => {
       completed: false,
     })
     expect(query.mock.calls.some(([sql]) => String(sql).includes('learning_assignment_attempts'))).toBe(true)
-    expect(query.mock.calls.some(([sql]) => String(sql).includes('insert into public.learning_progress'))).toBe(true)
-    expect(query.mock.calls.some(([sql]) => String(sql).includes('completed = true'))).toBe(false)
+    const progressUpsert = query.mock.calls.find(([sql]) => String(sql).includes('insert into public.learning_progress'))
+    expect(progressUpsert).toBeTruthy()
+    expect(String(progressUpsert?.[0])).not.toContain('completed = true')
   })
 
   it('rejects a new submission while the previous attempt is still awaiting mentor grading', async () => {
