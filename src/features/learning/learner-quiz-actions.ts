@@ -10,6 +10,7 @@ import {
 
 const slugSchema = z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
 const lessonIdSchema = z.string().uuid()
+const submissionKeySchema = z.string().uuid()
 const quizAnswersSchema = z.array(z.object({
   questionId: z.string().uuid(),
   optionId: z.string().uuid(),
@@ -38,12 +39,14 @@ export async function submitLearningQuiz(
   slug: string,
   lessonId: string,
   answers: Array<{ questionId: string; optionId: string }>,
+  submissionKey: string,
 ): Promise<SubmitLearningQuizActionResult> {
   const parsedSlug = slugSchema.safeParse(slug)
   const parsedLessonId = lessonIdSchema.safeParse(lessonId)
   const parsedAnswers = quizAnswersSchema.safeParse(answers)
+  const parsedSubmissionKey = submissionKeySchema.safeParse(submissionKey)
 
-  if (!parsedSlug.success || !parsedLessonId.success || !parsedAnswers.success) {
+  if (!parsedSlug.success || !parsedLessonId.success || !parsedAnswers.success || !parsedSubmissionKey.success) {
     return { ok: false, error: 'Invalid quiz submission.' }
   }
 
@@ -54,6 +57,7 @@ export async function submitLearningQuiz(
       parsedSlug.data,
       parsedLessonId.data,
       parsedAnswers.data,
+      parsedSubmissionKey.data,
     )
 
     revalidatePath('/learn/my-learning')
