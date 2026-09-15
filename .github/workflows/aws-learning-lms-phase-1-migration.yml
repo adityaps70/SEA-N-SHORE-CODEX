@@ -1,0 +1,137 @@
+name: AWS Learning LMS Phase 1 Migration
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - 'infra/aws/database/migrations/0019_learning_lms_phase_1.sql'
+      - 'scripts/aws/learning-lms-phase-1-migration.sh'
+      - 'scripts/aws/learning-lms-phase-1-migration-action.txt'
+      - 'scripts/aws/learning-lms-phase-1-migration.test.mjs'
+      - '.github/workflows/aws-learning-lms-phase-1-migration.yml'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+env:
+  AWS_REGION: ap-south-1
+  EXPECTED_ACCOUNT: '310356785722'
+  BRANCH: feat/aws-native-phase-0-1
+  DEPLOY_ROLE: arn:aws:iam::310356785722:role/sea-n-shore-staging-github-deploy
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Validate guard
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(tr -d '[:space:]' < scripts/aws/learning-lms-phase-1-migration-action.txt)"
+          case "$ACTION" in
+            plan|migrate-once) ;;
+            *) echo "Unsupported action: $ACTION" >&2; exit 1 ;;
+          esac
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "LMS_PHASE_1_MIGRATION_ACTION=$ACTION"
+
+      - name: Plan-only guard status
+        if: steps.guard.outputs.action == 'plan'
+        run: echo 'LMS Phase 1 migration is plan-only; no AWS write is permitted.'
+
+      - name: Require exact branch push for migration
+        if: steps.guard.outputs.action == 'migrate-once'
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${{ github.event_name }}" == "push" ]]
+          [[ "${{ github.ref }}" == "refs/heads/${BRANCH}" ]]
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        if: steps.guard.outputs.action == 'migrate-once'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            JSON="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100")"
+            ROW="$(jq -c '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0] // empty' <<<"$JSON")"
+            if [[ -n "$ROW" ]]; then
+              STATUS="$(jq -r '.status' <<<"$ROW")"
+              CONCLUSION="$(jq -r '.conclusion // ""' <<<"$ROW")"
+              echo "AWS Infrastructure CI status=$STATUS conclusion=$CONCLUSION"
+              if [[ "$STATUS" == "completed" ]]; then
+                [[ "$CONCLUSION" == "success" ]]
+                exit 0
+              fi
+            fi
+            sleep 10
+          done
+          echo 'Timed out waiting for exact-head AWS Infrastructure CI.' >&2
+          exit 1
+
+      - name: Guard moved branch
+        if: steps.guard.outputs.action == 'migrate-once'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$BRANCH" --quiet
+          [[ "$(git rev-parse "origin/$BRANCH")" == "$GITHUB_SHA" ]]
+
+      - name: Configure AWS credentials
+        if: steps.guard.outputs.action == 'migrate-once'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Assert AWS account
+        if: steps.guard.outputs.action == 'migrate-once'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT" == "$EXPECTED_ACCOUNT" ]]
+          echo "AWS_ACCOUNT_VERIFIED=$ACCOUNT"
+
+      - name: Discover staging bootstrap
+        if: steps.guard.outputs.action == 'migrate-once'
+        id: bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          IDS="$(aws ec2 describe-instances --region "$AWS_REGION" --filters 'Name=instance-state-name,Values=running' 'Name=tag:Name,Values=*staging*bootstrap*' --query 'Reservations[].Instances[].InstanceId' --output text)"
+          read -ra PARTS <<< "$IDS"
+          [[ "${#PARTS[@]}" -eq 1 ]]
+          echo "instance_id=${PARTS[0]}" >> "$GITHUB_OUTPUT"
+          echo "BOOTSTRAP_INSTANCE=${PARTS[0]}"
+
+      - name: Run exact-head LMS Phase 1 migration over SSM
+        if: steps.guard.outputs.action == 'migrate-once'
+        env:
+          INSTANCE_ID: ${{ steps.bootstrap.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE="set -euo pipefail; cd /home/ssm-user/sea-n-shore-staging; git fetch origin ${BRANCH}; git checkout --detach ${GITHUB_SHA}; export LEARNING_LMS_PHASE_1_MIGRATION_EXPECTED_SHA=${GITHUB_SHA}; export AWS_REGION=${AWS_REGION}; bash scripts/aws/learning-lms-phase-1-migration.sh"
+          PARAMS="$(jq -nc --arg cmd "runuser -u ssm-user -- bash -lc $(printf '%q' "$REMOTE")" '{commands:[$cmd]}')"
+          COMMAND_ID="$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --parameters "$PARAMS" --timeout-seconds 900 --query Command.CommandId --output text)"
+          aws ssm wait command-executed --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID"
+          OUTPUT="$(aws ssm get-command-invocation --region "$AWS_REGION" --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --output json)"
+          echo "$OUTPUT" | jq -r '.StandardOutputContent'
+          echo "$OUTPUT" | jq -r '.StandardErrorContent' >&2
+          [[ "$(jq -r '.Status' <<<"$OUTPUT")" == "Success" ]]
+          grep -q 'LEARNING_LMS_PHASE_1_MIGRATION_APPLY_VERIFIED=true\|LEARNING_LMS_PHASE_1_MIGRATION_ALREADY_APPLIED=true' <<<"$(jq -r '.StandardOutputContent' <<<"$OUTPUT")"
