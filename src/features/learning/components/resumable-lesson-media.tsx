@@ -27,7 +27,7 @@ export function ResumableLessonMedia({
 }: ResumableLessonMediaProps) {
   const mediaRef = useRef<HTMLMediaElement | null>(null)
   const lastPersistedPositionRef = useRef(wholeSeconds(initialPositionSeconds))
-  const queuedPositionRef = useRef<number | null>(null)
+  const queuedPositionRef = useRef<{ position: number; duration?: number } | null>(null)
   const savingRef = useRef(false)
 
   const flushQueuedPosition = useCallback(() => {
@@ -37,12 +37,12 @@ export function ResumableLessonMedia({
     void (async () => {
       try {
         while (queuedPositionRef.current !== null) {
-          const nextPosition = queuedPositionRef.current
+          const next = queuedPositionRef.current
           queuedPositionRef.current = null
 
-          if (nextPosition === lastPersistedPositionRef.current) continue
+          if (next.position === lastPersistedPositionRef.current) continue
 
-          const result = await saveLearningPlaybackPosition(slug, lessonId, nextPosition)
+          const result = await saveLearningPlaybackPosition(slug, lessonId, next.position, next.duration)
           if (result.ok) {
             lastPersistedPositionRef.current = wholeSeconds(result.lastPositionSeconds)
           }
@@ -53,11 +53,16 @@ export function ResumableLessonMedia({
     })()
   }, [lessonId, slug])
 
-  const queuePosition = useCallback((positionSeconds: number) => {
+  const queuePosition = useCallback((positionSeconds: number, durationSeconds?: number) => {
     const normalizedPosition = wholeSeconds(positionSeconds)
     if (normalizedPosition === lastPersistedPositionRef.current && queuedPositionRef.current === null) return
 
-    queuedPositionRef.current = normalizedPosition
+    queuedPositionRef.current = {
+      position: normalizedPosition,
+      duration: durationSeconds && Number.isFinite(durationSeconds) && durationSeconds > 0
+        ? durationSeconds
+        : undefined,
+    }
     flushQueuedPosition()
   }, [flushQueuedPosition])
 
@@ -84,13 +89,19 @@ export function ResumableLessonMedia({
 
     const currentPosition = wholeSeconds(media.currentTime)
     if (Math.abs(currentPosition - lastPersistedPositionRef.current) < CHECKPOINT_SECONDS) return
-    queuePosition(currentPosition)
+    queuePosition(currentPosition, media.duration)
   }, [queuePosition])
 
   const handlePause = useCallback(() => {
     const media = mediaRef.current
     if (!media) return
-    queuePosition(media.currentTime)
+    queuePosition(media.currentTime, media.duration)
+  }, [queuePosition])
+
+  const handleEnded = useCallback(() => {
+    const media = mediaRef.current
+    if (!media) return
+    queuePosition(media.duration || media.currentTime, media.duration)
   }, [queuePosition])
 
   const sharedProps = {
@@ -100,6 +111,7 @@ export function ResumableLessonMedia({
     onLoadedMetadata: handleLoadedMetadata,
     onTimeUpdate: handleTimeUpdate,
     onPause: handlePause,
+    onEnded: handleEnded,
   }
 
   if (kind === 'video') {
