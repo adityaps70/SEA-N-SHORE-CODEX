@@ -28,13 +28,16 @@ rds_sql() {
 
 MENTOR_SQL=$(cat <<'SQL'
 select p.id::text, m.id::text
-from public.profiles p
+from public.identity_accounts ia
+inner join public.profiles p
+  on p.id = ia.profile_id
 inner join public.learning_mentors m
   on m.user_id = p.id
 inner join public.learning_mentor_applications a
   on a.id = m.application_id
  and a.user_id = p.id
-where lower(p.email) = lower('adityaps700@gmail.com')
+where ia.provider = 'cognito'
+  and lower(ia.email) = lower('adityaps700@gmail.com')
   and a.status = 'approved'
   and m.status = 'active'
 SQL
@@ -259,10 +262,10 @@ select c.id::text, c.status, c.thumbnail_path,
 from public.learning_courses c
 inner join public.learning_mentors m on m.id = c.mentor_id and m.status = 'active'
 inner join public.learning_mentor_applications a on a.id = m.application_id and a.status = 'approved'
-inner join public.profiles p on p.id = m.user_id
+inner join public.identity_accounts ia on ia.profile_id = m.user_id and ia.provider = 'cognito'
 left join public.learning_course_sections s on s.course_id = c.id
 left join public.learning_lessons l on l.section_id = s.id
-where c.slug = '$COURSE_SLUG' and c.mentor_id = '$MENTOR_ID' and lower(p.email) = lower('$MENTOR_EMAIL')
+where c.slug = '$COURSE_SLUG' and c.mentor_id = '$MENTOR_ID' and lower(ia.email) = lower('$MENTOR_EMAIL')
 group by c.id, c.status, c.thumbnail_path
 SQL
 )
