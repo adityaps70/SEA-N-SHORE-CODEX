@@ -28,7 +28,9 @@ describe('learner assignment repository', () => {
       responseText: 'My inspection-readiness response',
       attachmentPath: null,
     })
+    const submittedStatus: 'submitted' = result.status
 
+    expect(submittedStatus).toBe('submitted')
     expect(result).toEqual({
       attemptId: 'attempt-1',
       attemptNumber: 1,
