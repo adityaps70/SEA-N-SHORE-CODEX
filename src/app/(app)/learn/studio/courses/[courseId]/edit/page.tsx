@@ -6,7 +6,7 @@ import { CourseForm } from '@/features/learning/components/course-form'
 import { CourseSubmitControl } from '@/features/learning/components/course-submit-control'
 import { MentorCurriculumEditor } from '@/features/learning/components/mentor-curriculum-editor'
 import { courseRepository, type CourseDraftInput } from '@/features/learning/course-repository'
-import { mentorCurriculumRepository } from '@/features/learning/mentor-curriculum-repository'
+import { mentorMaterialRepository } from '@/features/learning/mentor-material-repository'
 import { learningRepository } from '@/features/learning/repository'
 
 export default async function EditMentorCoursePage({
@@ -29,7 +29,7 @@ export default async function EditMentorCoursePage({
     return redirect('/learn/studio')
   }
 
-  const curriculum = await mentorCurriculumRepository.getCurriculum(user.id, courseId)
+  const curriculum = await mentorMaterialRepository.getCurriculum(user.id, courseId)
   if (!curriculum) return notFound()
 
   const initialValue: CourseDraftInput = {
