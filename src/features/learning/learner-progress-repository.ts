@@ -139,7 +139,11 @@ export async function completeLearningLessonWithQuery(
   learnerId: string,
   slug: string,
   lessonId: string,
+  manualCompletionOnly = false,
 ) {
+  const manualRuleSql = manualCompletionOnly
+    ? "and lesson.completion_rule in ('manual', 'view')"
+    : ''
   const accessRows = await query(
     `select
        enrollment.id as enrollment_id,
@@ -166,7 +170,7 @@ export async function completeLearningLessonWithQuery(
        and course.slug = $2
        and lesson.id = $3
        and enrollment.status in ('active', 'completed')
-       and lesson.completion_rule in ('manual', 'view')
+       ${manualRuleSql}
        ${accessPolicySql}
      for update of enrollment`,
     [learnerId, slug, lessonId],
@@ -213,7 +217,7 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
   const transaction = input.transaction ?? runtimeTransaction
 
   async function completeLesson(learnerId: string, slug: string, lessonId: string) {
-    return transaction((query) => completeLearningLessonWithQuery(query, learnerId, slug, lessonId))
+    return transaction((query) => completeLearningLessonWithQuery(query, learnerId, slug, lessonId, true))
   }
 
   async function savePlaybackPosition(
@@ -272,8 +276,23 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
         && duration > 0
         && mediaPercent >= threshold
 
-      const positionSql = autoComplete
-        ? `insert into public.learning_progress (
+      let positionRows: PlaybackPositionRow[]
+      if (duration <= 0) {
+        positionRows = await query(
+          `insert into public.learning_progress (
+             enrollment_id, lesson_id, last_position_seconds, first_started_at, viewed_at, updated_at
+           ) values ($1, $2, $3, now(), now(), now())
+           on conflict (enrollment_id, lesson_id) do update
+           set last_position_seconds = excluded.last_position_seconds,
+               first_started_at = coalesce(public.learning_progress.first_started_at, excluded.first_started_at),
+               viewed_at = coalesce(public.learning_progress.viewed_at, excluded.viewed_at),
+               updated_at = now()
+           returning last_position_seconds, media_percent, completed`,
+          [accessible.enrollment_id, accessible.lesson_id, positionSeconds],
+        ) as PlaybackPositionRow[]
+      } else if (autoComplete) {
+        positionRows = await query(
+          `insert into public.learning_progress (
              enrollment_id, lesson_id, last_position_seconds, first_started_at, viewed_at, media_percent, completed, completed_at, updated_at
            ) values ($1, $2, $3, now(), now(), $4, true, now(), now())
            on conflict (enrollment_id, lesson_id) do update
@@ -284,8 +303,12 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
                completed = true,
                completed_at = coalesce(public.learning_progress.completed_at, excluded.completed_at),
                updated_at = now()
-           returning last_position_seconds, media_percent, completed`
-        : `insert into public.learning_progress (
+           returning last_position_seconds, media_percent, completed`,
+          [accessible.enrollment_id, accessible.lesson_id, positionSeconds, mediaPercent],
+        ) as PlaybackPositionRow[]
+      } else {
+        positionRows = await query(
+          `insert into public.learning_progress (
              enrollment_id, lesson_id, last_position_seconds, first_started_at, viewed_at, media_percent, updated_at
            ) values ($1, $2, $3, now(), now(), $4, now())
            on conflict (enrollment_id, lesson_id) do update
@@ -294,12 +317,10 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
                viewed_at = coalesce(public.learning_progress.viewed_at, excluded.viewed_at),
                media_percent = greatest(public.learning_progress.media_percent, excluded.media_percent),
                updated_at = now()
-           returning last_position_seconds, media_percent, completed`
-
-      const positionRows = await query(
-        positionSql,
-        [accessible.enrollment_id, accessible.lesson_id, positionSeconds, mediaPercent],
-      ) as PlaybackPositionRow[]
+           returning last_position_seconds, media_percent, completed`,
+          [accessible.enrollment_id, accessible.lesson_id, positionSeconds, mediaPercent],
+        ) as PlaybackPositionRow[]
+      }
 
       const position = positionRows[0]
       if (!position) throw new Error('playback_position_save_failed')
