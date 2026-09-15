@@ -39,7 +39,7 @@ vi.mock('@/features/learning/components/enroll-free-control', () => ({
 
 import PublishedCoursePage from './page'
 
-const course: MarketplaceCourse = {
+const freeCourse: MarketplaceCourse = {
   id: '11111111-1111-4111-8111-111111111111',
   mentorId: '22222222-2222-4222-8222-222222222222',
   mentorName: 'Capt. Maya Singh',
@@ -66,26 +66,35 @@ const course: MarketplaceCourse = {
   publishedAt: '2026-09-14T12:00:00.000Z',
 }
 
+const paidCourse: MarketplaceCourse = {
+  ...freeCourse,
+  id: '44444444-4444-4444-8444-444444444444',
+  slug: 'sire-2-paid-masterclass',
+  title: 'SIRE 2.0 Paid Masterclass',
+  accessType: 'paid',
+  priceMinor: 2_000_000,
+}
+
 afterEach(() => cleanup())
 
 describe('/learn/courses/[slug]', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.getPublishedCourseBySlug.mockResolvedValue(course)
+    mocks.getPublishedCourseBySlug.mockResolvedValue(freeCourse)
     mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
     mocks.getLearnerEnrollment.mockResolvedValue(null)
   })
 
   it('loads the published course by slug and presents its verified maritime learning evidence', async () => {
-    render(await PublishedCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
 
-    expect(mocks.getPublishedCourseBySlug).toHaveBeenCalledWith(course.slug)
+    expect(mocks.getPublishedCourseBySlug).toHaveBeenCalledWith(freeCourse.slug)
     expect(mocks.requireAwsUser).toHaveBeenCalledOnce()
-    expect(mocks.getLearnerEnrollment).toHaveBeenCalledWith('learner-1', course.id)
+    expect(mocks.getLearnerEnrollment).toHaveBeenCalledWith('learner-1', freeCourse.id)
     expect(screen.getByRole('link', { name: 'Explore courses' })).toHaveAttribute('href', '/learn')
-    expect(screen.getByRole('heading', { name: course.title })).toBeInTheDocument()
-    expect(screen.getByText(course.subtitle!)).toBeInTheDocument()
-    expect(screen.getByText(course.description)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: freeCourse.title })).toBeInTheDocument()
+    expect(screen.getByText(freeCourse.subtitle!)).toBeInTheDocument()
+    expect(screen.getByText(freeCourse.description)).toBeInTheDocument()
     expect(screen.getByText('Capt. Maya Singh')).toBeInTheDocument()
     expect(screen.getByText('Verified mentor')).toBeInTheDocument()
     expect(screen.getByText('SIRE 2.0')).toBeInTheDocument()
@@ -97,10 +106,10 @@ describe('/learn/courses/[slug]', () => {
   })
 
   it('offers real free enrollment without fabricating curriculum for a learner who has not enrolled', async () => {
-    render(await PublishedCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
 
     const control = screen.getByTestId('enroll-free-control')
-    expect(control).toHaveAttribute('data-course-id', course.id)
+    expect(control).toHaveAttribute('data-course-id', freeCourse.id)
     expect(within(control).getByRole('button', { name: 'Enroll free' })).toBeInTheDocument()
 
     const outcomes = screen.getByRole('region', { name: 'What you will learn' })
@@ -119,6 +128,18 @@ describe('/learn/courses/[slug]', () => {
     expect(screen.queryByText('Course curriculum')).not.toBeInTheDocument()
   })
 
+  it('shows the configured price for a paid published course without offering free enrollment', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce(paidCourse)
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
+
+    expect(screen.getByRole('heading', { name: paidCourse.title })).toBeInTheDocument()
+    expect(screen.getByText('₹20,000')).toBeInTheDocument()
+    expect(screen.getByText('Paid enrollment is not available yet.')).toBeInTheDocument()
+    expect(screen.queryByTestId('enroll-free-control')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Enroll free' })).not.toBeInTheDocument()
+  })
+
   it('shows the persisted enrolled state instead of another enrollment action', async () => {
     mocks.getLearnerEnrollment.mockResolvedValueOnce({
       enrollmentId: '33333333-3333-4333-8333-333333333333',
@@ -129,7 +150,7 @@ describe('/learn/courses/[slug]', () => {
       revokedAt: null,
     })
 
-    render(await PublishedCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
 
     expect(screen.getByText('You are enrolled in this course.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Enroll free' })).not.toBeInTheDocument()
