@@ -99,16 +99,20 @@ export async function saveLearningPlaybackPosition(
 
   try {
     const user = await requireAwsUser()
-    const result = await learnerProgressRepository.savePlaybackPosition(
-      user.id,
-      parsedSlug.data,
-      parsedLessonId.data,
-      parsedPosition.data,
-      parsedDuration.data,
-    )
-
-    revalidatePath('/learn/my-learning')
-    revalidatePath(`/learn/courses/${parsedSlug.data}/learn`)
+    const result = parsedDuration.data === undefined
+      ? await learnerProgressRepository.savePlaybackPosition(
+          user.id,
+          parsedSlug.data,
+          parsedLessonId.data,
+          parsedPosition.data,
+        )
+      : await learnerProgressRepository.savePlaybackPosition(
+          user.id,
+          parsedSlug.data,
+          parsedLessonId.data,
+          parsedPosition.data,
+          parsedDuration.data,
+        )
 
     return {
       ok: true,
