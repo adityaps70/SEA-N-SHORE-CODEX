@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { createCourseDraft, updateCourseDraft } from '../course-actions'
 import type { CourseDraftInput } from '../course-repository'
+import { LearningMediaUploadField } from './learning-media-upload-field'
 
 type Props = {
   initialValue: CourseDraftInput
@@ -19,6 +20,8 @@ type FormState = {
   category: string
   level: CourseDraftInput['level']
   language: string
+  thumbnailPath: string | null
+  trailerPath: string | null
   learningOutcomes: string
   requirements: string
   targetAudience: string
@@ -55,6 +58,8 @@ function toFormState(value: CourseDraftInput): FormState {
     category: value.category,
     level: value.level,
     language: value.language,
+    thumbnailPath: value.thumbnailPath,
+    trailerPath: value.trailerPath,
     learningOutcomes: value.learningOutcomes.join(', '),
     requirements: value.requirements.join(', '),
     targetAudience: value.targetAudience.join(', '),
@@ -109,8 +114,8 @@ export function CourseForm({ initialValue, courseId }: Props) {
       category: form.category,
       level: form.level,
       language: form.language,
-      thumbnailPath: initialValue.thumbnailPath,
-      trailerPath: initialValue.trailerPath,
+      thumbnailPath: form.thumbnailPath,
+      trailerPath: form.trailerPath,
       learningOutcomes: normalizedList(form.learningOutcomes),
       requirements: normalizedList(form.requirements),
       targetAudience: normalizedList(form.targetAudience),
@@ -197,6 +202,36 @@ export function CourseForm({ initialValue, courseId }: Props) {
           </label>
         </div>
       </section>
+
+      {courseId ? (
+        <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Course media</p>
+          <h2 className="mt-1 text-xl font-bold text-navy-950">Make the course easy to recognise and preview</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">Upload directly from your device. Media stays private in Sea N Shore storage and is verified before its path can be saved.</p>
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <LearningMediaUploadField
+              courseId={courseId}
+              kind="course_thumbnail"
+              label="Course thumbnail"
+              inputAriaLabel="Course thumbnail file"
+              value={form.thumbnailPath}
+              onChange={(value) => update('thumbnailPath', value)}
+              accept="image/jpeg,image/png,image/webp"
+              previewType="image"
+            />
+            <LearningMediaUploadField
+              courseId={courseId}
+              kind="course_trailer"
+              label="Course trailer"
+              inputAriaLabel="Course trailer file"
+              value={form.trailerPath}
+              onChange={(value) => update('trailerPath', value)}
+              accept="video/mp4,video/webm"
+              previewType="video"
+            />
+          </div>
+        </section>
+      ) : null}
 
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Learning design</p>
