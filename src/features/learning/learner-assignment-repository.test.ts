@@ -13,7 +13,15 @@ describe('learner assignment repository', () => {
       }])
       .mockResolvedValueOnce([{ id: 'attempt-1', attempt_number: 1 }])
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{
+        enrollment_id: 'enrollment-1',
+        enrollment_status: 'active',
+        course_id: 'course-1',
+        lesson_id: 'lesson-1',
+        completion_rule: 'assignment_submit',
+      }])
+      .mockResolvedValueOnce([{ completed_at: new Date('2026-09-15T12:00:00.000Z') }])
+      .mockResolvedValueOnce([{ total_lessons: 2, completed_lessons: 1 }])
 
     const repository = createLearnerAssignmentRepository({
       transaction: async (work) => work(query),
@@ -24,8 +32,15 @@ describe('learner assignment repository', () => {
       attachmentPath: null,
     })
 
-    expect(result).toMatchObject({ attemptId: 'attempt-1', attemptNumber: 1, completed: true })
+    expect(result).toMatchObject({
+      attemptId: 'attempt-1',
+      attemptNumber: 1,
+      completed: true,
+      enrollmentCompleted: false,
+      progressPercent: 50,
+    })
     expect(query.mock.calls.some(([sql]) => String(sql).includes('learning_assignment_attempts'))).toBe(true)
+    expect(query.mock.calls.some(([sql]) => String(sql).includes('insert into public.learning_progress'))).toBe(true)
   })
 
   it('rejects submissions when mentor-configured attempt limit is exhausted', async () => {
