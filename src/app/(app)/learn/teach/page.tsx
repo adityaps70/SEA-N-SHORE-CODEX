@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { ArrowLeft, CheckCircle2, Clock3, ShieldAlert, Sparkles } from 'lucide-react'
+import { redirect } from 'next/navigation'
+import { ArrowLeft, Clock3, ShieldAlert, Sparkles } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MentorApplicationForm } from '@/features/learning/components/mentor-application-form'
 import type { MentorApplicationInput } from '@/features/learning/mentor-application'
@@ -65,6 +66,10 @@ export default async function TeachPage() {
   const user = await requireAwsUser()
   const state = await learningRepository.getMentorApplicationState(user.id)
 
+  if (state.kind === 'mentor' && state.mentorStatus === 'active') {
+    redirect('/learn/studio')
+  }
+
   let content: React.ReactNode
 
   if (state.kind === 'none') {
@@ -79,15 +84,6 @@ export default async function TeachPage() {
         title="Complete your Sea N Shore profile before applying"
         copy="Your mentor application is connected to your verified Sea N Shore identity. Complete your professional profile first so your maritime rank, experience and vessel background can be carried into the application safely."
         icon={ShieldAlert}
-      />
-    )
-  } else if (state.kind === 'mentor' && state.mentorStatus === 'active') {
-    content = (
-      <StatusCard
-        eyebrow="Mentor approved"
-        title="You are an approved Sea N Shore mentor"
-        copy="Your verified mentor access is active. Mentor Studio is the workspace for building courses, organizing lessons and submitting learning experiences for Sea N Shore review before publication."
-        icon={CheckCircle2}
       />
     )
   } else if (state.kind === 'mentor' && state.mentorStatus === 'suspended') {
