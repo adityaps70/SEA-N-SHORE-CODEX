@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   submitLearningQuiz: vi.fn(),
@@ -94,6 +94,7 @@ function attemptResult(attemptNumber: number, passed: boolean) {
 
 describe('QuizLessonActivity resilience', () => {
   beforeEach(() => vi.clearAllMocks())
+  afterEach(() => cleanup())
 
   it('reuses one submission UUID after a transient action error so a network retry cannot consume another attempt', async () => {
     mocks.submitLearningQuiz
