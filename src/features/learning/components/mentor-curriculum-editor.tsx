@@ -35,6 +35,7 @@ import type {
   MentorQuizDefinition,
   MentorQuizDefinitionInput,
 } from '../mentor-curriculum-repository'
+import { LearningMediaUploadField } from './learning-media-upload-field'
 
 type Props = {
   courseId: string
@@ -78,8 +79,7 @@ const lessonTypeOptions: Array<{ value: MentorLessonType; label: string }> = [
   { value: 'live_session', label: 'Live session · not publishable yet' },
 ]
 
-const sourceLessonTypes = new Set<MentorLessonType>([
-  'video',
+const legacyAssetLessonTypes = new Set<MentorLessonType>([
   'audio',
   'pdf',
   'presentation_document',
@@ -180,10 +180,12 @@ function moveArrayItem<T>(items: T[], index: number, direction: 'up' | 'down') {
 }
 
 function LessonFields({
+  courseId,
   prefix,
   form,
   setForm,
 }: {
+  courseId: string
   prefix: 'New' | 'Edit'
   form: LessonFormState
   setForm: (updater: (current: LessonFormState) => LessonFormState) => void
@@ -241,7 +243,32 @@ function LessonFields({
         </label>
       ) : null}
 
-      {sourceLessonTypes.has(form.lessonType) ? (
+      {form.lessonType === 'video' ? (
+        <div className="grid gap-4">
+          <LearningMediaUploadField
+            courseId={courseId}
+            kind="lesson_video"
+            label="Lesson video"
+            inputAriaLabel={`${prefix} lesson video file`}
+            value={form.assetPath.trim() || null}
+            onChange={(storagePath) => update('assetPath', storagePath ?? '')}
+            accept="video/mp4,video/webm"
+            previewType="video"
+          />
+          <label className="text-sm font-semibold text-navy-950">
+            Use external URL instead <span className="font-normal text-muted">(optional if a video is uploaded)</span>
+            <input
+              aria-label={`${prefix} lesson external URL`}
+              className={inputClassName()}
+              value={form.externalUrl}
+              onChange={(event) => update('externalUrl', event.target.value)}
+              placeholder="https://"
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {legacyAssetLessonTypes.has(form.lessonType) ? (
         <div className="grid gap-4 md:grid-cols-2">
           <label className="text-sm font-semibold text-navy-950">
             Uploaded asset path <span className="font-normal text-muted">(optional if URL is used)</span>
@@ -732,7 +759,7 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
 
                   {editingLessonId === lesson.id ? (
                     <div className="mt-4 border-t border-mist-100 pt-4">
-                      <LessonFields prefix="Edit" form={editingLesson} setForm={setEditingLesson} />
+                      <LessonFields courseId={courseId} prefix="Edit" form={editingLesson} setForm={setEditingLesson} />
                       <div className="mt-4 flex justify-end gap-2">
                         <button type="button" onClick={() => setEditingLessonId(null)} className="rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-muted">Cancel</button>
                         <button type="button" disabled={pending} onClick={() => runAction(() => updateCurriculumLesson(courseId, lesson.id, lessonPayload(editingLesson)), 'Lesson changes saved.', () => setEditingLessonId(null))} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"><Save className="size-4" /> Save lesson changes</button>
@@ -773,7 +800,7 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
                     <h4 className="font-bold text-navy-950">Add lesson</h4>
                     <button type="button" aria-label={`Close add lesson for ${section.title}`} onClick={() => setAddingLessonSectionId(null)} className="rounded-lg p-2 text-muted"><X className="size-4" /></button>
                   </div>
-                  <div className="mt-4"><LessonFields prefix="New" form={newLesson} setForm={setNewLesson} /></div>
+                  <div className="mt-4"><LessonFields courseId={courseId} prefix="New" form={newLesson} setForm={setNewLesson} /></div>
                   <div className="mt-4 flex justify-end">
                     <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"><Plus className="size-4" /> Create lesson</button>
                   </div>

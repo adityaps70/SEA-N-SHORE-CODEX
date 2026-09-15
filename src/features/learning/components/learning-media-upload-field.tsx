@@ -1,4 +1,5 @@
 'use client'
+/* eslint-disable @next/next/no-img-element -- Upload previews may be blob: URLs or short-lived signed S3 URLs, which are not appropriate for next/image. */
 
 import { useEffect, useRef, useState } from 'react'
 import { ImageIcon, Loader2, PlayCircle, Trash2, UploadCloud } from 'lucide-react'
