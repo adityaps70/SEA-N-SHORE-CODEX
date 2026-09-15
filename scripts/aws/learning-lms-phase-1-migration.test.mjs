@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const sql = fs.readFileSync('infra/aws/database/migrations/0019_learning_lms_phase_1.sql', 'utf8')
+const script = fs.readFileSync('scripts/aws/learning-lms-phase-1-migration.sh', 'utf8')
+const guard = fs.readFileSync('scripts/aws/learning-lms-phase-1-migration-action.txt', 'utf8').trim()
+const workflow = fs.readFileSync('.github/workflows/aws-learning-lms-phase-1-migration.yml', 'utf8')
+
+assert.equal(guard, 'plan')
+assert.match(sql, /navigation_mode/)
+assert.match(sql, /learning_scorm_packages/)
+assert.match(sql, /learning_scorm_attempts/)
+assert.match(sql, /learning_assignments/)
+assert.match(sql, /learning_assignment_attempts/)
+assert.match(sql, /release_mode/)
+assert.match(sql, /max_attempts/)
+assert.match(script, /310356785722/)
+assert.match(script, /migrate-once/)
+assert.match(script, /LEARNING_LMS_PHASE_1_MIGRATION_APPLY_VERIFIED=true/)
+assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.match(workflow, /AWS Infrastructure CI/)
+assert.match(workflow, /310356785722/)
+assert.match(workflow, /migrate-once/)
+assert.match(workflow, /github\.sha/)
+assert.doesNotMatch(script, /992382634586/)
+assert.doesNotMatch(workflow, /992382634586/)
+
+console.log('LEARNING_LMS_PHASE_1_MIGRATION_CONTRACT_VERIFIED=true')
