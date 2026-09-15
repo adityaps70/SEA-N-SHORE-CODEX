@@ -44,8 +44,8 @@ const course: MarketplaceCourse = {
   targetAudience: ['Deck officers', 'Marine superintendents'],
   certificateEnabled: true,
   courseFormat: 'recorded',
-  accessType: 'free',
-  priceMinor: 0,
+  accessType: 'paid',
+  priceMinor: 2_000_000,
   currency: 'INR',
   publishedAt: '2026-09-14T12:00:00.000Z',
 }
@@ -76,7 +76,7 @@ describe('/learn marketplace', () => {
     mocks.listPublishedCourses.mockResolvedValue([course])
   })
 
-  it('renders real published courses from verified maritime mentors', async () => {
+  it('renders real published courses from verified maritime mentors with their configured price', async () => {
     await renderLearnPage()
 
     expect(mocks.listPublishedCourses).toHaveBeenCalledWith({ category: null, search: null })
@@ -91,7 +91,8 @@ describe('/learn marketplace', () => {
     expect(screen.getByText('SIRE 2.0')).toBeInTheDocument()
     expect(screen.getByText('Advanced')).toBeInTheDocument()
     expect(screen.getByText('Recorded')).toBeInTheDocument()
-    expect(screen.getByText('Free')).toBeInTheDocument()
+    expect(screen.getByText('₹20,000')).toBeInTheDocument()
+    expect(screen.queryByText('Free')).not.toBeInTheDocument()
     expect(screen.getByText('Certificate')).toBeInTheDocument()
     expect(screen.getByText('Prepare evidence for SIRE 2.0 interviews')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Teach on Sea N Shore' })).toHaveAttribute('href', '/learn/teach')
