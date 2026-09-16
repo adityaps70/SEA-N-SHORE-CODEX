@@ -61,6 +61,20 @@ test('run-once uses disposable authenticated users and the live learner and ment
   assert.match(browserScript, /Unlocked after mentor pass/)
 })
 
+test('mentor review navigation uses DOM readiness instead of waiting for network idle', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const mentorReviewMatch = browserScript.match(
+    /async function mentorReview\(\) \{([\s\S]*?)\n\}\n\nasync function learnerVerify/,
+  )
+
+  assert.ok(mentorReviewMatch, 'mentorReview flow must remain discoverable in the staging E2E script')
+  const mentorReviewSource = mentorReviewMatch[1]
+  assert.match(mentorReviewSource, /\/learn\/studio/)
+  assert.match(mentorReviewSource, /waitUntil:\s*'domcontentloaded'/)
+  assert.doesNotMatch(mentorReviewSource, /waitUntil:\s*'networkidle'/)
+  assert.match(mentorReviewSource, /Mentor Studio/)
+})
+
 test('fixture setup is prefix-constrained and does not directly create learner attempts or grades', () => {
   const remote = readFileSync(remoteScriptPath, 'utf8')
 
