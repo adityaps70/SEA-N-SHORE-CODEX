@@ -32,7 +32,7 @@ const profile: OwnProfile = {
 describe('FeedLayout', () => {
   it('keeps the desktop left rail sticky below the fixed header without its own scrolling region', () => {
     const { container } = render(
-      <FeedLayout profile={profile} suggestions={[]}>
+      <FeedLayout profile={profile} portfolioCompletion={{ experienceCount: 0, credentialCount: 0 }} suggestions={[]}>
         <div>Feed</div>
       </FeedLayout>,
     )
