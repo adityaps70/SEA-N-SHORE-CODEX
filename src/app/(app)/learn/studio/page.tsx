@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Clock3, FilePenLine, Plus, Sparkles } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
 
@@ -81,10 +82,14 @@ export default async function MentorStudioPage() {
     return redirect('/learn/teach')
   }
 
-  const courses = await courseRepository.listOwnedCourses(user.id)
+  const [courses, assignmentAttempts] = await Promise.all([
+    courseRepository.listOwnedCourses(user.id),
+    assignmentGradingRepository.listForMentor(user.id),
+  ])
   const draftCount = courses.filter((course) => course.status === 'draft' || course.status === 'changes_requested').length
   const reviewCount = courses.filter((course) => course.status === 'submitted').length
   const liveCount = courses.filter((course) => course.status === 'published').length
+  const pendingLearnerReviews = assignmentAttempts.filter((attempt) => attempt.status === 'submitted').length
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -92,12 +97,20 @@ export default async function MentorStudioPage() {
         <Link href="/learn/teach" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
           <ArrowLeft aria-hidden="true" className="size-4" /> Mentor profile
         </Link>
-        <Link
-          href="/learn/studio/courses/new"
-          className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
-        >
-          <Plus aria-hidden="true" className="size-4" /> Create course
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/learn/studio/assignments"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+          >
+            Review assignments <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
+          <Link
+            href="/learn/studio/courses/new"
+            className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
+          >
+            <Plus aria-hidden="true" className="size-4" /> Create course
+          </Link>
+        </div>
       </div>
 
       <section className="mt-5 overflow-hidden rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">
@@ -108,10 +121,10 @@ export default async function MentorStudioPage() {
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Mentor Studio</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">
-              Turn real maritime experience into structured learning. Build practical courses, respond to quality feedback and submit each course for Sea N Shore review before publication.
+              Turn real maritime experience into structured learning. Build practical courses, respond to quality feedback and review learner work from one workspace.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
               <p className="text-2xl font-bold">{draftCount}</p>
               <p className="mt-1 text-xs text-white/65">Building</p>
@@ -124,9 +137,31 @@ export default async function MentorStudioPage() {
               <p className="text-2xl font-bold">{liveCount}</p>
               <p className="mt-1 text-xs text-white/65">Published</p>
             </div>
+            <div className="rounded-2xl border border-teal-300/25 bg-teal-300/10 p-3">
+              <p className="text-2xl font-bold">{pendingLearnerReviews}</p>
+              <p className="mt-1 text-xs text-teal-100">Learner reviews</p>
+            </div>
           </div>
         </div>
       </section>
+
+      {pendingLearnerReviews > 0 ? (
+        <section className="mt-5 rounded-[1.4rem] border border-teal-200 bg-teal-50 p-5 shadow-[var(--shadow-card)] sm:flex sm:items-center sm:justify-between sm:gap-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-800">Assignments awaiting review</p>
+            <h2 className="mt-1 text-lg font-bold text-navy-950">
+              {pendingLearnerReviews} learner submission{pendingLearnerReviews === 1 ? '' : 's'} need{pendingLearnerReviews === 1 ? 's' : ''} your review
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-muted">Learner progression remains locked until an assignment receives a passing mentor grade.</p>
+          </div>
+          <Link
+            href="/learn/studio/assignments"
+            className="mt-4 inline-flex shrink-0 items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 sm:mt-0"
+          >
+            Review {pendingLearnerReviews} learner submission{pendingLearnerReviews === 1 ? '' : 's'} <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
+        </section>
+      ) : null}
 
       <section className="mt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
