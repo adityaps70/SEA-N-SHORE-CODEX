@@ -70,6 +70,7 @@ describe('/admin/learning/courses', () => {
     expect(screen.getByRole('heading', { name: 'Course review' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Mentor approvals' })).toHaveAttribute('href', '/admin/learning')
     expect(screen.getByRole('link', { name: 'Course review' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Analytics' })).toHaveAttribute('href', '/admin/learning/analytics')
     expect(screen.getByText(course.title)).toBeInTheDocument()
     expect(screen.getByText(course.subtitle!)).toBeInTheDocument()
     expect(screen.getByText('Capt. Maya Singh')).toBeInTheDocument()
