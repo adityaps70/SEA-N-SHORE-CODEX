@@ -5,6 +5,7 @@ import { FeedLayout } from '@/features/feed/components/feed-layout'
 import { FeedList } from '@/features/feed/components/feed-list'
 import { PostComposer } from '@/features/feed/components/post-composer'
 import { getPeopleYouMayKnow } from '@/features/network/queries'
+import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
 
 export default async function HomePage({
@@ -17,10 +18,15 @@ export default async function HomePage({
 
   const { category: categoryValue } = await searchParams
   const category = parseFeedCategory(categoryValue)
-  const [initialPage, suggestions] = await Promise.all([
+  const [initialPage, suggestions, portfolio] = await Promise.all([
     getFeedPage({ category }),
     getPeopleYouMayKnow(3),
+    getOwnProfilePortfolio(),
   ])
+  const portfolioCompletion = {
+    experienceCount: portfolio.experiences.length,
+    credentialCount: portfolio.credentials.length,
+  }
   const feedVersion = initialPage.posts
     .map((post) => [
       post.id,
@@ -35,7 +41,7 @@ export default async function HomePage({
     .join('|')
 
   return (
-    <FeedLayout profile={profile} suggestions={suggestions}>
+    <FeedLayout profile={profile} portfolioCompletion={portfolioCompletion} suggestions={suggestions}>
       <div id="feed-composer" className="scroll-mt-24">
         <PostComposer profile={profile} defaultCategory={category} />
       </div>
