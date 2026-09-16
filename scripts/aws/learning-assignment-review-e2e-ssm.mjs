@@ -48,6 +48,7 @@ chmod 700 /tmp/learning-assignment-review-e2e-remote.sh
 `
 const command = `runuser -u ssm-user -- bash -lc ${quote(remote)}`
 const parameters = JSON.stringify({ executionTimeout: ['600'], commands: [command] })
+const shortSha = (process.env.GITHUB_SHA || '').slice(0, 12)
 
 function aws(args, { allowFailure = false } = {}) {
   const result = spawnSync('aws', args, { encoding: 'utf8', env: process.env })
@@ -63,7 +64,7 @@ const sent = aws([
   '--region', process.env.AWS_REGION || 'ap-south-1',
   '--instance-ids', instanceId,
   '--document-name', 'AWS-RunShellScript',
-  '--comment', `Sea N Shore learning assignment review E2E ${phase} ${process.env.GITHUB_SHA || ''}`,
+  '--comment', `Sea N Shore learning assignment review E2E ${phase} ${shortSha}`,
   '--timeout-seconds', '600',
   '--parameters', parameters,
   '--query', 'Command.CommandId',
