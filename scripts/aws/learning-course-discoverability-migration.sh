@@ -23,9 +23,9 @@ python3 - "$MIGRATION" <<'PY'
 import re, sys
 sql=open(sys.argv[1], encoding='utf-8').read().strip()
 parts=[p.strip() for p in re.split(r'^\s*-- statement-breakpoint\s*$', sql, flags=re.M) if p.strip()]
-if len(parts) != 2:
-    raise SystemExit(f'expected exactly two additive discoverability statements; found {len(parts)}')
-allowed=re.compile(r'^(alter\s+table|create\s+index\s+if\s+not\s+exists)\b', re.I)
+if len(parts) != 3:
+    raise SystemExit(f'expected exactly three additive discoverability statements; found {len(parts)}')
+allowed=re.compile(r'^(alter\s+table|update\s+public\.learning_courses|create\s+index\s+if\s+not\s+exists)\b', re.I)
 for statement in parts:
     code='\n'.join(line for line in statement.splitlines() if not line.lstrip().startswith('--')).strip()
     if not allowed.match(code):
@@ -56,7 +56,7 @@ shape() {
   local column_count index_count nonnull_default
   column_count="$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema='public' AND table_name='learning_courses' AND column_name='is_discoverable' AND data_type='boolean'")"
   index_count="$(read_count "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname='public' AND indexname='learning_courses_discoverable_published_idx'")"
-  nonnull_default="$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema='public' AND table_name='learning_courses' AND column_name='is_discoverable' AND is_nullable='NO' AND column_default IN ('true','true::boolean')")"
+  nonnull_default="$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema='public' AND table_name='learning_courses' AND column_name='is_discoverable' AND is_nullable='NO' AND column_default IN ('false','false::boolean')")"
   printf '%s/%s/%s\n' "$column_count" "$index_count" "$nonnull_default"
 }
 
