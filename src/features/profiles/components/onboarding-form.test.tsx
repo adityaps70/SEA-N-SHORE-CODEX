@@ -39,7 +39,7 @@ describe('OnboardingForm exact identity activation', () => {
     expect(screen.getByText(/Can.t find your role/i)).toBeInTheDocument()
     expect(screen.getByText(/Add another identity/i)).toBeInTheDocument()
     expect(screen.getByLabelText('Full name')).toBeInTheDocument()
-    expect(screen.getByLabelText('Profile address')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Username/i })).toBeInTheDocument()
     expect(screen.getByLabelText('Location')).toBeInTheDocument()
     expect(screen.getByLabelText('Current organisation')).toBeInTheDocument()
     expect(screen.getByLabelText('Professional headline')).toBeInTheDocument()
