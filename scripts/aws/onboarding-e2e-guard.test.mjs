@@ -110,6 +110,17 @@ test('run-once proves the full live Username contract and two-change server limi
   )
 })
 
+test('onboarding e2e stays focused on onboarding and profile identity behavior', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.doesNotMatch(
+    browserScript,
+    /page\.goto\(`\$\{siteUrl\}\/events/,
+    'Events content is mutable and must not make onboarding/Username verification data-dependent',
+  )
+  assert.doesNotMatch(browserScript, /ONBOARDING_E2E_EVENTS_VERIFIED=true/)
+})
+
 test('signup diagnostics ignore the empty Next.js route announcer and cleanup audits only completed journeys', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
