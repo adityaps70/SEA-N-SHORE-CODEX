@@ -90,21 +90,25 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
       </div>
 
       <div className="divide-y divide-mist-100">
-        {items.map((notification) => (
-          <button
-            key={notification.id}
-            type="button"
-            disabled={pending}
-            onClick={() => openNotification(notification)}
-            className={`flex w-full items-start gap-3 px-5 py-4 text-left hover:bg-mist-50 disabled:opacity-60 ${notification.readAt ? '' : 'bg-ocean-50/40'}`}
-          >
-            <span className={`mt-2 size-2 shrink-0 rounded-full ${notification.readAt ? 'bg-mist-100' : 'bg-ocean-700'}`} aria-hidden="true" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium leading-6 text-navy-950">{notification.message}</span>
-              <time dateTime={notification.createdAt} title={notification.createdAt} className="mt-1 block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
-            </span>
-          </button>
-        ))}
+        {items.map((notification) => {
+          const unread = !notification.readAt
+          return (
+            <button
+              key={notification.id}
+              type="button"
+              disabled={pending}
+              onClick={() => openNotification(notification)}
+              data-notification-state={unread ? 'unread' : 'read'}
+              className={`flex w-full items-start gap-3 px-5 py-4 text-left transition hover:bg-mist-50 disabled:opacity-60 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-4' : ''}`}
+            >
+              <span className={`mt-2 size-2 shrink-0 rounded-full ${unread ? 'bg-ocean-700' : 'bg-mist-100'}`} aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                <time dateTime={notification.createdAt} title={notification.createdAt} className="mt-1 block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
+              </span>
+            </button>
+          )
+        })}
       </div>
       {error ? <p role="alert" className="border-t border-mist-100 bg-red-50 px-5 py-3 text-sm font-medium text-red-700">{error}</p> : null}
     </div>
