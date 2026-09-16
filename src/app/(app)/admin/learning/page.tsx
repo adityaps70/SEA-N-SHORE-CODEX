@@ -166,6 +166,12 @@ export default async function LearningAdminPage({
         >
           Course review
         </Link>
+        <Link
+          href="/admin/learning/analytics"
+          className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
+        >
+          Analytics
+        </Link>
       </nav>
 
       <nav aria-label="Mentor application status" className="flex flex-wrap gap-2">
