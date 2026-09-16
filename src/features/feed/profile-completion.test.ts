@@ -27,18 +27,24 @@ function profile(overrides: Partial<OwnProfile> = {}): OwnProfile {
   }
 }
 
+const completePortfolio = { experienceCount: 1, credentialCount: 1 }
+
 describe('calculateProfileCompletion', () => {
-  it('returns 100 for a fully populated maritime profile', () => {
-    expect(calculateProfileCompletion(profile())).toBe(100)
+  it('returns 100 for a fully populated maritime profile with experience and credentials', () => {
+    expect(calculateProfileCompletion(profile(), completePortfolio)).toBe(100)
   })
 
-  it('returns 50 when four of eight maritime completion fields are missing', () => {
+  it('does not report 100 when the professional portfolio is empty', () => {
+    expect(calculateProfileCompletion(profile(), { experienceCount: 0, credentialCount: 0 })).toBe(80)
+  })
+
+  it('returns 60 when four of ten maritime completion checks are missing', () => {
     expect(calculateProfileCompletion(profile({
       location: null,
       skills: [],
       currentCompany: null,
       sailingExperienceYears: null,
-    }))).toBe(50)
+    }), completePortfolio)).toBe(60)
   })
 
   it('uses only generic fields for non-maritime profile types', () => {
