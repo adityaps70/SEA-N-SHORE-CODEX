@@ -23,9 +23,9 @@ python3 - "$MIGRATION" <<'PY'
 import re, sys
 sql=open(sys.argv[1], encoding='utf-8').read().strip()
 parts=[p.strip() for p in re.split(r'^\s*-- statement-breakpoint\s*$', sql, flags=re.M) if p.strip()]
-if len(parts) != 3:
-    raise SystemExit(f'expected exactly three additive discoverability statements; found {len(parts)}')
-allowed=re.compile(r'^(alter\s+table|update\s+public\.learning_courses|create\s+index\s+if\s+not\s+exists)\b', re.I)
+if len(parts) != 5:
+    raise SystemExit(f'expected exactly five additive discoverability statements; found {len(parts)}')
+allowed=re.compile(r'^(alter\s+table|update\s+public\.learning_courses|create\s+or\s+replace\s+function|create\s+or\s+replace\s+trigger|create\s+index\s+if\s+not\s+exists)\b', re.I)
 for statement in parts:
     code='\n'.join(line for line in statement.splitlines() if not line.lstrip().startswith('--')).strip()
     if not allowed.match(code):
@@ -53,20 +53,22 @@ FOUNDATION_COUNT="$(read_count "SELECT count(*)::bigint FROM information_schema.
 [[ "$FOUNDATION_COUNT" == "1" ]] || { echo "Learning courses table is missing; refusing discoverability migration." >&2; exit 1; }
 
 shape() {
-  local column_count index_count nonnull_default
+  local column_count index_count nonnull_default function_count trigger_count
   column_count="$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema='public' AND table_name='learning_courses' AND column_name='is_discoverable' AND data_type='boolean'")"
   index_count="$(read_count "SELECT count(*)::bigint FROM pg_indexes WHERE schemaname='public' AND indexname='learning_courses_discoverable_published_idx'")"
   nonnull_default="$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema='public' AND table_name='learning_courses' AND column_name='is_discoverable' AND is_nullable='NO' AND column_default IN ('false','false::boolean')")"
-  printf '%s/%s/%s\n' "$column_count" "$index_count" "$nonnull_default"
+  function_count="$(read_count "SELECT count(*)::bigint FROM pg_proc procedure JOIN pg_namespace namespace ON namespace.oid=procedure.pronamespace WHERE namespace.nspname='public' AND procedure.proname='sync_learning_course_discoverability'")"
+  trigger_count="$(read_count "SELECT count(DISTINCT trigger_name)::bigint FROM information_schema.triggers WHERE trigger_schema='public' AND event_object_table='learning_courses' AND trigger_name='learning_course_discoverability_sync'")"
+  printf '%s/%s/%s/%s/%s\n' "$column_count" "$index_count" "$nonnull_default" "$function_count" "$trigger_count"
 }
 
 BEFORE="$(shape)"
 echo "LEARNING_COURSE_DISCOVERABILITY_SHAPE_BEFORE=$BEFORE"
-if [[ "$BEFORE" == "1/1/1" ]]; then
+if [[ "$BEFORE" == "1/1/1/1/1" ]]; then
   echo "LEARNING_COURSE_DISCOVERABILITY_MIGRATION_ALREADY_APPLIED=true"
   exit 0
 fi
-[[ "$BEFORE" == "0/0/0" ]] || { echo "Partial learning course discoverability schema detected; refusing automatic migration." >&2; exit 1; }
+[[ "$BEFORE" == "0/0/0/0/0" ]] || { echo "Partial learning course discoverability schema detected; refusing automatic migration." >&2; exit 1; }
 
 echo "LEARNING_COURSE_DISCOVERABILITY_MIGRATION_PLAN_VERIFIED=true"
 if [[ "$ACTION" == "plan" ]]; then
@@ -96,5 +98,5 @@ aws rds-data commit-transaction --region "$AWS_REGION" --resource-arn "$CLUSTER_
 committed=true
 AFTER="$(shape)"
 echo "LEARNING_COURSE_DISCOVERABILITY_SHAPE_AFTER=$AFTER"
-[[ "$AFTER" == "1/1/1" ]]
+[[ "$AFTER" == "1/1/1/1/1" ]]
 echo "LEARNING_COURSE_DISCOVERABILITY_MIGRATION_APPLY_VERIFIED=true"
