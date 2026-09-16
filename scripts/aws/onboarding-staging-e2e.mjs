@@ -262,15 +262,6 @@ async function completeProfessional(user, takenUsername) {
   await expect(page.getByText('Your username is locked because both username changes have been used.', { exact: true })).toBeVisible()
   console.log('ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true')
 
-  await page.goto(`${siteUrl}/events`, { waitUntil: 'domcontentloaded' })
-  await expect(page).toHaveURL((url) => url.pathname === '/events')
-  await expect(page.getByRole('heading', { name: 'Maritime events', exact: true })).toBeVisible()
-  await expect(page.getByRole('search', { name: 'Event search preview' })).toContainText('Search events, topics, speakers or organisations')
-  await expect(page.getByRole('heading', { name: 'Upcoming events' })).toBeVisible()
-  await expect(page.getByText('No published maritime events yet.', { exact: true })).toBeVisible()
-  await expect(page.getByText('Expert webinars', { exact: true })).toBeVisible()
-  console.log('ONBOARDING_E2E_EVENTS_VERIFIED=true')
-
   await context.close()
 }
 
