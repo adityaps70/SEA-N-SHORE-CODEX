@@ -106,6 +106,16 @@ test('mentor review navigation uses DOM readiness instead of waiting for network
   assert.match(mentorNavigationSource, /Mentor Studio/)
 })
 
+test('SSM audit comments stay inside the AWS 100-character limit', () => {
+  const ssmHelper = readFileSync(ssmHelperPath, 'utf8')
+
+  assert.match(ssmHelper, /GITHUB_SHA[\s\S]*slice\(0,\s*12\)/)
+  assert.doesNotMatch(
+    ssmHelper,
+    /--comment[\s\S]*Sea N Shore learning assignment review E2E \$\{phase\} \$\{process\.env\.GITHUB_SHA \|\| ''\}/,
+  )
+})
+
 test('fixture setup is prefix-constrained and does not directly create learner attempts or grades', () => {
   const remote = readFileSync(remoteScriptPath, 'utf8')
 
