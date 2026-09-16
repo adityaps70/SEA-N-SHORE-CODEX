@@ -10,12 +10,13 @@ MENTOR_NAME="${E2E_MENTOR_NAME:-}"
 COURSE_TITLE="${E2E_COURSE_TITLE:-}"
 COURSE_SLUG="${E2E_COURSE_SLUG:-}"
 FEEDBACK="${E2E_FEEDBACK:-}"
+REVISION_FEEDBACK="${E2E_REVISION_FEEDBACK:-}"
 
 [[ "$MENTOR" == sea-n-shore-learning-review-e2e-* && "$MENTOR" == *-mentor@example.com ]] || { echo "Unsafe disposable mentor email." >&2; exit 1; }
 [[ "$LEARNER" == sea-n-shore-learning-review-e2e-* && "$LEARNER" == *-learner@example.com ]] || { echo "Unsafe disposable learner email." >&2; exit 1; }
 [[ "$COURSE_TITLE" == "E2E Learning Review Course "* ]] || { echo "Unsafe disposable course title." >&2; exit 1; }
 [[ "$COURSE_SLUG" == sea-n-shore-learning-review-e2e-* ]] || { echo "Unsafe disposable course slug." >&2; exit 1; }
-[[ -n "$MENTOR_NAME" && -n "$FEEDBACK" ]] || { echo "Required fixture values are missing." >&2; exit 1; }
+[[ -n "$MENTOR_NAME" && -n "$FEEDBACK" && -n "$REVISION_FEEDBACK" ]] || { echo "Required fixture values are missing." >&2; exit 1; }
 
 resolve_pool() {
   POOL_ID=$(aws cognito-idp list-user-pools --region "$AWS_REGION" --max-results 60 --query "UserPools[?Name=='$COGNITO_POOL_NAME'].Id | [0]" --output text)
@@ -116,9 +117,67 @@ case "$PHASE" in
       JOIN public.learning_lessons lesson ON lesson.id=attempt.lesson_id
       JOIN public.learning_course_sections section ON section.id=lesson.section_id
       JOIN public.learning_courses course ON course.id=section.course_id
-      WHERE course.slug='$COURSE_SLUG' AND attempt.learner_id=($learner_id_sql) AND attempt.status::text='submitted'" | jq -r '.records[0][0].stringValue // empty')
+      WHERE course.slug='$COURSE_SLUG' AND attempt.learner_id=($learner_id_sql)
+        AND attempt.attempt_number=1 AND attempt.status::text='submitted'" | jq -r '.records[0][0].stringValue // empty')
     [[ "$COUNT" == 1 ]] || { echo "Expected one submitted assignment attempt; found $COUNT." >&2; exit 1; }
     echo 'LEARNING_ASSIGNMENT_REVIEW_E2E_SUBMISSION_VERIFIED=true'
+    ;;
+
+  verify-revision)
+    resolve_db
+    COUNT=$(sql "SELECT count(*)::text FROM public.learning_assignment_attempts attempt
+      JOIN public.learning_lessons lesson ON lesson.id=attempt.lesson_id
+      JOIN public.learning_course_sections section ON section.id=lesson.section_id
+      JOIN public.learning_courses course ON course.id=section.course_id
+      LEFT JOIN public.learning_progress progress
+        ON progress.enrollment_id=attempt.enrollment_id AND progress.lesson_id=attempt.lesson_id
+      WHERE course.slug='$COURSE_SLUG'
+        AND attempt.learner_id=($learner_id_sql)
+        AND attempt.attempt_number=1
+        AND attempt.status::text='graded' AND attempt.passed=false
+        AND attempt.score_points=50 AND attempt.percentage=50
+        AND attempt.feedback='$REVISION_FEEDBACK' AND attempt.graded_by=($mentor_id_sql)
+        AND (progress.completed=false OR progress.completed IS NULL)
+        AND NOT EXISTS (
+          SELECT 1 FROM public.learning_progress next_progress
+          JOIN public.learning_lessons next_lesson ON next_lesson.id=next_progress.lesson_id
+          WHERE next_progress.enrollment_id=attempt.enrollment_id
+            AND next_lesson.section_id=section.id
+            AND next_lesson.title='Unlocked after mentor pass'
+            AND next_progress.completed=true
+        )" | jq -r '.records[0][0].stringValue // empty')
+    [[ "$COUNT" == 1 ]] || { echo "Expected one immutable needs-revision grade with incomplete progress; found $COUNT." >&2; exit 1; }
+    echo 'LEARNING_ASSIGNMENT_REVIEW_E2E_REVISION_VERIFIED=true'
+    ;;
+
+  verify-resubmitted)
+    resolve_db
+    COUNT=$(sql "SELECT count(*)::text FROM public.learning_enrollments enrollment
+      JOIN public.learning_courses course ON course.id=enrollment.course_id
+      JOIN public.learning_course_sections section ON section.course_id=course.id
+      JOIN public.learning_lessons lesson ON lesson.section_id=section.id AND lesson.title='E2E evidence assignment'
+      LEFT JOIN public.learning_progress progress
+        ON progress.enrollment_id=enrollment.id AND progress.lesson_id=lesson.id
+      WHERE course.slug='$COURSE_SLUG' AND enrollment.learner_id=($learner_id_sql)
+        AND (progress.completed=false OR progress.completed IS NULL)
+        AND (SELECT count(*) FROM public.learning_assignment_attempts all_attempts
+             WHERE all_attempts.enrollment_id=enrollment.id AND all_attempts.lesson_id=lesson.id)=2
+        AND EXISTS (
+          SELECT 1 FROM public.learning_assignment_attempts first_attempt
+          WHERE first_attempt.enrollment_id=enrollment.id AND first_attempt.lesson_id=lesson.id
+            AND first_attempt.attempt_number=1 AND first_attempt.status::text='graded'
+            AND first_attempt.passed=false AND first_attempt.score_points=50 AND first_attempt.percentage=50
+            AND first_attempt.feedback='$REVISION_FEEDBACK' AND first_attempt.graded_by=($mentor_id_sql)
+        )
+        AND EXISTS (
+          SELECT 1 FROM public.learning_assignment_attempts second_attempt
+          WHERE second_attempt.enrollment_id=enrollment.id AND second_attempt.lesson_id=lesson.id
+            AND second_attempt.attempt_number=2 AND second_attempt.status::text='submitted'
+            AND second_attempt.response_text='E2E revised learner response with stronger controls, evidence and verification steps.'
+            AND second_attempt.passed IS NULL AND second_attempt.graded_at IS NULL
+        )" | jq -r '.records[0][0].stringValue // empty')
+    [[ "$COUNT" == 1 ]] || { echo "Expected preserved attempt 1 and a new pending attempt 2; found $COUNT." >&2; exit 1; }
+    echo 'LEARNING_ASSIGNMENT_REVIEW_E2E_RESUBMISSION_VERIFIED=true'
     ;;
 
   verify-passed)
@@ -129,14 +188,24 @@ case "$PHASE" in
       JOIN public.learning_courses course ON course.id=section.course_id
       WHERE course.slug='$COURSE_SLUG'
         AND attempt.learner_id=($learner_id_sql)
+        AND attempt.attempt_number=2
         AND attempt.status::text='graded' AND attempt.passed=true
         AND attempt.score_points=85 AND attempt.percentage=85
         AND attempt.feedback='$FEEDBACK' AND attempt.graded_by=($mentor_id_sql)
+        AND (SELECT count(*) FROM public.learning_assignment_attempts all_attempts
+             WHERE all_attempts.enrollment_id=attempt.enrollment_id AND all_attempts.lesson_id=attempt.lesson_id)=2
+        AND EXISTS (
+          SELECT 1 FROM public.learning_assignment_attempts first_attempt
+          WHERE first_attempt.enrollment_id=attempt.enrollment_id AND first_attempt.lesson_id=attempt.lesson_id
+            AND first_attempt.attempt_number=1 AND first_attempt.status::text='graded'
+            AND first_attempt.passed=false AND first_attempt.score_points=50 AND first_attempt.percentage=50
+            AND first_attempt.feedback='$REVISION_FEEDBACK' AND first_attempt.graded_by=($mentor_id_sql)
+        )
         AND EXISTS (
           SELECT 1 FROM public.learning_progress progress
           WHERE progress.enrollment_id=attempt.enrollment_id AND progress.lesson_id=attempt.lesson_id AND progress.completed=true
         )" | jq -r '.records[0][0].stringValue // empty')
-    [[ "$COUNT" == 1 ]] || { echo "Expected one passed, completed assignment grade; found $COUNT." >&2; exit 1; }
+    [[ "$COUNT" == 1 ]] || { echo "Expected second attempt passed with first revision attempt preserved; found $COUNT." >&2; exit 1; }
     echo 'LEARNING_ASSIGNMENT_REVIEW_E2E_PASS_VERIFIED=true'
     ;;
 
