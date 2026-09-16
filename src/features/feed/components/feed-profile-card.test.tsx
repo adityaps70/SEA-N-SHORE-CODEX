@@ -34,23 +34,32 @@ const incompleteProfile: OwnProfile = {
   skills: [],
 }
 
+const completePortfolio = { experienceCount: 1, credentialCount: 1 }
+
 afterEach(() => cleanup())
 
 describe('FeedProfileCard', () => {
-  it('shows View profile only when profile completion is 100%', () => {
-    render(<FeedProfileCard profile={completeProfile} />)
+  it('shows View profile only when profile fields and portfolio evidence are complete', () => {
+    render(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} />)
     expect(screen.getByRole('link', { name: /View profile/i })).toHaveAttribute('href', '/profile')
+    expect(screen.getByRole('progressbar', { name: /Profile completeness/i })).toHaveAttribute('aria-valuenow', '100')
     expect(screen.queryByRole('link', { name: /Complete profile/i })).not.toBeInTheDocument()
   })
 
+  it('does not claim 100 percent when experience and credentials are missing', () => {
+    render(<FeedProfileCard profile={completeProfile} portfolioCompletion={{ experienceCount: 0, credentialCount: 0 }} />)
+    expect(screen.getByRole('progressbar', { name: /Profile completeness/i })).toHaveAttribute('aria-valuenow', '80')
+    expect(screen.getByRole('link', { name: /Complete profile/i })).toHaveAttribute('href', '/profile/edit')
+  })
+
   it('replaces View profile with Complete profile when details are missing', () => {
-    render(<FeedProfileCard profile={incompleteProfile} />)
+    render(<FeedProfileCard profile={incompleteProfile} portfolioCompletion={completePortfolio} />)
     expect(screen.getByRole('link', { name: /Complete profile/i })).toHaveAttribute('href', '/profile/edit')
     expect(screen.queryByRole('link', { name: /View profile/i })).not.toBeInTheDocument()
   })
 
   it('renders the uploaded profile photo and banner when media URLs exist', () => {
-    render(<FeedProfileCard profile={completeProfile} />)
+    render(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} />)
 
     expect(screen.getByRole('img', { name: 'Member A cover photo' })).toHaveAttribute('src', completeProfile.coverUrl)
     expect(screen.getByRole('img', { name: 'Member A profile photo' })).toHaveAttribute('src', completeProfile.avatarUrl)
@@ -58,14 +67,14 @@ describe('FeedProfileCard', () => {
   })
 
   it('increases the desktop profile photo by about 15 percent and preserves the cover overlap', () => {
-    render(<FeedProfileCard profile={completeProfile} />)
+    render(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} />)
 
     const profilePhoto = screen.getByRole('img', { name: 'Member A profile photo' })
     expect(profilePhoto.parentElement).toHaveClass('size-[74px]', '-mt-[37px]')
   })
 
   it('falls back to initials when no profile photo exists', () => {
-    render(<FeedProfileCard profile={{ ...completeProfile, avatarUrl: null, coverUrl: null }} />)
+    render(<FeedProfileCard profile={{ ...completeProfile, avatarUrl: null, coverUrl: null }} portfolioCompletion={completePortfolio} />)
 
     expect(screen.getByText('MA')).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Member A profile photo' })).not.toBeInTheDocument()
