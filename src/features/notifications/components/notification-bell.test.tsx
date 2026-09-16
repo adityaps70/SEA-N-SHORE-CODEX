@@ -19,6 +19,13 @@ const notification: NetworkNotification = {
   destination: '/network?tab=requests',
 }
 
+const readNotification: NetworkNotification = {
+  ...notification,
+  id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  readAt: '2026-09-02T10:05:00.000Z',
+  message: 'Member B accepted your connection request.',
+}
+
 afterEach(() => cleanup())
 
 describe('NotificationBell', () => {
@@ -29,6 +36,19 @@ describe('NotificationBell', () => {
     expect(screen.getByText('Member A sent you a connection request.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /View all notifications/i })).toHaveAttribute('href', '/notifications')
     expect(screen.getByRole('button', { name: /Mark all read/i })).toBeInTheDocument()
+  })
+
+  it('makes unread and read notifications visually and semantically distinct', () => {
+    render(<NotificationBell recent={[notification, readNotification]} unreadCount={1} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+
+    const unread = screen.getByRole('button', { name: /Member A sent you a connection request/i })
+    const read = screen.getByRole('button', { name: /Member B accepted your connection request/i })
+
+    expect(unread).toHaveAttribute('data-notification-state', 'unread')
+    expect(unread).toHaveClass('border-l-4', 'border-ocean-700', 'bg-ocean-50')
+    expect(read).toHaveAttribute('data-notification-state', 'read')
+    expect(read).not.toHaveClass('border-l-4')
   })
 
   it('renders a useful zero state with no unread badge', () => {
