@@ -135,6 +135,7 @@ jobs:
             echo "E2E_COURSE_TITLE=E2E Learning Review Course ${GITHUB_RUN_ID}"
             echo "E2E_COURSE_SLUG=${PREFIX}"
             echo "E2E_FEEDBACK=E2E mentor pass feedback."
+            echo "E2E_REVISION_FEEDBACK=E2E mentor revision feedback. Add stronger controls and verification evidence."
           } >> "$GITHUB_ENV"
 
       - name: Use Node 22 for staging browser E2E
@@ -185,13 +186,13 @@ jobs:
           printf '%s\n' "$OUTPUT"
           grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_FIXTURE_VERIFIED=true$' <<<"$OUTPUT"
 
-      - name: Submit assignment through live learner UI
+      - name: Submit first assignment attempt through live learner UI
         if: steps.action.outputs.run_e2e == 'true'
         env:
           E2E_PHASE: learner-submit
         run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
 
-      - name: Verify learner submission through read-only SSM audit
+      - name: Verify first learner submission through read-only SSM audit
         if: steps.action.outputs.run_e2e == 'true'
         env:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
@@ -202,13 +203,47 @@ jobs:
           printf '%s\n' "$OUTPUT"
           grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_SUBMISSION_VERIFIED=true$' <<<"$OUTPUT"
 
-      - name: Review and pass assignment through live mentor UI
+      - name: Request revision through live mentor UI
         if: steps.action.outputs.run_e2e == 'true'
         env:
-          E2E_PHASE: mentor-review
+          E2E_PHASE: mentor-revision
         run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
 
-      - name: Verify persisted mentor grade and completion through read-only SSM audit
+      - name: Verify revision grade and locked progression through read-only SSM audit
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(node scripts/aws/learning-assignment-review-e2e-ssm.mjs verify-revision)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_REVISION_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Resubmit revised assignment through live learner UI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: learner-resubmit
+        run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
+
+      - name: Verify preserved first attempt and pending second attempt through read-only SSM audit
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(node scripts/aws/learning-assignment-review-e2e-ssm.mjs verify-resubmitted)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_RESUBMISSION_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Review revised attempt and pass through live mentor UI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: mentor-pass
+        run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
+
+      - name: Verify second-attempt pass and completion through read-only SSM audit
         if: steps.action.outputs.run_e2e == 'true'
         env:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
@@ -219,7 +254,7 @@ jobs:
           printf '%s\n' "$OUTPUT"
           grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_PASS_VERIFIED=true$' <<<"$OUTPUT"
 
-      - name: Verify mentor feedback and progression unlock through live learner UI
+      - name: Verify final mentor feedback and progression unlock through live learner UI
         if: steps.action.outputs.run_e2e == 'true'
         env:
           E2E_PHASE: learner-verify
