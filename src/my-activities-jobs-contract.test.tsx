@@ -53,6 +53,10 @@ vi.mock('@/features/profiles/queries', () => ({
   getOwnProfile: vi.fn().mockResolvedValue({ id: 'profile-1', fullName: 'Test Mariner' }),
 }))
 
+vi.mock('@/features/profiles/profile-portfolio-queries', () => ({
+  getOwnProfilePortfolio: vi.fn().mockResolvedValue({ experiences: [], credentials: [] }),
+}))
+
 afterEach(() => cleanup())
 
 describe('My Activities and jobs integration contract', () => {
