@@ -28,6 +28,7 @@ type ProfileRow = QueryResultRow & {
   summary: string | null
   contact_visibility?: string | null
   onboarding_completed_at?: string | null
+  username_change_count?: number | null
   maritime_profiles: PublicProfileRow['maritime_profiles']
   profile_skills: Array<{ skill: string }> | null
 }
@@ -76,6 +77,7 @@ const PROFILE_SELECT = `
     p.summary,
     p.contact_visibility::text as contact_visibility,
     p.onboarding_completed_at,
+    p.username_change_count,
     case
       when mp.user_id is null then null
       else json_build_object(
@@ -195,12 +197,14 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
       ...normalized,
       contact_visibility: row.contact_visibility,
       onboarding_completed_at: row.onboarding_completed_at,
+      username_change_count: Number(row.username_change_count ?? 0),
     }
 
     return {
       ...mapPublicProfile(ownRow),
       contactVisibility: ownRow.contact_visibility,
       onboardingCompletedAt: ownRow.onboarding_completed_at as string,
+      usernameChangeCount: ownRow.username_change_count,
     }
   }
 
