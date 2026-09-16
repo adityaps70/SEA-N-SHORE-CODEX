@@ -1,16 +1,19 @@
 import type { ReactNode } from 'react'
 import type { NetworkProfile } from '@/features/network/types'
 import type { OwnProfile } from '@/features/profiles/types'
+import type { ProfilePortfolioCompletion } from '../profile-completion'
 import { FeedDiscoveryRail } from './feed-discovery-rail'
 import { FeedLeftRail } from './feed-left-rail'
 import { FeedProfileCard } from './feed-profile-card'
 
 export function FeedLayout({
   profile,
+  portfolioCompletion,
   suggestions,
   children,
 }: {
   profile: OwnProfile
+  portfolioCompletion: ProfilePortfolioCompletion
   suggestions: NetworkProfile[]
   children: ReactNode
 }) {
@@ -18,13 +21,13 @@ export function FeedLayout({
     <section className="grid gap-5 py-2 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_300px] xl:gap-6">
       <aside className="hidden lg:block">
         <div className="sticky top-24 pb-4 pr-1">
-          <FeedLeftRail profile={profile} />
+          <FeedLeftRail profile={profile} portfolioCompletion={portfolioCompletion} />
         </div>
       </aside>
 
       <main className="min-w-0">
         <div className="mb-4 lg:hidden">
-          <FeedProfileCard profile={profile} compact />
+          <FeedProfileCard profile={profile} portfolioCompletion={portfolioCompletion} compact />
         </div>
         {children}
       </main>
