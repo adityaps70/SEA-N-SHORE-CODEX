@@ -37,6 +37,13 @@ const notification: NetworkNotification = {
   commentId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
 }
 
+const readNotification: NetworkNotification = {
+  ...notification,
+  id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+  readAt: '2026-09-10T09:28:00.000Z',
+  message: 'Rahul Gupta liked your post.',
+}
+
 describe('NotificationList timestamps', () => {
   beforeEach(() => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-10T09:29:00.000Z'))
@@ -67,5 +74,17 @@ describe('NotificationList timestamps', () => {
     expect(mocks.push).toHaveBeenCalledWith(notification.destination)
     expect(mocks.refresh).not.toHaveBeenCalled()
     expect(screen.getByText('All caught up')).toBeInTheDocument()
+  })
+
+  it('makes unread rows unmistakable without over-emphasizing read rows', () => {
+    render(<NotificationList notifications={[notification, readNotification]} />)
+
+    const unread = screen.getByRole('button', { name: /Rahul Gupta commented on your post/i })
+    const read = screen.getByRole('button', { name: /Rahul Gupta liked your post/i })
+
+    expect(unread).toHaveAttribute('data-notification-state', 'unread')
+    expect(unread).toHaveClass('border-l-4', 'border-ocean-700', 'bg-ocean-50')
+    expect(read).toHaveAttribute('data-notification-state', 'read')
+    expect(read).not.toHaveClass('border-l-4')
   })
 })
