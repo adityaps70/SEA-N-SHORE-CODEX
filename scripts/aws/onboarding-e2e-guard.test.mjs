@@ -87,6 +87,11 @@ test('run-once proves the live Username availability and two-change server limit
   assert.match(browserScript, /ONBOARDING_E2E_USERNAME_THIRD_CHANGE_BLOCKED=true/)
   assert.match(browserScript, /page\.reload/)
   assert.match(browserScript, /ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true/)
+  assert.doesNotMatch(
+    browserScript,
+    /page\.goto\(`\$\{siteUrl\}\/profile\/edit`, \{ waitUntil: 'domcontentloaded' \}\)/,
+    'Profile edit E2E must wait for client hydration before editing controlled Username fields',
+  )
 })
 
 test('signup diagnostics ignore the empty Next.js route announcer and cleanup audits only completed journeys', () => {
