@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Anchor, BriefcaseBusiness, Clock3, Ship, Waves } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { OwnProfile } from '@/features/profiles/types'
-import { calculateProfileCompletion } from '../profile-completion'
+import { calculateProfileCompletion, type ProfilePortfolioCompletion } from '../profile-completion'
 
 function initials(name: string) {
   return name
@@ -14,8 +14,16 @@ function initials(name: string) {
     .join('')
 }
 
-export function FeedProfileCard({ profile, compact = false }: { profile: OwnProfile; compact?: boolean }) {
-  const completion = calculateProfileCompletion(profile)
+export function FeedProfileCard({
+  profile,
+  portfolioCompletion,
+  compact = false,
+}: {
+  profile: OwnProfile
+  portfolioCompletion: ProfilePortfolioCompletion
+  compact?: boolean
+}) {
+  const completion = calculateProfileCompletion(profile, portfolioCompletion)
   const profileAction = completion < 100
     ? { href: '/profile/edit', label: 'Complete profile' }
     : { href: '/profile', label: 'View profile' }
