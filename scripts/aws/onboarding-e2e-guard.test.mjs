@@ -72,13 +72,23 @@ test('run-once performs disposable public sign-up browser journeys and guarded c
   assert.match(browserScript, /\/profile\/edit/)
 })
 
-test('run-once proves the live Username availability and two-change server limit', () => {
+test('run-once proves the full live Username contract and two-change server limit', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
   assert.doesNotMatch(browserScript, /Profile address/)
   assert.match(browserScript, /getByLabel\('Username'\)/)
+  assert.match(browserScript, /Checking username…/)
   assert.match(browserScript, /Username is available\./)
   assert.match(browserScript, /That username is already taken\./)
+  assert.match(browserScript, /That username is reserved\./)
+  assert.match(browserScript, /This is your current username\./)
+  assert.match(browserScript, /ONBOARDING_E2E_USERNAME_LOWERCASE_VERIFIED=true/)
+  assert.match(browserScript, /ONBOARDING_E2E_USERNAME_RESERVED_VERIFIED=true/)
+  assert.match(browserScript, /ONBOARDING_E2E_USERNAME_CHECKING_GUARD_VERIFIED=true/)
+  assert.match(browserScript, /ONBOARDING_E2E_USERNAME_CURRENT_VERIFIED=true/)
+  assert.match(browserScript, /ONBOARDING_E2E_USERNAME_PUBLIC_URL_VERIFIED=true/)
+  assert.match(browserScript, /ONBOARDING_E2E_LEGACY_PROFILE_URL_VERIFIED=true/)
+  assert.match(browserScript, /a\[href\^="\/people\/"\]/)
   assert.match(browserScript, /Username changes remaining: 2 of 2\./)
   assert.match(browserScript, /Username changes remaining: 1 of 2\./)
   assert.match(browserScript, /Username changes remaining: 0 of 2\./)
