@@ -88,6 +88,9 @@ inner join public.learning_mentor_applications application
 const marketplaceVisibility = `course.status = 'published'
   and mentor.status = 'active'`
 
+const marketplaceDiscoveryVisibility = `${marketplaceVisibility}
+  and course.is_discoverable = true`
+
 function isoDateTime(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value
 }
@@ -146,7 +149,7 @@ export function createMarketplaceRepository(input: { query?: MarketplaceQuery } 
     const discovery = discoveryClauses.length ? `\n  and ${discoveryClauses.join('\n  and ')}` : ''
     const rows = await queryRows(
       `${marketplaceSelect}
-where ${marketplaceVisibility}${discovery}
+where ${marketplaceDiscoveryVisibility}${discovery}
 order by course.published_at desc, course.id desc`,
       values,
     ) as MarketplaceCourseRow[]
