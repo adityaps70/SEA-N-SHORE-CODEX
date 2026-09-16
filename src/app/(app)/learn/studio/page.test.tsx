@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getMentorApplicationState: vi.fn(),
   listOwnedCourses: vi.fn(),
+  listForMentor: vi.fn(),
   redirect: vi.fn(),
 }))
 
@@ -15,6 +16,9 @@ vi.mock('@/features/learning/repository', () => ({
 }))
 vi.mock('@/features/learning/course-repository', () => ({
   courseRepository: { listOwnedCourses: mocks.listOwnedCourses },
+}))
+vi.mock('@/features/learning/assignment-grading-repository', () => ({
+  assignmentGradingRepository: { listForMentor: mocks.listForMentor },
 }))
 
 import MentorStudioPage from './page'
@@ -63,13 +67,38 @@ describe('/learn/studio', () => {
         updatedAt: '2026-09-14T14:00:00.000Z',
       },
     ])
+    mocks.listForMentor.mockResolvedValue([
+      {
+        id: '55555555-5555-4555-8555-555555555555',
+        attemptNumber: 1,
+        status: 'submitted',
+        submittedAt: '2026-09-15T09:30:00.000Z',
+        responseText: 'Completed vessel inspection evidence.',
+        attachmentPath: null,
+        scorePoints: null,
+        percentage: null,
+        passed: null,
+        feedback: null,
+        gradedAt: null,
+        maxPoints: 100,
+        passingPercentage: 70,
+        courseTitle: 'SIRE 2.0 Readiness for Tanker Officers',
+        courseSlug: 'sire-2-readiness-for-tanker-officers',
+        lessonTitle: 'Practical vessel inspection assignment',
+        learnerName: 'Test Learner',
+      },
+    ])
   })
 
-  it('shows an approved mentor their Studio, course portfolio and creation path', async () => {
+  it('shows an approved mentor their Studio, course portfolio and learner-review entry point', async () => {
     render(await MentorStudioPage())
 
     expect(screen.getByRole('heading', { name: 'Mentor Studio' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /create course/i })).toHaveAttribute('href', '/learn/studio/courses/new')
+    expect(screen.getByRole('link', { name: /review assignments/i })).toHaveAttribute('href', '/learn/studio/assignments')
+    expect(screen.getByRole('link', { name: /review 1 learner submission/i })).toHaveAttribute('href', '/learn/studio/assignments')
+    expect(screen.getByText('Learner reviews')).toBeInTheDocument()
+    expect(screen.getByText('Assignments awaiting review')).toBeInTheDocument()
     expect(screen.getByText('SIRE 2.0 Readiness for Tanker Officers')).toBeInTheDocument()
     expect(screen.getByText('Bridge Leadership Under Pressure')).toBeInTheDocument()
     expect(screen.getByText('Draft')).toBeInTheDocument()
@@ -79,11 +108,23 @@ describe('/learn/studio', () => {
       '/learn/studio/courses/33333333-3333-4333-8333-333333333333/edit',
     )
     expect(mocks.listOwnedCourses).toHaveBeenCalledWith('user-1')
+    expect(mocks.listForMentor).toHaveBeenCalledWith('user-1')
     expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
+  it('keeps assignment grading discoverable even when there are no pending submissions', async () => {
+    mocks.listForMentor.mockResolvedValue([])
+
+    render(await MentorStudioPage())
+
+    expect(screen.getByRole('link', { name: /review assignments/i })).toHaveAttribute('href', '/learn/studio/assignments')
+    expect(screen.getByText('Learner reviews')).toBeInTheDocument()
+    expect(screen.queryByText('Assignments awaiting review')).not.toBeInTheDocument()
   })
 
   it('shows a useful empty state for an approved mentor with no courses yet', async () => {
     mocks.listOwnedCourses.mockResolvedValue([])
+    mocks.listForMentor.mockResolvedValue([])
 
     render(await MentorStudioPage())
 
@@ -110,5 +151,6 @@ describe('/learn/studio', () => {
 
     expect(mocks.redirect).toHaveBeenCalledWith('/learn/teach')
     expect(mocks.listOwnedCourses).not.toHaveBeenCalled()
+    expect(mocks.listForMentor).not.toHaveBeenCalled()
   })
 })
