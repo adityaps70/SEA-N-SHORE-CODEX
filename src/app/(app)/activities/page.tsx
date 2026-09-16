@@ -11,6 +11,7 @@ import { JobApplicationList } from '@/features/jobs/components/job-application-l
 import { getMyJobApplications, getPublishedJobs } from '@/features/jobs/queries'
 import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-know'
 import { getPeopleYouMayKnow } from '@/features/network/queries'
+import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
 
 function EmptyPosts({ mode }: { mode: 'posts' | 'comments' }) {
@@ -41,29 +42,34 @@ export default async function ActivitiesPage({
   const { tab: rawTab } = await searchParams
   const tab: ActivityTab = rawTab === 'comments' ? 'comments' : rawTab === 'jobs' ? 'jobs' : 'posts'
 
-  const [profile, recommendations, jobs, posts, comments, applications] = await Promise.all([
+  const [profile, recommendations, jobs, posts, comments, applications, portfolio] = await Promise.all([
     getOwnProfile(),
     getPeopleYouMayKnow(4),
     getPublishedJobs(),
     tab === 'posts' ? getMyActivityPosts() : Promise.resolve([]),
     tab === 'comments' ? getMyCommentActivity() : Promise.resolve([]),
     tab === 'jobs' ? getMyJobApplications() : Promise.resolve([]),
+    getOwnProfilePortfolio(),
   ])
   if (!profile) redirect('/onboarding')
 
+  const portfolioCompletion = {
+    experienceCount: portfolio.experiences.length,
+    credentialCount: portfolio.credentials.length,
+  }
   const tabClass = (active: boolean) => `inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1.5 text-[11px] font-semibold transition sm:min-h-11 sm:flex-row sm:gap-2 sm:px-4 sm:text-sm ${active ? 'bg-white text-navy-950 shadow-sm' : 'text-white/75 hover:bg-white/10 hover:text-white'}`
 
   return (
     <section className="grid gap-5 py-2 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_300px] xl:gap-6">
       <aside className="hidden lg:block">
         <div className="sticky top-24">
-          <FeedProfileCard profile={profile} />
+          <FeedProfileCard profile={profile} portfolioCompletion={portfolioCompletion} />
         </div>
       </aside>
 
       <main className="min-w-0">
         <div className="mb-4 lg:hidden">
-          <FeedProfileCard profile={profile} compact />
+          <FeedProfileCard profile={profile} portfolioCompletion={portfolioCompletion} compact />
         </div>
 
         <PremiumPageHero
