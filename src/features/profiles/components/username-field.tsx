@@ -8,6 +8,7 @@ type UsernameStatus = 'idle' | 'checking' | 'available' | 'current' | 'taken' | 
 
 type UsernameFieldProps = {
   initialValue?: string
+  currentUsername?: string
   serverError?: string
   changesRemaining?: number
   locked?: boolean
@@ -16,14 +17,16 @@ type UsernameFieldProps = {
 
 export function UsernameField({
   initialValue = '',
+  currentUsername,
   serverError,
   changesRemaining,
   locked = false,
   onReadyChange,
 }: UsernameFieldProps) {
   const normalizedInitial = normalizeUsername(initialValue)
+  const normalizedCurrent = currentUsername ? normalizeUsername(currentUsername) : ''
   const [value, setValue] = useState(normalizedInitial)
-  const [status, setStatus] = useState<UsernameStatus>(normalizedInitial ? 'current' : 'idle')
+  const [status, setStatus] = useState<UsernameStatus>(normalizedCurrent && normalizedInitial === normalizedCurrent ? 'current' : 'idle')
   const [message, setMessage] = useState(serverError ?? '')
 
   useEffect(() => {
@@ -42,7 +45,7 @@ export function UsernameField({
       return
     }
 
-    if (normalizedInitial && parsed.data === normalizedInitial) {
+    if (normalizedCurrent && parsed.data === normalizedCurrent) {
       setStatus('current')
       setMessage(serverError ?? 'This is your current username.')
       onReadyChange?.(true)
@@ -88,7 +91,7 @@ export function UsernameField({
       active = false
       clearTimeout(timer)
     }
-  }, [locked, normalizedInitial, onReadyChange, serverError, value])
+  }, [locked, normalizedCurrent, onReadyChange, serverError, value])
 
   const invalid = status === 'taken' || status === 'invalid' || status === 'error'
   const positive = status === 'available' || status === 'current'
