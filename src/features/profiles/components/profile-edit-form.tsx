@@ -19,7 +19,7 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
   const [usernameReady, setUsernameReady] = useState(true)
   const values = state.values
   const isMaritime = profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional'
-  const usernameChangesRemaining = Math.max(0, 2 - profile.usernameChangeCount)
+  const usernameChangesRemaining = Math.max(0, 2 - (profile.usernameChangeCount ?? 0))
 
   function textValue(name: keyof OnboardingFormValues, fallback = '') {
     const value = values?.[name]
