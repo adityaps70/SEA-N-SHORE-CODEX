@@ -7,7 +7,7 @@ import type { OnboardingInput } from './schemas'
 
 export type ProfileEditRepository = Pick<
   OnboardingRepository,
-  'updateCompletedProfile' | 'upsertMaritimeProfile' | 'deleteMaritimeProfile' | 'replaceSkills'
+  'lockCompletedProfile' | 'updateCompletedProfile' | 'upsertMaritimeProfile' | 'deleteMaritimeProfile' | 'replaceSkills'
 >
 
 type ProfileEditTransaction = <T>(fn: (repository: ProfileEditRepository) => Promise<T>) => Promise<T>
@@ -19,6 +19,14 @@ function serviceError(code: string): never {
 export function createProfileEditService(input: { withTransaction: ProfileEditTransaction }) {
   async function updateProfile(actorId: string, data: OnboardingInput) {
     return input.withTransaction(async (repository) => {
+      const current = await repository.lockCompletedProfile(actorId)
+      if (!current) serviceError('profile_edit_unavailable')
+
+      const usernameChanged = current.slug !== data.slug
+      if (usernameChanged && current.usernameChangeCount >= 2) {
+        serviceError('username_change_limit')
+      }
+
       if (!await repository.updateCompletedProfile(actorId, data)) {
         serviceError('profile_edit_unavailable')
       }
