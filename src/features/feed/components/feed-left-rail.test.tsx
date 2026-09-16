@@ -27,7 +27,7 @@ const profile: OwnProfile = {
 
 describe('FeedLeftRail', () => {
   it('keeps only maritime identity and quick actions, including Saved', () => {
-    render(<FeedLeftRail profile={profile} />)
+    render(<FeedLeftRail profile={profile} portfolioCompletion={{ experienceCount: 0, credentialCount: 0 }} />)
 
     expect(screen.getByText('Member A')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Quick actions' })).toBeInTheDocument()
