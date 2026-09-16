@@ -6,6 +6,13 @@ import { normalizeUsername, usernameSchema } from '../username'
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'current' | 'taken' | 'invalid' | 'error'
 
+type RemoteUsernameState = {
+  username: string
+  status: Exclude<UsernameStatus, 'idle' | 'checking'>
+  message: string
+  ready: boolean
+}
+
 type UsernameFieldProps = {
   initialValue?: string
   currentUsername?: string
@@ -26,64 +33,70 @@ export function UsernameField({
   const normalizedInitial = normalizeUsername(initialValue)
   const normalizedCurrent = currentUsername ? normalizeUsername(currentUsername) : ''
   const [value, setValue] = useState(normalizedInitial)
-  const [status, setStatus] = useState<UsernameStatus>(normalizedCurrent && normalizedInitial === normalizedCurrent ? 'current' : 'idle')
-  const [message, setMessage] = useState(serverError ?? '')
+  const [remoteState, setRemoteState] = useState<RemoteUsernameState | null>(null)
+  const parsed = usernameSchema.safeParse(value)
+  const candidate = parsed.success ? parsed.data : ''
+  const isCurrent = Boolean(normalizedCurrent && candidate === normalizedCurrent)
+  const shouldCheck = !locked && parsed.success && !isCurrent
+  const matchingRemoteState = shouldCheck && remoteState?.username === candidate ? remoteState : null
+
+  let status: UsernameStatus
+  let message: string
+  let ready: boolean
+
+  if (locked) {
+    status = 'current'
+    message = 'Your username is locked because both username changes have been used.'
+    ready = true
+  } else if (!parsed.success) {
+    status = value ? 'invalid' : 'idle'
+    message = value ? (parsed.error.issues[0]?.message ?? 'Choose a valid username.') : ''
+    ready = false
+  } else if (isCurrent) {
+    status = 'current'
+    message = serverError ?? 'This is your current username.'
+    ready = true
+  } else if (matchingRemoteState) {
+    status = matchingRemoteState.status
+    message = matchingRemoteState.message
+    ready = matchingRemoteState.ready
+  } else {
+    status = 'checking'
+    message = serverError ?? 'Checking username…'
+    ready = false
+  }
 
   useEffect(() => {
-    if (locked) {
-      setStatus('current')
-      setMessage('Your username is locked because both username changes have been used.')
-      onReadyChange?.(true)
-      return
-    }
+    onReadyChange?.(ready)
+  }, [onReadyChange, ready])
 
-    const parsed = usernameSchema.safeParse(value)
-    if (!parsed.success) {
-      setStatus(value ? 'invalid' : 'idle')
-      setMessage(value ? (parsed.error.issues[0]?.message ?? 'Choose a valid username.') : '')
-      onReadyChange?.(false)
-      return
-    }
-
-    if (normalizedCurrent && parsed.data === normalizedCurrent) {
-      setStatus('current')
-      setMessage(serverError ?? 'This is your current username.')
-      onReadyChange?.(true)
-      return
-    }
-
-    setStatus('checking')
-    setMessage('Checking username…')
-    onReadyChange?.(false)
+  useEffect(() => {
+    if (!shouldCheck) return
 
     let active = true
+    const username = candidate
     const timer = setTimeout(() => {
-      void checkUsernameAvailability(parsed.data)
+      void checkUsernameAvailability(username)
         .then((result) => {
           if (!active) return
           if ('valid' in result && result.valid === false) {
-            setStatus('invalid')
-            setMessage(result.message)
-            onReadyChange?.(false)
+            setRemoteState({ username, status: 'invalid', message: result.message, ready: false })
           } else if (result.current) {
-            setStatus('current')
-            setMessage('This is your current username.')
-            onReadyChange?.(true)
+            setRemoteState({ username, status: 'current', message: 'This is your current username.', ready: true })
           } else if (result.available) {
-            setStatus('available')
-            setMessage('Username is available.')
-            onReadyChange?.(true)
+            setRemoteState({ username, status: 'available', message: 'Username is available.', ready: true })
           } else {
-            setStatus('taken')
-            setMessage('That username is already taken.')
-            onReadyChange?.(false)
+            setRemoteState({ username, status: 'taken', message: 'That username is already taken.', ready: false })
           }
         })
         .catch(() => {
           if (!active) return
-          setStatus('error')
-          setMessage('We could not check this username. Please try again.')
-          onReadyChange?.(false)
+          setRemoteState({
+            username,
+            status: 'error',
+            message: 'We could not check this username. Please try again.',
+            ready: false,
+          })
         })
     }, 400)
 
@@ -91,7 +104,7 @@ export function UsernameField({
       active = false
       clearTimeout(timer)
     }
-  }, [locked, normalizedCurrent, onReadyChange, serverError, value])
+  }, [candidate, shouldCheck])
 
   const invalid = status === 'taken' || status === 'invalid' || status === 'error'
   const positive = status === 'available' || status === 'current'
