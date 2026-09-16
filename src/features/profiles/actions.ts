@@ -101,6 +101,10 @@ function isUniqueViolation(error: unknown) {
   return Boolean(error && typeof error === 'object' && 'code' in error && error.code === '23505')
 }
 
+function isServiceError(error: unknown, code: string) {
+  return error instanceof Error && error.message === code
+}
+
 function validationFailure(previousState: ProfileActionState, formData: FormData, error: { flatten: () => { fieldErrors: unknown } }) {
   return failureState(previousState, formData, {
     fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
@@ -122,7 +126,7 @@ export async function completeOnboarding(
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
-        fieldErrors: { slug: ['That profile address is already in use.'] },
+        fieldErrors: { slug: ['That username is already in use.'] },
       })
     }
     return failureState(previousState, formData, {
@@ -147,7 +151,7 @@ export async function completeActivation(
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
-        fieldErrors: { slug: ['That profile address is already in use.'] },
+        fieldErrors: { slug: ['That username is already in use.'] },
       })
     }
     return failureState(previousState, formData, {
@@ -179,7 +183,12 @@ export async function updateProfile(
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
-        fieldErrors: { slug: ['That profile address is already in use.'] },
+        fieldErrors: { slug: ['That username is already in use.'] },
+      })
+    }
+    if (isServiceError(error, 'username_change_limit')) {
+      return failureState(previousState, formData, {
+        fieldErrors: { slug: ['You have used both username changes. Your username is now locked.'] },
       })
     }
     return failureState(previousState, formData, {
