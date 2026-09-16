@@ -7,12 +7,18 @@ import {
 
 const actorId = '11111111-1111-4111-8111-111111111111'
 
-function repositoryDouble(updateResult = true): ProfileEditRepository {
+type EditState = { slug: string; usernameChangeCount: number }
+
+function repositoryDouble(
+  updateResult = true,
+  editState: EditState | null = { slug: 'captain-example', usernameChangeCount: 0 },
+): ProfileEditRepository {
+  const lockCompletedProfile: ProfileEditRepository['lockCompletedProfile'] = vi.fn(async () => editState)
   const updateCompletedProfile: ProfileEditRepository['updateCompletedProfile'] = vi.fn(async () => updateResult)
   const upsertMaritimeProfile: ProfileEditRepository['upsertMaritimeProfile'] = vi.fn(async () => undefined)
   const deleteMaritimeProfile: ProfileEditRepository['deleteMaritimeProfile'] = vi.fn(async () => undefined)
   const replaceSkills: ProfileEditRepository['replaceSkills'] = vi.fn(async () => undefined)
-  return { updateCompletedProfile, upsertMaritimeProfile, deleteMaritimeProfile, replaceSkills }
+  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, deleteMaritimeProfile, replaceSkills }
 }
 
 function withRepository(repository: ProfileEditRepository) {
@@ -48,10 +54,39 @@ describe('completed profile edit service', () => {
 
     await expect(service.updateProfile(actorId, data)).resolves.toBe(true)
 
+    expect(vi.mocked(repository.lockCompletedProfile)).toHaveBeenCalledWith(actorId)
     expect(vi.mocked(repository.updateCompletedProfile)).toHaveBeenCalledWith(actorId, data)
     expect(vi.mocked(repository.upsertMaritimeProfile)).toHaveBeenCalledWith(actorId, data)
     expect(vi.mocked(repository.deleteMaritimeProfile)).not.toHaveBeenCalled()
     expect(vi.mocked(repository.replaceSkills)).toHaveBeenCalledWith(actorId, data.skills)
+  })
+
+  it('allows the second post-onboarding username change', async () => {
+    const repository = repositoryDouble(true, { slug: 'captain-old', usernameChangeCount: 1 })
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
+    const data = { ...input(), slug: 'captain-new' }
+
+    await expect(service.updateProfile(actorId, data)).resolves.toBe(true)
+    expect(vi.mocked(repository.updateCompletedProfile)).toHaveBeenCalledWith(actorId, data)
+  })
+
+  it('rejects a third post-onboarding username change before writing profile data', async () => {
+    const repository = repositoryDouble(true, { slug: 'captain-old', usernameChangeCount: 2 })
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
+    const data = { ...input(), slug: 'captain-third' }
+
+    await expect(service.updateProfile(actorId, data)).rejects.toThrow('username_change_limit')
+    expect(vi.mocked(repository.updateCompletedProfile)).not.toHaveBeenCalled()
+    expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
+    expect(vi.mocked(repository.replaceSkills)).not.toHaveBeenCalled()
+  })
+
+  it('does not consume the username allowance when the username is unchanged', async () => {
+    const repository = repositoryDouble(true, { slug: 'captain-example', usernameChangeCount: 2 })
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
+
+    await expect(service.updateProfile(actorId, input())).resolves.toBe(true)
+    expect(vi.mocked(repository.updateCompletedProfile)).toHaveBeenCalled()
   })
 
   it('removes stale maritime details when the stored profile type is non-maritime', async () => {
@@ -66,10 +101,11 @@ describe('completed profile edit service', () => {
   })
 
   it('fails closed when the actor is not an active completed profile', async () => {
-    const repository = repositoryDouble(false)
+    const repository = repositoryDouble(true, null)
     const service = createProfileEditService({ withTransaction: withRepository(repository) })
 
     await expect(service.updateProfile(actorId, input())).rejects.toThrow('profile_edit_unavailable')
+    expect(vi.mocked(repository.updateCompletedProfile)).not.toHaveBeenCalled()
     expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
     expect(vi.mocked(repository.replaceSkills)).not.toHaveBeenCalled()
   })
