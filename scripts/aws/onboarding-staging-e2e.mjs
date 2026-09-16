@@ -3,6 +3,7 @@ import { chromium, expect } from '@playwright/test'
 
 const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
+const runId = process.env.GITHUB_RUN_ID
 const users = [
   {
     key: 'professional',
@@ -25,11 +26,18 @@ const users = [
 ]
 
 assert.ok(siteUrl, 'SITE_URL is required')
+assert.match(runId ?? '', /^\d+$/, 'GITHUB_RUN_ID is required')
 assert.ok(['signup', 'journeys'].includes(phase), 'E2E_PHASE must be signup or journeys')
 for (const user of users) {
   assert.match(user.email ?? '', /^sea-n-shore-e2e-[0-9]+-(professional|custom|organisation)@example\.com$/)
   assert.ok((user.password ?? '').length >= 12)
   assert.ok(user.fullName)
+}
+
+function e2eUsername(kind) {
+  const value = `e2e-${kind}-${runId}`
+  assert.ok(value.length <= 30, `Disposable username is too long: ${value}`)
+  return value
 }
 
 const browser = await chromium.launch()
@@ -92,7 +100,12 @@ async function signIn(page, user) {
   await expect(page.getByRole('heading', { name: 'Set your course in the global shipping community.' })).toBeVisible()
 }
 
-async function completeProfessional(user) {
+async function expectUsernameAvailable(page, username) {
+  await page.getByLabel('Username').fill(username)
+  await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
+}
+
+async function completeProfessional(user, takenUsername) {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signIn(page, user)
@@ -106,26 +119,81 @@ async function completeProfessional(user) {
   await page.locator('button').filter({ hasText: /^MentorProfessional Capacities$/ }).click()
   await expect(page.getByRole('button', { name: 'Remove Mentor' })).toBeVisible()
 
-  const slug = `sea-n-shore-e2e-professional-${process.env.GITHUB_RUN_ID}`
-  await page.getByLabel('Profile address').fill('Bad Slug!!')
+  const initialUsername = e2eUsername('pro')
+  const firstChangedUsername = e2eUsername('pro1')
+  const secondChangedUsername = e2eUsername('pro2')
+  const blockedThirdUsername = e2eUsername('pro3')
+  const completeButton = page.getByRole('button', { name: 'Complete profile' })
+
   await page.getByLabel('Location').fill('Mumbai')
   await page.getByLabel('Current organisation').fill('E2E Shipping')
-  await page.getByRole('button', { name: 'Complete profile' }).click()
-  await expect(page.getByText('Use letters, numbers, and single hyphens.')).toBeVisible()
-  await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Master')
-  await expect(page.getByLabel('Location')).toHaveValue('Mumbai')
-  await expect(page.getByLabel('Current organisation')).toHaveValue('E2E Shipping')
 
-  await page.getByLabel('Profile address').fill(slug)
-  await page.getByRole('button', { name: 'Complete profile' }).click()
+  await page.getByLabel('Username').fill('Bad Slug!!')
+  await expect(page.getByText('Use letters, numbers, dots, underscores, or hyphens; start and end with a letter or number.', { exact: true })).toBeVisible()
+  await expect(completeButton).toBeDisabled()
+
+  await page.getByLabel('Username').fill(takenUsername)
+  await expect(page.getByText('That username is already taken.', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await expect(completeButton).toBeDisabled()
+
+  await expectUsernameAvailable(page, initialUsername)
+  await expect(completeButton).toBeEnabled()
+  console.log('ONBOARDING_E2E_USERNAME_AVAILABILITY_VERIFIED=true')
+  await completeButton.click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
 
   await page.goto(`${siteUrl}/profile`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('Master', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('Mentor', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(`@${initialUsername}`, { exact: true })).toBeVisible()
 
   await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Edit profile' })).toBeVisible()
+  await expect(page.getByText('Username changes remaining: 2 of 2.', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Username')).toHaveValue(initialUsername)
+  console.log('ONBOARDING_E2E_USERNAME_INITIAL_BUDGET_VERIFIED=true')
+
+  await page.getByLabel('About').fill('Disposable onboarding E2E profile used to verify username protections.')
+  const rank = page.getByLabel('Rank')
+  if (await rank.count()) await rank.fill('Master')
+  await expectUsernameAvailable(page, firstChangedUsername)
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await page.waitForURL((url) => url.pathname === '/profile', { timeout: 20_000 })
+  await expect(page.getByText(`@${firstChangedUsername}`, { exact: true })).toBeVisible()
+
+  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText('Username changes remaining: 1 of 2.', { exact: true })).toBeVisible()
+  await expect(page.getByLabel('Username')).toHaveValue(firstChangedUsername)
+  await expectUsernameAvailable(page, secondChangedUsername)
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await page.waitForURL((url) => url.pathname === '/profile', { timeout: 20_000 })
+  await expect(page.getByText(`@${secondChangedUsername}`, { exact: true })).toBeVisible()
+
+  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText('Username changes remaining: 0 of 2.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Your username is locked because both username changes have been used.', { exact: true })).toBeVisible()
+  const lockedUsername = page.getByLabel('Username')
+  await expect(lockedUsername).toHaveValue(secondChangedUsername)
+  await expect(lockedUsername).not.toBeEditable()
+
+  await lockedUsername.evaluate((element) => element.removeAttribute('readonly'))
+  await lockedUsername.fill(blockedThirdUsername)
+  const thirdChangeResponse = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && response.url().startsWith(siteUrl),
+    { timeout: 20_000 },
+  )
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await thirdChangeResponse
+  await expect(page).toHaveURL((url) => url.pathname === '/profile/edit')
+  await expect(page.getByLabel('Username')).toHaveValue(secondChangedUsername, { timeout: 10_000 })
+  console.log('ONBOARDING_E2E_USERNAME_THIRD_CHANGE_BLOCKED=true')
+
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByLabel('Username')).toHaveValue(secondChangedUsername)
+  await expect(page.getByLabel('Username')).not.toBeEditable()
+  await expect(page.getByText('Username changes remaining: 0 of 2.', { exact: true })).toBeVisible()
+  await expect(page.getByText('Your username is locked because both username changes have been used.', { exact: true })).toBeVisible()
+  console.log('ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true')
 
   await page.goto(`${siteUrl}/events`, { waitUntil: 'domcontentloaded' })
   await expect(page).toHaveURL((url) => url.pathname === '/events')
@@ -150,14 +218,17 @@ async function completeCustom(user) {
   await page.getByRole('button', { name: 'Use this identity' }).click()
   await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Hydrographic Survey Expedition Lead')
 
-  await page.getByLabel('Profile address').fill(`sea-n-shore-e2e-custom-${process.env.GITHUB_RUN_ID}`)
+  const username = e2eUsername('custom')
+  await expectUsernameAvailable(page, username)
   await page.getByLabel('Location').fill('Goa')
   await page.getByLabel('Current organisation').fill('E2E Hydro')
   await page.getByRole('button', { name: 'Complete profile' }).click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
   await page.goto(`${siteUrl}/profile`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('Hydrographic Survey Expedition Lead', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(`@${username}`, { exact: true })).toBeVisible()
   await context.close()
+  return username
 }
 
 async function completeOrganisation(user) {
@@ -170,14 +241,16 @@ async function completeOrganisation(user) {
   await page.getByRole('button', { name: 'Shipowner — Shipping & Ship Management' }).click()
   await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Shipowner')
 
+  const username = e2eUsername('org')
   await page.getByLabel('Organisation name').fill('E2E Shipowner Organisation')
-  await page.getByLabel('Profile address').fill(`sea-n-shore-e2e-organisation-${process.env.GITHUB_RUN_ID}`)
+  await expectUsernameAvailable(page, username)
   await page.getByLabel('Location').fill('Mumbai')
   await assert.rejects(async () => page.getByLabel('Current organisation').waitFor({ state: 'visible', timeout: 500 }))
   await page.getByRole('button', { name: 'Complete profile' }).click()
   await page.waitForURL((url) => url.pathname === '/hiring/organization', { timeout: 20_000 })
   await page.goto(`${siteUrl}/profile`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('Shipowner', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(`@${username}`, { exact: true })).toBeVisible()
   await context.close()
 }
 
@@ -186,10 +259,10 @@ try {
     for (const user of users) await signUp(user)
     console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
   } else {
-    await completeProfessional(users[0])
-    console.log('ONBOARDING_E2E_PROFESSIONAL_VERIFIED=true')
-    await completeCustom(users[1])
+    const customUsername = await completeCustom(users[1])
     console.log('ONBOARDING_E2E_CUSTOM_VERIFIED=true')
+    await completeProfessional(users[0], customUsername)
+    console.log('ONBOARDING_E2E_PROFESSIONAL_VERIFIED=true')
     await completeOrganisation(users[2])
     console.log('ONBOARDING_E2E_ORGANISATION_VERIFIED=true')
   }
