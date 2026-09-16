@@ -1,5 +1,4 @@
 import {
-  createMediaReadUrl,
   createMediaUploadUrl,
   deleteMediaObject,
   headMediaObject,
@@ -12,19 +11,21 @@ import {
   type PostMediaMime,
 } from './media-policy'
 
+function buildFirstPartyMediaUrl(path: string): string {
+  const encodedPath = path
+    .split('/')
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')
+
+  return `/api/feed-media/${encodedPath}`
+}
+
 export async function resolveFeedMediaUrls(paths: string[]): Promise<Map<string, string>> {
   if (!paths.length) return new Map()
 
-  const urls = new Map<string, string>()
-  await Promise.all(paths.map(async (path) => {
-    try {
-      const signedUrl = await createMediaReadUrl(path)
-      urls.set(path, signedUrl)
-    } catch {
-      // One unavailable object should not prevent the rest of the feed from rendering.
-    }
-  }))
-  return urls
+  return new Map(
+    [...new Set(paths)].map((path) => [path, buildFirstPartyMediaUrl(path)]),
+  )
 }
 
 function safeErrorName(error: unknown): string {
