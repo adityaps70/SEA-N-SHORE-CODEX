@@ -3,7 +3,15 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 
 const phase = process.argv[2]
-const allowedPhases = new Set(['confirm', 'create-fixture', 'verify-submitted', 'verify-passed', 'cleanup'])
+const allowedPhases = new Set([
+  'confirm',
+  'create-fixture',
+  'verify-submitted',
+  'verify-revision',
+  'verify-resubmitted',
+  'verify-passed',
+  'cleanup',
+])
 assert.ok(allowedPhases.has(phase), `Unsupported SSM E2E phase: ${phase}`)
 
 const instanceId = process.env.INSTANCE_ID
@@ -20,6 +28,7 @@ const forwarded = [
   'E2E_COURSE_TITLE',
   'E2E_COURSE_SLUG',
   'E2E_FEEDBACK',
+  'E2E_REVISION_FEEDBACK',
 ]
 
 function quote(value) {
