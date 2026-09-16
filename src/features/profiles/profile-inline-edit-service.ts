@@ -7,11 +7,16 @@ import type {
 } from './profile-inline-schemas'
 
 type ReturningIdRow = QueryResultRow & { id: string }
+type LockedProfileRow = QueryResultRow & { slug: string | null; username_change_count: number }
 
 type TransactionRunner = <T>(fn: (client: DatabaseQueryClient) => Promise<T>) => Promise<T>
 
 function unavailable(): never {
   throw new Error('profile_edit_unavailable')
+}
+
+function usernameLimit(): never {
+  throw new Error('username_change_limit')
 }
 
 export function createProfileInlineEditService(input: { withTransaction: TransactionRunner }) {
@@ -21,9 +26,25 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     isMaritime: boolean,
   ) {
     return input.withTransaction(async (client) => {
+      const locked = await client.query<LockedProfileRow>(
+        `select slug, username_change_count
+         from public.profiles
+         where id = $1
+           and account_status = 'active'
+           and onboarding_completed_at is not null
+         for update`,
+        [profileId],
+      )
+      const current = locked.rows[0]
+      if (!current) unavailable()
+      if ((current.slug ?? '') !== data.slug && Number(current.username_change_count ?? 0) >= 2) {
+        usernameLimit()
+      }
+
       const result = await client.query<ReturningIdRow>(
         `update public.profiles
          set full_name = $2,
+             username_change_count = username_change_count + case when slug is distinct from $3 then 1 else 0 end,
              slug = $3,
              location = $4,
              headline = $5,
