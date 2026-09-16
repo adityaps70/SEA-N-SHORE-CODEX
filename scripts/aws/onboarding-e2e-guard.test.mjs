@@ -67,10 +67,25 @@ test('run-once performs disposable public sign-up browser journeys and guarded c
   assert.match(browserScript, /Custom maritime identity/)
   assert.match(browserScript, /Search organisation identities/)
   assert.match(browserScript, /Shipowner — Shipping & Ship Management/)
-  assert.match(browserScript, /Use letters, numbers, and single hyphens/)
   assert.match(browserScript, /\/home/)
   assert.match(browserScript, /\/profile/)
   assert.match(browserScript, /\/profile\/edit/)
+})
+
+test('run-once proves the live Username availability and two-change server limit', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.doesNotMatch(browserScript, /Profile address/)
+  assert.match(browserScript, /getByLabel\('Username'\)/)
+  assert.match(browserScript, /Username is available\./)
+  assert.match(browserScript, /That username is already taken\./)
+  assert.match(browserScript, /Username changes remaining: 2 of 2\./)
+  assert.match(browserScript, /Username changes remaining: 1 of 2\./)
+  assert.match(browserScript, /both username changes have been used/)
+  assert.match(browserScript, /ONBOARDING_E2E_USERNAME_THIRD_CHANGE_BLOCKED=true/)
+  assert.match(workflow, /username_change_count/)
+  assert.match(workflow, /ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true/)
 })
 
 test('signup diagnostics ignore the empty Next.js route announcer and cleanup audits only completed journeys', () => {
