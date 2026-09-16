@@ -76,7 +76,13 @@ test('run-once proves the full live Username contract and two-change server limi
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
   assert.doesNotMatch(browserScript, /Profile address/)
-  assert.match(browserScript, /getByLabel\('Username'\)/)
+  assert.match(browserScript, /function usernameInput\(page\)/)
+  assert.match(browserScript, /page\.locator\('input\[name="slug"\]'\)/)
+  assert.doesNotMatch(
+    browserScript,
+    /getByLabel\('Username'\)/,
+    'Username E2E must target the unique slug input instead of an ambiguous accessible label match',
+  )
   assert.match(browserScript, /Checking username…/)
   assert.match(browserScript, /Username is available\./)
   assert.match(browserScript, /That username is already taken\./)
