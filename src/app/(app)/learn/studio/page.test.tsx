@@ -96,6 +96,7 @@ describe('/learn/studio', () => {
     expect(screen.getByRole('heading', { name: 'Mentor Studio' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /create course/i })).toHaveAttribute('href', '/learn/studio/courses/new')
     expect(screen.getByRole('link', { name: /review assignments/i })).toHaveAttribute('href', '/learn/studio/assignments')
+    expect(screen.getByRole('link', { name: /analytics/i })).toHaveAttribute('href', '/learn/studio/analytics')
     expect(screen.getByRole('link', { name: /review 1 learner submission/i })).toHaveAttribute('href', '/learn/studio/assignments')
     expect(screen.getByText('Learner reviews')).toBeInTheDocument()
     expect(screen.getByText('Assignments awaiting review')).toBeInTheDocument()
