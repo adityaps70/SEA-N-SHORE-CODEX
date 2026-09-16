@@ -40,7 +40,7 @@ describe('assignment grading repository', () => {
     expect(query).toHaveBeenCalledTimes(1)
   })
 
-  it('records a failing mentor grade without completing learner progress', async () => {
+  it('records an explicit needs-revision grade without completing learner progress', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce([{
         attempt_id: 'attempt-1', status: 'submitted', enrollment_id: 'enrollment-1', lesson_id: 'lesson-1',
@@ -49,13 +49,17 @@ describe('assignment grading repository', () => {
       .mockResolvedValueOnce([{ graded_at: new Date('2026-09-15T13:00:00.000Z') }])
     const repository = createAssignmentGradingRepository({ transaction: async (work) => work(query) })
 
-    const result = await repository.grade('mentor-1', 'attempt-1', { scorePoints: 60, feedback: 'Strengthen the inspection evidence.' })
+    const result = await repository.grade('mentor-1', 'attempt-1', {
+      scorePoints: 60,
+      feedback: 'Strengthen the inspection evidence.',
+      decision: 'needs_revision',
+    })
 
     expect(result).toMatchObject({ percentage: 60, passed: false, progressPercent: null, enrollmentCompleted: false })
     expect(query).toHaveBeenCalledTimes(2)
   })
 
-  it('completes the material only when the mentor grade meets the pass threshold', async () => {
+  it('completes the material only when an explicit pass meets the configured pass threshold', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce([{
         attempt_id: 'attempt-1', status: 'submitted', enrollment_id: 'enrollment-1', lesson_id: 'lesson-1',
@@ -66,17 +70,51 @@ describe('assignment grading repository', () => {
       .mockResolvedValueOnce([{ total_lessons: 2, completed_lessons: 1 }])
     const repository = createAssignmentGradingRepository({ transaction: async (work) => work(query) })
 
-    const result = await repository.grade('mentor-1', 'attempt-1', { scorePoints: 85, feedback: 'Passed.' })
+    const result = await repository.grade('mentor-1', 'attempt-1', {
+      scorePoints: 85,
+      feedback: 'Passed.',
+      decision: 'pass',
+    })
 
     expect(result).toMatchObject({ percentage: 85, passed: true, progressPercent: 50, enrollmentCompleted: false })
     expect(String(query.mock.calls[2]?.[0])).toContain('completed = true')
+  })
+
+  it('rejects Pass when the score is below the configured pass threshold', async () => {
+    const query = vi.fn().mockResolvedValueOnce([{
+      attempt_id: 'attempt-1', status: 'submitted', enrollment_id: 'enrollment-1', lesson_id: 'lesson-1',
+      learner_id: 'learner-1', course_id: 'course-1', course_slug: 'course-slug', max_points: 100, passing_percentage: 70,
+    }])
+    const repository = createAssignmentGradingRepository({ transaction: async (work) => work(query) })
+
+    await expect(repository.grade('mentor-1', 'attempt-1', {
+      scorePoints: 69,
+      feedback: 'Pass requested.',
+      decision: 'pass',
+    })).rejects.toThrow('assignment_pass_score_below_threshold')
+    expect(query).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects Needs revision when the score already meets the configured pass threshold', async () => {
+    const query = vi.fn().mockResolvedValueOnce([{
+      attempt_id: 'attempt-1', status: 'submitted', enrollment_id: 'enrollment-1', lesson_id: 'lesson-1',
+      learner_id: 'learner-1', course_id: 'course-1', course_slug: 'course-slug', max_points: 100, passing_percentage: 70,
+    }])
+    const repository = createAssignmentGradingRepository({ transaction: async (work) => work(query) })
+
+    await expect(repository.grade('mentor-1', 'attempt-1', {
+      scorePoints: 70,
+      feedback: 'Revision requested.',
+      decision: 'needs_revision',
+    })).rejects.toThrow('assignment_revision_score_meets_threshold')
+    expect(query).toHaveBeenCalledTimes(1)
   })
 
   it('does not expose an attempt that is outside the authenticated mentor ownership scope', async () => {
     const query = vi.fn().mockResolvedValueOnce([])
     const repository = createAssignmentGradingRepository({ transaction: async (work) => work(query) })
 
-    await expect(repository.grade('mentor-1', 'attempt-elsewhere', { scorePoints: 80, feedback: null }))
+    await expect(repository.grade('mentor-1', 'attempt-elsewhere', { scorePoints: 80, feedback: null, decision: 'pass' }))
       .rejects.toThrow('assignment_attempt_not_found')
   })
 })
