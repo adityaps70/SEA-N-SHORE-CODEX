@@ -1,0 +1,237 @@
+name: AWS Learning Assignment Review E2E
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - scripts/aws/learning-assignment-review-e2e-action.txt
+      - scripts/aws/learning-assignment-review-e2e-guard.test.mjs
+      - scripts/aws/learning-assignment-review-staging-e2e.mjs
+      - scripts/aws/learning-assignment-review-e2e-ssm.mjs
+      - scripts/aws/learning-assignment-review-e2e-remote.sh
+      - .github/workflows/aws-learning-assignment-review-e2e.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-learning-assignment-review-e2e
+  cancel-in-progress: false
+
+jobs:
+  learning-assignment-review-e2e:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 45
+    env:
+      AWS_REGION: ap-south-1
+      COGNITO_POOL_NAME: sea-n-shore-staging-users
+      SITE_URL: https://d3prih0q6jofyr.cloudfront.net
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Resolve learning assignment review E2E action
+        id: action
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(tr -d '[:space:]' < scripts/aws/learning-assignment-review-e2e-action.txt)"
+          echo "LEARNING_ASSIGNMENT_REVIEW_E2E_ACTION=$ACTION" >> "$GITHUB_ENV"
+          case "$ACTION" in
+            plan)
+              echo "run_e2e=false" >> "$GITHUB_OUTPUT"
+              ;;
+            run-once)
+              [[ "$GITHUB_EVENT_NAME" == push ]] || { echo "run-once is permitted only from an exact branch push." >&2; exit 1; }
+              [[ "$GITHUB_REF" == refs/heads/feat/aws-native-phase-0-1 ]] || { echo "run-once is restricted to feat/aws-native-phase-0-1." >&2; exit 1; }
+              echo "run_e2e=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported learning assignment review E2E action: $ACTION" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == completed ]]; then
+              [[ "$CONCLUSION" == success ]] || { echo "Exact-head AWS Infrastructure CI is not green." >&2; exit 1; }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Guard push E2E against a moved branch
+        if: steps.action.outputs.run_e2e == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_HEAD="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
+          [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || { echo "Branch moved after learning assignment review E2E started; refusing stale execution." >&2; exit 1; }
+
+      - name: Configure AWS credentials with GitHub OIDC
+        if: steps.action.outputs.run_e2e == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Verify staging AWS account
+        if: steps.action.outputs.run_e2e == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT_ID" == 310356785722 ]] || { echo "Refusing E2E in unexpected AWS account $ACCOUNT_ID." >&2; exit 1; }
+
+      - name: Discover bootstrap instance
+        if: steps.action.outputs.run_e2e == 'true'
+        id: instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTANCE_IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)
+          COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
+          [[ "$COUNT" -eq 1 ]] || { echo "Expected exactly one running bootstrap; found $COUNT." >&2; exit 1; }
+          echo "instance_id=$(jq -r '.[0]' <<<"$INSTANCE_IDS")" >> "$GITHUB_OUTPUT"
+
+      - name: Generate disposable learning identities
+        if: steps.action.outputs.run_e2e == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREFIX="sea-n-shore-learning-review-e2e-${GITHUB_RUN_ID}"
+          MENTOR_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Mentor9"
+          LEARNER_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Learner9"
+          echo "::add-mask::$MENTOR_PASSWORD"
+          echo "::add-mask::$LEARNER_PASSWORD"
+          {
+            echo "E2E_MENTOR_EMAIL=${PREFIX}-mentor@example.com"
+            echo "E2E_LEARNER_EMAIL=${PREFIX}-learner@example.com"
+            echo "E2E_MENTOR_PASSWORD=$MENTOR_PASSWORD"
+            echo "E2E_LEARNER_PASSWORD=$LEARNER_PASSWORD"
+            echo "E2E_MENTOR_NAME=E2E Learning Mentor ${GITHUB_RUN_ID}"
+            echo "E2E_LEARNER_NAME=E2E Learning Learner ${GITHUB_RUN_ID}"
+            echo "E2E_COURSE_TITLE=E2E Learning Review Course ${GITHUB_RUN_ID}"
+            echo "E2E_COURSE_SLUG=${PREFIX}"
+            echo "E2E_FEEDBACK=E2E mentor pass feedback."
+          } >> "$GITHUB_ENV"
+
+      - name: Use Node 22 for staging browser E2E
+        if: steps.action.outputs.run_e2e == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install browser E2E dependencies
+        if: steps.action.outputs.run_e2e == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
+          npx playwright install --with-deps chromium
+
+      - name: Create disposable public sign-ups
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: signup
+        run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
+
+      - name: Confirm disposable sign-ups through SSM
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(node scripts/aws/learning-assignment-review-e2e-ssm.mjs confirm)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_CONFIRM_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Complete disposable professional onboarding
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: onboarding
+        run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
+
+      - name: Create disposable published assignment fixture through SSM
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(node scripts/aws/learning-assignment-review-e2e-ssm.mjs create-fixture)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_FIXTURE_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Submit assignment through live learner UI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: learner-submit
+        run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
+
+      - name: Verify learner submission through read-only SSM audit
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(node scripts/aws/learning-assignment-review-e2e-ssm.mjs verify-submitted)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_SUBMISSION_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Review and pass assignment through live mentor UI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: mentor-review
+        run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
+
+      - name: Verify persisted mentor grade and completion through read-only SSM audit
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(node scripts/aws/learning-assignment-review-e2e-ssm.mjs verify-passed)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_PASS_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Verify mentor feedback and progression unlock through live learner UI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: learner-verify
+        run: node scripts/aws/learning-assignment-review-staging-e2e.mjs
+
+      - name: Cleanup every disposable learning assignment review artifact
+        if: always() && steps.action.outputs.run_e2e == 'true' && steps.instance.outputs.instance_id != ''
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(node scripts/aws/learning-assignment-review-e2e-ssm.mjs cleanup)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^LEARNING_ASSIGNMENT_REVIEW_E2E_CLEANUP_VERIFIED=true$' <<<"$OUTPUT"
