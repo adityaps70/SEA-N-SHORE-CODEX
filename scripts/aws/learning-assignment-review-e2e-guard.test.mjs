@@ -61,13 +61,44 @@ test('run-once uses disposable authenticated users and the live learner and ment
   assert.match(browserScript, /Unlocked after mentor pass/)
 })
 
+test('live E2E proves needs revision, resubmission history and pass only on the second attempt', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const remote = readFileSync(remoteScriptPath, 'utf8')
+
+  assert.match(workflow, /E2E_REVISION_FEEDBACK/)
+  assert.match(workflow, /E2E_PHASE:\s*mentor-revision/)
+  assert.match(workflow, /E2E_PHASE:\s*learner-resubmit/)
+  assert.match(workflow, /E2E_PHASE:\s*mentor-pass/)
+  assert.match(workflow, /verify-revision/)
+  assert.match(workflow, /verify-resubmitted/)
+
+  assert.match(browserScript, /async function mentorRequestRevision\(\)/)
+  assert.match(browserScript, /Needs revision/)
+  assert.match(browserScript, /async function learnerResubmit\(\)/)
+  assert.match(browserScript, /Revision required/)
+  assert.match(browserScript, /Submit revision/)
+  assert.match(browserScript, /Attempt history/)
+  assert.match(browserScript, /async function mentorPassRevision\(\)/)
+
+  assert.match(remote, /verify-revision\)/)
+  assert.match(remote, /passed=false/i)
+  assert.match(remote, /completed=false/i)
+  assert.match(remote, /LEARNING_ASSIGNMENT_REVIEW_E2E_REVISION_VERIFIED=true/)
+  assert.match(remote, /verify-resubmitted\)/)
+  assert.match(remote, /attempt_number=1/i)
+  assert.match(remote, /attempt_number=2/i)
+  assert.match(remote, /LEARNING_ASSIGNMENT_REVIEW_E2E_RESUBMISSION_VERIFIED=true/)
+  assert.match(remote, /LEARNING_ASSIGNMENT_REVIEW_E2E_PASS_VERIFIED=true/)
+})
+
 test('mentor review navigation uses DOM readiness instead of waiting for network idle', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
   const mentorReviewMatch = browserScript.match(
-    /async function mentorReview\(\) \{([\s\S]*?)\n\}\n\nasync function learnerVerify/,
+    /async function mentor(?:Review|RequestRevision)\(\) \{([\s\S]*?)\n\}\n\nasync function /,
   )
 
-  assert.ok(mentorReviewMatch, 'mentorReview flow must remain discoverable in the staging E2E script')
+  assert.ok(mentorReviewMatch, 'mentor review flow must remain discoverable in the staging E2E script')
   const mentorReviewSource = mentorReviewMatch[1]
   assert.match(mentorReviewSource, /\/learn\/studio/)
   assert.match(mentorReviewSource, /waitUntil:\s*'domcontentloaded'/)
