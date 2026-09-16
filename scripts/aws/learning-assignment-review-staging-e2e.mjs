@@ -7,6 +7,7 @@ const runId = process.env.GITHUB_RUN_ID
 const courseTitle = process.env.E2E_COURSE_TITLE
 const courseSlug = process.env.E2E_COURSE_SLUG
 const feedback = process.env.E2E_FEEDBACK
+const revisionFeedback = process.env.E2E_REVISION_FEEDBACK
 
 const users = {
   mentor: {
@@ -23,8 +24,16 @@ const users = {
 
 assert.ok(siteUrl, 'SITE_URL is required')
 assert.ok(runId, 'GITHUB_RUN_ID is required')
-assert.ok(courseTitle && courseSlug && feedback, 'Course fixture metadata is required')
-assert.ok(['signup', 'onboarding', 'learner-submit', 'mentor-review', 'learner-verify'].includes(phase), 'Unsupported E2E_PHASE')
+assert.ok(courseTitle && courseSlug && feedback && revisionFeedback, 'Course fixture metadata is required')
+assert.ok([
+  'signup',
+  'onboarding',
+  'learner-submit',
+  'mentor-revision',
+  'learner-resubmit',
+  'mentor-pass',
+  'learner-verify',
+].includes(phase), 'Unsupported E2E_PHASE')
 for (const [key, user] of Object.entries(users)) {
   assert.match(user.email ?? '', new RegExp(`^sea-n-shore-learning-review-e2e-[0-9]+-${key}@example\\.com$`))
   assert.ok((user.password ?? '').length >= 12)
@@ -103,10 +112,7 @@ async function learnerSubmit() {
   await context.close()
 }
 
-async function mentorReview() {
-  const context = await browser.newContext()
-  const page = await context.newPage()
-  await signInCompleted(page, users.mentor)
+async function openMentorPendingReview(page) {
   await page.goto(`${siteUrl}/learn/studio`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Mentor Studio' })).toBeVisible()
   await expect(page.getByText('Learner reviews', { exact: true })).toBeVisible()
@@ -122,10 +128,68 @@ async function mentorReview() {
   const reviewLink = pendingCard.getByRole('link', { name: `Review ${users.learner.fullName} submission` })
   await expect(reviewLink).toContainText('Review submission')
   await reviewLink.click()
-
   await expect(page.getByRole('heading', { name: 'E2E evidence assignment' })).toBeVisible()
+}
+
+async function mentorRequestRevision() {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.mentor)
+  await openMentorPendingReview(page)
+
   await expect(page.getByText('Explain how you would verify safe preparation before starting the task. Include clear evidence and controls.')).toBeVisible()
   await expect(page.getByText('E2E learner response with clear preparation evidence, controls and verification steps.')).toBeVisible()
+  await page.getByLabel('Score / 100').fill('50')
+  await page.getByLabel('Feedback').fill(revisionFeedback)
+  await page.getByRole('button', { name: 'Needs revision' }).click()
+  await expect(page.getByText('Published grade')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('Needs revision', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(revisionFeedback, { exact: true })).toBeVisible()
+
+  await page.goto(`${siteUrl}/learn/studio/assignments`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText('0 awaiting review', { exact: true })).toBeVisible()
+  await context.close()
+}
+
+async function learnerResubmit() {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.learner)
+  await page.goto(`${siteUrl}/learn/courses/${courseSlug}/learn`, { waitUntil: 'networkidle' })
+
+  const assignmentLink = page.getByRole('link', { name: /E2E evidence assignment/ })
+  await assignmentLink.click()
+  await expect(page.getByText('Revision required')).toBeVisible()
+  await expect(page.getByText(`Mentor feedback: ${revisionFeedback}`, { exact: true })).toBeVisible()
+  await expect(page.getByText('1 attempt remaining', { exact: true })).toBeVisible()
+
+  const lockedNext = page.getByRole('link', { name: /Unlocked after mentor pass/ })
+  await expect(lockedNext).toContainText('Locked')
+
+  await page.getByLabel('Revised response').fill('E2E revised learner response with stronger controls, evidence and verification steps.')
+  await page.getByRole('button', { name: 'Submit revision' }).click()
+  await expect(page.getByText('Awaiting mentor review')).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText('Attempt history', { exact: true })).toBeVisible()
+  await expect(page.getByText('Attempt 1', { exact: true })).toBeVisible()
+  await expect(page.getByText('Not passed · 50%', { exact: true })).toBeVisible()
+  await expect(page.getByText('Attempt 2', { exact: true })).toBeVisible()
+  await expect(page.getByText('Awaiting review', { exact: true })).toBeVisible()
+  await expect(lockedNext).toContainText('Locked')
+  await context.close()
+}
+
+async function mentorPassRevision() {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.mentor)
+  await openMentorPendingReview(page)
+
+  await expect(page.getByText(/Attempt 2 · Submitted/)).toBeVisible()
+  await expect(page.getByText('E2E revised learner response with stronger controls, evidence and verification steps.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Previous attempts' })).toBeVisible()
+  await expect(page.getByText(/Attempt 1 ·/)).toBeVisible()
+  await expect(page.getByText(`Mentor feedback: ${revisionFeedback}`, { exact: true })).toBeVisible()
+
   await page.getByLabel('Score / 100').fill('85')
   await page.getByLabel('Feedback').fill(feedback)
   await page.getByRole('button', { name: 'Pass' }).click()
@@ -148,6 +212,9 @@ async function learnerVerify() {
   await assignmentLink.click()
   await expect(page.getByText('Assignment passed and material completed.')).toBeVisible()
   await expect(page.getByText(`Mentor feedback: ${feedback}`, { exact: true })).toBeVisible()
+  await expect(page.getByText('Attempt history', { exact: true })).toBeVisible()
+  await expect(page.getByText('Not passed · 50%', { exact: true })).toBeVisible()
+  await expect(page.getByText('Passed · 85%', { exact: true })).toBeVisible()
 
   const unlockedNext = page.getByRole('link', { name: /Unlocked after mentor pass/ })
   await expect(unlockedNext).not.toContainText('Locked')
@@ -166,8 +233,12 @@ try {
     await completeProfessional(users.learner, 'learner')
   } else if (phase === 'learner-submit') {
     await learnerSubmit()
-  } else if (phase === 'mentor-review') {
-    await mentorReview()
+  } else if (phase === 'mentor-revision') {
+    await mentorRequestRevision()
+  } else if (phase === 'learner-resubmit') {
+    await learnerResubmit()
+  } else if (phase === 'mentor-pass') {
+    await mentorPassRevision()
   } else if (phase === 'learner-verify') {
     await learnerVerify()
   }
