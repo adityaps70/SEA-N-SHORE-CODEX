@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BookOpen, CheckCircle2, Clock3, FilePenLine, Plus, Sparkles } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, FilePenLine, Plus, Sparkles } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
@@ -98,6 +98,12 @@ export default async function MentorStudioPage() {
           <ArrowLeft aria-hidden="true" className="size-4" /> Mentor profile
         </Link>
         <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/learn/studio/analytics"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+          >
+            <BarChart3 aria-hidden="true" className="size-4" /> Analytics
+          </Link>
           <Link
             href="/learn/studio/assignments"
             className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
