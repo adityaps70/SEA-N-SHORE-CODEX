@@ -46,8 +46,9 @@ export async function GET(
     })
     const extension = key.slice(key.lastIndexOf('.') + 1)
     const contentType = object.contentType || CONTENT_TYPE_BY_EXTENSION[extension] || 'application/octet-stream'
+    const body = Uint8Array.from(object.body).buffer
 
-    return new Response(object.body, {
+    return new Response(body, {
       status: 200,
       headers: {
         'cache-control': 'private, max-age=3600',
