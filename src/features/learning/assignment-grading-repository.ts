@@ -4,6 +4,7 @@ import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
 
 export type AssignmentGradingQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type AssignmentGradingTransaction = <T>(work: (query: AssignmentGradingQuery) => Promise<T>) => Promise<T>
+export type AssignmentGradeDecision = 'pass' | 'needs_revision'
 
 type GradeAccessRow = QueryResultRow & {
   attempt_id: string
@@ -269,7 +270,7 @@ export function createAssignmentGradingRepository(input: {
   async function grade(
     mentorUserId: string,
     attemptId: string,
-    inputValue: { scorePoints: number; feedback: string | null },
+    inputValue: { scorePoints: number; feedback: string | null; decision: AssignmentGradeDecision },
   ) {
     return transaction(async (query) => {
       const accessRows = await query(
@@ -306,6 +307,8 @@ export function createAssignmentGradingRepository(input: {
       const percentage = Math.round((inputValue.scorePoints / maxPoints) * 100)
       const passingPercentage = Number(access.passing_percentage)
       const passed = percentage >= passingPercentage
+      if (inputValue.decision === 'pass' && !passed) throw new Error('assignment_pass_score_below_threshold')
+      if (inputValue.decision === 'needs_revision' && passed) throw new Error('assignment_revision_score_meets_threshold')
       const feedback = inputValue.feedback?.trim() || null
 
       const gradedRows = await query(
