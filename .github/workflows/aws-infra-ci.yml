@@ -56,6 +56,8 @@ jobs:
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
       - name: Verify organization hiring e2e guard contract
         run: node --test scripts/aws/organization-hiring-e2e-guard.test.mjs
+      - name: Verify learning assignment review e2e guard contract
+        run: node --test scripts/aws/learning-assignment-review-e2e-guard.test.mjs
       - name: Verify events e2e guard contract
         run: node --test scripts/aws/events-e2e-guard.test.mjs
       - name: Verify realtime messaging e2e guard contract
@@ -182,8 +184,8 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: terraform init -backend=false
       - name: Terraform validate
-        working-directory: ${{ matrix.directory }}
         run: terraform validate
+        working-directory: ${{ matrix.directory }}
 
   guard:
     name: Terraform plan guard tests
