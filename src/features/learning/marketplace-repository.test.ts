@@ -29,7 +29,7 @@ const publishedRow = {
 }
 
 describe('learning marketplace repository', () => {
-  it('lists published courses from active verified mentors, including paid courses, newest first', async () => {
+  it('lists only discoverable published courses from active verified mentors, including paid courses, newest first', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
       query: async (text: string, values?: readonly unknown[]) => {
@@ -65,6 +65,7 @@ describe('learning marketplace repository', () => {
     const query = seen[0]
     expect(query?.text).toContain('application.applicant_name as mentor_name')
     expect(query?.text).toContain("course.status = 'published'")
+    expect(query?.text).toContain('course.is_discoverable = true')
     expect(query?.text).toContain("mentor.status = 'active'")
     expect(query?.text).toContain("application.status = 'approved'")
     expect(query?.text).not.toContain("course.access_type = 'free'")
@@ -72,7 +73,7 @@ describe('learning marketplace repository', () => {
     expect(query?.text).toContain('order by course.published_at desc, course.id desc')
   })
 
-  it('supports category and text discovery without weakening publication visibility', async () => {
+  it('supports category and text discovery without weakening publication or discoverability visibility', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
       query: async (text: string, values?: readonly unknown[]) => {
@@ -89,9 +90,10 @@ describe('learning marketplace repository', () => {
     expect(seen[0]?.text).toContain('course.description ilike $2')
     expect(seen[0]?.text).toContain('application.applicant_name ilike $2')
     expect(seen[0]?.text).toContain("course.status = 'published'")
+    expect(seen[0]?.text).toContain('course.is_discoverable = true')
   })
 
-  it('loads a published paid course by slug using the same mentor visibility guards', async () => {
+  it('loads a published paid course by slug using the same mentor visibility guards without requiring catalog discoverability', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createMarketplaceRepository({
       query: async (text: string, values?: readonly unknown[]) => {
@@ -113,6 +115,7 @@ describe('learning marketplace repository', () => {
     expect(seen[0]?.text).toContain("course.status = 'published'")
     expect(seen[0]?.text).toContain("mentor.status = 'active'")
     expect(seen[0]?.text).toContain("application.status = 'approved'")
+    expect(seen[0]?.text).not.toContain('course.is_discoverable = true')
     expect(seen[0]?.text).not.toContain("course.access_type = 'free'")
     expect(seen[0]?.text).not.toContain('course.price_minor = 0')
   })
