@@ -102,12 +102,12 @@ describe('profile onboarding action', () => {
     }))
   })
 
-  it('preserves the existing slug collision message', async () => {
+  it('returns the username collision message', async () => {
     mockedCompleteOnboarding.mockRejectedValueOnce(Object.assign(new Error('duplicate'), { code: '23505' }))
 
     const result = await completeOnboarding({}, validForm())
 
-    expect(result.fieldErrors?.slug).toEqual(['That profile address is already in use.'])
+    expect(result.fieldErrors?.slug).toEqual(['That username is already in use.'])
   })
 
   it('preserves generic safe error copy for unavailable or failed onboarding', async () => {
@@ -151,11 +151,11 @@ describe('completed profile update action', () => {
     }))
   })
 
-  it('returns the existing safe slug collision message', async () => {
+  it('returns the username collision message', async () => {
     mockedUpdateProfile.mockRejectedValueOnce(Object.assign(new Error('duplicate'), { code: '23505' }))
 
     const result = await updateProfile({}, validForm())
 
-    expect(result.fieldErrors?.slug).toEqual(['That profile address is already in use.'])
+    expect(result.fieldErrors?.slug).toEqual(['That username is already in use.'])
   })
 })
