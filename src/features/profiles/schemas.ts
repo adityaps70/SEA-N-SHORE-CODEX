@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { findIdentityOption, IDENTITY_ROOTS } from './identity-catalog'
 import { PROFILE_TYPES } from './types'
+import { usernameSchema } from './username'
 
 const normalizeTerms = (value: unknown) => {
   const source = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : []
@@ -30,15 +31,6 @@ const optionalText = (maximum: number) =>
     },
     z.string().max(maximum).optional(),
   )
-
-const slugSchema = z.preprocess(
-  (value) => typeof value === 'string' ? value.trim().toLocaleLowerCase('en') : value,
-  z
-    .string()
-    .min(1, 'Choose a profile address.')
-    .max(80)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use letters, numbers, and single hyphens.'),
-)
 
 const sailingExperienceSchema = z.preprocess(
   (value) => {
@@ -72,7 +64,7 @@ const onboardingFieldsSchema = z
   .object({
     profileType: z.enum(PROFILE_TYPES, { error: 'Choose the professional profile that fits you best.' }),
     fullName: z.string().trim().min(2, 'Add your full name.').max(120),
-    slug: slugSchema,
+    slug: usernameSchema,
     location: optionalText(120),
     headline: z.string().trim().min(4, 'Add a professional headline.').max(160),
     summary: z.string().trim().min(20, 'Write at least 20 characters.').max(2000),
@@ -128,7 +120,7 @@ const activationFieldsSchema = z.object({
   primaryIdentityFamily: z.string().trim().min(2).max(120),
   secondaryIdentities: secondaryIdentitySchema,
   fullName: z.string().trim().min(2, 'Add your name.').max(160),
-  slug: slugSchema,
+  slug: usernameSchema,
   location: optionalText(120),
   currentCompany: optionalText(160),
   headline: optionalText(160),
