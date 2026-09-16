@@ -102,7 +102,7 @@ async function mentorReview() {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.mentor)
-  await page.goto(`${siteUrl}/learn/studio`, { waitUntil: 'networkidle' })
+  await page.goto(`${siteUrl}/learn/studio`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Mentor Studio' })).toBeVisible()
   await expect(page.getByText('Learner reviews', { exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '1 learner submission needs your review' })).toBeVisible()
@@ -128,7 +128,7 @@ async function mentorReview() {
   await expect(page.getByText('Passed', { exact: true }).first()).toBeVisible()
   await expect(page.getByText(feedback, { exact: true })).toBeVisible()
 
-  await page.goto(`${siteUrl}/learn/studio/assignments`, { waitUntil: 'networkidle' })
+  await page.goto(`${siteUrl}/learn/studio/assignments`, { waitUntil: 'domcontentloaded' })
   await expect(page.getByText('0 awaiting review', { exact: true })).toBeVisible()
   await context.close()
 }
