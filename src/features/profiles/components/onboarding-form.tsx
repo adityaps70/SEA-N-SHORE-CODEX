@@ -10,6 +10,7 @@ import {
   type IdentityOption,
   type IdentityRoot,
 } from '../identity-catalog'
+import { UsernameField } from './username-field'
 
 function firstError(state: ProfileActionState, field: string) {
   return state.fieldErrors?.[field]?.[0]
@@ -78,9 +79,11 @@ function IdentityResult({
 function OnboardingFields({
   initialFullName,
   state,
+  onUsernameReadyChange,
 }: {
   initialFullName: string
   state: ProfileActionState
+  onUsernameReadyChange: (ready: boolean) => void
 }) {
   const values = state.values
   const initialRoot = values?.identityRoot
@@ -268,7 +271,11 @@ function OnboardingFields({
               autoComplete={root === 'organisation' ? 'organization' : 'name'}
               required
             />
-            <Field label="Profile address" name="slug" defaultValue={values?.slug} error={firstError(state, 'slug')} hint="Letters, numbers, and hyphens — for example asha-singh." autoComplete="off" required />
+            <UsernameField
+              initialValue={values?.slug}
+              serverError={firstError(state, 'slug')}
+              onReadyChange={onUsernameReadyChange}
+            />
             <Field label="Location" name="location" defaultValue={values?.location} error={firstError(state, 'location')} autoComplete="address-level2" />
             {root === 'professional' ? (
               <Field label="Current organisation" name="currentCompany" defaultValue={values?.currentCompany} error={firstError(state, 'currentCompany')} autoComplete="organization" />
@@ -304,15 +311,21 @@ function OnboardingFields({
 
 export function OnboardingForm({ initialFullName }: { initialFullName: string }) {
   const [state, formAction, pending] = useActionState(completeActivation, { revision: 0 })
+  const [usernameReady, setUsernameReady] = useState(false)
 
   return (
     <form action={formAction} className="onboarding-form grid gap-10" noValidate>
-      <OnboardingFields key={state.revision ?? 0} initialFullName={initialFullName} state={state} />
+      <OnboardingFields
+        key={state.revision ?? 0}
+        initialFullName={initialFullName}
+        state={state}
+        onUsernameReadyChange={setUsernameReady}
+      />
 
       {state.error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{state.error}</p> : null}
       <div className="flex flex-col gap-3 border-t border-mist-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-xl text-sm leading-6 text-muted">Join first. Build the deeper professional record at your own pace.</p>
-        <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+        <Button type="submit" disabled={pending || !usernameReady} className="w-full sm:w-auto">
           {pending ? 'Saving your profile…' : 'Complete profile'}
         </Button>
       </div>
