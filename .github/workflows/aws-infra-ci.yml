@@ -88,6 +88,8 @@ jobs:
         run: node --test scripts/aws/learning-lms-phase-1-migration.test.mjs
       - name: Verify learning quiz resilience migration guard
         run: node --test scripts/aws/learning-quiz-resilience-migration.test.mjs
+      - name: Verify learning course discoverability migration guard
+        run: node --test scripts/aws/learning-course-discoverability-migration.test.mjs
       - name: Verify messaging migration guard
         run: node --test scripts/aws/messaging-migration.test.mjs
       - name: Verify post repost migration guard
