@@ -125,18 +125,25 @@ export function NotificationBell({
 
           {notifications.length ? (
             <div className="max-h-96 overflow-y-auto py-1">
-              {notifications.map((notification) => (
-                <button
-                  key={notification.id}
-                  type="button"
-                  disabled={pending}
-                  onClick={() => openNotification(notification)}
-                  className={`block w-full px-4 py-3 text-left hover:bg-mist-50 disabled:opacity-60 ${notification.readAt ? '' : 'bg-ocean-50/50'}`}
-                >
-                  <span className="block text-sm font-medium leading-5 text-navy-950">{notification.message}</span>
-                  <time dateTime={notification.createdAt} className="mt-1 block text-xs text-muted">{notificationDate(notification.createdAt)}</time>
-                </button>
-              ))}
+              {notifications.map((notification) => {
+                const unread = !notification.readAt
+                return (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => openNotification(notification)}
+                    data-notification-state={unread ? 'unread' : 'read'}
+                    className={`relative block w-full px-4 py-3 text-left transition hover:bg-mist-50 disabled:opacity-60 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-3' : ''}`}
+                  >
+                    <span className={`block text-sm leading-5 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                    <span className="mt-1 flex items-center gap-2">
+                      {unread ? <span aria-hidden="true" className="size-1.5 rounded-full bg-ocean-700" /> : null}
+                      <time dateTime={notification.createdAt} className="text-xs text-muted">{notificationDate(notification.createdAt)}</time>
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           ) : (
             <div className="px-5 py-8 text-center">
