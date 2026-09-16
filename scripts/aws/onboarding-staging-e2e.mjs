@@ -147,7 +147,7 @@ async function completeProfessional(user, takenUsername) {
   await expect(page.getByText('Mentor', { exact: true }).first()).toBeVisible()
   await expect(page.getByText(`@${initialUsername}`, { exact: true })).toBeVisible()
 
-  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: 'Edit profile' })).toBeVisible()
   await expect(page.getByText('Username changes remaining: 2 of 2.', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Username')).toHaveValue(initialUsername)
@@ -161,7 +161,7 @@ async function completeProfessional(user, takenUsername) {
   await page.waitForURL((url) => url.pathname === '/profile', { timeout: 20_000 })
   await expect(page.getByText(`@${firstChangedUsername}`, { exact: true })).toBeVisible()
 
-  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByText('Username changes remaining: 1 of 2.', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Username')).toHaveValue(firstChangedUsername)
   await expectUsernameAvailable(page, secondChangedUsername)
@@ -169,7 +169,7 @@ async function completeProfessional(user, takenUsername) {
   await page.waitForURL((url) => url.pathname === '/profile', { timeout: 20_000 })
   await expect(page.getByText(`@${secondChangedUsername}`, { exact: true })).toBeVisible()
 
-  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByText('Username changes remaining: 0 of 2.', { exact: true })).toBeVisible()
   await expect(page.getByText('Your username is locked because both username changes have been used.', { exact: true })).toBeVisible()
   const lockedUsername = page.getByLabel('Username')
