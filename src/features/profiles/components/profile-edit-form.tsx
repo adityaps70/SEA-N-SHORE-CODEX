@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState } from 'react'
+import { useActionState, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { updateProfile, type OnboardingFormValues, type ProfileActionState } from '../actions'
 import type { OwnProfile } from '../types'
+import { UsernameField } from './username-field'
 
 const initialState: ProfileActionState = {}
 
@@ -15,14 +16,17 @@ function FieldError({ state, name }: { state: ProfileActionState; name: string }
 
 export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
   const [state, formAction, pending] = useActionState(updateProfile, initialState)
+  const [usernameReady, setUsernameReady] = useState(true)
   const values = state.values
   const isMaritime = profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional'
+  const usernameChangesRemaining = Math.max(0, 2 - profile.usernameChangeCount)
 
   function textValue(name: keyof OnboardingFormValues, fallback = '') {
     const value = values?.[name]
     return typeof value === 'string' ? value : fallback
   }
 
+  const usernameValue = usernameChangesRemaining === 0 ? profile.slug : textValue('slug', profile.slug)
   const inputClass = 'mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500'
   const textareaClass = `${inputClass} min-h-28 py-3`
   const labelClass = 'block text-sm font-semibold text-navy-950'
@@ -44,11 +48,14 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
               <input name="fullName" required maxLength={120} defaultValue={textValue('fullName', profile.fullName)} className={inputClass} />
               <FieldError state={state} name="fullName" />
             </label>
-            <label className={labelClass}>
-              Profile address
-              <input name="slug" required maxLength={80} defaultValue={textValue('slug', profile.slug)} className={inputClass} />
-              <FieldError state={state} name="slug" />
-            </label>
+            <UsernameField
+              initialValue={usernameValue}
+              currentUsername={profile.slug}
+              serverError={state.fieldErrors?.slug?.[0]}
+              changesRemaining={usernameChangesRemaining}
+              locked={usernameChangesRemaining === 0}
+              onReadyChange={setUsernameReady}
+            />
             <label className={labelClass}>
               Location
               <input name="location" maxLength={120} defaultValue={textValue('location', profile.location ?? '')} className={inputClass} />
@@ -149,7 +156,7 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
           <Link href="/profile" className="inline-flex min-h-11 items-center rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-500">
             Cancel
           </Link>
-          <button type="submit" disabled={pending} className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700 disabled:cursor-not-allowed disabled:opacity-60">
+          <button type="submit" disabled={pending || !usernameReady} className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-ocean-700 disabled:cursor-not-allowed disabled:opacity-60">
             {pending ? 'Saving…' : 'Save changes'}
           </button>
         </div>
