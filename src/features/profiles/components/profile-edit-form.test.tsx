@@ -34,7 +34,8 @@ describe('ProfileEditForm', () => {
     const { container } = render(<ProfileEditForm profile={profile} />)
 
     expect(screen.getByRole('textbox', { name: /full name/i })).toHaveValue('Captain Example')
-    expect(screen.getByRole('textbox', { name: /profile address/i })).toHaveValue('captain-example')
+    expect(screen.getByRole('textbox', { name: /username/i })).toHaveValue('captain-example')
+    expect(screen.getByText('Username changes remaining: 2 of 2.')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /^headline$/i })).toHaveValue('Master Mariner')
     expect(screen.getByRole('textbox', { name: /skills/i })).toHaveValue('Navigation, SIRE 2.0')
     expect(screen.getByRole('textbox', { name: /^rank$/i })).toHaveValue('Master')
