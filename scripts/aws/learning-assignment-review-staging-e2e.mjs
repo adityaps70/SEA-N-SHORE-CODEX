@@ -114,7 +114,9 @@ async function mentorReview() {
   const pendingCard = page.locator('article').filter({ hasText: courseTitle }).filter({ hasText: users.learner.fullName }).first()
   await expect(pendingCard).toContainText('E2E evidence assignment')
   await expect(pendingCard).toContainText('Pending')
-  await pendingCard.getByRole('link', { name: `Review ${users.learner.fullName} submission` }).click()
+  const reviewLink = pendingCard.getByRole('link', { name: `Review ${users.learner.fullName} submission` })
+  await expect(reviewLink).toContainText('Review submission')
+  await reviewLink.click()
 
   await expect(page.getByRole('heading', { name: 'E2E evidence assignment' })).toBeVisible()
   await expect(page.getByText('Explain how you would verify safe preparation before starting the task. Include clear evidence and controls.')).toBeVisible()
