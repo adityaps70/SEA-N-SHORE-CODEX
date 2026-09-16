@@ -131,6 +131,7 @@ export function ProfileHeader({
               </button>
             ) : null}
           </div>
+          <p className="mt-1 text-sm font-medium text-muted">@{profile.slug}</p>
 
           {secondaryIdentities.length ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -178,11 +179,13 @@ export function ProfileHeader({
                 <input name="fullName" required maxLength={120} defaultValue={profile.fullName} className={inputClass} />
                 <FieldError state={state} name="fullName" />
               </label>
-              <label className={labelClass}>
-                Profile address
-                <input name="slug" required maxLength={80} defaultValue={profile.slug} className={inputClass} />
+              <div className={labelClass}>
+                Username
+                <div className={`${inputClass} flex items-center bg-mist-50 text-muted`}>@{profile.slug}</div>
+                <input type="hidden" name="slug" value={profile.slug} />
+                <p className="mt-1 text-xs font-normal text-muted">Use Edit profile for the two limited username changes.</p>
                 <FieldError state={state} name="slug" />
-              </label>
+              </div>
               <label className={labelClass}>
                 Location
                 <input name="location" maxLength={120} defaultValue={profile.location ?? ''} className={inputClass} />
