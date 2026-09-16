@@ -82,6 +82,11 @@ async function learnerSubmit() {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.learner)
+
+  await page.goto(`${siteUrl}/learn`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText(courseTitle, { exact: true })).toHaveCount(0)
+  console.log('Hidden E2E course is absent from public Learn discovery.')
+
   await page.goto(`${siteUrl}/learn/courses/${courseSlug}`, { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: courseTitle })).toBeVisible()
   const enrollButton = page.getByRole('button', { name: 'Enroll free' })
