@@ -25,6 +25,10 @@ function isUniqueViolation(error: unknown) {
   return Boolean(error && typeof error === 'object' && 'code' in error && error.code === '23505')
 }
 
+function isServiceError(error: unknown, code: string) {
+  return error instanceof Error && error.message === code
+}
+
 function nextFailure(
   previousState: ProfileInlineActionState,
   failure: Pick<ProfileInlineActionState, 'error' | 'fieldErrors'>,
@@ -70,7 +74,10 @@ export async function updateProfileIdentitySection(
     )
   } catch (error) {
     if (isUniqueViolation(error)) {
-      return nextFailure(previousState, { fieldErrors: { slug: ['That profile address is already in use.'] } })
+      return nextFailure(previousState, { fieldErrors: { slug: ['That username is already in use.'] } })
+    }
+    if (isServiceError(error, 'username_change_limit')) {
+      return nextFailure(previousState, { fieldErrors: { slug: ['You have used both username changes. Your username is now locked.'] } })
     }
     return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
   }
