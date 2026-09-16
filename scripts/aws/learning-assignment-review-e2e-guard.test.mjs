@@ -94,16 +94,16 @@ test('live E2E proves needs revision, resubmission history and pass only on the 
 
 test('mentor review navigation uses DOM readiness instead of waiting for network idle', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
-  const mentorReviewMatch = browserScript.match(
-    /async function mentor(?:Review|RequestRevision)\(\) \{([\s\S]*?)\n\}\n\nasync function /,
+  const mentorNavigationMatch = browserScript.match(
+    /async function openMentorPendingReview\(page\) \{([\s\S]*?)\n\}\n\nasync function mentorRequestRevision/,
   )
 
-  assert.ok(mentorReviewMatch, 'mentor review flow must remain discoverable in the staging E2E script')
-  const mentorReviewSource = mentorReviewMatch[1]
-  assert.match(mentorReviewSource, /\/learn\/studio/)
-  assert.match(mentorReviewSource, /waitUntil:\s*'domcontentloaded'/)
-  assert.doesNotMatch(mentorReviewSource, /waitUntil:\s*'networkidle'/)
-  assert.match(mentorReviewSource, /Mentor Studio/)
+  assert.ok(mentorNavigationMatch, 'shared mentor review navigation must remain discoverable in the staging E2E script')
+  const mentorNavigationSource = mentorNavigationMatch[1]
+  assert.match(mentorNavigationSource, /\/learn\/studio/)
+  assert.match(mentorNavigationSource, /waitUntil:\s*'domcontentloaded'/)
+  assert.doesNotMatch(mentorNavigationSource, /waitUntil:\s*'networkidle'/)
+  assert.match(mentorNavigationSource, /Mentor Studio/)
 })
 
 test('fixture setup is prefix-constrained and does not directly create learner attempts or grades', () => {
