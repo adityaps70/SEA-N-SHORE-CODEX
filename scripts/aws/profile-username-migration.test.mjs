@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const sql = fs.readFileSync('infra/aws/database/migrations/0023_profile_username.sql', 'utf8')
+const script = fs.readFileSync('scripts/aws/profile-username-migration.sh', 'utf8')
+const guard = fs.readFileSync('scripts/aws/profile-username-migration-action.txt', 'utf8').trim()
+
+assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.match(sql, /username_change_count smallint not null default 0/i)
+assert.match(sql, /username_change_count between 0 and 2/i)
+assert.match(sql, /slug = lower\(btrim\(slug\)\)/i)
+assert.match(sql, /char_length\(slug\) between 1 and 80/i)
+assert.match(sql, /\[a-z0-9\]._-/i)
+assert.match(sql, /slug !~ '\[\._-\]\{2\}'/i)
+assert.doesNotMatch(sql, /drop table/i)
+assert.doesNotMatch(sql, /drop column/i)
+assert.doesNotMatch(sql, /delete from/i)
+assert.doesNotMatch(sql, /truncate/i)
+
+assert.match(script, /310356785722/)
+assert.match(script, /PROFILE_USERNAME_MIGRATION_EXPECTED_SHA/)
+assert.match(script, /plan\|migrate-once/)
+assert.match(script, /expected exactly three profile username statements/)
+assert.match(script, /alter\\s\+table\\s\+public\\\.profiles/)
+assert.match(script, /profiles_username_change_count_check/)
+assert.match(script, /profiles_slug_check/)
+assert.match(script, /sea-n-shore-profile-username-0023/)
+assert.match(script, /begin-transaction/)
+assert.match(script, /commit-transaction/)
+assert.match(script, /rollback-transaction/)
+assert.match(script, /PROFILE_USERNAME_MIGRATION_PLAN_ONLY_NO_APPLY/)
+assert.match(script, /PROFILE_USERNAME_MIGRATION_APPLY_VERIFIED=true/)
+assert.match(script, /PROFILE_USERNAME_MIGRATION_ALREADY_APPLIED=true/)
+assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.doesNotMatch(script, /992382634586/)
+
+console.log('PROFILE_USERNAME_MIGRATION_CONTRACT_VERIFIED=true')
