@@ -97,7 +97,14 @@ test('cleanup is unconditional, prefix constrained and removes all disposable le
 
   assert.match(workflow, /if:\s*always\(\)/)
   assert.match(remote, /cleanup\)/)
+  assert.match(remote, /delete from public\.learning_enrollments/i)
   assert.match(remote, /delete from public\.learning_courses/i)
+  const enrollmentDelete = remote.search(/delete from public\.learning_enrollments/i)
+  const courseDelete = remote.search(/delete from public\.learning_courses/i)
+  assert.ok(
+    enrollmentDelete >= 0 && courseDelete > enrollmentDelete,
+    'disposable learner enrollment must be deleted before its restrict-protected course',
+  )
   assert.match(remote, /delete from public\.learning_mentors/i)
   assert.match(remote, /delete from public\.learning_mentor_applications/i)
   assert.match(remote, /delete from public\.user_roles/i)
