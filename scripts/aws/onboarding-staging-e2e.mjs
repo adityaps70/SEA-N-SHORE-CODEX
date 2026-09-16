@@ -105,6 +105,30 @@ async function expectUsernameAvailable(page, username) {
   await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
 }
 
+async function expectPublicProfileUrl(page, username, fullName) {
+  const response = await page.goto(`${siteUrl}/people/${username}`, { waitUntil: 'domcontentloaded' })
+  assert.equal(response?.status(), 200, `Expected /people/${username} to resolve successfully`)
+  await expect(page.getByText(fullName, { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(`@${username}`, { exact: true }).first()).toBeVisible()
+}
+
+async function verifyExistingLegacyProfileUrl(page) {
+  await page.goto(`${siteUrl}/network`, { waitUntil: 'networkidle' })
+  const hrefs = await page.locator('a[href^="/people/"]').evaluateAll((anchors) => anchors
+    .map((anchor) => anchor.getAttribute('href'))
+    .filter((href) => typeof href === 'string'))
+  const legacyHref = [...new Set(hrefs)].find((href) => {
+    const slug = href.slice('/people/'.length).split(/[?#]/, 1)[0]
+    return slug && !slug.startsWith('e2e-')
+  })
+  assert.ok(legacyHref, 'Expected at least one existing non-E2E profile URL on the live network page')
+
+  const response = await page.goto(`${siteUrl}${legacyHref}`, { waitUntil: 'domcontentloaded' })
+  assert.equal(response?.status(), 200, 'Existing pre-E2E profile URL should continue to resolve')
+  await expect(page.locator('main')).toBeVisible()
+  console.log('ONBOARDING_E2E_LEGACY_PROFILE_URL_VERIFIED=true')
+}
+
 async function completeProfessional(user, takenUsername) {
   const context = await browser.newContext()
   const page = await context.newPage()
@@ -123,20 +147,32 @@ async function completeProfessional(user, takenUsername) {
   const firstChangedUsername = e2eUsername('pro1')
   const secondChangedUsername = e2eUsername('pro2')
   const blockedThirdUsername = e2eUsername('pro3')
+  const usernameField = page.getByLabel('Username')
   const completeButton = page.getByRole('button', { name: 'Complete profile' })
 
   await page.getByLabel('Location').fill('Mumbai')
   await page.getByLabel('Current organisation').fill('E2E Shipping')
 
-  await page.getByLabel('Username').fill('Bad Slug!!')
+  await usernameField.fill('Bad Slug!!')
   await expect(page.getByText('Use letters, numbers, dots, underscores, or hyphens; start and end with a letter or number.', { exact: true })).toBeVisible()
   await expect(completeButton).toBeDisabled()
 
-  await page.getByLabel('Username').fill(takenUsername)
+  await usernameField.fill('admin')
+  await expect(page.getByText('That username is reserved.', { exact: true })).toBeVisible()
+  await expect(completeButton).toBeDisabled()
+  console.log('ONBOARDING_E2E_USERNAME_RESERVED_VERIFIED=true')
+
+  await usernameField.fill(takenUsername)
   await expect(page.getByText('That username is already taken.', { exact: true })).toBeVisible({ timeout: 10_000 })
   await expect(completeButton).toBeDisabled()
 
-  await expectUsernameAvailable(page, initialUsername)
+  await usernameField.fill(`E2E-Pro-${runId}`)
+  await expect(usernameField).toHaveValue(initialUsername)
+  console.log('ONBOARDING_E2E_USERNAME_LOWERCASE_VERIFIED=true')
+  await expect(page.getByText('Checking username…', { exact: true })).toBeVisible()
+  await expect(completeButton).toBeDisabled()
+  console.log('ONBOARDING_E2E_USERNAME_CHECKING_GUARD_VERIFIED=true')
+  await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
   await expect(completeButton).toBeEnabled()
   console.log('ONBOARDING_E2E_USERNAME_AVAILABILITY_VERIFIED=true')
   await completeButton.click()
@@ -146,28 +182,55 @@ async function completeProfessional(user, takenUsername) {
   await expect(page.getByText('Master', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('Mentor', { exact: true }).first()).toBeVisible()
   await expect(page.getByText(`@${initialUsername}`, { exact: true })).toBeVisible()
+  await verifyExistingLegacyProfileUrl(page)
 
   await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: 'Edit profile' })).toBeVisible()
   await expect(page.getByText('Username changes remaining: 2 of 2.', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Username')).toHaveValue(initialUsername)
+  await expect(page.getByText('This is your current username.', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+  console.log('ONBOARDING_E2E_USERNAME_CURRENT_VERIFIED=true')
   console.log('ONBOARDING_E2E_USERNAME_INITIAL_BUDGET_VERIFIED=true')
 
   await page.getByLabel('About').fill('Disposable onboarding E2E profile used to verify username protections.')
   const rank = page.getByLabel('Rank')
   if (await rank.count()) await rank.fill('Master')
-  await expectUsernameAvailable(page, firstChangedUsername)
-  await page.getByRole('button', { name: 'Save changes' }).click()
+  const editUsername = page.getByLabel('Username')
+  const saveButton = page.getByRole('button', { name: 'Save changes' })
+
+  await editUsername.fill('Bad Slug!!')
+  await expect(page.getByText('Use letters, numbers, dots, underscores, or hyphens; start and end with a letter or number.', { exact: true })).toBeVisible()
+  await expect(saveButton).toBeDisabled()
+
+  await editUsername.fill('admin')
+  await expect(page.getByText('That username is reserved.', { exact: true })).toBeVisible()
+  await expect(saveButton).toBeDisabled()
+
+  await editUsername.fill(takenUsername)
+  await expect(page.getByText('That username is already taken.', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await expect(saveButton).toBeDisabled()
+
+  await editUsername.fill(firstChangedUsername)
+  await expect(page.getByText('Checking username…', { exact: true })).toBeVisible()
+  await expect(saveButton).toBeDisabled()
+  await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await expect(saveButton).toBeEnabled()
+  await saveButton.click()
   await page.waitForURL((url) => url.pathname === '/profile', { timeout: 20_000 })
   await expect(page.getByText(`@${firstChangedUsername}`, { exact: true })).toBeVisible()
+  await expectPublicProfileUrl(page, firstChangedUsername, user.fullName)
 
   await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByText('Username changes remaining: 1 of 2.', { exact: true })).toBeVisible()
   await expect(page.getByLabel('Username')).toHaveValue(firstChangedUsername)
+  await expect(page.getByText('This is your current username.', { exact: true })).toBeVisible()
   await expectUsernameAvailable(page, secondChangedUsername)
   await page.getByRole('button', { name: 'Save changes' }).click()
   await page.waitForURL((url) => url.pathname === '/profile', { timeout: 20_000 })
   await expect(page.getByText(`@${secondChangedUsername}`, { exact: true })).toBeVisible()
+  await expectPublicProfileUrl(page, secondChangedUsername, user.fullName)
+  console.log('ONBOARDING_E2E_USERNAME_PUBLIC_URL_VERIFIED=true')
 
   await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByText('Username changes remaining: 0 of 2.', { exact: true })).toBeVisible()
