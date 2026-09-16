@@ -211,16 +211,17 @@ describe('feed media adapter', () => {
     errorSpy.mockRestore()
   })
 
-  it('resolves readable S3 keys independently so one failed key does not fail the feed', async () => {
-    createMediaReadUrl
-      .mockResolvedValueOnce('https://s3.example/one.jpg')
-      .mockRejectedValueOnce(new Error('missing'))
+  it('resolves feed media to same-origin private paths without exposing the S3 hostname', async () => {
+    const nestedPath = `${profileId}/${postId}/deck photo.webp`
 
-    const urls = await resolveFeedMediaUrls(['one.jpg', 'missing.jpg'])
+    const urls = await resolveFeedMediaUrls([nestedPath, 'one.jpg'])
 
-    expect(urls).toEqual(new Map([['one.jpg', 'https://s3.example/one.jpg']]))
-    expect(createMediaReadUrl).toHaveBeenCalledWith('one.jpg')
-    expect(createMediaReadUrl).toHaveBeenCalledWith('missing.jpg')
+    expect(urls).toEqual(new Map([
+      [nestedPath, `/api/feed-media/${profileId}/${postId}/deck%20photo.webp`],
+      ['one.jpg', '/api/feed-media/one.jpg'],
+    ]))
+    expect(createMediaReadUrl).not.toHaveBeenCalled()
+    expect([...urls.values()].every((url) => url.startsWith('/'))).toBe(true)
   })
 
   it('deletes the exact S3 storage key', async () => {
