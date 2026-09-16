@@ -40,6 +40,10 @@ function e2eUsername(kind) {
   return value
 }
 
+function usernameInput(page) {
+  return page.locator('input[name="slug"]')
+}
+
 const browser = await chromium.launch()
 
 async function signUp(user) {
@@ -101,7 +105,7 @@ async function signIn(page, user) {
 }
 
 async function expectUsernameAvailable(page, username) {
-  await page.getByLabel('Username').fill(username)
+  await usernameInput(page).fill(username)
   await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
 }
 
@@ -147,7 +151,7 @@ async function completeProfessional(user, takenUsername) {
   const firstChangedUsername = e2eUsername('pro1')
   const secondChangedUsername = e2eUsername('pro2')
   const blockedThirdUsername = e2eUsername('pro3')
-  const usernameField = page.getByLabel('Username')
+  const usernameField = usernameInput(page)
   const completeButton = page.getByRole('button', { name: 'Complete profile' })
 
   await page.getByLabel('Location').fill('Mumbai')
@@ -187,7 +191,7 @@ async function completeProfessional(user, takenUsername) {
   await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: 'Edit profile' })).toBeVisible()
   await expect(page.getByText('Username changes remaining: 2 of 2.', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('Username')).toHaveValue(initialUsername)
+  await expect(usernameInput(page)).toHaveValue(initialUsername)
   await expect(page.getByText('This is your current username.', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save changes' })).toBeEnabled()
   console.log('ONBOARDING_E2E_USERNAME_CURRENT_VERIFIED=true')
@@ -196,7 +200,7 @@ async function completeProfessional(user, takenUsername) {
   await page.getByLabel('About').fill('Disposable onboarding E2E profile used to verify username protections.')
   const rank = page.getByLabel('Rank')
   if (await rank.count()) await rank.fill('Master')
-  const editUsername = page.getByLabel('Username')
+  const editUsername = usernameInput(page)
   const saveButton = page.getByRole('button', { name: 'Save changes' })
 
   await editUsername.fill('Bad Slug!!')
@@ -223,7 +227,7 @@ async function completeProfessional(user, takenUsername) {
 
   await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByText('Username changes remaining: 1 of 2.', { exact: true })).toBeVisible()
-  await expect(page.getByLabel('Username')).toHaveValue(firstChangedUsername)
+  await expect(usernameInput(page)).toHaveValue(firstChangedUsername)
   await expect(page.getByText('This is your current username.', { exact: true })).toBeVisible()
   await expectUsernameAvailable(page, secondChangedUsername)
   await page.getByRole('button', { name: 'Save changes' }).click()
@@ -235,7 +239,7 @@ async function completeProfessional(user, takenUsername) {
   await page.goto(`${siteUrl}/profile/edit`, { waitUntil: 'networkidle' })
   await expect(page.getByText('Username changes remaining: 0 of 2.', { exact: true })).toBeVisible()
   await expect(page.getByText('Your username is locked because both username changes have been used.', { exact: true })).toBeVisible()
-  const lockedUsername = page.getByLabel('Username')
+  const lockedUsername = usernameInput(page)
   await expect(lockedUsername).toHaveValue(secondChangedUsername)
   await expect(lockedUsername).not.toBeEditable()
 
@@ -248,12 +252,12 @@ async function completeProfessional(user, takenUsername) {
   await page.getByRole('button', { name: 'Save changes' }).click()
   await thirdChangeResponse
   await expect(page).toHaveURL((url) => url.pathname === '/profile/edit')
-  await expect(page.getByLabel('Username')).toHaveValue(secondChangedUsername, { timeout: 10_000 })
+  await expect(usernameInput(page)).toHaveValue(secondChangedUsername, { timeout: 10_000 })
   console.log('ONBOARDING_E2E_USERNAME_THIRD_CHANGE_BLOCKED=true')
 
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await expect(page.getByLabel('Username')).toHaveValue(secondChangedUsername)
-  await expect(page.getByLabel('Username')).not.toBeEditable()
+  await expect(usernameInput(page)).toHaveValue(secondChangedUsername)
+  await expect(usernameInput(page)).not.toBeEditable()
   await expect(page.getByText('Username changes remaining: 0 of 2.', { exact: true })).toBeVisible()
   await expect(page.getByText('Your username is locked because both username changes have been used.', { exact: true })).toBeVisible()
   console.log('ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true')
