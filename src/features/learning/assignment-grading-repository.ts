@@ -39,6 +39,27 @@ type MentorAttemptRow = QueryResultRow & {
   learner_name: string
 }
 
+type MentorReviewRow = MentorAttemptRow & {
+  assignment_instructions: string
+  enrollment_id: string
+  lesson_id: string
+  learner_id: string
+}
+
+type MentorAttemptHistoryRow = QueryResultRow & {
+  attempt_id: string
+  attempt_number: string | number
+  status: string
+  submitted_at: string | Date
+  response_text: string | null
+  attachment_path: string | null
+  score_points: string | number | null
+  percentage: string | number | null
+  passed: boolean | null
+  feedback: string | null
+  graded_at: string | Date | null
+}
+
 export type MentorAssignmentAttempt = {
   id: string
   attemptNumber: number
@@ -59,6 +80,25 @@ export type MentorAssignmentAttempt = {
   learnerName: string
 }
 
+export type MentorAssignmentAttemptHistory = {
+  id: string
+  attemptNumber: number
+  status: 'submitted' | 'graded'
+  submittedAt: string
+  responseText: string | null
+  attachmentPath: string | null
+  scorePoints: number | null
+  percentage: number | null
+  passed: boolean | null
+  feedback: string | null
+  gradedAt: string | null
+}
+
+export type MentorAssignmentReview = MentorAssignmentAttempt & {
+  assignmentInstructions: string
+  previousAttempts: MentorAssignmentAttemptHistory[]
+}
+
 function runtimeTransaction<T>(work: (query: AssignmentGradingQuery) => Promise<T>) {
   return databaseTransaction(async (client: DatabaseQueryClient) => work(async (text, values) => {
     const result = await client.query(text, values)
@@ -74,6 +114,44 @@ function iso(value: string | Date | null) {
 function status(value: string): 'submitted' | 'graded' {
   if (value === 'submitted' || value === 'graded') return value
   throw new Error('assignment_attempt_status_invalid')
+}
+
+function mapMentorAttempt(row: MentorAttemptRow): MentorAssignmentAttempt {
+  return {
+    id: row.attempt_id,
+    attemptNumber: Number(row.attempt_number),
+    status: status(row.status),
+    submittedAt: iso(row.submitted_at)!,
+    responseText: row.response_text,
+    attachmentPath: row.attachment_path,
+    scorePoints: row.score_points === null ? null : Number(row.score_points),
+    percentage: row.percentage === null ? null : Number(row.percentage),
+    passed: row.passed,
+    feedback: row.feedback,
+    gradedAt: iso(row.graded_at),
+    maxPoints: Number(row.max_points),
+    passingPercentage: Number(row.passing_percentage),
+    courseTitle: row.course_title,
+    courseSlug: row.course_slug,
+    lessonTitle: row.lesson_title,
+    learnerName: row.learner_name,
+  }
+}
+
+function mapAttemptHistory(row: MentorAttemptHistoryRow): MentorAssignmentAttemptHistory {
+  return {
+    id: row.attempt_id,
+    attemptNumber: Number(row.attempt_number),
+    status: status(row.status),
+    submittedAt: iso(row.submitted_at)!,
+    responseText: row.response_text,
+    attachmentPath: row.attachment_path,
+    scorePoints: row.score_points === null ? null : Number(row.score_points),
+    percentage: row.percentage === null ? null : Number(row.percentage),
+    passed: row.passed,
+    feedback: row.feedback,
+    gradedAt: iso(row.graded_at),
+  }
 }
 
 export function createAssignmentGradingRepository(input: {
@@ -116,25 +194,76 @@ export function createAssignmentGradingRepository(input: {
       [mentorUserId],
     ) as MentorAttemptRow[]
 
-    return rows.map((row) => ({
-      id: row.attempt_id,
-      attemptNumber: Number(row.attempt_number),
-      status: status(row.status),
-      submittedAt: iso(row.submitted_at)!,
-      responseText: row.response_text,
-      attachmentPath: row.attachment_path,
-      scorePoints: row.score_points === null ? null : Number(row.score_points),
-      percentage: row.percentage === null ? null : Number(row.percentage),
-      passed: row.passed,
-      feedback: row.feedback,
-      gradedAt: iso(row.graded_at),
-      maxPoints: Number(row.max_points),
-      passingPercentage: Number(row.passing_percentage),
-      courseTitle: row.course_title,
-      courseSlug: row.course_slug,
-      lessonTitle: row.lesson_title,
-      learnerName: row.learner_name,
-    }))
+    return rows.map(mapMentorAttempt)
+  }
+
+  async function getForMentor(mentorUserId: string, attemptId: string): Promise<MentorAssignmentReview | null> {
+    const rows = await queryRows(
+      `select
+         attempt.id as attempt_id,
+         attempt.attempt_number,
+         attempt.status,
+         attempt.submitted_at,
+         attempt.response_text,
+         attempt.attachment_path,
+         attempt.score_points,
+         attempt.percentage,
+         attempt.passed,
+         attempt.feedback,
+         attempt.graded_at,
+         attempt.enrollment_id,
+         attempt.lesson_id,
+         attempt.learner_id,
+         assignment.instructions as assignment_instructions,
+         assignment.max_points,
+         assignment.passing_percentage,
+         course.title as course_title,
+         course.slug as course_slug,
+         lesson.title as lesson_title,
+         learner.full_name as learner_name
+       from public.learning_assignment_attempts attempt
+       inner join public.learning_assignments assignment on assignment.id = attempt.assignment_id
+       inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
+       inner join public.learning_course_sections section on section.id = lesson.section_id
+       inner join public.learning_courses course on course.id = section.course_id
+       inner join public.learning_mentors mentor on mentor.id = course.mentor_id
+       inner join public.profiles learner on learner.id = attempt.learner_id
+       where mentor.user_id = $1
+         and mentor.status = 'active'
+         and attempt.id = $2
+       limit 1`,
+      [mentorUserId, attemptId],
+    ) as MentorReviewRow[]
+    const selected = rows[0]
+    if (!selected) return null
+
+    const previousRows = await queryRows(
+      `select
+         attempt.id as attempt_id,
+         attempt.attempt_number,
+         attempt.status,
+         attempt.submitted_at,
+         attempt.response_text,
+         attempt.attachment_path,
+         attempt.score_points,
+         attempt.percentage,
+         attempt.passed,
+         attempt.feedback,
+         attempt.graded_at
+       from public.learning_assignment_attempts attempt
+       where attempt.enrollment_id = $1
+         and attempt.lesson_id = $2
+         and attempt.learner_id = $3
+         and attempt.attempt_number < $4
+       order by attempt.attempt_number desc, attempt.id desc`,
+      [selected.enrollment_id, selected.lesson_id, selected.learner_id, Number(selected.attempt_number)],
+    ) as MentorAttemptHistoryRow[]
+
+    return {
+      ...mapMentorAttempt(selected),
+      assignmentInstructions: selected.assignment_instructions,
+      previousAttempts: previousRows.map(mapAttemptHistory),
+    }
   }
 
   async function grade(
@@ -232,7 +361,7 @@ export function createAssignmentGradingRepository(input: {
     })
   }
 
-  return { listForMentor, grade }
+  return { listForMentor, getForMentor, grade }
 }
 
 export const assignmentGradingRepository = createAssignmentGradingRepository()
