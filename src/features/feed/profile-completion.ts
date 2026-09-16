@@ -1,6 +1,14 @@
 import type { OwnProfile } from '@/features/profiles/types'
 
-export function calculateProfileCompletion(profile: OwnProfile): number {
+export type ProfilePortfolioCompletion = {
+  experienceCount: number
+  credentialCount: number
+}
+
+export function calculateProfileCompletion(
+  profile: OwnProfile,
+  portfolio: ProfilePortfolioCompletion = { experienceCount: 0, credentialCount: 0 },
+): number {
   const generic = [
     Boolean(profile.fullName.trim()),
     Boolean(profile.headline?.trim()),
@@ -15,6 +23,8 @@ export function calculateProfileCompletion(profile: OwnProfile): number {
         Boolean(profile.rank?.trim()),
         Boolean(profile.currentCompany?.trim()),
         profile.sailingExperienceYears !== null,
+        portfolio.experienceCount > 0,
+        portfolio.credentialCount > 0,
       ]
     : generic
 
