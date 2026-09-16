@@ -42,7 +42,7 @@ export type PublicProfile = {
 export type OwnProfile = PublicProfile & {
   contactVisibility: ContactVisibility
   onboardingCompletedAt: string
-  usernameChangeCount?: number
+  usernameChangeCount: number
 }
 
 export type PublicProfileRow = {
@@ -75,5 +75,5 @@ export type PublicProfileRow = {
 export type OwnProfileRow = PublicProfileRow & {
   contact_visibility: ContactVisibility
   onboarding_completed_at: string | null
-  username_change_count?: number
+  username_change_count: number
 }
