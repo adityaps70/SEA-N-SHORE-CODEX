@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { ProfileType } from './types'
+import { usernameSchema } from './username'
 
 function optionalText(maximum: number) {
   return z.preprocess(
@@ -38,13 +39,7 @@ const sailingExperienceSchema = z.preprocess(
 
 export const profileIdentitySectionSchema = z.object({
   fullName: z.string().trim().min(2, 'Add your full name.').max(120),
-  slug: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .min(1, 'Choose a profile address.')
-    .max(80)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use letters, numbers, and single hyphens.'),
+  slug: usernameSchema,
   location: optionalText(120),
   headline: z.string().trim().min(4, 'Add a professional headline.').max(160),
   currentCompany: optionalText(160),
