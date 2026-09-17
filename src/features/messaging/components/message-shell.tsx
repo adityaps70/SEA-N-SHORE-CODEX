@@ -2,6 +2,7 @@
 
 import { MessageCircleMore } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import type { NetworkProfile } from '@/features/network/types'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
 import {
@@ -14,6 +15,7 @@ import {
 import { ConversationList } from './conversation-list'
 import { MessageComposer, type OptimisticMessagingMessage } from './message-composer'
 import { MessageThread, type MessageThreadItem } from './message-thread'
+import { NewMessageButton } from './new-message-button'
 
 export type MessagingActiveConversation = {
   conversationId: string
@@ -170,22 +172,29 @@ export function MessageShell({
   viewerId,
   inbox,
   activeConversation,
+  newMessageCandidates,
 }: {
   viewerId: string
   inbox: MessagingInboxItem[]
   activeConversation: MessagingActiveConversation | null
+  newMessageCandidates: NetworkProfile[]
 }) {
+  const unreadCount = inbox.filter((item) => item.unread).length
+
   return (
     <div className="space-y-4">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Professional conversations</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 sm:text-3xl">Messages</h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">Stay connected with accepted maritime professionals through focused one-to-one conversations.</p>
         </div>
-        <div className="inline-flex w-fit items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-navy-900 shadow-sm">
-          <MessageCircleMore aria-hidden="true" className="size-4 text-ocean-700" />
-          {inbox.length} {inbox.length === 1 ? 'conversation' : 'conversations'}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-navy-900 shadow-sm">
+            <MessageCircleMore aria-hidden="true" className="size-4 text-ocean-700" />
+            {unreadCount ? `${unreadCount} unread` : `${inbox.length} ${inbox.length === 1 ? 'conversation' : 'conversations'}`}
+          </span>
+          <NewMessageButton candidates={newMessageCandidates} />
         </div>
       </header>
 
