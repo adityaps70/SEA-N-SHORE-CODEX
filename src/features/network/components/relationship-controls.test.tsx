@@ -3,6 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RelationshipControls } from './relationship-controls'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('@/features/messaging/components/start-conversation-button', () => ({
+  StartConversationButton: ({ targetProfileId }: { targetProfileId: string }) => (
+    <button type="button" data-profile-id={targetProfileId}>Message</button>
+  ),
+}))
 vi.mock('../actions', () => ({
   followProfile: vi.fn(async () => ({ ok: true })),
   unfollowProfile: vi.fn(async () => ({ ok: true })),
@@ -20,34 +25,36 @@ const connectionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 afterEach(() => cleanup())
 
 describe('RelationshipControls', () => {
-  it('shows Follow and Connect for an unrelated profile', () => {
+  it('shows Connect as the primary relationship action and keeps Follow under More', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} />)
-    expect(screen.getByRole('button', { name: 'Follow' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
+    expect(screen.getByText('More')).toBeInTheDocument()
+    expect(screen.getByText('Follow')).toBeInTheDocument()
   })
 
   it('shows Following independently of connection state', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: true, connection: { kind: 'none', connectionId: null } }} />)
-    expect(screen.getByRole('button', { name: 'Following' })).toBeInTheDocument()
+    expect(screen.getByText('Following')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
   })
 
-  it('shows Pending and Cancel for an outgoing request', () => {
+  it('shows Pending and moves request cancellation under More', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'outgoing_pending', connectionId } }} />)
     expect(screen.getByText('Pending')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(screen.getByText('Cancel request')).toBeInTheDocument()
   })
 
-  it('shows Accept and Decline for an incoming request', () => {
+  it('shows Accept and keeps Decline under More for an incoming request', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'incoming_pending', connectionId } }} />)
     expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Decline' })).toBeInTheDocument()
+    expect(screen.getByText('Decline')).toBeInTheDocument()
   })
 
-  it('shows Connected and Remove for an accepted connection', () => {
+  it('shows Message and moves removal under More for an accepted connection', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'connected', connectionId } }} />)
-    expect(screen.getByText('Connected')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Message' })).toBeInTheDocument()
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument()
+    expect(screen.getByText('Remove connection')).toBeInTheDocument()
   })
 
   it('reconciles mounted optimistic state when canonical relationship props change', () => {
@@ -67,14 +74,14 @@ describe('RelationshipControls', () => {
       />,
     )
 
-    expect(screen.getByText('Connected')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Message' })).toBeInTheDocument()
     expect(screen.queryByText('Pending')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Following' })).toBeInTheDocument()
+    expect(screen.getByText('Following')).toBeInTheDocument()
   })
 
   it('includes blocking without fake badges or reputation', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} />)
-    expect(screen.getByRole('button', { name: 'Block' })).toBeInTheDocument()
+    expect(screen.getByText('Block')).toBeInTheDocument()
     expect(screen.queryByText(/Verified|Reputation/i)).not.toBeInTheDocument()
   })
 })
