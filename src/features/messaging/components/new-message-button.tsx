@@ -27,7 +27,7 @@ export function NewMessageButton({ candidates }: { candidates: NetworkProfile[] 
       {open ? (
         <div className="absolute right-0 z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-mist-100 bg-white p-4 shadow-xl">
           <div className="flex items-start justify-between gap-3">
-            <div><p className="text-sm font-bold text-navy-950">Choose a recipient</p><p className="mt-1 text-xs leading-5 text-muted">Start a conversation with one of your accepted maritime connections.</p></div>
+            <div><p className="text-sm font-bold text-navy-950">Choose a connection</p><p className="mt-1 text-xs leading-5 text-muted">Start a conversation with one of your accepted maritime connections.</p></div>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close recipient picker" className="grid size-8 place-items-center rounded-full hover:bg-mist-50"><X aria-hidden="true" className="size-4" /></button>
           </div>
 
