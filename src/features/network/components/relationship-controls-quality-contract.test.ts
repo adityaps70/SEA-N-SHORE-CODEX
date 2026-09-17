@@ -21,6 +21,7 @@ describe('relationship controls quality contract', () => {
 
   it('keeps destructive and secondary connection actions under More', () => {
     const moreIndex = controls.indexOf('<details')
+    expect(controls.indexOf('onClick={toggleFollow}')).toBeGreaterThan(moreIndex)
     expect(controls.indexOf("respond('decline')")).toBeGreaterThan(moreIndex)
     expect(controls.indexOf("respond('remove')")).toBeGreaterThan(moreIndex)
     expect(controls.indexOf('onClick={block}')).toBeGreaterThan(moreIndex)
