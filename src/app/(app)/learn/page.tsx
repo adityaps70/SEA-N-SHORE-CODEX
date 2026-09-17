@@ -273,7 +273,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
         ) : (
           <div className="mt-4 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center shadow-[var(--shadow-card)] sm:p-10">
             <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-teal-50 text-teal-800"><BookOpen aria-hidden="true" className="size-5" /></span>
-            <h2 className="mt-4 text-xl font-bold text-navy-950">{hasFilters ? 'No courses match these filters yet.' : 'No published courses yet.'}</h2>
+            <h2 className="mt-4 text-xl font-bold text-navy-950">{hasFilters ? 'No published courses match these filters yet.' : 'No published courses yet.'}</h2>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
               {hasFilters ? 'Try another maritime category or remove the current filters. Only courses that have completed Sea N Shore review appear here.' : 'The learning catalog is ready for reviewed maritime courses. New courses will appear here after they complete Sea N Shore quality review.'}
             </p>
