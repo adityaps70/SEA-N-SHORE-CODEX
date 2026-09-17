@@ -40,7 +40,7 @@ describe('saved posts navigation', () => {
   it('doubles the desktop search width without increasing its height', () => {
     render(<AppHeader recentNotifications={[]} unreadCount={0} />)
 
-    expect(screen.getByRole('searchbox', { name: 'Search maritime professionals' })).toHaveClass(
+    expect(screen.getByRole('searchbox', { name: 'Search Sea N Shore' })).toHaveClass(
       'min-h-10',
       'w-64',
       '2xl:w-[22rem]',
