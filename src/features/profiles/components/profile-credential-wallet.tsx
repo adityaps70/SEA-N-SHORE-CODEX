@@ -128,12 +128,7 @@ function CredentialEditor({
           <FieldError state={state} name="expiresOn" />
         </label>
         <label className="flex min-h-11 items-center gap-3 self-end rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950">
-          <input
-            name="noExpiry"
-            type="checkbox"
-            checked={noExpiry}
-            onChange={(event) => setNoExpiry(event.target.checked)}
-          />
+          <input name="noExpiry" type="checkbox" checked={noExpiry} onChange={(event) => setNoExpiry(event.target.checked)} />
           This credential does not expire
         </label>
       </div>
@@ -250,12 +245,7 @@ export function ProfileCredentialWallet({
                 <CredentialEditor credential={credential} onClose={() => setEditingId(null)} />
               </div>
             ) : (
-              <CredentialEntry
-                key={credential.id}
-                credential={credential}
-                editable={editable}
-                onEdit={() => { setEditingId(credential.id); setAdding(false) }}
-              />
+              <CredentialEntry key={credential.id} credential={credential} editable={editable} onEdit={() => { setEditingId(credential.id); setAdding(false) }} />
             )
           ))}
         </div>
@@ -264,6 +254,10 @@ export function ProfileCredentialWallet({
           <FileCheck2 aria-hidden="true" className="mx-auto size-7 text-ocean-600" />
           <p className="mt-2 text-sm font-semibold text-navy-950">Add your maritime credentials</p>
           <p className="mt-1 text-sm text-muted">New credentials are self-reported until a formal evidence review confirms them.</p>
+          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">
+            <Plus aria-hidden="true" className="size-4" />
+            Add your first credential
+          </button>
         </div>
       ) : null}
     </Card>
