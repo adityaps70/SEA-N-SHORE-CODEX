@@ -70,16 +70,15 @@ export function AppHeader({
           ))}
         </nav>
         <div className="flex items-center gap-1.5">
-          <form action="/network" method="get" role="search" className="relative hidden lg:block">
-            <input type="hidden" name="tab" value="discover" />
-            <label htmlFor="global-search" className="sr-only">Search maritime professionals</label>
+          <form action="/search" method="get" role="search" className="relative hidden lg:block">
+            <label htmlFor="global-search" className="sr-only">Search Sea N Shore</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <input
               id="global-search"
               name="q"
               type="search"
               maxLength={100}
-              placeholder="Search people"
+              placeholder="Search Sea N Shore"
               className="min-h-10 w-64 rounded-lg bg-mist-50 py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted 2xl:w-[22rem]"
             />
           </form>
