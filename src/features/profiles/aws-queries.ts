@@ -4,6 +4,7 @@ import {
   type AwsVerifiedUser,
 } from '@/features/auth/aws-queries'
 import { createMediaReadUrl } from '@/lib/aws/storage'
+import { isSyntheticDiscoveryText } from '@/lib/public-discovery'
 import { createProfileMediaRepository, profileMediaRepository } from './profile-media-repository'
 import { createProfileRepository } from './repository'
 import type { PublicProfile } from './types'
@@ -74,11 +75,21 @@ export function createAwsProfileQueries(input: {
   async function getAwsNetworkProfiles(limit = 18, searchQuery = '') {
     const user = await input.requireUser()
     const normalizedSearch = searchQuery.trim()
-    return hydrateProfiles(await input.repository.getDiscoveryCandidates({
+    const profiles = await input.repository.getDiscoveryCandidates({
       viewerProfileId: user.id,
       limit,
       ...(normalizedSearch ? { searchQuery: normalizedSearch } : {}),
-    }))
+    })
+    const publicProfiles = profiles.filter((profile) => !isSyntheticDiscoveryText([
+      profile.slug,
+      profile.fullName,
+      profile.headline,
+      profile.summary,
+      profile.rank,
+      profile.currentCompany,
+    ].filter(Boolean).join(' ')))
+
+    return hydrateProfiles(publicProfiles)
   }
 
   return {
