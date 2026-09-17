@@ -172,12 +172,12 @@ export function MessageShell({
   viewerId,
   inbox,
   activeConversation,
-  newMessageCandidates,
+  newMessageCandidates = [],
 }: {
   viewerId: string
   inbox: MessagingInboxItem[]
   activeConversation: MessagingActiveConversation | null
-  newMessageCandidates: NetworkProfile[]
+  newMessageCandidates?: NetworkProfile[]
 }) {
   const unreadCount = inbox.filter((item) => item.unread).length
 
