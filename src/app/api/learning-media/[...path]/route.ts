@@ -28,7 +28,8 @@ export async function GET(
 
   try {
     const object = await getMediaObject({ key, maxBytes: MAX_THUMBNAIL_BYTES })
-    return new Response(object.body, {
+    const body = Uint8Array.from(object.body).buffer
+    return new Response(body, {
       status: 200,
       headers: {
         'content-type': object.contentType ?? 'application/octet-stream',
