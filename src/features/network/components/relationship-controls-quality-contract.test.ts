@@ -6,7 +6,7 @@ const controls = readFileSync('src/features/network/components/relationship-cont
 describe('relationship controls quality contract', () => {
   it('promotes messaging to the primary connected action', () => {
     expect(controls).toContain("import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'")
-    expect(controls).toContain('<StartConversationButton profileId={profileId} label="Message"')
+    expect(controls).toContain('<StartConversationButton targetProfileId={profileId}')
   })
 
   it('keeps Pending as the outgoing primary state and moves cancellation under More', () => {
