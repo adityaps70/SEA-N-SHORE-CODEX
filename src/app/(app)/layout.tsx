@@ -1,3 +1,4 @@
+import { AppFooter } from '@/components/navigation/app-footer'
 import { AppHeader } from '@/components/navigation/app-header'
 import { MobileAppHeader } from '@/components/navigation/mobile-app-header'
 import { MobileNav } from '@/components/navigation/mobile-nav'
@@ -32,6 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main id="main-content" className="mx-auto w-full max-w-7xl px-4 py-6">
           {children}
         </main>
+        <AppFooter />
         <MobileNav />
       </div>
     </MessagingRealtimeProvider>
