@@ -25,6 +25,13 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const alertQuery = serialize(rawParams) || 'mode=for-you'
   const activeFilterCount = [filters.ranks.length, filters.vesselTypes.length, filters.regions.length, filters.certificates.length, filters.visas.length, filters.minExperienceYears !== null ? 1 : 0, filters.joiningWithinDays !== null ? 1 : 0, filters.salaryMin !== null ? 1 : 0, filters.verifiedOnly ? 1 : 0, filters.urgentOnly ? 1 : 0, filters.easyApplyOnly ? 1 : 0].reduce((sum, value) => sum + value, 0)
   const hasSearchConstraints = Boolean(filters.query || activeFilterCount || filters.mode !== 'for-you')
+  const sortLabel = filters.sort === 'recommended'
+    ? 'Recommended'
+    : filters.sort === 'recent'
+      ? 'Newest'
+      : filters.sort === 'joining'
+        ? 'Joining soonest'
+        : 'Highest salary'
   const sortCaption = filters.sort === 'recommended'
     ? 'Recommended for you using your maritime profile when available.'
     : filters.sort === 'recent'
@@ -66,13 +73,17 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div><p className="text-sm font-semibold text-navy-950">{items.length} matching opportunit{items.length === 1 ? 'y' : 'ies'}</p><p className="mt-0.5 text-xs text-muted">{sortCaption}</p></div>
+            <div>
+              <p className="text-sm font-semibold text-navy-950">{items.length} matching opportunit{items.length === 1 ? 'y' : 'ies'}</p>
+              <p className="mt-0.5 text-xs font-semibold text-navy-700">Sort by: {sortLabel}</p>
+              <p className="mt-0.5 text-xs text-muted">{sortCaption}</p>
+            </div>
             <div className="flex items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
           </div>
           {items.length ? <div className="grid gap-4 xl:grid-cols-2">{items.map(({ job, match, isSaved }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} />)}</div> : (
             <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-12 text-center">
               <BriefcaseBusiness aria-hidden="true" className="mx-auto size-6 text-muted" />
-              <p className="mt-3 font-semibold text-navy-950">{hasSearchConstraints ? 'No roles match these filters yet.' : 'No active jobs have been published yet.'}</p>
+              <p className="mt-3 font-semibold text-navy-950">{hasSearchConstraints ? 'No roles match these filters yet.' : 'No maritime roles are live yet.'}</p>
               <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">{hasSearchConstraints ? 'Try widening the rank, vessel, joining-date or salary requirements—or clear filters to see more opportunities.' : 'New verified maritime opportunities will appear here as employers publish them.'}</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 {hasSearchConstraints ? <Link href="/jobs?mode=for-you" className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950">Clear all filters</Link> : null}
