@@ -88,12 +88,7 @@ function ExperienceEditor({
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
         <label className={labelClass}>
           Experience type
-          <select
-            name="track"
-            value={track}
-            onChange={(event) => setTrack(event.target.value as ProfileExperienceTrack)}
-            className={inputClass}
-          >
+          <select name="track" value={track} onChange={(event) => setTrack(event.target.value as ProfileExperienceTrack)} className={inputClass}>
             <option value="sea_service">Sea service</option>
             <option value="shore_role">Shore role</option>
             <option value="training">Training / education</option>
@@ -307,6 +302,10 @@ export function ProfileCareerTimeline({
           <Anchor aria-hidden="true" className="mx-auto size-7 text-ocean-600" />
           <p className="mt-2 text-sm font-semibold text-navy-950">Build your maritime career timeline</p>
           <p className="mt-1 text-sm text-muted">Add sea service, shore positions, training roles and other maritime experience.</p>
+          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">
+            <Plus aria-hidden="true" className="size-4" />
+            Add your first experience
+          </button>
         </div>
       ) : null}
     </Card>
