@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
+import { isSyntheticDiscoveryText } from '@/lib/public-discovery'
 
 type MarketplaceQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -121,6 +122,16 @@ function mapCourse(row: MarketplaceCourseRow): MarketplaceCourse {
   }
 }
 
+function isPublicMarketplaceCourse(course: MarketplaceCourse) {
+  return !isSyntheticDiscoveryText([
+    course.slug,
+    course.title,
+    course.subtitle,
+    course.description,
+    course.mentorName,
+  ].filter(Boolean).join(' '))
+}
+
 export function createMarketplaceRepository(input: { query?: MarketplaceQuery } = {}) {
   const queryRows: MarketplaceQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
 
@@ -154,7 +165,7 @@ order by course.published_at desc, course.id desc`,
       values,
     ) as MarketplaceCourseRow[]
 
-    return rows.map(mapCourse)
+    return rows.map(mapCourse).filter(isPublicMarketplaceCourse)
   }
 
   async function getPublishedCourseBySlug(slug: string): Promise<MarketplaceCourse | null> {
