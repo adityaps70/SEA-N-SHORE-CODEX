@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import {
   acceptConnectionRequest,
   blockProfile,
@@ -131,42 +132,48 @@ export function RelationshipControls({
     ? 'min-h-9 rounded-xl border border-mist-100 px-3 text-xs font-semibold text-navy-900 hover:border-ocean-500 disabled:opacity-50'
     : 'min-h-10 rounded-xl border border-mist-100 px-3.5 text-sm font-semibold text-navy-900 hover:border-ocean-500 disabled:opacity-50'
   const primaryClass = `${buttonClass} border-navy-950 bg-navy-950 text-white hover:border-navy-900`
+  const menuItemClass = 'min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-navy-900 hover:bg-mist-50 disabled:opacity-50'
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={pending} onClick={toggleFollow} className={relationship.following ? buttonClass : primaryClass}>
-          {relationship.following ? 'Following' : 'Follow'}
-        </button>
-
         {relationship.connection.kind === 'none' ? (
-          <button type="button" disabled={pending} onClick={connect} className={buttonClass}>Connect</button>
+          <button type="button" disabled={pending} onClick={connect} className={primaryClass}>Connect</button>
         ) : null}
 
         {relationship.connection.kind === 'outgoing_pending' ? (
-          <>
-            <span className="inline-flex min-h-9 items-center rounded-xl bg-mist-50 px-3 text-xs font-semibold text-muted">Pending</span>
-            <button type="button" disabled={pending || awaitingRefresh} onClick={() => respond('cancel')} className={buttonClass}>Cancel</button>
-          </>
+          <span className="inline-flex min-h-9 items-center rounded-xl bg-mist-50 px-3 text-xs font-semibold text-muted">Pending</span>
         ) : null}
 
         {relationship.connection.kind === 'incoming_pending' ? (
-          <>
-            <button type="button" disabled={pending} onClick={() => respond('accept')} className={primaryClass}>Accept</button>
-            <button type="button" disabled={pending} onClick={() => respond('decline')} className={buttonClass}>Decline</button>
-          </>
+          <button type="button" disabled={pending} onClick={() => respond('accept')} className={primaryClass}>Accept</button>
         ) : null}
 
         {relationship.connection.kind === 'connected' ? (
-          <>
-            <span className="inline-flex min-h-9 items-center rounded-xl bg-mist-50 px-3 text-xs font-semibold text-ocean-700">Connected</span>
-            <button type="button" disabled={pending} onClick={() => respond('remove')} className={buttonClass}>Remove</button>
-          </>
+          <StartConversationButton targetProfileId={profileId} className={compact ? 'min-h-9 px-3 text-xs' : ''} />
         ) : null}
 
         <details className="relative">
           <summary className={`${buttonClass} inline-flex cursor-pointer list-none items-center`}>More</summary>
-          <div className="absolute right-0 z-20 mt-1 min-w-32 rounded-xl border border-mist-100 bg-white p-1 shadow-lg">
+          <div className="absolute right-0 z-20 mt-1 min-w-44 rounded-xl border border-mist-100 bg-white p-1 shadow-lg">
+            <button type="button" disabled={pending} onClick={toggleFollow} className={menuItemClass}>
+              {relationship.following ? 'Following' : 'Follow'}
+            </button>
+            {relationship.connection.kind === 'outgoing_pending' ? (
+              <button type="button" disabled={pending || awaitingRefresh} onClick={() => respond('cancel')} className={menuItemClass}>
+                Cancel request
+              </button>
+            ) : null}
+            {relationship.connection.kind === 'incoming_pending' ? (
+              <button type="button" disabled={pending || awaitingRefresh} onClick={() => respond('decline')} className={menuItemClass}>
+                Decline
+              </button>
+            ) : null}
+            {relationship.connection.kind === 'connected' ? (
+              <button type="button" disabled={pending || awaitingRefresh} onClick={() => respond('remove')} className={menuItemClass}>
+                Remove connection
+              </button>
+            ) : null}
             <button type="button" disabled={pending} onClick={block} className="min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">
               Block
             </button>
