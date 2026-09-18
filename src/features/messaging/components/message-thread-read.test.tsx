@@ -126,6 +126,32 @@ describe('MessageThread durable Sent/Seen and active-conversation read behavior'
     await waitFor(() => expect(navigation.refresh).toHaveBeenCalledTimes(1))
   })
 
+  it('publishes the exact remaining unread message count returned by the read action', async () => {
+    actions.markConversationReadAction.mockResolvedValueOnce({
+      ok: true,
+      advanced: true,
+      unreadCount: 6,
+    })
+    const modulePath = './message-thread'
+    const { MessageThread } = await import(modulePath) as typeof import('./message-thread')
+
+    render(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={messages}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+
+    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(6))
+    await waitFor(() => expect(navigation.refresh).toHaveBeenCalledTimes(1))
+  })
+
   it('does not depend on document.hasFocus when the conversation is visible on mobile browsers', async () => {
     vi.mocked(document.hasFocus).mockReturnValue(false)
     const modulePath = './message-thread'
