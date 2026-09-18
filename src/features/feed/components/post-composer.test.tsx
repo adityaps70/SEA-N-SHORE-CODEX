@@ -108,12 +108,12 @@ describe('PostComposer', () => {
     render(<PostComposer profile={profile} />)
     await openComposer(user)
 
-    expect(screen.getByPlaceholderText('Share your thoughts ...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Share an update, insight or lesson with the maritime community…')).toBeInTheDocument()
     expect(screen.queryByLabelText('Topic')).not.toBeInTheDocument()
     expect(screen.getByText('Photo / Video')).toBeInTheDocument()
     expect(mediaInput()).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp,video/mp4,video/webm')
     expect(mediaInput()).not.toHaveAttribute('name', 'media')
-    expect(screen.getByRole('button', { name: 'Technical Poll' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Poll' })).toBeInTheDocument()
   })
 
   it('uploads a portrait image directly, renders an uncropped modal preview, and exposes metadata only when ready', async () => {
@@ -169,7 +169,7 @@ describe('PostComposer', () => {
     await user.upload(mediaInput(), fileWithSize('portrait.webp', 'image/webp', 1024))
 
     await waitFor(() => expect(mocks.uploadPostMediaFile).toHaveBeenCalled())
-    expect(screen.getByRole('button', { name: 'Post' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Post Update' })).toBeDisabled()
     expect(screen.getByText(/Uploading/i)).toBeInTheDocument()
     expect(document.querySelector('input[name="mediaPostId"]')).toBeNull()
 
@@ -220,7 +220,7 @@ describe('PostComposer', () => {
     await user.upload(mediaInput(), fileWithSize('portrait.jpg', 'image/jpeg', 1024))
     await screen.findByRole('img', { name: 'Selected post media preview' })
 
-    await user.click(screen.getByRole('button', { name: 'Technical Poll' }))
+    await user.click(screen.getByRole('button', { name: 'Poll' }))
 
     expect(mocks.discardPendingPostMedia).toHaveBeenCalledWith({
       postId: imageUpload.postId,
@@ -252,9 +252,9 @@ describe('PostComposer', () => {
     await openComposer(user)
     await user.upload(mediaInput(), fileWithSize('portrait.jpg', 'image/jpeg', 1024))
     await screen.findByRole('img', { name: 'Selected post media preview' })
-    await user.type(screen.getByPlaceholderText('Share your thoughts ...'), 'Safety observation')
+    await user.type(screen.getByPlaceholderText('Share an update, insight or lesson with the maritime community…'), 'Safety observation')
 
-    await user.click(screen.getByRole('button', { name: 'Post' }))
+    await user.click(screen.getByRole('button', { name: 'Post Update' }))
 
     await waitFor(() => expect(mocks.createPost).toHaveBeenCalled())
     await waitFor(() => expect(mocks.revokeObjectURL).toHaveBeenCalledWith('blob:preview-media'))
@@ -266,7 +266,7 @@ describe('PostComposer', () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
     await openComposer(user)
-    await user.click(screen.getByRole('button', { name: 'Technical Poll' }))
+    await user.click(screen.getByRole('button', { name: 'Poll' }))
     expect(screen.getByLabelText('Poll option 1')).toBeInTheDocument()
     expect(screen.getByLabelText('Poll option 2')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add option' })).toBeInTheDocument()
