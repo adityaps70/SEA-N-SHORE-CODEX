@@ -29,7 +29,7 @@ function makeRepository(overrides: Record<string, unknown> = {}) {
       },
     ]),
     isParticipant: vi.fn(async () => true),
-    countUnreadConversations: vi.fn(async () => 1),
+    countUnreadMessages: vi.fn(async () => 1),
     listMessageRows: vi.fn(async () => [
       {
         id: NEWER_MESSAGE_ID,
