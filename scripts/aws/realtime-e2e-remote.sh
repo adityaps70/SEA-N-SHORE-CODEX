@@ -70,6 +70,20 @@ case "$PHASE" in
     echo "REALTIME_E2E_CONVERSATION_ID=$CONVERSATION_ID"
     echo 'REALTIME_E2E_PREPARE_VERIFIED=true'
     ;;
+  prepare-messaging)
+    resolve_db
+    PAIR=$(sql "SELECT LEAST(($sender_id_sql)::text,($recipient_id_sql)::text), GREATEST(($sender_id_sql)::text,($recipient_id_sql)::text)" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
+    LOW=$(cut -f1 <<<"$PAIR"); HIGH=$(cut -f2 <<<"$PAIR")
+    [[ "$LOW" =~ ^[0-9a-f-]{36}$ && "$HIGH" =~ ^[0-9a-f-]{36}$ ]]
+    sql "INSERT INTO public.connections (user_low_id,user_high_id,requested_by,status,responded_at) VALUES ('$LOW'::uuid,'$HIGH'::uuid,($sender_id_sql),'accepted',now()) ON CONFLICT (user_low_id,user_high_id) DO UPDATE SET status='accepted',responded_at=now()" >/dev/null
+    RESULT=$(sql "INSERT INTO public.conversations (type,direct_user_low_id,direct_user_high_id) VALUES ('direct','$LOW'::uuid,'$HIGH'::uuid) ON CONFLICT (direct_user_low_id,direct_user_high_id) DO UPDATE SET direct_user_low_id=excluded.direct_user_low_id RETURNING id::text")
+    CONVERSATION_ID=$(jq -r '.records[0][0].stringValue // empty' <<<"$RESULT")
+    [[ "$CONVERSATION_ID" =~ ^[0-9a-f-]{36}$ ]]
+    sql "INSERT INTO public.conversation_participants (conversation_id,profile_id) VALUES ('$CONVERSATION_ID'::uuid,($sender_id_sql)),('$CONVERSATION_ID'::uuid,($recipient_id_sql)) ON CONFLICT DO NOTHING" >/dev/null
+    echo "REALTIME_E2E_CONVERSATION_ID=$CONVERSATION_ID"
+    echo 'REALTIME_E2E_PREPARE_MESSAGING_VERIFIED=true'
+    ;;
+
   verify-durable)
     resolve_conversation
     [[ -n "$MESSAGE_BODY" && -n "$INJECTED_BODY" ]]
