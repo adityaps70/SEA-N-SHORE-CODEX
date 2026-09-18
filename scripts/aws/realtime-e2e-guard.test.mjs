@@ -56,6 +56,7 @@ test('realtime e2e proves canonical message and read-cursor fanout over authenti
   assert.doesNotMatch(browser, /Profile address/)
   assert.doesNotMatch(browser, /message-read-sentinel/)
   assert.match(browser, /1 unread messages/)
+  assert.match(browser, /\[aria-label="1 unread messages"\]:visible/)
   assert.match(browser, /Unread conversation with/)
   assert.match(browser, /REALTIME_E2E_UNREAD_BADGE_CLEARED=true/)
   assert.match(browser, /malformed/i)
