@@ -84,6 +84,7 @@ function fileWithSize(name: string, type: string, size: number) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  window.localStorage.clear()
   mocks.createPost.mockResolvedValue({ ok: true })
   mocks.createPostMediaUpload.mockImplementation(async ({ mimeType, size }: { mimeType: string; size: number }) => ({
     ok: true,
