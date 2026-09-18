@@ -12,9 +12,15 @@ const RECEIVED_ID = '66666666-6666-4666-8666-666666666666'
 const actions = vi.hoisted(() => ({
   markConversationReadAction: vi.fn(async () => ({ ok: true, advanced: true })),
 }))
+const navigation = vi.hoisted(() => ({
+  refresh: vi.fn(),
+}))
 
 vi.mock('../actions', () => ({
   markConversationReadAction: actions.markConversationReadAction,
+}))
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: navigation.refresh }),
 }))
 
 type ObserverCallback = (entries: IntersectionObserverEntry[]) => void
@@ -149,9 +155,11 @@ describe('MessageThread durable Sent/Seen and actual-view read behavior', () => 
       RECEIVED_ID,
     ))
     expect(actions.markConversationReadAction).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(navigation.refresh).toHaveBeenCalledTimes(1))
 
     act(() => FakeIntersectionObserver.instances[0]?.trigger(true))
     expect(actions.markConversationReadAction).toHaveBeenCalledTimes(1)
+    expect(navigation.refresh).toHaveBeenCalledTimes(1)
   })
 
   it('waits for focus before marking a visible bottom message as read', async () => {
