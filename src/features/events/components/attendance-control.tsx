@@ -31,7 +31,7 @@ export function AttendanceControl({ eventId, attending, disabled = false }: { ev
           <div className="flex items-start gap-3" aria-live="polite">
             <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" aria-hidden="true" />
             <div>
-              <p className="text-sm font-bold text-emerald-900">You&apos;re attending</p>
+              <p className="text-sm font-bold text-emerald-900">{`You're attending`}</p>
               <p className="mt-0.5 text-xs leading-5 text-emerald-800">Your registration is confirmed.</p>
             </div>
           </div>
