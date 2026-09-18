@@ -44,7 +44,23 @@ describe('messaging durable read cursor ordering', () => {
     expect(text).toContain('c.last_message_id > mine.last_read_message_id')
   })
 
-  it('counts unread conversations with the same message-id tie break', async () => {
+  it('derives inbox unread state from unread incoming messages, never from the viewer\'s own latest message', async () => {
+    const query = vi.fn(async () => [])
+    const repository = createMessagingRepository({ query })
+
+    await repository.listInboxRows(VIEWER_ID, { limit: 30 })
+
+    const [sql] = firstCall(query)
+    const text = sql.toLowerCase()
+    expect(text).toContain('exists (')
+    expect(text).toContain('from public.messages unread_message')
+    expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
+    expect(text).toContain('unread_message.deleted_at is null')
+    expect(text).toContain('unread_message.created_at = mine.last_read_at')
+    expect(text).toContain('unread_message.id > mine.last_read_message_id')
+  })
+
+  it('counts only conversations with unread incoming messages after the durable cursor', async () => {
     const query = vi.fn(async () => [{ count: 0 }])
     const repository = createMessagingRepository({ query })
 
@@ -52,7 +68,11 @@ describe('messaging durable read cursor ordering', () => {
 
     const [sql] = firstCall(query)
     const text = sql.toLowerCase()
-    expect(text).toContain('c.last_message_at = mine.last_read_at')
-    expect(text).toContain('c.last_message_id > mine.last_read_message_id')
+    expect(text).toContain('exists (')
+    expect(text).toContain('from public.messages unread_message')
+    expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
+    expect(text).toContain('unread_message.deleted_at is null')
+    expect(text).toContain('unread_message.created_at = mine.last_read_at')
+    expect(text).toContain('unread_message.id > mine.last_read_message_id')
   })
 })
