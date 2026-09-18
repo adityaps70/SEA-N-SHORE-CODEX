@@ -80,8 +80,27 @@ async function waitForInteractiveLoad(page) {
   await page.waitForLoadState('load')
 }
 
-function futureLocal(hours) {
-  return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString().slice(0, 16)
+function pad2(value) {
+  return String(value).padStart(2, '0')
+}
+
+async function setEventDateTime(page, name, hoursFromNow) {
+  const now = new Date()
+  const target = new Date(Date.now() + hoursFromNow * 60 * 60 * 1000)
+  const monthDelta = (target.getFullYear() - now.getFullYear()) * 12 + target.getMonth() - now.getMonth()
+  assert.ok(monthDelta >= 0 && monthDelta <= 1, `Events E2E date target is outside the supported visible calendar window: ${name}`)
+
+  const dateValue = `${target.getFullYear()}-${pad2(target.getMonth() + 1)}-${pad2(target.getDate())}`
+  const timeValue = `${pad2(target.getHours())}:${pad2(target.getMinutes())}`
+  const root = page.locator(`input[name="${name}"]`).locator('..')
+
+  await root.locator('button[aria-expanded]').click()
+  for (let index = 0; index < monthDelta; index += 1) {
+    await root.getByRole('button', { name: 'Next month' }).click()
+  }
+  await root.getByRole('button', { name: String(target.getDate()), exact: true }).click()
+  await root.locator(`#${name}-time`).fill(timeValue)
+  await expect(root.locator(`input[name="${name}"]`)).toHaveValue(`${dateValue}T${timeValue}`)
 }
 
 async function createEvent() {
@@ -98,15 +117,15 @@ async function createEvent() {
   await page.locator('select[name="eventType"]').selectOption('masterclass')
   await page.locator('select[name="format"]').selectOption('online')
   await page.locator('input[name="capacity"]').fill('2')
-  await page.locator('input[name="startAt"]').fill(futureLocal(72))
-  await page.locator('input[name="endAt"]').fill(futureLocal(74))
-  await page.locator('input[name="timezone"]').fill('UTC')
+  await setEventDateTime(page, 'startAt', 72)
+  await setEventDateTime(page, 'endAt', 74)
+  await page.locator('select[name="timezone"]').selectOption('UTC')
   await page.locator('input[name="meetingUrl"]').fill(`https://example.com/events-e2e-${runId}`)
   await page.locator('input[name="topics"]').fill('SIRE 2.0, Human factors')
   await page.locator('textarea[name="agenda"]').fill('Welcome\nSIRE 2.0 readiness\nQuestions and close-out')
   await page.locator('textarea[name="speakerDetails"]').fill('Capt. E2E Host | Master Mariner | Sea N Shore')
   await page.locator('select[name="registrationMode"]').selectOption('open')
-  await page.locator('input[name="registrationClosesAt"]').fill(futureLocal(71))
+  await setEventDateTime(page, 'registrationClosesAt', 71)
   await page.getByRole('button', { name: 'Publish event' }).click()
   await page.waitForURL((url) => /^\/events\/[0-9a-f-]{36}$/.test(url.pathname), { timeout: 30_000 })
   const id = new URL(page.url()).pathname.split('/').pop()
