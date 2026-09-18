@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   startDirectConversation: vi.fn(),
   sendMessage: vi.fn(),
   markConversationRead: vi.fn(),
+  countUnreadMessages: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
@@ -16,6 +17,11 @@ vi.mock('./service', () => ({
     sendMessage: mocks.sendMessage,
     markConversationRead: mocks.markConversationRead,
   }),
+}))
+vi.mock('./repository', () => ({
+  messagingRepository: {
+    countUnreadMessages: mocks.countUnreadMessages,
+  },
 }))
 
 import {
@@ -52,6 +58,7 @@ describe('messaging server actions', () => {
     mocks.startDirectConversation.mockResolvedValue(CONVERSATION_ID)
     mocks.sendMessage.mockResolvedValue(canonicalMessage)
     mocks.markConversationRead.mockResolvedValue(true)
+    mocks.countUnreadMessages.mockResolvedValue(0)
   })
 
   it('rejects an invalid direct-message target before resolving identity', async () => {
@@ -122,6 +129,7 @@ describe('messaging server actions', () => {
     await expect(markConversationReadAction(CONVERSATION_ID, MESSAGE_ID)).resolves.toEqual({
       ok: true,
       advanced: false,
+      unreadCount: 0,
     })
 
     expect(mocks.markConversationRead).toHaveBeenCalledWith(
@@ -129,6 +137,7 @@ describe('messaging server actions', () => {
       CONVERSATION_ID,
       MESSAGE_ID,
     )
+    expect(mocks.countUnreadMessages).toHaveBeenCalledWith(VIEWER_ID)
   })
 
   it.each([
