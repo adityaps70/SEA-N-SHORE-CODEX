@@ -29,6 +29,7 @@ function makeRepository() {
     searchJobs: vi.fn().mockResolvedValue([job]),
     getCandidateProfile: vi.fn().mockResolvedValue(profile),
     getSavedJobIds: vi.fn().mockResolvedValue(['job-1']),
+    getAppliedJobIds: vi.fn().mockResolvedValue(['job-1']),
     isJobSaved: vi.fn().mockResolvedValue(true),
     listSavedJobs: vi.fn().mockResolvedValue([job]),
     listJobAlerts: vi.fn().mockResolvedValue([]),
@@ -51,7 +52,8 @@ describe('jobs queries', () => {
     }), 60, 0)
     expect(repository.getCandidateProfile).toHaveBeenCalledWith('viewer-1')
     expect(repository.getSavedJobIds).toHaveBeenCalledWith('viewer-1', ['job-1'])
-    expect(result.items[0]).toMatchObject({ job: { id: 'job-1' }, isSaved: true })
+    expect(repository.getAppliedJobIds).toHaveBeenCalledWith('viewer-1', ['job-1'])
+    expect(result.items[0]).toMatchObject({ job: { id: 'job-1' }, isSaved: true, alreadyApplied: true })
     expect(result.items[0]?.match?.score).toBeGreaterThanOrEqual(90)
   })
 
