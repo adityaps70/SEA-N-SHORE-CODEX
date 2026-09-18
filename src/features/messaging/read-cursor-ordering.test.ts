@@ -60,19 +60,21 @@ describe('messaging durable read cursor ordering', () => {
     expect(text).toContain('unread_message.id > mine.last_read_message_id')
   })
 
-  it('counts only conversations with unread incoming messages after the durable cursor', async () => {
+  it('counts every unread incoming message after the durable cursor, not unread conversations', async () => {
     const query = vi.fn(async () => [{ count: 0 }])
     const repository = createMessagingRepository({ query })
 
-    await repository.countUnreadConversations(VIEWER_ID)
+    await repository.countUnreadMessages(VIEWER_ID)
 
     const [sql] = firstCall(query)
     const text = sql.toLowerCase()
-    expect(text).toContain('exists (')
+    expect(text).toContain('select count(*)::int as count')
     expect(text).toContain('from public.messages unread_message')
+    expect(text).toContain('join public.conversation_participants mine')
     expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
     expect(text).toContain('unread_message.deleted_at is null')
     expect(text).toContain('unread_message.created_at = mine.last_read_at')
     expect(text).toContain('unread_message.id > mine.last_read_message_id')
+    expect(text).not.toContain('exists (')
   })
 })
