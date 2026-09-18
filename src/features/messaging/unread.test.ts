@@ -3,16 +3,16 @@ import { createMessagingQueries } from './queries'
 
 const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
 
-describe('messaging unread count', () => {
-  it('counts unread conversations in Aurora for the authenticated viewer without relying on a capped inbox page', async () => {
+describe('messaging unread message count', () => {
+  it('counts exact unread incoming messages in Aurora for the authenticated viewer without relying on a capped inbox page', async () => {
     const requireUser = vi.fn(async () => ({ id: VIEWER_ID }))
-    const countUnreadConversations = vi.fn(async () => 12)
+    const countUnreadMessages = vi.fn(async () => 12)
     const repository = {
       listInboxRows: vi.fn(async () => []),
       isParticipant: vi.fn(async () => true),
       listMessageRows: vi.fn(async () => []),
       listMessageRowsAfter: vi.fn(async () => []),
-      countUnreadConversations,
+      countUnreadMessages,
     }
     const queries = createMessagingQueries({
       requireUser,
@@ -20,7 +20,7 @@ describe('messaging unread count', () => {
       createReadUrl: vi.fn(async (key: string) => key),
     })
 
-    await expect(queries.getUnreadConversationCount()).resolves.toBe(12)
-    expect(countUnreadConversations).toHaveBeenCalledWith(VIEWER_ID)
+    await expect(queries.getUnreadMessageCount()).resolves.toBe(12)
+    expect(countUnreadMessages).toHaveBeenCalledWith(VIEWER_ID)
   })
 })
