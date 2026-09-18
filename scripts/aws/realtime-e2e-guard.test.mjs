@@ -212,3 +212,18 @@ test('realtime disposable usernames stay within onboarding limits', () => {
   assert.match(browser, /\/people\/rt-recipient-\$\{runId\}/)
   assert.match(browser, /\/people\/rt-sender-\$\{runId\}/)
 })
+
+
+test('realtime e2e has an isolated messaging-only mode for unread badge verification', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const remote = readFileSync(remotePath, 'utf8')
+  assert.match(workflow, /messaging-once/)
+  assert.match(workflow, /messaging_only/)
+  assert.match(workflow, /prepare-messaging/)
+  assert.match(workflow, /Verify live authenticated realtime messaging/)
+  assert.match(workflow, /needs\.guard\.outputs\.messaging_only != 'true'/)
+  assert.match(remote, /^  prepare-messaging\)$/m)
+  assert.match(remote, /insert into public\.connections/i)
+  assert.match(remote, /status='accepted'|status = 'accepted'|'accepted'/i)
+  assert.match(remote, /REALTIME_E2E_PREPARE_MESSAGING_VERIFIED=true/)
+})
