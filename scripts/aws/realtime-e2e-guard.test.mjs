@@ -231,11 +231,20 @@ test('realtime e2e has an isolated messaging-only mode for unread badge verifica
 })
 
 
-test('messaging-only unread verification uses canonical inbox refresh instead of websocket delivery', () => {
+test('messaging-only unread verification uses canonical inbox refresh and still proves read-cursor fanout', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browser = readFileSync(browserPath, 'utf8')
   assert.match(workflow, /E2E_MESSAGING_ONLY/)
   assert.match(browser, /const messagingOnly = process\.env\.E2E_MESSAGING_ONLY === 'true'/)
   assert.match(browser, /if \(messagingOnly\) \{[\s\S]*recipientPage\.reload/)
   assert.match(browser, /REALTIME_E2E_UNREAD_BADGE_CLEARED=true/)
+  assert.match(browser, /REALTIME_E2E_READ_CURSOR_SIGNAL_VERIFIED=true/)
+  const readCursorMarker = browser.indexOf("console.log('REALTIME_E2E_READ_CURSOR_SIGNAL_VERIFIED=true')")
+  const nearestMessagingOnlyGuard = browser.lastIndexOf('if (!messagingOnly)', readCursorMarker)
+  const unreadMarker = browser.indexOf("console.log('REALTIME_E2E_UNREAD_BADGE_CLEARED=true')", readCursorMarker)
+  assert.ok(readCursorMarker >= 0, 'read-cursor marker must exist')
+  assert.ok(
+    nearestMessagingOnlyGuard < 0 || unreadMarker < nearestMessagingOnlyGuard,
+    'read-cursor verification must not be gated off in messaging-only mode',
+  )
 })
