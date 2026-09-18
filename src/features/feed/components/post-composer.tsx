@@ -313,8 +313,6 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   const mediaIsReady = media?.status === 'ready' && Boolean(media.postId && media.storagePath)
   const mediaBlocksPost = Boolean(media && !mediaIsReady)
   const canSubmit = body.trim().length > 0 && characterCount <= POST_CHARACTER_LIMIT && !mediaBlocksPost
-  const modeLabel = mode === 'question' ? 'Question' : mode === 'poll' ? 'Poll' : 'Update'
-
   return (
     <>
       <Card className="border border-mist-100 p-4">
@@ -337,7 +335,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
           <section role="dialog" aria-modal="true" aria-labelledby="create-post-title" className="w-full max-w-2xl overflow-visible rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-mist-100 px-5 py-4">
               <div>
-                <h2 id="create-post-title" className="text-lg font-semibold text-navy-950">Create a {modeLabel.toLowerCase()}</h2>
+                <h2 id="create-post-title" className="text-lg font-semibold text-navy-950">Create a post</h2>
                 <p className="mt-0.5 text-xs text-muted">Drafts are saved automatically on this device.</p>
               </div>
               <button type="button" onClick={closeComposer} aria-label="Close post composer" className="grid size-10 place-items-center rounded-full text-muted transition hover:bg-mist-50 hover:text-navy-950"><X aria-hidden="true" className="size-5" /></button>
