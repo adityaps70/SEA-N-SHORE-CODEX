@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getConversationInbox: vi.fn(),
   getConversationThread: vi.fn(),
+  getUnreadMessageCount: vi.fn(),
   markConversationRead: vi.fn(),
   notFound: vi.fn(),
 }))
@@ -18,6 +19,7 @@ vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAws
 vi.mock('@/features/messaging/queries', () => ({
   getConversationInbox: mocks.getConversationInbox,
   getConversationThread: mocks.getConversationThread,
+  getUnreadMessageCount: mocks.getUnreadMessageCount,
 }))
 vi.mock('@/features/messaging/service', () => ({
   createProductionMessagingService: () => ({
@@ -25,16 +27,18 @@ vi.mock('@/features/messaging/service', () => ({
   }),
 }))
 vi.mock('@/features/messaging/components/message-shell', () => ({
-  MessageShell: ({ activeConversation }: {
+  MessageShell: ({ activeConversation, authoritativeUnreadCount }: {
     activeConversation: null | {
       otherName: string | null
       messages: Array<{ body: string }>
     }
+    authoritativeUnreadCount?: number
   }) => (
     <div>
       <span>Messaging shell</span>
       <span>{activeConversation?.otherName}</span>
       <span>{activeConversation?.messages[0]?.body}</span>
+      <span data-testid="authoritative-unread-count">{authoritativeUnreadCount ?? 'unset'}</span>
     </div>
   ),
 }))
@@ -74,6 +78,7 @@ beforeEach(() => {
     nextCursor: null,
   })
   mocks.markConversationRead.mockResolvedValue(true)
+  mocks.getUnreadMessageCount.mockResolvedValue(0)
 })
 
 afterEach(() => cleanup())
@@ -100,6 +105,11 @@ describe('Message conversation page', () => {
     expect(mocks.markConversationRead.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.getConversationInbox.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
     )
+    expect(mocks.getUnreadMessageCount).toHaveBeenCalledTimes(1)
+    expect(mocks.markConversationRead.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.getUnreadMessageCount.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    )
+    expect(screen.getByTestId('authoritative-unread-count')).toHaveTextContent('0')
   })
 
   it('advances the cursor to the latest visible message even when the viewer sent it, clearing older incoming unread messages', async () => {
