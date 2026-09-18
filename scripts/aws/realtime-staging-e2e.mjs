@@ -7,6 +7,7 @@ const runId = process.env.GITHUB_RUN_ID
 const conversationId = process.env.E2E_CONVERSATION_ID
 const messageBody = process.env.E2E_MESSAGE_BODY
 const injectedBody = process.env.E2E_INJECTED_BODY
+const messagingOnly = process.env.E2E_MESSAGING_ONLY === 'true'
 const socialPostBody = process.env.E2E_SOCIAL_POST_BODY
 const socialCommentBody = process.env.E2E_SOCIAL_COMMENT_BODY
 const users = {
@@ -298,17 +299,23 @@ async function realtimeJourney() {
     await senderPage.getByRole('button', { name: 'Send message' }).click()
     await expect(senderPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 20_000 })
 
-    await recipientPage.waitForFunction(({ conversationId }) => {
-      const signals = globalThis.__realtime_recipient_signals ?? []
-      return signals.some((signal) => signal?.eventType === 'message.created' && signal?.payload?.conversationId === conversationId)
-    }, { conversationId }, { timeout: 30_000 })
-    const messageSignal = await recipientPage.evaluate(({ conversationId }) => {
-      return (globalThis.__realtime_recipient_signals ?? []).find((signal) => signal?.eventType === 'message.created' && signal?.payload?.conversationId === conversationId)
-    }, { conversationId })
-    assert.ok(messageSignal)
-    assert.equal('body' in (messageSignal.payload ?? {}), false)
-    assert.equal(JSON.stringify(messageSignal).includes(messageBody), false)
-    console.log('REALTIME_E2E_MESSAGE_CREATED_SIGNAL_VERIFIED=true')
+    if (messagingOnly) {
+      await recipientPage.reload({ waitUntil: 'domcontentloaded' })
+      await expect(recipientPage.getByRole('heading', { name: 'Messages' })).toBeVisible()
+      console.log('REALTIME_E2E_CANONICAL_UNREAD_REFRESH_VERIFIED=true')
+    } else {
+      await recipientPage.waitForFunction(({ conversationId }) => {
+        const signals = globalThis.__realtime_recipient_signals ?? []
+        return signals.some((signal) => signal?.eventType === 'message.created' && signal?.payload?.conversationId === conversationId)
+      }, { conversationId }, { timeout: 30_000 })
+      const messageSignal = await recipientPage.evaluate(({ conversationId }) => {
+        return (globalThis.__realtime_recipient_signals ?? []).find((signal) => signal?.eventType === 'message.created' && signal?.payload?.conversationId === conversationId)
+      }, { conversationId })
+      assert.ok(messageSignal)
+      assert.equal('body' in (messageSignal.payload ?? {}), false)
+      assert.equal(JSON.stringify(messageSignal).includes(messageBody), false)
+      console.log('REALTIME_E2E_MESSAGE_CREATED_SIGNAL_VERIFIED=true')
+    }
 
     await recipientPage.bringToFront()
     await expect(recipientPage.getByLabel('1 unread messages')).toBeVisible({ timeout: 30_000 })
@@ -320,11 +327,13 @@ async function realtimeJourney() {
     await expect(recipientPage.getByLabel('1 unread messages')).toHaveCount(0, { timeout: 30_000 })
     await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toHaveCount(0, { timeout: 30_000 })
 
-    await senderPage.waitForFunction(({ conversationId }) => {
-      const signals = globalThis.__realtime_sender_signals ?? []
-      return signals.some((signal) => signal?.eventType === 'conversation.read_cursor_advanced' && signal?.payload?.conversationId === conversationId)
-    }, { conversationId }, { timeout: 30_000 })
-    console.log('REALTIME_E2E_READ_CURSOR_SIGNAL_VERIFIED=true')
+    if (!messagingOnly) {
+      await senderPage.waitForFunction(({ conversationId }) => {
+        const signals = globalThis.__realtime_sender_signals ?? []
+        return signals.some((signal) => signal?.eventType === 'conversation.read_cursor_advanced' && signal?.payload?.conversationId === conversationId)
+      }, { conversationId }, { timeout: 30_000 })
+      console.log('REALTIME_E2E_READ_CURSOR_SIGNAL_VERIFIED=true')
+    }
     console.log('REALTIME_E2E_UNREAD_BADGE_CLEARED=true')
 
     await senderPage.evaluate((injectedBody) => {
