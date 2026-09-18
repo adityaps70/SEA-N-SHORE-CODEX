@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { ArrowRight, BadgeCheck, BriefcaseBusiness, CalendarClock, MapPin, Ship, Sparkles, TriangleAlert, WalletCards } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { JobListing, JobMatchResult } from '../types'
+import { ApplyJobButton } from './apply-job-button'
 import { SaveJobButton } from './save-job-button'
 
 function formatDate(value: string | null, prefix: string) {
@@ -19,7 +20,7 @@ function formatSalary(job: JobListing) {
   return `${amount}${job.salaryPeriod ? `/${job.salaryPeriod}` : ''}`
 }
 
-export function JobCard({ job, match = null, isSaved = false }: { job: JobListing; match?: JobMatchResult | null; isSaved?: boolean }) {
+export function JobCard({ job, match = null, isSaved = false, alreadyApplied = false }: { job: JobListing; match?: JobMatchResult | null; isSaved?: boolean; alreadyApplied?: boolean }) {
   const salary = formatSalary(job)
   const joining = formatDate(job.joiningFrom, 'Joining')
   const strongestReason = match?.reasons[0] ?? null
@@ -59,8 +60,12 @@ export function JobCard({ job, match = null, isSaved = false }: { job: JobListin
             </div>
           ) : null}
 
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <Link href={`/jobs/${job.id}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900">{job.easyApply ? 'Easy Apply' : 'View opportunity'} <ArrowRight aria-hidden="true" className="size-4" /></Link>
+          <div className="mt-5 flex flex-wrap items-start gap-2">
+            {job.easyApply ? (
+              <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact />
+            ) : (
+              <Link href={`/jobs/${job.id}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900">View opportunity <ArrowRight aria-hidden="true" className="size-4" /></Link>
+            )}
             <SaveJobButton jobId={job.id} initialSaved={isSaved} compact />
           </div>
         </div>
