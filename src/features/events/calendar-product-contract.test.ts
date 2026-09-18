@@ -92,6 +92,7 @@ describe('complete maritime Events product contract', () => {
     expect(attendance).toContain('Register for event')
     expect(attendance).toContain("You're attending")
     expect(attendance).toContain('Withdraw attendance')
+    expect(detail).not.toContain("You're attending")
     expect(detail).toContain('Event full')
     expect(detail).toContain('Registration closed')
     expect(detail).toContain('Event ended')
