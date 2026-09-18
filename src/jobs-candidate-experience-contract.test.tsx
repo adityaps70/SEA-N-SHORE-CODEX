@@ -26,12 +26,13 @@ describe('premium candidate jobs experience contract', () => {
 
   it('makes job cards maritime-specific, trust-aware and match-aware', () => {
     const card = source('src/features/jobs/components/job-card.tsx')
+    const applyButton = source('src/features/jobs/components/apply-job-button.tsx')
     expect(card).toContain('JobMatchResult')
     expect(card).toContain('match.score')
     expect(card).toContain('Verified')
     expect(card).toContain('Urgent')
-    expect(card).toContain('Easy Apply')
     expect(card).toContain('ApplyJobButton')
+    expect(applyButton).toContain('Easy Apply')
     expect(card).toContain('alreadyApplied')
     expect(card).toContain('SaveJobButton')
   })
