@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { NetworkProfile } from '@/features/network/types'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
+import { publishMessagingUnreadCount } from '../unread-client'
 import {
   fetchConversationCatchUp,
   laterReadCursor,
@@ -173,12 +174,19 @@ export function MessageShell({
   inbox,
   activeConversation,
   newMessageCandidates = [],
+  authoritativeUnreadCount,
 }: {
   viewerId: string
   inbox: MessagingInboxItem[]
   activeConversation: MessagingActiveConversation | null
   newMessageCandidates?: NetworkProfile[]
+  authoritativeUnreadCount?: number
 }) {
+  useEffect(() => {
+    if (authoritativeUnreadCount == null) return
+    publishMessagingUnreadCount(authoritativeUnreadCount)
+  }, [authoritativeUnreadCount])
+
   return (
     <div className="space-y-4">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
