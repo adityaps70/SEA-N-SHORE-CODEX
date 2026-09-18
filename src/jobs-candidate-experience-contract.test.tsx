@@ -31,6 +31,8 @@ describe('premium candidate jobs experience contract', () => {
     expect(card).toContain('Verified')
     expect(card).toContain('Urgent')
     expect(card).toContain('Easy Apply')
+    expect(card).toContain('ApplyJobButton')
+    expect(card).toContain('alreadyApplied')
     expect(card).toContain('SaveJobButton')
   })
 
