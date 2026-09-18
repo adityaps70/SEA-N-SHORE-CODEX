@@ -15,12 +15,11 @@ vi.mock('@/features/network/queries', () => ({
   getNetworkHub: mocks.getNetworkHub,
 }))
 vi.mock('@/features/messaging/components/message-shell', () => ({
-  MessageShell: ({ viewerId, inbox, activeConversation }: {
+  MessageShell: ({ viewerId, inbox, activeConversation, newMessageCandidates }: {
     viewerId: string
     inbox: Array<{ otherName: string | null }>
     activeConversation: unknown
     newMessageCandidates?: Array<{ fullName: string }>
-    newMessageCandidates,
   }) => (
     <div>
       <span>Messaging shell</span>
