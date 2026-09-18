@@ -56,9 +56,9 @@ describe('PostComposer LinkedIn-style shell', () => {
 
     const dialog = screen.getByRole('dialog', { name: /create a post/i })
     expect(dialog).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Share your thoughts ...')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Share an update, insight or lesson with the maritime community…')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /add emoji/i })).toBeInTheDocument()
     expect(screen.getByText('Photo / Video')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Technical Poll' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Poll' })).toBeInTheDocument()
   })
 })
