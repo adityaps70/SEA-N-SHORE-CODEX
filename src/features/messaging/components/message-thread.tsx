@@ -62,7 +62,7 @@ export function MessageThread({
 
   const attemptMarkRead = useCallback(() => {
     if (!latestReceived) return
-    if (document.visibilityState !== 'visible' || !document.hasFocus()) return
+    if (document.visibilityState !== 'visible') return
     if (lastRequestedReadIdRef.current === latestReceived.id) return
 
     const requestedId = latestReceived.id
@@ -87,12 +87,10 @@ export function MessageThread({
   useEffect(() => {
     const onPotentialView = () => attemptMarkRead()
     document.addEventListener('visibilitychange', onPotentialView)
-    window.addEventListener('focus', onPotentialView)
     attemptMarkRead()
 
     return () => {
       document.removeEventListener('visibilitychange', onPotentialView)
-      window.removeEventListener('focus', onPotentialView)
     }
   }, [attemptMarkRead])
 
