@@ -203,3 +203,10 @@ test('realtime remote shell is syntax-valid with one durable and one diagnostic 
   assert.equal((remote.match(/^  diagnose-connect\)$/gm) ?? []).length, 1)
   assert.equal((remote.match(/^esac$/gm) ?? []).length, 1)
 })
+
+
+test('realtime disposable usernames stay within onboarding limits', () => {
+  const browser = readFileSync(browserPath, 'utf8')
+  assert.match(browser, /const username = `rt-${suffix}-${runId}`/)
+  assert.doesNotMatch(browser, /sns-realtime-${suffix}-${runId}/)
+})
