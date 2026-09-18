@@ -37,6 +37,8 @@ test('realtime e2e is branch-scoped and guarded by plan, run-once, bounded conne
   assert.match(workflow, /environment:\s*staging/)
   assert.match(workflow, /310356785722/)
   assert.doesNotMatch(workflow, /992382634586/)
+  assert.match(browser, /\/people\/rt-recipient-\$\{runId\}/)
+  assert.match(browser, /\/people\/rt-sender-\$\{runId\}/)
 })
 
 test('realtime e2e proves canonical message and read-cursor fanout over authenticated websocket', () => {
@@ -207,6 +209,6 @@ test('realtime remote shell is syntax-valid with one durable and one diagnostic 
 
 test('realtime disposable usernames stay within onboarding limits', () => {
   const browser = readFileSync(browserPath, 'utf8')
-  assert.match(browser, /const username = `rt-${suffix}-${runId}`/)
-  assert.doesNotMatch(browser, /sns-realtime-${suffix}-${runId}/)
+  assert.match(browser, /const username = `rt-\$\{suffix\}-\$\{runId\}`/)
+  assert.doesNotMatch(browser, /sns-realtime-\$\{suffix\}-\$\{runId\}/)
 })
