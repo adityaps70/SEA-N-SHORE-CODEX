@@ -62,7 +62,7 @@ async function completeProfessional(user, suffix) {
   await page.getByRole('button', { name: /Professional Build your individual maritime identity/ }).click()
   await page.getByLabel('Search professional identities').fill('Master')
   await page.getByRole('button', { name: 'Master — Sea-going · Deck' }).click()
-  const username = `sns-realtime-${suffix}-${runId}`
+  const username = `rt-${suffix}-${runId}`
   assert.ok(username.length <= 30, `Realtime E2E username is too long: ${username}`)
   await page.locator('input[name="slug"]').fill(username)
   await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
