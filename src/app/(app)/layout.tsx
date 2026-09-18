@@ -12,7 +12,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser()
   const [notificationChrome, messagingUnreadCount, authorizedCompany] = await Promise.all([
     getNotificationChrome(),
-    getUnreadConversationCount(),
+    getUnreadMessageCount(),
     hiringRepository.getAuthorizedCompany(user.id).catch(() => null),
   ])
 
