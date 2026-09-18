@@ -3,6 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MessageShell } from './message-shell'
 
+const navigation = vi.hoisted(() => ({ refresh: vi.fn() }))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: navigation.refresh }),
+}))
+
 vi.mock('../actions', () => ({
   sendMessageAction: vi.fn(async () => ({ ok: false, error: 'not-used' })),
   markConversationReadAction: vi.fn(async () => ({ ok: true, advanced: true })),
