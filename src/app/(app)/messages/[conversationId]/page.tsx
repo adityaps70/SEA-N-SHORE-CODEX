@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MessageShell } from '@/features/messaging/components/message-shell'
-import { getConversationInbox, getConversationThread } from '@/features/messaging/queries'
+import { getConversationInbox, getConversationThread, getUnreadMessageCount } from '@/features/messaging/queries'
 import { createProductionMessagingService } from '@/features/messaging/service'
 
 const messagingService = createProductionMessagingService()
@@ -36,7 +36,10 @@ export default async function MessageConversationPage({
     )
   }
 
-  const inbox = await getConversationInbox({ limit: 100 })
+  const [inbox, authoritativeUnreadCount] = await Promise.all([
+    getConversationInbox({ limit: 100 }),
+    getUnreadMessageCount(),
+  ])
   const peer = inbox.find((item) => item.conversationId === conversationId)
   const activeConversation = {
     conversationId,
@@ -56,6 +59,7 @@ export default async function MessageConversationPage({
         viewerId={viewer.id}
         inbox={inbox}
         activeConversation={activeConversation}
+        authoritativeUnreadCount={authoritativeUnreadCount}
       />
     </div>
   )
