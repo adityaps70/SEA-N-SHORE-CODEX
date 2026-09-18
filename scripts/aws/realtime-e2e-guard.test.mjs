@@ -228,3 +228,13 @@ test('realtime e2e has an isolated messaging-only mode for unread badge verifica
   assert.match(remote, /status='accepted'|status = 'accepted'|'accepted'/i)
   assert.match(remote, /REALTIME_E2E_PREPARE_MESSAGING_VERIFIED=true/)
 })
+
+
+test('messaging-only unread verification uses canonical inbox refresh instead of websocket delivery', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browser = readFileSync(browserPath, 'utf8')
+  assert.match(workflow, /E2E_MESSAGING_ONLY/)
+  assert.match(browser, /const messagingOnly = process\.env\.E2E_MESSAGING_ONLY === 'true'/)
+  assert.match(browser, /if \(messagingOnly\) \{[\s\S]*recipientPage\.reload/)
+  assert.match(browser, /REALTIME_E2E_UNREAD_BADGE_CLEARED=true/)
+})
