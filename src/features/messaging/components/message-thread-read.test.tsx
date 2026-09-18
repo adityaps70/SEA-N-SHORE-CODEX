@@ -23,36 +23,6 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: navigation.refresh }),
 }))
 
-type ObserverCallback = (entries: IntersectionObserverEntry[]) => void
-
-class FakeIntersectionObserver {
-  static instances: FakeIntersectionObserver[] = []
-
-  readonly callback: ObserverCallback
-  readonly observe = vi.fn()
-  readonly disconnect = vi.fn()
-  readonly unobserve = vi.fn()
-  readonly takeRecords = vi.fn(() => [])
-  readonly root = null
-  readonly rootMargin = '0px'
-  readonly thresholds = [0.9]
-
-  constructor(callback: IntersectionObserverCallback) {
-    this.callback = callback as ObserverCallback
-    FakeIntersectionObserver.instances.push(this)
-  }
-
-  trigger(isIntersecting: boolean) {
-    const target = this.observe.mock.calls[0]?.[0] as Element | undefined
-    if (!target) throw new Error('observer target missing')
-    this.callback([{
-      isIntersecting,
-      target,
-      intersectionRatio: isIntersecting ? 1 : 0,
-    } as IntersectionObserverEntry])
-  }
-}
-
 function message(input: {
   id: string
   senderProfileId: string
@@ -92,11 +62,9 @@ const messages = [
   }),
 ]
 
-describe('MessageThread durable Sent/Seen and actual-view read behavior', () => {
+describe('MessageThread durable Sent/Seen and active-conversation read behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    FakeIntersectionObserver.instances = []
-    vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver)
     vi.spyOn(document, 'hasFocus').mockReturnValue(true)
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
   })
@@ -126,7 +94,7 @@ describe('MessageThread durable Sent/Seen and actual-view read behavior', () => 
     expect(screen.queryByText('Delivered')).not.toBeInTheDocument()
   })
 
-  it('does not mark read on mount or while scrolled up, then advances only when the bottom is actually visible and focused', async () => {
+  it('marks the latest received message read as soon as the active conversation opens while visible and focused', async () => {
     const modulePath = './message-thread'
     const { MessageThread } = await import(modulePath) as typeof import('./message-thread')
 
@@ -143,26 +111,15 @@ describe('MessageThread durable Sent/Seen and actual-view read behavior', () => 
       />,
     )
 
-    await waitFor(() => expect(FakeIntersectionObserver.instances).toHaveLength(1))
-    expect(actions.markConversationReadAction).not.toHaveBeenCalled()
-
-    act(() => FakeIntersectionObserver.instances[0]?.trigger(false))
-    expect(actions.markConversationReadAction).not.toHaveBeenCalled()
-
-    act(() => FakeIntersectionObserver.instances[0]?.trigger(true))
     await waitFor(() => expect(actions.markConversationReadAction).toHaveBeenCalledWith(
       CONVERSATION_ID,
       RECEIVED_ID,
     ))
     expect(actions.markConversationReadAction).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(navigation.refresh).toHaveBeenCalledTimes(1))
-
-    act(() => FakeIntersectionObserver.instances[0]?.trigger(true))
-    expect(actions.markConversationReadAction).toHaveBeenCalledTimes(1)
-    expect(navigation.refresh).toHaveBeenCalledTimes(1)
   })
 
-  it('waits for focus before marking a visible bottom message as read', async () => {
+  it('waits for focus before marking an opened conversation as read', async () => {
     vi.mocked(document.hasFocus).mockReturnValue(false)
     const modulePath = './message-thread'
     const { MessageThread } = await import(modulePath) as typeof import('./message-thread')
@@ -180,8 +137,6 @@ describe('MessageThread durable Sent/Seen and actual-view read behavior', () => 
       />,
     )
 
-    await waitFor(() => expect(FakeIntersectionObserver.instances).toHaveLength(1))
-    act(() => FakeIntersectionObserver.instances[0]?.trigger(true))
     expect(actions.markConversationReadAction).not.toHaveBeenCalled()
 
     vi.mocked(document.hasFocus).mockReturnValue(true)
