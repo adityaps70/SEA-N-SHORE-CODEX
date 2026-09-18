@@ -80,7 +80,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             </div>
             <div className="flex items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
           </div>
-          {items.length ? <div className="grid gap-4 xl:grid-cols-2">{items.map(({ job, match, isSaved }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} />)}</div> : (
+          {items.length ? <div className="grid gap-4 xl:grid-cols-2">{items.map(({ job, match, isSaved, alreadyApplied }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}</div> : (
             <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-12 text-center">
               <BriefcaseBusiness aria-hidden="true" className="mx-auto size-6 text-muted" />
               <p className="mt-3 font-semibold text-navy-950">{hasSearchConstraints ? 'No roles match these filters yet.' : 'No maritime roles are live yet.'}</p>
