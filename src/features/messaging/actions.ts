@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { messagingMessageDto } from './queries'
+import { messagingRepository } from './repository'
 import {
   directConversationInputSchema,
   markConversationReadInputSchema,
@@ -90,8 +91,9 @@ export async function markConversationReadAction(conversationId: string, message
       parsed.data.conversationId,
       parsed.data.messageId,
     )
+    const unreadCount = await messagingRepository.countUnreadMessages(user.id)
     revalidateMessaging(parsed.data.conversationId)
-    return { ok: true as const, advanced }
+    return { ok: true as const, advanced, unreadCount }
   } catch (error) {
     return {
       ok: false as const,
