@@ -62,10 +62,15 @@ async function completeProfessional(user, suffix) {
   await page.getByRole('button', { name: /Professional Build your individual maritime identity/ }).click()
   await page.getByLabel('Search professional identities').fill('Master')
   await page.getByRole('button', { name: 'Master — Sea-going · Deck' }).click()
-  await page.getByLabel('Profile address').fill(`sns-realtime-${suffix}-${runId}`)
+  const username = `sns-realtime-${suffix}-${runId}`
+  assert.ok(username.length <= 30, `Realtime E2E username is too long: ${username}`)
+  await page.locator('input[name="slug"]').fill(username)
+  await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
   await page.getByLabel('Location').fill('Mumbai')
   await page.getByLabel('Current organisation').fill(`Sea N Shore Realtime E2E ${suffix}`)
-  await page.getByRole('button', { name: 'Complete profile' }).click()
+  const completeButton = page.getByRole('button', { name: 'Complete profile' })
+  await expect(completeButton).toBeEnabled()
+  await completeButton.click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
   await context.close()
 }
@@ -266,9 +271,9 @@ async function realtimeJourney() {
     await signInCompleted(senderPage, users.sender)
     await signInCompleted(recipientPage, users.recipient)
     await senderPage.goto(`${siteUrl}/messages/${conversationId}`, { waitUntil: 'domcontentloaded' })
-    await recipientPage.goto(`${siteUrl}/messages/${conversationId}`, { waitUntil: 'domcontentloaded' })
+    await recipientPage.goto(`${siteUrl}/messages`, { waitUntil: 'domcontentloaded' })
     await expect(senderPage.getByLabel('Write a message')).toBeVisible()
-    await expect(recipientPage.getByLabel('Write a message')).toBeVisible()
+    await expect(recipientPage.getByRole('heading', { name: 'Messages' })).toBeVisible()
 
     const senderTicket = await openProbeSocket(senderPage, 'sender')
     const recipientTicket = await openProbeSocket(recipientPage, 'recipient')
@@ -306,13 +311,21 @@ async function realtimeJourney() {
     console.log('REALTIME_E2E_MESSAGE_CREATED_SIGNAL_VERIFIED=true')
 
     await recipientPage.bringToFront()
+    await expect(recipientPage.getByLabel('1 unread messages')).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toBeVisible({ timeout: 30_000 })
+
+    await recipientPage.getByRole('link', { name: `Open conversation with ${users.sender.fullName}` }).click()
+    await recipientPage.waitForURL((url) => url.pathname === `/messages/${conversationId}`, { timeout: 20_000 })
     await expect(recipientPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 30_000 })
-    await recipientPage.getByTestId('message-read-sentinel').scrollIntoViewIfNeeded()
+    await expect(recipientPage.getByLabel('1 unread messages')).toHaveCount(0, { timeout: 30_000 })
+    await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toHaveCount(0, { timeout: 30_000 })
+
     await senderPage.waitForFunction(({ conversationId }) => {
       const signals = globalThis.__realtime_sender_signals ?? []
       return signals.some((signal) => signal?.eventType === 'conversation.read_cursor_advanced' && signal?.payload?.conversationId === conversationId)
     }, { conversationId }, { timeout: 30_000 })
     console.log('REALTIME_E2E_READ_CURSOR_SIGNAL_VERIFIED=true')
+    console.log('REALTIME_E2E_UNREAD_BADGE_CLEARED=true')
 
     await senderPage.evaluate((injectedBody) => {
       const socket = globalThis.__realtime_sender_socket
