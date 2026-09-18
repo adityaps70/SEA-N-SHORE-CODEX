@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 
 const phase = process.argv[2]
-const allowed = new Set(['confirm', 'prepare', 'verify-durable', 'verify-social-durable', 'verify-infra', 'cleanup', 'diagnose-connect'])
+const allowed = new Set(['confirm', 'prepare', 'prepare-messaging', 'verify-durable', 'verify-social-durable', 'verify-infra', 'cleanup', 'diagnose-connect'])
 assert.ok(allowed.has(phase), `Unsupported Realtime E2E SSM phase: ${phase}`)
 const instanceId = process.env.INSTANCE_ID
 assert.match(instanceId ?? '', /^i-[0-9a-f]+$/)
