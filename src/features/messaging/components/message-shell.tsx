@@ -179,8 +179,6 @@ export function MessageShell({
   activeConversation: MessagingActiveConversation | null
   newMessageCandidates?: NetworkProfile[]
 }) {
-  const unreadCount = inbox.filter((item) => item.unread).length
-
   return (
     <div className="space-y-4">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -192,7 +190,7 @@ export function MessageShell({
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex w-fit items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-navy-900 shadow-sm">
             <MessageCircleMore aria-hidden="true" className="size-4 text-ocean-700" />
-            {unreadCount ? `${unreadCount} unread` : `${inbox.length} ${inbox.length === 1 ? 'conversation' : 'conversations'}`}
+            {inbox.length} {inbox.length === 1 ? 'conversation' : 'conversations'}
           </span>
           <NewMessageButton candidates={newMessageCandidates} />
         </div>
