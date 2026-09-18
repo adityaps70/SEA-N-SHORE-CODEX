@@ -1,9 +1,11 @@
-import { act, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { act, cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import {
   MESSAGING_UNREAD_COUNT_EVENT,
   MessagingUnreadBadge,
 } from './messaging-unread-badge'
+
+afterEach(() => cleanup())
 
 describe('MessagingUnreadBadge', () => {
   it('renders the exact initial unread message count', () => {
