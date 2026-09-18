@@ -318,13 +318,13 @@ async function realtimeJourney() {
     }
 
     await recipientPage.bringToFront()
-    await expect(recipientPage.getByLabel('1 unread messages')).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toBeVisible({ timeout: 30_000 })
     await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toBeVisible({ timeout: 30_000 })
 
     await recipientPage.getByRole('link', { name: `Open conversation with ${users.sender.fullName}` }).click()
     await recipientPage.waitForURL((url) => url.pathname === `/messages/${conversationId}`, { timeout: 20_000 })
     await expect(recipientPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 30_000 })
-    await expect(recipientPage.getByLabel('1 unread messages')).toHaveCount(0, { timeout: 30_000 })
+    await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toHaveCount(0, { timeout: 30_000 })
     await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toHaveCount(0, { timeout: 30_000 })
 
     if (!messagingOnly) {
