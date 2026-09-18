@@ -282,7 +282,6 @@ jobs:
           OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs cleanup)"
           printf '%s\n' "$OUTPUT"
           grep -q '^ORGANIZATION_HIRING_E2E_CLEANUP_VERIFIED=true$' <<<"$OUTPUT"
- <<<"$OUTPUT"
 
       - name: Verify unauthorized identity has no hiring authority through SSM
         if: steps.action.outputs.run_e2e == 'true'
