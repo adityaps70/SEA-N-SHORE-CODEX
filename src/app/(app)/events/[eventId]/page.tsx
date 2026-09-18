@@ -150,7 +150,6 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
             <div className="rounded-xl bg-mist-50 p-3 text-xs leading-5 text-navy-700" aria-live="polite">
               <p className="font-bold text-navy-900">Registration</p>
               <p className={registrationState === 'open' ? 'font-semibold text-emerald-700' : 'font-semibold text-navy-800'}>{registrationLabel}</p>
-              {event.viewerIsAttending && !event.isPast ? <p className="mt-1 font-semibold text-emerald-700">{`You're attending`}</p> : null}
               {seatsLeft !== null && !event.isPast ? <p>{seatsLeft} seats left</p> : null}
               {event.registrationClosesAt && !event.isPast ? <p>Registration closes {dateTime(event.registrationClosesAt, event.timezone)}</p> : null}
             </div>
