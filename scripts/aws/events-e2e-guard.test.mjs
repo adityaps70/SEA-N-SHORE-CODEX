@@ -45,6 +45,8 @@ test('events e2e proves authenticated create, RSVP, edit, withdrawal, cancellati
   assert.doesNotMatch(browser, /locator\('input\[name="startAt"\]'\)\.fill/)
   assert.doesNotMatch(browser, /locator\('input\[name="endAt"\]'\)\.fill/)
   assert.doesNotMatch(browser, /locator\('input\[name="registrationClosesAt"\]'\)\.fill/)
+  assert.match(browser, /select\[name="timezone"\]/)
+  assert.doesNotMatch(browser, /locator\('input\[name="timezone"\]'\)\.fill/)
   assert.match(browser, /Share event/)
   assert.match(browser, /Copy event link/)
   assert.match(browser, /\/events\/my/)
