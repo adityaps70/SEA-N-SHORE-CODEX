@@ -36,7 +36,7 @@ test('connection journey waits for the sender request to reach canonical state b
   const connectIndex = browser.indexOf("name: 'Connect'")
   const cancelIndex = browser.indexOf("name: 'Cancel'", connectIndex)
   const enabledIndex = browser.indexOf('toBeEnabled', cancelIndex)
-  const recipientProfileIndex = browser.indexOf('sns-realtime-sender-${runId}', connectIndex)
+  const recipientProfileIndex = browser.indexOf('rt-sender-${runId}', connectIndex)
 
   expect(connectIndex).toBeGreaterThanOrEqual(0)
   expect(cancelIndex).toBeGreaterThan(connectIndex)
