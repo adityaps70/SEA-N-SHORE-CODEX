@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getConversationInbox: vi.fn(),
   getConversationThread: vi.fn(),
+  markConversationRead: vi.fn(),
   notFound: vi.fn(),
 }))
 
@@ -17,6 +18,11 @@ vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAws
 vi.mock('@/features/messaging/queries', () => ({
   getConversationInbox: mocks.getConversationInbox,
   getConversationThread: mocks.getConversationThread,
+}))
+vi.mock('@/features/messaging/service', () => ({
+  createProductionMessagingService: () => ({
+    markConversationRead: mocks.markConversationRead,
+  }),
 }))
 vi.mock('@/features/messaging/components/message-shell', () => ({
   MessageShell: ({ activeConversation }: {
@@ -67,6 +73,7 @@ beforeEach(() => {
     }],
     nextCursor: null,
   })
+  mocks.markConversationRead.mockResolvedValue(true)
 })
 
 afterEach(() => cleanup())
@@ -85,6 +92,53 @@ describe('Message conversation page', () => {
       conversationId: CONVERSATION_ID,
       limit: 50,
     })
+    expect(mocks.markConversationRead).toHaveBeenCalledWith(
+      VIEWER_ID,
+      CONVERSATION_ID,
+      '44444444-4444-4444-8444-444444444444',
+    )
+    expect(mocks.markConversationRead.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.getConversationInbox.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    )
+  })
+
+  it('advances the cursor to the latest visible message even when the viewer sent it, clearing older incoming unread messages', async () => {
+    const latestOwnMessageId = '66666666-6666-4666-8666-666666666666'
+    mocks.getConversationThread.mockResolvedValueOnce({
+      messages: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          conversationId: CONVERSATION_ID,
+          senderProfileId: OTHER_ID,
+          clientMessageId: '55555555-5555-4555-8555-555555555555',
+          body: 'Incoming before my reply.',
+          createdAt: '2026-09-13T02:00:00.000Z',
+          editedAt: null,
+          deletedAt: null,
+        },
+        {
+          id: latestOwnMessageId,
+          conversationId: CONVERSATION_ID,
+          senderProfileId: VIEWER_ID,
+          clientMessageId: '77777777-7777-4777-8777-777777777777',
+          body: 'My reply.',
+          createdAt: '2026-09-13T02:05:00.000Z',
+          editedAt: null,
+          deletedAt: null,
+        },
+      ],
+      nextCursor: null,
+    })
+
+    render(await MessageConversationPage({
+      params: Promise.resolve({ conversationId: CONVERSATION_ID }),
+    }))
+
+    expect(mocks.markConversationRead).toHaveBeenCalledWith(
+      VIEWER_ID,
+      CONVERSATION_ID,
+      latestOwnMessageId,
+    )
   })
 
   it('returns not found for a conversation the viewer cannot access', async () => {
