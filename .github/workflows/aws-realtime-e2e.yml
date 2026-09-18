@@ -26,6 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       run_e2e: ${{ steps.guard.outputs.run_e2e }}
+      messaging_only: ${{ steps.guard.outputs.messaging_only }}
       run_probe: ${{ steps.guard.outputs.run_probe }}
       run_cleanup: ${{ steps.guard.outputs.run_cleanup }}
       cleanup_source_run_id: ${{ steps.guard.outputs.cleanup_source_run_id }}
@@ -41,6 +42,7 @@ jobs:
           case "$ACTION" in
             plan)
               echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
+              echo 'messaging_only=false' >> "$GITHUB_OUTPUT"
               echo 'run_probe=false' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
               echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
@@ -49,6 +51,16 @@ jobs:
               ;;
             run-once)
               echo 'run_e2e=true' >> "$GITHUB_OUTPUT"
+              echo 'messaging_only=false' >> "$GITHUB_OUTPUT"
+              echo 'run_probe=false' >> "$GITHUB_OUTPUT"
+              echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
+              echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
+              echo 'run_diagnostic=false' >> "$GITHUB_OUTPUT"
+              echo 'diagnostic_source_run_id=' >> "$GITHUB_OUTPUT"
+              ;;
+            messaging-once)
+              echo 'run_e2e=true' >> "$GITHUB_OUTPUT"
+              echo 'messaging_only=true' >> "$GITHUB_OUTPUT"
               echo 'run_probe=false' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
               echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
@@ -57,6 +69,7 @@ jobs:
               ;;
             probe-connect-once)
               echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
+              echo 'messaging_only=false' >> "$GITHUB_OUTPUT"
               echo 'run_probe=true' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
               echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
@@ -67,6 +80,7 @@ jobs:
               SOURCE_RUN_ID=${ACTION#cleanup-once:}
               [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo "Invalid cleanup source run id: $SOURCE_RUN_ID" >&2; exit 1; }
               echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
+              echo 'messaging_only=false' >> "$GITHUB_OUTPUT"
               echo 'run_probe=false' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=true' >> "$GITHUB_OUTPUT"
               echo "cleanup_source_run_id=$SOURCE_RUN_ID" >> "$GITHUB_OUTPUT"
@@ -77,6 +91,7 @@ jobs:
               SOURCE_RUN_ID=${ACTION#diagnose-connect-once:}
               [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo "Invalid diagnostic source run id: $SOURCE_RUN_ID" >&2; exit 1; }
               echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
+              echo 'messaging_only=false' >> "$GITHUB_OUTPUT"
               echo 'run_probe=false' >> "$GITHUB_OUTPUT"
               echo 'run_cleanup=false' >> "$GITHUB_OUTPUT"
               echo 'cleanup_source_run_id=' >> "$GITHUB_OUTPUT"
@@ -191,13 +206,18 @@ jobs:
       - name: Complete authenticated maritime onboarding
         run: E2E_PHASE=onboarding node scripts/aws/realtime-staging-e2e.mjs
       - name: Verify live authenticated social realtime invalidations
+        if: needs.guard.outputs.messaging_only != 'true'
         run: E2E_PHASE=social node scripts/aws/realtime-staging-e2e.mjs
 
       - name: Prepare UI-accepted disposable connection and conversation
         shell: bash
+        env:
+          MESSAGING_ONLY: ${{ needs.guard.outputs.messaging_only }}
         run: |
           set -euo pipefail
-          OUTPUT=$(node scripts/aws/realtime-e2e-ssm.mjs prepare)
+          PREPARE_PHASE=prepare
+          if [[ "$MESSAGING_ONLY" == true ]]; then PREPARE_PHASE=prepare-messaging; fi
+          OUTPUT=$(node scripts/aws/realtime-e2e-ssm.mjs "$PREPARE_PHASE")
           printf '%s\n' "$OUTPUT"
           CONVERSATION_ID=$(sed -n 's/^REALTIME_E2E_CONVERSATION_ID=//p' <<<"$OUTPUT" | tail -1)
           [[ "$CONVERSATION_ID" =~ ^[0-9a-f-]{36}$ ]]
@@ -208,6 +228,7 @@ jobs:
       - name: Verify canonical Aurora message and outbox state
         run: node scripts/aws/realtime-e2e-ssm.mjs verify-durable
       - name: verify-social-durable Aurora social and outbox state
+        if: needs.guard.outputs.messaging_only != 'true'
         run: node scripts/aws/realtime-e2e-ssm.mjs verify-social-durable
       - name: Verify realtime DynamoDB SQS CloudWatch and privacy health
         run: node scripts/aws/realtime-e2e-ssm.mjs verify-infra
