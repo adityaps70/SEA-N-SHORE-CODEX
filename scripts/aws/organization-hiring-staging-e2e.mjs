@@ -30,7 +30,7 @@ const users = {
 
 assert.ok(siteUrl, 'SITE_URL is required')
 assert.ok(runId, 'GITHUB_RUN_ID is required')
-assert.ok(['signup', 'onboarding', 'applicant-submit', 'admin-approve', 'owner-post', 'unauthorized'].includes(phase), 'Unsupported E2E_PHASE')
+assert.ok(['signup', 'onboarding', 'applicant-submit', 'admin-approve', 'owner-post', 'candidate-apply', 'unauthorized'].includes(phase), 'Unsupported E2E_PHASE')
 for (const [key, user] of Object.entries(users)) {
   assert.match(user.email ?? '', new RegExp(`^sea-n-shore-hiring-e2e-[0-9]+-${key}@example\\.com$`))
   assert.ok((user.password ?? '').length >= 12)
@@ -139,9 +139,13 @@ async function completeApplicantOrganisation() {
   await page.getByRole('button', { name: 'Shipowner — Shipping & Ship Management' }).click()
   await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Shipowner')
   await page.getByLabel('Organisation name').fill(`E2E Applicant Maritime ${runId}`)
-  await page.getByLabel('Profile address').fill(`sns-hiring-applicant-${runId}`)
+  const username = `hire-org-${runId}`
+  await page.locator('input[name="slug"]').fill(username)
+  await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
   await page.getByLabel('Location').fill('Mumbai')
-  await page.getByRole('button', { name: 'Complete profile' }).click()
+  const completeButton = page.getByRole('button', { name: 'Complete profile' })
+  await expect(completeButton).toBeEnabled()
+  await completeButton.click()
   await page.waitForURL((url) => url.pathname === '/hiring/organization', { timeout: 20_000 })
   await context.close()
 }
@@ -154,10 +158,15 @@ async function completeProfessional(user, slugSuffix, organisation) {
   await page.getByLabel('Search professional identities').fill('Master')
   await page.getByRole('button', { name: 'Master — Sea-going · Deck' }).click()
   await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Master')
-  await page.getByLabel('Profile address').fill(`sns-hiring-${slugSuffix}-${runId}`)
+  const username = `hire-${slugSuffix}-${runId}`
+  assert.ok(username.length <= 30, `Disposable hiring username is too long: ${username}`)
+  await page.locator('input[name="slug"]').fill(username)
+  await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
   await page.getByLabel('Location').fill('Mumbai')
   await page.getByLabel('Current organisation').fill(organisation)
-  await page.getByRole('button', { name: 'Complete profile' }).click()
+  const completeButton = page.getByRole('button', { name: 'Complete profile' })
+  await expect(completeButton).toBeEnabled()
+  await completeButton.click()
   await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
   await context.close()
 }
@@ -276,6 +285,50 @@ async function postJobAsOwner() {
   await context.close()
 }
 
+async function applyToPublishedJob() {
+  assert.match(jobId ?? '', /^[0-9a-f-]{36}$/)
+  assert.ok(jobTitle)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.unauthorized)
+  await page.goto(`${siteUrl}/jobs/${jobId}`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
+
+  const postObservations = []
+  const requestFailures = []
+  const consoleErrors = []
+  const startedAt = Date.now()
+  page.on('response', (response) => {
+    const request = response.request()
+    if (request.method() === 'POST' && response.url().startsWith(siteUrl)) {
+      postObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
+    }
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().startsWith(siteUrl)) requestFailures.push({ method: request.method(), url: request.url(), failure: request.failure()?.errorText ?? 'unknown' })
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
+  })
+
+  await page.getByRole('button', { name: 'Apply now' }).click()
+  const submitted = page.getByText('Application submitted', { exact: true }).first()
+  const alert = page.locator('p[role="alert"]').first()
+  const outcome = await Promise.race([
+    submitted.waitFor({ state: 'visible', timeout: 20_000 }).then(() => ({ kind: 'submitted' })),
+    alert.waitFor({ state: 'visible', timeout: 20_000 }).then(async () => ({ kind: 'error', text: (await alert.innerText()).trim() })),
+  ]).catch(() => null)
+
+  if (outcome?.kind !== 'submitted') {
+    throw new Error(`Job application failed: outcome=${JSON.stringify(outcome)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+  }
+
+  await page.goto(`${siteUrl}/jobs/applications`, { waitUntil: 'networkidle' })
+  await expect(page.getByText(jobTitle, { exact: true })).toBeVisible({ timeout: 20_000 })
+  console.log('ORGANIZATION_HIRING_E2E_JOB_APPLICATION_UI_VERIFIED=true')
+  await context.close()
+}
+
 async function verifyUnauthorized() {
   assert.match(jobId ?? '', /^[0-9a-f-]{36}$/)
   const context = await browser.newContext()
@@ -308,6 +361,8 @@ try {
     await approveOrganization()
   } else if (phase === 'owner-post') {
     await postJobAsOwner()
+  } else if (phase === 'candidate-apply') {
+    await applyToPublishedJob()
   } else if (phase === 'unauthorized') {
     await verifyUnauthorized()
   }
