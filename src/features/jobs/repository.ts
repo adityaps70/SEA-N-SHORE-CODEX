@@ -461,6 +461,17 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     return rows.map((row) => row.job_id)
   }
 
+  async function getAppliedJobIds(userId: string, jobIds: string[]): Promise<string[]> {
+    if (!jobIds.length) return []
+    const rows = await queryRows(
+      `select a.job_id
+       from public.job_applications a
+       where a.applicant_id = $1 and a.job_id = any($2::uuid[])`,
+      [userId, jobIds],
+    ) as Array<QueryResultRow & { job_id: string }>
+    return rows.map((row) => row.job_id)
+  }
+
   async function isJobSaved(jobId: string, userId: string): Promise<boolean> {
     const rows = await queryRows(
       `select exists (
@@ -559,6 +570,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     isMemberReady,
     createApplication,
     getSavedJobIds,
+    getAppliedJobIds,
     isJobSaved,
     saveJob,
     unsaveJob,
