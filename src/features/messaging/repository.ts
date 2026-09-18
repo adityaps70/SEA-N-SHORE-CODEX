@@ -280,17 +280,24 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
               mine.last_read_at,
               other.last_read_message_id as other_last_read_message_id,
               other.last_read_at as other_last_read_at,
-              case
-                when c.last_message_at is null then false
-                when mine.last_read_at is null then true
-                when c.last_message_at > mine.last_read_at then true
-                when c.last_message_at = mine.last_read_at
+              exists (
+                select 1
+                from public.messages unread_message
+                where unread_message.conversation_id = c.id
+                  and unread_message.sender_profile_id <> mine.profile_id
+                  and unread_message.deleted_at is null
                   and (
-                    mine.last_read_message_id is null
-                    or c.last_message_id > mine.last_read_message_id
-                  ) then true
-                else false
-              end as unread
+                    mine.last_read_at is null
+                    or unread_message.created_at > mine.last_read_at
+                    or (
+                      unread_message.created_at = mine.last_read_at
+                      and (
+                        mine.last_read_message_id is null
+                        or unread_message.id > mine.last_read_message_id
+                      )
+                    )
+                  )
+              ) as unread
        from public.conversation_participants mine
        join public.conversations c on c.id = mine.conversation_id
        join public.conversation_participants other
@@ -311,17 +318,23 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
        from public.conversation_participants mine
        join public.conversations c on c.id = mine.conversation_id
        where mine.profile_id = $1
-         and c.last_message_at is not null
-         and (
-           mine.last_read_at is null
-           or c.last_message_at > mine.last_read_at
-           or (
-             c.last_message_at = mine.last_read_at
+         and exists (
+           select 1
+           from public.messages unread_message
+           where unread_message.conversation_id = c.id
+             and unread_message.sender_profile_id <> mine.profile_id
+             and unread_message.deleted_at is null
              and (
-               mine.last_read_message_id is null
-               or c.last_message_id > mine.last_read_message_id
+               mine.last_read_at is null
+               or unread_message.created_at > mine.last_read_at
+               or (
+                 unread_message.created_at = mine.last_read_at
+                 and (
+                   mine.last_read_message_id is null
+                   or unread_message.id > mine.last_read_message_id
+                 )
+               )
              )
-           )
          )`,
       [viewerProfileId],
     ) as CountRow[]
