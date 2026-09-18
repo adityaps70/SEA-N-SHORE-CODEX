@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
 import { signOut } from '@/features/auth/actions'
+import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import { NotificationBell } from '@/features/notifications/components/notification-bell'
 import type { NetworkNotification } from '@/features/notifications/types'
 import { ActiveNavLink } from './active-nav-link'
@@ -57,13 +58,11 @@ export function AppHeader({
               activeClassName={activeNavClass}
             >
               <Icon aria-hidden="true" className="size-4.5 shrink-0" />
-              {href === '/messages' && messagingUnreadCount > 0 ? (
-                <span
-                  aria-label={`${messagingUnreadCount} unread messages`}
+              {href === '/messages' ? (
+                <MessagingUnreadBadge
+                  initialCount={messagingUnreadCount}
                   className="absolute right-0.5 top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white"
-                >
-                  {messagingUnreadCount}
-                </span>
+                />
               ) : null}
               <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">{label}</span>
             </ActiveNavLink>
