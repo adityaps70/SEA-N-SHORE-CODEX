@@ -2,6 +2,9 @@ import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MessageShell } from '@/features/messaging/components/message-shell'
 import { getConversationInbox, getConversationThread } from '@/features/messaging/queries'
+import { createProductionMessagingService } from '@/features/messaging/service'
+
+const messagingService = createProductionMessagingService()
 
 export default async function MessageConversationPage({
   params,
@@ -10,7 +13,6 @@ export default async function MessageConversationPage({
 }) {
   const { conversationId } = await params
   const viewer = await requireAwsUser()
-  const inbox = await getConversationInbox({ limit: 100 })
 
   let thread
   try {
@@ -25,6 +27,16 @@ export default async function MessageConversationPage({
     throw error
   }
 
+  const latestVisibleMessage = thread.messages.at(-1)
+  if (latestVisibleMessage) {
+    await messagingService.markConversationRead(
+      viewer.id,
+      conversationId,
+      latestVisibleMessage.id,
+    )
+  }
+
+  const inbox = await getConversationInbox({ limit: 100 })
   const peer = inbox.find((item) => item.conversationId === conversationId)
   const activeConversation = {
     conversationId,
