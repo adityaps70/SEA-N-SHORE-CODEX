@@ -54,9 +54,6 @@ export function MessageThread({
 }) {
   const router = useRouter()
   const name = otherName ?? 'Sea N Shore member'
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const bottomSentinelRef = useRef<HTMLDivElement>(null)
-  const bottomVisibleRef = useRef(false)
   const lastRequestedReadIdRef = useRef<string | null>(null)
   const latestReceived = useMemo(
     () => [...messages].reverse().find((message) => message.senderProfileId !== viewerId && !message.deletedAt),
@@ -65,7 +62,6 @@ export function MessageThread({
 
   const attemptMarkRead = useCallback(() => {
     if (!latestReceived) return
-    if (!bottomVisibleRef.current) return
     if (document.visibilityState !== 'visible' || !document.hasFocus()) return
     if (lastRequestedReadIdRef.current === latestReceived.id) return
 
@@ -87,22 +83,6 @@ export function MessageThread({
         }
       })
   }, [conversationId, latestReceived, router])
-
-  useEffect(() => {
-    const sentinel = bottomSentinelRef.current
-    if (!sentinel || typeof IntersectionObserver === 'undefined') return
-
-    const observer = new IntersectionObserver((entries) => {
-      const entry = entries[0]
-      bottomVisibleRef.current = Boolean(entry?.isIntersecting)
-      if (entry?.isIntersecting) attemptMarkRead()
-    }, {
-      root: scrollContainerRef.current,
-      threshold: 0.9,
-    })
-    observer.observe(sentinel)
-    return () => observer.disconnect()
-  }, [attemptMarkRead])
 
   useEffect(() => {
     const onPotentialView = () => attemptMarkRead()
@@ -140,7 +120,7 @@ export function MessageThread({
         </div>
       </header>
 
-      <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6">
         {nextCursor ? (
           <div className="mb-5 flex justify-center">
             <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-muted">
@@ -197,7 +177,6 @@ export function MessageThread({
             </div>
           </div>
         )}
-        <div ref={bottomSentinelRef} data-testid="message-read-sentinel" className="h-px w-full" aria-hidden="true" />
       </div>
     </section>
   )
