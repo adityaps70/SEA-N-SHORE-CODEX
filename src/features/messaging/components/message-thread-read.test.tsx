@@ -94,7 +94,7 @@ describe('MessageThread durable Sent/Seen and active-conversation read behavior'
     expect(screen.queryByText('Delivered')).not.toBeInTheDocument()
   })
 
-  it('marks the latest received message read as soon as the active conversation opens while visible and focused', async () => {
+  it('marks the latest received message read as soon as the active conversation opens while visible', async () => {
     const modulePath = './message-thread'
     const { MessageThread } = await import(modulePath) as typeof import('./message-thread')
 
@@ -119,7 +119,7 @@ describe('MessageThread durable Sent/Seen and active-conversation read behavior'
     await waitFor(() => expect(navigation.refresh).toHaveBeenCalledTimes(1))
   })
 
-  it('waits for focus before marking an opened conversation as read', async () => {
+  it('does not depend on document.hasFocus when the conversation is visible on mobile browsers', async () => {
     vi.mocked(document.hasFocus).mockReturnValue(false)
     const modulePath = './message-thread'
     const { MessageThread } = await import(modulePath) as typeof import('./message-thread')
@@ -137,10 +137,6 @@ describe('MessageThread durable Sent/Seen and active-conversation read behavior'
       />,
     )
 
-    expect(actions.markConversationReadAction).not.toHaveBeenCalled()
-
-    vi.mocked(document.hasFocus).mockReturnValue(true)
-    act(() => window.dispatchEvent(new Event('focus')))
     await waitFor(() => expect(actions.markConversationReadAction).toHaveBeenCalledWith(
       CONVERSATION_ID,
       RECEIVED_ID,
