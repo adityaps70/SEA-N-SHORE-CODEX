@@ -312,29 +312,25 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     ) as InboxRow[]
   }
 
-  async function countUnreadConversations(viewerProfileId: string) {
+  async function countUnreadMessages(viewerProfileId: string) {
     const rows = await queryRows(
       `select count(*)::int as count
-       from public.conversation_participants mine
-       join public.conversations c on c.id = mine.conversation_id
+       from public.messages unread_message
+       join public.conversation_participants mine
+         on mine.conversation_id = unread_message.conversation_id
        where mine.profile_id = $1
-         and exists (
-           select 1
-           from public.messages unread_message
-           where unread_message.conversation_id = c.id
-             and unread_message.sender_profile_id <> mine.profile_id
-             and unread_message.deleted_at is null
+         and unread_message.sender_profile_id <> mine.profile_id
+         and unread_message.deleted_at is null
+         and (
+           mine.last_read_at is null
+           or unread_message.created_at > mine.last_read_at
+           or (
+             unread_message.created_at = mine.last_read_at
              and (
-               mine.last_read_at is null
-               or unread_message.created_at > mine.last_read_at
-               or (
-                 unread_message.created_at = mine.last_read_at
-                 and (
-                   mine.last_read_message_id is null
-                   or unread_message.id > mine.last_read_message_id
-                 )
-               )
+               mine.last_read_message_id is null
+               or unread_message.id > mine.last_read_message_id
              )
+           )
          )`,
       [viewerProfileId],
     ) as CountRow[]
@@ -355,7 +351,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     listMessageRowsAfter,
     advanceReadState,
     listInboxRows,
-    countUnreadConversations,
+    countUnreadMessages,
   }
 }
 
