@@ -191,3 +191,13 @@ test('realtime connect diagnosis is read-only, exact-head gated, and bounded to 
   const diagnosticCase = remote.slice(remote.indexOf('diagnose-connect)'))
   assert.doesNotMatch(diagnosticCase, /admin-confirm-sign-up|admin-delete-user|rds-data execute-statement|dynamodb .*put|sqs .*send/i)
 })
+
+
+test('realtime remote shell is syntax-valid with one durable and one diagnostic case', () => {
+  const syntax = spawnSync('bash', ['-n', remotePath], { encoding: 'utf8' })
+  assert.equal(syntax.status, 0, syntax.stderr || syntax.stdout)
+  const remote = readFileSync(remotePath, 'utf8')
+  assert.equal((remote.match(/^  verify-durable\)$/gm) ?? []).length, 1)
+  assert.equal((remote.match(/^  diagnose-connect\)$/gm) ?? []).length, 1)
+  assert.equal((remote.match(/^esac$/gm) ?? []).length, 1)
+})
