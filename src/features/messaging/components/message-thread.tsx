@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, CheckCheck, Clock3, RefreshCcw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { markConversationReadAction } from '../actions'
@@ -51,6 +52,7 @@ export function MessageThread({
   nextCursor: { createdAt: string; id: string } | null
   peerReadCursor: MessagingReadCursor | null
 }) {
+  const router = useRouter()
   const name = otherName ?? 'Sea N Shore member'
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const bottomSentinelRef = useRef<HTMLDivElement>(null)
@@ -71,7 +73,11 @@ export function MessageThread({
     lastRequestedReadIdRef.current = requestedId
     void markConversationReadAction(conversationId, requestedId)
       .then((result) => {
-        if (!result.ok && lastRequestedReadIdRef.current === requestedId) {
+        if (result.ok) {
+          router.refresh()
+          return
+        }
+        if (lastRequestedReadIdRef.current === requestedId) {
           lastRequestedReadIdRef.current = null
         }
       })
@@ -80,7 +86,7 @@ export function MessageThread({
           lastRequestedReadIdRef.current = null
         }
       })
-  }, [conversationId, latestReceived])
+  }, [conversationId, latestReceived, router])
 
   useEffect(() => {
     const sentinel = bottomSentinelRef.current
