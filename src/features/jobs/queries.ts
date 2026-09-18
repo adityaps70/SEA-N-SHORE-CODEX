@@ -24,10 +24,17 @@ export function createJobsQueries(input: { requireUser: RequireUser; repository:
       input.repository.searchJobs(filters, 60, 0),
       input.repository.getCandidateProfile(user.id),
     ])
-    const savedIds = new Set(await input.repository.getSavedJobIds(user.id, jobs.map((job) => job.id)))
+    const jobIds = jobs.map((job) => job.id)
+    const [savedIdsRaw, appliedIdsRaw] = await Promise.all([
+      input.repository.getSavedJobIds(user.id, jobIds),
+      input.repository.getAppliedJobIds(user.id, jobIds),
+    ])
+    const savedIds = new Set(savedIdsRaw)
+    const appliedIds = new Set(appliedIdsRaw)
     const items = jobs.map((job) => ({
       job,
       isSaved: savedIds.has(job.id),
+      alreadyApplied: appliedIds.has(job.id),
       match: profile ? scoreJobMatch(job, profile) : null,
     }))
 
