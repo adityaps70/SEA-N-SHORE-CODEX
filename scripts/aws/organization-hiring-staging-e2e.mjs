@@ -291,8 +291,10 @@ async function applyToPublishedJob() {
   const context = await browser.newContext()
   const page = await context.newPage()
   await signInCompleted(page, users.unauthorized)
-  await page.goto(`${siteUrl}/jobs/${jobId}`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
+  await page.goto(`${siteUrl}/jobs?q=${encodeURIComponent(jobTitle)}`, { waitUntil: 'networkidle' })
+  const jobLink = page.getByRole('link', { name: jobTitle, exact: true })
+  await expect(jobLink).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Easy Apply' })).toBeVisible()
 
   const postObservations = []
   const requestFailures = []
@@ -311,17 +313,21 @@ async function applyToPublishedJob() {
     if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
   })
 
-  await page.getByRole('button', { name: 'Apply now' }).click()
-  const submitted = page.getByText('Application submitted', { exact: true }).first()
+  await page.getByRole('button', { name: 'Easy Apply' }).click()
+  const applied = page.getByText('Applied', { exact: true }).first()
   const alert = page.locator('p[role="alert"]').first()
   const outcome = await Promise.race([
-    submitted.waitFor({ state: 'visible', timeout: 20_000 }).then(() => ({ kind: 'submitted' })),
+    applied.waitFor({ state: 'visible', timeout: 20_000 }).then(() => ({ kind: 'applied' })),
     alert.waitFor({ state: 'visible', timeout: 20_000 }).then(async () => ({ kind: 'error', text: (await alert.innerText()).trim() })),
   ]).catch(() => null)
 
-  if (outcome?.kind !== 'submitted') {
-    throw new Error(`Job application failed: outcome=${JSON.stringify(outcome)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+  if (outcome?.kind !== 'applied') {
+    throw new Error(`Job card Easy Apply failed: outcome=${JSON.stringify(outcome)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
   }
+
+  await jobLink.click()
+  await page.waitForURL((url) => url.pathname === `/jobs/${jobId}`, { timeout: 20_000 })
+  await expect(page.getByText('Application submitted', { exact: true }).first()).toBeVisible()
 
   await page.goto(`${siteUrl}/jobs/applications`, { waitUntil: 'networkidle' })
   await expect(page.getByText(jobTitle, { exact: true })).toBeVisible({ timeout: 20_000 })
