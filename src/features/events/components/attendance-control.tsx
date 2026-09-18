@@ -26,7 +26,7 @@ export function AttendanceControl({ eventId, attending, disabled = false }: { ev
   return (
     <div className="space-y-2">
       <button type="button" disabled={disabled || pending} onClick={run} className={`w-full rounded-xl px-5 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${attending ? 'border border-navy-200 bg-white text-navy-900 hover:bg-mist-50' : 'bg-teal-600 text-white hover:bg-teal-700'}`}>
-        {pending ? 'Updating…' : attending ? 'Withdraw attendance' : 'Attend event'}
+        {pending ? 'Updating…' : attending ? 'Cancel registration' : 'Register for event'}
       </button>
       {error ? <p className="text-sm font-medium text-rose-700">{error}</p> : null}
     </div>

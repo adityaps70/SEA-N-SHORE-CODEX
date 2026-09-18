@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { CalendarDays, MapPin, Monitor, Users } from 'lucide-react'
+import { CalendarDays, CalendarPlus, MapPin, Monitor, Users } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { AttendanceControl } from '@/features/events/components/attendance-control'
 import { EventNav } from '@/features/events/components/event-nav'
+import { EventShareButton } from '@/features/events/components/event-share-button'
 
 function dateTime(value: string, timeZone: string) {
   try {
@@ -15,6 +16,21 @@ function dateTime(value: string, timeZone: string) {
 }
 function titleCase(value: string) { return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) }
 
+function calendarStamp(value: string) {
+  return new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+}
+
+function googleCalendarUrl(input: { title: string; summary: string; startAt: string; endAt: string; location: string }) {
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: input.title,
+    dates: `${calendarStamp(input.startAt)}/${calendarStamp(input.endAt)}`,
+    details: input.summary,
+    location: input.location,
+  })
+  return `https://calendar.google.com/calendar/render?${params.toString()}`
+}
+
 export default async function EventDetailPage({ params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireAwsUser()
   const { eventId } = await params
@@ -22,6 +38,13 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
   if (!event) notFound()
   const registrationClosed = !event.registrationOpen
   const place = [event.locationName, event.locationAddress, event.city, event.country].filter(Boolean).join(', ')
+  const calendarHref = googleCalendarUrl({
+    title: event.title,
+    summary: event.summary,
+    startAt: event.startAt,
+    endAt: event.endAt,
+    location: event.format === 'online' ? 'Online' : place || 'Venue to be confirmed',
+  })
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6">
@@ -52,6 +75,16 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
             <div className="rounded-xl bg-mist-50 p-3 text-xs leading-5 text-navy-700"><p className="font-bold text-navy-900">Registration</p><p>{event.registrationMode === 'open' ? 'Open' : 'Closed'}{event.registrationClosesAt ? ` · closes ${dateTime(event.registrationClosesAt, event.timezone)}` : ''}</p></div>
             {event.viewerIsHost ? <Link href={`/events/${event.id}/edit`} className="block rounded-xl bg-navy-950 px-4 py-3 text-center text-sm font-bold text-white">Manage event</Link> : <AttendanceControl eventId={event.id} attending={event.viewerIsAttending} disabled={registrationClosed && !event.viewerIsAttending} />}
             {registrationClosed && !event.viewerIsHost && !event.viewerIsAttending ? <p className="text-xs text-muted">Registration is closed or the event has reached capacity.</p> : null}
+            <a
+              href={calendarHref}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 transition hover:border-teal-300 hover:bg-teal-50"
+            >
+              <CalendarPlus className="h-4 w-4 text-teal-700" aria-hidden="true" />
+              Add to calendar
+            </a>
+            <EventShareButton title={event.title} />
             {event.meetingUrl ? <a href={event.meetingUrl} target="_blank" rel="noreferrer" className="block rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-center text-sm font-bold text-teal-800">Join online session</a> : null}
             <p className="text-xs leading-5 text-muted">Joining links are visible only to the host and registered attendees.</p>
           </aside>

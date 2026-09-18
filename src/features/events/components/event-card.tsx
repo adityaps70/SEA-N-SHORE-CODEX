@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { CalendarDays, MapPin, Monitor, Users } from 'lucide-react'
+import { ArrowRight, CalendarDays, MapPin, Monitor, Users } from 'lucide-react'
 import type { CalendarEvent } from '../calendar-types'
 
 function dateLabel(value: string, timeZone: string) {
@@ -21,7 +21,12 @@ function titleCase(value: string) { return value.replaceAll('_', ' ').replace(/\
 export function EventCard({ event, showStatus = false }: { event: CalendarEvent; showStatus?: boolean }) {
   const place = [event.locationName, event.city, event.country].filter(Boolean).join(', ')
   return (
-    <article className="overflow-hidden rounded-[1.5rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:shadow-lg">
+    <Link
+      href={`/events/${event.id}`}
+      aria-label={`View ${event.title}`}
+      className="group block h-full rounded-[1.5rem] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500"
+    >
+      <article className="h-full overflow-hidden rounded-[1.5rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] transition group-hover:-translate-y-0.5 group-hover:border-teal-200 group-hover:shadow-lg">
       {event.bannerUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- only organizer supplied public/signed display URLs are stored
         <img src={event.bannerUrl} alt="" className="h-40 w-full object-cover" loading="lazy" />
@@ -39,7 +44,7 @@ export function EventCard({ event, showStatus = false }: { event: CalendarEvent;
           {event.viewerIsAttending ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">Attending</span> : null}
         </div>
         <div>
-          <Link href={`/events/${event.id}`} className="text-xl font-bold text-navy-950 hover:text-teal-700">{event.title}</Link>
+          <h3 className="text-xl font-bold text-navy-950 transition group-hover:text-teal-700">{event.title}</h3>
           <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted">{event.summary}</p>
         </div>
         <div className="grid gap-2 text-sm text-navy-700">
@@ -49,7 +54,12 @@ export function EventCard({ event, showStatus = false }: { event: CalendarEvent;
         </div>
         {event.topics.length ? <div className="flex flex-wrap gap-1.5">{event.topics.slice(0, 4).map((topic) => <span key={topic} className="rounded-lg bg-mist-50 px-2 py-1 text-xs text-navy-700">{topic}</span>)}</div> : null}
         <p className="border-t border-mist-100 pt-3 text-xs text-muted">Hosted by <span className="font-semibold text-navy-800">{event.hostName}</span></p>
+        <div className="flex items-center justify-between border-t border-mist-100 pt-3 text-sm font-bold text-teal-700">
+          <span>View event</span>
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden="true" />
+        </div>
       </div>
-    </article>
+      </article>
+    </Link>
   )
 }
