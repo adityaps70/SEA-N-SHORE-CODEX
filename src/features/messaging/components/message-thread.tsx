@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, Check, CheckCheck, Clock3, RefreshCcw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { markConversationReadAction } from '../actions'
+import { publishMessagingUnreadCount } from '../unread-client'
 import type { MessagingMessageDto } from '../queries'
 import { isMessageSeen, type MessagingReadCursor } from '../thread-realtime'
 import type { OptimisticMessagingMessage } from './message-composer'
@@ -70,6 +71,7 @@ export function MessageThread({
     void markConversationReadAction(conversationId, requestedId)
       .then((result) => {
         if (result.ok) {
+          publishMessagingUnreadCount(result.unreadCount)
           router.refresh()
           return
         }
