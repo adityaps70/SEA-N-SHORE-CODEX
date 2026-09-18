@@ -255,7 +255,10 @@ jobs:
         run: |
           OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs verify-job-application)"
           printf '%s\n' "$OUTPUT"
-          grep -q '^ORGANIZATION_HIRING_E2E_JOB_APPLICATION_VERIFIED=true        if: steps.action.outputs.run_e2e == 'true'
+          grep -q '^ORGANIZATION_HIRING_E2E_JOB_APPLICATION_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Verify unauthorized identity has no hiring authority through SSM
+        if: steps.action.outputs.run_e2e == 'true'
         env:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
         run: |
