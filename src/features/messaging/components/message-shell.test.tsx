@@ -109,6 +109,8 @@ describe('MessageShell', () => {
     expect(screen.getByText('Joining instructions received.')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Write a message' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument()
+    expect(screen.getByText('2 conversations')).toBeInTheDocument()
+    expect(screen.queryByText('1 unread')).not.toBeInTheDocument()
   })
 
   it('filters conversations locally without hiding the active thread', async () => {
