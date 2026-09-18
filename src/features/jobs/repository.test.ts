@@ -92,6 +92,22 @@ describe('jobs repository', () => {
     expect(seen[0]?.values).toEqual(['viewer-1', 50])
   })
 
+  it('loads applied job ids for the signed-in candidate across discovery cards', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{ job_id: 'job-1' }, { job_id: 'job-2' }]
+      },
+    })
+
+    await expect(repository.getAppliedJobIds('viewer-1', ['job-1', 'job-2'])).resolves.toEqual(['job-1', 'job-2'])
+    expect(seen[0]?.text).toContain('from public.job_applications')
+    expect(seen[0]?.text).toContain('a.applicant_id = $1')
+    expect(seen[0]?.text).toContain('a.job_id = any($2::uuid[])')
+    expect(seen[0]?.values).toEqual(['viewer-1', ['job-1', 'job-2']])
+  })
+
   it('requires an active onboarded profile before an application can be submitted', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [{ ready: true }] } })
