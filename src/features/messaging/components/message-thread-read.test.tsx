@@ -10,7 +10,10 @@ const SENT_ID = '55555555-5555-4555-8555-555555555555'
 const RECEIVED_ID = '66666666-6666-4666-8666-666666666666'
 
 const actions = vi.hoisted(() => ({
-  markConversationReadAction: vi.fn(async () => ({ ok: true, advanced: true })),
+  markConversationReadAction: vi.fn(async () => ({ ok: true, advanced: true, unreadCount: 0 })),
+}))
+const unread = vi.hoisted(() => ({
+  publishMessagingUnreadCount: vi.fn(),
 }))
 const navigation = vi.hoisted(() => ({
   refresh: vi.fn(),
@@ -18,6 +21,9 @@ const navigation = vi.hoisted(() => ({
 
 vi.mock('../actions', () => ({
   markConversationReadAction: actions.markConversationReadAction,
+}))
+vi.mock('../unread-client', () => ({
+  publishMessagingUnreadCount: unread.publishMessagingUnreadCount,
 }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: navigation.refresh }),
@@ -116,6 +122,7 @@ describe('MessageThread durable Sent/Seen and active-conversation read behavior'
       RECEIVED_ID,
     ))
     expect(actions.markConversationReadAction).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0))
     await waitFor(() => expect(navigation.refresh).toHaveBeenCalledTimes(1))
   })
 
