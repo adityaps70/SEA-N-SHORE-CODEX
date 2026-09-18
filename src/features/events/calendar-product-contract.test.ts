@@ -87,12 +87,20 @@ describe('complete maritime Events product contract', () => {
     const sharePath = 'src/features/events/components/event-share-button.tsx'
 
     expect(card).toContain('aria-label={`View ${event.title}`}')
+    expect(card).toContain('href={`/events/${event.id}`}')
     expect(card).toContain('View event')
     expect(attendance).toContain('Register for event')
-    expect(attendance).toContain('Cancel registration')
-    expect(detail).toContain('Add to calendar')
+    expect(attendance).toContain("You're attending")
+    expect(attendance).toContain('Withdraw attendance')
+    expect(detail).toContain('Event full')
+    expect(detail).toContain('Registration closed')
+    expect(detail).toContain('Event ended')
+    expect(detail).toContain('seats left')
+    expect(detail).toContain('Google Calendar')
+    expect(detail).toContain('Download .ics')
     expect(detail).toContain('EventShareButton')
     expect(existsSync(resolve(root, sharePath))).toBe(true)
+    expect(existsSync(resolve(root, 'src/app/(app)/events/[eventId]/calendar/route.ts'))).toBe(true)
     if (existsSync(resolve(root, sharePath))) {
       expect(source(sharePath)).toContain('navigator.share')
       expect(source(sharePath)).toContain('Copy event link')
