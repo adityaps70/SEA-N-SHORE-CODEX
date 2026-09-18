@@ -10,7 +10,7 @@ type MessagingQueryRepository = Pick<
   | 'isParticipant'
   | 'listMessageRows'
   | 'listMessageRowsAfter'
-  | 'countUnreadConversations'
+  | 'countUnreadMessages'
 >
 
 type RequireMessagingUser = () => Promise<{ id: string }>
@@ -97,9 +97,9 @@ export function createMessagingQueries(input: {
       })))
     },
 
-    async getUnreadConversationCount() {
+    async getUnreadMessageCount() {
       const user = await input.requireUser()
-      return input.repository.countUnreadConversations(user.id)
+      return input.repository.countUnreadMessages(user.id)
     },
 
     async getConversationThread(rawInput: unknown) {
@@ -159,6 +159,6 @@ const productionMessagingQueries = createMessagingQueries({
 })
 
 export const getConversationInbox = productionMessagingQueries.getConversationInbox
-export const getUnreadConversationCount = productionMessagingQueries.getUnreadConversationCount
+export const getUnreadMessageCount = productionMessagingQueries.getUnreadMessageCount
 export const getConversationThread = productionMessagingQueries.getConversationThread
 export const getConversationMessagesAfter = productionMessagingQueries.getConversationMessagesAfter
