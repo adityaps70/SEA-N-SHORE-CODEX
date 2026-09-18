@@ -15,6 +15,7 @@ test('realtime e2e is branch-scoped and guarded by plan, run-once, bounded conne
   assert.ok(
     action === 'plan'
       || action === 'run-once'
+      || action === 'messaging-once'
       || action === 'probe-connect-once'
       || /^cleanup-once:[0-9]+$/.test(action)
       || /^diagnose-connect-once:[0-9]+$/.test(action),
