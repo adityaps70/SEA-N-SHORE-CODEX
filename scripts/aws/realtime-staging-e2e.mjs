@@ -327,13 +327,11 @@ async function realtimeJourney() {
     await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toHaveCount(0, { timeout: 30_000 })
     await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toHaveCount(0, { timeout: 30_000 })
 
-    if (!messagingOnly) {
-      await senderPage.waitForFunction(({ conversationId }) => {
-        const signals = globalThis.__realtime_sender_signals ?? []
-        return signals.some((signal) => signal?.eventType === 'conversation.read_cursor_advanced' && signal?.payload?.conversationId === conversationId)
-      }, { conversationId }, { timeout: 30_000 })
-      console.log('REALTIME_E2E_READ_CURSOR_SIGNAL_VERIFIED=true')
-    }
+    await senderPage.waitForFunction(({ conversationId }) => {
+      const signals = globalThis.__realtime_sender_signals ?? []
+      return signals.some((signal) => signal?.eventType === 'conversation.read_cursor_advanced' && signal?.payload?.conversationId === conversationId)
+    }, { conversationId }, { timeout: 30_000 })
+    console.log('REALTIME_E2E_READ_CURSOR_SIGNAL_VERIFIED=true')
     console.log('REALTIME_E2E_UNREAD_BADGE_CLEARED=true')
 
     await senderPage.evaluate((injectedBody) => {
