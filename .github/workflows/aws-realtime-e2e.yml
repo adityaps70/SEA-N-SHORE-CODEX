@@ -224,6 +224,8 @@ jobs:
           echo "E2E_CONVERSATION_ID=$CONVERSATION_ID" >> "$GITHUB_ENV"
 
       - name: Verify live authenticated realtime messaging
+        env:
+          E2E_MESSAGING_ONLY: ${{ needs.guard.outputs.messaging_only }}
         run: E2E_PHASE=realtime node scripts/aws/realtime-staging-e2e.mjs
       - name: Verify canonical Aurora message and outbox state
         run: node scripts/aws/realtime-e2e-ssm.mjs verify-durable
