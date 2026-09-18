@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MessageShell } from './message-shell'
 
 const navigation = vi.hoisted(() => ({ refresh: vi.fn() }))
+const unread = vi.hoisted(() => ({ publishMessagingUnreadCount: vi.fn() }))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: navigation.refresh }),
@@ -11,7 +12,11 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('../actions', () => ({
   sendMessageAction: vi.fn(async () => ({ ok: false, error: 'not-used' })),
-  markConversationReadAction: vi.fn(async () => ({ ok: true, advanced: true })),
+  markConversationReadAction: vi.fn(async () => ({ ok: true, advanced: true, unreadCount: 0 })),
+}))
+
+vi.mock('../unread-client', () => ({
+  publishMessagingUnreadCount: unread.publishMessagingUnreadCount,
 }))
 
 vi.mock('@/features/realtime/provider', () => ({
@@ -128,6 +133,21 @@ describe('MessageShell', () => {
     expect(screen.queryByRole('link', { name: /Open conversation with Capt. Meera Nair/i })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open conversation with Aarav Menon/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Capt. Meera Nair' })).toBeInTheDocument()
+  })
+
+  it('publishes the authoritative unread count supplied after opening a conversation', async () => {
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={inbox}
+        activeConversation={null}
+        authoritativeUnreadCount={4}
+      />,
+    )
+
+    await vi.waitFor(() => {
+      expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(4)
+    })
   })
 
   it('shows an intentional empty thread state instead of a blank second pane', () => {
