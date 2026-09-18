@@ -54,6 +54,10 @@ test('run-once uses disposable authenticated users and the live organization app
   assert.match(browserScript, /\/hiring\/jobs\/new/)
   assert.match(browserScript, /Post a maritime job/)
   assert.match(browserScript, /Create job/)
+  assert.match(browserScript, /\/jobs\/\$\{jobId\}/)
+  assert.match(browserScript, /Apply now/)
+  assert.match(browserScript, /Application submitted/)
+  assert.match(browserScript, /ORGANIZATION_HIRING_E2E_JOB_APPLICATION_UI_VERIFIED=true/)
   assert.match(browserScript, /Hiring access required/)
   assert.match(browserScript, /cross-company edit route must return 404/)
 })
@@ -122,6 +126,9 @@ test('database audit proves admin grant, approval, published job ownership and u
   assert.match(remote, /status::text = 'published'/i)
   assert.match(remote, /ORGANIZATION_HIRING_E2E_APPROVAL_VERIFIED=true/)
   assert.match(remote, /ORGANIZATION_HIRING_E2E_JOB_VERIFIED=true/)
+  assert.match(remote, /job_applications/i)
+  assert.match(remote, /job_application_events/i)
+  assert.match(remote, /ORGANIZATION_HIRING_E2E_JOB_APPLICATION_VERIFIED=true/)
   assert.match(remote, /ORGANIZATION_HIRING_E2E_UNAUTHORIZED_VERIFIED=true/)
 })
 
@@ -143,4 +150,11 @@ test('cleanup is unconditional, prefix constrained, and removes every disposable
   assert.match(remote, /ORGANIZATION_HIRING_E2E_CLEANUP_VERIFIED=true/)
   assert.match(remote, /company_access_requests where user_id in/i)
   assert.doesNotMatch(remote, /company_access_requests where requested_by/i)
+})
+
+
+test('organization hiring e2e uses current onboarding username controls before candidate application', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  assert.match(browserScript, /input\[name="slug"\]/)
+  assert.doesNotMatch(browserScript, /Profile address/)
 })
