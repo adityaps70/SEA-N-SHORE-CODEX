@@ -30,7 +30,7 @@ describe('messaging durable read cursor ordering', () => {
     expect(text).toContain('last_read_message_id < $3::uuid')
   })
 
-  it('derives inbox unread state by timestamp and message-id tie break and exposes peer read cursor', async () => {
+  it('exposes the peer read cursor alongside incoming-only unread state', async () => {
     const query = vi.fn(async () => [])
     const repository = createMessagingRepository({ query })
 
@@ -40,8 +40,8 @@ describe('messaging durable read cursor ordering', () => {
     const text = sql.toLowerCase()
     expect(text).toContain('other.last_read_message_id as other_last_read_message_id')
     expect(text).toContain('other.last_read_at as other_last_read_at')
-    expect(text).toContain('c.last_message_at = mine.last_read_at')
-    expect(text).toContain('c.last_message_id > mine.last_read_message_id')
+    expect(text).toContain('from public.messages unread_message')
+    expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
   })
 
   it('derives inbox unread state from unread incoming messages, never from the viewer\'s own latest message', async () => {
