@@ -80,6 +80,25 @@ describe('complete maritime Events product contract', () => {
     expect(page).toContain('/events/create')
   })
 
+  it('turns event discovery into a complete attendee journey', () => {
+    const card = source('src/features/events/components/event-card.tsx')
+    const detail = source('src/app/(app)/events/[eventId]/page.tsx')
+    const attendance = source('src/features/events/components/attendance-control.tsx')
+    const sharePath = 'src/features/events/components/event-share-button.tsx'
+
+    expect(card).toContain('aria-label={`View ${event.title}`}')
+    expect(card).toContain('View event')
+    expect(attendance).toContain('Register for event')
+    expect(attendance).toContain('Cancel registration')
+    expect(detail).toContain('Add to calendar')
+    expect(detail).toContain('EventShareButton')
+    expect(existsSync(resolve(root, sharePath))).toBe(true)
+    if (existsSync(resolve(root, sharePath))) {
+      expect(source(sharePath)).toContain('navigator.share')
+      expect(source(sharePath)).toContain('Copy event link')
+    }
+  })
+
   it('keeps RSVP concurrency-safe and unique at the database layer', () => {
     const repository = source('src/features/events/calendar-repository.ts')
     const migration = source('infra/aws/database/migrations/0012_events_engine.sql')
