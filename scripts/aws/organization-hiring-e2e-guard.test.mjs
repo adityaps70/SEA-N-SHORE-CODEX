@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 const actionPath = 'scripts/aws/organization-hiring-e2e-action.txt'
@@ -157,4 +158,13 @@ test('organization hiring e2e uses current onboarding username controls before c
   const browserScript = readFileSync(browserScriptPath, 'utf8')
   assert.match(browserScript, /input\[name="slug"\]/)
   assert.doesNotMatch(browserScript, /Profile address/)
+})
+
+
+test('organization hiring remote shell is syntax-valid and cleanup is defined once', () => {
+  const syntax = spawnSync('bash', ['-n', remoteScriptPath], { encoding: 'utf8' })
+  assert.equal(syntax.status, 0, syntax.stderr || syntax.stdout)
+  const workflow = readFileSync(workflowPath, 'utf8')
+  assert.equal((workflow.match(/Cleanup every disposable organization hiring artifact/g) ?? []).length, 1)
+  assert.equal((workflow.match(/Verify unauthorized identity has no hiring authority through SSM/g) ?? []).length, 1)
 })
