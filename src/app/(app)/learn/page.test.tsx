@@ -88,7 +88,7 @@ describe('/learn marketplace', () => {
     )
     expect(screen.getByText('Capt. Maya Singh')).toBeInTheDocument()
     expect(screen.getByText('Verified mentor')).toBeInTheDocument()
-    expect(screen.getByText('SIRE 2.0')).toBeInTheDocument()
+    expect(screen.getAllByText('SIRE 2.0')).toHaveLength(2)
     expect(screen.getByText('Advanced')).toBeInTheDocument()
     expect(screen.getByText('Recorded')).toBeInTheDocument()
     expect(screen.getByText('₹20,000')).toBeInTheDocument()
