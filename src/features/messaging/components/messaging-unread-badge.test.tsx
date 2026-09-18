@@ -29,4 +29,21 @@ describe('MessagingUnreadBadge', () => {
     })
     expect(screen.queryByLabelText(/unread messages/)).not.toBeInTheDocument()
   })
+
+  it('replaces client event state when a new authoritative server count is rendered', () => {
+    const { rerender } = render(
+      <MessagingUnreadBadge initialCount={5} className="badge" />,
+    )
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(MESSAGING_UNREAD_COUNT_EVENT, {
+        detail: { count: 2 },
+      }))
+    })
+    expect(screen.getByLabelText('2 unread messages')).toHaveTextContent('2')
+
+    rerender(<MessagingUnreadBadge initialCount={4} className="badge" />)
+
+    expect(screen.getByLabelText('4 unread messages')).toHaveTextContent('4')
+  })
 })
