@@ -246,8 +246,11 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     profileId: string,
     conversationId: string,
     messageId: string,
-    _createdAt: string,
+    createdAt: string,
   ) {
+    // Read ordering is derived from Aurora's canonical message row so PostgreSQL
+    // microsecond precision cannot be lost through a JavaScript Date round-trip.
+    void createdAt
     const rows = await queryRows(
       `with target as (
          select id, created_at
