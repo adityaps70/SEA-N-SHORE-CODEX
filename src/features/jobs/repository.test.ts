@@ -77,6 +77,36 @@ describe('jobs repository', () => {
     })
   })
 
+  it('normalizes PostgreSQL date objects before returning public job listings', async () => {
+    const repository = createJobsRepository({
+      query: async () => [{
+        id: 'job-date-1', title: 'Second Engineer', company_name: 'Oceanic', company_id: 'company-1',
+        company_slug: 'oceanic', company_verified: true, recruiter_verified: true, location: 'Worldwide',
+        summary: 'Engine opening', description: 'Join us', requirements: null,
+        apply_until: new Date('2026-09-25T00:00:00.000Z'),
+        created_at: new Date('2026-09-10T10:00:00.000Z'),
+        published_at: new Date('2026-09-11T10:00:00.000Z'),
+        job_domain: 'sea', department: 'Engine', rank: 'Second Engineer',
+        vessel_types: ['Oil Tanker'], experience_min_years: null, experience_max_years: null,
+        joining_from: new Date('2026-09-20T00:00:00.000Z'),
+        joining_until: new Date('2026-09-30T00:00:00.000Z'),
+        salary_min: null, salary_max: null, salary_currency: null, salary_period: null,
+        sailing_regions: ['Worldwide'], urgent: false, easy_apply: true,
+        certificate_requirements: [], visa_requirements: [],
+      }],
+    })
+
+    await expect(repository.searchJobs(parseJobSearchParams({ mode: 'for-you' }), 60, 0)).resolves.toEqual([
+      expect.objectContaining({
+        applyUntil: '2026-09-25',
+        joiningFrom: '2026-09-20',
+        joiningUntil: '2026-09-30',
+        createdAt: '2026-09-10T10:00:00.000Z',
+        publishedAt: '2026-09-11T10:00:00.000Z',
+      }),
+    ])
+  })
+
   it('loads the candidate match profile from existing maritime profile, skills, credentials and visas', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createJobsRepository({
