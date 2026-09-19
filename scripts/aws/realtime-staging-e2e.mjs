@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { chromium, expect } from '@playwright/test'
 
 const siteUrl = process.env.SITE_URL
@@ -352,6 +353,19 @@ async function realtimeJourney() {
     await recipientPage.reload({ waitUntil: 'domcontentloaded' })
     await expect(recipientPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 20_000 })
     console.log('REALTIME_E2E_CANONICAL_FALLBACK_VERIFIED=true')
+  } catch (error) {
+    const diagnostic = spawnSync(
+      process.execPath,
+      ['scripts/aws/realtime-e2e-ssm.mjs', 'diagnose-message'],
+      {
+        stdio: 'inherit',
+        env: process.env,
+      },
+    )
+    if (diagnostic.status !== 0) {
+      console.error('REALTIME_E2E_MESSAGE_DIAGNOSTIC_FAILED=true')
+    }
+    throw error
   } finally {
     await senderContext.close()
     await recipientContext.close()
