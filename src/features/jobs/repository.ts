@@ -220,7 +220,6 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     const rows = await queryRows(
       `${JOB_SELECT}
        where j.status = 'published'
-         and (j.apply_until is null or j.apply_until >= current_date)
        order by j.created_at desc, j.id desc
        limit $1`,
       [limit],
@@ -232,7 +231,6 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     const values: unknown[] = []
     const where = [
       "j.status = 'published'",
-      '(j.apply_until is null or j.apply_until >= current_date)',
     ]
     const bind = (value: unknown) => {
       values.push(value)
@@ -311,11 +309,24 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       `${JOB_SELECT}
        where j.id = $1
          and j.status = 'published'
-         and (j.apply_until is null or j.apply_until >= current_date)
        limit 1`,
       [jobId],
     ) as JobRow[]
     return rows[0] ? mapJob(rows[0]) : null
+  }
+
+  async function isAcceptingApplications(jobId: string): Promise<boolean> {
+    const rows = await queryRows(
+      `select exists (
+         select 1
+         from public.jobs j
+         where j.id = $1
+           and j.status = 'published'
+           and (j.apply_until is null or j.apply_until >= current_date)
+       ) as accepting`,
+      [jobId],
+    ) as Array<QueryResultRow & { accepting: boolean }>
+    return Boolean(rows[0]?.accepting)
   }
 
   async function getCandidateProfile(profileId: string): Promise<JobCandidateProfile | null> {
@@ -505,7 +516,6 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
        ${JOB_FROM}
        join public.job_saves s on s.job_id = j.id and s.user_id = $1
        where j.status = 'published'
-         and (j.apply_until is null or j.apply_until >= current_date)
        order by s.saved_at desc, j.id desc
        limit $2`,
       [userId, Math.min(Math.max(Math.trunc(limit), 1), 100)],
@@ -564,6 +574,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     listPublishedJobs,
     searchJobs,
     getPublishedJob,
+    isAcceptingApplications,
     getCandidateProfile,
     listApplications,
     hasApplied,
