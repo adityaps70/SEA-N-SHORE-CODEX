@@ -256,6 +256,14 @@ case "$PHASE" in
     echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_TASK=$WORKER_TASK_ARN"
     echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_IMAGE=$WORKER_IMAGE"
 
+    TABLE='sea-n-shore-staging-realtime-connections'
+    SENDER_PID=$(sql "SELECT profile_id::text FROM public.identity_accounts WHERE provider='cognito' AND email='$SENDER'" | jq -r '.records[0][0].stringValue // empty')
+    RECIPIENT_PID=$(sql "SELECT profile_id::text FROM public.identity_accounts WHERE provider='cognito' AND email='$RECIPIENT'" | jq -r '.records[0][0].stringValue // empty')
+    SENDER_CONNECTIONS=$(aws dynamodb query --region "$AWS_REGION" --table-name "$TABLE" --index-name profile_id-index --key-condition-expression 'profile_id = :p' --expression-attribute-values "{\":p\":{\"S\":\"$SENDER_PID\"}}" --select COUNT --query Count --output text)
+    RECIPIENT_CONNECTIONS=$(aws dynamodb query --region "$AWS_REGION" --table-name "$TABLE" --index-name profile_id-index --key-condition-expression 'profile_id = :p' --expression-attribute-values "{\":p\":{\"S\":\"$RECIPIENT_PID\"}}" --select COUNT --query Count --output text)
+    echo "REALTIME_MESSAGE_DIAG_SENDER_CONNECTIONS=$SENDER_CONNECTIONS"
+    echo "REALTIME_MESSAGE_DIAG_RECIPIENT_CONNECTIONS=$RECIPIENT_CONNECTIONS"
+
     MAIN_QUEUE=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events --query QueueUrl --output text)
     DLQ=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events-dlq --query QueueUrl --output text)
     MAIN_ATTR=$(aws sqs get-queue-attributes --region "$AWS_REGION" --queue-url "$MAIN_QUEUE" --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json)
