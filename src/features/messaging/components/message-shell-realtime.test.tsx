@@ -9,9 +9,19 @@ const OTHER_ID = '22222222-2222-4222-8222-222222222222'
 const INITIAL_ID = '44444444-4444-4444-8444-444444444444'
 const INCOMING_ID = '55555555-5555-4555-8555-555555555555'
 
-const unread = vi.hoisted(() => ({
-  publishMessagingUnreadCount: vi.fn(),
-}))
+const unread = vi.hoisted(() => {
+  let snapshot = { count: 0, revision: 0 }
+  const publishMessagingUnreadCount = vi.fn((count: number) => {
+    snapshot = { count, revision: snapshot.revision + 1 }
+  })
+  return {
+    publishMessagingUnreadCount,
+    getMessagingUnreadCountSnapshot: () => snapshot,
+    reset() {
+      snapshot = { count: 0, revision: 0 }
+    },
+  }
+})
 
 const realtime = vi.hoisted(() => {
   const listeners = new Set<(signal: MessagingRealtimeSignal) => void>()
@@ -29,6 +39,7 @@ const realtime = vi.hoisted(() => {
 
 vi.mock('../unread-client', () => ({
   publishMessagingUnreadCount: unread.publishMessagingUnreadCount,
+  getMessagingUnreadCountSnapshot: unread.getMessagingUnreadCountSnapshot,
 }))
 
 vi.mock('@/features/realtime/provider', () => ({
@@ -99,6 +110,7 @@ function activeConversation(messages: MessagingMessageDto[] = [initialMessage]) 
 describe('MessageShell active realtime reconciliation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    unread.reset()
     realtime.listeners.clear()
     vi.stubGlobal('fetch', vi.fn())
   })
@@ -166,6 +178,131 @@ describe('MessageShell active realtime reconciliation', () => {
       method: 'GET',
       cache: 'no-store',
     }))
+  })
+
+  it('reconciles inbox and unread count when the viewer read cursor advances', async () => {
+    const inboxItem = {
+      conversationId: CONVERSATION_ID,
+      otherProfileId: OTHER_ID,
+      otherName: 'Capt. Anita Singh',
+      otherHeadline: 'Master Mariner',
+      otherAvatarUrl: null,
+      lastMessageId: INCOMING_ID,
+      lastMessageBody: 'Incoming live',
+      lastMessageSenderId: OTHER_ID,
+      lastMessageAt: '2026-09-13T10:01:00.000Z',
+      otherLastReadMessageId: null,
+      otherLastReadAt: null,
+      unread: true,
+    }
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+      inbox: [{ ...inboxItem, unread: false }],
+      unreadCount: 0,
+    }), { status: 200 }))
+
+    const modulePath = './message-shell'
+    const { MessageShell } = await import(modulePath) as typeof import('./message-shell')
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={[inboxItem]}
+        activeConversation={null}
+      />,
+    )
+
+    await waitFor(() => expect(realtime.subscribe).toHaveBeenCalled())
+    act(() => realtime.emit({
+      eventId: 'event-viewer-read',
+      eventType: 'conversation.read_cursor_advanced',
+      schemaVersion: 1,
+      occurredAt: '2026-09-13T10:02:00.100Z',
+      aggregateId: CONVERSATION_ID,
+      payload: {
+        eventType: 'conversation.read_cursor_advanced',
+        conversationId: CONVERSATION_ID,
+        readerProfileId: VIEWER_ID,
+        lastReadMessageId: INCOMING_ID,
+        lastReadAt: '2026-09-13T10:01:00.000Z',
+        participantProfileIds: [VIEWER_ID, OTHER_ID],
+      },
+    }))
+
+    await waitFor(() => expect(screen.getByTestId('inbox-unread')).toHaveTextContent('read'))
+    expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0)
+    expect(fetch).toHaveBeenCalledWith('/api/realtime/messaging-state', expect.objectContaining({
+      method: 'GET',
+      cache: 'no-store',
+    }))
+  })
+
+  it('does not let an older in-flight messaging-state response overwrite a newer read publication', async () => {
+    const unreadInbox = [{
+      conversationId: CONVERSATION_ID,
+      otherProfileId: OTHER_ID,
+      otherName: 'Capt. Anita Singh',
+      otherHeadline: 'Master Mariner',
+      otherAvatarUrl: null,
+      lastMessageId: INCOMING_ID,
+      lastMessageBody: 'Incoming live',
+      lastMessageSenderId: OTHER_ID,
+      lastMessageAt: '2026-09-13T10:01:00.000Z',
+      otherLastReadMessageId: null,
+      otherLastReadAt: null,
+      unread: true,
+    }]
+    const readInbox = [{ ...unreadInbox[0], unread: false }]
+
+    let resolveFirst!: (response: Response) => void
+    const firstResponse = new Promise<Response>((resolve) => {
+      resolveFirst = resolve
+    })
+    vi.mocked(fetch)
+      .mockImplementationOnce(() => firstResponse)
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        inbox: readInbox,
+        unreadCount: 0,
+      }), { status: 200 }))
+
+    const modulePath = './message-shell'
+    const { MessageShell } = await import(modulePath) as typeof import('./message-shell')
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={unreadInbox}
+        activeConversation={null}
+      />,
+    )
+
+    await waitFor(() => expect(realtime.subscribe).toHaveBeenCalled())
+    act(() => realtime.emit({
+      eventId: 'event-stale-message',
+      eventType: 'message.created',
+      schemaVersion: 1,
+      occurredAt: '2026-09-13T10:01:00.100Z',
+      aggregateId: INCOMING_ID,
+      payload: {
+        eventType: 'message.created',
+        conversationId: CONVERSATION_ID,
+        messageId: INCOMING_ID,
+        senderId: OTHER_ID,
+        recipientProfileIds: [VIEWER_ID],
+      },
+    }))
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1))
+
+    act(() => {
+      unread.publishMessagingUnreadCount(0)
+      resolveFirst(new Response(JSON.stringify({
+        inbox: unreadInbox,
+        unreadCount: 1,
+      }), { status: 200 }))
+    })
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.getByTestId('inbox-unread')).toHaveTextContent('read'))
+    expect(unread.publishMessagingUnreadCount).not.toHaveBeenCalledWith(1)
+    expect(unread.getMessagingUnreadCountSnapshot().count).toBe(0)
   })
 
   it('shows the first incoming message live when the open conversation has no canonical cursor yet', async () => {
