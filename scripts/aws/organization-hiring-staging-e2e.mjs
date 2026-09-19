@@ -30,7 +30,7 @@ const users = {
 
 assert.ok(siteUrl, 'SITE_URL is required')
 assert.ok(runId, 'GITHUB_RUN_ID is required')
-assert.ok(['signup', 'onboarding', 'applicant-submit', 'admin-approve', 'owner-post', 'candidate-apply', 'unauthorized'].includes(phase), 'Unsupported E2E_PHASE')
+assert.ok(['signup', 'onboarding', 'applicant-submit', 'admin-approve', 'owner-post', 'candidate-expired-visibility', 'owner-republish', 'candidate-apply', 'unauthorized'].includes(phase), 'Unsupported E2E_PHASE')
 for (const [key, user] of Object.entries(users)) {
   assert.match(user.email ?? '', new RegExp(`^sea-n-shore-hiring-e2e-[0-9]+-${key}@example\\.com$`))
   assert.ok((user.password ?? '').length >= 12)
@@ -234,6 +234,7 @@ async function postJobAsOwner() {
   await page.getByLabel('Certificates').fill('STCW, Advanced Oil Tanker')
   await page.getByLabel('Visas').fill('US C1/D')
   await page.getByLabel('Other requirements').fill('Valid medical and tanker sea service required for this staging-only test vacancy.')
+  await page.getByLabel('Apply until').fill('2026-09-01')
   await page.getByLabel('Salary minimum').fill('7000')
   await page.getByLabel('Salary maximum').fill('8500')
   await page.getByLabel('Currency').fill('USD')
@@ -282,6 +283,56 @@ async function postJobAsOwner() {
   await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
   await expect(page.getByText('published', { exact: true })).toBeVisible()
   console.log('ORGANIZATION_HIRING_E2E_OWNER_JOB_UI_VERIFIED=true')
+  await context.close()
+}
+
+async function verifyExpiredPublishedJobVisible() {
+  assert.match(jobId ?? '', /^[0-9a-f-]{36}$/)
+  assert.ok(jobTitle)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.unauthorized)
+  await page.goto(`${siteUrl}/jobs?q=${encodeURIComponent(jobTitle)}`, { waitUntil: 'networkidle' })
+  const jobLink = page.getByRole('link', { name: jobTitle, exact: true })
+  await expect(jobLink).toBeVisible()
+  const applyButton = page.getByRole('button', { name: 'Easy Apply' })
+  await expect(applyButton).toBeVisible()
+  await applyButton.click()
+  await expect(page.getByRole('alert')).toHaveText('This job is no longer accepting applications.', { timeout: 20_000 })
+  console.log('ORGANIZATION_HIRING_E2E_EXPIRED_PUBLISHED_VISIBLE=true')
+  await context.close()
+}
+
+async function archiveAndRepublishJob() {
+  assert.match(jobId ?? '', /^[0-9a-f-]{36}$/)
+  assert.ok(jobTitle)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.applicant)
+
+  await page.goto(`${siteUrl}/hiring/jobs/${jobId}/edit`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Edit vacancy' })).toBeVisible()
+  await expect(page.getByLabel('Apply until')).toHaveValue('2026-09-01')
+  await page.getByLabel('Status').selectOption('closed')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.locator('p[role="status"]')).toHaveText('Changes saved successfully.', { timeout: 20_000 })
+
+  await page.goto(`${siteUrl}/hiring/jobs`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
+  await expect(page.getByText('closed', { exact: true })).toBeVisible()
+
+  await page.goto(`${siteUrl}/hiring/jobs/${jobId}/edit`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Edit vacancy' })).toBeVisible()
+  await expect(page.getByLabel('Status')).toHaveValue('closed')
+  await expect(page.getByLabel('Apply until')).toHaveValue('2026-09-01')
+  await page.getByLabel('Status').selectOption('published')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.locator('p[role="status"]')).toHaveText('Changes saved successfully.', { timeout: 20_000 })
+
+  await page.goto(`${siteUrl}/hiring/jobs`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
+  await expect(page.getByText('published', { exact: true })).toBeVisible()
+  console.log('ORGANIZATION_HIRING_E2E_ARCHIVE_REPUBLISH_UI_VERIFIED=true')
   await context.close()
 }
 
@@ -367,6 +418,10 @@ try {
     await approveOrganization()
   } else if (phase === 'owner-post') {
     await postJobAsOwner()
+  } else if (phase === 'candidate-expired-visibility') {
+    await verifyExpiredPublishedJobVisible()
+  } else if (phase === 'owner-republish') {
+    await archiveAndRepublishJob()
   } else if (phase === 'candidate-apply') {
     await applyToPublishedJob()
   } else if (phase === 'unauthorized') {
