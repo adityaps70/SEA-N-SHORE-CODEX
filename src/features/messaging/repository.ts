@@ -339,7 +339,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
 
   async function countUnreadMessages(viewerProfileId: string) {
     const rows = await queryRows(
-      `select count(*)::int as count
+      `select count(distinct unread_message.conversation_id)::int as count
        from public.messages unread_message
        join public.conversation_participants mine
          on mine.conversation_id = unread_message.conversation_id
