@@ -354,6 +354,32 @@ async function realtimeJourney() {
     await expect(recipientPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 20_000 })
     console.log('REALTIME_E2E_CANONICAL_FALLBACK_VERIFIED=true')
   } catch (error) {
+    try {
+      const browserState = await recipientPage.evaluate(async () => {
+        const response = await fetch('/api/realtime/messaging-state', {
+          method: 'GET',
+          cache: 'no-store',
+        })
+        const payload = response.ok ? await response.json() : {}
+        const unreadBadges = Array.from(document.querySelectorAll('[aria-label$="unread messages"]')).filter((element) => {
+          const style = getComputedStyle(element)
+          return style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length > 0
+        }).length
+        return {
+          unreadCount: typeof payload.unreadCount === 'number' ? payload.unreadCount : -1,
+          unreadBadges,
+          visibility: document.visibilityState,
+          pathname: location.pathname,
+        }
+      })
+      console.log(`REALTIME_E2E_BROWSER_UNREAD_COUNT=${browserState.unreadCount}`)
+      console.log(`REALTIME_E2E_BROWSER_UNREAD_BADGES=${browserState.unreadBadges}`)
+      console.log(`REALTIME_E2E_BROWSER_VISIBILITY=${browserState.visibility}`)
+      console.log(`REALTIME_E2E_BROWSER_PATHNAME=${browserState.pathname}`)
+    } catch {
+      console.error('REALTIME_E2E_BROWSER_READ_DIAGNOSTIC_FAILED=true')
+    }
+
     const diagnostic = spawnSync(
       process.execPath,
       ['scripts/aws/realtime-e2e-ssm.mjs', 'diagnose-message'],
