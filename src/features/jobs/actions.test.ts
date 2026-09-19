@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   isMemberReady: vi.fn(),
   getPublishedJob: vi.fn(),
+  isAcceptingApplications: vi.fn(),
   hasApplied: vi.fn(),
   createApplication: vi.fn(),
   revalidatePath: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('./repository', () => ({
   jobsRepository: {
     isMemberReady: mocks.isMemberReady,
     getPublishedJob: mocks.getPublishedJob,
+    isAcceptingApplications: mocks.isAcceptingApplications,
     hasApplied: mocks.hasApplied,
     createApplication: mocks.createApplication,
   },
@@ -41,6 +43,7 @@ describe('applyToJob', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'viewer-1', cognitoSub: 'sub-1', email: null })
     mocks.isMemberReady.mockResolvedValue(true)
     mocks.getPublishedJob.mockResolvedValue(job)
+    mocks.isAcceptingApplications.mockResolvedValue(true)
     mocks.hasApplied.mockResolvedValue(false)
     mocks.createApplication.mockResolvedValue(undefined)
   })
@@ -53,6 +56,18 @@ describe('applyToJob', () => {
       error: 'Complete your professional profile before applying.',
     })
     expect(mocks.getPublishedJob).not.toHaveBeenCalled()
+    expect(mocks.createApplication).not.toHaveBeenCalled()
+  })
+
+  it('keeps an expired published job visible but blocks new applications after its deadline', async () => {
+    mocks.isAcceptingApplications.mockResolvedValue(false)
+
+    await expect(applyToJob(jobId)).resolves.toEqual({
+      ok: false,
+      error: 'This job is no longer accepting applications.',
+    })
+    expect(mocks.getPublishedJob).toHaveBeenCalledWith(jobId)
+    expect(mocks.isAcceptingApplications).toHaveBeenCalledWith(jobId)
     expect(mocks.createApplication).not.toHaveBeenCalled()
   })
 
