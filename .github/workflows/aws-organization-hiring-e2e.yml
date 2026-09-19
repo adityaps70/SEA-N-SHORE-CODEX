@@ -242,6 +242,62 @@ jobs:
           [[ "$JOB_ID" =~ ^[0-9a-f-]{36}$ ]]
           echo "E2E_JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
 
+      - name: Verify expired published job remains visible but blocks application
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: candidate-expired-visibility
+        run: node scripts/aws/organization-hiring-staging-e2e.mjs
+
+      - name: Archive and republish job through live owner UI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: owner-republish
+        run: node scripts/aws/organization-hiring-staging-e2e.mjs
+
+      - name: Verify republished job lifecycle through Aurora
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        run: |
+          OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs verify-republish)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^ORGANIZATION_HIRING_E2E_REPUBLISH_VERIFIED=true
+      - name: Verify candidate application and timeline through Aurora
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        run: |
+          OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs verify-job-application)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^ORGANIZATION_HIRING_E2E_JOB_APPLICATION_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Verify unauthorized identity has no hiring authority through SSM
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        run: |
+          OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs verify-unauthorized)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^ORGANIZATION_HIRING_E2E_UNAUTHORIZED_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Verify unauthorized and cross-company denial through live UI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: unauthorized
+        run: node scripts/aws/organization-hiring-staging-e2e.mjs
+
+      - name: Cleanup every disposable organization hiring artifact
+        if: always() && steps.action.outputs.run_e2e == 'true' && steps.instance.outputs.instance_id != ''
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs cleanup)"
+          printf '%s\n' "$OUTPUT"
+          grep -q '^ORGANIZATION_HIRING_E2E_CLEANUP_VERIFIED=true$' <<<"$OUTPUT"
+ <<<"$OUTPUT"
+
       - name: Apply to published job through live candidate UI
         if: steps.action.outputs.run_e2e == 'true'
         env:
