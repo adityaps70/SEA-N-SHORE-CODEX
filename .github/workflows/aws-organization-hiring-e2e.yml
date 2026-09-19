@@ -261,7 +261,14 @@ jobs:
         run: |
           OUTPUT="$(node scripts/aws/organization-hiring-e2e-ssm.mjs verify-republish)"
           printf '%s\n' "$OUTPUT"
-          grep -q '^ORGANIZATION_HIRING_E2E_REPUBLISH_VERIFIED=true
+          grep -q '^ORGANIZATION_HIRING_E2E_REPUBLISH_VERIFIED=true$' <<<"$OUTPUT"
+
+      - name: Apply to republished job through live candidate UI
+        if: steps.action.outputs.run_e2e == 'true'
+        env:
+          E2E_PHASE: candidate-apply
+        run: node scripts/aws/organization-hiring-staging-e2e.mjs
+
       - name: Verify candidate application and timeline through Aurora
         if: steps.action.outputs.run_e2e == 'true'
         env:
