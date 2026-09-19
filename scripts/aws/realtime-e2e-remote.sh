@@ -285,6 +285,22 @@ case "$PHASE" in
     echo "REALTIME_MESSAGE_DIAG_RECIPIENT_LAST_READ_AT=$RECIPIENT_LAST_READ_AT"
     echo "REALTIME_MESSAGE_DIAG_RECIPIENT_UNREAD_COUNT=$RECIPIENT_UNREAD_COUNT"
 
+    LATEST_MESSAGE_ROW=$(sql "SELECT id::text, created_at::text FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND deleted_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
+    LATEST_MESSAGE_ID=$(cut -f1 <<<"$LATEST_MESSAGE_ROW")
+    LATEST_MESSAGE_AT=$(cut -f2 <<<"$LATEST_MESSAGE_ROW")
+    echo "REALTIME_MESSAGE_DIAG_LATEST_MESSAGE_ID=$LATEST_MESSAGE_ID"
+    echo "REALTIME_MESSAGE_DIAG_LATEST_MESSAGE_AT=$LATEST_MESSAGE_AT"
+
+    if [[ -n "$LATEST_MESSAGE_ID" && "$RECIPIENT_LAST_READ_MESSAGE_ID" == "$LATEST_MESSAGE_ID" ]]; then
+      READ_CURSOR_MATCH_LATEST=true
+    else
+      READ_CURSOR_MATCH_LATEST=false
+    fi
+    echo "REALTIME_MESSAGE_DIAG_READ_CURSOR_MATCH_LATEST=$READ_CURSOR_MATCH_LATEST"
+
+    LAST_READ_EVENT_MESSAGE_ID=$(sql "SELECT coalesce(payload->>'lastReadMessageId','') FROM public.event_outbox WHERE event_type='conversation.read_cursor_advanced' AND payload->>'conversationId'='$CONVERSATION_ID' ORDER BY created_at DESC, id DESC LIMIT 1" | jq -r '.records[0][0].stringValue // empty')
+    echo "REALTIME_MESSAGE_DIAG_LAST_READ_EVENT_MESSAGE_ID=$LAST_READ_EVENT_MESSAGE_ID"
+
     MAIN_QUEUE=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events --query QueueUrl --output text)
     DLQ=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events-dlq --query QueueUrl --output text)
     MAIN_ATTR=$(aws sqs get-queue-attributes --region "$AWS_REGION" --queue-url "$MAIN_QUEUE" --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json)
