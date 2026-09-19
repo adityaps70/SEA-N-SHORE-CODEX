@@ -260,6 +260,8 @@ test('realtime messaging failure captures outbox worker and fanout diagnostics b
   assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_PUBLISHED=/)
   assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_RUNNING=/)
   assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_IMAGE=/)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_EVENT=/)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_IMAGE_AVAILABLE=/)
   assert.match(remote, /REALTIME_MESSAGE_DIAG_MAIN_QUEUE_VISIBLE=/)
   assert.match(remote, /REALTIME_MESSAGE_DIAG_DLQ_VISIBLE=/)
   assert.match(remote, /REALTIME_MESSAGE_DIAG_FANOUT_ERRORS=/)
