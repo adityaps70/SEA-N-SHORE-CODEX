@@ -198,6 +198,29 @@ describe('jobs hiring repository', () => {
     expect(seen[0]?.text).toContain('j.id = $3')
   })
 
+  it('loads archived vacancies for editing so recruiters can republish them', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createHiringRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          id: 'job-1', company_id: 'company-1', title: 'Chief Officer', status: 'closed', job_domain: 'sea', department: 'Deck',
+          rank: 'Chief Officer', vessel_types: ['Oil Tanker'], location: 'Worldwide', sailing_regions: ['Worldwide'],
+          summary: 'Opening', description: 'Lead deck team', requirements: 'Tanker experience', experience_min_years: '4',
+          experience_max_years: null, joining_from: null, joining_until: null, salary_min: '7800', salary_max: '8400',
+          salary_currency: 'USD', salary_period: 'month', urgent: false, easy_apply: true, apply_until: '2026-09-01',
+          certificates: ['STCW'], visas: ['US C1/D'],
+        }]
+      },
+    })
+
+    await expect(repository.getEditableJob('user-1', 'company-1', 'job-1')).resolves.toMatchObject({
+      id: 'job-1',
+      status: 'closed',
+    })
+    expect(seen[0]?.text).not.toContain("j.status <> 'closed'")
+  })
+
   it('updates a vacancy without allowing employer identity to move', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
@@ -213,6 +236,9 @@ describe('jobs hiring repository', () => {
     expect(update?.text).toContain('title = $2')
     expect(update?.text).not.toContain('company_id =')
     expect(update?.text).not.toContain('company_name =')
+    expect(update?.text).toContain("status <> 'published'")
+    expect(update?.text).toContain('then now()')
+    expect(update?.text).toContain("when $8 = 'published' and $7::date < current_date then null")
     expect(seen.some((entry) => entry.text.includes('delete from public.job_certificate_requirements'))).toBe(true)
     expect(seen.flatMap((entry) => entry.values ?? [])).toContain('Advanced Oil Tanker')
     expect(seen.some((entry) => entry.text.includes('delete from public.job_visa_requirements'))).toBe(true)
