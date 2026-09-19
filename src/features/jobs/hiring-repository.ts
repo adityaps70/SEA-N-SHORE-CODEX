@@ -55,12 +55,12 @@ export type HiringJobInput = {
   urgent: boolean
   easyApply: boolean
   applyUntil: string | null
-  status: 'draft' | 'published'
+  status: HiringJobStatus
   certificates: string[]
   visas: string[]
 }
 
-export type HiringJobUpdateInput = Omit<HiringJobInput, 'companyId'>
+export type HiringJobUpdateInput = Omit<HiringJobInput, 'companyId' | 'status'> & { status: HiringJobStatus }
 
 export type HiringJobSummary = {
   id: string
@@ -665,7 +665,6 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
          and cm.approved_at is not null
          and cm.role::text = any($4::text[])
          and c.is_verified = true
-         and j.status <> 'closed'
        limit 1`,
       [userId, companyId, jobId, [...HIRING_ROLES]],
     ) as EditableJobRow[]
@@ -747,7 +746,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
              summary = $4,
              description = $5,
              requirements = $6,
-             apply_until = $7,
+             apply_until = case when $8 = 'published' and $7::date < current_date then null else $7 end,
              status = $8,
              job_domain = $9,
              department = $10,
@@ -764,7 +763,10 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
              sailing_regions = $21::text[],
              urgent = $22,
              easy_apply = $23,
-             published_at = case when $8 = 'published' then coalesce(published_at, now()) else published_at end,
+             published_at = case
+               when $8 = 'published' and (status <> 'published' or published_at is null) then now()
+               else published_at
+             end,
              updated_at = now()
          where id = $1`,
         [
