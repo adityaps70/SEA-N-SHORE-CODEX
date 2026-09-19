@@ -42,10 +42,9 @@ export function getMessagingUnreadCountSnapshot() {
 
 export function createMessagingUnreadCountView(initialCount: number) {
   const serverCount = normalizeUnreadCount(initialCount)
-  const baselineRevision = unreadSnapshot.revision
 
   return () => (
-    unreadSnapshot.revision > baselineRevision
+    unreadSnapshot.revision > 0
       ? unreadSnapshot.count
       : serverCount
   )
