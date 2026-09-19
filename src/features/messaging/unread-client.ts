@@ -40,6 +40,15 @@ export function getMessagingUnreadCountSnapshot() {
   return unreadSnapshot
 }
 
+export function resetMessagingUnreadCountSnapshotForTests() {
+  if (process.env.NODE_ENV !== 'test') return
+
+  unreadSnapshot = {
+    count: 0,
+    revision: 0,
+  }
+}
+
 export function createMessagingUnreadCountView(initialCount: number) {
   const serverCount = normalizeUnreadCount(initialCount)
 
