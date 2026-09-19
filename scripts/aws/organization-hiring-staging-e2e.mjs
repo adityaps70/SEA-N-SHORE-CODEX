@@ -293,7 +293,7 @@ async function verifyExpiredPublishedJobVisible() {
   const page = await context.newPage()
   await signInCompleted(page, users.unauthorized)
   await page.goto(`${siteUrl}/jobs`, { waitUntil: 'networkidle' })
-  await expect(page.getByRole('search')).toBeVisible()
+  await expect(page.locator('form[role="search"][action="/jobs"]')).toBeVisible()
   await expect(page.getByPlaceholder('Position, rank, company or keyword')).toBeVisible()
   console.log('ORGANIZATION_HIRING_E2E_JOBS_DISCOVERY_RENDERED=true')
 
