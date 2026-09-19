@@ -112,6 +112,10 @@ jobs:
       ECS_SERVICE: ${{ vars.ECS_SERVICE }}
       ECS_TASK_DEFINITION: ${{ vars.ECS_TASK_DEFINITION }}
       ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
+      OUTBOX_WORKER_SERVICE: sea-n-shore-staging-outbox-worker
+      NOTIFICATION_WORKER_SERVICE: sea-n-shore-staging-notification-worker
+      OUTBOX_WORKER_TASK_DEFINITION: sea-n-shore-staging-outbox-worker
+      NOTIFICATION_WORKER_TASK_DEFINITION: sea-n-shore-staging-notification-worker
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
       SERVER_ACTION_ALLOWED_ORIGINS: https://d3prih0q6jofyr.cloudfront.net
       AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "true"
@@ -317,6 +321,135 @@ jobs:
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
+
+      - name: Promote event worker task definitions
+        if: env.DEPLOY_TO_ECS == 'true'
+        env:
+          WORKER_EXPECTED_IMAGE_URI: ${{ steps.image.outputs.uri }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          promote_worker() {
+            local family="$1"
+            local container_name="$2"
+            local output_name="$3"
+            local current_file="/tmp/${container_name}-current.json"
+            local next_file="/tmp/${container_name}-next.json"
+
+            aws ecs describe-task-definition \
+              --task-definition "$family" \
+              --query taskDefinition \
+              --output json > "$current_file"
+
+            jq \
+              --arg IMAGE "$WORKER_EXPECTED_IMAGE_URI" \
+              --arg NAME "$container_name" \
+              '
+              del(
+                .taskDefinitionArn,
+                .revision,
+                .status,
+                .requiresAttributes,
+                .compatibilities,
+                .registeredAt,
+                .registeredBy
+              )
+              | .containerDefinitions |= map(
+                  if .name == $NAME then .image = $IMAGE else . end
+                )
+              ' "$current_file" > "$next_file"
+
+            local task_arn
+            task_arn=$(aws ecs register-task-definition \
+              --cli-input-json "file://$next_file" \
+              --query 'taskDefinition.taskDefinitionArn' \
+              --output text)
+
+            [[ "$task_arn" == arn:aws:ecs:*:310356785722:task-definition/"$family":* ]]
+            echo "$output_name=$task_arn" >> "$GITHUB_ENV"
+          }
+
+          promote_worker "$OUTBOX_WORKER_TASK_DEFINITION" "outbox-worker" "OUTBOX_WORKER_TASK_ARN"
+          promote_worker "$NOTIFICATION_WORKER_TASK_DEFINITION" "notification-worker" "NOTIFICATION_WORKER_TASK_ARN"
+
+      - name: Deploy event workers and wait for stability
+        if: env.DEPLOY_TO_ECS == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$OUTBOX_WORKER_SERVICE" \
+            --task-definition "$OUTBOX_WORKER_TASK_ARN" \
+            --force-new-deployment > /dev/null
+
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$NOTIFICATION_WORKER_SERVICE" \
+            --task-definition "$NOTIFICATION_WORKER_TASK_ARN" \
+            --force-new-deployment > /dev/null
+
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$OUTBOX_WORKER_SERVICE" "$NOTIFICATION_WORKER_SERVICE"
+
+      - name: Verify exact event worker deployments
+        if: env.DEPLOY_TO_ECS == 'true'
+        env:
+          WORKER_EXPECTED_IMAGE_URI: ${{ steps.image.outputs.uri }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_worker() {
+            local service="$1"
+            local task_arn="$2"
+            local container_name="$3"
+
+            for attempt in $(seq 1 30); do
+              SERVICE_JSON=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$service" --output json)
+              FAILURE_COUNT=$(jq '.failures | length' <<<"$SERVICE_JSON")
+              [[ "$FAILURE_COUNT" -eq 0 ]]
+
+              CURRENT_TASK_ARN=$(jq -r '.services[0].taskDefinition' <<<"$SERVICE_JSON")
+              DESIRED_COUNT=$(jq -r '.services[0].desiredCount' <<<"$SERVICE_JSON")
+              RUNNING_COUNT=$(jq -r '.services[0].runningCount' <<<"$SERVICE_JSON")
+              PENDING_COUNT=$(jq -r '.services[0].pendingCount' <<<"$SERVICE_JSON")
+              DEPLOYMENT_COUNT=$(jq '.services[0].deployments | length' <<<"$SERVICE_JSON")
+              PRIMARY_TASK_ARN=$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].taskDefinition // empty' <<<"$SERVICE_JSON")
+              PRIMARY_ROLLOUT_STATE=$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].rolloutState // empty' <<<"$SERVICE_JSON")
+              PRIMARY_FAILED_TASKS=$(jq -r '[.services[0].deployments[] | select(.status == "PRIMARY")][0].failedTasks // -1' <<<"$SERVICE_JSON")
+
+              echo "worker ECS state service=$service attempt=$attempt rolloutState=${PRIMARY_ROLLOUT_STATE:-missing} deployments=$DEPLOYMENT_COUNT counts=$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT"
+
+              if [[ "$CURRENT_TASK_ARN" == "$task_arn" \
+                && "$DESIRED_COUNT" -eq 1 \
+                && "$RUNNING_COUNT" -eq 1 \
+                && "$PENDING_COUNT" -eq 0 \
+                && "$DEPLOYMENT_COUNT" -eq 1 \
+                && "$PRIMARY_TASK_ARN" == "$task_arn" \
+                && "$PRIMARY_ROLLOUT_STATE" == "COMPLETED" \
+                && "$PRIMARY_FAILED_TASKS" -eq 0 ]]; then
+                break
+              fi
+
+              if [[ "$attempt" -eq 30 ]]; then
+                echo "Timed out waiting for exact worker ECS deployment completion: $service" >&2
+                exit 1
+              fi
+              sleep 5
+            done
+
+            TASK_DEF_JSON=$(aws ecs describe-task-definition --task-definition "$task_arn" --query taskDefinition --output json)
+            TASK_DEF_IMAGE=$(jq -r --arg NAME "$container_name" '.containerDefinitions[] | select(.name == $NAME) | .image // empty' <<<"$TASK_DEF_JSON")
+            [[ "$TASK_DEF_IMAGE" == "$WORKER_EXPECTED_IMAGE_URI" ]]
+            echo "EVENT_WORKER_DEPLOYMENT_VERIFIED=$service|$task_arn|$TASK_DEF_IMAGE"
+          }
+
+          verify_worker "$OUTBOX_WORKER_SERVICE" "$OUTBOX_WORKER_TASK_ARN" "outbox-worker"
+          verify_worker "$NOTIFICATION_WORKER_SERVICE" "$NOTIFICATION_WORKER_TASK_ARN" "notification-worker"
 
       - name: Verify exact ECS deployment
         if: env.DEPLOY_TO_ECS == 'true'
