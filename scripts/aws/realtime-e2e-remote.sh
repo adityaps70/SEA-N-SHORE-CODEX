@@ -255,6 +255,19 @@ case "$PHASE" in
     echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_PENDING=$WORKER_PENDING"
     echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_TASK=$WORKER_TASK_ARN"
     echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_IMAGE=$WORKER_IMAGE"
+    WORKER_EVENT=$(jq -r '.services[0].events[0].message // "none"' <<<"$WORKER_SERVICE" | tr '\n\r\t' '   ')
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_EVENT=$WORKER_EVENT"
+    WORKER_TAG="${WORKER_IMAGE##*:}"
+    set +e
+    WORKER_IMAGE_LOOKUP=$(aws ecr batch-get-image --region "$AWS_REGION" --repository-name sea-n-shore --image-ids imageTag="$WORKER_TAG" --output json 2>/dev/null)
+    WORKER_IMAGE_LOOKUP_STATUS=$?
+    set -e
+    if [[ "$WORKER_IMAGE_LOOKUP_STATUS" -eq 0 ]]; then
+      WORKER_IMAGE_AVAILABLE=$(jq -r 'if (.images | length) > 0 then "true" else "false" end' <<<"$WORKER_IMAGE_LOOKUP")
+    else
+      WORKER_IMAGE_AVAILABLE=unknown
+    fi
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_IMAGE_AVAILABLE=$WORKER_IMAGE_AVAILABLE"
 
     TABLE='sea-n-shore-staging-realtime-connections'
     SENDER_PID=$(sql "SELECT profile_id::text FROM public.identity_accounts WHERE provider='cognito' AND email='$SENDER'" | jq -r '.records[0][0].stringValue // empty')
