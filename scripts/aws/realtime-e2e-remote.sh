@@ -87,15 +87,17 @@ case "$PHASE" in
   verify-durable)
     resolve_conversation
     [[ -n "$MESSAGE_BODY" && -n "$INJECTED_BODY" ]]
-    ROW=$(sql "SELECT (SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$MESSAGE_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$INJECTED_BODY')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='message.created' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='conversation.read_cursor_advanced' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE payload::text LIKE '%' || '$MESSAGE_BODY' || '%')::text,(SELECT count(*) FROM public.conversation_participants cp JOIN public.messages m ON m.id=cp.last_read_message_id WHERE cp.conversation_id='$CONVERSATION_ID'::uuid AND cp.profile_id=($recipient_id_sql) AND m.conversation_id='$CONVERSATION_ID'::uuid AND m.body='$MESSAGE_BODY')::text" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
+    FOLLOWUP_BODY="$MESSAGE_BODY live follow-up"
+    ROW=$(sql "SELECT (SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$MESSAGE_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$FOLLOWUP_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$INJECTED_BODY')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='message.created' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='conversation.read_cursor_advanced' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE payload::text LIKE '%' || '$MESSAGE_BODY' || '%' OR payload::text LIKE '%' || '$FOLLOWUP_BODY' || '%')::text,(SELECT count(*) FROM public.conversation_participants cp JOIN public.messages m ON m.id=cp.last_read_message_id WHERE cp.conversation_id='$CONVERSATION_ID'::uuid AND cp.profile_id=($recipient_id_sql) AND m.conversation_id='$CONVERSATION_ID'::uuid AND m.body='$FOLLOWUP_BODY')::text" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
     MSG_COUNT=$(cut -f1 <<<"$ROW")
-    INJECTED_COUNT=$(cut -f2 <<<"$ROW")
-    CREATED_COUNT=$(cut -f3 <<<"$ROW")
-    READ_COUNT=$(cut -f4 <<<"$ROW")
-    LEAK_COUNT=$(cut -f5 <<<"$ROW")
-    READ_CURSOR_MATCH=$(cut -f6 <<<"$ROW")
-    [[ "$MSG_COUNT" == 1 && "$INJECTED_COUNT" == 0 ]]
-    [[ "$CREATED_COUNT" -ge 1 && "$READ_COUNT" -ge 1 ]]
+    FOLLOWUP_COUNT=$(cut -f2 <<<"$ROW")
+    INJECTED_COUNT=$(cut -f3 <<<"$ROW")
+    CREATED_COUNT=$(cut -f4 <<<"$ROW")
+    READ_COUNT=$(cut -f5 <<<"$ROW")
+    LEAK_COUNT=$(cut -f6 <<<"$ROW")
+    READ_CURSOR_MATCH=$(cut -f7 <<<"$ROW")
+    [[ "$MSG_COUNT" == 1 && "$FOLLOWUP_COUNT" == 1 && "$INJECTED_COUNT" == 0 ]]
+    [[ "$CREATED_COUNT" -ge 2 && "$READ_COUNT" -ge 2 ]]
     [[ "$READ_CURSOR_MATCH" == 1 ]]
     [[ "$LEAK_COUNT" == 0 ]]
     echo 'REALTIME_E2E_DURABLE_READ_CURSOR_VERIFIED=true'
