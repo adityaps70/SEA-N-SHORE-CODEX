@@ -5,7 +5,10 @@ import { useEffect, useRef, useState } from 'react'
 import type { NetworkProfile } from '@/features/network/types'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
-import { publishMessagingUnreadCount } from '../unread-client'
+import {
+  getMessagingUnreadCountSnapshot,
+  publishMessagingUnreadCount,
+} from '../unread-client'
 import {
   fetchConversationCatchUp,
   laterReadCursor,
@@ -205,6 +208,7 @@ export function MessageShell({
         do {
           inboxRefreshPendingRef.current = false
           try {
+            const unreadRevisionAtStart = getMessagingUnreadCountSnapshot().revision
             const response = await fetch('/api/realtime/messaging-state', {
               method: 'GET',
               cache: 'no-store',
@@ -220,6 +224,11 @@ export function MessageShell({
             }
 
             if (!cancelled) {
+              if (getMessagingUnreadCountSnapshot().revision !== unreadRevisionAtStart) {
+                inboxRefreshPendingRef.current = true
+                continue
+              }
+
               setRealtimeInbox(payload.inbox as MessagingInboxItem[])
               publishMessagingUnreadCount(payload.unreadCount)
             }
@@ -233,15 +242,24 @@ export function MessageShell({
     }
 
     const unsubscribe = subscribe((signal) => {
-      if (signal.eventType !== 'message.created') return
-      void reconcileMessagingState()
+      if (signal.eventType === 'message.created') {
+        void reconcileMessagingState()
+        return
+      }
+
+      if (
+        signal.eventType === 'conversation.read_cursor_advanced'
+        && signal.payload.readerProfileId === viewerId
+      ) {
+        void reconcileMessagingState()
+      }
     })
 
     return () => {
       cancelled = true
       unsubscribe()
     }
-  }, [subscribe])
+  }, [subscribe, viewerId])
 
   return (
     <div className="space-y-4">
