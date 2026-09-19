@@ -85,6 +85,29 @@ describe('active messaging realtime helpers', () => {
     })
   })
 
+  it('can fetch the first canonical message when an active conversation has no prior cursor', async () => {
+    const first = canonical({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      clientMessageId: 'aaaaaaaa-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      createdAt: '2026-09-13T10:00:00.000Z',
+      body: 'First live message',
+    })
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({
+      messages: [first],
+      nextCursor: null,
+    }), { status: 200 }))
+
+    await expect(fetchConversationCatchUp(CONVERSATION_ID, null, fetchFn)).resolves.toEqual([first])
+    expect(fetchFn).toHaveBeenCalledWith('/api/realtime/catch-up', expect.objectContaining({
+      method: 'POST',
+      cache: 'no-store',
+      body: JSON.stringify({
+        conversationId: CONVERSATION_ID,
+        limit: 100,
+      }),
+    }))
+  })
+
   it('fetches all canonical catch-up pages and prevents a repeated-cursor loop', async () => {
     const first = canonical({
       id: '66666666-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
