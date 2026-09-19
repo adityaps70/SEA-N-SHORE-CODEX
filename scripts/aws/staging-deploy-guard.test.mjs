@@ -88,3 +88,22 @@ test('one-shot staging deploy applies and verifies only the restricted browser P
   assert.doesNotMatch(workflow, /"AllowedOrigins":\["\*"\]/)
   assert.doesNotMatch(workflow, /"AllowedHeaders":\["\*"\]/)
 })
+
+
+test('staging deploy promotes realtime event workers to the same immutable image as web', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /OUTBOX_WORKER_SERVICE/)
+  assert.match(workflow, /NOTIFICATION_WORKER_SERVICE/)
+  assert.match(workflow, /OUTBOX_WORKER_TASK_DEFINITION/)
+  assert.match(workflow, /NOTIFICATION_WORKER_TASK_DEFINITION/)
+  assert.match(workflow, /Promote event worker task definitions/)
+  assert.match(workflow, /Deploy event workers and wait for stability/)
+  assert.match(workflow, /Verify exact event worker deployments/)
+  assert.match(workflow, /steps\.image\.outputs\.uri/)
+  assert.match(workflow, /outbox-worker/)
+  assert.match(workflow, /notification-worker/)
+  assert.match(workflow, /EXPECTED_IMAGE_URI/)
+  assert.match(workflow, /rolloutState/)
+  assert.match(workflow, /COMPLETED/)
+})
