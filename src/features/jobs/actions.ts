@@ -56,6 +56,10 @@ export async function applyToJob(jobId: string): Promise<ApplyToJobResult> {
   const job = await jobsRepository.getPublishedJob(parsed.data)
   if (!job) return { ok: false, error: 'This job is no longer accepting applications.' }
 
+  if (!await jobsRepository.isAcceptingApplications(parsed.data)) {
+    return { ok: false, error: 'This job is no longer accepting applications.' }
+  }
+
   if (await jobsRepository.hasApplied(parsed.data, user.id)) {
     return { ok: true, alreadyApplied: true }
   }
