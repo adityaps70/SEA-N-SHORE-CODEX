@@ -25,9 +25,12 @@ describe('messaging durable read cursor ordering', () => {
 
     const [sql] = firstCall(query)
     const text = sql.toLowerCase()
-    expect(text).toContain('last_read_at < $4::timestamptz')
-    expect(text).toContain('last_read_at = $4::timestamptz')
-    expect(text).toContain('last_read_message_id < $3::uuid')
+    expect(text).toContain('from public.messages target')
+    expect(text).toContain('last_read_at = target.created_at')
+    expect(text).toContain('current_cursor.created_at < target.created_at')
+    expect(text).toContain('current_cursor.created_at = target.created_at')
+    expect(text).toContain('current_cursor.id < target.id')
+    expect(text).not.toContain('$4::timestamptz')
   })
 
   it('exposes the peer read cursor alongside incoming-only unread state', async () => {
@@ -56,8 +59,10 @@ describe('messaging durable read cursor ordering', () => {
     expect(text).toContain('from public.messages unread_message')
     expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
     expect(text).toContain('unread_message.deleted_at is null')
-    expect(text).toContain('unread_message.created_at = mine.last_read_at')
-    expect(text).toContain('unread_message.id > mine.last_read_message_id')
+    expect(text).toContain('left join public.messages read_cursor')
+    expect(text).toContain('unread_message.created_at = read_cursor.created_at')
+    expect(text).toContain('unread_message.id > read_cursor.id')
+    expect(text).not.toContain('unread_message.created_at = mine.last_read_at')
   })
 
   it('counts every unread incoming message after the durable cursor, not unread conversations', async () => {
@@ -73,8 +78,10 @@ describe('messaging durable read cursor ordering', () => {
     expect(text).toContain('join public.conversation_participants mine')
     expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
     expect(text).toContain('unread_message.deleted_at is null')
-    expect(text).toContain('unread_message.created_at = mine.last_read_at')
-    expect(text).toContain('unread_message.id > mine.last_read_message_id')
+    expect(text).toContain('left join public.messages read_cursor')
+    expect(text).toContain('unread_message.created_at = read_cursor.created_at')
+    expect(text).toContain('unread_message.id > read_cursor.id')
+    expect(text).not.toContain('unread_message.created_at = mine.last_read_at')
     expect(text).not.toContain('exists (')
   })
 })
