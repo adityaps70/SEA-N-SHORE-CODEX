@@ -444,6 +444,7 @@ describe('MessageShell active realtime reconciliation', () => {
       },
     }))
     expect(screen.getByTestId('peer-cursor')).toHaveTextContent(newerReadId)
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   it('merges refreshed server props so the first incoming canonical message works without an after cursor', async () => {
