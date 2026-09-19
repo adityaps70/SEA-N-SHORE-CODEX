@@ -154,7 +154,7 @@ type EditableJobRow = QueryResultRow & {
   id: string
   company_id: string
   title: string
-  status: 'draft' | 'published'
+  status: HiringJobStatus
   job_domain: string | null
   department: string | null
   rank: string | null
@@ -166,15 +166,15 @@ type EditableJobRow = QueryResultRow & {
   requirements: string | null
   experience_min_years: string | number | null
   experience_max_years: string | number | null
-  joining_from: string | null
-  joining_until: string | null
+  joining_from: string | Date | null
+  joining_until: string | Date | null
   salary_min: string | number | null
   salary_max: string | number | null
   salary_currency: string | null
   salary_period: string | null
   urgent: boolean | null
   easy_apply: boolean | null
-  apply_until: string | null
+  apply_until: string | Date | null
   certificates: string[] | null
   visas: string[] | null
 }
@@ -367,6 +367,16 @@ function cleanRequirements(values: readonly string[]) {
   return [...new Set(values.map((item) => item.trim()).filter(Boolean))]
 }
 
+function dateInputValue(value: string | Date | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10)
+  }
+  const normalized = value.trim()
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2})/)
+  return match?.[1] ?? null
+}
+
 function mapEditableJob(row: EditableJobRow): HiringEditableJob {
   return {
     id: row.id,
@@ -383,15 +393,15 @@ function mapEditableJob(row: EditableJobRow): HiringEditableJob {
     requirements: row.requirements ?? null,
     experienceMinYears: numberOrNull(row.experience_min_years),
     experienceMaxYears: numberOrNull(row.experience_max_years),
-    joiningFrom: row.joining_from ?? null,
-    joiningUntil: row.joining_until ?? null,
+    joiningFrom: dateInputValue(row.joining_from),
+    joiningUntil: dateInputValue(row.joining_until),
     salaryMin: numberOrNull(row.salary_min),
     salaryMax: numberOrNull(row.salary_max),
     salaryCurrency: row.salary_currency ?? null,
     salaryPeriod: salaryPeriod(row.salary_period),
     urgent: Boolean(row.urgent),
     easyApply: row.easy_apply !== false,
-    applyUntil: row.apply_until ?? null,
+    applyUntil: dateInputValue(row.apply_until),
     status: row.status,
     certificates: Array.isArray(row.certificates) ? row.certificates : [],
     visas: Array.isArray(row.visas) ? row.visas : [],
