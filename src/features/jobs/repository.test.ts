@@ -3,16 +3,38 @@ import { parseJobSearchParams } from './search'
 import { createJobsRepository } from './repository'
 
 describe('jobs repository', () => {
-  it('lists only published and unexpired jobs newest first', async () => {
+  it('lists every published job even when its application deadline has passed', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [] } })
 
     await repository.listPublishedJobs(20)
 
     expect(seen[0]?.text).toContain("j.status = 'published'")
-    expect(seen[0]?.text).toContain('(j.apply_until is null or j.apply_until >= current_date)')
+    expect(seen[0]?.text).not.toContain('(j.apply_until is null or j.apply_until >= current_date)')
     expect(seen[0]?.text).toContain('order by j.created_at desc, j.id desc')
     expect(seen[0]?.values).toEqual([20])
+  })
+
+  it('keeps published jobs discoverable while checking application eligibility separately', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('select exists')) return [{ accepting: false }]
+        return []
+      },
+    })
+
+    await repository.searchJobs(parseJobSearchParams({ mode: 'for-you' }), 60, 0)
+    await repository.getPublishedJob('job-1')
+    await expect(repository.isAcceptingApplications('job-1')).resolves.toBe(false)
+
+    expect(seen[0]?.text).toContain("j.status = 'published'")
+    expect(seen[0]?.text).not.toContain('j.apply_until is null')
+    expect(seen[1]?.text).toContain("j.status = 'published'")
+    expect(seen[1]?.text).not.toContain('j.apply_until is null')
+    expect(seen[2]?.text).toContain("j.status = 'published'")
+    expect(seen[2]?.text).toContain('(j.apply_until is null or j.apply_until >= current_date)')
   })
 
   it('builds structured PostgreSQL discovery filters and maps maritime job intelligence', async () => {
