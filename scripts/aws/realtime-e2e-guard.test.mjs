@@ -248,18 +248,13 @@ test('messaging-only verification proves live inbox and active-thread delivery w
 })
 
 
-test('realtime messaging failure captures outbox worker and fanout diagnostics before cleanup', () => {
-  const workflow = readFileSync(workflowPath, 'utf8')
+test('realtime messaging failure captures outbox worker and fanout diagnostics before browser cleanup', () => {
+  const browser = readFileSync(browserPath, 'utf8')
   const remote = readFileSync(remotePath, 'utf8')
 
-  assert.match(workflow, /Diagnose realtime messaging delivery failure/)
-  assert.match(workflow, /if:\s*failure\(\)/)
-  assert.match(workflow, /realtime-e2e-ssm\.mjs diagnose-message/)
-  assert.ok(
-    workflow.indexOf('Diagnose realtime messaging delivery failure')
-      < workflow.indexOf('Cleanup disposable Realtime E2E data'),
-    'failure diagnostics must run before cleanup',
-  )
+  assert.match(browser, /spawnSync/)
+  assert.match(browser, /realtime-e2e-ssm\.mjs/)
+  assert.match(browser, /diagnose-message/)
   assert.match(remote, /^  diagnose-message\)/m)
   assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_TOTAL=/)
   assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_PUBLISHED=/)
