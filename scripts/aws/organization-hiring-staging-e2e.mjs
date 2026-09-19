@@ -297,8 +297,9 @@ async function verifyExpiredPublishedJobVisible() {
   await expect(jobLink).toBeVisible()
   const applyButton = page.getByRole('button', { name: 'Easy Apply' })
   await expect(applyButton).toBeVisible()
+  const applyError = applyButton.locator('xpath=..').locator('p[role="alert"]')
   await applyButton.click()
-  await expect(page.getByRole('alert')).toHaveText('This job is no longer accepting applications.', { timeout: 20_000 })
+  await expect(applyError).toHaveText('This job is no longer accepting applications.', { timeout: 20_000 })
   console.log('ORGANIZATION_HIRING_E2E_EXPIRED_PUBLISHED_VISIBLE=true')
   await context.close()
 }
