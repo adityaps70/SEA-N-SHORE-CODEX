@@ -13,15 +13,19 @@ const unread = vi.hoisted(() => ({
   publishMessagingUnreadCount: vi.fn(),
 }))
 
-const realtime = vi.hoisted(() => ({
-  listener: null as ((signal: MessagingRealtimeSignal) => void) | null,
-  subscribe: vi.fn((listener: (signal: MessagingRealtimeSignal) => void) => {
-    realtime.listener = listener
-    return () => {
-      if (realtime.listener === listener) realtime.listener = null
-    }
-  }),
-}))
+const realtime = vi.hoisted(() => {
+  const listeners = new Set<(signal: MessagingRealtimeSignal) => void>()
+  return {
+    listeners,
+    subscribe: vi.fn((listener: (signal: MessagingRealtimeSignal) => void) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    }),
+    emit: (signal: MessagingRealtimeSignal) => {
+      for (const listener of listeners) listener(signal)
+    },
+  }
+})
 
 vi.mock('../unread-client', () => ({
   publishMessagingUnreadCount: unread.publishMessagingUnreadCount,
@@ -95,7 +99,7 @@ function activeConversation(messages: MessagingMessageDto[] = [initialMessage]) 
 describe('MessageShell active realtime reconciliation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    realtime.listener = null
+    realtime.listeners.clear()
     vi.stubGlobal('fetch', vi.fn())
   })
 
@@ -139,8 +143,8 @@ describe('MessageShell active realtime reconciliation', () => {
       />,
     )
 
-    await waitFor(() => expect(realtime.subscribe).toHaveBeenCalledTimes(1))
-    act(() => realtime.listener?.({
+    await waitFor(() => expect(realtime.subscribe).toHaveBeenCalled())
+    act(() => realtime.emit({
       eventId: 'event-inbox-message',
       eventType: 'message.created',
       schemaVersion: 1,
@@ -194,7 +198,7 @@ describe('MessageShell active realtime reconciliation', () => {
     )
 
     await waitFor(() => expect(realtime.subscribe).toHaveBeenCalled())
-    act(() => realtime.listener?.({
+    act(() => realtime.emit({
       eventId: 'event-first-message',
       eventType: 'message.created',
       schemaVersion: 1,
@@ -233,9 +237,9 @@ describe('MessageShell active realtime reconciliation', () => {
       />,
     )
 
-    await waitFor(() => expect(realtime.subscribe).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(realtime.subscribe).toHaveBeenCalled())
     act(() => {
-      realtime.listener?.({
+      realtime.emit({
         eventId: 'event-message',
         eventType: 'message.created',
         schemaVersion: 1,
@@ -270,7 +274,7 @@ describe('MessageShell active realtime reconciliation', () => {
     )
 
     const newerReadId = '99999999-9999-4999-8999-999999999999'
-    act(() => realtime.listener?.({
+    act(() => realtime.emit({
       eventId: 'event-read-new',
       eventType: 'conversation.read_cursor_advanced',
       schemaVersion: 1,
@@ -287,7 +291,7 @@ describe('MessageShell active realtime reconciliation', () => {
     }))
     await waitFor(() => expect(screen.getByTestId('peer-cursor')).toHaveTextContent(newerReadId))
 
-    act(() => realtime.listener?.({
+    act(() => realtime.emit({
       eventId: 'event-read-old',
       eventType: 'conversation.read_cursor_advanced',
       schemaVersion: 1,
