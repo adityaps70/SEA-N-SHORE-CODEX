@@ -7,7 +7,6 @@ const runId = process.env.GITHUB_RUN_ID
 const conversationId = process.env.E2E_CONVERSATION_ID
 const messageBody = process.env.E2E_MESSAGE_BODY
 const injectedBody = process.env.E2E_INJECTED_BODY
-const messagingOnly = process.env.E2E_MESSAGING_ONLY === 'true'
 const socialPostBody = process.env.E2E_SOCIAL_POST_BODY
 const socialCommentBody = process.env.E2E_SOCIAL_COMMENT_BODY
 const users = {
