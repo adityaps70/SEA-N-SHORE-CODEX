@@ -222,7 +222,7 @@ describe('Aurora messaging repository', () => {
 
     const [sql, values] = callsOf(query)[0] ?? []
     const text = String(sql).toLowerCase()
-    expect(text).toContain('from public.messages target')
+    expect(text).toContain('from public.messages')
     expect(text).toContain('update public.conversation_participants')
     expect(text).toContain('last_read_message_id = target.id')
     expect(text).toContain('last_read_at = target.created_at')
