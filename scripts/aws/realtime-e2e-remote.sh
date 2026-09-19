@@ -277,6 +277,14 @@ case "$PHASE" in
     echo "REALTIME_MESSAGE_DIAG_SENDER_CONNECTIONS=$SENDER_CONNECTIONS"
     echo "REALTIME_MESSAGE_DIAG_RECIPIENT_CONNECTIONS=$RECIPIENT_CONNECTIONS"
 
+    RECIPIENT_READ_ROW=$(sql "SELECT coalesce(cp.last_read_message_id::text,''), coalesce(cp.last_read_at::text,''), (SELECT count(*) FROM public.messages unread_message WHERE unread_message.conversation_id=cp.conversation_id AND unread_message.sender_profile_id<>cp.profile_id AND unread_message.deleted_at IS NULL AND (cp.last_read_at IS NULL OR unread_message.created_at>cp.last_read_at OR (unread_message.created_at=cp.last_read_at AND (cp.last_read_message_id IS NULL OR unread_message.id>cp.last_read_message_id))))::text FROM public.conversation_participants cp WHERE cp.conversation_id='$CONVERSATION_ID'::uuid AND cp.profile_id='$RECIPIENT_PID'::uuid LIMIT 1" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
+    RECIPIENT_LAST_READ_MESSAGE_ID=$(cut -f1 <<<"$RECIPIENT_READ_ROW")
+    RECIPIENT_LAST_READ_AT=$(cut -f2 <<<"$RECIPIENT_READ_ROW")
+    RECIPIENT_UNREAD_COUNT=$(cut -f3 <<<"$RECIPIENT_READ_ROW")
+    echo "REALTIME_MESSAGE_DIAG_RECIPIENT_LAST_READ_MESSAGE_ID=$RECIPIENT_LAST_READ_MESSAGE_ID"
+    echo "REALTIME_MESSAGE_DIAG_RECIPIENT_LAST_READ_AT=$RECIPIENT_LAST_READ_AT"
+    echo "REALTIME_MESSAGE_DIAG_RECIPIENT_UNREAD_COUNT=$RECIPIENT_UNREAD_COUNT"
+
     MAIN_QUEUE=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events --query QueueUrl --output text)
     DLQ=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events-dlq --query QueueUrl --output text)
     MAIN_ATTR=$(aws sqs get-queue-attributes --region "$AWS_REGION" --queue-url "$MAIN_QUEUE" --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json)
