@@ -59,7 +59,7 @@ function buildInput(formData: FormData): HiringJobUpdateInput {
     urgent: formData.get('urgent') === 'on',
     easyApply: formData.get('easyApply') === 'on',
     applyUntil: nullableText(formData, 'applyUntil'),
-    status: statusValue === 'published' ? 'published' : 'draft',
+    status: statusValue === 'published' ? 'published' : statusValue === 'closed' ? 'closed' : 'draft',
     certificates: csv(formData, 'certificates'),
     visas: csv(formData, 'visas'),
   }
@@ -263,6 +263,7 @@ export function HiringJobForm(props: HiringJobFormProps) {
                 <select className={`${inputClass} min-h-10 w-auto`} name="status" defaultValue={initial?.status ?? 'draft'}>
                   <option value="draft">Draft</option>
                   <option value="published">Published</option>
+                  {props.mode === 'edit' ? <option value="closed">Archived</option> : null}
                 </select>
               </label>
             </div>
