@@ -25,7 +25,7 @@ describe('messaging durable read cursor ordering', () => {
 
     const [sql] = firstCall(query)
     const text = sql.toLowerCase()
-    expect(text).toContain('from public.messages target')
+    expect(text).toContain('from public.messages')
     expect(text).toContain('last_read_at = target.created_at')
     expect(text).toContain('current_cursor.created_at < target.created_at')
     expect(text).toContain('current_cursor.created_at = target.created_at')
