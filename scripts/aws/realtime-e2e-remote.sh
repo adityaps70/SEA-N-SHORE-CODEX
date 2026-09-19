@@ -226,6 +226,60 @@ case "$PHASE" in
     done
     echo 'REALTIME_E2E_CLEANUP_VERIFIED=true'
     ;;
+  diagnose-message)
+    resolve_conversation
+    [[ -n "$MESSAGE_BODY" ]]
+    ROW=$(sql "SELECT (SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$MESSAGE_BODY')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='message.created' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='message.created' AND payload->>'conversationId'='$CONVERSATION_ID' AND published_at IS NOT NULL)::text,(SELECT coalesce(max(attempts),0) FROM public.event_outbox WHERE event_type='message.created' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='message.created' AND payload->>'conversationId'='$CONVERSATION_ID' AND last_error IS NOT NULL)::text" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
+    MSG_COUNT=$(cut -f1 <<<"$ROW")
+    OUTBOX_TOTAL=$(cut -f2 <<<"$ROW")
+    OUTBOX_PUBLISHED=$(cut -f3 <<<"$ROW")
+    OUTBOX_ATTEMPTS=$(cut -f4 <<<"$ROW")
+    OUTBOX_ERRORS=$(cut -f5 <<<"$ROW")
+    echo "REALTIME_MESSAGE_DIAG_MESSAGE_COUNT=$MSG_COUNT"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_TOTAL=$OUTBOX_TOTAL"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_PUBLISHED=$OUTBOX_PUBLISHED"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_ATTEMPTS=$OUTBOX_ATTEMPTS"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_ERRORS=$OUTBOX_ERRORS"
+
+    WORKER_SERVICE=$(aws ecs describe-services --region "$AWS_REGION" --cluster sea-n-shore-staging --services sea-n-shore-staging-outbox-worker --output json)
+    WORKER_FAILURES=$(jq '.failures | length' <<<"$WORKER_SERVICE")
+    WORKER_DESIRED=$(jq -r '.services[0].desiredCount // -1' <<<"$WORKER_SERVICE")
+    WORKER_RUNNING=$(jq -r '.services[0].runningCount // -1' <<<"$WORKER_SERVICE")
+    WORKER_PENDING=$(jq -r '.services[0].pendingCount // -1' <<<"$WORKER_SERVICE")
+    WORKER_TASK_ARN=$(jq -r '.services[0].taskDefinition // empty' <<<"$WORKER_SERVICE")
+    [[ "$WORKER_FAILURES" -eq 0 && -n "$WORKER_TASK_ARN" ]]
+    WORKER_TASK=$(aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$WORKER_TASK_ARN" --query taskDefinition --output json)
+    WORKER_IMAGE=$(jq -r '.containerDefinitions[] | select(.name == "outbox-worker") | .image // empty' <<<"$WORKER_TASK")
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_DESIRED=$WORKER_DESIRED"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_RUNNING=$WORKER_RUNNING"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_PENDING=$WORKER_PENDING"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_TASK=$WORKER_TASK_ARN"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_IMAGE=$WORKER_IMAGE"
+
+    MAIN_QUEUE=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events --query QueueUrl --output text)
+    DLQ=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events-dlq --query QueueUrl --output text)
+    MAIN_ATTR=$(aws sqs get-queue-attributes --region "$AWS_REGION" --queue-url "$MAIN_QUEUE" --attribute-names ApproximateNumberOfMessages ApproximateNumberOfMessagesNotVisible --output json)
+    MAIN_VISIBLE=$(jq -r '.Attributes.ApproximateNumberOfMessages // "0"' <<<"$MAIN_ATTR")
+    MAIN_NOT_VISIBLE=$(jq -r '.Attributes.ApproximateNumberOfMessagesNotVisible // "0"' <<<"$MAIN_ATTR")
+    DLQ_VISIBLE=$(aws sqs get-queue-attributes --region "$AWS_REGION" --queue-url "$DLQ" --attribute-names ApproximateNumberOfMessages --query 'Attributes.ApproximateNumberOfMessages' --output text)
+    echo "REALTIME_MESSAGE_DIAG_MAIN_QUEUE_VISIBLE=$MAIN_VISIBLE"
+    echo "REALTIME_MESSAGE_DIAG_MAIN_QUEUE_NOT_VISIBLE=$MAIN_NOT_VISIBLE"
+    echo "REALTIME_MESSAGE_DIAG_DLQ_VISIBLE=$DLQ_VISIBLE"
+
+    START=${RUN_STARTED_AT:-$(date -u -d '15 minutes ago' +%Y-%m-%dT%H:%M:%SZ)}
+    END=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    FANOUT_ERRORS=$(aws cloudwatch get-metric-statistics --region "$AWS_REGION" --namespace AWS/Lambda --metric-name Errors --dimensions Name=FunctionName,Value=sea-n-shore-staging-realtime-fanout --start-time "$START" --end-time "$END" --period 60 --statistics Sum --output json | jq '[.Datapoints[].Sum] | add // 0')
+    echo "REALTIME_MESSAGE_DIAG_FANOUT_ERRORS=$FANOUT_ERRORS"
+
+    START_MS="$(date -u -d "$START" +%s)000"
+    OUTBOX_BATCH_HITS=$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name /ecs/sea-n-shore-staging/outbox-worker --start-time "$START_MS" --filter-pattern '"[social_outbox_batch]"' --query 'events | length(@)' --output text || echo 0)
+    OUTBOX_ERROR_HITS=$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name /ecs/sea-n-shore-staging/outbox-worker --start-time "$START_MS" --filter-pattern '"[social_outbox_error]"' --query 'events | length(@)' --output text || echo 0)
+    FANOUT_ERROR_HITS=$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name /aws/lambda/sea-n-shore-staging-realtime-fanout --start-time "$START_MS" --filter-pattern '"[realtime_fanout_error]"' --query 'events | length(@)' --output text || echo 0)
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_BATCH_LOGS=$OUTBOX_BATCH_HITS"
+    echo "REALTIME_MESSAGE_DIAG_OUTBOX_ERROR_LOGS=$OUTBOX_ERROR_HITS"
+    echo "REALTIME_MESSAGE_DIAG_FANOUT_ERROR_LOGS=$FANOUT_ERROR_HITS"
+    echo 'REALTIME_E2E_MESSAGE_DIAGNOSTIC_VERIFIED=true'
+    ;;
   diagnose-connect)
     [[ "$DIAGNOSTIC_START_MS" =~ ^[0-9]{13}$ ]]
     [[ "$DIAGNOSTIC_END_MS" =~ ^[0-9]{13}$ ]]
