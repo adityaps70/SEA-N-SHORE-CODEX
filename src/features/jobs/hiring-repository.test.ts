@@ -198,6 +198,29 @@ describe('jobs hiring repository', () => {
     expect(seen[0]?.text).toContain('j.id = $3')
   })
 
+  it('normalizes database date values for editable date inputs', async () => {
+    const repository = createHiringRepository({
+      query: async () => [{
+        id: 'job-1', company_id: 'company-1', title: 'Chief Officer', status: 'published', job_domain: 'sea', department: 'Deck',
+        rank: 'Chief Officer', vessel_types: ['Oil Tanker'], location: 'Worldwide', sailing_regions: ['Worldwide'],
+        summary: 'Opening', description: 'Lead deck team', requirements: 'Tanker experience', experience_min_years: '4',
+        experience_max_years: null,
+        joining_from: new Date('2026-09-20T00:00:00.000Z'),
+        joining_until: '2026-09-30T00:00:00.000Z',
+        salary_min: '7800', salary_max: '8400', salary_currency: 'USD', salary_period: 'month',
+        urgent: false, easy_apply: true,
+        apply_until: new Date('2026-09-01T00:00:00.000Z'),
+        certificates: ['STCW'], visas: ['US C1/D'],
+      }],
+    })
+
+    await expect(repository.getEditableJob('user-1', 'company-1', 'job-1')).resolves.toMatchObject({
+      joiningFrom: '2026-09-20',
+      joiningUntil: '2026-09-30',
+      applyUntil: '2026-09-01',
+    })
+  })
+
   it('loads archived vacancies for editing so recruiters can republish them', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createHiringRepository({
