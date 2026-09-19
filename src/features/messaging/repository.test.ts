@@ -222,15 +222,16 @@ describe('Aurora messaging repository', () => {
 
     const [sql, values] = callsOf(query)[0] ?? []
     const text = String(sql).toLowerCase()
+    expect(text).toContain('from public.messages target')
     expect(text).toContain('update public.conversation_participants')
-    expect(text).toContain('last_read_message_id')
-    expect(text).toContain('last_read_at')
-    expect(text).toMatch(/last_read_at\s+is\s+null|coalesce/)
+    expect(text).toContain('last_read_message_id = target.id')
+    expect(text).toContain('last_read_at = target.created_at')
+    expect(text).toContain('current_cursor.created_at')
+    expect(text).not.toContain('$4::timestamptz')
     expect(values).toEqual([
       CONVERSATION_ID,
       VIEWER_ID,
       MESSAGE_ID,
-      '2026-09-13T00:01:00.000Z',
     ])
   })
 
