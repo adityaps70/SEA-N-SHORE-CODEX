@@ -258,7 +258,9 @@ resource "aws_iam_role_policy" "github_deploy" {
         Action = ["iam:PassRole"]
         Resource = [
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-ecs-execution",
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-ecs-task"
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-ecs-task",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-outbox-worker",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-notification-worker"
         ]
       },
       {
