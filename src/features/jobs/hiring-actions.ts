@@ -32,7 +32,7 @@ const jobFieldsSchema = z.object({
   urgent: z.boolean(),
   easyApply: z.boolean(),
   applyUntil: dateSchema,
-  status: z.enum(['draft', 'published']),
+  status: z.enum(['draft', 'published', 'closed']),
   certificates: z.array(z.string().trim().min(1).max(160)).max(50),
   visas: z.array(z.string().trim().min(1).max(160)).max(30),
 }).superRefine((value, context) => {
@@ -97,6 +97,7 @@ function refreshJobMutation(jobId: string) {
 export async function createHiringJob(input: HiringJobInput): Promise<HiringCreateResult> {
   const parsed = createJobSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  if (parsed.data.status === 'closed') return { ok: false, error: 'New jobs cannot be created as archived.' }
 
   try {
     const user = await requireAwsUser()
