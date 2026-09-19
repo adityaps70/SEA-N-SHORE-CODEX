@@ -65,6 +65,26 @@ test('run-once uses disposable authenticated users and the live organization app
   assert.match(browserScript, /cross-company edit route must return 404/)
 })
 
+
+test('organization hiring e2e proves expired published visibility and archived republish lifecycle', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const ssmHelper = readFileSync(ssmHelperPath, 'utf8')
+  const remote = readFileSync(remoteScriptPath, 'utf8')
+
+  assert.match(workflow, /candidate-expired-visibility/)
+  assert.match(workflow, /owner-republish/)
+  assert.match(workflow, /verify-republish/)
+  assert.match(browserScript, /ORGANIZATION_HIRING_E2E_EXPIRED_PUBLISHED_VISIBLE=true/)
+  assert.match(browserScript, /selectOption\('closed'\)/)
+  assert.match(browserScript, /ORGANIZATION_HIRING_E2E_ARCHIVE_REPUBLISH_UI_VERIFIED=true/)
+  assert.match(ssmHelper, /verify-republish/)
+  assert.match(remote, /verify-republish\)/)
+  assert.match(remote, /ORGANIZATION_HIRING_E2E_REPUBLISH_VERIFIED=true/)
+  assert.match(remote, /apply_until is null/i)
+  assert.match(remote, /published_at > created_at/i)
+})
+
 test('organization onboarding follows the production organization hiring redirect', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
   const organizationFlow = browserScript.match(/async function completeApplicantOrganisation[\s\S]*?\n}\n/)?.[0] ?? ''
