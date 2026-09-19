@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MESSAGING_UNREAD_COUNT_EVENT } from '@/features/messaging/unread-client'
+import { MESSAGING_UNREAD_COUNT_EVENT, resetMessagingUnreadCountSnapshotForTests } from '@/features/messaging/unread-client'
 import { AppHeader } from './app-header'
 import { MobileAppHeader } from './mobile-app-header'
 import { MobileNav } from './mobile-nav'
@@ -10,7 +10,10 @@ vi.mock('@/features/notifications/components/notification-bell', () => ({
 }))
 vi.mock('@/features/auth/actions', () => ({ signOut: vi.fn() }))
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  resetMessagingUnreadCountSnapshotForTests()
+})
 
 describe('messaging navigation', () => {
   it('adds Messages to the desktop primary navigation with the exact unread count', () => {
