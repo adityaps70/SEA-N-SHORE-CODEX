@@ -111,7 +111,7 @@ export function isMessageSeen(
 
 export async function fetchConversationCatchUp(
   conversationId: string,
-  after: MessagingReadCursor,
+  after: MessagingReadCursor | null,
   fetchFn: FetchLike = fetch,
 ) {
   const messages: MessagingMessageDto[] = []
@@ -124,7 +124,7 @@ export async function fetchConversationCatchUp(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         conversationId,
-        after: cursor,
+        ...(cursor ? { after: cursor } : {}),
         limit: 100,
       }),
     })
@@ -133,7 +133,7 @@ export async function fetchConversationCatchUp(
     const page = parseCatchUpResponse(await response.json())
     messages.push(...page.messages)
     if (!page.nextCursor) return messages
-    if (compareCursor(page.nextCursor, cursor) <= 0) {
+    if (cursor && compareCursor(page.nextCursor, cursor) <= 0) {
       throw new Error('messaging_catchup_cursor_did_not_advance')
     }
     cursor = page.nextCursor
