@@ -10,6 +10,10 @@ ACTION_FILE="scripts/aws/github-deploy-iam-action.txt"
 EXPECTED_SHA="${GITHUB_DEPLOY_IAM_EXPECTED_SHA:-}"
 MEDIA_BUCKET="sea-n-shore-staging-${EXPECTED_ACCOUNT}-media"
 MEDIA_BUCKET_ARN="arn:aws:s3:::${MEDIA_BUCKET}"
+ECS_EXECUTION_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-ecs-execution"
+ECS_TASK_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-ecs-task"
+OUTBOX_WORKER_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-outbox-worker"
+NOTIFICATION_WORKER_ROLE_ARN="arn:aws:iam::${EXPECTED_ACCOUNT}:role/sea-n-shore-staging-notification-worker"
 
 command -v aws >/dev/null 2>&1 || { echo "AWS CLI is required." >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "jq is required." >&2; exit 1; }
@@ -32,8 +36,8 @@ trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 CURRENT="$TMP_DIR/current-policy.json"
 DESIRED="$TMP_DIR/desired-policy.json"
 VERIFIED="$TMP_DIR/verified-policy.json"
-CURRENT_NON_CORS="$TMP_DIR/current-non-cors.json"
-VERIFIED_NON_CORS="$TMP_DIR/verified-non-cors.json"
+CURRENT_UNMANAGED="$TMP_DIR/current-unmanaged.json"
+VERIFIED_UNMANAGED="$TMP_DIR/verified-unmanaged.json"
 
 aws iam get-role-policy \
   --role-name "$ROLE_NAME" \
@@ -41,19 +45,31 @@ aws iam get-role-policy \
   --query PolicyDocument \
   --output json > "$CURRENT"
 
-jq --arg resource "$MEDIA_BUCKET_ARN" '
+PASS_ROLE_RESOURCES="$(jq -nc \
+  --arg execution "$ECS_EXECUTION_ROLE_ARN" \
+  --arg task "$ECS_TASK_ROLE_ARN" \
+  --arg outbox "$OUTBOX_WORKER_ROLE_ARN" \
+  --arg notifications "$NOTIFICATION_WORKER_ROLE_ARN" \
+  '[$execution,$task,$outbox,$notifications]')"
+
+jq --arg resource "$MEDIA_BUCKET_ARN" --argjson passRoles "$PASS_ROLE_RESOURCES" '
   .Statement = (
-    [.Statement[] | select(.Sid != "ManageStagingMediaCors")]
+    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles")]
     + [{
       Sid: "ManageStagingMediaCors",
       Effect: "Allow",
       Action: ["s3:PutBucketCORS", "s3:GetBucketCORS"],
       Resource: $resource
+    }, {
+      Sid: "PassEcsRoles",
+      Effect: "Allow",
+      Action: ["iam:PassRole"],
+      Resource: $passRoles
     }]
   )
 ' "$CURRENT" > "$DESIRED"
 
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors"))' "$CURRENT" > "$CURRENT_NON_CORS"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles"))' "$CURRENT" > "$CURRENT_UNMANAGED"
 
 verify_cors_statement() {
   local file="$1"
@@ -66,8 +82,20 @@ verify_cors_statement() {
   ' "$file" >/dev/null
 }
 
+verify_pass_role_statement() {
+  local file="$1"
+  jq -e --argjson resources "$PASS_ROLE_RESOURCES" '
+    [.Statement[] | select(.Sid == "PassEcsRoles")] as $matches
+    | ($matches | length) == 1
+    and $matches[0].Effect == "Allow"
+    and (($matches[0].Action | sort) == (["iam:PassRole"] | sort))
+    and (($matches[0].Resource | sort) == ($resources | sort))
+  ' "$file" >/dev/null
+}
+
 if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
   verify_cors_statement "$CURRENT"
+  verify_pass_role_statement "$CURRENT"
   echo "GITHUB_DEPLOY_IAM_ALREADY_RECONCILED"
   if [[ "$ACTION" == "plan" ]]; then
     echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
@@ -76,7 +104,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
 fi
 
 if [[ "$ACTION" == "plan" ]]; then
-  echo "GITHUB_DEPLOY_IAM_PLAN change_required=ManageStagingMediaCors resource=${MEDIA_BUCKET_ARN}"
+  echo "GITHUB_DEPLOY_IAM_PLAN change_required=ManageStagingMediaCors,PassEcsRoles resource=${MEDIA_BUCKET_ARN}"
   echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
   exit 0
 fi
@@ -96,7 +124,8 @@ aws iam get-role-policy \
   --output json > "$VERIFIED"
 
 verify_cors_statement "$VERIFIED" || { echo "Media CORS IAM verification failed." >&2; exit 1; }
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors"))' "$VERIFIED" > "$VERIFIED_NON_CORS"
-cmp -s "$CURRENT_NON_CORS" "$VERIFIED_NON_CORS" || { echo "Unexpected non-CORS IAM policy drift detected." >&2; exit 1; }
+verify_pass_role_statement "$VERIFIED" || { echo "ECS worker PassRole IAM verification failed." >&2; exit 1; }
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
+cmp -s "$CURRENT_UNMANAGED" "$VERIFIED_UNMANAGED" || { echo "Unexpected unmanaged IAM policy drift detected." >&2; exit 1; }
 
 echo "GITHUB_DEPLOY_IAM_APPLY_COMPLETE resource=${MEDIA_BUCKET_ARN}"
