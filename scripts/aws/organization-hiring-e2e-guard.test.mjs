@@ -75,6 +75,7 @@ test('organization hiring e2e proves expired published visibility and archived r
   assert.match(workflow, /candidate-expired-visibility/)
   assert.match(workflow, /owner-republish/)
   assert.match(workflow, /verify-republish/)
+  assert.match(browserScript, /ORGANIZATION_HIRING_E2E_JOBS_DISCOVERY_RENDERED=true/)
   assert.match(browserScript, /ORGANIZATION_HIRING_E2E_EXPIRED_PUBLISHED_VISIBLE=true/)
   assert.match(browserScript, /selectOption\('closed'\)/)
   assert.match(browserScript, /ORGANIZATION_HIRING_E2E_ARCHIVE_REPUBLISH_UI_VERIFIED=true/)
