@@ -211,6 +211,19 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
   async function listMessageRowsAfter(
     request: MessageAfterRequest & { viewerProfileId: string },
   ) {
+    const values: unknown[] = [request.conversationId, request.viewerProfileId]
+    let afterSql = ''
+    if (request.after) {
+      values.push(request.after.createdAt, request.after.id)
+      afterSql = `
+         and (
+           m.created_at > $3::timestamptz
+           or (m.created_at = $3::timestamptz and m.id > $4::uuid)
+         )`
+    }
+    values.push(request.limit)
+    const limitParam = `${values.length}`
+
     return await queryRows(
       `select m.id, m.conversation_id, m.sender_profile_id, m.client_message_id,
               m.body, m.created_at, m.edited_at, m.deleted_at
@@ -222,20 +235,10 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
            from public.conversation_participants cp
            where cp.conversation_id = m.conversation_id
              and cp.profile_id = $2
-         )
-         and (
-           m.created_at > $3::timestamptz
-           or (m.created_at = $3::timestamptz and m.id > $4::uuid)
-         )
+         )${afterSql}
        order by m.created_at asc, m.id asc
-       limit $5`,
-      [
-        request.conversationId,
-        request.viewerProfileId,
-        request.after.createdAt,
-        request.after.id,
-        request.limit,
-      ],
+       limit ${limitParam}`,
+      values,
     ) as MessageRow[]
   }
 
