@@ -756,8 +756,8 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
              summary = $4,
              description = $5,
              requirements = $6,
-             apply_until = case when $8 = 'published' and $7::date < current_date then null else $7 end,
-             status = $8,
+             apply_until = case when $8::public.job_listing_status = 'published'::public.job_listing_status and $7::date < current_date then null else $7::date end,
+             status = $8::public.job_listing_status,
              job_domain = $9,
              department = $10,
              rank = $11,
@@ -774,7 +774,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
              urgent = $22,
              easy_apply = $23,
              published_at = case
-               when $8 = 'published' and (status <> 'published' or published_at is null) then now()
+               when $8::public.job_listing_status = 'published'::public.job_listing_status and (status <> 'published'::public.job_listing_status or published_at is null) then now()
                else published_at
              end,
              updated_at = now()
