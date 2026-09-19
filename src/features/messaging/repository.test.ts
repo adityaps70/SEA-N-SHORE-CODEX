@@ -182,6 +182,7 @@ describe('Aurora messaging repository', () => {
 
     let [sql, values] = callsOf(query)[0] ?? []
     expect(String(sql)).toContain('limit $3')
+    expect(String(sql)).not.toMatch(/\blimit\s+3\b/i)
     expect(values).toEqual([CONVERSATION_ID, VIEWER_ID, 73])
 
     query.mockClear()
@@ -197,6 +198,7 @@ describe('Aurora messaging repository', () => {
 
     ;[sql, values] = callsOf(query)[0] ?? []
     expect(String(sql)).toContain('limit $5')
+    expect(String(sql)).not.toMatch(/\blimit\s+5\b/i)
     expect(values).toEqual([
       CONVERSATION_ID,
       VIEWER_ID,
