@@ -81,8 +81,6 @@ function ActiveConversationWorkspace({
           const cursor = latestCanonicalCursor(
             mergeCanonicalMessages(messagesRef.current, conversation.messages),
           )
-          if (!cursor) return
-
           try {
             const incoming = await fetchConversationCatchUp(conversation.conversationId, cursor)
             if (!cancelled && incoming.length) {
@@ -182,10 +180,68 @@ export function MessageShell({
   newMessageCandidates?: NetworkProfile[]
   authoritativeUnreadCount?: number
 }) {
+  const { subscribe } = useMessagingRealtime()
+  const [realtimeInbox, setRealtimeInbox] = useState<MessagingInboxItem[] | null>(null)
+  const inboxRefreshRunningRef = useRef(false)
+  const inboxRefreshPendingRef = useRef(false)
+  const displayedInbox = realtimeInbox ?? inbox
+
   useEffect(() => {
     if (authoritativeUnreadCount == null) return
     publishMessagingUnreadCount(authoritativeUnreadCount)
   }, [authoritativeUnreadCount])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function reconcileMessagingState() {
+      if (inboxRefreshRunningRef.current) {
+        inboxRefreshPendingRef.current = true
+        return
+      }
+
+      inboxRefreshRunningRef.current = true
+      try {
+        do {
+          inboxRefreshPendingRef.current = false
+          try {
+            const response = await fetch('/api/realtime/messaging-state', {
+              method: 'GET',
+              cache: 'no-store',
+            })
+            if (!response.ok) throw new Error('messaging_state_refresh_failed')
+
+            const payload = await response.json() as {
+              inbox?: unknown
+              unreadCount?: unknown
+            }
+            if (!Array.isArray(payload.inbox) || typeof payload.unreadCount !== 'number') {
+              throw new Error('messaging_invalid_state_response')
+            }
+
+            if (!cancelled) {
+              setRealtimeInbox(payload.inbox as MessagingInboxItem[])
+              publishMessagingUnreadCount(payload.unreadCount)
+            }
+          } catch {
+            // The provider-level router.refresh remains a canonical fallback.
+          }
+        } while (!cancelled && inboxRefreshPendingRef.current)
+      } finally {
+        inboxRefreshRunningRef.current = false
+      }
+    }
+
+    const unsubscribe = subscribe((signal) => {
+      if (signal.eventType !== 'message.created') return
+      void reconcileMessagingState()
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [subscribe])
 
   return (
     <div className="space-y-4">
@@ -198,7 +254,7 @@ export function MessageShell({
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex w-fit items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-navy-900 shadow-sm">
             <MessageCircleMore aria-hidden="true" className="size-4 text-ocean-700" />
-            {inbox.length} {inbox.length === 1 ? 'conversation' : 'conversations'}
+            {displayedInbox.length} {displayedInbox.length === 1 ? 'conversation' : 'conversations'}
           </span>
           <NewMessageButton candidates={newMessageCandidates} />
         </div>
@@ -207,7 +263,7 @@ export function MessageShell({
       <div className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
         <div className="grid min-h-[38rem] md:h-[calc(100vh-13rem)] md:min-h-[38rem] md:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
           <div className={activeConversation ? 'hidden min-h-0 md:block' : 'min-h-0'}>
-            <ConversationList inbox={inbox} activeConversationId={activeConversation?.conversationId} />
+            <ConversationList inbox={displayedInbox} activeConversationId={activeConversation?.conversationId} />
           </div>
 
           <div className={activeConversation ? 'flex min-h-0 flex-col' : 'hidden min-h-0 md:flex md:flex-col'}>
