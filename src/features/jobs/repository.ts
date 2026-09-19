@@ -25,17 +25,17 @@ type JobRow = QueryResultRow & {
   summary: string
   description: string
   requirements: string | null
-  apply_until: string | null
-  created_at: string
-  published_at: string | null
+  apply_until: string | Date | null
+  created_at: string | Date
+  published_at: string | Date | null
   job_domain: string | null
   department: string | null
   rank: string | null
   vessel_types: string[] | null
   experience_min_years: string | number | null
   experience_max_years: string | number | null
-  joining_from: string | null
-  joining_until: string | null
+  joining_from: string | Date | null
+  joining_until: string | Date | null
   salary_min: string | number | null
   salary_max: string | number | null
   salary_currency: string | null
@@ -97,6 +97,24 @@ function salaryPeriod(value: string | null): JobSalaryPeriod | null {
   return value === 'day' || value === 'month' || value === 'year' ? value : null
 }
 
+function dateOnlyValue(value: string | Date | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10)
+  }
+  const normalized = value.trim()
+  const match = normalized.match(/^(\d{4}-\d{2}-\d{2})/)
+  return match?.[1] ?? null
+}
+
+function timestampValue(value: string | Date): string {
+  return value instanceof Date ? value.toISOString() : value
+}
+
+function nullableTimestampValue(value: string | Date | null | undefined): string | null {
+  return value === null || value === undefined ? null : timestampValue(value)
+}
+
 function mapJob(row: JobRow): JobListing {
   return {
     id: row.id,
@@ -110,17 +128,17 @@ function mapJob(row: JobRow): JobListing {
     summary: row.summary,
     description: row.description,
     requirements: row.requirements,
-    applyUntil: row.apply_until,
-    createdAt: row.created_at,
-    publishedAt: row.published_at ?? null,
+    applyUntil: dateOnlyValue(row.apply_until),
+    createdAt: timestampValue(row.created_at),
+    publishedAt: nullableTimestampValue(row.published_at),
     domain: row.job_domain === 'shore' ? 'shore' : 'sea',
     department: row.department ?? null,
     rank: row.rank ?? null,
     vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
     experienceMinYears: numberOrNull(row.experience_min_years),
     experienceMaxYears: numberOrNull(row.experience_max_years),
-    joiningFrom: row.joining_from ?? null,
-    joiningUntil: row.joining_until ?? null,
+    joiningFrom: dateOnlyValue(row.joining_from),
+    joiningUntil: dateOnlyValue(row.joining_until),
     salaryMin: numberOrNull(row.salary_min),
     salaryMax: numberOrNull(row.salary_max),
     salaryCurrency: row.salary_currency ?? null,
