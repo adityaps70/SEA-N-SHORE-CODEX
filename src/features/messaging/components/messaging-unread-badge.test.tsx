@@ -32,7 +32,7 @@ describe('MessagingUnreadBadge', () => {
     expect(screen.queryByLabelText(/unread messages/)).not.toBeInTheDocument()
   })
 
-  it('replaces client event state when a new authoritative server count is rendered', () => {
+  it('does not let a stale server prop overwrite a newer client count across rerender', () => {
     const { rerender } = render(
       <MessagingUnreadBadge initialCount={5} className="badge" />,
     )
@@ -46,6 +46,6 @@ describe('MessagingUnreadBadge', () => {
 
     rerender(<MessagingUnreadBadge initialCount={4} className="badge" />)
 
-    expect(screen.getByLabelText('4 unread messages')).toHaveTextContent('4')
+    expect(screen.getByLabelText('2 unread messages')).toHaveTextContent('2')
   })
 })
