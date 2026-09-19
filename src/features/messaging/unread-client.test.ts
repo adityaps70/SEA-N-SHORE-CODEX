@@ -6,10 +6,11 @@ import {
 } from './unread-client'
 
 describe('messaging unread client snapshot', () => {
-  it('retains an unread update published after render even before a subscriber can observe the event', () => {
+  it('starts from the server count and retains an unread update published before a subscriber can observe the event', () => {
     const readCount = createMessagingUnreadCountView(1)
     const before = getMessagingUnreadCountSnapshot()
 
+    expect(readCount()).toBe(1)
     publishMessagingUnreadCount(0)
 
     const after = getMessagingUnreadCountSnapshot()
@@ -18,13 +19,13 @@ describe('messaging unread client snapshot', () => {
     expect(readCount()).toBe(0)
   })
 
-  it('lets a new server-rendered initial count supersede older client state while accepting newer events', () => {
+  it('keeps a newer client unread snapshot authoritative across a remount with a stale server count', () => {
     publishMessagingUnreadCount(2)
 
-    const readCount = createMessagingUnreadCountView(4)
-    expect(readCount()).toBe(4)
+    const remountedReadCount = createMessagingUnreadCountView(4)
+    expect(remountedReadCount()).toBe(2)
 
     publishMessagingUnreadCount(3)
-    expect(readCount()).toBe(3)
+    expect(remountedReadCount()).toBe(3)
   })
 })
