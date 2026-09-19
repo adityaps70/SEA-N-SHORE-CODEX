@@ -169,6 +169,43 @@ describe('Aurora messaging repository', () => {
     ])
   })
 
+  it('uses the requested parameterized limit for realtime catch-up with and without a cursor', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.listMessageRowsAfter({
+      viewerProfileId: VIEWER_ID,
+      conversationId: CONVERSATION_ID,
+      limit: 73,
+    })
+
+    let [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('limit $3')
+    expect(values).toEqual([CONVERSATION_ID, VIEWER_ID, 73])
+
+    query.mockClear()
+    await repository.listMessageRowsAfter({
+      viewerProfileId: VIEWER_ID,
+      conversationId: CONVERSATION_ID,
+      after: {
+        createdAt: '2026-09-13T00:01:00.000Z',
+        id: MESSAGE_ID,
+      },
+      limit: 41,
+    })
+
+    ;[sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('limit $5')
+    expect(values).toEqual([
+      CONVERSATION_ID,
+      VIEWER_ID,
+      '2026-09-13T00:01:00.000Z',
+      MESSAGE_ID,
+      41,
+    ])
+  })
+
   it('advances read state monotonically instead of allowing an older message to move it backwards', async () => {
     const query = vi.fn(async () => [{ advanced: true }])
     const { createMessagingRepository } = await import('./repository')
