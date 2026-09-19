@@ -222,7 +222,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
          )`
     }
     values.push(request.limit)
-    const limitParam = `${values.length}`
+    const limitParam = `$${values.length}`
 
     return await queryRows(
       `select m.id, m.conversation_id, m.sender_profile_id, m.client_message_id,
