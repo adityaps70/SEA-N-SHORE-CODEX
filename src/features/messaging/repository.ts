@@ -246,24 +246,43 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     profileId: string,
     conversationId: string,
     messageId: string,
-    createdAt: string,
+    _createdAt: string,
   ) {
     const rows = await queryRows(
-      `update public.conversation_participants
-       set last_read_message_id = $3,
-           last_read_at = $4::timestamptz
-       where conversation_id = $1
-         and profile_id = $2
+      `with target as (
+         select id, created_at
+         from public.messages
+         where conversation_id = $1
+           and id = $3
+         limit 1
+       ), current_cursor as (
+         select current_message.id,
+                current_message.created_at
+         from public.conversation_participants current_participant
+         left join public.messages current_message
+           on current_message.id = current_participant.last_read_message_id
+          and current_message.conversation_id = current_participant.conversation_id
+         where current_participant.conversation_id = $1
+           and current_participant.profile_id = $2
+         limit 1
+       )
+       update public.conversation_participants participant
+       set last_read_message_id = target.id,
+           last_read_at = target.created_at
+       from target
+       left join current_cursor on true
+       where participant.conversation_id = $1
+         and participant.profile_id = $2
          and (
-           last_read_at is null
-           or last_read_at < $4::timestamptz
+           current_cursor.id is null
+           or current_cursor.created_at < target.created_at
            or (
-             last_read_at = $4::timestamptz
-             and (last_read_message_id is null or last_read_message_id < $3::uuid)
+             current_cursor.created_at = target.created_at
+             and current_cursor.id < target.id
            )
          )
        returning true as advanced`,
-      [conversationId, profileId, messageId, createdAt],
+      [conversationId, profileId, messageId],
     ) as AdvancedRow[]
     return Boolean(rows[0]?.advanced)
   }
@@ -290,14 +309,11 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
                   and unread_message.sender_profile_id <> mine.profile_id
                   and unread_message.deleted_at is null
                   and (
-                    mine.last_read_at is null
-                    or unread_message.created_at > mine.last_read_at
+                    read_cursor.id is null
+                    or unread_message.created_at > read_cursor.created_at
                     or (
-                      unread_message.created_at = mine.last_read_at
-                      and (
-                        mine.last_read_message_id is null
-                        or unread_message.id > mine.last_read_message_id
-                      )
+                      unread_message.created_at = read_cursor.created_at
+                      and unread_message.id > read_cursor.id
                     )
                   )
               ) as unread
@@ -308,6 +324,9 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
         and other.profile_id <> mine.profile_id
        join public.profiles p on p.id = other.profile_id
        left join public.messages lm on lm.id = c.last_message_id
+       left join public.messages read_cursor
+         on read_cursor.id = mine.last_read_message_id
+        and read_cursor.conversation_id = mine.conversation_id
        where mine.profile_id = $1
        order by c.last_message_at desc nulls last, c.created_at desc, c.id desc
        limit $2`,
@@ -321,18 +340,18 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
        from public.messages unread_message
        join public.conversation_participants mine
          on mine.conversation_id = unread_message.conversation_id
+       left join public.messages read_cursor
+         on read_cursor.id = mine.last_read_message_id
+        and read_cursor.conversation_id = mine.conversation_id
        where mine.profile_id = $1
          and unread_message.sender_profile_id <> mine.profile_id
          and unread_message.deleted_at is null
          and (
-           mine.last_read_at is null
-           or unread_message.created_at > mine.last_read_at
+           read_cursor.id is null
+           or unread_message.created_at > read_cursor.created_at
            or (
-             unread_message.created_at = mine.last_read_at
-             and (
-               mine.last_read_message_id is null
-               or unread_message.id > mine.last_read_message_id
-             )
+             unread_message.created_at = read_cursor.created_at
+             and unread_message.id > read_cursor.id
            )
          )`,
       [viewerProfileId],
