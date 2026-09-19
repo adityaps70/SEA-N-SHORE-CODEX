@@ -1,24 +1,17 @@
 'use client'
 
-import { useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
 import {
+  createMessagingUnreadCountView,
   MESSAGING_UNREAD_COUNT_EVENT,
   subscribeMessagingUnreadCount,
 } from '../unread-client'
 
 export { MESSAGING_UNREAD_COUNT_EVENT }
 
-function unreadCountStore(initialCount: number) {
-  let count = Math.max(0, Math.floor(initialCount))
-
-  return {
-    getSnapshot: () => count,
-    subscribe: (onStoreChange: () => void) => subscribeMessagingUnreadCount((nextCount) => {
-      if (nextCount === count) return
-      count = nextCount
-      onStoreChange()
-    }),
-  }
+function normalizeInitialCount(count: number) {
+  if (!Number.isFinite(count)) return 0
+  return Math.max(0, Math.floor(count))
 }
 
 export function MessagingUnreadBadge({
@@ -28,11 +21,19 @@ export function MessagingUnreadBadge({
   initialCount: number
   className: string
 }) {
-  const store = useMemo(() => unreadCountStore(initialCount), [initialCount])
+  const normalizedInitialCount = normalizeInitialCount(initialCount)
+  const readCount = useMemo(
+    () => createMessagingUnreadCountView(normalizedInitialCount),
+    [normalizedInitialCount],
+  )
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => subscribeMessagingUnreadCount(() => onStoreChange()),
+    [],
+  )
   const count = useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
+    subscribe,
+    readCount,
+    () => normalizedInitialCount,
   )
 
   if (count <= 0) return null
