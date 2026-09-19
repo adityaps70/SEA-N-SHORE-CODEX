@@ -110,9 +110,14 @@ case "$PHASE" in
   verify-republish)
     resolve_db
     [[ "$JOB_ID" =~ ^[0-9a-f-]{36}$ ]]
-    RESULT=$(sql "SELECT j.status::text, (j.apply_until is null)::text, (j.published_at > j.created_at)::text FROM public.jobs j WHERE j.id='$JOB_ID'::uuid")
+    RESULT=$(sql "SELECT j.status::text, (j.apply_until is null)::text, (published_at > created_at)::text FROM public.jobs j WHERE j.id='$JOB_ID'::uuid")
     ROW=$(jq -r '.records[0] | map(.stringValue // "") | @tsv' <<<"$RESULT")
-    [[ "$ROW" ==     resolve_db
+    [[ "$ROW" == $'published\ttrue\ttrue' ]] || { echo "Republished job state mismatch: $ROW" >&2; exit 1; }
+    echo 'ORGANIZATION_HIRING_E2E_REPUBLISH_VERIFIED=true'
+    ;;
+
+  verify-job-application)
+    resolve_db
     [[ "$JOB_ID" =~ ^[0-9a-f-]{36}$ ]]
     RESULT=$(sql "SELECT a.id::text, a.status::text, (a.applicant_id=($unauthorized_id_sql))::text, (SELECT count(*)::text FROM public.job_application_events e WHERE e.application_id=a.id AND e.status::text='applied' AND e.actor_id=a.applicant_id) FROM public.job_applications a WHERE a.job_id='$JOB_ID'::uuid AND a.applicant_id=($unauthorized_id_sql) ORDER BY a.applied_at DESC LIMIT 1")
     ROW=$(jq -r '.records[0] | map(.stringValue // "") | @tsv' <<<"$RESULT")
