@@ -235,6 +235,22 @@ describe('Aurora messaging repository', () => {
     ])
   })
 
+  it('counts unread conversations once regardless of how many unread messages each sender has sent', async () => {
+    const query = vi.fn(async () => [{ count: 3 }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.countUnreadMessages(VIEWER_ID)).resolves.toBe(3)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('count(distinct unread_message.conversation_id)')
+    expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
+    expect(text).toContain('unread_message.deleted_at is null')
+    expect(text).toContain('read_cursor')
+    expect(values).toEqual([VIEWER_ID])
+  })
+
   it('builds inbox rows only from conversations in which the viewer is a participant', async () => {
     const query = vi.fn(async () => [])
     const { createMessagingRepository } = await import('./repository')
