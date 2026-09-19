@@ -295,13 +295,17 @@ async function realtimeJourney() {
     assert.equal(malformedRejected, true)
     console.log('REALTIME_E2E_MALFORMED_TICKET_REJECTED=true')
 
-    await senderPage.getByLabel('Write a message').fill(messageBody)
-    await senderPage.getByRole('button', { name: 'Send message' }).click()
-    await expect(senderPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 20_000 })
+    const unreadBurstTwoBody = `${messageBody} unread burst 2`
+    const unreadBurstThreeBody = `${messageBody} unread burst 3`
+    for (const body of [messageBody, unreadBurstTwoBody, unreadBurstThreeBody]) {
+      await senderPage.getByLabel('Write a message').fill(body)
+      await senderPage.getByRole('button', { name: 'Send message' }).click()
+      await expect(senderPage.getByText(body, { exact: true })).toBeVisible({ timeout: 20_000 })
+    }
 
     await recipientPage.waitForFunction(({ conversationId }) => {
       const signals = globalThis.__realtime_recipient_signals ?? []
-      return signals.some((signal) => signal?.eventType === 'message.created' && signal?.payload?.conversationId === conversationId)
+      return signals.filter((signal) => signal?.eventType === 'message.created' && signal?.payload?.conversationId === conversationId).length >= 3
     }, { conversationId }, { timeout: 30_000 })
     const messageSignal = await recipientPage.evaluate(({ conversationId }) => {
       return (globalThis.__realtime_recipient_signals ?? []).find((signal) => signal?.eventType === 'message.created' && signal?.payload?.conversationId === conversationId)
@@ -315,9 +319,13 @@ async function realtimeJourney() {
     await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toBeVisible({ timeout: 30_000 })
     await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toBeVisible({ timeout: 30_000 })
 
+    console.log('REALTIME_E2E_UNREAD_CONVERSATION_BADGE_VERIFIED=true')
+
     await recipientPage.getByRole('link', { name: `Open conversation with ${users.sender.fullName}` }).click()
     await recipientPage.waitForURL((url) => url.pathname === `/messages/${conversationId}`, { timeout: 20_000 })
     await expect(recipientPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.getByText(unreadBurstTwoBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.getByText(unreadBurstThreeBody, { exact: true })).toBeVisible({ timeout: 30_000 })
     await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toHaveCount(0, { timeout: 30_000 })
     await expect(recipientPage.getByLabel(`Unread conversation with ${users.sender.fullName}`)).toHaveCount(0, { timeout: 30_000 })
 
