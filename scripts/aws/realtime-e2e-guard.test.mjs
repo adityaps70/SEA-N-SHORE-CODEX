@@ -246,3 +246,27 @@ test('messaging-only verification proves live inbox and active-thread delivery w
   assert.ok(liveInboxMarker >= 0, 'live inbox no-reload marker must exist')
   assert.ok(activeThreadMarker > liveInboxMarker, 'active-thread realtime proof must run after inbox proof')
 })
+
+
+test('realtime messaging failure captures outbox worker and fanout diagnostics before cleanup', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const remote = readFileSync(remotePath, 'utf8')
+
+  assert.match(workflow, /Diagnose realtime messaging delivery failure/)
+  assert.match(workflow, /if:\s*failure\(\)/)
+  assert.match(workflow, /realtime-e2e-ssm\.mjs diagnose-message/)
+  assert.ok(
+    workflow.indexOf('Diagnose realtime messaging delivery failure')
+      < workflow.indexOf('Cleanup disposable Realtime E2E data'),
+    'failure diagnostics must run before cleanup',
+  )
+  assert.match(remote, /^  diagnose-message\)/m)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_TOTAL=/)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_PUBLISHED=/)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_RUNNING=/)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_OUTBOX_WORKER_IMAGE=/)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_MAIN_QUEUE_VISIBLE=/)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_DLQ_VISIBLE=/)
+  assert.match(remote, /REALTIME_MESSAGE_DIAG_FANOUT_ERRORS=/)
+  assert.match(remote, /REALTIME_E2E_MESSAGE_DIAGNOSTIC_VERIFIED=true/)
+})
