@@ -15,6 +15,7 @@ export type SocialDomainEventType =
   | 'feed.post_comments_changed'
   | 'feed.post_reposted'
   | 'message.created'
+  | 'message.updated'
   | 'conversation.read_cursor_advanced'
 
 export type SocialDomainEventPayload =
@@ -37,6 +38,13 @@ export type SocialDomainEventPayload =
       messageId: string
       senderId: string
       recipientProfileIds: string[]
+    }
+  | {
+      eventType: 'message.updated'
+      conversationId: string
+      messageId: string
+      actorId: string
+      participantProfileIds: string[]
     }
   | {
       eventType: 'conversation.read_cursor_advanced'
