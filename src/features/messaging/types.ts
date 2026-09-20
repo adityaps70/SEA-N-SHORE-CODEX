@@ -16,11 +16,11 @@ export type MessagingMessageRow = {
   sender_profile_id: string
   client_message_id: string
   body: string
-  reply_to_message_id: string | null
-  attachment_storage_path: string | null
-  attachment_name: string | null
-  attachment_mime_type: string | null
-  attachment_size: number | null
+  reply_to_message_id?: string | null
+  attachment_storage_path?: string | null
+  attachment_name?: string | null
+  attachment_mime_type?: string | null
+  attachment_size?: number | null
   created_at: string | Date
   edited_at: string | Date | null
   deleted_at: string | Date | null
