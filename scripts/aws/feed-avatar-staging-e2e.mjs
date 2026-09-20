@@ -72,6 +72,7 @@ async function uploadAvatar(page, user) {
     (response) =>
       response.request().method() === 'POST' &&
       Boolean(response.request().headers()['next-action']) &&
+      response.request().headers()['content-type']?.startsWith('multipart/form-data') &&
       response.url().startsWith(siteUrl + '/profile'),
     { timeout: 60_000 },
   )
