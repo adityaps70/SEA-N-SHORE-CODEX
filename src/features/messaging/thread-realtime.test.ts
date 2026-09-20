@@ -7,6 +7,7 @@ import {
   latestCanonicalCursor,
   laterReadCursor,
   mergeCanonicalMessages,
+  syncThreadMessagesWithCanonicalSnapshot,
 } from './thread-realtime'
 
 const CONVERSATION_ID = '33333333-3333-4333-8333-333333333333'
@@ -61,6 +62,41 @@ describe('active messaging realtime helpers', () => {
       [optimistic, existing],
       [newest, confirmed, existing],
     )).toEqual([existing, confirmed, newest])
+  })
+
+  it('replaces stale canonical items from a refreshed server snapshot while preserving unmatched optimistic sends', () => {
+    const removed = canonical({
+      id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+      clientMessageId: 'aaaaaaaa-2222-4222-8222-aaaaaaaaaaaa',
+      createdAt: '2026-09-13T10:00:00.000Z',
+      body: 'This message is later unsent',
+    })
+    const updated = canonical({
+      id: 'bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb',
+      clientMessageId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+      createdAt: '2026-09-13T10:01:00.000Z',
+      body: 'React to me',
+      reactions: [{ profileId: OTHER_ID, emoji: '🔥' }],
+    })
+    const staleUpdated = {
+      ...updated,
+      reactions: [],
+    }
+    const optimistic: OptimisticMessagingMessage = {
+      ...canonical({
+        id: 'cccccccc-1111-4111-8111-cccccccccccc',
+        clientMessageId: 'cccccccc-2222-4222-8222-cccccccccccc',
+        senderProfileId: VIEWER_ID,
+        createdAt: '2026-09-13T10:02:00.000Z',
+        body: 'Still sending',
+      }),
+      deliveryState: 'sending',
+    }
+
+    expect(syncThreadMessagesWithCanonicalSnapshot(
+      [removed, staleUpdated, optimistic],
+      [updated],
+    )).toEqual([updated, optimistic])
   })
 
   it('returns the newest canonical cursor while ignoring optimistic items', () => {
