@@ -82,6 +82,17 @@ export function mergeCanonicalMessages(
   return merged.sort((a, b) => compareCursor(cursorOf(a), cursorOf(b)))
 }
 
+export function syncThreadMessagesWithCanonicalSnapshot(
+  current: MessagingThreadItem[],
+  canonicalSnapshot: MessagingMessageDto[],
+): MessagingThreadItem[] {
+  const canonicalClientIds = new Set(canonicalSnapshot.map((message) => message.clientMessageId))
+  const optimistic = current.filter((message) => (
+    isOptimistic(message) && !canonicalClientIds.has(message.clientMessageId)
+  ))
+  return [...canonicalSnapshot, ...optimistic].sort((a, b) => compareCursor(cursorOf(a), cursorOf(b)))
+}
+
 export function latestCanonicalCursor(messages: MessagingThreadItem[]): MessagingReadCursor | null {
   let latest: MessagingReadCursor | null = null
   for (const message of messages) {
