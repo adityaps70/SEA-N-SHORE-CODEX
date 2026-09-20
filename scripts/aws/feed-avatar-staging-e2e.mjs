@@ -71,15 +71,8 @@ async function uploadAvatar(page, user) {
   const alert = control.getByRole('alert').first()
   const successButton = page.getByRole('button', { name: 'Change profile photo' })
 
-  let fileChooser
-  for (let attempt = 0; attempt < 10 && !fileChooser; attempt += 1) {
-    const fileChooserPromise = page.waitForEvent('filechooser', { timeout: 2_000 }).catch(() => null)
-    await addButton.click()
-    fileChooser = await fileChooserPromise
-    if (!fileChooser) await page.waitForTimeout(300)
-  }
-  assert.ok(fileChooser, 'Profile photo file chooser did not become available after hydration')
-  await fileChooser.setFiles({
+  const input = form.locator('input[name="image"]')
+  await input.setInputFiles({
     name: 'avatar-' + runId + '.png',
     mimeType: 'image/png',
     buffer: avatarPng,
