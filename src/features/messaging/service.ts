@@ -3,7 +3,7 @@ import { withTransaction as databaseTransaction, type DatabaseQueryClient } from
 import { createNetworkRepositoryForClient, type NetworkRepository } from '@/features/network/repository'
 import { createOutboxRepositoryForClient, type OutboxRepository } from '@/features/events/outbox-repository'
 import type { DomainEvent } from '@/features/events/types'
-import { sendMessageInputSchema } from './schemas'
+import { sendMessageInputSchema, setMessageReactionInputSchema } from './schemas'
 import {
   createMessagingRepositoryForClient,
   type MessagingRepository,
@@ -26,6 +26,29 @@ function error(code: string): never {
 
 function iso(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value
+}
+
+function messageUpdatedEvent(input: {
+  conversationId: string
+  messageId: string
+  actorId: string
+  participantProfileIds: string[]
+}): DomainEvent {
+  return {
+    id: randomUUID(),
+    aggregateType: 'message',
+    aggregateId: input.messageId,
+    eventType: 'message.updated',
+    schemaVersion: 1,
+    occurredAt: new Date().toISOString(),
+    payload: {
+      eventType: 'message.updated',
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+      actorId: input.actorId,
+      participantProfileIds: input.participantProfileIds,
+    },
+  }
 }
 
 export function createMessagingService(input: { withTransaction: MessagingTransaction }) {
@@ -72,9 +95,23 @@ export function createMessagingService(input: { withTransaction: MessagingTransa
           error('messaging_not_allowed')
         }
 
+        if (data.replyToMessageId) {
+          const replyTarget = await messaging.findMessageInConversation(
+            data.conversationId,
+            data.replyToMessageId,
+          )
+          if (!replyTarget || replyTarget.deleted_at) error('messaging_reply_unavailable')
+        }
+
         const existing = await messaging.findMessageByClientId(actorId, data.clientMessageId)
         if (existing) {
-          if (existing.conversation_id !== data.conversationId || existing.body !== data.body) {
+          const sameAttachment = (existing.attachment_storage_path ?? null) === (data.attachment?.storagePath ?? null)
+          if (
+            existing.conversation_id !== data.conversationId
+            || existing.body !== data.body
+            || existing.reply_to_message_id !== (data.replyToMessageId ?? null)
+            || !sameAttachment
+          ) {
             error('messaging_idempotency_conflict')
           }
           return existing
@@ -85,6 +122,8 @@ export function createMessagingService(input: { withTransaction: MessagingTransa
           senderProfileId: actorId,
           clientMessageId: data.clientMessageId,
           body: data.body,
+          replyToMessageId: data.replyToMessageId,
+          attachment: data.attachment,
         })
         const createdAt = iso(message.created_at)
         await messaging.updateConversationLastMessage(data.conversationId, message.id, createdAt)
@@ -108,6 +147,51 @@ export function createMessagingService(input: { withTransaction: MessagingTransa
         }
         await outbox.enqueue(event)
         return message
+      })
+    },
+
+    async setMessageReaction(actorId: string, messageId: string, emoji: string | null) {
+      const parsed = setMessageReactionInputSchema.safeParse({ messageId, emoji })
+      if (!parsed.success) error('messaging_invalid_reaction')
+
+      return input.withTransaction(async ({ messaging, outbox }) => {
+        const message = await messaging.findMessageAccessibleToParticipant(actorId, parsed.data.messageId)
+        if (!message || message.deleted_at) error('messaging_message_not_found')
+
+        await messaging.setMessageReaction(message.id, actorId, parsed.data.emoji)
+        const participantProfileIds = await messaging.listParticipantIds(message.conversation_id)
+        await outbox.enqueue(messageUpdatedEvent({
+          conversationId: message.conversation_id,
+          messageId: message.id,
+          actorId,
+          participantProfileIds,
+        }))
+        return true
+      })
+    },
+
+    async deleteMessage(actorId: string, messageId: string) {
+      return input.withTransaction(async ({ messaging, outbox }) => {
+        const message = await messaging.findMessageByIdForUpdate(messageId)
+        if (!message || message.deleted_at) error('messaging_message_not_found')
+        if (message.sender_profile_id !== actorId) error('messaging_action_not_allowed')
+        if (!await messaging.isParticipant(actorId, message.conversation_id)) {
+          error('messaging_not_participant')
+        }
+
+        await messaging.softDeleteMessage(message.id)
+        await messaging.refreshConversationLastMessage(message.conversation_id)
+        const participantProfileIds = await messaging.listParticipantIds(message.conversation_id)
+        await outbox.enqueue(messageUpdatedEvent({
+          conversationId: message.conversation_id,
+          messageId: message.id,
+          actorId,
+          participantProfileIds,
+        }))
+        return {
+          conversationId: message.conversation_id,
+          attachmentStoragePath: message.attachment_storage_path,
+        }
       })
     },
 
