@@ -46,9 +46,9 @@ export type MessagingMessageDto = {
   createdAt: string
   editedAt: string | null
   deletedAt: string | null
-  replyTo: MessagingReplyPreviewDto | null
-  attachment: MessagingAttachmentDto | null
-  reactions: MessagingReactionDto[]
+  replyTo?: MessagingReplyPreviewDto | null
+  attachment?: MessagingAttachmentDto | null
+  reactions?: MessagingReactionDto[]
 }
 
 export type MessagingInboxItem = {
