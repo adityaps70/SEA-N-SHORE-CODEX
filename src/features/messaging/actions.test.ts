@@ -97,6 +97,9 @@ describe('messaging server actions', () => {
         createdAt: '2026-09-13T01:30:00.000Z',
         editedAt: null,
         deletedAt: null,
+        replyTo: null,
+        attachment: null,
+        reactions: [],
       },
     })
 
@@ -116,7 +119,7 @@ describe('messaging server actions', () => {
       body: '   ',
     })).resolves.toEqual({
       ok: false,
-      error: 'Enter a message before sending.',
+      error: 'Enter a message or attach a file before sending.',
     })
 
     expect(mocks.requireAwsUser).not.toHaveBeenCalled()
