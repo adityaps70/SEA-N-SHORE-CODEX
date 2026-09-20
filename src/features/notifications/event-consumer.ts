@@ -42,6 +42,9 @@ function notificationInput(event: DomainEvent) {
     case 'message.created':
       if (payload.eventType !== 'message.created') throw new Error('notification_event_invalid_payload')
       return null
+    case 'message.updated':
+      if (payload.eventType !== 'message.updated') throw new Error('notification_event_invalid_payload')
+      return null
   }
 }
 
