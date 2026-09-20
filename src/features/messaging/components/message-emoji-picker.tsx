@@ -80,7 +80,6 @@ export function MessageEmojiPicker({
               <button
                 key={emoji}
                 type="button"
-                role="menuitem"
                 aria-label={mode === 'reaction' ? `React with ${emoji}` : `Insert ${emoji}`}
                 onClick={() => choose(emoji)}
                 className={`grid size-8 place-items-center rounded-lg text-lg transition hover:bg-mist-50 ${currentEmoji === emoji ? 'bg-ocean-50 ring-1 ring-ocean-200' : ''}`}
