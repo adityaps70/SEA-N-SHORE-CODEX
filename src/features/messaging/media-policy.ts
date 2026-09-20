@@ -118,13 +118,13 @@ export function isOwnedMessageAttachmentStoragePath(input: {
 }) {
   const parts = input.storagePath.split('/')
   if (
-    parts.length !== 5
+    parts.length !== 4
     || parts[0] !== 'messages'
     || parts[1] !== input.profileId
     || parts[2] !== input.conversationId
   ) return false
 
-  const filename = parts[4] ?? ''
+  const filename = parts[3] ?? ''
   const extension = MESSAGE_ATTACHMENT_MIME_EXTENSION[input.mimeType]
   const suffix = `.${extension}`
   if (!filename.endsWith(suffix)) return false
