@@ -74,6 +74,11 @@ function optionalIso(value: string | Date | null | undefined) {
   return value == null ? null : iso(value)
 }
 
+function normalizeAttachmentSize(value: number | string | null | undefined) {
+  const size = typeof value === 'number' ? value : Number(value)
+  return Number.isSafeInteger(size) && size > 0 ? size : null
+}
+
 function attachmentKind(mimeType: string): MessagingAttachmentDto['kind'] {
   if (isImageMessageAttachmentMime(mimeType)) return 'image'
   if (isVideoMessageAttachmentMime(mimeType)) return 'video'
@@ -84,15 +89,16 @@ export function messagingMessageDto(
   row: MessagingMessageRow,
   attachmentUrl: string | null = null,
 ): MessagingMessageDto {
+  const attachmentSize = normalizeAttachmentSize(row.attachment_size)
   const attachment = row.attachment_storage_path
     && row.attachment_name
     && row.attachment_mime_type
-    && typeof row.attachment_size === 'number'
+    && attachmentSize
     && attachmentUrl
     ? {
         name: row.attachment_name,
         mimeType: row.attachment_mime_type,
-        size: row.attachment_size,
+        size: attachmentSize,
         url: attachmentUrl,
         kind: attachmentKind(row.attachment_mime_type),
       }
