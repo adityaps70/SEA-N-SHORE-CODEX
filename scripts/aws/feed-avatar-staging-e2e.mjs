@@ -68,11 +68,29 @@ async function uploadAvatar(page, user) {
   await expect(addButton).toBeVisible()
   const form = addButton.locator('xpath=ancestor::form')
   const input = form.locator('input[name="image"]')
+  const uploadResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().startsWith(siteUrl + '/profile'),
+    { timeout: 60_000 },
+  )
   await input.setInputFiles({
     name: 'avatar-' + runId + '.png',
     mimeType: 'image/png',
     buffer: avatarPng,
   })
+  const response = await uploadResponsePromise
+  console.log('profile upload action status=' + response.status())
+  assert.ok(response.ok(), 'Profile upload action must return a successful HTTP status')
+
+  const control = form.locator('xpath=..')
+  const alert = control.getByRole('alert')
+  if ((await alert.count()) > 0 && await alert.first().isVisible().catch(() => false)) {
+    const message = (await alert.first().innerText()).trim()
+    if (message) throw new Error('Profile avatar upload failed: ' + message)
+  }
+
+  await page.reload({ waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('button', { name: 'Change profile photo' })).toBeVisible({ timeout: 20_000 })
   const avatar = page.getByRole('img', { name: user.fullName + "'s profile photo" }).first()
   await expect(avatar).toBeVisible({ timeout: 20_000 })
