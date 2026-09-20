@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { Ellipsis } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import {
@@ -23,10 +24,12 @@ export function RelationshipControls({
   profileId,
   initialRelationship,
   compact = false,
+  menuIconOnly = false,
 }: {
   profileId: string
   initialRelationship: RelationshipState
   compact?: boolean
+  menuIconOnly?: boolean
 }) {
   const router = useRouter()
   const canonicalRelationshipKey = relationshipStateKey(initialRelationship)
@@ -154,7 +157,18 @@ export function RelationshipControls({
         ) : null}
 
         <details className="relative">
-          <summary className={`${buttonClass} inline-flex cursor-pointer list-none items-center`}>More</summary>
+          <summary
+            className={menuIconOnly
+              ? 'grid size-9 cursor-pointer list-none place-items-center rounded-full text-navy-900 transition hover:bg-mist-50'
+              : `${buttonClass} inline-flex cursor-pointer list-none items-center`}
+          >
+            {menuIconOnly ? (
+              <>
+                <span className="sr-only">More actions</span>
+                <Ellipsis aria-hidden="true" className="size-5" />
+              </>
+            ) : 'More'}
+          </summary>
           <div className="absolute right-0 z-20 mt-1 min-w-44 rounded-xl border border-mist-100 bg-white p-1 shadow-lg">
             <button type="button" disabled={pending} onClick={toggleFollow} className={menuItemClass}>
               {relationship.following ? 'Following' : 'Follow'}
