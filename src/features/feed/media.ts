@@ -1,4 +1,5 @@
 import {
+  createMediaReadUrl,
   createMediaUploadUrl,
   deleteMediaObject,
   headMediaObject,
@@ -23,9 +24,16 @@ function buildFirstPartyMediaUrl(path: string): string {
 export async function resolveFeedMediaUrls(paths: string[]): Promise<Map<string, string>> {
   if (!paths.length) return new Map()
 
-  return new Map(
-    [...new Set(paths)].map((path) => [path, buildFirstPartyMediaUrl(path)]),
+  const entries = await Promise.all(
+    [...new Set(paths)].map(async (path) => [
+      path,
+      path.startsWith('profiles/')
+        ? await createMediaReadUrl(path)
+        : buildFirstPartyMediaUrl(path),
+    ] as const),
   )
+
+  return new Map(entries)
 }
 
 function safeErrorName(error: unknown): string {
