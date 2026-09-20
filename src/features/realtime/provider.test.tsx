@@ -2,10 +2,17 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const router = vi.hoisted(() => ({ refresh: vi.fn() }))
+const router = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }))
+const navigation = vi.hoisted(() => ({ pathname: '/home' }))
+const unread = vi.hoisted(() => ({ publishMessagingUnreadCount: vi.fn() }))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => router,
+  usePathname: () => navigation.pathname,
+}))
+
+vi.mock('@/features/messaging/unread-client', () => ({
+  publishMessagingUnreadCount: unread.publishMessagingUnreadCount,
 }))
 
 const SIGNAL = JSON.stringify({
@@ -58,11 +65,37 @@ describe('MessagingRealtimeProvider', () => {
     vi.clearAllMocks()
     FakeWebSocket.instances = []
     vi.stubGlobal('WebSocket', FakeWebSocket)
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      ticket: 'payload.signature',
-      expiresAt: '2026-09-13T10:01:00.000Z',
-      webSocketUrl: 'wss://abc.execute-api.ap-south-1.amazonaws.com/staging',
-    }), { status: 200 })))
+    navigation.pathname = '/home'
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/realtime/ticket') {
+        return new Response(JSON.stringify({
+          ticket: 'payload.signature',
+          expiresAt: '2026-09-13T10:01:00.000Z',
+          webSocketUrl: 'wss://abc.execute-api.ap-south-1.amazonaws.com/staging',
+        }), { status: 200 })
+      }
+      if (url === '/api/realtime/messaging-state') {
+        return new Response(JSON.stringify({
+          unreadCount: 4,
+          inbox: [{
+            conversationId: '33333333-3333-4333-8333-333333333333',
+            otherProfileId: '11111111-1111-4111-8111-111111111111',
+            otherName: 'Capt. Anita Singh',
+            otherHeadline: 'Master Mariner',
+            otherAvatarUrl: null,
+            lastMessageId: '55555555-5555-4555-8555-555555555555',
+            lastMessageBody: 'Bridge photo received.',
+            lastMessageSenderId: '11111111-1111-4111-8111-111111111111',
+            lastMessageAt: '2026-09-13T10:00:00.000Z',
+            otherLastReadMessageId: null,
+            otherLastReadAt: null,
+            unread: true,
+          }],
+        }), { status: 200 })
+      }
+      throw new Error(`Unexpected fetch ${url}`)
+    }))
   })
 
   afterEach(() => {
@@ -106,5 +139,48 @@ describe('MessagingRealtimeProvider', () => {
 
     rendered.unmount()
     expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled()
+  })
+
+  it('updates the global unread badge and shows an in-app new-message alert even outside Messages', async () => {
+    const providerPath = './provider'
+    const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
+
+    render(
+      <MessagingRealtimeProvider>
+        <div>Home content</div>
+      </MessagingRealtimeProvider>,
+    )
+
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    act(() => FakeWebSocket.instances[0]?.open())
+    act(() => FakeWebSocket.instances[0]?.message(SIGNAL))
+
+    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(4))
+    expect(await screen.findByText('New message from Capt. Anita Singh')).toBeVisible()
+    expect(screen.getByText('Bridge photo received.')).toBeVisible()
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'Open conversation' }).click()
+    })
+    expect(router.push).toHaveBeenCalledWith('/messages/33333333-3333-4333-8333-333333333333')
+  })
+
+  it('does not show a duplicate new-message alert while already inside that conversation', async () => {
+    navigation.pathname = '/messages/33333333-3333-4333-8333-333333333333'
+    const providerPath = './provider'
+    const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
+
+    render(
+      <MessagingRealtimeProvider>
+        <div>Conversation</div>
+      </MessagingRealtimeProvider>,
+    )
+
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    act(() => FakeWebSocket.instances[0]?.open())
+    act(() => FakeWebSocket.instances[0]?.message(SIGNAL))
+
+    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(4))
+    expect(screen.queryByText('New message from Capt. Anita Singh')).not.toBeInTheDocument()
   })
 })
