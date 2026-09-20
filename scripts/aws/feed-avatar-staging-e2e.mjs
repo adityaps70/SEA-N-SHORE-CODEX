@@ -67,16 +67,23 @@ async function uploadAvatar(page, user) {
   const addButton = page.getByRole('button', { name: 'Add profile photo' })
   await expect(addButton).toBeVisible()
   const form = addButton.locator('xpath=ancestor::form')
-  const input = form.locator('input[name="image"]')
   const uploadResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === 'POST' &&
-      Boolean(response.request().headers()['next-action']) &&
-      response.request().headers()['content-type']?.startsWith('multipart/form-data') &&
-      response.url().startsWith(siteUrl + '/profile'),
+    (response) => {
+      const request = response.request()
+      const body = request.postDataBuffer()
+      return (
+        request.method() === 'POST' &&
+        Boolean(request.headers()['next-action']) &&
+        Boolean(body?.toString('utf8').includes('avatar-' + runId + '.png')) &&
+        response.url().startsWith(siteUrl + '/profile')
+      )
+    },
     { timeout: 60_000 },
   )
-  await input.setInputFiles({
+  const fileChooserPromise = page.waitForEvent('filechooser')
+  await addButton.click()
+  const fileChooser = await fileChooserPromise
+  await fileChooser.setFiles({
     name: 'avatar-' + runId + '.png',
     mimeType: 'image/png',
     buffer: avatarPng,
