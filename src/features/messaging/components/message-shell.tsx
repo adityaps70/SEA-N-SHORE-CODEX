@@ -51,6 +51,7 @@ function ActiveConversationWorkspace({
   const { subscribe } = useMessagingRealtime()
   const [messages, setMessages] = useState<MessageThreadItem[]>(conversation.messages)
   const [peerReadCursor, setPeerReadCursor] = useState<MessagingReadCursor | null>(null)
+  const [replyTo, setReplyTo] = useState<MessagingMessageDto | null>(null)
   const messagesRef = useRef<MessageThreadItem[]>(conversation.messages)
   const catchUpRunningRef = useRef(false)
   const catchUpPendingRef = useRef(false)
@@ -158,10 +159,13 @@ function ActiveConversationWorkspace({
         messages={displayedMessages}
         nextCursor={conversation.nextCursor}
         peerReadCursor={effectivePeerReadCursor}
+        onReply={setReplyTo}
       />
       <MessageComposer
         conversationId={conversation.conversationId}
         viewerId={viewerId}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
         onOptimisticMessage={addOptimistic}
         onMessageConfirmed={confirmMessage}
         onMessageFailed={failMessage}
@@ -242,7 +246,7 @@ export function MessageShell({
     }
 
     const unsubscribe = subscribe((signal) => {
-      if (signal.eventType === 'message.created') {
+      if (signal.eventType === 'message.created' || signal.eventType === 'message.updated') {
         void reconcileMessagingState()
         return
       }
