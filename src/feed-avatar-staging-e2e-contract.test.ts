@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('../scripts/aws/feed-avatar-staging-e2e.mjs', import.meta.url), 'utf8')
+const source = readFileSync('scripts/aws/feed-avatar-staging-e2e.mjs', 'utf8')
 
 describe('feed avatar staging E2E harness contract', () => {
   it('preserves the primary failure and uses cleanup-safe navigation', () => {
