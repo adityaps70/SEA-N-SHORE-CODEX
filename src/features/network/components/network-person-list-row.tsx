@@ -25,12 +25,12 @@ export function NetworkPersonListRow({
 
   return (
     <article className="flex items-center gap-4 px-5 py-4 sm:px-6">
-      <Link href={`/people/${profile.slug}`} className="shrink-0" aria-label={profile.fullName}>
+      <Link href={`/people/${profile.slug}`} className="shrink-0" aria-label={`View ${profile.fullName} profile photo`}>
         {profile.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
           <img
             src={profile.avatarUrl}
-            alt=""
+            alt={`${profile.fullName} profile`}
             loading="lazy"
             className="size-16 rounded-full object-cover ring-1 ring-mist-100"
           />
