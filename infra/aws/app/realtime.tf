@@ -115,6 +115,7 @@ resource "aws_cloudwatch_event_rule" "realtime_events" {
     source = ["sea-n-shore.social"]
     "detail-type" = [
       "message.created",
+      "message.updated",
       "conversation.read_cursor_advanced",
       "feed.post_created",
       "feed.post_reaction_changed",
