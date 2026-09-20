@@ -8,6 +8,7 @@ on:
       - scripts/aws/onboarding-e2e-action.txt
       - scripts/aws/onboarding-e2e-guard.test.mjs
       - scripts/aws/onboarding-staging-e2e.mjs
+      - scripts/aws/feed-avatar-staging-e2e.mjs
       - .github/workflows/aws-onboarding-e2e.yml
   workflow_dispatch:
 
@@ -276,6 +277,21 @@ jobs:
           E2E_PHASE: journeys
         shell: bash
         run: node scripts/aws/onboarding-staging-e2e.mjs
+
+      - name: Verify authenticated Home feed avatar hydration
+        id: feed_avatar
+        if: steps.action.outputs.run_e2e == 'true'
+        shell: bash
+        run: node scripts/aws/feed-avatar-staging-e2e.mjs
+
+      - name: Upload Home feed avatar proof
+        if: always() && steps.action.outputs.run_e2e == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sea-n-shore-feed-avatar-e2e
+          path: /tmp/sea-n-shore-feed-avatar-e2e.png
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Audit persistence and clean disposable identities through SSM
         if: always() && steps.action.outputs.run_e2e == 'true' && steps.instance.outputs.instance_id != ''
