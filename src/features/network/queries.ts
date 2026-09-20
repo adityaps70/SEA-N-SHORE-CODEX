@@ -8,6 +8,7 @@ import { networkRepository } from './repository'
 import { scoreRecommendation } from './recommendations'
 import type {
   NetworkConnectionRow,
+  NetworkFollowView,
   NetworkHubData,
   NetworkProfile,
   NetworkTab,
@@ -82,6 +83,11 @@ async function loadViewerGraph(viewerId: string) {
   }
 }
 
+function profilesInIdOrder<T extends { id: string }>(profiles: T[], ids: readonly string[]) {
+  const byId = new Map(profiles.map((profile) => [profile.id, profile]))
+  return ids.map((id) => byId.get(id)).filter((profile): profile is T => Boolean(profile))
+}
+
 function withRelationship(
   viewerId: string,
   profiles: Awaited<ReturnType<typeof getAwsPublicProfilesByIds>>,
@@ -100,14 +106,18 @@ export async function getRelationshipState(targetId: string): Promise<Relationsh
   return relationshipFromRows(user.id, targetId, graph.followedIds, graph.connections)
 }
 
-export async function getNetworkHub(tab: NetworkTab, searchQuery = ''): Promise<NetworkHubData> {
+export async function getNetworkHub(
+  tab: NetworkTab,
+  searchQuery = '',
+  followView: NetworkFollowView = 'following',
+): Promise<NetworkHubData> {
   const user = await requireAwsUser()
   const graph = await loadViewerGraph(user.id)
   const pending = graph.connections.filter((connection) => connection.status === 'pending')
   const incomingRequestCount = pending.filter((connection) => connection.requested_by !== user.id).length
+  const normalizedSearch = searchQuery.trim()
 
   if (tab === 'discover') {
-    const normalizedSearch = searchQuery.trim()
     const [viewer, candidates] = await Promise.all([
       getAwsOwnProfile(),
       getAwsNetworkProfiles(60, normalizedSearch),
@@ -135,31 +145,54 @@ export async function getNetworkHub(tab: NetworkTab, searchQuery = ''): Promise<
       receivedRequests: [],
       sentRequests: [],
       incomingRequestCount,
+      totalCount: ranked.length,
     }
   }
 
   if (tab === 'connections') {
     const accepted = graph.connections.filter((connection) => connection.status === 'accepted')
     const ids = accepted.map((connection) => counterpartyId(user.id, connection))
-    const profiles = await getAwsPublicProfilesByIds(ids)
+    const loaded = await getAwsPublicProfilesByIds(ids)
+    const profiles = withRelationship(
+      user.id,
+      profilesInIdOrder(loaded, ids),
+      graph.followedIds,
+      graph.connections,
+    ).map((profile) => ({
+      ...profile,
+      relationshipSince: accepted.find((connection) => counterpartyId(user.id, connection) === profile.id)?.updated_at ?? null,
+    }))
+
     return {
       tab,
-      profiles: withRelationship(user.id, profiles, graph.followedIds, graph.connections),
+      profiles: profiles.filter((profile) => matchesNetworkSearch(profile, normalizedSearch)),
       receivedRequests: [],
       sentRequests: [],
       incomingRequestCount,
+      totalCount: profiles.length,
     }
   }
 
   if (tab === 'following') {
-    const ids = [...graph.followedIds]
-    const profiles = await getAwsPublicProfilesByIds(ids)
+    const ids = followView === 'followers'
+      ? await networkRepository.loadFollowerIds(user.id)
+      : [...graph.followedIds]
+    const loaded = await getAwsPublicProfilesByIds(ids)
+    const profiles = withRelationship(
+      user.id,
+      profilesInIdOrder(loaded, ids),
+      graph.followedIds,
+      graph.connections,
+    )
+
     return {
       tab,
-      profiles: withRelationship(user.id, profiles, graph.followedIds, graph.connections),
+      profiles: profiles.filter((profile) => matchesNetworkSearch(profile, normalizedSearch)),
       receivedRequests: [],
       sentRequests: [],
       incomingRequestCount,
+      totalCount: profiles.length,
+      followView,
     }
   }
 
@@ -172,12 +205,26 @@ export async function getNetworkHub(tab: NetworkTab, searchQuery = ''): Promise<
     getAwsPublicProfilesByIds(sentIds),
   ])
 
+  const orderedReceived = withRelationship(
+    user.id,
+    profilesInIdOrder(receivedProfiles, receivedIds),
+    graph.followedIds,
+    graph.connections,
+  )
+  const orderedSent = withRelationship(
+    user.id,
+    profilesInIdOrder(sentProfiles, sentIds),
+    graph.followedIds,
+    graph.connections,
+  )
+
   return {
     tab,
     profiles: [],
-    receivedRequests: withRelationship(user.id, receivedProfiles, graph.followedIds, graph.connections),
-    sentRequests: withRelationship(user.id, sentProfiles, graph.followedIds, graph.connections),
+    receivedRequests: orderedReceived,
+    sentRequests: orderedSent,
     incomingRequestCount,
+    totalCount: orderedReceived.length + orderedSent.length,
   }
 }
 
