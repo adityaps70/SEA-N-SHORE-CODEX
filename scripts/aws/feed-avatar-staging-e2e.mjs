@@ -71,6 +71,7 @@ async function uploadAvatar(page, user) {
   const uploadResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
+      Boolean(response.request().headers()['next-action']) &&
       response.url().startsWith(siteUrl + '/profile'),
     { timeout: 60_000 },
   )
