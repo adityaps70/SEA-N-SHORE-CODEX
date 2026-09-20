@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MessagingMessageDto } from '../queries'
 
 const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
@@ -67,6 +67,8 @@ const messages = [
     body: 'Incoming message',
   }),
 ]
+
+afterEach(() => cleanup())
 
 describe('MessageThread durable Sent/Seen and active-conversation read behavior', () => {
   beforeEach(() => {
