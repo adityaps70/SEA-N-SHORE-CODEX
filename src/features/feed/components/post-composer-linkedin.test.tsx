@@ -44,12 +44,14 @@ const profile: OwnProfile = {
 afterEach(() => cleanup())
 
 describe('PostComposer LinkedIn-style shell', () => {
-  it('shows a compact Start a post trigger and opens the full composer in a dialog', async () => {
+  it('shows only the compact Start a post trigger and opens the full composer in a dialog', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)
 
     expect(screen.getByRole('button', { name: /start a post/i })).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /ask community/i })).not.toBeInTheDocument()
+    expect(screen.queryByText('Draft recovered')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Emoji$/i })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /start a post/i }))
@@ -60,5 +62,23 @@ describe('PostComposer LinkedIn-style shell', () => {
     expect(screen.getByRole('button', { name: /add emoji/i })).toBeInTheDocument()
     expect(screen.getByText('Photo / Video')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Poll' })).toBeInTheDocument()
+  })
+
+  it('keeps recovered-draft status out of the collapsed home-feed composer', () => {
+    window.localStorage.setItem(
+      `sea-n-shore:post-draft:${profile.id}`,
+      JSON.stringify({
+        body: 'Recovered bridge watch draft',
+        mode: 'update',
+        topicTags: '',
+        pollOptions: ['', ''],
+        mentions: [],
+      }),
+    )
+
+    render(<PostComposer profile={profile} />)
+
+    expect(screen.getByRole('button', { name: /start a post/i })).toBeInTheDocument()
+    expect(screen.queryByText('Draft recovered')).not.toBeInTheDocument()
   })
 })
