@@ -13,6 +13,21 @@ export type MessageCreatedRealtimeSignal = {
   }
 }
 
+export type MessageUpdatedRealtimeSignal = {
+  eventId: string
+  eventType: 'message.updated'
+  schemaVersion: number
+  occurredAt: string
+  aggregateId: string
+  payload: {
+    eventType: 'message.updated'
+    conversationId: string
+    messageId: string
+    actorId: string
+    participantProfileIds: string[]
+  }
+}
+
 export type ConversationReadRealtimeSignal = {
   eventId: string
   eventType: 'conversation.read_cursor_advanced'
@@ -44,6 +59,7 @@ export type SocialInvalidationRealtimeSignal = {
 
 export type MessagingRealtimeSignal =
   | MessageCreatedRealtimeSignal
+  | MessageUpdatedRealtimeSignal
   | ConversationReadRealtimeSignal
   | SocialInvalidationRealtimeSignal
 
@@ -103,6 +119,20 @@ function parseMessageCreated(value: JsonRecord): MessageCreatedRealtimeSignal | 
   return value as unknown as MessageCreatedRealtimeSignal
 }
 
+function parseMessageUpdated(value: JsonRecord): MessageUpdatedRealtimeSignal | null {
+  if (value.eventType !== 'message.updated' || !hasSignalEnvelope(value)) return null
+  const payload = value.payload as JsonRecord
+  if (
+    payload.eventType !== 'message.updated'
+    || !isNonEmptyString(payload.conversationId)
+    || !isNonEmptyString(payload.messageId)
+    || !isNonEmptyString(payload.actorId)
+    || !isStringArray(payload.participantProfileIds)
+  ) return null
+
+  return value as unknown as MessageUpdatedRealtimeSignal
+}
+
 function parseConversationRead(value: JsonRecord): ConversationReadRealtimeSignal | null {
   if (value.eventType !== 'conversation.read_cursor_advanced' || !hasSignalEnvelope(value)) return null
   const payload = value.payload as JsonRecord
@@ -159,6 +189,7 @@ export function parseRealtimeSignal(raw: unknown): MessagingRealtimeSignal | nul
   if (!isRecord(parsed)) return null
 
   return parseMessageCreated(parsed)
+    ?? parseMessageUpdated(parsed)
     ?? parseConversationRead(parsed)
     ?? parseSocialInvalidation(parsed)
 }
