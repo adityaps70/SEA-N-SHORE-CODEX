@@ -27,6 +27,30 @@ function canonicalPair(userA: string, userB: string) {
   return userA < userB ? [userA, userB] as const : [userB, userA] as const
 }
 
+const MESSAGE_COLUMNS = `
+  m.id, m.conversation_id, m.sender_profile_id, m.client_message_id,
+  m.body, m.reply_to_message_id,
+  m.attachment_storage_path, m.attachment_name, m.attachment_mime_type, m.attachment_size,
+  m.created_at, m.edited_at, m.deleted_at,
+  reply.sender_profile_id as reply_sender_profile_id,
+  reply.body as reply_body,
+  reply.attachment_name as reply_attachment_name,
+  reply.deleted_at as reply_deleted_at,
+  coalesce((
+    select jsonb_agg(
+      jsonb_build_object(
+        'message_id', reaction.message_id,
+        'profile_id', reaction.profile_id,
+        'emoji', reaction.emoji,
+        'created_at', reaction.created_at
+      )
+      order by reaction.created_at asc, reaction.profile_id asc
+    )
+    from public.message_reactions reaction
+    where reaction.message_id = m.id
+  ), '[]'::jsonb) as reactions
+`
+
 export function createMessagingRepository(input: { query?: MessagingQuery } = {}) {
   const queryRows: MessagingQuery = input.query ?? ((text, values) => databaseQuery(text, values))
 
@@ -113,7 +137,9 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
   async function findMessageByClientId(senderProfileId: string, clientMessageId: string) {
     const rows = await queryRows(
       `select id, conversation_id, sender_profile_id, client_message_id,
-              body, created_at, edited_at, deleted_at
+              body, reply_to_message_id,
+              attachment_storage_path, attachment_name, attachment_mime_type, attachment_size,
+              created_at, edited_at, deleted_at
        from public.messages
        where sender_profile_id = $1
          and client_message_id = $2
@@ -128,15 +154,36 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     senderProfileId: string
     clientMessageId: string
     body: string
+    replyToMessageId?: string | null
+    attachment?: {
+      storagePath: string
+      name: string
+      mimeType: string
+      size: number
+    } | null
   }) {
+    const attachment = input.attachment ?? null
     const rows = await queryRows(
       `insert into public.messages (
-         conversation_id, sender_profile_id, client_message_id, body
+         conversation_id, sender_profile_id, client_message_id, body, reply_to_message_id,
+         attachment_storage_path, attachment_name, attachment_mime_type, attachment_size
        )
-       values ($1, $2, $3, $4)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        returning id, conversation_id, sender_profile_id, client_message_id,
-                 body, created_at, edited_at, deleted_at`,
-      [input.conversationId, input.senderProfileId, input.clientMessageId, input.body],
+                 body, reply_to_message_id,
+                 attachment_storage_path, attachment_name, attachment_mime_type, attachment_size,
+                 created_at, edited_at, deleted_at`,
+      [
+        input.conversationId,
+        input.senderProfileId,
+        input.clientMessageId,
+        input.body,
+        input.replyToMessageId ?? null,
+        attachment?.storagePath ?? null,
+        attachment?.name ?? null,
+        attachment?.mimeType ?? null,
+        attachment?.size ?? null,
+      ],
     ) as MessageRow[]
     const row = rows[0]
     if (!row) throw new Error('messaging_message_create_failed')
@@ -165,16 +212,114 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     )
   }
 
+  async function refreshConversationLastMessage(conversationId: string) {
+    await queryRows(
+      `with latest as (
+         select id, created_at
+         from public.messages
+         where conversation_id = $1
+           and deleted_at is null
+         order by created_at desc, id desc
+         limit 1
+       )
+       update public.conversations
+       set last_message_id = (select id from latest),
+           last_message_at = (select created_at from latest)
+       where id = $1`,
+      [conversationId],
+    )
+  }
+
   async function findMessageInConversation(conversationId: string, messageId: string) {
     const rows = await queryRows(
       `select id, conversation_id, sender_profile_id, client_message_id,
-              body, created_at, edited_at, deleted_at
+              body, reply_to_message_id,
+              attachment_storage_path, attachment_name, attachment_mime_type, attachment_size,
+              created_at, edited_at, deleted_at
        from public.messages
        where conversation_id = $1 and id = $2
        limit 1`,
       [conversationId, messageId],
     ) as MessageRow[]
     return rows[0] ?? null
+  }
+
+  async function findMessageAccessibleToParticipant(profileId: string, messageId: string) {
+    const rows = await queryRows(
+      `select m.id, m.conversation_id, m.sender_profile_id, m.client_message_id,
+              m.body, m.reply_to_message_id,
+              m.attachment_storage_path, m.attachment_name, m.attachment_mime_type, m.attachment_size,
+              m.created_at, m.edited_at, m.deleted_at
+       from public.messages m
+       join public.conversation_participants cp
+         on cp.conversation_id = m.conversation_id
+        and cp.profile_id = $1
+       where m.id = $2
+       limit 1`,
+      [profileId, messageId],
+    ) as MessageRow[]
+    return rows[0] ?? null
+  }
+
+  async function findMessageByIdForUpdate(messageId: string) {
+    const rows = await queryRows(
+      `select id, conversation_id, sender_profile_id, client_message_id,
+              body, reply_to_message_id,
+              attachment_storage_path, attachment_name, attachment_mime_type, attachment_size,
+              created_at, edited_at, deleted_at
+       from public.messages
+       where id = $1
+       for update`,
+      [messageId],
+    ) as MessageRow[]
+    return rows[0] ?? null
+  }
+
+  async function softDeleteMessage(messageId: string) {
+    await queryRows(
+      `update public.messages
+       set body = '',
+           attachment_storage_path = null,
+           attachment_name = null,
+           attachment_mime_type = null,
+           attachment_size = null,
+           deleted_at = now()
+       where id = $1
+         and deleted_at is null`,
+      [messageId],
+    )
+  }
+
+  async function isAttachmentReferenced(storagePath: string) {
+    const rows = await queryRows(
+      `select exists (
+         select 1
+         from public.messages
+         where attachment_storage_path = $1
+           and deleted_at is null
+       ) as allowed`,
+      [storagePath],
+    ) as AllowedRow[]
+    return Boolean(rows[0]?.allowed)
+  }
+
+  async function setMessageReaction(messageId: string, profileId: string, emoji: string | null) {
+    if (emoji === null) {
+      await queryRows(
+        `delete from public.message_reactions
+         where message_id = $1 and profile_id = $2`,
+        [messageId, profileId],
+      )
+      return
+    }
+
+    await queryRows(
+      `insert into public.message_reactions (message_id, profile_id, emoji)
+       values ($1, $2, $3)
+       on conflict (message_id, profile_id)
+       do update set emoji = excluded.emoji, created_at = now()`,
+      [messageId, profileId, emoji],
+    )
   }
 
   async function listMessageRows(request: MessagePageRequest & { viewerProfileId: string }) {
@@ -191,9 +336,9 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     values.push(request.limit)
     const limitParam = `$${values.length}`
     return await queryRows(
-      `select m.id, m.conversation_id, m.sender_profile_id, m.client_message_id,
-              m.body, m.created_at, m.edited_at, m.deleted_at
+      `select ${MESSAGE_COLUMNS}
        from public.messages m
+       left join public.messages reply on reply.id = m.reply_to_message_id
        where m.conversation_id = $1
          and m.deleted_at is null
          and exists (
@@ -225,9 +370,9 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     const limitParam = `$${values.length}`
 
     return await queryRows(
-      `select m.id, m.conversation_id, m.sender_profile_id, m.client_message_id,
-              m.body, m.created_at, m.edited_at, m.deleted_at
+      `select ${MESSAGE_COLUMNS}
        from public.messages m
+       left join public.messages reply on reply.id = m.reply_to_message_id
        where m.conversation_id = $1
          and m.deleted_at is null
          and exists (
@@ -248,8 +393,6 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     messageId: string,
     createdAt: string,
   ) {
-    // Read ordering is derived from Aurora's canonical message row so PostgreSQL
-    // microsecond precision cannot be lost through a JavaScript Date round-trip.
     void createdAt
     const rows = await queryRows(
       `with target as (
@@ -298,7 +441,11 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
               p.headline as other_headline,
               p.avatar_path as other_avatar_path,
               c.last_message_id,
-              lm.body as last_message_body,
+              case
+                when nullif(lm.body, '') is not null then lm.body
+                when lm.attachment_name is not null then '📎 ' || lm.attachment_name
+                else null
+              end as last_message_body,
               lm.sender_profile_id as last_message_sender_id,
               c.last_message_at,
               mine.last_read_message_id,
@@ -371,7 +518,13 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     findMessageByClientId,
     insertMessage,
     updateConversationLastMessage,
+    refreshConversationLastMessage,
     findMessageInConversation,
+    findMessageAccessibleToParticipant,
+    findMessageByIdForUpdate,
+    softDeleteMessage,
+    isAttachmentReferenced,
+    setMessageReaction,
     listMessageRows,
     listMessageRowsAfter,
     advanceReadState,
