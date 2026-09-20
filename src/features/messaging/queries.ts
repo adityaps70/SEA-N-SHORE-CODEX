@@ -1,5 +1,6 @@
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { createMediaReadUrl } from '@/lib/aws/storage'
+import { isImageMessageAttachmentMime, isVideoMessageAttachmentMime } from './media-policy'
 import { messagingRepository, type MessagingRepository } from './repository'
 import { messageAfterRequestSchema, messagePageRequestSchema } from './schemas'
 import type { MessagingMessageRow } from './types'
@@ -15,6 +16,27 @@ type MessagingQueryRepository = Pick<
 
 type RequireMessagingUser = () => Promise<{ id: string }>
 
+export type MessagingReactionDto = {
+  profileId: string
+  emoji: string
+}
+
+export type MessagingAttachmentDto = {
+  name: string
+  mimeType: string
+  size: number
+  url: string
+  kind: 'image' | 'video' | 'file'
+}
+
+export type MessagingReplyPreviewDto = {
+  messageId: string
+  senderProfileId: string | null
+  body: string
+  attachmentName: string | null
+  deleted: boolean
+}
+
 export type MessagingMessageDto = {
   id: string
   conversationId: string
@@ -24,6 +46,9 @@ export type MessagingMessageDto = {
   createdAt: string
   editedAt: string | null
   deletedAt: string | null
+  replyTo: MessagingReplyPreviewDto | null
+  attachment: MessagingAttachmentDto | null
+  reactions: MessagingReactionDto[]
 }
 
 export type MessagingInboxItem = {
@@ -45,11 +70,44 @@ function iso(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value
 }
 
-function optionalIso(value: string | Date | null) {
+function optionalIso(value: string | Date | null | undefined) {
   return value == null ? null : iso(value)
 }
 
-export function messagingMessageDto(row: MessagingMessageRow): MessagingMessageDto {
+function attachmentKind(mimeType: string): MessagingAttachmentDto['kind'] {
+  if (isImageMessageAttachmentMime(mimeType)) return 'image'
+  if (isVideoMessageAttachmentMime(mimeType)) return 'video'
+  return 'file'
+}
+
+export function messagingMessageDto(
+  row: MessagingMessageRow,
+  attachmentUrl: string | null = null,
+): MessagingMessageDto {
+  const attachment = row.attachment_storage_path
+    && row.attachment_name
+    && row.attachment_mime_type
+    && typeof row.attachment_size === 'number'
+    && attachmentUrl
+    ? {
+        name: row.attachment_name,
+        mimeType: row.attachment_mime_type,
+        size: row.attachment_size,
+        url: attachmentUrl,
+        kind: attachmentKind(row.attachment_mime_type),
+      }
+    : null
+
+  const reactions = Array.isArray(row.reactions)
+    ? row.reactions.flatMap((reaction) => (
+        reaction
+        && typeof reaction.profile_id === 'string'
+        && typeof reaction.emoji === 'string'
+          ? [{ profileId: reaction.profile_id, emoji: reaction.emoji }]
+          : []
+      ))
+    : []
+
   return {
     id: row.id,
     conversationId: row.conversation_id,
@@ -59,7 +117,28 @@ export function messagingMessageDto(row: MessagingMessageRow): MessagingMessageD
     createdAt: iso(row.created_at),
     editedAt: optionalIso(row.edited_at),
     deletedAt: optionalIso(row.deleted_at),
+    replyTo: row.reply_to_message_id
+      ? {
+          messageId: row.reply_to_message_id,
+          senderProfileId: row.reply_sender_profile_id ?? null,
+          body: row.reply_deleted_at ? '' : (row.reply_body ?? ''),
+          attachmentName: row.reply_deleted_at ? null : (row.reply_attachment_name ?? null),
+          deleted: Boolean(row.reply_deleted_at),
+        }
+      : null,
+    attachment,
+    reactions,
   }
+}
+
+export async function hydratedMessagingMessageDto(
+  row: MessagingMessageRow,
+  createReadUrl: (key: string) => Promise<string> = createMediaReadUrl,
+) {
+  const attachmentUrl = row.attachment_storage_path
+    ? await createReadUrl(row.attachment_storage_path)
+    : null
+  return messagingMessageDto(row, attachmentUrl)
 }
 
 function inboxLimit(limit?: number) {
@@ -121,7 +200,7 @@ export function createMessagingQueries(input: {
         : null
 
       return {
-        messages: [...rows].reverse().map(messagingMessageDto),
+        messages: await Promise.all([...rows].reverse().map((row) => hydratedMessagingMessageDto(row, input.createReadUrl))),
         nextCursor,
       }
     },
@@ -145,7 +224,7 @@ export function createMessagingQueries(input: {
         : null
 
       return {
-        messages: rows.map(messagingMessageDto),
+        messages: await Promise.all(rows.map((row) => hydratedMessagingMessageDto(row, input.createReadUrl))),
         nextCursor,
       }
     },
