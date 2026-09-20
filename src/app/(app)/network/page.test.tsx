@@ -25,14 +25,14 @@ const profile = {
 }
 
 vi.mock('@/features/network/queries', () => ({
-  getNetworkHub: vi.fn(async (tab: string, _query = '', followView = 'following') => ({
+  getNetworkHub: vi.fn(async (tab: string, ...args: string[]) => ({
     tab,
     profiles: tab === 'requests' ? [] : [profile],
     receivedRequests: tab === 'requests' ? [profile] : [],
     sentRequests: [],
     incomingRequestCount: tab === 'requests' ? 1 : 0,
     totalCount: 1,
-    followView,
+    followView: args[1] ?? 'following',
   })),
 }))
 
