@@ -112,6 +112,11 @@ describe('Aurora messaging repository', () => {
       VIEWER_ID,
       CLIENT_MESSAGE_ID,
       'Good day, Captain.',
+      null,
+      null,
+      null,
+      null,
+      null,
     ])
   })
 
