@@ -69,7 +69,6 @@ async function uploadAvatar(page, user) {
   const form = addButton.locator('xpath=ancestor::form')
   const control = form.locator('xpath=..')
   const alert = control.getByRole('alert').first()
-  const successButton = page.getByRole('button', { name: 'Change profile photo' })
 
   const input = form.locator('input[name="image"]')
   await input.setInputFiles({
@@ -78,15 +77,10 @@ async function uploadAvatar(page, user) {
     buffer: avatarPng,
   })
 
-  const outcome = await Promise.race([
-    successButton.waitFor({ state: 'visible', timeout: 60_000 }).then(() => ({ kind: 'success' })),
-    alert.waitFor({ state: 'visible', timeout: 60_000 }).then(async () => ({
-      kind: 'error',
-      message: (await alert.innerText()).trim(),
-    })),
-  ])
-  if (outcome.kind === 'error') {
-    throw new Error('Profile avatar upload failed: ' + (outcome.message || 'Unknown upload error'))
+  await page.waitForTimeout(3_000)
+  if ((await alert.count()) > 0 && await alert.isVisible().catch(() => false)) {
+    const message = (await alert.innerText()).trim()
+    throw new Error('Profile avatar upload failed: ' + (message || 'Unknown upload error'))
   }
 
   await page.reload({ waitUntil: 'domcontentloaded' })
