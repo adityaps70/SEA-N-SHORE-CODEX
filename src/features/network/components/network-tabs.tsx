@@ -5,7 +5,7 @@ const labels: Record<NetworkTab, string> = {
   discover: 'Discover',
   connections: 'Connections',
   requests: 'Requests',
-  following: 'Following',
+  following: 'Following & followers',
 }
 
 export function NetworkTabs({ active, incomingRequestCount }: { active: NetworkTab; incomingRequestCount: number }) {
