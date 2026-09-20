@@ -76,6 +76,8 @@ test('realtime e2e proves canonical message and read-cursor fanout over authenti
   assert.match(remote, /sqs/i)
   assert.match(remote, /cloudwatch/i)
   assert.match(remote, /last_read_message_id/i)
+  assert.match(remote, /READ_CURSOR_AT_OR_AFTER_FOLLOWUP/)
+  assert.doesNotMatch(remote, /READ_CURSOR_MATCH=\$\(cut -f9/)
   assert.match(remote, /REALTIME_E2E_DURABLE_READ_CURSOR_VERIFIED=true/)
   assert.match(remote, /REALTIME_E2E_DURABLE_MESSAGE_VERIFIED=true/)
   assert.match(remote, /REALTIME_E2E_INFRA_HEALTH_VERIFIED=true/)
