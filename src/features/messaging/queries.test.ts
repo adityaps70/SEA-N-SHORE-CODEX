@@ -126,6 +126,9 @@ describe('messaging queries', () => {
           createdAt: '2026-09-13T01:00:00.000Z',
           editedAt: null,
           deletedAt: null,
+          replyTo: null,
+          attachment: null,
+          reactions: [],
         },
         {
           id: NEWER_MESSAGE_ID,
@@ -136,6 +139,9 @@ describe('messaging queries', () => {
           createdAt: '2026-09-13T01:10:00.000Z',
           editedAt: null,
           deletedAt: null,
+          replyTo: null,
+          attachment: null,
+          reactions: [],
         },
       ],
       nextCursor: {
