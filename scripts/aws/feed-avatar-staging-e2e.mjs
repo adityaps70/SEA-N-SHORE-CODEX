@@ -167,7 +167,7 @@ async function deleteOwnPost(page, text) {
 }
 
 async function removeAvatar(page) {
-  await page.goto(siteUrl + '/profile', { waitUntil: 'networkidle' })
+  await page.goto(siteUrl + '/profile', { waitUntil: 'domcontentloaded', timeout: 20_000 })
   const removeButton = page.getByRole('button', { name: 'Remove profile photo' })
   if ((await removeButton.count()) === 0) return
   await removeButton.click()
@@ -177,6 +177,8 @@ async function removeAvatar(page) {
 let authorPage
 let reposterPage
 let fallbackPage
+let primaryError
+const cleanupErrors = []
 
 try {
   const authorSession = await newSignedInPage(users.author)
@@ -194,8 +196,9 @@ try {
   await verifyFallbackInitials(fallbackPage)
 
   console.log('FEED_AVATAR_STAGING_E2E_VERIFIED=true')
+} catch (error) {
+  primaryError = error
 } finally {
-  const cleanupErrors = []
   if (reposterPage) await deleteOwnPost(reposterPage, postText).catch((error) => cleanupErrors.push('repost:' + error.message))
   if (authorPage) await deleteOwnPost(authorPage, postText).catch((error) => cleanupErrors.push('source:' + error.message))
   if (fallbackPage) await deleteOwnPost(fallbackPage, fallbackPostText).catch((error) => cleanupErrors.push('fallback:' + error.message))
@@ -203,5 +206,7 @@ try {
   if (authorPage) await removeAvatar(authorPage).catch((error) => cleanupErrors.push('author-avatar:' + error.message))
   for (const context of contexts) await context.close().catch(() => {})
   await browser.close()
-  if (cleanupErrors.length) throw new Error('Feed avatar E2E cleanup failed: ' + cleanupErrors.join(' | '))
 }
+
+if (primaryError) throw primaryError
+if (cleanupErrors.length) throw new Error('Feed avatar E2E cleanup failed: ' + cleanupErrors.join(' | '))
