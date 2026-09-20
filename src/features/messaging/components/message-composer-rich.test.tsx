@@ -79,6 +79,36 @@ describe('MessageComposer rich messaging', () => {
     }))
   })
 
+  it('keeps the emoji picker open for multi-emoji composition and exposes a much larger categorized catalog', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+    await user.click(screen.getByRole('button', { name: 'Insert 😀' }))
+    expect(screen.getByRole('menu', { name: 'Choose emoji' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Insert 😂' }))
+    expect(screen.getByRole('textbox', { name: 'Write a message' })).toHaveValue('😀😂')
+    expect(screen.getByRole('menu', { name: 'Choose emoji' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Show travel emojis' }))
+    expect(screen.getByRole('button', { name: 'Insert 🗺️' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Insert 🗺️' }))
+    expect(screen.getByRole('textbox', { name: 'Write a message' })).toHaveValue('😀😂🗺️')
+
+    await user.click(screen.getByRole('button', { name: 'Done choosing emojis' }))
+    expect(screen.queryByRole('menu', { name: 'Choose emoji' })).not.toBeInTheDocument()
+  })
+
   it('uploads a photo, shows a preview state, and sends it even without text', async () => {
     const user = userEvent.setup()
     const storagePath = `messages/${VIEWER_ID}/${CONVERSATION_ID}/77777777-7777-4777-8777-777777777777.jpg`
