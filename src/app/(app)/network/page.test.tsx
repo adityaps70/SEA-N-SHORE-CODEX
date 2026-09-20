@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import NetworkPage from './page'
 
 const profile = {
@@ -47,6 +47,8 @@ vi.mock('@/features/network/components/network-person-list-row', () => ({
 vi.mock('@/features/network/components/connection-request-card', () => ({
   ConnectionRequestCard: ({ profile: item, direction }: { profile: typeof profile; direction: string }) => <div>{direction} request {item.fullName}</div>,
 }))
+
+afterEach(() => cleanup())
 
 describe('Maritime Network page', () => {
   it('renders Discover as a LinkedIn-style people-you-may-know grid within the existing Sea N Shore shell', async () => {
