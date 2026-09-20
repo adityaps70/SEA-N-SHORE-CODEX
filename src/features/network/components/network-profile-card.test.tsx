@@ -1,10 +1,11 @@
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NetworkProfile } from '../types'
 import { NetworkProfileCard } from './network-profile-card'
 
-vi.mock('./relationship-controls', () => ({
-  RelationshipControls: () => <div>Relationship actions</div>,
+vi.mock('./connection-primary-action', () => ({
+  ConnectionPrimaryAction: () => <button type="button">Connect</button>,
 }))
 
 vi.mock('@/features/messaging/components/start-conversation-button', () => ({
@@ -37,21 +38,22 @@ const profile: NetworkProfile = {
 afterEach(() => cleanup())
 
 describe('NetworkProfileCard', () => {
-  it('shows real maritime profile context and actions without messaging non-connections', () => {
+  it('uses a LinkedIn-style suggested-person card while keeping Sea N Shore styling', async () => {
+    const user = userEvent.setup()
     render(<NetworkProfileCard profile={profile} />)
     expect(screen.getByText('Capt. Meera Nair')).toBeInTheDocument()
     expect(screen.getByText('Master Mariner | Tanker Operations')).toBeInTheDocument()
-    expect(screen.getByText('Mumbai, India')).toBeInTheDocument()
     expect(screen.getByText(/Master · Ocean Example/)).toBeInTheDocument()
-    expect(screen.getByText('SIRE 2.0')).toBeInTheDocument()
-    expect(screen.getByText('+1')).toBeInTheDocument()
-    expect(screen.getByText('Relationship actions')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /View professional profile/i })).toHaveAttribute('href', '/people/capt-meera-nair')
-    expect(screen.queryByTestId('message-cta')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /dismiss capt\. meera nair suggestion/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Capt. Meera Nair' })).toHaveAttribute('href', '/people/capt-meera-nair')
     expect(screen.queryByText(/Verified|Reputation/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /dismiss capt\. meera nair suggestion/i }))
+    expect(screen.queryByText('Capt. Meera Nair')).not.toBeInTheDocument()
   })
 
-  it('shows the Message CTA only for an accepted connection', () => {
+  it('keeps the primary relationship action surface available for connected profiles', () => {
     const connectedProfile: NetworkProfile = {
       ...profile,
       relationship: {
@@ -65,6 +67,6 @@ describe('NetworkProfileCard', () => {
 
     render(<NetworkProfileCard profile={connectedProfile} />)
 
-    expect(screen.getByTestId('message-cta')).toHaveTextContent(`Message ${profile.id}`)
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
   })
 })
