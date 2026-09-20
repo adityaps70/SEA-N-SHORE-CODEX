@@ -66,6 +66,7 @@ test('messaging outbox events fan out through encrypted SQS with a DLQ', () => {
   assert.match(terraform, /maxReceiveCount\s*=\s*5/)
   assert.match(terraform, /event_bus_name\s*=\s*aws_cloudwatch_event_bus\.social\.name/)
   assert.ok(terraform.includes('"message.created"'))
+  assert.ok(terraform.includes('"message.updated"'))
   assert.ok(terraform.includes('"conversation.read_cursor_advanced"'))
 })
 
@@ -179,6 +180,33 @@ test('realtime infrastructure release is bounded, guarded, and executed through 
   assert.deepEqual(classifier.classifyRealtimeInfraPlan({ resource_changes: [] }, 'plan'), {
     mode: 'steady',
     createCount: 0,
+    replaceCount: 0,
+  })
+
+  const messageMaintenancePlan = {
+    resource_changes: [
+      {
+        address: 'aws_cloudwatch_event_rule.realtime_events',
+        mode: 'managed',
+        change: { actions: ['update'] },
+      },
+      {
+        address: 'aws_lambda_function.realtime_fanout',
+        mode: 'managed',
+        change: { actions: ['update'] },
+      },
+    ],
+  }
+  assert.deepEqual(classifier.classifyRealtimeInfraPlan(messageMaintenancePlan, 'plan'), {
+    mode: 'message-maintenance',
+    createCount: 0,
+    updateCount: 2,
+    replaceCount: 0,
+  })
+  assert.deepEqual(classifier.classifyRealtimeInfraPlan(messageMaintenancePlan, 'apply-once'), {
+    mode: 'message-maintenance',
+    createCount: 0,
+    updateCount: 2,
     replaceCount: 0,
   })
   assert.throws(
