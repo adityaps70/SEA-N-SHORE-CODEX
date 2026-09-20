@@ -176,6 +176,7 @@ export function MessageThread({
   const router = useRouter()
   const name = otherName ?? 'Sea N Shore member'
   const lastRequestedReadIdRef = useRef<string | null>(null)
+  const bottomRef = useRef<HTMLDivElement | null>(null)
   const [interactionError, setInteractionError] = useState('')
   const [pendingMessageId, setPendingMessageId] = useState<string | null>(null)
   const latestReceived = useMemo(
@@ -207,6 +208,17 @@ export function MessageThread({
         }
       })
   }, [conversationId, latestReceived, router])
+
+  const latestMessageKey = messages.length
+    ? `${messages.at(-1)?.id ?? ''}:${messages.length}`
+    : 'empty'
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView?.({
+      block: 'end',
+      behavior: 'auto',
+    })
+  }, [conversationId, latestMessageKey])
 
   useEffect(() => {
     const onPotentialView = () => attemptMarkRead()
@@ -439,6 +451,7 @@ export function MessageThread({
             </div>
           </div>
         )}
+        <div ref={bottomRef} aria-hidden="true" className="h-px" />
       </div>
     </section>
   )
