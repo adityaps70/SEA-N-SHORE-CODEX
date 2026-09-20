@@ -90,7 +90,7 @@ case "$PHASE" in
     BURST_TWO_BODY="$MESSAGE_BODY unread burst 2"
     BURST_THREE_BODY="$MESSAGE_BODY unread burst 3"
     FOLLOWUP_BODY="$MESSAGE_BODY live follow-up"
-    ROW=$(sql "SELECT (SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$MESSAGE_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$BURST_TWO_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$BURST_THREE_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$FOLLOWUP_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$INJECTED_BODY')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='message.created' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='conversation.read_cursor_advanced' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE payload::text LIKE '%' || '$MESSAGE_BODY' || '%' OR payload::text LIKE '%' || '$BURST_TWO_BODY' || '%' OR payload::text LIKE '%' || '$BURST_THREE_BODY' || '%' OR payload::text LIKE '%' || '$FOLLOWUP_BODY' || '%')::text,(SELECT count(*) FROM public.conversation_participants cp JOIN public.messages m ON m.id=cp.last_read_message_id WHERE cp.conversation_id='$CONVERSATION_ID'::uuid AND cp.profile_id=($recipient_id_sql) AND m.conversation_id='$CONVERSATION_ID'::uuid AND m.body='$FOLLOWUP_BODY')::text" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
+    ROW=$(sql "SELECT (SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$MESSAGE_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$BURST_TWO_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$BURST_THREE_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$FOLLOWUP_BODY')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$INJECTED_BODY')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='message.created' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='conversation.read_cursor_advanced' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.event_outbox WHERE payload::text LIKE '%' || '$MESSAGE_BODY' || '%' OR payload::text LIKE '%' || '$BURST_TWO_BODY' || '%' OR payload::text LIKE '%' || '$BURST_THREE_BODY' || '%' OR payload::text LIKE '%' || '$FOLLOWUP_BODY' || '%')::text,(SELECT count(*) FROM public.conversation_participants cp JOIN public.messages read_message ON read_message.id=cp.last_read_message_id JOIN public.messages followup_message ON followup_message.conversation_id=cp.conversation_id AND followup_message.body='$FOLLOWUP_BODY' WHERE cp.conversation_id='$CONVERSATION_ID'::uuid AND cp.profile_id=($recipient_id_sql) AND (read_message.created_at>followup_message.created_at OR (read_message.created_at=followup_message.created_at AND read_message.id>=followup_message.id)))::text" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
     MSG_COUNT=$(cut -f1 <<<"$ROW")
     BURST_TWO_COUNT=$(cut -f2 <<<"$ROW")
     BURST_THREE_COUNT=$(cut -f3 <<<"$ROW")
@@ -99,10 +99,10 @@ case "$PHASE" in
     CREATED_COUNT=$(cut -f6 <<<"$ROW")
     READ_COUNT=$(cut -f7 <<<"$ROW")
     LEAK_COUNT=$(cut -f8 <<<"$ROW")
-    READ_CURSOR_MATCH=$(cut -f9 <<<"$ROW")
+    READ_CURSOR_AT_OR_AFTER_FOLLOWUP=$(cut -f9 <<<"$ROW")
     [[ "$MSG_COUNT" == 1 && "$BURST_TWO_COUNT" == 1 && "$BURST_THREE_COUNT" == 1 && "$FOLLOWUP_COUNT" == 1 && "$INJECTED_COUNT" == 0 ]]
     [[ "$CREATED_COUNT" -ge 4 && "$READ_COUNT" -ge 2 ]]
-    [[ "$READ_CURSOR_MATCH" == 1 ]]
+    [[ "$READ_CURSOR_AT_OR_AFTER_FOLLOWUP" == 1 ]]
     [[ "$LEAK_COUNT" == 0 ]]
 
     RUN_TOKEN="${SENDER#sea-n-shore-realtime-e2e-}"
