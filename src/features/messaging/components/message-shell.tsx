@@ -14,6 +14,7 @@ import {
   laterReadCursor,
   latestCanonicalCursor,
   mergeCanonicalMessages,
+  syncThreadMessagesWithCanonicalSnapshot,
   type MessagingReadCursor,
 } from '../thread-realtime'
 import { ConversationList } from './conversation-list'
@@ -56,6 +57,14 @@ function ActiveConversationWorkspace({
   const catchUpRunningRef = useRef(false)
   const catchUpPendingRef = useRef(false)
   const displayedMessages = mergeCanonicalMessages(messages, conversation.messages)
+
+  useEffect(() => {
+    setMessages((current) => {
+      const next = syncThreadMessagesWithCanonicalSnapshot(current, conversation.messages)
+      messagesRef.current = next
+      return next
+    })
+  }, [conversation.messages])
   const effectivePeerReadCursor = laterReadCursor(
     peerReadCursor,
     peerCursorFromConversation(conversation),
@@ -104,6 +113,11 @@ function ActiveConversationWorkspace({
       if (signal.eventType === 'message.created') {
         if (signal.payload.conversationId !== conversation.conversationId) return
         void catchUpActiveConversation()
+        return
+      }
+
+      if (signal.eventType === 'message.updated') {
+        if (signal.payload.conversationId !== conversation.conversationId) return
         return
       }
 
