@@ -211,6 +211,17 @@ describe('feed media adapter', () => {
     errorSpy.mockRestore()
   })
 
+  it('resolves profile avatar storage keys with the profile-media signed read path', async () => {
+    const avatarPath = `profiles/${profileId}/avatar-${randomId}.webp`
+    const postPath = `${profileId}/${postId}/${randomId}.webp`
+
+    const urls = await resolveFeedMediaUrls([avatarPath, postPath])
+
+    expect(createMediaReadUrl).toHaveBeenCalledWith(avatarPath)
+    expect(urls.get(avatarPath)).toBe(`https://s3.example/${avatarPath}`)
+    expect(urls.get(postPath)).toBe(`/api/feed-media/${profileId}/${postId}/${randomId}.webp`)
+  })
+
   it('resolves feed media to same-origin private paths without exposing the S3 hostname', async () => {
     const nestedPath = `${profileId}/${postId}/deck photo.webp`
 
