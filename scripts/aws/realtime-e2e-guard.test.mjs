@@ -276,3 +276,33 @@ test('realtime messaging failure captures outbox worker and fanout diagnostics b
   assert.match(remote, /REALTIME_MESSAGE_DIAG_FANOUT_ERRORS=/)
   assert.match(remote, /REALTIME_E2E_MESSAGE_DIAGNOSTIC_VERIFIED=true/)
 })
+
+
+test('realtime messaging E2E covers rich composer, arbitrary reactions, replies, attachments and unsend', () => {
+  const browser = readFileSync(browserPath, 'utf8')
+  const remote = readFileSync(remotePath, 'utf8')
+
+  assert.match(browser, /Add emoji/)
+  assert.match(browser, /Insert 🫡/)
+  assert.match(browser, /Custom emoji reaction/)
+  assert.match(browser, /Use custom emoji/)
+  assert.match(browser, /Reply to message/)
+  assert.match(browser, /input\\[type="file"\\]/)
+  assert.match(browser, /Ready to send/)
+  assert.match(browser, /Unsend message/)
+  assert.match(browser, /message\\.updated/)
+  assert.match(browser, /REALTIME_E2E_EMOJI_MESSAGE_VERIFIED=true/)
+  assert.match(browser, /REALTIME_E2E_REPLY_VERIFIED=true/)
+  assert.match(browser, /REALTIME_E2E_PHOTO_ATTACHMENT_VERIFIED=true/)
+  assert.match(browser, /REALTIME_E2E_FILE_ATTACHMENT_VERIFIED=true/)
+  assert.match(browser, /REALTIME_E2E_CUSTOM_REACTION_VERIFIED=true/)
+  assert.match(browser, /REALTIME_E2E_UNSEND_VERIFIED=true/)
+
+  assert.match(remote, /message_reactions/i)
+  assert.match(remote, /attachment_storage_path/i)
+  assert.match(remote, /reply_to_message_id/i)
+  assert.match(remote, /deleted_at is not null/i)
+  assert.match(remote, /event_type='message\\.updated'/i)
+  assert.match(remote, /REALTIME_E2E_DURABLE_RICH_MESSAGING_VERIFIED=true/)
+  assert.match(remote, /sea-n-shore-staging-310356785722-media/)
+})
