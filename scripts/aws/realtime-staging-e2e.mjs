@@ -348,6 +348,73 @@ async function realtimeJourney() {
     }, { conversationId }, { timeout: 30_000 })
     console.log('REALTIME_E2E_ACTIVE_THREAD_NO_RELOAD_VERIFIED=true')
 
+    const richReplyBody = `${messageBody} rich reply`
+    const richPhotoName = `bridge-${runId}.png`
+    const richFileName = `certificate-${runId}.txt`
+
+    await senderPage.getByRole('button', { name: 'Add emoji' }).click()
+    await senderPage.getByRole('button', { name: 'Insert 🫡' }).click()
+    await expect(senderPage.getByLabel('Write a message')).toHaveValue('🫡')
+    await senderPage.getByRole('button', { name: 'Send message' }).click()
+    await expect(recipientPage.getByText('🫡', { exact: true }).last()).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_EMOJI_MESSAGE_VERIFIED=true')
+
+    const recipientReplyButtons = recipientPage.getByRole('button', { name: /^Reply to message / })
+    await recipientReplyButtons.last().click({ force: true })
+    await expect(recipientPage.getByText('Replying to message', { exact: true })).toBeVisible()
+    await recipientPage.getByLabel('Write a message').fill(richReplyBody)
+    await recipientPage.getByRole('button', { name: 'Send message' }).click()
+    await expect(senderPage.getByText(richReplyBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(senderPage.getByText('Reply', { exact: true }).last()).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_REPLY_VERIFIED=true')
+
+    const senderFileInput = senderPage.locator('input[type="file"]')
+    const onePixelPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nMcAAAAASUVORK5CYII=',
+      'base64',
+    )
+    await senderFileInput.setInputFiles({
+      name: richPhotoName,
+      mimeType: 'image/png',
+      buffer: onePixelPng,
+    })
+    await expect(senderPage.getByText('Ready to send', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await senderPage.getByRole('button', { name: 'Send message' }).click()
+    await expect(recipientPage.getByRole('img', { name: richPhotoName })).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_PHOTO_ATTACHMENT_VERIFIED=true')
+
+    await senderFileInput.setInputFiles({
+      name: richFileName,
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Sea N Shore Realtime E2E attachment\n', 'utf8'),
+    })
+    await expect(senderPage.getByText('Ready to send', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await senderPage.getByRole('button', { name: 'Send message' }).click()
+    await expect(recipientPage.getByText(richFileName, { exact: true })).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_FILE_ATTACHMENT_VERIFIED=true')
+
+    const recipientReactionButtons = recipientPage.getByRole('button', { name: /^React to message / })
+    await recipientReactionButtons.last().click({ force: true })
+    await recipientPage.getByLabel('Custom emoji reaction').fill('🧭')
+    await recipientPage.getByRole('button', { name: 'Use custom emoji' }).click()
+    await recipientPage.waitForFunction(({ conversationId }) => {
+      const signals = globalThis.__realtime_recipient_signals ?? []
+      return signals.some((signal) => signal?.eventType === 'message.updated' && signal?.payload?.conversationId === conversationId)
+    }, { conversationId }, { timeout: 30_000 })
+    await expect(senderPage.getByRole('button', { name: '🧭 1 reaction' })).toBeVisible({ timeout: 30_000 })
+    console.log('REALTIME_E2E_CUSTOM_REACTION_VERIFIED=true')
+
+    const senderMoreButtons = senderPage.getByRole('button', { name: /^More actions for message / })
+    await senderMoreButtons.last().click({ force: true })
+    await senderPage.getByRole('button', { name: 'Unsend message' }).click()
+    await recipientPage.waitForFunction(({ conversationId }) => {
+      const signals = globalThis.__realtime_recipient_signals ?? []
+      return signals.filter((signal) => signal?.eventType === 'message.updated' && signal?.payload?.conversationId === conversationId).length >= 2
+    }, { conversationId }, { timeout: 30_000 })
+    await expect(senderPage.getByText(richFileName, { exact: true })).toHaveCount(0, { timeout: 30_000 })
+    await expect(recipientPage.getByText(richFileName, { exact: true })).toHaveCount(0, { timeout: 30_000 })
+    console.log('REALTIME_E2E_UNSEND_VERIFIED=true')
+
     await senderPage.evaluate((injectedBody) => {
       const socket = globalThis.__realtime_sender_socket
       if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error('probe_socket_not_open')
