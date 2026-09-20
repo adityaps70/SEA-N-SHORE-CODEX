@@ -180,7 +180,9 @@ describe('MessagingRealtimeProvider', () => {
     act(() => FakeWebSocket.instances[0]?.open())
     act(() => FakeWebSocket.instances[0]?.message(SIGNAL))
 
-    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(4))
+    await waitFor(() => expect(router.refresh).toHaveBeenCalled())
+    expect(unread.publishMessagingUnreadCount).not.toHaveBeenCalled()
     expect(screen.queryByText('New message from Capt. Anita Singh')).not.toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalledWith('/api/realtime/messaging-state', expect.anything())
   })
 })
