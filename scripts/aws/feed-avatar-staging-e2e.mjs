@@ -81,6 +81,8 @@ async function uploadAvatar(page, user) {
   })
   const response = await uploadResponsePromise
   console.log('profile upload action status=' + response.status())
+  const responseBody = await response.text()
+  console.log('profile upload action response=' + responseBody.slice(0, 2000).replace(/\s+/g, ' '))
   assert.ok(response.ok(), 'Profile upload action must return a successful HTTP status')
 
   const control = form.locator('xpath=..')
