@@ -54,7 +54,7 @@ async function newSignedInPage(user) {
   const context = await browser.newContext()
   contexts.push(context)
   const page = await context.newPage()
-  await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'networkidle' })
+  await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'domcontentloaded' })
   await page.getByLabel('Email').fill(user.email)
   await page.getByLabel('Password').fill(user.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -63,7 +63,7 @@ async function newSignedInPage(user) {
 }
 
 async function uploadAvatar(page, user) {
-  await page.goto(siteUrl + '/profile', { waitUntil: 'networkidle' })
+  await page.goto(siteUrl + '/profile', { waitUntil: 'domcontentloaded' })
   const addButton = page.getByRole('button', { name: 'Add profile photo' })
   await expect(addButton).toBeVisible()
   const form = addButton.locator('xpath=ancestor::form')
@@ -87,14 +87,14 @@ async function uploadAvatar(page, user) {
 }
 
 async function createPost(page, text) {
-  await page.goto(siteUrl + '/home', { waitUntil: 'networkidle' })
+  await page.goto(siteUrl + '/home', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('button', { name: 'Start a post' })).toBeVisible()
   await page.getByRole('button', { name: 'Start a post' }).click()
   await expect(page.getByRole('heading', { name: 'Create a post' })).toBeVisible()
   await page.locator('#feed-post-body').fill(text)
   await page.getByRole('button', { name: 'Post Update' }).click()
   await expect(page.getByRole('heading', { name: 'Create a post' })).toBeHidden({ timeout: 20_000 })
-  await page.reload({ waitUntil: 'networkidle' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
   const article = page.locator('article').filter({ hasText: text }).first()
   await expect(article).toBeVisible({ timeout: 20_000 })
   return article
@@ -117,13 +117,13 @@ async function verifyImage(context, image, label) {
 }
 
 async function repostAndVerify(page, context) {
-  await page.goto(siteUrl + '/home', { waitUntil: 'networkidle' })
+  await page.goto(siteUrl + '/home', { waitUntil: 'domcontentloaded' })
   const sourceArticle = page.locator('article').filter({ hasText: postText }).first()
   await expect(sourceArticle).toBeVisible({ timeout: 20_000 })
   await sourceArticle.getByRole('button', { name: 'Share' }).click()
   await sourceArticle.getByRole('menuitem', { name: 'Repost to feed' }).click()
   await page.waitForTimeout(800)
-  await page.reload({ waitUntil: 'networkidle' })
+  await page.reload({ waitUntil: 'domcontentloaded' })
 
   const repost = page.locator('article')
     .filter({ hasText: users.reposter.fullName })
@@ -158,7 +158,7 @@ async function verifyFallbackInitials(page) {
 }
 
 async function deleteOwnPost(page, text) {
-  await page.goto(siteUrl + '/home', { waitUntil: 'networkidle' })
+  await page.goto(siteUrl + '/home', { waitUntil: 'domcontentloaded' })
   const article = page.locator('article').filter({ hasText: text }).first()
   if ((await article.count()) === 0) return
   page.once('dialog', (dialog) => dialog.accept())
