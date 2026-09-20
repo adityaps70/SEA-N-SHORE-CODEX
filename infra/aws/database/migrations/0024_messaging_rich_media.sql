@@ -10,7 +10,7 @@ alter table public.messages
   add constraint messages_body_check check (
     body = btrim(body)
     and char_length(body) <= 5000
-    and (char_length(body) >= 1 or attachment_storage_path is not null)
+    and (deleted_at is not null or char_length(body) >= 1 or attachment_storage_path is not null)
   ),
   add constraint messages_attachment_check check (
     (
