@@ -43,6 +43,21 @@ describe('Aurora network repository', () => {
     )
   })
 
+  it('loads followers in newest-first order for the followers network view', async () => {
+    const followerId = '44444444-4444-4444-8444-444444444444'
+    const query = vi.fn(async () => [{ follower_id: followerId }])
+    const { createNetworkRepository } = await import('./repository')
+    const repository = createNetworkRepository({ query })
+
+    await expect(repository.loadFollowerIds(VIEWER_ID)).resolves.toEqual([followerId])
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('where following_id = $1'),
+      [VIEWER_ID],
+    )
+    expect(String(callsOf(query)[0]?.[0])).toContain('order by created_at desc')
+  })
+
   it('checks member readiness and symmetric blocking with parameterized SQL', async () => {
     const query = vi.fn()
       .mockResolvedValueOnce([{ ready: true }])
