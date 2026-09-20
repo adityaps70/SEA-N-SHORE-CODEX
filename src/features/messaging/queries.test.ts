@@ -157,6 +157,43 @@ describe('messaging queries', () => {
     })
   })
 
+  it('hydrates attachment metadata when Postgres returns bigint size as a string', async () => {
+    const repository = makeRepository({
+      listMessageRows: vi.fn(async () => [
+        {
+          id: NEWER_MESSAGE_ID,
+          conversation_id: CONVERSATION_ID,
+          sender_profile_id: OTHER_ID,
+          client_message_id: '77777777-7777-4777-8777-777777777777',
+          body: '',
+          reply_to_message_id: null,
+          attachment_storage_path: `messages/${OTHER_ID}/${CONVERSATION_ID}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png`,
+          attachment_name: 'bridge.png',
+          attachment_mime_type: 'image/png',
+          attachment_size: '68',
+          created_at: new Date('2026-09-13T01:10:00.000Z'),
+          edited_at: null,
+          deleted_at: null,
+          reactions: [],
+        },
+      ]),
+    })
+    const context = makeQueries({ repository })
+
+    const thread = await context.queries.getConversationThread({
+      conversationId: CONVERSATION_ID,
+      limit: 25,
+    })
+
+    expect(thread.messages[0]?.attachment).toEqual({
+      name: 'bridge.png',
+      mimeType: 'image/png',
+      size: 68,
+      kind: 'image',
+      url: `https://media.example.test/messages/${OTHER_ID}/${CONVERSATION_ID}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png`,
+    })
+  })
+
   it('validates the thread request before resolving authenticated identity', async () => {
     const context = makeQueries()
 
