@@ -109,7 +109,7 @@ export function createMessagingService(input: { withTransaction: MessagingTransa
           if (
             existing.conversation_id !== data.conversationId
             || existing.body !== data.body
-            || existing.reply_to_message_id !== (data.replyToMessageId ?? null)
+            || (existing.reply_to_message_id ?? null) !== (data.replyToMessageId ?? null)
             || !sameAttachment
           ) {
             error('messaging_idempotency_conflict')
