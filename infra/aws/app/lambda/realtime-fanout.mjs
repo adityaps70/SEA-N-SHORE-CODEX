@@ -33,6 +33,13 @@ function getAudience(event) {
     return [...new Set([senderId, ...recipients].filter(Boolean))]
   }
 
+  if (event?.eventType === 'message.updated') {
+    const participants = Array.isArray(event.payload?.participantProfileIds)
+      ? event.payload.participantProfileIds
+      : []
+    return [...new Set(participants.filter(Boolean))]
+  }
+
   if (event?.eventType === 'conversation.read_cursor_advanced') {
     const participants = Array.isArray(event.payload?.participantProfileIds)
       ? event.payload.participantProfileIds
