@@ -100,7 +100,6 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   const [media, setMediaState] = useState<ComposerMedia | null>(null)
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [draftHydrated, setDraftHydrated] = useState(false)
-  const [draftRecovered, setDraftRecovered] = useState(false)
 
   useEffect(() => {
     try {
@@ -119,7 +118,6 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
         setTopicTags(restoredTags)
         setMentions(restoredMentions)
         if (restoredPoll.length >= 2) setPollFields(newPollFields(pollIdPrefix, restoredPoll))
-        if (restoredBody || restoredTags || restoredMode !== 'update' || restoredPoll.some(Boolean)) setDraftRecovered(true)
       }
     } catch {
       window.localStorage.removeItem(draftKey)
@@ -189,7 +187,6 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
     setTopicTags('')
     nextPollFieldNumber.current = 3
     setPollFields(newPollFields(pollIdPrefix))
-    setDraftRecovered(false)
     if (options.clearDraft) window.localStorage.removeItem(draftKey)
   }
 
@@ -321,12 +318,6 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
           <button type="button" onClick={() => openComposer()} className="min-h-12 flex-1 rounded-full border border-mist-200 bg-white px-5 text-left text-sm font-medium text-muted transition hover:bg-mist-50 hover:text-navy-950">
             Start a post
           </button>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-2 pl-14">
-          <button type="button" onClick={() => openComposer('question')} className="inline-flex min-h-9 items-center gap-2 rounded-full px-3 text-sm font-semibold text-ocean-700 hover:bg-ocean-50">
-            <MessageCircleQuestion aria-hidden="true" className="size-4" /> Ask Community
-          </button>
-          {draftRecovered ? <span className="inline-flex min-h-9 items-center rounded-full bg-amber-50 px-3 text-xs font-semibold text-amber-800">Draft recovered</span> : null}
         </div>
       </Card>
 
