@@ -79,6 +79,21 @@ describe('RelationshipControls', () => {
     expect(screen.getByText('Following')).toBeInTheDocument()
   })
 
+  it('supports an icon-only overflow menu for connection list rows', () => {
+    render(
+      <RelationshipControls
+        profileId={profileId}
+        initialRelationship={{ following: true, connection: { kind: 'connected', connectionId } }}
+        compact
+        menuIconOnly
+      />,
+    )
+
+    expect(screen.getByText('Message')).toBeInTheDocument()
+    expect(screen.getByText('More actions')).toBeInTheDocument()
+    expect(screen.queryByText(/^More$/)).not.toBeInTheDocument()
+  })
+
   it('includes blocking without fake badges or reputation', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} />)
     expect(screen.getByText('Block')).toBeInTheDocument()
