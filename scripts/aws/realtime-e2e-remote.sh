@@ -112,9 +112,7 @@ case "$PHASE" in
     RICH_PHOTO_NAME="bridge-$RUN_TOKEN.png"
     RICH_FILE_NAME="certificate-$RUN_TOKEN.txt"
     RICH_ROW=$(sql "SELECT (SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='🫡' AND deleted_at IS NULL)::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND body='$RICH_REPLY_BODY' AND reply_to_message_id IS NOT NULL AND deleted_at IS NULL)::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND attachment_name='$RICH_PHOTO_NAME' AND attachment_mime_type='image/png' AND attachment_storage_path IS NOT NULL AND deleted_at IS NULL)::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND sender_profile_id=($sender_id_sql) AND deleted_at IS NOT NULL)::text,(SELECT count(*) FROM public.message_reactions mr JOIN public.messages m ON m.id=mr.message_id WHERE m.conversation_id='$CONVERSATION_ID'::uuid AND m.sender_profile_id=($sender_id_sql) AND m.deleted_at IS NOT NULL AND mr.profile_id=($recipient_id_sql) AND mr.emoji='🧭')::text,(SELECT count(*) FROM public.event_outbox WHERE event_type='message.updated' AND payload->>'conversationId'='$CONVERSATION_ID')::text,(SELECT count(*) FROM public.messages WHERE conversation_id='$CONVERSATION_ID'::uuid AND attachment_name='$RICH_FILE_NAME' AND deleted_at IS NULL)::text" | jq -r '.records[0] | map(.stringValue // "") | @tsv')
-    IFS=    ;;
-  verify-social-durable)
-    resolve_db
+    IFS=    resolve_db
     [[ -n "$SOCIAL_POST_BODY" && -n "$SOCIAL_COMMENT_BODY" ]]
     POST_ID=$(sql "SELECT id::text FROM public.posts WHERE author_id=($sender_id_sql) AND post_type='standard' AND body='$SOCIAL_POST_BODY' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1" | jq -r '.records[0][0].stringValue // empty')
     [[ "$POST_ID" =~ ^[0-9a-f-]{36}$ ]]
