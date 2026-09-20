@@ -46,12 +46,14 @@ function SearchField({
   tab,
   query,
   sort,
+  view,
   ariaLabel,
   placeholder,
 }: {
   tab: string
   query: string
   sort?: string
+  view?: string
   ariaLabel: string
   placeholder: string
 }) {
@@ -59,6 +61,7 @@ function SearchField({
     <form action="/network" method="get" role="search" className="flex w-full max-w-xl items-center gap-2">
       <input type="hidden" name="tab" value={tab} />
       {sort ? <input type="hidden" name="sort" value={sort} /> : null}
+      {view ? <input type="hidden" name="view" value={view} /> : null}
       <div className="relative flex-1">
         <label htmlFor={`network-search-${tab}`} className="sr-only">{ariaLabel}</label>
         <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
@@ -200,7 +203,7 @@ export default async function NetworkPage({
                 ? `You are following ${hub.totalCount} ${hub.totalCount === 1 ? 'person' : 'people'} in your maritime network.`
                 : `${hub.totalCount} ${hub.totalCount === 1 ? 'person follows' : 'people follow'} you in the maritime community.`}
             </p>
-            <SearchField tab="following" query={query} ariaLabel={followView === 'following' ? 'Search following' : 'Search followers'} placeholder={followView === 'following' ? 'Search following' : 'Search followers'} />
+            <SearchField tab="following" query={query} view={followView} ariaLabel={followView === 'following' ? 'Search following' : 'Search followers'} placeholder={followView === 'following' ? 'Search following' : 'Search followers'} />
           </div>
 
           {profiles.length ? (
