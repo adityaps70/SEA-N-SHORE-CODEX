@@ -20,10 +20,12 @@ function isSingleEmoji(value: string) {
 export function MessageEmojiPicker({
   mode = 'insert',
   currentEmoji = null,
+  triggerLabel,
   onSelect,
 }: {
   mode?: 'insert' | 'reaction'
   currentEmoji?: string | null
+  triggerLabel?: string
   onSelect: (emoji: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -51,13 +53,13 @@ export function MessageEmojiPicker({
     choose(emoji)
   }
 
-  const triggerLabel = mode === 'reaction' ? 'React to message' : 'Add emoji'
+  const accessibleTriggerLabel = triggerLabel ?? (mode === 'reaction' ? 'React to message' : 'Add emoji')
 
   return (
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        aria-label={triggerLabel}
+        aria-label={accessibleTriggerLabel}
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
         className={mode === 'reaction'
