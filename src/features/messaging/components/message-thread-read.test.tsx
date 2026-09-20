@@ -75,6 +75,55 @@ describe('MessageThread durable Sent/Seen and active-conversation read behavior'
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
   })
 
+  it('scrolls to the latest message when a conversation opens and when newer messages arrive', async () => {
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    })
+    const modulePath = './message-thread'
+    const { MessageThread } = await import(modulePath) as typeof import('./message-thread')
+
+    const rendered = render(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={messages}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    const callsAfterOpen = scrollIntoView.mock.calls.length
+
+    rendered.rerender(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={[
+          ...messages,
+          message({
+            id: '77777777-7777-4777-8777-777777777777',
+            senderProfileId: OTHER_ID,
+            createdAt: '2026-09-13T10:04:00.000Z',
+            body: 'Newest message',
+          }),
+        ]}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+
+    await waitFor(() => expect(scrollIntoView.mock.calls.length).toBeGreaterThan(callsAfterOpen))
+  })
+
   it('renders Sent or Seen only from the peer durable cursor and never invents Delivered', async () => {
     const modulePath = './message-thread'
     const { MessageThread } = await import(modulePath) as typeof import('./message-thread')
