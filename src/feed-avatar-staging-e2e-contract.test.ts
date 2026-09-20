@@ -12,6 +12,7 @@ describe('feed avatar staging E2E harness contract', () => {
     expect(source).toContain('page.waitForResponse')
     expect(source).toContain("response.request().method() === 'POST'")
     expect(source).toContain("response.request().headers()['next-action']")
+    expect(source).toContain("headers()['content-type']?.startsWith('multipart/form-data')")
     expect(source).toContain("profile upload action status")
     expect(source).toContain('await response.text()')
     expect(source).toContain('profile upload action response=')
