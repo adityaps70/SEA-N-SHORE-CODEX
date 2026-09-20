@@ -6,6 +6,8 @@ import { ConnectionRequestCard } from './connection-request-card'
 import { NetworkProfileCard } from './network-profile-card'
 import { PeopleYouMayKnow } from './people-you-may-know'
 
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+
 vi.mock('./relationship-controls', () => ({
   RelationshipControls: () => <div>Relationship actions</div>,
 }))
