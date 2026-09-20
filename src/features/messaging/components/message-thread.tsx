@@ -402,6 +402,7 @@ export function MessageThread({
                         {canonicalForReply ? (
                           <details className="relative">
                             <summary
+                              role="button"
                               aria-label={`More actions for message ${message.id}`}
                               className="grid size-8 cursor-pointer list-none place-items-center rounded-full border border-mist-100 bg-white text-muted shadow-sm transition hover:text-navy-950"
                             >
