@@ -4,6 +4,7 @@ import {
   markConversationReadInputSchema,
   messagePageRequestSchema,
   sendMessageInputSchema,
+  setMessageReactionInputSchema,
 } from './schemas'
 
 const TARGET_ID = '22222222-2222-4222-8222-222222222222'
@@ -39,6 +40,56 @@ describe('messaging schemas', () => {
       conversationId: CONVERSATION_ID,
       clientMessageId: CLIENT_MESSAGE_ID,
       body: 'x'.repeat(5001),
+    }).success).toBe(false)
+  })
+
+  it('allows an attachment-only message and a reply target while still rejecting a completely empty send', () => {
+    const attachment = {
+      storagePath: `messages/${TARGET_ID}/${CONVERSATION_ID}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jpg`,
+      name: 'bridge-photo.jpg',
+      mimeType: 'image/jpeg',
+      size: 1024,
+    }
+
+    expect(sendMessageInputSchema.parse({
+      conversationId: CONVERSATION_ID,
+      clientMessageId: CLIENT_MESSAGE_ID,
+      body: '   ',
+      replyToMessageId: MESSAGE_ID,
+      attachment,
+    })).toEqual({
+      conversationId: CONVERSATION_ID,
+      clientMessageId: CLIENT_MESSAGE_ID,
+      body: '',
+      replyToMessageId: MESSAGE_ID,
+      attachment,
+    })
+
+    expect(sendMessageInputSchema.safeParse({
+      conversationId: CONVERSATION_ID,
+      clientMessageId: CLIENT_MESSAGE_ID,
+      body: '   ',
+    }).success).toBe(false)
+  })
+
+  it('accepts a single emoji reaction and rejects ordinary text as a reaction', () => {
+    expect(setMessageReactionInputSchema.parse({
+      messageId: MESSAGE_ID,
+      emoji: '🫡',
+    })).toEqual({
+      messageId: MESSAGE_ID,
+      emoji: '🫡',
+    })
+    expect(setMessageReactionInputSchema.parse({
+      messageId: MESSAGE_ID,
+      emoji: null,
+    })).toEqual({
+      messageId: MESSAGE_ID,
+      emoji: null,
+    })
+    expect(setMessageReactionInputSchema.safeParse({
+      messageId: MESSAGE_ID,
+      emoji: 'hello',
     }).success).toBe(false)
   })
 
