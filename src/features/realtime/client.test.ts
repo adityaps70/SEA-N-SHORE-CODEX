@@ -68,6 +68,26 @@ describe('realtime browser client primitives', () => {
     }
 
     expect(parseRealtimeSignal(JSON.stringify(readSignal))).toEqual(readSignal)
+
+    const updatedSignal = {
+      eventId: 'event-3',
+      eventType: 'message.updated',
+      schemaVersion: 1,
+      occurredAt: '2026-09-20T10:02:00.000Z',
+      aggregateId: '55555555-5555-4555-8555-555555555555',
+      payload: {
+        eventType: 'message.updated',
+        conversationId: '33333333-3333-4333-8333-333333333333',
+        messageId: '55555555-5555-4555-8555-555555555555',
+        actorId: '11111111-1111-4111-8111-111111111111',
+        participantProfileIds: [
+          '11111111-1111-4111-8111-111111111111',
+          '22222222-2222-4222-8222-222222222222',
+        ],
+      },
+    }
+
+    expect(parseRealtimeSignal(JSON.stringify(updatedSignal))).toEqual(updatedSignal)
     expect(parseRealtimeSignal('{not-json')).toBeNull()
     expect(parseRealtimeSignal(JSON.stringify({ ...MESSAGE_SIGNAL, eventId: '' }))).toBeNull()
     expect(parseRealtimeSignal(JSON.stringify({ ...MESSAGE_SIGNAL, eventType: 'message.delivered' }))).toBeNull()
