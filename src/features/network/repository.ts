@@ -10,6 +10,7 @@ type NetworkQuery = (
 ) => Promise<QueryResultRow[]>
 
 type FollowRow = QueryResultRow & { following_id: string }
+type FollowerRow = QueryResultRow & { follower_id: string }
 type BooleanRow = QueryResultRow & { ready?: boolean; blocked?: boolean; created?: boolean; deleted?: boolean; updated?: boolean }
 type IdRow = QueryResultRow & { id: string }
 type ConnectionRow = QueryResultRow & NetworkConnectionRow
@@ -42,6 +43,18 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
       followedIds: new Set(follows.map((row) => row.following_id)),
       connections: connections as NetworkConnectionRow[],
     }
+  }
+
+  async function loadFollowerIds(viewerId: string) {
+    const rows = await queryRows(
+      `select follower_id
+       from public.follows
+       where following_id = $1
+       order by created_at desc, follower_id asc`,
+      [viewerId],
+    ) as FollowerRow[]
+
+    return rows.map((row) => row.follower_id)
   }
 
   async function isMemberReady(profileId: string) {
@@ -229,6 +242,7 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
 
   return {
     loadViewerGraph,
+    loadFollowerIds,
     isMemberReady,
     isPairBlocked,
     findConnectionByPair,
