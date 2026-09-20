@@ -159,7 +159,7 @@ export function MessageEmojiPicker({
 }) {
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState('')
-  const [category, setCategory] = useState<EmojiCategory>('smileys')
+  const [category, setCategory] = useState<EmojiCategory>(mode === 'reaction' ? 'symbols' : 'smileys')
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
