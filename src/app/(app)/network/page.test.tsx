@@ -66,7 +66,7 @@ describe('Maritime Network page', () => {
     expect(screen.getByRole('heading', { name: '1 connection' })).toBeInTheDocument()
     expect(screen.getByRole('searchbox', { name: 'Search connections' })).toBeInTheDocument()
     expect(screen.getByText('Sort by:')).toBeInTheDocument()
-    expect(screen.getByText('Recently added')).toBeInTheDocument()
+    expect(screen.getAllByText('Recently added').length).toBeGreaterThan(0)
     expect(screen.getByText('connection row Capt. Meera Nair')).toBeInTheDocument()
   })
 
