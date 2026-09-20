@@ -8,6 +8,7 @@ describe('feed avatar staging E2E harness contract', () => {
     expect(source).toContain('let primaryError')
     expect(source).toContain("} catch (error) {\n  primaryError = error")
     expect(source).toContain("page.goto(siteUrl + '/profile', { waitUntil: 'domcontentloaded'")
+    expect(source).not.toContain("waitUntil: 'networkidle'")
     expect(source).toContain('if (primaryError) throw primaryError')
     expect(source).toContain("if (cleanupErrors.length) throw new Error('Feed avatar E2E cleanup failed:")
   })
