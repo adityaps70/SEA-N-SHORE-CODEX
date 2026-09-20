@@ -12,3 +12,4 @@ describe('feed avatar staging E2E harness contract', () => {
     expect(source).toMatch(/if \(cleanupErrors\.length\) throw new Error/)
   })
 })
+// CI discovery touch: avatar E2E harness contract.
