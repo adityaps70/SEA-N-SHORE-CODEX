@@ -67,19 +67,10 @@ async function uploadAvatar(page, user) {
   const addButton = page.getByRole('button', { name: 'Add profile photo' })
   await expect(addButton).toBeVisible()
   const form = addButton.locator('xpath=ancestor::form')
-  const uploadResponsePromise = page.waitForResponse(
-    (response) => {
-      const request = response.request()
-      const body = request.postDataBuffer()
-      return (
-        request.method() === 'POST' &&
-        Boolean(request.headers()['next-action']) &&
-        Boolean(body?.toString('utf8').includes('avatar-' + runId + '.png')) &&
-        response.url().startsWith(siteUrl + '/profile')
-      )
-    },
-    { timeout: 60_000 },
-  )
+  const control = form.locator('xpath=..')
+  const alert = control.getByRole('alert').first()
+  const successButton = page.getByRole('button', { name: 'Change profile photo' })
+
   const fileChooserPromise = page.waitForEvent('filechooser')
   await addButton.click()
   const fileChooser = await fileChooserPromise
@@ -88,17 +79,16 @@ async function uploadAvatar(page, user) {
     mimeType: 'image/png',
     buffer: avatarPng,
   })
-  const response = await uploadResponsePromise
-  console.log('profile upload action status=' + response.status())
-  const responseBody = await response.text()
-  console.log('profile upload action response=' + responseBody.slice(0, 2000).replace(/\s+/g, ' '))
-  assert.ok(response.ok(), 'Profile upload action must return a successful HTTP status')
 
-  const control = form.locator('xpath=..')
-  const alert = control.getByRole('alert')
-  if ((await alert.count()) > 0 && await alert.first().isVisible().catch(() => false)) {
-    const message = (await alert.first().innerText()).trim()
-    if (message) throw new Error('Profile avatar upload failed: ' + message)
+  const outcome = await Promise.race([
+    successButton.waitFor({ state: 'visible', timeout: 60_000 }).then(() => ({ kind: 'success' })),
+    alert.waitFor({ state: 'visible', timeout: 60_000 }).then(async () => ({
+      kind: 'error',
+      message: (await alert.innerText()).trim(),
+    })),
+  ])
+  if (outcome.kind === 'error') {
+    throw new Error('Profile avatar upload failed: ' + (outcome.message || 'Unknown upload error'))
   }
 
   await page.reload({ waitUntil: 'domcontentloaded' })
