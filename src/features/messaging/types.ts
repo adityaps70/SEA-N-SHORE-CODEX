@@ -20,7 +20,7 @@ export type MessagingMessageRow = {
   attachment_storage_path?: string | null
   attachment_name?: string | null
   attachment_mime_type?: string | null
-  attachment_size?: number | null
+  attachment_size?: number | string | null
   created_at: string | Date
   edited_at: string | Date | null
   deleted_at: string | Date | null
