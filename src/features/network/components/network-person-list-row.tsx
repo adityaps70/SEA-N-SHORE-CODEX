@@ -46,7 +46,7 @@ export function NetworkPersonListRow({
           {profile.fullName}
         </Link>
         <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-ink">
-          {profile.headline ?? [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') ?? 'Maritime professional'}
+          {profile.headline || [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
         </p>
         {connectedOn ? <p className="mt-0.5 text-sm text-muted">Connected on {connectedOn}</p> : null}
         {kind !== 'connection' && profile.location ? <p className="mt-0.5 truncate text-xs text-muted">{profile.location}</p> : null}
