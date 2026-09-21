@@ -6,6 +6,7 @@ import type { MessagingMessageDto } from '../queries'
 const actions = vi.hoisted(() => ({
   markConversationReadAction: vi.fn(async () => ({ ok: true, advanced: true, unreadCount: 0 })),
   setMessageReactionAction: vi.fn(async () => ({ ok: true })),
+  editMessageAction: vi.fn(async () => ({ ok: true, message: null })),
   deleteMessageAction: vi.fn(async () => ({ ok: true, messageId: 'unused' })),
 }))
 const navigation = vi.hoisted(() => ({ refresh: vi.fn() }))
@@ -13,6 +14,7 @@ const navigation = vi.hoisted(() => ({ refresh: vi.fn() }))
 vi.mock('../actions', () => ({
   markConversationReadAction: actions.markConversationReadAction,
   setMessageReactionAction: actions.setMessageReactionAction,
+  editMessageAction: actions.editMessageAction,
   deleteMessageAction: actions.deleteMessageAction,
 }))
 vi.mock('../unread-client', () => ({
@@ -51,7 +53,10 @@ beforeEach(() => {
   vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
 })
 
-afterEach(() => cleanup())
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 describe('MessageThread rich interactions', () => {
   it('keeps the conversation viewport horizontally locked while reaction controls are open', () => {
@@ -156,6 +161,78 @@ describe('MessageThread rich interactions', () => {
     expect(screen.getByText('Please review this.')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /Reply to message/ }))
     expect(onReply).toHaveBeenCalledWith(reply)
+  })
+
+  it('lets the sender edit text within five minutes and hides edit after the window expires', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-09-21T05:04:00.000Z').getTime())
+    const mine = message({
+      senderProfileId: VIEWER_ID,
+      body: 'Original message',
+      createdAt: '2026-09-21T05:00:00.000Z',
+    })
+
+    const rendered = render(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={[mine]}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: `More actions for message ${MESSAGE_ID}` }))
+    await user.click(screen.getByRole('button', { name: 'Edit message' }))
+    const editor = screen.getByRole('textbox', { name: 'Edit message text' })
+    await user.clear(editor)
+    await user.type(editor, 'Updated message')
+    await user.click(screen.getByRole('button', { name: 'Save edit' }))
+
+    await waitFor(() => expect(actions.editMessageAction).toHaveBeenCalledWith(
+      MESSAGE_ID,
+      'Updated message',
+    ))
+    expect(navigation.refresh).toHaveBeenCalled()
+
+    vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-09-21T05:06:00.001Z').getTime())
+    rendered.rerender(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={[mine]}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: `More actions for message ${MESSAGE_ID}` }))
+    expect(screen.queryByRole('button', { name: 'Edit message' })).not.toBeInTheDocument()
+  })
+
+  it('shows an edited marker next to a message timestamp', () => {
+    render(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={[message({
+          senderProfileId: VIEWER_ID,
+          editedAt: '2026-09-20T10:03:00.000Z',
+        })]}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+
+    expect(screen.getByText('Edited')).toBeInTheDocument()
   })
 
   it('renders photos and files, and only allows the sender to unsend their own message', async () => {
