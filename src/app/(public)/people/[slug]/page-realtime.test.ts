@@ -8,7 +8,7 @@ describe('Public profile realtime boundary', () => {
     expect(source).toContain("import { MessagingRealtimeProvider } from '@/features/realtime/provider'")
     expect(source).toContain('const profileContent = (')
     expect(source).toContain('return viewer ? (')
-    expect(source).toContain('<MessagingRealtimeProvider>{profileContent}</MessagingRealtimeProvider>')
+    expect(source).toContain('<MessagingRealtimeProvider viewerProfileId={viewer.id}>{profileContent}</MessagingRealtimeProvider>')
     expect(source).toContain(') : profileContent')
   })
 })
