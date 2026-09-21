@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   startDirectConversation: vi.fn(),
   sendMessage: vi.fn(),
+  editMessage: vi.fn(),
   markConversationRead: vi.fn(),
   countUnreadMessages: vi.fn(),
   revalidatePath: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock('./service', () => ({
   createProductionMessagingService: () => ({
     startDirectConversation: mocks.startDirectConversation,
     sendMessage: mocks.sendMessage,
+    editMessage: mocks.editMessage,
     markConversationRead: mocks.markConversationRead,
   }),
 }))
@@ -25,6 +27,7 @@ vi.mock('./repository', () => ({
 }))
 
 import {
+  editMessageAction,
   markConversationReadAction,
   sendMessageAction,
   startDirectConversationAction,
@@ -57,6 +60,11 @@ describe('messaging server actions', () => {
     })
     mocks.startDirectConversation.mockResolvedValue(CONVERSATION_ID)
     mocks.sendMessage.mockResolvedValue(canonicalMessage)
+    mocks.editMessage.mockResolvedValue({
+      ...canonicalMessage,
+      body: 'Updated bridge note.',
+      edited_at: new Date('2026-09-13T01:34:00.000Z'),
+    })
     mocks.markConversationRead.mockResolvedValue(true)
     mocks.countUnreadMessages.mockResolvedValue(0)
   })
@@ -124,6 +132,41 @@ describe('messaging server actions', () => {
 
     expect(mocks.requireAwsUser).not.toHaveBeenCalled()
     expect(mocks.sendMessage).not.toHaveBeenCalled()
+  })
+
+  it('edits a message through the authenticated actor and returns the canonical edited message', async () => {
+    await expect(editMessageAction(MESSAGE_ID, '  Updated bridge note.  ')).resolves.toEqual({
+      ok: true,
+      message: {
+        id: MESSAGE_ID,
+        conversationId: CONVERSATION_ID,
+        senderProfileId: VIEWER_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Updated bridge note.',
+        createdAt: '2026-09-13T01:30:00.000Z',
+        editedAt: '2026-09-13T01:34:00.000Z',
+        deletedAt: null,
+        replyTo: null,
+        attachment: null,
+        reactions: [],
+      },
+    })
+
+    expect(mocks.editMessage).toHaveBeenCalledWith(VIEWER_ID, {
+      messageId: MESSAGE_ID,
+      body: 'Updated bridge note.',
+    })
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/messages')
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/messages/${CONVERSATION_ID}`)
+  })
+
+  it('shows the five-minute edit expiry as a safe user-facing error', async () => {
+    mocks.editMessage.mockRejectedValueOnce(new Error('messaging_edit_window_expired'))
+
+    await expect(editMessageAction(MESSAGE_ID, 'Updated bridge note.')).resolves.toEqual({
+      ok: false,
+      error: 'Messages can only be edited within 5 minutes of sending.',
+    })
   })
 
   it('treats a repeat-safe read update as a successful no-op when the marker has already advanced', async () => {
