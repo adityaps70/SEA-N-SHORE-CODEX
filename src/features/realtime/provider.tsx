@@ -92,7 +92,13 @@ async function loadGlobalMessagingState() {
   }
 }
 
-export function MessagingRealtimeProvider({ children }: { children: ReactNode }) {
+export function MessagingRealtimeProvider({
+  children,
+  viewerProfileId,
+}: {
+  children: ReactNode
+  viewerProfileId: string
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const [status, setStatus] = useState<MessagingRealtimeConnectionStatus>('disconnected')
@@ -200,6 +206,7 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
       if (signal.eventType === 'conversation.typing') return
 
       if (signal.eventType === 'message.created') {
+        if (signal.payload.senderId === viewerProfileId) return
         void reconcileGlobalMessagingState(signal.payload.conversationId)
         return
       }
@@ -231,7 +238,7 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
         alertTimerRef.current = null
       }
     }
-  }, [pathname, router])
+  }, [pathname, router, viewerProfileId])
 
   const value = useMemo(() => ({ status, subscribe, sendTyping }), [sendTyping, status, subscribe])
 
