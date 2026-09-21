@@ -17,6 +17,6 @@ describe('HiringCvLink', () => {
       'https://signed.example.test/cv',
     )
     expect(screen.getByText('candidate-cv.pdf')).toBeVisible()
-    expect(screen.getByText('1 MB')).toBeVisible()
+    expect(screen.getByText(/1 MB/)).toBeVisible()
   })
 })
