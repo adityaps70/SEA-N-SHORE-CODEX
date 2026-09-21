@@ -133,7 +133,7 @@ export default async function NetworkPage({
               </div>
               {query ? <Link href="/network?tab=discover" className="text-sm font-semibold text-ocean-700 hover:text-navy-950">Clear search</Link> : null}
             </div>
-            <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
             </div>
           </section>
