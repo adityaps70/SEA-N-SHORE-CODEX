@@ -9,11 +9,12 @@ import {
   Minus,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import { markConversationReadAction } from '../actions'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
 import {
+  publishMessagingUnreadCount,
   subscribeMessagingUnreadCount,
 } from '../unread-client'
 import { MessageComposer, type OptimisticMessagingMessage } from './message-composer'
@@ -130,8 +131,36 @@ export function MessagingDock({
   const [otherTyping, setOtherTyping] = useState(false)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastReadMessageIdRef = useRef<string | null>(null)
 
   const hidden = isMessagingDockHiddenPath(pathname)
+
+  const markLatestReceivedRead = useCallback(async (
+    conversationId: string,
+    thread: MessagingMessageDto[],
+  ) => {
+    const latestReceived = [...thread]
+      .reverse()
+      .find((message) => message.senderProfileId !== viewerId && !message.deletedAt)
+    if (!latestReceived || lastReadMessageIdRef.current === latestReceived.id) return
+
+    lastReadMessageIdRef.current = latestReceived.id
+    try {
+      const result = await markConversationReadAction(conversationId, latestReceived.id)
+      if (!result.ok) {
+        lastReadMessageIdRef.current = null
+        return
+      }
+
+      publishMessagingUnreadCount(result.unreadCount)
+      setUnreadCount(result.unreadCount)
+      setInbox((current) => current.map((item) => (
+        item.conversationId === conversationId ? { ...item, unread: false } : item
+      )))
+    } catch {
+      lastReadMessageIdRef.current = null
+    }
+  }, [viewerId])
 
   useEffect(() => subscribeMessagingUnreadCount(setUnreadCount), [])
 
@@ -176,7 +205,21 @@ export function MessagingDock({
       }
 
       if (
-        (signal.eventType === 'message.created' || signal.eventType === 'message.updated')
+        signal.eventType === 'message.created'
+        && signal.payload.conversationId === active.conversationId
+      ) {
+        const incoming = signal.payload.senderId !== viewerId
+        void loadThread(active.conversationId)
+          .then((next) => {
+            setMessages(next)
+            if (incoming) void markLatestReceivedRead(active.conversationId, next)
+          })
+          .catch(() => undefined)
+        return
+      }
+
+      if (
+        signal.eventType === 'message.updated'
         && signal.payload.conversationId === active.conversationId
       ) {
         void loadThread(active.conversationId)
@@ -192,7 +235,7 @@ export function MessagingDock({
         typingTimerRef.current = null
       }
     }
-  }, [active, subscribe, viewerId])
+  }, [active, markLatestReceivedRead, subscribe, viewerId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ block: 'end', behavior: 'auto' })
@@ -201,6 +244,7 @@ export function MessagingDock({
   const title = active?.otherName ?? 'Messaging'
 
   async function openConversation(item: MessagingInboxItem) {
+    lastReadMessageIdRef.current = null
     setActive(item)
     setMessages([])
     setOtherTyping(false)
@@ -208,12 +252,7 @@ export function MessagingDock({
     try {
       const next = await loadThread(item.conversationId)
       setMessages(next)
-      const latestReceived = [...next]
-        .reverse()
-        .find((message) => message.senderProfileId !== viewerId && !message.deletedAt)
-      if (latestReceived) {
-        void markConversationReadAction(item.conversationId, latestReceived.id)
-      }
+      void markLatestReceivedRead(item.conversationId, next)
     } catch {
       setMessages([])
     } finally {
@@ -264,6 +303,7 @@ export function MessagingDock({
                 type="button"
                 aria-label="Back to conversations"
                 onClick={() => {
+                  lastReadMessageIdRef.current = null
                   setActive(null)
                   setMessages([])
                   setOtherTyping(false)
@@ -305,6 +345,7 @@ export function MessagingDock({
               type="button"
               aria-label="Close messaging dock"
               onClick={() => {
+                lastReadMessageIdRef.current = null
                 setOpen(false)
                 setActive(null)
               }}
