@@ -173,7 +173,6 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
       requestTicket: requestRealtimeTicket,
       createSocket: (url) => new WebSocket(url),
       onStatusChange: setStatus,
-      onConnected: () => router.refresh(),
     })
     connectionRef.current = connection
     const unsubscribe = connection.subscribe((signal) => {
