@@ -65,6 +65,11 @@ const RECOVERY_ACTIONS = new Map([
   ['aws_api_gateway_account.realtime', JSON.stringify(['create'])],
 ])
 
+const TYPING_MAINTENANCE_ACTIONS = new Map([
+  ['aws_iam_role_policy.realtime_connection', JSON.stringify(['update'])],
+  ['aws_lambda_function.realtime_connection', JSON.stringify(['update'])],
+])
+
 const MESSAGE_MAINTENANCE_ACTIONS = new Map([
   ['aws_cloudwatch_event_rule.realtime_events', JSON.stringify(['update'])],
   ['aws_lambda_function.realtime_fanout', JSON.stringify(['update'])],
@@ -107,6 +112,10 @@ function isExactRecovery(changes) {
   return matchesExactActions(changes, RECOVERY_ACTIONS)
 }
 
+function isExactTypingMaintenance(changes) {
+  return matchesExactActions(changes, TYPING_MAINTENANCE_ACTIONS)
+}
+
 function isExactMessageMaintenance(changes) {
   return matchesExactActions(changes, MESSAGE_MAINTENANCE_ACTIONS)
 }
@@ -144,6 +153,15 @@ export function classifyRealtimeInfraPlan(plan, action) {
       mode: 'maintenance',
       createCount: 0,
       updateCount: 1,
+      replaceCount: 0,
+    }
+  }
+
+  if (isExactTypingMaintenance(changes)) {
+    return {
+      mode: 'typing-maintenance',
+      createCount: 0,
+      updateCount: 2,
       replaceCount: 0,
     }
   }
