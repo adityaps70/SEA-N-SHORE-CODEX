@@ -28,6 +28,21 @@ export type MessageUpdatedRealtimeSignal = {
   }
 }
 
+export type ConversationTypingRealtimeSignal = {
+  eventId: string
+  eventType: 'conversation.typing'
+  schemaVersion: number
+  occurredAt: string
+  aggregateId: string
+  payload: {
+    eventType: 'conversation.typing'
+    conversationId: string
+    actorId: string
+    targetProfileId: string
+    isTyping: boolean
+  }
+}
+
 export type ConversationReadRealtimeSignal = {
   eventId: string
   eventType: 'conversation.read_cursor_advanced'
@@ -60,6 +75,7 @@ export type SocialInvalidationRealtimeSignal = {
 export type MessagingRealtimeSignal =
   | MessageCreatedRealtimeSignal
   | MessageUpdatedRealtimeSignal
+  | ConversationTypingRealtimeSignal
   | ConversationReadRealtimeSignal
   | SocialInvalidationRealtimeSignal
 
@@ -133,6 +149,20 @@ function parseMessageUpdated(value: JsonRecord): MessageUpdatedRealtimeSignal | 
   return value as unknown as MessageUpdatedRealtimeSignal
 }
 
+function parseConversationTyping(value: JsonRecord): ConversationTypingRealtimeSignal | null {
+  if (value.eventType !== 'conversation.typing' || !hasSignalEnvelope(value)) return null
+  const payload = value.payload as JsonRecord
+  if (
+    payload.eventType !== 'conversation.typing'
+    || !isNonEmptyString(payload.conversationId)
+    || !isNonEmptyString(payload.actorId)
+    || !isNonEmptyString(payload.targetProfileId)
+    || typeof payload.isTyping !== 'boolean'
+  ) return null
+
+  return value as unknown as ConversationTypingRealtimeSignal
+}
+
 function parseConversationRead(value: JsonRecord): ConversationReadRealtimeSignal | null {
   if (value.eventType !== 'conversation.read_cursor_advanced' || !hasSignalEnvelope(value)) return null
   const payload = value.payload as JsonRecord
@@ -190,6 +220,7 @@ export function parseRealtimeSignal(raw: unknown): MessagingRealtimeSignal | nul
 
   return parseMessageCreated(parsed)
     ?? parseMessageUpdated(parsed)
+    ?? parseConversationTyping(parsed)
     ?? parseConversationRead(parsed)
     ?? parseSocialInvalidation(parsed)
 }
