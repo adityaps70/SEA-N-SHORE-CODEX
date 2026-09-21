@@ -1,4 +1,4 @@
-import type { CognitoPrincipal } from '@/lib/auth/cognito-api'
+import { CognitoApiError, type CognitoPrincipal } from '@/lib/auth/cognito-api'
 import { describe, expect, it, vi } from 'vitest'
 
 const principal: CognitoPrincipal = {
@@ -74,6 +74,31 @@ describe('AWS auth queries', () => {
     expect(getPrincipal).toHaveBeenCalledTimes(1)
     expect(resolveProfileId).toHaveBeenCalledTimes(1)
     expect(provisionProfileId).not.toHaveBeenCalled()
+  })
+
+  it('treats only a real Cognito authorization failure as an unauthenticated principal', async () => {
+    const { resolveCognitoPrincipalFromAccessToken } = await import('./aws-queries')
+    const api = {
+      getUser: vi.fn(async () => {
+        throw new CognitoApiError('NotAuthorizedException')
+      }),
+    }
+
+    await expect(resolveCognitoPrincipalFromAccessToken(api, 'expired-access-token')).resolves.toBeNull()
+  })
+
+  it('does not turn transient Cognito failures into a logout', async () => {
+    const { resolveCognitoPrincipalFromAccessToken } = await import('./aws-queries')
+    const throttled = new CognitoApiError('TooManyRequestsException')
+    const transport = new CognitoApiError('TransportError')
+
+    await expect(resolveCognitoPrincipalFromAccessToken({
+      getUser: vi.fn(async () => { throw throttled }),
+    }, 'valid-access-token')).rejects.toBe(throttled)
+
+    await expect(resolveCognitoPrincipalFromAccessToken({
+      getUser: vi.fn(async () => { throw transport }),
+    }, 'valid-access-token')).rejects.toBe(transport)
   })
 
   it('fails safely when an authenticated AWS user is required but unavailable', async () => {
