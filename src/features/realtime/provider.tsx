@@ -12,7 +12,10 @@ import {
   useState,
 } from 'react'
 import type { ReactNode } from 'react'
-import { publishMessagingUnreadCount } from '@/features/messaging/unread-client'
+import {
+  getMessagingUnreadCountSnapshot,
+  publishMessagingUnreadCount,
+} from '@/features/messaging/unread-client'
 import type { MessagingInboxItem } from '@/features/messaging/queries'
 import type { MessagingRealtimeSignal } from './client'
 import {
@@ -169,9 +172,24 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
       }
     }
 
+    const reconcileUnreadOnConnected = async () => {
+      const unreadRevisionAtStart = getMessagingUnreadCountSnapshot().revision
+      try {
+        const state = await loadGlobalMessagingState()
+        if (!active) return
+        if (getMessagingUnreadCountSnapshot().revision !== unreadRevisionAtStart) return
+        publishMessagingUnreadCount(state.unreadCount)
+      } catch {
+        // The next realtime event or reconnect will retry canonical unread reconciliation.
+      }
+    }
+
     const connection = createMessagingRealtimeConnection({
       requestTicket: requestRealtimeTicket,
       createSocket: (url) => new WebSocket(url),
+      onConnected: () => {
+        void reconcileUnreadOnConnected()
+      },
       onStatusChange: setStatus,
     })
     connectionRef.current = connection
