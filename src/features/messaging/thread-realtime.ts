@@ -120,6 +120,27 @@ export function isMessageSeen(
   return compareCursor(cursorOf(message), peerCursor) <= 0
 }
 
+export async function fetchConversationSnapshot(
+  conversationId: string,
+  fetchFn: FetchLike = fetch,
+) {
+  const response = await fetchFn(`/api/messages/${conversationId}`, {
+    method: 'GET',
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new Error('messaging_thread_refresh_failed')
+
+  const payload = await response.json() as unknown
+  if (typeof payload !== 'object' || payload === null) {
+    throw new Error('messaging_invalid_thread_response')
+  }
+  const messages = (payload as Record<string, unknown>).messages
+  if (!Array.isArray(messages) || !messages.every(isCanonicalMessage)) {
+    throw new Error('messaging_invalid_thread_response')
+  }
+  return messages
+}
+
 export async function fetchConversationCatchUp(
   conversationId: string,
   after: MessagingReadCursor | null,
