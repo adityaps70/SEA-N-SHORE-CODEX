@@ -88,6 +88,23 @@ describe('realtime browser client primitives', () => {
     }
 
     expect(parseRealtimeSignal(JSON.stringify(updatedSignal))).toEqual(updatedSignal)
+
+    const typingSignal = {
+      eventId: 'typing-1',
+      eventType: 'conversation.typing',
+      schemaVersion: 1,
+      occurredAt: '2026-09-20T10:03:00.000Z',
+      aggregateId: '33333333-3333-4333-8333-333333333333',
+      payload: {
+        eventType: 'conversation.typing',
+        conversationId: '33333333-3333-4333-8333-333333333333',
+        actorId: '11111111-1111-4111-8111-111111111111',
+        targetProfileId: '22222222-2222-4222-8222-222222222222',
+        isTyping: true,
+      },
+    }
+
+    expect(parseRealtimeSignal(JSON.stringify(typingSignal))).toEqual(typingSignal)
     expect(parseRealtimeSignal('{not-json')).toBeNull()
     expect(parseRealtimeSignal(JSON.stringify({ ...MESSAGE_SIGNAL, eventId: '' }))).toBeNull()
     expect(parseRealtimeSignal(JSON.stringify({ ...MESSAGE_SIGNAL, eventType: 'message.delivered' }))).toBeNull()
