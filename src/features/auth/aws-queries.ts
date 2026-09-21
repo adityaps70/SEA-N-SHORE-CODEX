@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { cache } from 'react'
 import { CognitoApiError, createCognitoApi, type CognitoPrincipal } from '@/lib/auth/cognito-api'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
+import { createCognitoPrincipalResolver } from '@/lib/auth/cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 import {
   provisionProfileForCognitoPrincipal,
@@ -74,18 +75,23 @@ export async function resolveCognitoPrincipalFromAccessToken(
   }
 }
 
+const resolveProductionCognitoPrincipal = createCognitoPrincipalResolver({
+  getUser: async (accessToken) => {
+    const environment = getCognitoEnvironment()
+    const api = createCognitoApi({
+      region: environment.AWS_COGNITO_REGION,
+      clientId: environment.AWS_COGNITO_CLIENT_ID,
+    })
+    return api.getUser(accessToken)
+  },
+})
+
 async function getServerCognitoPrincipal(): Promise<CognitoPrincipal | null> {
   const cookieStore = await cookies()
   const accessToken = cookieStore.get(COGNITO_COOKIE_NAMES.access)?.value
   if (!accessToken) return null
 
-  const environment = getCognitoEnvironment()
-  const api = createCognitoApi({
-    region: environment.AWS_COGNITO_REGION,
-    clientId: environment.AWS_COGNITO_CLIENT_ID,
-  })
-
-  return resolveCognitoPrincipalFromAccessToken(api, accessToken)
+  return resolveProductionCognitoPrincipal(accessToken)
 }
 
 const productionQueries = createAwsAuthQueries({
