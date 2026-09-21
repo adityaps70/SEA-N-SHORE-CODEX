@@ -3,6 +3,12 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import {
+  createPendingJobApplicationCvUpload,
+  removeJobApplicationCv,
+  verifyPendingJobApplicationCv,
+  type JobApplicationCvReference,
+} from './application-media'
 import { jobsRepository } from './repository'
 import { parseJobSearchParams } from './search'
 
@@ -10,9 +16,21 @@ export type ApplyToJobResult =
   | { ok: true; alreadyApplied: boolean }
   | { ok: false; error: string }
 
+export type PrepareJobApplicationCvResult =
+  | ({ ok: true; uploadUrl: string } & JobApplicationCvReference)
+  | { ok: false; error: string }
+
 export type JobMutationResult = { ok: true } | { ok: false; error: string }
 
 const jobIdSchema = z.string().uuid()
+const cvMetadataSchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  mimeType: z.string().trim().min(1).max(120),
+  sizeBytes: z.number().int().positive(),
+})
+const cvReferenceSchema = cvMetadataSchema.extend({
+  storagePath: z.string().trim().min(1).max(1024),
+})
 const alertIdSchema = z.string().uuid()
 const alertSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -44,7 +62,43 @@ function revalidateCandidateJobs(jobId?: string) {
   if (jobId) revalidatePath(`/jobs/${jobId}`)
 }
 
-export async function applyToJob(jobId: string): Promise<ApplyToJobResult> {
+export async function prepareJobApplicationCvUpload(
+  jobId: string,
+  input: unknown,
+): Promise<PrepareJobApplicationCvResult> {
+  const parsedJobId = jobIdSchema.safeParse(jobId)
+  const parsedMetadata = cvMetadataSchema.safeParse(input)
+  if (!parsedJobId.success || !parsedMetadata.success) {
+    return { ok: false, error: 'Attach a PDF CV up to 10 MB.' }
+  }
+
+  const user = await requireAwsUser()
+  if (!await jobsRepository.isMemberReady(user.id)) {
+    return { ok: false, error: 'Complete your professional profile before applying.' }
+  }
+  const job = await jobsRepository.getPublishedJob(parsedJobId.data)
+  if (!job || !await jobsRepository.isAcceptingApplications(parsedJobId.data)) {
+    return { ok: false, error: 'This job is no longer accepting applications.' }
+  }
+
+  try {
+    const upload = await createPendingJobApplicationCvUpload({
+      profileId: user.id,
+      jobId: parsedJobId.data,
+      fileName: parsedMetadata.data.fileName,
+      mimeType: parsedMetadata.data.mimeType,
+      sizeBytes: parsedMetadata.data.sizeBytes,
+    })
+    return { ok: true, ...upload }
+  } catch {
+    return { ok: false, error: 'Attach a PDF CV up to 10 MB.' }
+  }
+}
+
+export async function applyToJob(
+  jobId: string,
+  cvInput?: JobApplicationCvReference | null,
+): Promise<ApplyToJobResult> {
   const parsed = jobIdSchema.safeParse(jobId)
   if (!parsed.success) return { ok: false, error: 'Invalid job.' }
 
@@ -64,9 +118,32 @@ export async function applyToJob(jobId: string): Promise<ApplyToJobResult> {
     return { ok: true, alreadyApplied: true }
   }
 
+  let cv: JobApplicationCvReference | null = null
+  if (cvInput) {
+    const parsedCv = cvReferenceSchema.safeParse(cvInput)
+    if (!parsedCv.success) {
+      return { ok: false, error: 'We could not verify your CV. Please attach the PDF again.' }
+    }
+    try {
+      cv = await verifyPendingJobApplicationCv({
+        profileId: user.id,
+        jobId: parsed.data,
+        storagePath: parsedCv.data.storagePath,
+        fileName: parsedCv.data.fileName,
+        mimeType: parsedCv.data.mimeType,
+        sizeBytes: parsedCv.data.sizeBytes,
+      })
+    } catch {
+      return { ok: false, error: 'We could not verify your CV. Please attach the PDF again.' }
+    }
+  }
+
   try {
-    await jobsRepository.createApplication(parsed.data, user.id)
+    await jobsRepository.createApplication(parsed.data, user.id, cv)
   } catch (error) {
+    if (cv) {
+      await removeJobApplicationCv(cv.storagePath).catch(() => undefined)
+    }
     if (isUniqueViolation(error)) return { ok: true, alreadyApplied: true }
     return { ok: false, error: 'We could not submit your application. Please try again.' }
   }
