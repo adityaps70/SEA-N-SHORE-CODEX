@@ -7,6 +7,7 @@ const terraform = await readFile(new URL('../../infra/aws/app/realtime.tf', impo
 const mainTerraform = await readFile(new URL('../../infra/aws/app/main.tf', import.meta.url), 'utf8')
 const edgeTerraform = await readFile(new URL('../../infra/aws/app/edge.tf', import.meta.url), 'utf8')
 const authorizer = await readFile(new URL('../../infra/aws/app/lambda/realtime-authorizer.mjs', import.meta.url), 'utf8')
+const connectionLambda = await readFile(new URL('../../infra/aws/app/lambda/realtime-connection.mjs', import.meta.url), 'utf8')
 
 test('realtime messaging uses API Gateway WebSocket with ephemeral DynamoDB connections', () => {
   assert.match(terraform, /resource "aws_apigatewayv2_api" "realtime"/)
@@ -20,7 +21,7 @@ test('realtime messaging uses API Gateway WebSocket with ephemeral DynamoDB conn
   assert.match(terraform, /attribute_name\s*=\s*"expires_at"/)
 })
 
-test('connect is authorizer-protected and client messages cannot become canonical writes', () => {
+test('connect is authorizer-protected and the default route only supports ephemeral typing signals', () => {
   assert.match(terraform, /resource "aws_apigatewayv2_authorizer" "realtime_connect"/)
   assert.match(terraform, /route_key\s*=\s*"\$connect"/)
   assert.match(terraform, /authorization_type\s*=\s*"CUSTOM"/)
@@ -31,6 +32,11 @@ test('connect is authorizer-protected and client messages cannot become canonica
     /resource "aws_apigatewayv2_route" "realtime_default"[\s\S]*?target\s*=\s*"integrations\/\$\{aws_apigatewayv2_integration\.realtime_connection\.id\}"/,
   )
   assert.doesNotMatch(terraform, /\bAURORA_|rds-data:|rds-db:/i)
+  assert.match(connectionLambda, /routeKey === '\$default'/)
+  assert.match(connectionLambda, /action !== 'typing'/)
+  assert.match(connectionLambda, /conversation\.typing/)
+  assert.match(connectionLambda, /PostToConnectionCommand/)
+  assert.doesNotMatch(connectionLambda, /public\.messages|event_outbox|rds-data:/i)
 })
 
 test('realtime authorizer only accepts the managed CloudFront public origin', () => {
@@ -180,6 +186,33 @@ test('realtime infrastructure release is bounded, guarded, and executed through 
   assert.deepEqual(classifier.classifyRealtimeInfraPlan({ resource_changes: [] }, 'plan'), {
     mode: 'steady',
     createCount: 0,
+    replaceCount: 0,
+  })
+
+  const typingMaintenancePlan = {
+    resource_changes: [
+      {
+        address: 'aws_iam_role_policy.realtime_connection',
+        mode: 'managed',
+        change: { actions: ['update'] },
+      },
+      {
+        address: 'aws_lambda_function.realtime_connection',
+        mode: 'managed',
+        change: { actions: ['update'] },
+      },
+    ],
+  }
+  assert.deepEqual(classifier.classifyRealtimeInfraPlan(typingMaintenancePlan, 'plan'), {
+    mode: 'typing-maintenance',
+    createCount: 0,
+    updateCount: 2,
+    replaceCount: 0,
+  })
+  assert.deepEqual(classifier.classifyRealtimeInfraPlan(typingMaintenancePlan, 'apply-once'), {
+    mode: 'typing-maintenance',
+    createCount: 0,
+    updateCount: 2,
     replaceCount: 0,
   })
 
