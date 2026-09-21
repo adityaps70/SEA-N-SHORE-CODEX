@@ -338,7 +338,7 @@ case "$PHASE" in
     fi
     echo "REALTIME_MESSAGE_DIAG_READ_CURSOR_MATCH_LATEST=$READ_CURSOR_MATCH_LATEST"
 
-    LAST_READ_EVENT_MESSAGE_ID=$(sql "SELECT coalesce(payload->>'lastReadMessageId','') FROM public.event_outbox WHERE event_type='conversation.read_cursor_advanced' AND payload->>'conversationId'='$CONVERSATION_ID' ORDER BY created_at DESC, id DESC LIMIT 1" | jq -r '.records[0][0].stringValue // empty')
+    LAST_READ_EVENT_MESSAGE_ID=$(sql "SELECT coalesce(payload->>'lastReadMessageId','') FROM public.event_outbox WHERE event_type='conversation.read_cursor_advanced' AND payload->>'conversationId'='$CONVERSATION_ID' ORDER BY occurred_at DESC, id DESC LIMIT 1" | jq -r '.records[0][0].stringValue // empty')
     echo "REALTIME_MESSAGE_DIAG_LAST_READ_EVENT_MESSAGE_ID=$LAST_READ_EVENT_MESSAGE_ID"
 
     MAIN_QUEUE=$(aws sqs get-queue-url --region "$AWS_REGION" --queue-name sea-n-shore-staging-realtime-events --query QueueUrl --output text)
