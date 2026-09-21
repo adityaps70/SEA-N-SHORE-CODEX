@@ -182,12 +182,9 @@ export function MessageEmojiPicker({
   const [expandedReactionPicker, setExpandedReactionPicker] = useState(false)
   const [custom, setCustom] = useState('')
   const [category, setCategory] = useState<PickerCategory>(mode === 'reaction' ? 'symbols' : 'smileys')
-  const [recent, setRecent] = useState<string[]>([])
+  const [recent, setRecent] = useState<string[]>(readRecentEmoji)
   const rootRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    setRecent(readRecentEmoji())
-  }, [])
 
   useEffect(() => {
     if (!open) return
