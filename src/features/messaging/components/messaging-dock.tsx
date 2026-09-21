@@ -138,7 +138,6 @@ export function MessagingDock({
   useEffect(() => {
     if (!open || hidden) return
     let cancelled = false
-    setLoading(true)
     void loadInbox()
       .then((state) => {
         if (cancelled) return
@@ -435,7 +434,10 @@ export function MessagingDock({
         <button
           type="button"
           aria-label="Open messaging dock"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setLoading(true)
+            setOpen(true)
+          }}
           className="flex min-h-12 min-w-48 items-center gap-2 rounded-t-2xl border border-b-0 border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 shadow-xl transition hover:bg-mist-50"
         >
           <MessageCircleMore aria-hidden="true" className="size-5 text-ocean-700" />
