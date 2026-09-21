@@ -3,12 +3,13 @@ import { withTransaction as databaseTransaction, type DatabaseQueryClient } from
 import { createNetworkRepositoryForClient, type NetworkRepository } from '@/features/network/repository'
 import { createOutboxRepositoryForClient, type OutboxRepository } from '@/features/events/outbox-repository'
 import type { DomainEvent } from '@/features/events/types'
-import { sendMessageInputSchema, setMessageReactionInputSchema } from './schemas'
+import { editMessageInputSchema, sendMessageInputSchema, setMessageReactionInputSchema } from './schemas'
 import {
   createMessagingRepositoryForClient,
   type MessagingRepository,
 } from './repository'
-import type { SendMessageInput } from './types'
+import { isWithinMessageEditWindow } from './edit-policy'
+import type { EditMessageInput, SendMessageInput } from './types'
 
 type MessagingTransactionContext = {
   messaging: MessagingRepository
@@ -51,7 +52,12 @@ function messageUpdatedEvent(input: {
   }
 }
 
-export function createMessagingService(input: { withTransaction: MessagingTransaction }) {
+export function createMessagingService(input: {
+  withTransaction: MessagingTransaction
+  now?: () => Date
+}) {
+  const now = input.now ?? (() => new Date())
+
   return {
     async startDirectConversation(actorId: string, targetProfileId: string) {
       if (actorId === targetProfileId) error('messaging_self_conversation')
@@ -147,6 +153,39 @@ export function createMessagingService(input: { withTransaction: MessagingTransa
         }
         await outbox.enqueue(event)
         return message
+      })
+    },
+
+    async editMessage(actorId: string, rawInput: EditMessageInput) {
+      const parsed = editMessageInputSchema.safeParse(rawInput)
+      if (!parsed.success) error('messaging_invalid_message')
+
+      return input.withTransaction(async ({ messaging, outbox }) => {
+        const message = await messaging.findMessageByIdForUpdate(parsed.data.messageId)
+        if (!message || message.deleted_at) error('messaging_message_not_found')
+        if (message.sender_profile_id !== actorId) error('messaging_action_not_allowed')
+        if (!await messaging.isParticipant(actorId, message.conversation_id)) {
+          error('messaging_not_participant')
+        }
+
+        const editedAt = now()
+        if (!isWithinMessageEditWindow(message.created_at, editedAt)) {
+          error('messaging_edit_window_expired')
+        }
+
+        const updated = await messaging.editMessageBody(
+          message.id,
+          parsed.data.body,
+          editedAt.toISOString(),
+        )
+        const participantProfileIds = await messaging.listParticipantIds(message.conversation_id)
+        await outbox.enqueue(messageUpdatedEvent({
+          conversationId: message.conversation_id,
+          messageId: message.id,
+          actorId,
+          participantProfileIds,
+        }))
+        return updated
       })
     },
 
