@@ -47,6 +47,7 @@ function canonical(overrides: Partial<MessagingMessageDto> = {}): MessagingMessa
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  window.localStorage.clear()
 })
 
 describe('MessageComposer rich messaging', () => {
@@ -107,6 +108,11 @@ describe('MessageComposer rich messaging', () => {
 
     await user.click(screen.getByRole('button', { name: 'Done choosing emojis' }))
     expect(screen.queryByRole('menu', { name: 'Choose emoji' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+    expect(screen.getByRole('button', { name: 'Show recent emojis' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Show recent emojis' }))
+    expect(screen.getByRole('button', { name: 'Insert 🗺️' })).toBeInTheDocument()
   })
 
   it('uploads a photo, shows a preview state, and sends it even without text', async () => {
