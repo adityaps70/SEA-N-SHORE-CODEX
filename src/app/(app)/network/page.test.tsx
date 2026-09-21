@@ -57,7 +57,9 @@ describe('Maritime Network page', () => {
     expect(screen.getByRole('heading', { name: 'People worth knowing at sea and ashore.' })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'My Network' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'People you may know' })).toBeInTheDocument()
-    expect(screen.getByText('Discover card Capt. Meera Nair')).toBeInTheDocument()
+    const discoverCard = screen.getByText('Discover card Capt. Meera Nair')
+    expect(discoverCard).toBeInTheDocument()
+    expect(discoverCard.parentElement).toHaveClass('xl:grid-cols-4')
   })
 
   it('renders Connections as a searchable recently-added list with a connection count', async () => {
