@@ -275,6 +275,24 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     return rows[0] ?? null
   }
 
+  async function editMessageBody(messageId: string, body: string, editedAt: string) {
+    const rows = await queryRows(
+      `update public.messages
+       set body = $2,
+           edited_at = $3::timestamptz
+       where id = $1
+         and deleted_at is null
+       returning id, conversation_id, sender_profile_id, client_message_id,
+                 body, reply_to_message_id,
+                 attachment_storage_path, attachment_name, attachment_mime_type, attachment_size,
+                 created_at, edited_at, deleted_at`,
+      [messageId, body, editedAt],
+    ) as MessageRow[]
+    const row = rows[0]
+    if (!row) throw new Error('messaging_message_not_found')
+    return row
+  }
+
   async function softDeleteMessage(messageId: string) {
     await queryRows(
       `update public.messages
@@ -522,6 +540,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     findMessageInConversation,
     findMessageAccessibleToParticipant,
     findMessageByIdForUpdate,
+    editMessageBody,
     softDeleteMessage,
     isAttachmentReferenced,
     setMessageReaction,
