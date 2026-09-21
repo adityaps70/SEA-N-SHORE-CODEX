@@ -416,6 +416,7 @@ async function realtimeJourney() {
 
     const recipientReactionButtons = recipientPage.getByRole('button', { name: /^React to message / })
     await recipientReactionButtons.last().click({ force: true })
+    await recipientPage.getByRole('button', { name: 'More reaction emojis' }).click()
     await recipientPage.getByLabel('Custom emoji reaction').fill('🧭')
     await recipientPage.getByRole('button', { name: 'Use custom emoji' }).click()
     await recipientPage.waitForFunction(({ conversationId }) => {
