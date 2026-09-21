@@ -103,7 +103,7 @@ describe('MessagingRealtimeProvider', () => {
     vi.unstubAllGlobals()
   })
 
-  it('shares one authenticated socket, refreshes canonical state and publishes each signal once', async () => {
+  it('shares one authenticated socket without refreshing on connect and publishes each signal once', async () => {
     const providerPath = './provider'
     const { MessagingRealtimeProvider, useMessagingRealtime } = await import(providerPath) as typeof import('./provider')
     const listener = vi.fn()
@@ -129,14 +129,14 @@ describe('MessagingRealtimeProvider', () => {
 
     act(() => FakeWebSocket.instances[0]?.open())
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('connected'))
-    expect(router.refresh).toHaveBeenCalledTimes(1)
+    expect(router.refresh).not.toHaveBeenCalled()
 
     act(() => {
       FakeWebSocket.instances[0]?.message(SIGNAL)
       FakeWebSocket.instances[0]?.message(SIGNAL)
     })
     await waitFor(() => expect(listener).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(1))
 
     rendered.unmount()
     expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled()
