@@ -238,6 +238,7 @@ describe('MessagingRealtimeProvider', () => {
     act(() => FakeWebSocket.instances[0]?.open())
     await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(4))
     unread.publishMessagingUnreadCount.mockClear()
+    vi.mocked(fetch).mockClear()
 
     act(() => FakeWebSocket.instances[0]?.message(JSON.stringify({
       eventId: 'event-self-1',
