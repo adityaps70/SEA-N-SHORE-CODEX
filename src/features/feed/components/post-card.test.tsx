@@ -105,6 +105,43 @@ describe('PostCard', () => {
     expect(saveButton.querySelector('svg')).toHaveClass('size-5')
   })
 
+  it('wraps long unbroken links inside the post card instead of bleeding outside the card', () => {
+    const longUrl = 'https://www.linkedin.com/posts/example_really-long-unbroken-link-with-tracking-parameters-and-a-token-that-would-normally-overflow-the-feed-card'
+    render(<PostCard post={{ ...post, body: longUrl }} />)
+
+    const body = screen.getByText(longUrl).closest('p')
+    expect(body).toHaveClass('break-words')
+    expect(body).toHaveClass('[overflow-wrap:anywhere]')
+  })
+
+  it('wraps long links inside nested repost source cards too', () => {
+    const longUrl = 'https://www.linkedin.com/posts/example_original-post-with-an-extremely-long-unbroken-url-and-tracking-token'
+    render(<PostCard post={{
+      ...post,
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      body: '',
+      postType: 'repost',
+      repostOf: {
+        id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        category: 'technical_discussion',
+        body: longUrl,
+        postType: 'standard',
+        createdAt: '2026-09-01T08:00:00.000Z',
+        updatedAt: '2026-09-01T08:00:00.000Z',
+        author: post.author,
+        media: null,
+        poll: null,
+        mentions: [],
+      },
+      likeCount: 0,
+      commentCount: 0,
+    }} />)
+
+    const body = screen.getByText(longUrl).closest('p')
+    expect(body).toHaveClass('break-words')
+    expect(body).toHaveClass('[overflow-wrap:anywhere]')
+  })
+
   it('shows portrait image media in full instead of forcing a 16:9 cover crop', () => {
     const { container } = render(<PostCard post={{
       ...post,
