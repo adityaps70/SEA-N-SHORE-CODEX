@@ -160,7 +160,7 @@ function ActiveConversationWorkspace({
       }
       unsubscribe()
     }
-  }, [conversation.conversationId, conversation.messages, conversation.otherProfileId, subscribe])
+  }, [conversation.conversationId, conversation.messages, conversation.otherProfileId, subscribe, viewerId])
 
   function addOptimistic(message: OptimisticMessagingMessage) {
     updateMessages((current) => {
