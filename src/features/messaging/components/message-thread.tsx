@@ -290,7 +290,7 @@ export function MessageThread({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6">
+      <div data-testid="message-scroll-area" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-5 sm:px-6">
         {nextCursor ? (
           <div className="mb-5 flex justify-center">
             <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-muted">
@@ -334,6 +334,7 @@ export function MessageThread({
                       <div className="mb-5 flex items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         <MessageEmojiPicker
                           mode="reaction"
+                          align="start"
                           currentEmoji={myReaction}
                           triggerLabel={`React to message ${message.id}`}
                           onSelect={(emoji) => void react(message.id, emoji)}
@@ -371,14 +372,12 @@ export function MessageThread({
                               aria-label={`${reaction.emoji} ${reaction.count} ${reaction.count === 1 ? 'reaction' : 'reactions'}`}
                               disabled={pendingMessageId === message.id}
                               onClick={() => void react(message.id, reaction.viewerReacted ? null : reaction.emoji)}
-                              className={`inline-flex min-h-7 items-center gap-1 rounded-full border bg-white px-2 text-xs shadow-sm transition ${
-                                reaction.viewerReacted
-                                  ? 'border-ocean-300 ring-1 ring-ocean-100'
-                                  : 'border-mist-100 hover:border-ocean-300'
+                              className={`inline-flex min-h-6 items-center gap-0.5 px-0.5 text-base leading-none transition hover:scale-110 ${
+                                reaction.viewerReacted ? 'opacity-100' : 'opacity-90'
                               }`}
                             >
                               <span>{reaction.emoji}</span>
-                              <span className="text-[10px] font-semibold text-muted">{reaction.count}</span>
+                              {reaction.count > 1 ? <span className="text-[10px] font-semibold text-muted">{reaction.count}</span> : null}
                             </button>
                           ))}
                         </div>
@@ -407,6 +406,7 @@ export function MessageThread({
                         ) : null}
                         <MessageEmojiPicker
                           mode="reaction"
+                          align="end"
                           currentEmoji={myReaction}
                           triggerLabel={`React to message ${message.id}`}
                           onSelect={(emoji) => void react(message.id, emoji)}
