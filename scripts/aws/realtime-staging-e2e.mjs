@@ -106,6 +106,19 @@ async function openProbeSocket(page, key) {
   }, { key })
 }
 
+async function expectAttachmentReady(page, label) {
+  try {
+    await expect(page.getByText('Ready to send', { exact: true })).toBeVisible({ timeout: 30_000 })
+  } catch (error) {
+    const composerAlert = await page.getByRole('alert').last().textContent().catch(() => null)
+    const attachmentStatus = await page.locator('form').last().innerText().catch(() => null)
+    console.log(`REALTIME_E2E_ATTACHMENT_STAGE=${label}`)
+    console.log(`REALTIME_E2E_ATTACHMENT_COMPOSER_ERROR=${JSON.stringify(composerAlert)}`)
+    console.log(`REALTIME_E2E_ATTACHMENT_FORM_STATE=${JSON.stringify(attachmentStatus?.slice(0, 500) ?? null)}`)
+    throw error
+  }
+}
+
 async function closeProbeSocket(page, key) {
   await page.evaluate((key) => {
     const socket = globalThis[`__realtime_${key}_socket`]
@@ -399,7 +412,7 @@ async function realtimeJourney() {
       mimeType: 'image/png',
       buffer: onePixelPng,
     })
-    await expect(senderPage.getByText('Ready to send', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expectAttachmentReady(senderPage, 'photo')
     await senderPage.getByRole('button', { name: 'Send message' }).click()
     await expect(recipientPage.getByRole('img', { name: richPhotoName })).toBeVisible({ timeout: 30_000 })
     console.log('REALTIME_E2E_PHOTO_ATTACHMENT_VERIFIED=true')
@@ -409,7 +422,7 @@ async function realtimeJourney() {
       mimeType: 'text/plain',
       buffer: Buffer.from('Sea N Shore Realtime E2E attachment\n', 'utf8'),
     })
-    await expect(senderPage.getByText('Ready to send', { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expectAttachmentReady(senderPage, 'file')
     await senderPage.getByRole('button', { name: 'Send message' }).click()
     await expect(recipientPage.getByText(richFileName, { exact: true })).toBeVisible({ timeout: 30_000 })
     console.log('REALTIME_E2E_FILE_ATTACHMENT_VERIFIED=true')
@@ -463,12 +476,14 @@ async function realtimeJourney() {
           return style.display !== 'none' && style.visibility !== 'hidden' && element.getClientRects().length > 0
         }).length
         return {
+          messagingStateStatus: response.status,
           unreadCount: typeof payload.unreadCount === 'number' ? payload.unreadCount : -1,
           unreadBadges,
           visibility: document.visibilityState,
           pathname: location.pathname,
         }
       })
+      console.log(`REALTIME_E2E_BROWSER_MESSAGING_STATE_STATUS=${browserState.messagingStateStatus}`)
       console.log(`REALTIME_E2E_BROWSER_UNREAD_COUNT=${browserState.unreadCount}`)
       console.log(`REALTIME_E2E_BROWSER_UNREAD_BADGES=${browserState.unreadBadges}`)
       console.log(`REALTIME_E2E_BROWSER_VISIBILITY=${browserState.visibility}`)
