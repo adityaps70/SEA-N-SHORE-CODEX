@@ -7,11 +7,19 @@ const mocks = vi.hoisted(() => ({
   isAcceptingApplications: vi.fn(),
   hasApplied: vi.fn(),
   createApplication: vi.fn(),
+  createPendingJobApplicationCvUpload: vi.fn(),
+  verifyPendingJobApplicationCv: vi.fn(),
+  removeJobApplicationCv: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('./application-media', () => ({
+  createPendingJobApplicationCvUpload: mocks.createPendingJobApplicationCvUpload,
+  verifyPendingJobApplicationCv: mocks.verifyPendingJobApplicationCv,
+  removeJobApplicationCv: mocks.removeJobApplicationCv,
+}))
 vi.mock('./repository', () => ({
   jobsRepository: {
     isMemberReady: mocks.isMemberReady,
@@ -22,7 +30,7 @@ vi.mock('./repository', () => ({
   },
 }))
 
-import { applyToJob } from './actions'
+import { applyToJob, prepareJobApplicationCvUpload } from './actions'
 
 const jobId = '11111111-1111-4111-8111-111111111111'
 const job = {
@@ -46,6 +54,20 @@ describe('applyToJob', () => {
     mocks.isAcceptingApplications.mockResolvedValue(true)
     mocks.hasApplied.mockResolvedValue(false)
     mocks.createApplication.mockResolvedValue(undefined)
+    mocks.createPendingJobApplicationCvUpload.mockResolvedValue({
+      storagePath: 'job-applications/viewer-1/11111111-1111-4111-8111-111111111111/cv.pdf',
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      uploadUrl: 'https://uploads.example.test/cv',
+    })
+    mocks.verifyPendingJobApplicationCv.mockResolvedValue({
+      storagePath: 'job-applications/viewer-1/11111111-1111-4111-8111-111111111111/cv.pdf',
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    })
+    mocks.removeJobApplicationCv.mockResolvedValue(undefined)
   })
 
   it('blocks applications until the professional profile is ready', async () => {
@@ -78,10 +100,67 @@ describe('applyToJob', () => {
     expect(mocks.createApplication).not.toHaveBeenCalled()
   })
 
+  it('prepares a private PDF CV upload for the signed-in applicant and job', async () => {
+    await expect(prepareJobApplicationCvUpload(jobId, {
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    })).resolves.toEqual({
+      ok: true,
+      uploadUrl: 'https://uploads.example.test/cv',
+      storagePath: 'job-applications/viewer-1/11111111-1111-4111-8111-111111111111/cv.pdf',
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    })
+
+    expect(mocks.createPendingJobApplicationCvUpload).toHaveBeenCalledWith({
+      profileId: 'viewer-1',
+      jobId,
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    })
+  })
+
+  it('verifies and persists an attached PDF CV with the application', async () => {
+    const cv = {
+      storagePath: 'job-applications/viewer-1/11111111-1111-4111-8111-111111111111/cv.pdf',
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf' as const,
+      sizeBytes: 1024,
+    }
+
+    await expect(applyToJob(jobId, cv)).resolves.toEqual({ ok: true, alreadyApplied: false })
+
+    expect(mocks.verifyPendingJobApplicationCv).toHaveBeenCalledWith({
+      profileId: 'viewer-1',
+      jobId,
+      ...cv,
+    })
+    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', cv)
+  })
+
+  it('blocks an application when the uploaded CV cannot be verified', async () => {
+    mocks.verifyPendingJobApplicationCv.mockRejectedValue(new Error('job_application_cv_unavailable'))
+
+    await expect(applyToJob(jobId, {
+      storagePath: 'job-applications/viewer-1/11111111-1111-4111-8111-111111111111/cv.pdf',
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    })).resolves.toEqual({
+      ok: false,
+      error: 'We could not verify your CV. Please attach the PDF again.',
+    })
+
+    expect(mocks.createApplication).not.toHaveBeenCalled()
+  })
+
   it('creates the first application and revalidates jobs and activity routes', async () => {
     await expect(applyToJob(jobId)).resolves.toEqual({ ok: true, alreadyApplied: false })
 
-    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1')
+    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', null)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/jobs')
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/jobs/${jobId}`)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/activities')
