@@ -25,6 +25,7 @@ class FakeSocket {
   onmessage: ((event: MessageEvent) => void) | null = null
   onclose: ((event: CloseEvent) => void) | null = null
   onerror: ((event: Event) => void) | null = null
+  send = vi.fn()
   close = vi.fn(() => {
     if (this.readyState === 3) return
     this.readyState = 3
@@ -86,8 +87,25 @@ describe('messaging realtime connection lifecycle', () => {
     FakeSocket.instances[0]?.message(SIGNAL)
     expect(listener).toHaveBeenCalledTimes(1)
 
+    expect(connection.sendTyping({
+      conversationId: '33333333-3333-4333-8333-333333333333',
+      targetProfileId: '22222222-2222-4222-8222-222222222222',
+      isTyping: true,
+    })).toBe(true)
+    expect(FakeSocket.instances[0]?.send).toHaveBeenCalledWith(JSON.stringify({
+      action: 'typing',
+      conversationId: '33333333-3333-4333-8333-333333333333',
+      targetProfileId: '22222222-2222-4222-8222-222222222222',
+      isTyping: true,
+    }))
+
     FakeSocket.instances[0]?.close()
     expect(onStatusChange).toHaveBeenLastCalledWith('backoff')
+    expect(connection.sendTyping({
+      conversationId: '33333333-3333-4333-8333-333333333333',
+      targetProfileId: '22222222-2222-4222-8222-222222222222',
+      isTyping: true,
+    })).toBe(false)
     await vi.advanceTimersByTimeAsync(1000)
     expect(requestTicket).toHaveBeenCalledTimes(2)
     expect(FakeSocket.instances).toHaveLength(2)
