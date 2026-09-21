@@ -40,6 +40,11 @@ export const sendMessageInputSchema = z.object({
   }
 })
 
+export const editMessageInputSchema = z.object({
+  messageId: uuid,
+  body: z.string().trim().min(1).max(5000),
+})
+
 export const setMessageReactionInputSchema = z.object({
   messageId: uuid,
   emoji: z.string().trim().refine(isSingleEmoji, 'Choose one emoji.').nullable(),
