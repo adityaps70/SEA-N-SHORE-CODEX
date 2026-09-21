@@ -8,12 +8,21 @@ const mocks = vi.hoisted(() => ({
   createMessageAttachmentUploadAction: vi.fn(),
   discardMessageAttachmentAction: vi.fn(),
   uploadMessageAttachmentFile: vi.fn(),
+  sendTyping: vi.fn(() => true),
 }))
 
 vi.mock('../actions', () => ({
   sendMessageAction: mocks.sendMessageAction,
   createMessageAttachmentUploadAction: mocks.createMessageAttachmentUploadAction,
   discardMessageAttachmentAction: mocks.discardMessageAttachmentAction,
+}))
+
+vi.mock('@/features/realtime/provider', () => ({
+  useMessagingRealtime: () => ({
+    status: 'connected',
+    subscribe: vi.fn(() => () => {}),
+    sendTyping: mocks.sendTyping,
+  }),
 }))
 
 vi.mock('./upload-message-attachment', () => ({
@@ -51,6 +60,36 @@ afterEach(() => {
 })
 
 describe('MessageComposer rich messaging', () => {
+  it('publishes typing while composing and clears it after inactivity', async () => {
+    vi.useFakeTimers()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        typingTargetProfileId={OTHER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    await user.type(screen.getByRole('textbox', { name: 'Write a message' }), 'Hi')
+    expect(mocks.sendTyping).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      targetProfileId: OTHER_ID,
+      isTyping: true,
+    })
+
+    await vi.advanceTimersByTimeAsync(1800)
+    expect(mocks.sendTyping).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      targetProfileId: OTHER_ID,
+      isTyping: false,
+    })
+    vi.useRealTimers()
+  })
+
   it('inserts an emoji into the composer and can send an emoji-only message', async () => {
     const user = userEvent.setup()
     const onOptimisticMessage = vi.fn()
