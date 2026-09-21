@@ -44,7 +44,7 @@ describe('jobs repository', () => {
         seen.push({ text, values })
         return [{
           id: 'job-1', title: 'Chief Officer', company_name: 'Oceanic', company_id: 'company-1',
-          company_slug: 'oceanic', company_verified: true, recruiter_verified: true, location: 'Worldwide',
+          company_slug: 'oceanic', company_logo_path: 'companies/company-1/logo.webp', company_verified: true, recruiter_verified: true, location: 'Worldwide',
           summary: 'Tanker opening', description: 'Join us', requirements: 'Tanker experience', apply_until: '2026-10-01',
           created_at: '2026-09-10T10:00:00.000Z', published_at: '2026-09-10T10:00:00.000Z', job_domain: 'sea',
           department: 'Deck', rank: 'Chief Officer', vessel_types: ['Oil Tanker'], experience_min_years: '4.0',
@@ -68,9 +68,10 @@ describe('jobs repository', () => {
     expect(seen[0]?.text).toContain('j.urgent = true')
     expect(seen[0]?.text).toContain('job_certificate_requirements')
     expect(seen[0]?.text).toContain('job_visa_requirements')
+    expect(seen[0]?.text).toContain('c.logo_path as company_logo_path')
     expect(seen[0]?.values).toContain(40)
     expect(jobs[0]).toMatchObject({
-      id: 'job-1', companyId: 'company-1', companySlug: 'oceanic', companyVerified: true,
+      id: 'job-1', companyId: 'company-1', companySlug: 'oceanic', companyLogoPath: 'companies/company-1/logo.webp', companyVerified: true,
       recruiterVerified: true, domain: 'sea', rank: 'Chief Officer', vesselTypes: ['Oil Tanker'],
       experienceMinYears: 4, salaryMin: 7800, certificateRequirements: ['STCW'], visaRequirements: ['US C1/D'],
       urgent: true, easyApply: true,
@@ -170,15 +171,29 @@ describe('jobs repository', () => {
     expect(seen[0]?.values).toEqual(['viewer-1'])
   })
 
-  it('creates the application and its first timeline event atomically', async () => {
+  it('creates the application, optional CV reference, and first timeline event atomically', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [] } })
+    const cv = {
+      storagePath: 'job-applications/viewer-1/job-1/cv.pdf',
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf' as const,
+      sizeBytes: 2048,
+    }
 
-    await repository.createApplication('job-1', 'viewer-1')
+    await repository.createApplication('job-1', 'viewer-1', cv)
 
-    expect(seen[0]?.text).toContain("values ($1, $2, 'applied')")
+    expect(seen[0]?.text).toContain('cv_storage_path')
+    expect(seen[0]?.text).toContain('cv_file_name')
     expect(seen[0]?.text).toContain('job_application_events')
-    expect(seen[0]?.values).toEqual(['job-1', 'viewer-1'])
+    expect(seen[0]?.values).toEqual([
+      'job-1',
+      'viewer-1',
+      cv.storagePath,
+      cv.fileName,
+      cv.mimeType,
+      cv.sizeBytes,
+    ])
   })
 
   it('keeps saves, alerts and reports scoped to the signed-in member', async () => {
