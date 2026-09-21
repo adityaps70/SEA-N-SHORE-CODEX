@@ -17,6 +17,7 @@ import type { MessagingInboxItem } from '@/features/messaging/queries'
 import type { MessagingRealtimeSignal } from './client'
 import {
   createMessagingRealtimeConnection,
+  type MessagingRealtimeConnection,
   type MessagingRealtimeConnectionStatus,
 } from './connection'
 
@@ -25,6 +26,11 @@ type RealtimeListener = (signal: MessagingRealtimeSignal) => void
 type MessagingRealtimeContextValue = {
   status: MessagingRealtimeConnectionStatus
   subscribe: (listener: RealtimeListener) => () => void
+  sendTyping: (input: {
+    conversationId: string
+    targetProfileId: string
+    isTyping: boolean
+  }) => boolean
 }
 
 type NewMessageAlert = {
@@ -89,6 +95,7 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
   const [status, setStatus] = useState<MessagingRealtimeConnectionStatus>('disconnected')
   const [newMessageAlert, setNewMessageAlert] = useState<NewMessageAlert | null>(null)
   const listenersRef = useRef(new Set<RealtimeListener>())
+  const connectionRef = useRef<MessagingRealtimeConnection | null>(null)
   const alertTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const messagingRefreshRunningRef = useRef(false)
   const pendingConversationRef = useRef<string | null>(null)
@@ -97,6 +104,12 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
     listenersRef.current.add(listener)
     return () => listenersRef.current.delete(listener)
   }, [])
+
+  const sendTyping = useCallback((input: {
+    conversationId: string
+    targetProfileId: string
+    isTyping: boolean
+  }) => connectionRef.current?.sendTyping(input) ?? false, [])
 
   useEffect(() => {
     let active = true
@@ -162,8 +175,10 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
       onStatusChange: setStatus,
       onConnected: () => router.refresh(),
     })
+    connectionRef.current = connection
     const unsubscribe = connection.subscribe((signal) => {
       for (const listener of listenersRef.current) listener(signal)
+      if (signal.eventType === 'conversation.typing') return
       if (signal.eventType === 'message.created') {
         void reconcileGlobalMessagingState(signal.payload.conversationId)
       }
@@ -179,6 +194,7 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
       window.removeEventListener('online', reconnectWhenOnline)
       unsubscribe()
       connection.stop()
+      if (connectionRef.current === connection) connectionRef.current = null
       if (refreshTimer) clearTimeout(refreshTimer)
       if (alertTimerRef.current) {
         clearTimeout(alertTimerRef.current)
@@ -187,7 +203,7 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
     }
   }, [pathname, router])
 
-  const value = useMemo(() => ({ status, subscribe }), [status, subscribe])
+  const value = useMemo(() => ({ status, subscribe, sendTyping }), [sendTyping, status, subscribe])
 
   function openConversation() {
     if (!newMessageAlert) return
