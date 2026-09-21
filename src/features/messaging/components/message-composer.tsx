@@ -9,12 +9,14 @@ import {
   X,
 } from 'lucide-react'
 import {
+  useEffect,
   useRef,
   useState,
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
 } from 'react'
+import { useMessagingRealtime } from '@/features/realtime/provider'
 import {
   createMessageAttachmentUploadAction,
   discardMessageAttachmentAction,
@@ -45,6 +47,7 @@ type PendingAttachment = {
 type MessageComposerProps = {
   conversationId: string
   viewerId: string
+  typingTargetProfileId?: string | null
   replyTo?: MessagingMessageDto | null
   onCancelReply?: () => void
   onOptimisticMessage: (message: OptimisticMessagingMessage) => void
@@ -87,17 +90,57 @@ function attachmentAccept() {
 export function MessageComposer({
   conversationId,
   viewerId,
+  typingTargetProfileId = null,
   replyTo = null,
   onCancelReply,
   onOptimisticMessage,
   onMessageConfirmed,
   onMessageFailed,
 }: MessageComposerProps) {
+  const { sendTyping } = useMessagingRealtime()
   const [body, setBody] = useState('')
   const [sendingCount, setSendingCount] = useState(0)
   const [attachment, setAttachment] = useState<PendingAttachment | null>(null)
   const [composerError, setComposerError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastTypingSentAtRef = useRef(0)
+
+  function publishTyping(isTyping: boolean) {
+    if (!typingTargetProfileId) return
+    sendTyping({
+      conversationId,
+      targetProfileId: typingTargetProfileId,
+      isTyping,
+    })
+  }
+
+  function noteTyping(value: string) {
+    if (!typingTargetProfileId) return
+
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+    const now = Date.now()
+    if (value.trim() && now - lastTypingSentAtRef.current >= 1200) {
+      publishTyping(true)
+      lastTypingSentAtRef.current = now
+    }
+    if (!value.trim()) {
+      publishTyping(false)
+      lastTypingSentAtRef.current = 0
+      return
+    }
+
+    typingStopTimerRef.current = setTimeout(() => {
+      publishTyping(false)
+      lastTypingSentAtRef.current = 0
+      typingStopTimerRef.current = null
+    }, 1600)
+  }
+
+  useEffect(() => () => {
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+    publishTyping(false)
+  }, [conversationId, typingTargetProfileId])
 
   async function discardAttachment(current: PendingAttachment | null = attachment) {
     if (!current) return
@@ -230,6 +273,9 @@ export function MessageComposer({
       : undefined
 
     onOptimisticMessage(optimistic)
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+    publishTyping(false)
+    lastTypingSentAtRef.current = 0
     setBody('')
     setAttachment(null)
     setComposerError('')
@@ -373,7 +419,11 @@ export function MessageComposer({
 
         <MessageEmojiPicker onSelect={(emoji) => {
           if (!emoji) return
-          setBody((current) => `${current}${emoji}`)
+          setBody((current) => {
+            const next = `${current}${emoji}`
+            noteTyping(next)
+            return next
+          })
         }} />
 
         <label htmlFor="message-composer" className="sr-only">Write a message</label>
@@ -381,7 +431,11 @@ export function MessageComposer({
           id="message-composer"
           aria-label="Write a message"
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => {
+            const value = event.target.value
+            setBody(value)
+            noteTyping(value)
+          }}
           onKeyDown={onKeyDown}
           rows={1}
           maxLength={5000}
