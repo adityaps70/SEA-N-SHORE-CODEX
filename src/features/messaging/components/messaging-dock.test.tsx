@@ -1,11 +1,28 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const navigation = vi.hoisted(() => ({ pathname: '/home' }))
-const realtime = vi.hoisted(() => ({
-  subscribe: vi.fn(() => () => {}),
-  sendTyping: vi.fn(() => true),
+const realtime = vi.hoisted(() => {
+  let listener: ((signal: unknown) => void) | null = null
+
+  return {
+    subscribe: vi.fn((next: (signal: unknown) => void) => {
+      listener = next
+      return () => {
+        if (listener === next) listener = null
+      }
+    }),
+    sendTyping: vi.fn(() => true),
+    emit: (signal: unknown) => listener?.(signal),
+    reset: () => {
+      listener = null
+    },
+  }
+})
+const unread = vi.hoisted(() => ({
+  publishMessagingUnreadCount: vi.fn(),
+  subscribeMessagingUnreadCount: vi.fn(() => () => {}),
 }))
 const actions = vi.hoisted(() => ({
   sendMessageAction: vi.fn(),
@@ -27,6 +44,7 @@ vi.mock('@/features/realtime/provider', () => ({
 }))
 
 vi.mock('../actions', () => actions)
+vi.mock('../unread-client', () => unread)
 
 import { MessagingDock, isMessagingDockHiddenPath } from './messaging-dock'
 
@@ -37,6 +55,7 @@ const CONVERSATION_ID = '33333333-3333-4333-8333-333333333333'
 describe('MessagingDock', () => {
   beforeEach(() => {
     navigation.pathname = '/home'
+    realtime.reset()
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/realtime/messaging-state') {
@@ -109,5 +128,114 @@ describe('MessagingDock', () => {
       'https://media.example.test/anita.webp',
     )
     expect(screen.getByRole('textbox', { name: 'Write a message' })).toBeInTheDocument()
+  })
+
+
+  it('publishes the exact remaining unread count as soon as a compact conversation is opened', async () => {
+    const user = userEvent.setup()
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+
+    await waitFor(() => expect(actions.markConversationReadAction).toHaveBeenCalledWith(
+      CONVERSATION_ID,
+      '44444444-4444-4444-8444-444444444444',
+    ))
+    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0))
+  })
+
+  it('marks a new incoming message read immediately when that compact chat is already open', async () => {
+    const user = userEvent.setup()
+    const initialId = '44444444-4444-4444-8444-444444444444'
+    const incomingId = '66666666-6666-4666-8666-666666666666'
+    let threadLoads = 0
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/realtime/messaging-state') {
+        return new Response(JSON.stringify({
+          unreadCount: 1,
+          inbox: [{
+            conversationId: CONVERSATION_ID,
+            otherProfileId: OTHER_ID,
+            otherName: 'Capt. Anita Singh',
+            otherHeadline: 'Master Mariner',
+            otherAvatarUrl: 'https://media.example.test/anita.webp',
+            lastMessageId: initialId,
+            lastMessageBody: 'Hello',
+            lastMessageSenderId: OTHER_ID,
+            lastMessageAt: '2026-09-21T05:00:00.000Z',
+            otherLastReadMessageId: null,
+            otherLastReadAt: null,
+            unread: true,
+          }],
+        }), { status: 200 })
+      }
+
+      if (url === `/api/messages/${CONVERSATION_ID}`) {
+        threadLoads += 1
+        const messages = [{
+          id: initialId,
+          conversationId: CONVERSATION_ID,
+          senderProfileId: OTHER_ID,
+          clientMessageId: '55555555-5555-4555-8555-555555555555',
+          body: 'Hello',
+          createdAt: '2026-09-21T05:00:00.000Z',
+          editedAt: null,
+          deletedAt: null,
+          replyTo: null,
+          attachment: null,
+          reactions: [],
+        }]
+
+        if (threadLoads > 1) {
+          messages.push({
+            id: incomingId,
+            conversationId: CONVERSATION_ID,
+            senderProfileId: OTHER_ID,
+            clientMessageId: '77777777-7777-4777-8777-777777777777',
+            body: 'Incoming while open',
+            createdAt: '2026-09-21T05:01:00.000Z',
+            editedAt: null,
+            deletedAt: null,
+            replyTo: null,
+            attachment: null,
+            reactions: [],
+          })
+        }
+
+        return new Response(JSON.stringify({ messages, nextCursor: null }), { status: 200 })
+      }
+
+      throw new Error(`Unexpected fetch ${url}`)
+    })
+
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+    await waitFor(() => expect(actions.markConversationReadAction).toHaveBeenCalledWith(CONVERSATION_ID, initialId))
+
+    actions.markConversationReadAction.mockClear()
+    unread.publishMessagingUnreadCount.mockClear()
+
+    act(() => {
+      realtime.emit({
+        eventType: 'message.created',
+        payload: {
+          conversationId: CONVERSATION_ID,
+          messageId: incomingId,
+          senderId: OTHER_ID,
+          recipientProfileIds: [VIEWER_ID],
+        },
+      })
+    })
+
+    expect(await screen.findByText('Incoming while open')).toBeVisible()
+    await waitFor(() => expect(actions.markConversationReadAction).toHaveBeenCalledWith(
+      CONVERSATION_ID,
+      incomingId,
+    ))
+    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0))
   })
 })
