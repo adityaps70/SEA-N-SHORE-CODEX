@@ -103,7 +103,7 @@ describe('MessagingRealtimeProvider', () => {
     vi.unstubAllGlobals()
   })
 
-  it('shares one authenticated socket without refreshing on connect and publishes each signal once', async () => {
+  it('shares one authenticated socket without refreshing on connect or messaging events', async () => {
     const providerPath = './provider'
     const { MessagingRealtimeProvider, useMessagingRealtime } = await import(providerPath) as typeof import('./provider')
     const listener = vi.fn()
@@ -136,10 +136,33 @@ describe('MessagingRealtimeProvider', () => {
       FakeWebSocket.instances[0]?.message(SIGNAL)
     })
     await waitFor(() => expect(listener).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(1))
+    expect(router.refresh).not.toHaveBeenCalled()
 
     rendered.unmount()
     expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled()
+  })
+
+  it('still refreshes canonical server state for social invalidation signals', async () => {
+    const providerPath = './provider'
+    const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
+
+    render(
+      <MessagingRealtimeProvider>
+        <div>Home content</div>
+      </MessagingRealtimeProvider>,
+    )
+
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    act(() => FakeWebSocket.instances[0]?.open())
+    act(() => FakeWebSocket.instances[0]?.message(JSON.stringify({
+      eventId: 'event-social-1',
+      eventType: 'feed.post_created',
+      schemaVersion: 1,
+      occurredAt: '2026-09-13T10:00:01.000Z',
+      scope: 'feed',
+    })))
+
+    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(1))
   })
 
   it('updates the global unread badge and shows an in-app new-message alert even outside Messages', async () => {
@@ -181,7 +204,8 @@ describe('MessagingRealtimeProvider', () => {
     act(() => FakeWebSocket.instances[0]?.open())
     act(() => FakeWebSocket.instances[0]?.message(SIGNAL))
 
-    await waitFor(() => expect(router.refresh).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByText('Conversation')).toBeVisible())
+    expect(router.refresh).not.toHaveBeenCalled()
     expect(unread.publishMessagingUnreadCount).not.toHaveBeenCalled()
     expect(screen.queryByText('New message from Capt. Anita Singh')).not.toBeInTheDocument()
     expect(fetch).not.toHaveBeenCalledWith('/api/realtime/messaging-state', expect.anything())
