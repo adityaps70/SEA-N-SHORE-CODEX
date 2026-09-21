@@ -11,6 +11,7 @@ import {
 } from '../unread-client'
 import {
   fetchConversationCatchUp,
+  fetchConversationSnapshot,
   laterReadCursor,
   latestCanonicalCursor,
   mergeCanonicalMessages,
@@ -57,6 +58,8 @@ function ActiveConversationWorkspace({
   const messagesRef = useRef<MessageThreadItem[]>(conversation.messages)
   const catchUpRunningRef = useRef(false)
   const catchUpPendingRef = useRef(false)
+  const snapshotRefreshRunningRef = useRef(false)
+  const snapshotRefreshPendingRef = useRef(false)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const displayedMessages = mergeCanonicalMessages(messages, conversation.messages)
 
@@ -102,12 +105,35 @@ function ActiveConversationWorkspace({
               updateMessages((current) => mergeCanonicalMessages(current, incoming))
             }
           } catch {
-            // The global realtime provider also refreshes canonical server props.
-            // Direct catch-up is an acceleration path, never the source of truth.
+            // Preserve the current thread if catch-up fails transiently; the next realtime event retries.
           }
         } while (!cancelled && catchUpPendingRef.current)
       } finally {
         catchUpRunningRef.current = false
+      }
+    }
+
+    async function refreshActiveConversationSnapshot() {
+      if (snapshotRefreshRunningRef.current) {
+        snapshotRefreshPendingRef.current = true
+        return
+      }
+
+      snapshotRefreshRunningRef.current = true
+      try {
+        do {
+          snapshotRefreshPendingRef.current = false
+          try {
+            const canonical = await fetchConversationSnapshot(conversation.conversationId)
+            if (!cancelled) {
+              updateMessages((current) => syncThreadMessagesWithCanonicalSnapshot(current, canonical))
+            }
+          } catch {
+            // Preserve the current thread if a targeted refresh fails transiently.
+          }
+        } while (!cancelled && snapshotRefreshPendingRef.current)
+      } finally {
+        snapshotRefreshRunningRef.current = false
       }
     }
 
@@ -138,6 +164,7 @@ function ActiveConversationWorkspace({
 
       if (signal.eventType === 'message.updated') {
         if (signal.payload.conversationId !== conversation.conversationId) return
+        void refreshActiveConversationSnapshot()
         return
       }
 
@@ -277,7 +304,7 @@ export function MessageShell({
               publishMessagingUnreadCount(payload.unreadCount)
             }
           } catch {
-            // The provider-level router.refresh remains a canonical fallback.
+            // Preserve the last known inbox state if the targeted refresh fails transiently.
           }
         } while (!cancelled && inboxRefreshPendingRef.current)
       } finally {
