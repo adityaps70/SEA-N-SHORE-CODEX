@@ -348,6 +348,27 @@ async function realtimeJourney() {
     }, { conversationId }, { timeout: 30_000 })
     console.log('REALTIME_E2E_ACTIVE_THREAD_NO_RELOAD_VERIFIED=true')
 
+    const editOriginalBody = `${messageBody} edit original`
+    const editFinalBody = `${messageBody} edited final`
+    await senderPage.getByLabel('Write a message').fill(editOriginalBody)
+    await senderPage.getByRole('button', { name: 'Send message' }).click()
+    await expect(senderPage.getByText(editOriginalBody, { exact: true })).toBeVisible({ timeout: 20_000 })
+    await expect(recipientPage.getByText(editOriginalBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+
+    const editMoreButtons = senderPage.getByRole('button', { name: /^More actions for message / })
+    await editMoreButtons.last().click({ force: true })
+    await senderPage.getByRole('button', { name: 'Edit message' }).click()
+    const editBox = senderPage.getByRole('textbox', { name: 'Edit message text' })
+    await expect(editBox).toHaveValue(editOriginalBody)
+    await editBox.fill(editFinalBody)
+    await senderPage.getByRole('button', { name: 'Save edit' }).click()
+    await expect(senderPage.getByText(editFinalBody, { exact: true })).toBeVisible({ timeout: 20_000 })
+    await expect(senderPage.getByText(editOriginalBody, { exact: true })).toHaveCount(0, { timeout: 20_000 })
+    await expect(senderPage.getByText('Edited', { exact: true }).last()).toBeVisible({ timeout: 20_000 })
+    await expect(recipientPage.getByText(editFinalBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.getByText(editOriginalBody, { exact: true })).toHaveCount(0, { timeout: 30_000 })
+    console.log('REALTIME_E2E_EDIT_VERIFIED=true')
+
     const richReplyBody = `${messageBody} rich reply`
     const richPhotoName = `bridge-${runId}.png`
     const richFileName = `certificate-${runId}.txt`
