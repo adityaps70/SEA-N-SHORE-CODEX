@@ -48,6 +48,11 @@ function makeMessagingRepository(overrides: Record<string, unknown> = {}) {
     insertMessage: vi.fn(async () => message()),
     updateConversationLastMessage: vi.fn(async () => undefined),
     findMessageInConversation: vi.fn(async () => message()),
+    findMessageByIdForUpdate: vi.fn(async () => message()),
+    editMessageBody: vi.fn(async (_messageId: string, body: string, editedAt: string) => message({
+      body,
+      edited_at: editedAt,
+    })),
     advanceReadState: vi.fn(async () => true),
     ...overrides,
   }
@@ -71,6 +76,7 @@ async function service(input: {
   messaging?: ReturnType<typeof makeMessagingRepository>
   network?: ReturnType<typeof makeNetworkRepository>
   outbox?: ReturnType<typeof makeOutbox>
+  now?: () => Date
 } = {}) {
   const messaging = input.messaging ?? makeMessagingRepository()
   const network = input.network ?? makeNetworkRepository()
@@ -92,7 +98,7 @@ async function service(input: {
     })
   }
   return {
-    service: createMessagingService({ withTransaction }),
+    service: createMessagingService({ withTransaction, now: input.now }),
     messaging,
     network,
     outbox,
@@ -305,6 +311,64 @@ describe('messaging authorization and durability service', () => {
 
     const event = context.outbox.enqueue.mock.calls[0]?.[0] as unknown as { payload?: Record<string, unknown> }
     expect(event.payload).not.toHaveProperty('body')
+  })
+
+  it('edits an owned message within five minutes and emits message.updated', async () => {
+    const editedAt = '2026-09-13T00:05:59.000Z'
+    const context = await service({
+      now: () => new Date(editedAt),
+    })
+
+    await expect(context.service.editMessage(VIEWER_ID, {
+      messageId: MESSAGE_ID,
+      body: '  Updated bridge note.  ',
+    })).resolves.toEqual(message({
+      body: 'Updated bridge note.',
+      edited_at: editedAt,
+    }))
+
+    expect(context.messaging.editMessageBody).toHaveBeenCalledWith(
+      MESSAGE_ID,
+      'Updated bridge note.',
+      editedAt,
+    )
+    expect(context.outbox.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      aggregateType: 'message',
+      aggregateId: MESSAGE_ID,
+      eventType: 'message.updated',
+      payload: expect.objectContaining({
+        eventType: 'message.updated',
+        conversationId: CONVERSATION_ID,
+        messageId: MESSAGE_ID,
+        actorId: VIEWER_ID,
+      }),
+    }))
+  })
+
+  it('rejects message edits after the five-minute window and from anyone except the sender', async () => {
+    const expired = await service({
+      now: () => new Date('2026-09-13T00:06:00.001Z'),
+    })
+    await expectCode(
+      expired.service.editMessage(VIEWER_ID, {
+        messageId: MESSAGE_ID,
+        body: 'Too late',
+      }),
+      'messaging_edit_window_expired',
+    )
+    expect(expired.messaging.editMessageBody).not.toHaveBeenCalled()
+
+    const otherUser = await service({
+      now: () => new Date('2026-09-13T00:05:00.000Z'),
+    })
+    await expectCode(
+      otherUser.service.editMessage(TARGET_ID, {
+        messageId: MESSAGE_ID,
+        body: 'Not mine',
+      }),
+      'messaging_action_not_allowed',
+    )
+    expect(otherUser.messaging.editMessageBody).not.toHaveBeenCalled()
   })
 
   it('rejects read updates from nonparticipants and messages outside the conversation', async () => {
