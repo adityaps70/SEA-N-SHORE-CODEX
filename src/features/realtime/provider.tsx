@@ -173,6 +173,7 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
     }
 
     const reconcileUnreadOnConnected = async () => {
+      if (pathname.startsWith('/messages')) return
       const unreadRevisionAtStart = getMessagingUnreadCountSnapshot().revision
       try {
         const state = await loadGlobalMessagingState()
