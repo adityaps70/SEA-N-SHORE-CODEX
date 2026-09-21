@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
+import type { JobApplicationCvReference } from './application-media'
 import type {
   JobAlert,
   JobApplication,
@@ -19,6 +20,7 @@ type JobRow = QueryResultRow & {
   company_name: string
   company_id: string | null
   company_slug: string | null
+  company_logo_path: string | null
   company_verified: boolean | null
   recruiter_verified: boolean | null
   location: string | null
@@ -122,6 +124,7 @@ function mapJob(row: JobRow): JobListing {
     companyName: row.company_name,
     companyId: row.company_id ?? null,
     companySlug: row.company_slug ?? null,
+    companyLogoPath: row.company_logo_path ?? null,
     companyVerified: Boolean(row.company_verified),
     recruiterVerified: Boolean(row.recruiter_verified),
     location: row.location,
@@ -182,6 +185,7 @@ const JOB_COLUMNS = `
     j.company_name,
     j.company_id,
     c.slug as company_slug,
+    c.logo_path as company_logo_path,
     coalesce(c.is_verified, false) as company_verified,
     coalesce(cm.is_verified, false) as recruiter_verified,
     j.location,
@@ -466,16 +470,35 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     return Boolean(rows[0]?.ready)
   }
 
-  async function createApplication(jobId: string, applicantId: string): Promise<void> {
+  async function createApplication(
+    jobId: string,
+    applicantId: string,
+    cv: JobApplicationCvReference | null,
+  ): Promise<void> {
     await queryRows(
       `with inserted as (
-         insert into public.job_applications (job_id, applicant_id, status)
-         values ($1, $2, 'applied')
+         insert into public.job_applications (
+           job_id,
+           applicant_id,
+           status,
+           cv_storage_path,
+           cv_file_name,
+           cv_mime_type,
+           cv_size_bytes
+         )
+         values ($1, $2, 'applied', $3, $4, $5, $6)
          returning id, status, applicant_id, applied_at
        )
        insert into public.job_application_events (application_id, status, actor_id, created_at)
        select id, status, applicant_id, applied_at from inserted`,
-      [jobId, applicantId],
+      [
+        jobId,
+        applicantId,
+        cv?.storagePath ?? null,
+        cv?.fileName ?? null,
+        cv?.mimeType ?? null,
+        cv?.sizeBytes ?? null,
+      ],
     )
   }
 
