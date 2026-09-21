@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { MessagingMessageDto } from '../queries'
@@ -55,14 +55,13 @@ function canonical(overrides: Partial<MessagingMessageDto> = {}): MessagingMessa
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
   vi.clearAllMocks()
   window.localStorage.clear()
 })
 
 describe('MessageComposer rich messaging', () => {
   it('publishes typing while composing and clears it after inactivity', async () => {
-    vi.useFakeTimers()
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     render(
       <MessageComposer
         conversationId={CONVERSATION_ID}
@@ -74,20 +73,24 @@ describe('MessageComposer rich messaging', () => {
       />,
     )
 
-    await user.type(screen.getByRole('textbox', { name: 'Write a message' }), 'Hi')
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Write a message' }), {
+      target: { value: 'Hi' },
+    })
     expect(mocks.sendTyping).toHaveBeenCalledWith({
       conversationId: CONVERSATION_ID,
       targetProfileId: OTHER_ID,
       isTyping: true,
     })
 
-    await vi.advanceTimersByTimeAsync(1800)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1800)
+    })
     expect(mocks.sendTyping).toHaveBeenCalledWith({
       conversationId: CONVERSATION_ID,
       targetProfileId: OTHER_ID,
       isTyping: false,
     })
-    vi.useRealTimers()
   })
 
   it('inserts an emoji into the composer and can send an emoji-only message', async () => {
