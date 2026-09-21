@@ -236,9 +236,22 @@ resource "aws_iam_role_policy" "realtime_connection" {
         Effect = "Allow"
         Action = [
           "dynamodb:PutItem",
+          "dynamodb:GetItem",
           "dynamodb:DeleteItem"
         ]
         Resource = aws_dynamodb_table.realtime_connections.arn
+      },
+      {
+        Sid      = "LookupTypingRecipients"
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query"]
+        Resource = "${aws_dynamodb_table.realtime_connections.arn}/index/${local.realtime_profile_index}"
+      },
+      {
+        Sid      = "PushTypingSignals"
+        Effect   = "Allow"
+        Action   = ["execute-api:ManageConnections"]
+        Resource = "${aws_apigatewayv2_api.realtime.execution_arn}/${aws_apigatewayv2_stage.realtime.name}/POST/@connections/*"
       }
     ]
   })
@@ -347,7 +360,9 @@ resource "aws_lambda_function" "realtime_connection" {
 
   environment {
     variables = {
-      REALTIME_CONNECTIONS_TABLE = aws_dynamodb_table.realtime_connections.name
+      REALTIME_CONNECTIONS_TABLE   = aws_dynamodb_table.realtime_connections.name
+      REALTIME_PROFILE_INDEX       = local.realtime_profile_index
+      REALTIME_MANAGEMENT_ENDPOINT = local.realtime_management_url
     }
   }
 
