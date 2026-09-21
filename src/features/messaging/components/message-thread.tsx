@@ -10,6 +10,7 @@ import {
   Download,
   Ellipsis,
   FileText,
+  Pencil,
   RefreshCcw,
   Reply,
   Trash2,
@@ -17,9 +18,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   deleteMessageAction,
+  editMessageAction,
   markConversationReadAction,
   setMessageReactionAction,
 } from '../actions'
+import { isWithinMessageEditWindow } from '../edit-policy'
 import { publishMessagingUnreadCount } from '../unread-client'
 import type { MessagingMessageDto } from '../queries'
 import { isMessageSeen, type MessagingReadCursor } from '../thread-realtime'
@@ -179,6 +182,9 @@ export function MessageThread({
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const [interactionError, setInteractionError] = useState('')
   const [pendingMessageId, setPendingMessageId] = useState<string | null>(null)
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editBody, setEditBody] = useState('')
+  const [editWindowNow, setEditWindowNow] = useState(() => Date.now())
   const latestReceived = useMemo(
     () => [...messages].reverse().find((message) => message.senderProfileId !== viewerId && !message.deletedAt),
     [messages, viewerId],
@@ -221,6 +227,11 @@ export function MessageThread({
   }, [conversationId, latestMessageKey])
 
   useEffect(() => {
+    const timer = window.setInterval(() => setEditWindowNow(Date.now()), 10_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     const onPotentialView = () => attemptMarkRead()
     document.addEventListener('visibilitychange', onPotentialView)
     attemptMarkRead()
@@ -229,6 +240,37 @@ export function MessageThread({
       document.removeEventListener('visibilitychange', onPotentialView)
     }
   }, [attemptMarkRead])
+
+  function beginEdit(message: MessagingMessageDto) {
+    setInteractionError('')
+    setEditingMessageId(message.id)
+    setEditBody(message.body)
+  }
+
+  function cancelEdit() {
+    setEditingMessageId(null)
+    setEditBody('')
+  }
+
+  async function saveEdit(messageId: string) {
+    const body = editBody.trim()
+    if (!body || pendingMessageId) return
+    setPendingMessageId(messageId)
+    setInteractionError('')
+    try {
+      const result = await editMessageAction(messageId, body)
+      if (!result.ok) {
+        setInteractionError(result.error)
+        return
+      }
+      cancelEdit()
+      router.refresh()
+    } catch {
+      setInteractionError('We could not edit this message.')
+    } finally {
+      setPendingMessageId(null)
+    }
+  }
 
   async function react(messageId: string, emoji: string | null) {
     if (pendingMessageId) return
@@ -318,6 +360,13 @@ export function MessageThread({
               const reactionGroups = groupedReactions(message, viewerId)
               const myReaction = (message.reactions ?? []).find((reaction) => reaction.profileId === viewerId)?.emoji ?? null
               const canonicalForReply = !('deliveryState' in message) ? message : null
+              const canEdit = Boolean(
+                mine
+                && canonicalForReply
+                && message.body
+                && isWithinMessageEditWindow(message.createdAt, editWindowNow),
+              )
+              const isEditing = editingMessageId === message.id
 
               return (
                 <div key={`${message.clientMessageId}:${message.id}`}>
@@ -360,7 +409,40 @@ export function MessageThread({
                       }`}>
                         <ReplyPreview message={message} mine={mine} />
                         <AttachmentCard message={message} mine={mine} />
-                        {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
+                        {isEditing ? (
+                          <div className="min-w-[15rem]">
+                            <textarea
+                              aria-label="Edit message text"
+                              value={editBody}
+                              onChange={(event) => setEditBody(event.target.value)}
+                              maxLength={5000}
+                              rows={3}
+                              autoFocus
+                              className="w-full resize-none rounded-xl border border-white/20 bg-white px-3 py-2 text-sm leading-5 text-navy-950 outline-none focus:border-ocean-400"
+                            />
+                            <div className="mt-2 flex justify-end gap-2">
+                              <button
+                                type="button"
+                                aria-label="Cancel edit"
+                                onClick={cancelEdit}
+                                className="min-h-8 rounded-lg bg-white/10 px-3 text-[11px] font-semibold text-white hover:bg-white/20"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Save edit"
+                                disabled={!editBody.trim() || pendingMessageId === message.id}
+                                onClick={() => void saveEdit(message.id)}
+                                className="min-h-8 rounded-lg bg-white px-3 text-[11px] font-bold text-navy-950 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : message.body ? (
+                          <p className="whitespace-pre-wrap break-words">{message.body}</p>
+                        ) : null}
                       </div>
 
                       {reactionGroups.length ? (
@@ -385,6 +467,7 @@ export function MessageThread({
 
                       <div className={`mt-1 flex items-center gap-1.5 px-1 text-[10px] ${state === 'failed' ? 'text-red-600' : 'text-muted'}`}>
                         <span>{clock(message.createdAt)}</span>
+                        {message.editedAt ? <span>Edited</span> : null}
                         {mine && state === 'sending' ? <><Clock3 aria-hidden="true" className="size-3" /><span>Sending</span></> : null}
                         {mine && state === 'failed' ? <><RefreshCcw aria-hidden="true" className="size-3" /><span>Not sent</span></> : null}
                         {canonicalStatus === 'Sent' ? <><Check aria-hidden="true" className="size-3" /><span>Sent</span></> : null}
@@ -421,6 +504,22 @@ export function MessageThread({
                               <Ellipsis aria-hidden="true" className="size-4" />
                             </summary>
                             <div className="absolute bottom-full right-0 z-40 mb-2 min-w-44 rounded-xl border border-mist-100 bg-white p-1 shadow-xl">
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  aria-label="Edit message"
+                                  disabled={pendingMessageId === message.id}
+                                  onClick={(event) => {
+                                    const details = event.currentTarget.closest('details')
+                                    if (details) details.open = false
+                                    beginEdit(canonicalForReply)
+                                  }}
+                                  className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-navy-900 hover:bg-mist-50 disabled:opacity-50"
+                                >
+                                  <Pencil aria-hidden="true" className="size-4" />
+                                  Edit message
+                                </button>
+                              ) : null}
                               <button
                                 type="button"
                                 disabled={pendingMessageId === message.id}
