@@ -450,6 +450,36 @@ async function realtimeJourney() {
     await expect(recipientPage.getByText(richFileName, { exact: true })).toHaveCount(0, { timeout: 30_000 })
     console.log('REALTIME_E2E_UNSEND_VERIFIED=true')
 
+    const senderReadCursorCountBeforeDock = await senderPage.evaluate(({ conversationId }) => {
+      const signals = globalThis.__realtime_sender_signals ?? []
+      return signals.filter((signal) => (
+        signal?.eventType === 'conversation.read_cursor_advanced'
+        && signal?.payload?.conversationId === conversationId
+      )).length
+    }, { conversationId })
+    const dockFollowUpBody = `${messageBody} compact dock follow-up`
+
+    await recipientPage.goto(`${siteUrl}/home`, { waitUntil: 'domcontentloaded' })
+    await expect(recipientPage.getByRole('button', { name: 'Open messaging dock' })).toBeVisible({ timeout: 20_000 })
+
+    await senderPage.getByLabel('Write a message').fill(dockFollowUpBody)
+    await senderPage.getByRole('button', { name: 'Send message' }).click()
+    await expect(senderPage.getByText(dockFollowUpBody, { exact: true })).toBeVisible({ timeout: 20_000 })
+    await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toBeVisible({ timeout: 30_000 })
+
+    await recipientPage.getByRole('button', { name: 'Open messaging dock' }).click()
+    await recipientPage.getByRole('button', { name: `Open compact chat with ${users.sender.fullName}` }).click()
+    await expect(recipientPage.getByText(dockFollowUpBody, { exact: true })).toBeVisible({ timeout: 30_000 })
+    await expect(recipientPage.locator('[aria-label="1 unread messages"]:visible')).toHaveCount(0, { timeout: 30_000 })
+    await senderPage.waitForFunction(({ conversationId, minimumCount }) => {
+      const signals = globalThis.__realtime_sender_signals ?? []
+      return signals.filter((signal) => (
+        signal?.eventType === 'conversation.read_cursor_advanced'
+        && signal?.payload?.conversationId === conversationId
+      )).length > minimumCount
+    }, { conversationId, minimumCount: senderReadCursorCountBeforeDock }, { timeout: 30_000 })
+    console.log('REALTIME_E2E_MESSAGING_DOCK_READ_SYNC_VERIFIED=true')
+
     await senderPage.evaluate((injectedBody) => {
       const socket = globalThis.__realtime_sender_socket
       if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error('probe_socket_not_open')
