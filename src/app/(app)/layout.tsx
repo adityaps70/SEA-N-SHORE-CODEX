@@ -4,6 +4,7 @@ import { MobileAppHeader } from '@/components/navigation/mobile-app-header'
 import { MobileNav } from '@/components/navigation/mobile-nav'
 import { requireUser } from '@/features/auth/queries'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
+import { MessagingDock } from '@/features/messaging/components/messaging-dock'
 import { getUnreadMessageCount } from '@/features/messaging/queries'
 import { getNotificationChrome } from '@/features/notifications/queries'
 import { MessagingRealtimeProvider } from '@/features/realtime/provider'
@@ -34,6 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </main>
         <AppFooter />
+        <MessagingDock viewerId={user.id} initialUnreadCount={messagingUnreadCount} />
         <MobileNav />
       </div>
     </MessagingRealtimeProvider>
