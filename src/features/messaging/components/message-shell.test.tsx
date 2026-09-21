@@ -23,6 +23,7 @@ vi.mock('@/features/realtime/provider', () => ({
   useMessagingRealtime: () => ({
     status: 'connected',
     subscribe: vi.fn(() => () => undefined),
+    sendTyping: vi.fn(() => true),
   }),
 }))
 
