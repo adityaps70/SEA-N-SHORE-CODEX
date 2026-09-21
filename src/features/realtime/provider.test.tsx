@@ -142,6 +142,26 @@ describe('MessagingRealtimeProvider', () => {
     expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled()
   })
 
+  it('reconciles the global unread badge when the realtime socket connects even if a message event was missed', async () => {
+    const providerPath = './provider'
+    const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
+
+    render(
+      <MessagingRealtimeProvider>
+        <div>Home content</div>
+      </MessagingRealtimeProvider>,
+    )
+
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    expect(unread.publishMessagingUnreadCount).not.toHaveBeenCalled()
+
+    act(() => FakeWebSocket.instances[0]?.open())
+
+    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(4))
+    expect(screen.queryByText('New message from Capt. Anita Singh')).not.toBeInTheDocument()
+    expect(router.refresh).not.toHaveBeenCalled()
+  })
+
   it('still refreshes canonical server state for social invalidation signals', async () => {
     const providerPath = './provider'
     const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
