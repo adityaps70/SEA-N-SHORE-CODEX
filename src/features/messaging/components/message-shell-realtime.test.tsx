@@ -118,7 +118,10 @@ describe('MessageShell active realtime reconciliation', () => {
     vi.stubGlobal('fetch', vi.fn())
   })
 
-  afterEach(() => cleanup())
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+  })
 
 
   it('reconciles the inbox and unread count immediately when a message-created signal arrives', async () => {
@@ -403,7 +406,6 @@ describe('MessageShell active realtime reconciliation', () => {
   })
 
   it('shows and clears typing state only for the active peer', async () => {
-    vi.useFakeTimers()
     const modulePath = './message-shell'
     const { MessageShell } = await import(modulePath) as typeof import('./message-shell')
     render(
@@ -415,6 +417,7 @@ describe('MessageShell active realtime reconciliation', () => {
     )
 
     await waitFor(() => expect(realtime.subscribe).toHaveBeenCalled())
+    vi.useFakeTimers()
     act(() => realtime.emit({
       eventId: 'typing-start',
       eventType: 'conversation.typing',
@@ -435,7 +438,6 @@ describe('MessageShell active realtime reconciliation', () => {
       await vi.advanceTimersByTimeAsync(3500)
     })
     expect(screen.getByTestId('other-typing')).toHaveTextContent('idle')
-    vi.useRealTimers()
   })
 
   it('advances the local peer read cursor from realtime without allowing an older event to regress it', async () => {
