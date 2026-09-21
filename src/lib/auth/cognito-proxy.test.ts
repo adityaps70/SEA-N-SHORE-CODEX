@@ -58,7 +58,29 @@ describe('Cognito protected route proxy', () => {
     expect(response.headers.get('location')).toBe('https://staging.seaandshore.in/auth/sign-in')
   })
 
-  it.each(['/home', '/profile', '/network', '/notifications', '/posts/abc', '/onboarding'])('%s is protected', async (path) => {
+  it.each([
+    '/about',
+    '/accessibility',
+    '/activities',
+    '/admin',
+    '/community',
+    '/events',
+    '/help',
+    '/hiring',
+    '/home',
+    '/jobs',
+    '/learn',
+    '/messages',
+    '/network',
+    '/notifications',
+    '/posts/abc',
+    '/privacy',
+    '/profile',
+    '/saved',
+    '/search',
+    '/terms',
+    '/onboarding',
+  ])('%s is protected', async (path) => {
     const getVerifiedPrincipal = vi.fn(async () => null)
     const handler = createCognitoProxyHandler({
       getVerifiedPrincipal,
