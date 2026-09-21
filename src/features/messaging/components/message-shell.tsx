@@ -53,9 +53,11 @@ function ActiveConversationWorkspace({
   const [messages, setMessages] = useState<MessageThreadItem[]>(conversation.messages)
   const [peerReadCursor, setPeerReadCursor] = useState<MessagingReadCursor | null>(null)
   const [replyTo, setReplyTo] = useState<MessagingMessageDto | null>(null)
+  const [otherTyping, setOtherTyping] = useState(false)
   const messagesRef = useRef<MessageThreadItem[]>(conversation.messages)
   const catchUpRunningRef = useRef(false)
   const catchUpPendingRef = useRef(false)
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const displayedMessages = mergeCanonicalMessages(messages, conversation.messages)
 
   useEffect(() => {
@@ -110,6 +112,24 @@ function ActiveConversationWorkspace({
     }
 
     const unsubscribe = subscribe((signal) => {
+      if (signal.eventType === 'conversation.typing') {
+        if (signal.payload.conversationId !== conversation.conversationId) return
+        if (
+          signal.payload.actorId !== conversation.otherProfileId
+          || signal.payload.targetProfileId !== viewerId
+        ) return
+
+        if (typingTimerRef.current) clearTimeout(typingTimerRef.current)
+        setOtherTyping(signal.payload.isTyping)
+        if (signal.payload.isTyping) {
+          typingTimerRef.current = setTimeout(() => {
+            typingTimerRef.current = null
+            setOtherTyping(false)
+          }, 3000)
+        }
+        return
+      }
+
       if (signal.eventType === 'message.created') {
         if (signal.payload.conversationId !== conversation.conversationId) return
         void catchUpActiveConversation()
@@ -134,6 +154,10 @@ function ActiveConversationWorkspace({
 
     return () => {
       cancelled = true
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current)
+        typingTimerRef.current = null
+      }
       unsubscribe()
     }
   }, [conversation.conversationId, conversation.messages, conversation.otherProfileId, subscribe])
@@ -174,10 +198,12 @@ function ActiveConversationWorkspace({
         nextCursor={conversation.nextCursor}
         peerReadCursor={effectivePeerReadCursor}
         onReply={setReplyTo}
+        otherTyping={otherTyping}
       />
       <MessageComposer
         conversationId={conversation.conversationId}
         viewerId={viewerId}
+        typingTargetProfileId={conversation.otherProfileId}
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
         onOptimisticMessage={addOptimistic}
