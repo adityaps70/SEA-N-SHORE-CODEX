@@ -71,6 +71,11 @@ export type MessageAfterRequest = {
   after?: MessagingCursor
 }
 
+export type EditMessageInput = {
+  messageId: string
+  body: string
+}
+
 export type MessageAttachmentInput = {
   storagePath: string
   name: string
