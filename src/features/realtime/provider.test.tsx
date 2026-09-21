@@ -4,7 +4,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const router = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }))
 const navigation = vi.hoisted(() => ({ pathname: '/home' }))
-const unread = vi.hoisted(() => ({ publishMessagingUnreadCount: vi.fn() }))
+const unread = vi.hoisted(() => {
+  let snapshot = { count: 0, revision: 0 }
+  const publishMessagingUnreadCount = vi.fn((count: number) => {
+    snapshot = { count, revision: snapshot.revision + 1 }
+  })
+
+  return {
+    publishMessagingUnreadCount,
+    getMessagingUnreadCountSnapshot: () => snapshot,
+    reset() {
+      snapshot = { count: 0, revision: 0 }
+    },
+  }
+})
 
 vi.mock('next/navigation', () => ({
   useRouter: () => router,
@@ -13,6 +26,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/features/messaging/unread-client', () => ({
   publishMessagingUnreadCount: unread.publishMessagingUnreadCount,
+  getMessagingUnreadCountSnapshot: unread.getMessagingUnreadCountSnapshot,
 }))
 
 const SIGNAL = JSON.stringify({
@@ -64,6 +78,7 @@ class FakeWebSocket {
 describe('MessagingRealtimeProvider', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    unread.reset()
     FakeWebSocket.instances = []
     vi.stubGlobal('WebSocket', FakeWebSocket)
     navigation.pathname = '/home'
