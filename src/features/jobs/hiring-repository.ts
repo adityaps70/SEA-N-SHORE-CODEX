@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { scoreJobMatch } from './matching'
+import type { JobApplicationCvReference } from './application-media'
 import type {
   JobApplicationEvent,
   JobApplicationStatus,
@@ -105,6 +106,7 @@ export type HiringApplicant = {
   appliedAt: string
   updatedAt: string
   candidate: HiringApplicantCandidate
+  cvAttachment: JobApplicationCvReference | null
   match: JobMatchResult
 }
 
@@ -188,6 +190,10 @@ type ApplicantRow = QueryResultRow & {
   application_status: JobApplicationStatus
   applied_at: string
   updated_at: string
+  cv_storage_path: string | null
+  cv_file_name: string | null
+  cv_mime_type: string | null
+  cv_size_bytes: string | number | null
   candidate_id: string
   candidate_slug: string | null
   candidate_name: string
@@ -259,6 +265,10 @@ const APPLICANT_SELECT = `
     a.status::text as application_status,
     a.applied_at,
     a.updated_at,
+    a.cv_storage_path,
+    a.cv_file_name,
+    a.cv_mime_type,
+    a.cv_size_bytes,
     p.id as candidate_id,
     p.slug as candidate_slug,
     p.full_name as candidate_name,
@@ -493,6 +503,17 @@ function mapHiringApplicant(row: ApplicantRow): HiringApplicant {
     appliedAt: row.applied_at,
     updatedAt: row.updated_at,
     candidate,
+    cvAttachment: row.cv_storage_path
+      && row.cv_file_name
+      && row.cv_mime_type === 'application/pdf'
+      && numberOrNull(row.cv_size_bytes) !== null
+      ? {
+          storagePath: row.cv_storage_path,
+          fileName: row.cv_file_name,
+          mimeType: 'application/pdf',
+          sizeBytes: numberOrNull(row.cv_size_bytes) ?? 0,
+        }
+      : null,
     match: scoreJobMatch(job, candidateProfile(candidate)),
   }
 }
