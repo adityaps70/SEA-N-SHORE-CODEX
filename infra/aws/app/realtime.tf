@@ -251,7 +251,7 @@ resource "aws_iam_role_policy" "realtime_connection" {
         Sid      = "PushTypingSignals"
         Effect   = "Allow"
         Action   = ["execute-api:ManageConnections"]
-        Resource = "${aws_apigatewayv2_api.realtime.execution_arn}/${aws_apigatewayv2_stage.realtime.name}/POST/@connections/*"
+        Resource = "${aws_apigatewayv2_api.realtime.execution_arn}/*/POST/@connections/*"
       }
     ]
   })
@@ -360,9 +360,8 @@ resource "aws_lambda_function" "realtime_connection" {
 
   environment {
     variables = {
-      REALTIME_CONNECTIONS_TABLE   = aws_dynamodb_table.realtime_connections.name
-      REALTIME_PROFILE_INDEX       = local.realtime_profile_index
-      REALTIME_MANAGEMENT_ENDPOINT = local.realtime_management_url
+      REALTIME_CONNECTIONS_TABLE = aws_dynamodb_table.realtime_connections.name
+      REALTIME_PROFILE_INDEX     = local.realtime_profile_index
     }
   }
 
