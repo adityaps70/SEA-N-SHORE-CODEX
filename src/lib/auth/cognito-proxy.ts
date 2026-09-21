@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createCognitoApi } from './cognito-api'
 import { createCognitoSessionManager } from './cognito-session'
+import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 
 const PROTECTED_PREFIXES = [
@@ -53,6 +54,17 @@ export function createCognitoProxyHandler(session: RouteSession) {
   }
 }
 
+const resolveRouteCognitoPrincipal = createCognitoPrincipalResolver({
+  getUser: async (accessToken) => {
+    const environment = getCognitoEnvironment()
+    const api = createCognitoApi({
+      region: environment.AWS_COGNITO_REGION,
+      clientId: environment.AWS_COGNITO_CLIENT_ID,
+    })
+    return api.getUser(accessToken)
+  },
+})
+
 type CookieMutation =
   | { kind: 'set'; name: string; value: string; options?: Record<string, unknown> }
   | { kind: 'delete'; name: string }
@@ -84,7 +96,10 @@ export async function updateCognitoRouteSession(request: NextRequest) {
   })
   const session = createCognitoSessionManager({
     cookieStore,
-    api,
+    api: {
+      getUser: resolveRouteCognitoPrincipal,
+      refresh: api.refresh,
+    },
     siteUrl: request.nextUrl.origin,
   })
 
