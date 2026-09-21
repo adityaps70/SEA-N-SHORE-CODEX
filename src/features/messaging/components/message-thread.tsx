@@ -165,6 +165,7 @@ export function MessageThread({
   nextCursor,
   peerReadCursor,
   onReply,
+  otherTyping = false,
 }: {
   viewerId: string
   conversationId: string
@@ -175,6 +176,7 @@ export function MessageThread({
   nextCursor: { createdAt: string; id: string } | null
   peerReadCursor: MessagingReadCursor | null
   onReply?: (message: MessagingMessageDto) => void
+  otherTyping?: boolean
 }) {
   const router = useRouter()
   const name = otherName ?? 'Sea N Shore member'
@@ -224,7 +226,7 @@ export function MessageThread({
       block: 'end',
       behavior: 'auto',
     })
-  }, [conversationId, latestMessageKey])
+  }, [conversationId, latestMessageKey, otherTyping])
 
   useEffect(() => {
     const timer = window.setInterval(() => setEditWindowNow(Date.now()), 10_000)
@@ -358,6 +360,12 @@ export function MessageThread({
               const previous = messages[index - 1]
               const showDay = !previous || dayKey(previous.createdAt) !== dayKey(message.createdAt)
               const reactionGroups = groupedReactions(message, viewerId)
+              const next = messages[index + 1]
+              const showIncomingAvatar = !mine && (
+                !next
+                || next.senderProfileId === viewerId
+                || dayKey(next.createdAt) !== dayKey(message.createdAt)
+              )
               const myReaction = (message.reactions ?? []).find((reaction) => reaction.profileId === viewerId)?.emoji ?? null
               const canonicalForReply = !('deliveryState' in message) ? message : null
               const canEdit = Boolean(
@@ -399,6 +407,29 @@ export function MessageThread({
                           </button>
                         ) : null}
                       </div>
+                    ) : null}
+
+                    {!mine ? (
+                      showIncomingAvatar ? (
+                        otherAvatarUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
+                          <img
+                            data-testid={`message-avatar-${message.id}`}
+                            src={otherAvatarUrl}
+                            alt=""
+                            className="mb-5 size-7 shrink-0 rounded-full object-cover ring-1 ring-mist-100"
+                          />
+                        ) : (
+                          <span
+                            data-testid={`message-avatar-${message.id}`}
+                            className="mb-5 grid size-7 shrink-0 place-items-center rounded-full bg-white text-[9px] font-bold text-navy-950 ring-1 ring-mist-100"
+                          >
+                            {initials(otherName)}
+                          </span>
+                        )
+                      ) : (
+                        <span aria-hidden="true" className="mb-5 size-7 shrink-0" />
+                      )
                     ) : null}
 
                     <div className={`max-w-[86%] sm:max-w-[72%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
@@ -538,6 +569,34 @@ export function MessageThread({
                 </div>
               )
             })}
+            {otherTyping ? (
+              <div data-testid="typing-indicator" className="mt-2 flex items-end gap-2">
+                {otherAvatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
+                  <img
+                    data-testid="typing-avatar"
+                    src={otherAvatarUrl}
+                    alt=""
+                    className="size-7 shrink-0 rounded-full object-cover ring-1 ring-mist-100"
+                  />
+                ) : (
+                  <span
+                    data-testid="typing-avatar"
+                    className="grid size-7 shrink-0 place-items-center rounded-full bg-white text-[9px] font-bold text-navy-950 ring-1 ring-mist-100"
+                  >
+                    {initials(otherName)}
+                  </span>
+                )}
+                <div
+                  aria-label={`${name} is typing`}
+                  className="flex h-9 items-center gap-1 rounded-2xl rounded-bl-md border border-mist-100 bg-white px-3 shadow-sm"
+                >
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted [animation-delay:120ms]" />
+                  <span className="size-1.5 animate-pulse rounded-full bg-muted [animation-delay:240ms]" />
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="grid min-h-[22rem] place-items-center text-center">
