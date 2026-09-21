@@ -405,6 +405,51 @@ describe('MessageShell active realtime reconciliation', () => {
     }))
   })
 
+  it('reloads the active thread snapshot on message-updated without a full app refresh', async () => {
+    const edited = {
+      ...initialMessage,
+      body: 'Edited live',
+      editedAt: '2026-09-13T10:01:00.000Z',
+    }
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+      messages: [edited],
+      nextCursor: null,
+    }), { status: 200 }))
+
+    const modulePath = './message-shell'
+    const { MessageShell } = await import(modulePath) as typeof import('./message-shell')
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={[]}
+        activeConversation={activeConversation()}
+      />,
+    )
+
+    await waitFor(() => expect(realtime.subscribe).toHaveBeenCalled())
+    act(() => realtime.emit({
+      eventId: 'event-message-updated',
+      eventType: 'message.updated',
+      schemaVersion: 1,
+      occurredAt: '2026-09-13T10:01:00.100Z',
+      aggregateId: INITIAL_ID,
+      payload: {
+        eventType: 'message.updated',
+        conversationId: CONVERSATION_ID,
+        messageId: INITIAL_ID,
+        actorId: OTHER_ID,
+        participantProfileIds: [VIEWER_ID, OTHER_ID],
+      },
+    }))
+
+    await waitFor(() => expect(screen.getByTestId('message-bodies')).toHaveTextContent('Edited live'))
+    expect(screen.getByTestId('message-bodies')).not.toHaveTextContent('Initial')
+    expect(fetch).toHaveBeenCalledWith(`/api/messages/${CONVERSATION_ID}`, expect.objectContaining({
+      method: 'GET',
+      cache: 'no-store',
+    }))
+  })
+
   it('shows and clears typing state only for the active peer', async () => {
     const modulePath = './message-shell'
     const { MessageShell } = await import(modulePath) as typeof import('./message-shell')
