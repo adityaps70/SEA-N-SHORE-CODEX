@@ -130,7 +130,7 @@ describe('MessagingRealtimeProvider', () => {
     }
 
     const rendered = render(
-      <MessagingRealtimeProvider>
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
         <Probe />
       </MessagingRealtimeProvider>,
     )
@@ -162,7 +162,7 @@ describe('MessagingRealtimeProvider', () => {
     const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
 
     render(
-      <MessagingRealtimeProvider>
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
         <div>Home content</div>
       </MessagingRealtimeProvider>,
     )
@@ -182,7 +182,7 @@ describe('MessagingRealtimeProvider', () => {
     const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
 
     render(
-      <MessagingRealtimeProvider>
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
         <div>Home content</div>
       </MessagingRealtimeProvider>,
     )
@@ -205,7 +205,7 @@ describe('MessagingRealtimeProvider', () => {
     const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
 
     render(
-      <MessagingRealtimeProvider>
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
         <div>Home content</div>
       </MessagingRealtimeProvider>,
     )
@@ -224,13 +224,53 @@ describe('MessagingRealtimeProvider', () => {
     expect(router.push).toHaveBeenCalledWith('/messages/33333333-3333-4333-8333-333333333333')
   })
 
+  it('does not show a new-message alert or increment unread state for the viewer own sent message', async () => {
+    const providerPath = './provider'
+    const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
+
+    render(
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
+        <div>Home content</div>
+      </MessagingRealtimeProvider>,
+    )
+
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    act(() => FakeWebSocket.instances[0]?.open())
+    await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(4))
+    unread.publishMessagingUnreadCount.mockClear()
+
+    act(() => FakeWebSocket.instances[0]?.message(JSON.stringify({
+      eventId: 'event-self-1',
+      eventType: 'message.created',
+      schemaVersion: 1,
+      occurredAt: '2026-09-13T10:00:02.000Z',
+      aggregateId: '66666666-6666-4666-8666-666666666666',
+      payload: {
+        eventType: 'message.created',
+        conversationId: '33333333-3333-4333-8333-333333333333',
+        messageId: '66666666-6666-4666-8666-666666666666',
+        senderId: '22222222-2222-4222-8222-222222222222',
+        recipientProfileIds: ['11111111-1111-4111-8111-111111111111'],
+      },
+    })))
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(unread.publishMessagingUnreadCount).not.toHaveBeenCalled()
+    expect(screen.queryByText('New message from Capt. Anita Singh')).not.toBeInTheDocument()
+    expect(fetch).not.toHaveBeenCalledWith('/api/realtime/messaging-state', expect.anything())
+    expect(router.refresh).not.toHaveBeenCalled()
+  })
+
   it('does not show a duplicate new-message alert while already inside that conversation', async () => {
     navigation.pathname = '/messages/33333333-3333-4333-8333-333333333333'
     const providerPath = './provider'
     const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
 
     render(
-      <MessagingRealtimeProvider>
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
         <div>Conversation</div>
       </MessagingRealtimeProvider>,
     )
