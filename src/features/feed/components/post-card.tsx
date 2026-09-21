@@ -95,7 +95,7 @@ function RepostSourceCard({ source }: { source: FeedRepostSource }) {
         </div>
       </div>
 
-      <p className="mt-4 whitespace-pre-wrap text-[15px] leading-7 text-ink">
+      <p className="mt-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink">
         <MentionText body={source.body} mentions={source.mentions} />
       </p>
       {source.media?.signedUrl ? <PostMedia media={source.media} authorName={source.author.fullName} /> : null}
@@ -210,7 +210,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
             <RepostSourceCard source={post.repostOf} />
           ) : (
             <>
-              <p className="whitespace-pre-wrap text-[15px] leading-7 text-ink"><MentionText body={post.body} mentions={post.mentions} /></p>
+              <p className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"><MentionText body={post.body} mentions={post.mentions} /></p>
               {post.media?.signedUrl ? <PostMedia media={post.media} authorName={post.author.fullName} /> : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
             </>
