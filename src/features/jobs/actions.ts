@@ -30,6 +30,7 @@ const cvMetadataSchema = z.object({
 })
 const cvReferenceSchema = cvMetadataSchema.extend({
   storagePath: z.string().trim().min(1).max(1024),
+  mimeType: z.literal('application/pdf'),
 })
 const alertIdSchema = z.string().uuid()
 const alertSchema = z.object({
