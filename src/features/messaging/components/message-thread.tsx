@@ -372,7 +372,7 @@ export function MessageThread({
                               aria-label={`${reaction.emoji} ${reaction.count} ${reaction.count === 1 ? 'reaction' : 'reactions'}`}
                               disabled={pendingMessageId === message.id}
                               onClick={() => void react(message.id, reaction.viewerReacted ? null : reaction.emoji)}
-                              className={`inline-flex min-h-8 min-w-10 items-center justify-center gap-1 rounded-xl bg-navy-950/90 px-2.5 py-1 text-base leading-none text-white shadow-sm backdrop-blur-sm transition hover:scale-105 hover:bg-navy-950 ${
+                              className={`inline-flex min-h-7 min-w-8 items-center justify-center gap-0.5 rounded-lg bg-navy-950/90 px-1.5 py-0.5 text-sm leading-none text-white shadow-sm backdrop-blur-sm transition hover:scale-105 hover:bg-navy-950 ${
                                 reaction.viewerReacted ? 'opacity-100' : 'opacity-90'
                               }`}
                             >
