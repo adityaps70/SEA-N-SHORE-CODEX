@@ -490,7 +490,7 @@ async function realtimeJourney() {
     await closeProbeSocket(senderPage, 'sender')
     await closeProbeSocket(recipientPage, 'recipient')
 
-    await recipientPage.reload({ waitUntil: 'domcontentloaded' })
+    await recipientPage.goto(`${siteUrl}/messages/${conversationId}`, { waitUntil: 'domcontentloaded' })
     await expect(recipientPage.getByText(messageBody, { exact: true })).toBeVisible({ timeout: 20_000 })
     console.log('REALTIME_E2E_CANONICAL_FALLBACK_VERIFIED=true')
   } catch (error) {
