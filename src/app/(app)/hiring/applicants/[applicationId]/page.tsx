@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { HiringCvLink } from '@/features/jobs/components/hiring-cv-link'
 import { HiringStatusAction } from '@/features/jobs/components/hiring-status-action'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { RecruiterNoteForm } from '@/features/jobs/components/recruiter-note-form'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { JOB_APPLICATION_STATUS_LABELS } from '@/features/jobs/types'
+import { createMediaReadUrl } from '@/lib/aws/storage'
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
@@ -29,6 +31,14 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
 
   const candidate = review.candidate
   const profileHref = candidate.slug ? `/people/${candidate.slug}` : null
+  let cvUrl: string | null = null
+  if (review.cvAttachment) {
+    try {
+      cvUrl = await createMediaReadUrl(review.cvAttachment.storagePath, 600)
+    } catch {
+      cvUrl = null
+    }
+  }
 
   return (
     <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
@@ -161,6 +171,27 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
 
         <aside className="space-y-6">
           <HiringStatusAction applicationId={applicationId} currentStatus={review.status} />
+
+          {review.cvAttachment ? (
+            <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Candidate CV</p>
+              <h2 className="mt-1 text-lg font-bold text-navy-950">Attached application document</h2>
+              <p className="mt-1 text-sm leading-6 text-muted">Private to authorized hiring reviewers for this vacancy.</p>
+              <div className="mt-4">
+                {cvUrl ? (
+                  <HiringCvLink
+                    href={cvUrl}
+                    fileName={review.cvAttachment.fileName}
+                    sizeBytes={review.cvAttachment.sizeBytes}
+                  />
+                ) : (
+                  <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
+                    CV is temporarily unavailable. Refresh the page and try again.
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : null}
 
           <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
             <h2 className="text-lg font-bold text-navy-950">Credentials & visas</h2>
