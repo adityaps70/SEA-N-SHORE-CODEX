@@ -120,6 +120,40 @@ describe('Aurora messaging repository', () => {
     ])
   })
 
+  it('edits only the message body and stamps edited_at', async () => {
+    const editedAt = '2026-09-13T00:05:59.000Z'
+    const query = vi.fn(async () => [{
+      id: MESSAGE_ID,
+      conversation_id: CONVERSATION_ID,
+      sender_profile_id: VIEWER_ID,
+      client_message_id: CLIENT_MESSAGE_ID,
+      body: 'Updated bridge note.',
+      created_at: '2026-09-13T00:01:00.000Z',
+      edited_at: editedAt,
+      deleted_at: null,
+    }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.editMessageBody(
+      MESSAGE_ID,
+      'Updated bridge note.',
+      editedAt,
+    )).resolves.toMatchObject({
+      id: MESSAGE_ID,
+      body: 'Updated bridge note.',
+      edited_at: editedAt,
+    })
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('update public.messages')
+    expect(text).toContain('body = $2')
+    expect(text).toContain('edited_at = $3::timestamptz')
+    expect(text).toContain('deleted_at is null')
+    expect(values).toEqual([MESSAGE_ID, 'Updated bridge note.', editedAt])
+  })
+
   it('advances the cached last message by the same created_at/id tuple ordering as thread pagination', async () => {
     const query = vi.fn(async () => [])
     const { createMessagingRepository } = await import('./repository')
