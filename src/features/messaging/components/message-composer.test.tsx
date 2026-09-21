@@ -4,9 +4,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   sendMessageAction: vi.fn(),
+  createMessageAttachmentUploadAction: vi.fn(),
+  discardMessageAttachmentAction: vi.fn(),
+  sendTyping: vi.fn(() => true),
 }))
 
-vi.mock('../actions', () => ({ sendMessageAction: mocks.sendMessageAction }))
+vi.mock('../actions', () => ({
+  sendMessageAction: mocks.sendMessageAction,
+  createMessageAttachmentUploadAction: mocks.createMessageAttachmentUploadAction,
+  discardMessageAttachmentAction: mocks.discardMessageAttachmentAction,
+}))
+
+vi.mock('@/features/realtime/provider', () => ({
+  useMessagingRealtime: () => ({
+    status: 'connected',
+    subscribe: vi.fn(() => () => {}),
+    sendTyping: mocks.sendTyping,
+  }),
+}))
 
 import { MessageComposer } from './message-composer'
 
