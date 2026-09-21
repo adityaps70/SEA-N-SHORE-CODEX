@@ -95,6 +95,9 @@ describe('MessageThread rich interactions', () => {
 
     const existingReaction = screen.getByRole('button', { name: '🔥 2 reactions' })
     expect(existingReaction).toBeInTheDocument()
+    expect(existingReaction).toHaveClass('rounded-xl')
+    expect(existingReaction).toHaveClass('bg-navy-950/90')
+    expect(existingReaction).toHaveClass('shadow-sm')
     expect(existingReaction).not.toHaveClass('border')
     expect(existingReaction).not.toHaveClass('bg-white')
 
