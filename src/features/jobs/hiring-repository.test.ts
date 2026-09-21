@@ -52,6 +52,10 @@ const applicantRow = {
   application_status: 'applied',
   applied_at: '2026-09-10T10:00:00.000Z',
   updated_at: '2026-09-10T10:00:00.000Z',
+  cv_storage_path: 'job-applications/candidate-1/job-1/cv.pdf',
+  cv_file_name: 'rahul-cv.pdf',
+  cv_mime_type: 'application/pdf',
+  cv_size_bytes: 4096,
   candidate_id: 'candidate-1',
   candidate_slug: 'capt-rahul',
   candidate_name: 'Capt Rahul',
@@ -278,12 +282,19 @@ describe('jobs hiring repository', () => {
     expect(applicants[0]).toMatchObject({
       applicationId: 'application-1', status: 'applied',
       candidate: { id: 'candidate-1', slug: 'capt-rahul', fullName: 'Capt Rahul', rank: 'Chief Officer', vesselTypes: ['Oil Tanker'] },
+      cvAttachment: {
+        storagePath: 'job-applications/candidate-1/job-1/cv.pdf',
+        fileName: 'rahul-cv.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 4096,
+      },
       match: { score: 100 },
     })
     expect(seen[0]?.text).toContain('public.company_members cm')
     expect(seen[0]?.text).toContain('cm.user_id = $1')
     expect(seen[0]?.text).toContain('j.id = $2')
     expect(seen[0]?.text).toContain('mp.sailing_experience_years')
+    expect(seen[0]?.text).toContain('a.cv_storage_path')
   })
 
   it('loads authorized application review history and company-private recruiter notes', async () => {
