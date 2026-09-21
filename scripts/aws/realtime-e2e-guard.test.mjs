@@ -310,5 +310,7 @@ test('realtime messaging E2E covers rich composer, arbitrary reactions, replies,
   assert.match(remote, /deleted_at is not null/i)
   assert.match(remote, /event_type='message\.updated'/i)
   assert.match(remote, /REALTIME_E2E_DURABLE_RICH_MESSAGING_VERIFIED=true/)
+  assert.match(remote, /order by occurred_at desc, id desc/i)
+  assert.doesNotMatch(remote, /event_outbox[\s\S]{0,240}order by created_at desc/i)
   assert.match(remote, /sea-n-shore-staging-310356785722-media/)
 })
