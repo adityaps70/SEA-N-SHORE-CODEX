@@ -41,6 +41,10 @@ export async function createPendingMessageAttachmentUpload(input: {
   }
 }
 
+function normalizedMediaType(value: string | null) {
+  return value?.split(';', 1)[0]?.trim().toLowerCase() ?? null
+}
+
 export async function verifyPendingMessageAttachment(input: {
   profileId: string
   conversationId: string
@@ -68,7 +72,10 @@ export async function verifyPendingMessageAttachment(input: {
     throw new Error('messaging_attachment_unavailable')
   }
 
-  if (stored.contentType !== metadata.mimeType || stored.contentLength !== input.size) {
+  if (
+    normalizedMediaType(stored.contentType) !== metadata.mimeType.toLowerCase()
+    || stored.contentLength !== input.size
+  ) {
     throw new Error('messaging_attachment_metadata_mismatch')
   }
 
