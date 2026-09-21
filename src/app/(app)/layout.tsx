@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ])
 
   return (
-    <MessagingRealtimeProvider>
+    <MessagingRealtimeProvider viewerProfileId={user.id}>
       <div className="min-h-screen bg-mist-50 pb-20 md:pb-0 md:pt-18">
         <AppHeader
           recentNotifications={notificationChrome.recent}
