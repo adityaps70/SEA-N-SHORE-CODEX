@@ -39,6 +39,7 @@ class FakeWebSocket {
   onmessage: ((event: MessageEvent) => void) | null = null
   onclose: ((event: CloseEvent) => void) | null = null
   onerror: ((event: Event) => void) | null = null
+  send = vi.fn()
   close = vi.fn(() => {
     if (this.readyState === 3) return
     this.readyState = 3
