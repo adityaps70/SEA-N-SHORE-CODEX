@@ -73,15 +73,31 @@ try {
     }
   })
 
+  const stylesheetHrefs = await page.locator('link[rel="stylesheet"]').evaluateAll((elements) => (
+    elements.map((element) => element.href)
+  ))
+  const nextStylesheets = stylesheetHrefs.filter((href) => href.includes('/_next/static/'))
+  const failedStylesheetRequests = failedRequests.filter(({ url: requestUrl }) => (
+    requestUrl.includes('/_next/static/') && requestUrl.includes('.css')
+  ))
+
   console.log(`LOGO_STATE=${JSON.stringify(state)}`)
+  console.log(`STYLESHEET_HREFS=${JSON.stringify(stylesheetHrefs)}`)
   console.log(`CONSOLE_ERRORS=${JSON.stringify(consoleErrors)}`)
   console.log(`FAILED_REQUESTS=${JSON.stringify(failedRequests)}`)
+  console.log(`FAILED_STYLESHEET_REQUESTS=${JSON.stringify(failedStylesheetRequests)}`)
 
   const header = page.locator('header').first()
   await header.screenshot({ path: '/tmp/sea-n-shore-logo-browser.png' })
 
   if (!state.complete || state.naturalWidth <= 0 || state.naturalHeight <= 0) {
     throw new Error('Logo image did not decode in Chromium')
+  }
+  if (nextStylesheets.length < 1) {
+    throw new Error('No Next stylesheet was loaded by the staging page')
+  }
+  if (failedStylesheetRequests.length > 0) {
+    throw new Error(`Next stylesheet requests failed: ${JSON.stringify(failedStylesheetRequests)}`)
   }
 
   const naturalAspectRatio = state.naturalWidth / state.naturalHeight
@@ -94,6 +110,9 @@ try {
   }
   if (state.rect.width < 130 || state.rect.height < 35 || renderedAspectRatio < 2.8) {
     throw new Error(`Header logo is not visibly rendered as a horizontal lockup: ${state.rect.width}x${state.rect.height}`)
+  }
+  if (state.rect.width > 180 || state.rect.height > 64) {
+    throw new Error(`Header logo rendered outside compact styled bounds: ${state.rect.width}x${state.rect.height}`)
   }
   if (state.style.display === 'none' || state.style.visibility === 'hidden' || Number(state.style.opacity) === 0) {
     throw new Error(`Logo is hidden by computed style ${JSON.stringify(state.style)}`)
