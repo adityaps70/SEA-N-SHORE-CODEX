@@ -76,7 +76,7 @@ export type JobListing = {
   companyName: string
   companyId: string | null
   companySlug: string | null
-  companyLogoPath: string | null
+  companyLogoPath?: string | null
   companyVerified: boolean
   recruiterVerified: boolean
   location: string | null
