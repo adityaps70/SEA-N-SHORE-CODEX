@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createCognitoApi } from './cognito-api'
+import { CognitoApiError, createCognitoApi } from './cognito-api'
 import { createCognitoSessionManager } from './cognito-session'
 import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
@@ -97,7 +97,11 @@ export async function updateCognitoRouteSession(request: NextRequest) {
   const session = createCognitoSessionManager({
     cookieStore,
     api: {
-      getUser: resolveRouteCognitoPrincipal,
+      getUser: async (accessToken) => {
+        const principal = await resolveRouteCognitoPrincipal(accessToken)
+        if (!principal) throw new CognitoApiError('NotAuthorizedException')
+        return principal
+      },
       refresh: api.refresh,
     },
     siteUrl: request.nextUrl.origin,
