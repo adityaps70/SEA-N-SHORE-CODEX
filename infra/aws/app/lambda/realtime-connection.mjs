@@ -14,10 +14,14 @@ import { randomUUID } from 'node:crypto'
 const dynamodb = new DynamoDBClient({})
 const tableName = process.env.REALTIME_CONNECTIONS_TABLE
 const profileIndexName = process.env.REALTIME_PROFILE_INDEX ?? 'profile_id-index'
-const managementEndpoint = process.env.REALTIME_MANAGEMENT_ENDPOINT
-const websocket = managementEndpoint
-  ? new ApiGatewayManagementApiClient({ endpoint: managementEndpoint })
-  : null
+function managementClient(event) {
+  const domainName = event.requestContext?.domainName
+  const stage = event.requestContext?.stage
+  if (!domainName || !stage) return null
+  return new ApiGatewayManagementApiClient({
+    endpoint: `https://${domainName}/${stage}`,
+  })
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -72,7 +76,7 @@ async function targetConnections(profileId) {
   return result.Items ?? []
 }
 
-async function pushTyping(connectionId, data) {
+async function pushTyping(websocket, connectionId, data) {
   try {
     await websocket.send(new PostToConnectionCommand({
       ConnectionId: connectionId,
@@ -89,7 +93,8 @@ async function pushTyping(connectionId, data) {
 }
 
 async function handleTyping(connectionId, event) {
-  if (!websocket) throw new Error('REALTIME_MANAGEMENT_ENDPOINT is required')
+  const websocket = managementClient(event)
+  if (!websocket) throw new Error('REALTIME_MANAGEMENT_ENDPOINT is unavailable')
 
   let body
   try {
@@ -142,7 +147,7 @@ async function handleTyping(connectionId, event) {
       await deleteConnection(targetConnectionId)
       continue
     }
-    await pushTyping(targetConnectionId, data)
+    await pushTyping(websocket, targetConnectionId, data)
   }
 
   return response(200, { accepted: true })
