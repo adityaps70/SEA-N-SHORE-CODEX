@@ -87,6 +87,6 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   )
 
   return viewer ? (
-    <MessagingRealtimeProvider>{profileContent}</MessagingRealtimeProvider>
+    <MessagingRealtimeProvider viewerProfileId={viewer.id}>{profileContent}</MessagingRealtimeProvider>
   ) : profileContent
 }
