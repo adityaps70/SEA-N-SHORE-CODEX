@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   directConversationInputSchema,
+  editMessageInputSchema,
   markConversationReadInputSchema,
   messagePageRequestSchema,
   sendMessageInputSchema,
@@ -69,6 +70,26 @@ describe('messaging schemas', () => {
       conversationId: CONVERSATION_ID,
       clientMessageId: CLIENT_MESSAGE_ID,
       body: '   ',
+    }).success).toBe(false)
+  })
+
+  it('normalizes edited message text while rejecting empty or oversized edits', () => {
+    expect(editMessageInputSchema.parse({
+      messageId: MESSAGE_ID,
+      body: '  Updated message  ',
+    })).toEqual({
+      messageId: MESSAGE_ID,
+      body: 'Updated message',
+    })
+
+    expect(editMessageInputSchema.safeParse({
+      messageId: MESSAGE_ID,
+      body: '   ',
+    }).success).toBe(false)
+
+    expect(editMessageInputSchema.safeParse({
+      messageId: MESSAGE_ID,
+      body: 'x'.repeat(5001),
     }).success).toBe(false)
   })
 
