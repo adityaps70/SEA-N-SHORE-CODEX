@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react'
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -106,14 +107,14 @@ export function MessageComposer({
   const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastTypingSentAtRef = useRef(0)
 
-  function publishTyping(isTyping: boolean) {
+  const publishTyping = useCallback((isTyping: boolean) => {
     if (!typingTargetProfileId) return
     sendTyping({
       conversationId,
       targetProfileId: typingTargetProfileId,
       isTyping,
     })
-  }
+  }, [conversationId, sendTyping, typingTargetProfileId])
 
   function noteTyping(value: string) {
     if (!typingTargetProfileId) return
@@ -140,7 +141,7 @@ export function MessageComposer({
   useEffect(() => () => {
     if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
     publishTyping(false)
-  }, [conversationId, typingTargetProfileId])
+  }, [publishTyping])
 
   async function discardAttachment(current: PendingAttachment | null = attachment) {
     if (!current) return
