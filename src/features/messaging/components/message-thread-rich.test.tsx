@@ -198,8 +198,9 @@ describe('MessageThread rich interactions', () => {
     ))
     expect(navigation.refresh).toHaveBeenCalled()
 
+    rendered.unmount()
     vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-09-21T05:06:00.001Z').getTime())
-    rendered.rerender(
+    render(
       <MessageThread
         viewerId={VIEWER_ID}
         conversationId={CONVERSATION_ID}
