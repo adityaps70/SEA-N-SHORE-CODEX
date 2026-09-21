@@ -4,16 +4,27 @@ import { createCognitoSessionManager } from './cognito-session'
 import { getCognitoEnvironment } from '@/lib/env'
 
 const PROTECTED_PREFIXES = [
+  '/about',
+  '/accessibility',
+  '/activities',
+  '/admin',
+  '/community',
+  '/events',
+  '/help',
+  '/hiring',
   '/home',
-  '/profile',
-  '/network',
-  '/notifications',
-  '/posts',
-  '/onboarding',
   '/jobs',
   '/learn',
-  '/events',
-  '/community',
+  '/messages',
+  '/network',
+  '/notifications',
+  '/onboarding',
+  '/posts',
+  '/privacy',
+  '/profile',
+  '/saved',
+  '/search',
+  '/terms',
 ] as const
 
 export function isCognitoProtectedRoute(pathname: string) {
