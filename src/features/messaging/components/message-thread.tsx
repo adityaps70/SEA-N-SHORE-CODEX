@@ -372,12 +372,12 @@ export function MessageThread({
                               aria-label={`${reaction.emoji} ${reaction.count} ${reaction.count === 1 ? 'reaction' : 'reactions'}`}
                               disabled={pendingMessageId === message.id}
                               onClick={() => void react(message.id, reaction.viewerReacted ? null : reaction.emoji)}
-                              className={`inline-flex min-h-6 items-center gap-0.5 px-0.5 text-base leading-none transition hover:scale-110 ${
+                              className={`inline-flex min-h-8 min-w-10 items-center justify-center gap-1 rounded-xl bg-navy-950/90 px-2.5 py-1 text-base leading-none text-white shadow-sm backdrop-blur-sm transition hover:scale-105 hover:bg-navy-950 ${
                                 reaction.viewerReacted ? 'opacity-100' : 'opacity-90'
                               }`}
                             >
                               <span>{reaction.emoji}</span>
-                              {reaction.count > 1 ? <span className="text-[10px] font-semibold text-muted">{reaction.count}</span> : null}
+                              {reaction.count > 1 ? <span className="text-[10px] font-semibold text-white/80">{reaction.count}</span> : null}
                             </button>
                           ))}
                         </div>
