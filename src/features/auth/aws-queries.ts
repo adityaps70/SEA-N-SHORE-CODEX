@@ -1,7 +1,6 @@
 import { cookies } from 'next/headers'
 import { cache } from 'react'
-import type { CognitoPrincipal } from '@/lib/auth/cognito-api'
-import { createCognitoApi } from '@/lib/auth/cognito-api'
+import { CognitoApiError, createCognitoApi, type CognitoPrincipal } from '@/lib/auth/cognito-api'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { getCognitoEnvironment } from '@/lib/env'
 import {
@@ -60,6 +59,21 @@ export function createAwsAuthQueries(input: {
   return { getAwsVerifiedUser, requireAwsUser }
 }
 
+export async function resolveCognitoPrincipalFromAccessToken(
+  api: Pick<ReturnType<typeof createCognitoApi>, 'getUser'>,
+  accessToken: string,
+): Promise<CognitoPrincipal | null> {
+  try {
+    const principal = await api.getUser(accessToken)
+    return principal.sub ? principal : null
+  } catch (error) {
+    if (error instanceof CognitoApiError && error.code === 'NotAuthorizedException') {
+      return null
+    }
+    throw error
+  }
+}
+
 async function getServerCognitoPrincipal(): Promise<CognitoPrincipal | null> {
   const cookieStore = await cookies()
   const accessToken = cookieStore.get(COGNITO_COOKIE_NAMES.access)?.value
@@ -71,12 +85,7 @@ async function getServerCognitoPrincipal(): Promise<CognitoPrincipal | null> {
     clientId: environment.AWS_COGNITO_CLIENT_ID,
   })
 
-  try {
-    const principal = await api.getUser(accessToken)
-    return principal.sub ? principal : null
-  } catch {
-    return null
-  }
+  return resolveCognitoPrincipalFromAccessToken(api, accessToken)
 }
 
 const productionQueries = createAwsAuthQueries({
