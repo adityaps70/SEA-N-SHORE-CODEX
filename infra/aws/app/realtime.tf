@@ -348,6 +348,8 @@ resource "aws_lambda_function" "realtime_authorizer" {
   tags = local.common_tags
 }
 
+# The connection Lambda derives the WebSocket management endpoint from each
+# authenticated API Gateway request, avoiding a stage/Lambda dependency cycle.
 resource "aws_lambda_function" "realtime_connection" {
   function_name    = "${local.name_prefix}-realtime-connection"
   role             = aws_iam_role.realtime_connection.arn
