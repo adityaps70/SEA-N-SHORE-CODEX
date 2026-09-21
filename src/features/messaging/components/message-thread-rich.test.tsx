@@ -163,6 +163,45 @@ describe('MessageThread rich interactions', () => {
     expect(onReply).toHaveBeenCalledWith(reply)
   })
 
+  it('shows the peer profile photo beside incoming message groups and beside typing', () => {
+    const firstIncoming = message({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      senderProfileId: OTHER_ID,
+      body: 'First incoming',
+    })
+    const secondIncoming = message({
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      senderProfileId: OTHER_ID,
+      body: 'Second incoming',
+      createdAt: '2026-09-20T10:01:00.000Z',
+    })
+
+    render(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl="https://media.example.test/anita.webp"
+        messages={[firstIncoming, secondIncoming]}
+        nextCursor={null}
+        peerReadCursor={null}
+        otherTyping
+      />,
+    )
+
+    expect(screen.queryByTestId(`message-avatar-${firstIncoming.id}`)).not.toBeInTheDocument()
+    expect(screen.getByTestId(`message-avatar-${secondIncoming.id}`)).toHaveAttribute(
+      'src',
+      'https://media.example.test/anita.webp',
+    )
+    expect(screen.getByTestId('typing-indicator')).toBeVisible()
+    expect(screen.getByTestId('typing-avatar')).toHaveAttribute(
+      'src',
+      'https://media.example.test/anita.webp',
+    )
+  })
+
   it('lets the sender edit text within five minutes and hides edit after the window expires', async () => {
     const user = userEvent.setup()
     vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-09-21T05:04:00.000Z').getTime())
