@@ -61,7 +61,7 @@ function ActiveConversationWorkspace({
   const snapshotRefreshRunningRef = useRef(false)
   const snapshotRefreshPendingRef = useRef(false)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const displayedMessages = mergeCanonicalMessages(messages, conversation.messages)
+  const displayedMessages = messages
 
   useEffect(() => {
     setMessages((current) => {
