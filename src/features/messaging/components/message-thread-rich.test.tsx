@@ -54,6 +54,23 @@ beforeEach(() => {
 afterEach(() => cleanup())
 
 describe('MessageThread rich interactions', () => {
+  it('keeps the conversation viewport horizontally locked while reaction controls are open', () => {
+    render(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={[message()]}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+
+    expect(screen.getByTestId('message-scroll-area')).toHaveClass('overflow-x-hidden')
+  })
+
   it('lets the viewer react with a common or custom emoji and toggles their current reaction off', async () => {
     const user = userEvent.setup()
     const reacted = message({
@@ -76,12 +93,21 @@ describe('MessageThread rich interactions', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: '🔥 2 reactions' })).toBeInTheDocument()
+    const existingReaction = screen.getByRole('button', { name: '🔥 2 reactions' })
+    expect(existingReaction).toBeInTheDocument()
+    expect(existingReaction).not.toHaveClass('border')
+    expect(existingReaction).not.toHaveClass('bg-white')
+
     await user.click(screen.getByRole('button', { name: `React to message ${MESSAGE_ID}` }))
+    expect(screen.getByRole('menu', { name: 'Quick reactions' })).toBeVisible()
+    expect(screen.getAllByRole('button', { name: /^React with / })).toHaveLength(6)
+    expect(screen.getByRole('button', { name: 'More reaction emojis' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'React with ❤️' }))
     await waitFor(() => expect(actions.setMessageReactionAction).toHaveBeenCalledWith(MESSAGE_ID, '❤️'))
 
     await user.click(screen.getByRole('button', { name: `React to message ${MESSAGE_ID}` }))
+    await user.click(screen.getByRole('button', { name: 'More reaction emojis' }))
+    expect(screen.getByRole('menu', { name: 'Choose reaction emoji' })).toBeVisible()
     const custom = screen.getByRole('textbox', { name: 'Custom emoji reaction' })
     await user.clear(custom)
     await user.type(custom, '🫡')
