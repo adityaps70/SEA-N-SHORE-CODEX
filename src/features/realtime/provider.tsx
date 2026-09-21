@@ -177,10 +177,22 @@ export function MessagingRealtimeProvider({ children }: { children: ReactNode })
     connectionRef.current = connection
     const unsubscribe = connection.subscribe((signal) => {
       for (const listener of listenersRef.current) listener(signal)
+
       if (signal.eventType === 'conversation.typing') return
+
       if (signal.eventType === 'message.created') {
         void reconcileGlobalMessagingState(signal.payload.conversationId)
+        return
       }
+
+      if (
+        signal.eventType === 'message.updated'
+        || signal.eventType === 'conversation.read_cursor_advanced'
+      ) {
+        return
+      }
+
+      // Feed/network invalidations still need canonical server-component refreshes.
       scheduleRefresh()
     })
     const reconnectWhenOnline = () => connection.reconnectNow()
