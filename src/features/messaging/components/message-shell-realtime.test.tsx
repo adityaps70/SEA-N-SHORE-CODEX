@@ -46,6 +46,7 @@ vi.mock('@/features/realtime/provider', () => ({
   useMessagingRealtime: () => ({
     status: 'connected',
     subscribe: realtime.subscribe,
+    sendTyping: vi.fn(() => true),
   }),
 }))
 
@@ -63,13 +64,15 @@ vi.mock('./message-composer', () => ({
 }))
 
 vi.mock('./message-thread', () => ({
-  MessageThread: ({ messages, peerReadCursor }: {
+  MessageThread: ({ messages, peerReadCursor, otherTyping }: {
     messages: MessagingMessageDto[]
     peerReadCursor: { createdAt: string; id: string } | null
+    otherTyping?: boolean
   }) => (
     <div>
       <div data-testid="message-bodies">{messages.map((message) => message.body).join('|')}</div>
       <div data-testid="peer-cursor">{peerReadCursor?.id ?? 'none'}</div>
+      <div data-testid="other-typing">{otherTyping ? 'typing' : 'idle'}</div>
     </div>
   ),
 }))
@@ -397,6 +400,42 @@ describe('MessageShell active realtime reconciliation', () => {
       method: 'POST',
       cache: 'no-store',
     }))
+  })
+
+  it('shows and clears typing state only for the active peer', async () => {
+    vi.useFakeTimers()
+    const modulePath = './message-shell'
+    const { MessageShell } = await import(modulePath) as typeof import('./message-shell')
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={[]}
+        activeConversation={activeConversation()}
+      />,
+    )
+
+    await waitFor(() => expect(realtime.subscribe).toHaveBeenCalled())
+    act(() => realtime.emit({
+      eventId: 'typing-start',
+      eventType: 'conversation.typing',
+      schemaVersion: 1,
+      occurredAt: '2026-09-13T10:02:00.000Z',
+      aggregateId: CONVERSATION_ID,
+      payload: {
+        eventType: 'conversation.typing',
+        conversationId: CONVERSATION_ID,
+        actorId: OTHER_ID,
+        targetProfileId: VIEWER_ID,
+        isTyping: true,
+      },
+    }))
+    expect(screen.getByTestId('other-typing')).toHaveTextContent('typing')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3500)
+    })
+    expect(screen.getByTestId('other-typing')).toHaveTextContent('idle')
+    vi.useRealTimers()
   })
 
   it('advances the local peer read cursor from realtime without allowing an older event to regress it', async () => {
