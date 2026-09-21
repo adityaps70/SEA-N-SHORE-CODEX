@@ -16,6 +16,7 @@ import { messagingRepository } from './repository'
 import {
   deleteMessageInputSchema,
   directConversationInputSchema,
+  editMessageInputSchema,
   markConversationReadInputSchema,
   sendMessageInputSchema,
   setMessageReactionInputSchema,
@@ -41,7 +42,9 @@ function messagingError(message?: string) {
     case 'messaging_reply_unavailable':
       return 'The message you are replying to is no longer available.'
     case 'messaging_action_not_allowed':
-      return 'You can only remove messages you sent.'
+      return 'You can only edit or remove messages you sent.'
+    case 'messaging_edit_window_expired':
+      return 'Messages can only be edited within 5 minutes of sending.'
     case 'messaging_idempotency_conflict':
       return 'This message could not be reconciled. Please retry.'
     default:
@@ -183,6 +186,26 @@ export async function sendMessageAction(rawInput: SendMessageInput) {
     if (parsed.data.attachment) {
       await bestEffortRemoveUnreferencedAttachment(parsed.data.attachment.storagePath)
     }
+    return {
+      ok: false as const,
+      error: messagingError(error instanceof Error ? error.message : undefined),
+    }
+  }
+}
+
+export async function editMessageAction(messageId: string, body: string) {
+  const parsed = editMessageInputSchema.safeParse({ messageId, body })
+  if (!parsed.success) return { ok: false as const, error: 'Enter a message before saving.' }
+
+  try {
+    const user = await requireAwsUser()
+    const message = await messagingService.editMessage(user.id, parsed.data)
+    revalidateMessaging(message.conversation_id)
+    return {
+      ok: true as const,
+      message: await hydratedMessagingMessageDto(message),
+    }
+  } catch (error) {
     return {
       ok: false as const,
       error: messagingError(error instanceof Error ? error.message : undefined),
