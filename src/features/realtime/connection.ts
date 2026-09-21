@@ -23,6 +23,7 @@ type RealtimeSocket = {
   onmessage: ((event: MessageEvent) => void) | null
   onclose: ((event: CloseEvent) => void) | null
   onerror: ((event: Event) => void) | null
+  send: (data: string) => void
   close: (code?: number, reason?: string) => void
 }
 
@@ -161,6 +162,21 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
     void connect()
   }
 
+  function sendTyping(input: {
+    conversationId: string
+    targetProfileId: string
+    isTyping: boolean
+  }) {
+    if (!socket || socket.readyState !== 1) return false
+    socket.send(JSON.stringify({
+      action: 'typing',
+      conversationId: input.conversationId,
+      targetProfileId: input.targetProfileId,
+      isTyping: input.isTyping,
+    }))
+    return true
+  }
+
   function subscribe(listener: RealtimeSignalListener) {
     listeners.add(listener)
     return () => listeners.delete(listener)
@@ -170,6 +186,7 @@ export function createMessagingRealtimeConnection(options: ConnectionOptions) {
     start,
     stop,
     reconnectNow,
+    sendTyping,
     subscribe,
     getStatus: () => status,
   }
