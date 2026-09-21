@@ -10,6 +10,13 @@ describe('AWS remote runtime verification contract', () => {
     expect(workflow).toContain('The destination stream closed early')
   })
 
+  it('excludes the exact admin access denial without weakening generic auth failure detection', () => {
+    expect(workflow).toContain("EXPECTED_ADMIN_FORBIDDEN_PATTERN='^⨯ Error: admin_forbidden$'")
+    expect(workflow).toContain('IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS')
+    expect(workflow).toContain('grep -Ev "$EXPECTED_ADMIN_FORBIDDEN_PATTERN"')
+    expect(workflow).toContain('auth[^[:cntrl:]]*(failed|error)')
+  })
+
   it('does not classify generic error metadata as a standalone runtime fault', () => {
     expect(workflow).toContain("grep -Ev '^\\s*name: [\\\"\\\x27]error[\\\"\\\x27],?\\s*$'")
   })
