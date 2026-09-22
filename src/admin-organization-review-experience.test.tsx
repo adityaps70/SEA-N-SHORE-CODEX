@@ -10,8 +10,7 @@ describe('platform admin organization review experience', () => {
   it('guards the whole admin surface with the authenticated platform administrator authority', () => {
     const layout = source('src/app/(app)/admin/layout.tsx')
 
-    expect(layout).toContain('requireAwsUser')
-    expect(layout).toContain('isPlatformAdministrator')
+    expect(layout).toContain('requirePlatformAdministratorUser')
     expect(layout).toContain('notFound()')
     expect(layout).toContain('Sea N Shore Admin')
   })
