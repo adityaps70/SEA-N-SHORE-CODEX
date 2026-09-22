@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  requireAwsUser: vi.fn(),
+  requirePlatformAdministratorUser: vi.fn(),
   moderateContent: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({
-  requireAwsUser: mocks.requireAwsUser,
   AwsAuthenticationRequiredError: class AwsAuthenticationRequiredError extends Error {},
+}))
+vi.mock('@/features/admin/access', () => ({
+  requirePlatformAdministratorUser: mocks.requirePlatformAdministratorUser,
 }))
 vi.mock('@/features/admin/repository', () => ({
   adminRepository: { moderateContent: mocks.moderateContent },
@@ -30,7 +32,7 @@ function request(body: unknown) {
 describe('POST /api/admin/moderation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1' })
+    mocks.requirePlatformAdministratorUser.mockResolvedValue({ id: 'admin-1' })
     mocks.moderateContent.mockResolvedValue(true)
   })
 
@@ -55,7 +57,7 @@ describe('POST /api/admin/moderation', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/admin/moderation')
   })
 
-  it('rejects destructive actions without a moderator note before touching auth', async () => {
+  it('validates destructive actions only after administrator access is confirmed', async () => {
     const response = await POST(request({
       targetType: 'job',
       targetId,
@@ -68,7 +70,25 @@ describe('POST /api/admin/moderation', () => {
       ok: false,
       error: 'Add a moderation note for this action.',
     })
-    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.requirePlatformAdministratorUser).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects a normal authenticated user before any moderation mutation runs', async () => {
+    mocks.requirePlatformAdministratorUser.mockRejectedValueOnce(new Error('admin_forbidden'))
+
+    const response = await POST(request({
+      targetType: 'post',
+      targetId,
+      action: 'resolve',
+      note: 'Attempted admin operation.',
+    }))
+
+    expect(response.status).toBe(403)
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: 'You do not have permission to moderate platform content.',
+    })
+    expect(mocks.moderateContent).not.toHaveBeenCalled()
   })
 
   it('returns a useful error response when moderation cannot be saved', async () => {
