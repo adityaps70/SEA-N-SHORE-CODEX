@@ -8,6 +8,7 @@ import {
   MessageCircleMore,
   MessagesSquare,
   Search,
+  Settings,
   ShieldCheck,
   UserRound,
   UsersRound,
@@ -109,6 +110,15 @@ export function AppHeader({
               <span className="hidden whitespace-nowrap xl:inline">Admin</span>
             </ActiveNavLink>
           ) : null}
+          <ActiveNavLink
+            href="/settings"
+            aria-label="Settings"
+            title="Settings"
+            className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg text-muted transition hover:bg-mist-50 hover:text-navy-900"
+            activeClassName="bg-ocean-50 text-ocean-700"
+          >
+            <Settings aria-hidden="true" className="size-4.5" />
+          </ActiveNavLink>
           <ActiveNavLink
             href="/profile"
             aria-label="Profile"
