@@ -8,7 +8,12 @@ import {
   removeFeedImage,
   verifyPendingPostMedia,
 } from './media'
-import { isOwnedPostMediaStoragePath, validatePostMediaMetadata } from './media-policy'
+import {
+  POST_DOCUMENT_MAX_PAGES,
+  POST_IMAGE_MAX_COUNT,
+  isOwnedPostMediaStoragePath,
+  validatePostMediaMetadata,
+} from './media-policy'
 import { getFeedPage, getPostById } from './queries'
 import {
   commentInputSchema,
@@ -148,8 +153,8 @@ const postMediaUploadBatchSchema = z.object({
     mimeType: z.string().min(1).max(100),
     size: z.number().int().positive(),
     fileName: z.string().trim().min(1).max(255),
-    pageCount: z.number().int().min(1).max(300).nullable().optional(),
-  })).min(1).max(20),
+    pageCount: z.number().int().min(1).max(POST_DOCUMENT_MAX_PAGES).nullable().optional(),
+  })).min(1).max(POST_IMAGE_MAX_COUNT),
 })
 
 export async function createPostMediaUploads(input: {
@@ -157,7 +162,7 @@ export async function createPostMediaUploads(input: {
   files: Array<{ mimeType: string; size: number; fileName: string; pageCount?: number | null }>
 }): Promise<PostMediaUploadsActionResult> {
   const parsed = postMediaUploadBatchSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Choose up to 20 supported media files.' }
+  if (!parsed.success) return { ok: false, error: `Choose up to ${POST_IMAGE_MAX_COUNT} supported media files.` }
 
   const validated = parsed.data.files.map((file) => ({
     file,
@@ -167,12 +172,12 @@ export async function createPostMediaUploads(input: {
   if (invalid && !invalid.metadata.ok) return { ok: false, error: invalid.metadata.error }
 
   if (parsed.data.files.length > 1 && parsed.data.files.some((file) => !file.mimeType.startsWith('image/'))) {
-    return { ok: false, error: 'Choose up to 20 images, or attach one video or one PDF document.' }
+    return { ok: false, error: `Choose up to ${POST_IMAGE_MAX_COUNT} photos, or attach one video or one PDF document.` }
   }
 
   const pdf = parsed.data.files.find((file) => file.mimeType === 'application/pdf')
-  if (pdf && (pdf.pageCount == null || pdf.pageCount < 1 || pdf.pageCount > 300)) {
-    return { ok: false, error: 'PDF documents can have no more than 300 pages.' }
+  if (pdf && (pdf.pageCount == null || pdf.pageCount < 1 || pdf.pageCount > POST_DOCUMENT_MAX_PAGES)) {
+    return { ok: false, error: `PDF documents can have no more than ${POST_DOCUMENT_MAX_PAGES} pages.` }
   }
 
   const user = await requireAwsUser()
