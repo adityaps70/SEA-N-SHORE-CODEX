@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Download, Eye } from 'lucide-react'
+import { Download, Eye, Settings } from 'lucide-react'
 import { ProfileShareControls } from './profile-share-controls'
 
 export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUrl?: string }) {
@@ -14,6 +14,10 @@ export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUr
         View public profile
       </Link>
       <ProfileShareControls slug={slug} siteUrl={siteUrl} />
+      <Link href="/settings" className={secondary}>
+        <Settings aria-hidden="true" className="size-4" />
+        Settings
+      </Link>
       <Link href="/api/profile/cv" className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white transition hover:bg-ocean-700">
         <Download aria-hidden="true" className="size-4" />
         Download CV
