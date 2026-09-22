@@ -1,7 +1,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { adminRepository } from '@/features/admin/repository'
-import { AwsAuthenticationRequiredError, requireAwsUser } from '@/features/auth/aws-queries'
+import { AwsAuthenticationRequiredError } from '@/features/auth/aws-queries'
 import { MODERATION_TARGET_TYPES } from '@/features/moderation/types'
 
 export const runtime = 'nodejs'
@@ -63,6 +64,13 @@ function moderationError(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  let user: Awaited<ReturnType<typeof requirePlatformAdministratorUser>>
+  try {
+    user = await requirePlatformAdministratorUser()
+  } catch (error) {
+    return moderationError(error)
+  }
+
   let body: unknown
   try {
     body = await request.json()
@@ -79,7 +87,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    const user = await requireAwsUser()
     await adminRepository.moderateContent(user.id, {
       targetType: parsed.data.targetType,
       targetId: parsed.data.targetId,
