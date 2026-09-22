@@ -23,10 +23,6 @@ function PdfDocumentCarousel({ media }: { media: FeedMedia }) {
   const fileName = media.fileName || 'Document.pdf'
   const url = media.signedUrl
 
-  useEffect(() => {
-    setPage(1)
-  }, [url])
-
   if (!url) return null
 
   const pageUrl = `${url}#page=${page}&toolbar=0&navpanes=0&scrollbar=0&view=FitH`
@@ -225,7 +221,7 @@ export function PostMedia({
   if (!first?.signedUrl) return null
 
   if (first.mimeType === 'application/pdf') {
-    return <PdfDocumentCarousel media={first} />
+    return <PdfDocumentCarousel key={first.storagePath} media={first} />
   }
 
   if (isVideo) {
