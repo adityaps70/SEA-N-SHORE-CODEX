@@ -255,6 +255,35 @@ describe('MessageThread rich interactions', () => {
     expect(screen.queryByRole('button', { name: 'Edit message' })).not.toBeInTheDocument()
   })
 
+  it('closes message action menus when clicking elsewhere', async () => {
+    const user = userEvent.setup()
+    const mine = message({
+      senderProfileId: VIEWER_ID,
+      body: 'Menu dismissal',
+      createdAt: '2026-09-21T05:00:00.000Z',
+    })
+
+    render(
+      <MessageThread
+        viewerId={VIEWER_ID}
+        conversationId={CONVERSATION_ID}
+        otherName="Capt. Anita"
+        otherHeadline={null}
+        otherAvatarUrl={null}
+        messages={[mine]}
+        nextCursor={null}
+        peerReadCursor={null}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: `More actions for message ${MESSAGE_ID}` }))
+    expect(screen.getByRole('button', { name: 'Unsend message' })).toBeVisible()
+
+    fireEvent.pointerDown(document.body)
+
+    expect(screen.queryByRole('button', { name: 'Unsend message' })).not.toBeVisible()
+  })
+
   it('shows an edited marker next to a message timestamp', () => {
     render(
       <MessageThread
