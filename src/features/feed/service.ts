@@ -15,7 +15,7 @@ type StandardPostInput = {
   id?: string
   category: PostCategory
   body: string
-  media?: FeedMediaInput
+  media?: FeedMediaInput[]
   mentionProfileIds?: string[]
 }
 
@@ -202,7 +202,7 @@ export function createFeedService(input: {
       await assertMemberReady(repository, actorId)
       const id = post.id ?? createId()
       await repository.insertStandardPost({ id, authorId: actorId, category: post.category, body: post.body.trim() })
-      if (post.media) await repository.insertPostMedia(id, post.media)
+      for (const media of post.media ?? []) await repository.insertPostMedia(id, media)
       const mentions = post.mentionProfileIds?.length
         ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
         : []
