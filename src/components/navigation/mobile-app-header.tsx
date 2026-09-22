@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Bell, Bookmark, BriefcaseBusiness, MessageCircleMore, ShieldCheck } from 'lucide-react'
+import { Bell, Bookmark, BriefcaseBusiness, MessageCircleMore, Settings, ShieldCheck } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 
@@ -38,6 +38,13 @@ export function MobileAppHeader({
               <ShieldCheck aria-hidden="true" className="size-5" />
             </Link>
           ) : null}
+          <Link
+            href="/settings"
+            aria-label="Settings"
+            className="grid min-h-10 min-w-10 place-items-center rounded-xl text-navy-900 hover:bg-mist-50"
+          >
+            <Settings aria-hidden="true" className="size-5" />
+          </Link>
           <Link
             href="/saved"
             aria-label="Saved posts"
