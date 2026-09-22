@@ -118,6 +118,9 @@ type ModerationReportLockRow = QueryResultRow & {
 type ModerationTargetStateRow = QueryResultRow & {
   state: string
 }
+type ModerationActionRow = QueryResultRow & {
+  action: ModerationAction
+}
 type OrganizationReviewRow = QueryResultRow & {
   application_id: string
   company_id: string
@@ -481,6 +484,20 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       const target = targetRows[0]
       if (!target) throw new Error('moderation_target_not_found')
       const previousState = target.state
+
+      if (input.action === 'restore') {
+        const latestActionRows = await txQuery(
+          `select action
+           from public.moderation_actions
+           where target_type = $1 and target_id = $2
+           order by created_at desc, id desc
+           limit 1`,
+          [input.targetType, input.targetId],
+        ) as ModerationActionRow[]
+        if (latestActionRows[0]?.action !== 'remove') {
+          throw new Error('moderation_restore_forbidden')
+        }
+      }
 
       await mutateModerationTarget(txQuery, input.targetType, input.targetId, input.action)
 
