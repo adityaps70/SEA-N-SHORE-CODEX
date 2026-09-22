@@ -45,6 +45,27 @@ export type AdminModerationFilter = {
   limit: number
 }
 
+export type AdminAuditTargetType = ModerationTargetType | 'organization_application' | 'all'
+
+export type AdminAuditEvent = {
+  id: string
+  actor: {
+    id: string | null
+    fullName: string
+    slug: string | null
+  }
+  action: string
+  targetType: string
+  targetId: string
+  metadata: Record<string, unknown>
+  createdAt: string
+}
+
+export type AdminAuditFilter = {
+  targetType: AdminAuditTargetType
+  limit: number
+}
+
 export type AdminOrganizationReview = {
   applicationId: string
   status: AdminOrganizationStatus
@@ -120,6 +141,17 @@ type ModerationTargetStateRow = QueryResultRow & {
 }
 type ModerationActionRow = QueryResultRow & {
   action: ModerationAction
+}
+type AuditEventRow = QueryResultRow & {
+  id: string
+  actor_id: string | null
+  actor_name: string | null
+  actor_slug: string | null
+  action: string
+  target_type: string
+  target_id: string
+  metadata: Record<string, unknown> | null
+  created_at: string
 }
 type OrganizationReviewRow = QueryResultRow & {
   application_id: string
@@ -398,6 +430,55 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       latestReportedAt: row.latest_reported_at,
       reasons: Array.isArray(row.reasons) ? row.reasons : [],
       latestDetails: row.latest_details ?? null,
+    }))
+  }
+
+  async function listAuditEvents(
+    userId: string,
+    filter: AdminAuditFilter,
+  ): Promise<AdminAuditEvent[]> {
+    await requirePlatformAdministrator(queryRows, userId)
+    const values: unknown[] = []
+    const where: string[] = []
+    if (filter.targetType !== 'all') {
+      values.push(filter.targetType)
+      where.push(`ae.target_type = ${values.length}`)
+    }
+    values.push(Math.min(Math.max(Math.trunc(filter.limit), 1), 100))
+    const limitParameter = values.length
+    const whereSql = where.length ? `where ${where.join(' and ')}` : ''
+
+    const rows = await queryRows(
+      `select
+         ae.id,
+         ae.actor_id,
+         actor.full_name as actor_name,
+         actor.slug as actor_slug,
+         ae.action,
+         ae.target_type,
+         ae.target_id,
+         ae.metadata,
+         ae.created_at
+       from public.audit_events ae
+       left join public.profiles actor on actor.id = ae.actor_id
+       ${whereSql}
+       order by ae.created_at desc, ae.id desc
+       limit ${limitParameter}`,
+      values,
+    ) as AuditEventRow[]
+
+    return rows.map((row) => ({
+      id: row.id,
+      actor: {
+        id: row.actor_id ?? null,
+        fullName: row.actor_name ?? 'System',
+        slug: row.actor_slug ?? null,
+      },
+      action: row.action,
+      targetType: row.target_type,
+      targetId: row.target_id,
+      metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+      createdAt: row.created_at,
     }))
   }
 
@@ -695,6 +776,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     isPlatformAdministrator,
     getAdminDashboardMetrics,
     listModerationCases,
+    listAuditEvents,
     moderateContent,
     listOrganizationApplications,
     getOrganizationApplicationReview,
