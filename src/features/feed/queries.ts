@@ -1,7 +1,7 @@
 import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { getPreferredFeedAuthorIds } from '@/features/network/queries'
 import { resolveFeedMediaUrls } from './media'
-import { feedAuthorAvatarPath, mapFeedPost, type FeedCommentRow, type FeedPostRow } from './mappers'
+import { feedAuthorAvatarPath, feedPostMediaPaths, mapFeedPost, type FeedCommentRow, type FeedPostRow } from './mappers'
 import { prioritizeRecentFeedRows } from './ranking'
 import { feedRepository, type FeedRepository } from './repository'
 import { feedRequestSchema } from './schemas'
@@ -27,12 +27,6 @@ export function feedRowAuthorId(row: Pick<FeedPostRow, 'profiles'>) {
   return author?.id ?? ''
 }
 
-function mediaPath(row: FeedPostRow) {
-  const value = row.post_media
-  if (Array.isArray(value)) return value[0]?.storage_path ?? null
-  return value?.storage_path ?? null
-}
-
 function repostSourceIds(rows: FeedPostRow[]) {
   return [...new Set(rows.flatMap((row) => row.repost_of_post_id ? [row.repost_of_post_id] : []))]
 }
@@ -54,9 +48,9 @@ export function createFeedQueries(input: {
       sourceIds.length ? input.repository.listRepostSourceRows(viewerId, sourceIds) : Promise.resolve([]),
     ])
     const paths = [...new Set([
-      ...rows.map(mediaPath),
+      ...rows.flatMap(feedPostMediaPaths),
       ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
-      ...repostSources.map(mediaPath),
+      ...repostSources.flatMap(feedPostMediaPaths),
       ...repostSources.map((row) => feedAuthorAvatarPath(row.profiles)),
       ...comments.map((comment) => feedAuthorAvatarPath(comment.profiles)),
     ].filter((path): path is string => Boolean(path)))]
@@ -85,9 +79,9 @@ export function createFeedQueries(input: {
       sourceIds.length ? input.repository.listRepostSourceRows(viewerId, sourceIds) : Promise.resolve([]),
     ])
     const paths = [...new Set([
-      ...rows.map(mediaPath),
+      ...rows.flatMap(feedPostMediaPaths),
       ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
-      ...repostSources.map(mediaPath),
+      ...repostSources.flatMap(feedPostMediaPaths),
       ...repostSources.map((row) => feedAuthorAvatarPath(row.profiles)),
       ...comments.map((comment) => feedAuthorAvatarPath(comment.profiles)),
     ].filter((path): path is string => Boolean(path)))]
