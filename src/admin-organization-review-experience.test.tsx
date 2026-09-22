@@ -16,15 +16,22 @@ describe('platform admin organization review experience', () => {
     expect(layout).toContain('Sea N Shore Admin')
   })
 
-  it('shows a useful admin dashboard with organization and access queues', () => {
+  it('shows a useful admin operations dashboard with moderation, site health and organization queues', () => {
     const page = source('src/app/(app)/admin/page.tsx')
 
     expect(page).toContain('getAdminDashboardMetrics')
+    expect(page).toContain('Open reports')
+    expect(page).toContain('Priority reports')
+    expect(page).toContain('Under review')
+    expect(page).toContain('Active posts')
+    expect(page).toContain('Published jobs')
+    expect(page).toContain('Published events')
     expect(page).toContain('Pending organizations')
-    expect(page).toContain('Changes requested')
-    expect(page).toContain('Approved organizations')
-    expect(page).toContain('Suspended organizations')
     expect(page).toContain('Pending access requests')
+    expect(page).toContain('metrics.changesRequested')
+    expect(page).toContain('metrics.suspendedOrganizations')
+    expect(page).toContain('metrics.approvedOrganizations')
+    expect(page).toContain('/admin/moderation')
     expect(page).toContain('/admin/organizations')
   })
 
