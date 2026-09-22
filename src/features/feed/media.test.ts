@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { PDFDocument } from 'pdf-lib'
 
 const {
   createMediaReadUrl,
   createMediaUploadUrl,
+  getMediaObject,
   headMediaObject,
   putMediaObject,
   deleteMediaObject,
@@ -16,6 +18,7 @@ const {
     contentType: 'video/mp4',
     contentLength: 1024,
   })),
+  getMediaObject: vi.fn(),
   putMediaObject: vi.fn<(input: { key: string; body: Uint8Array | Buffer; contentType: string }) => Promise<void>>(async () => undefined),
   deleteMediaObject: vi.fn<(key: string) => Promise<void>>(async () => undefined),
   createSignedUrls: vi.fn(async (paths: string[]) => ({
@@ -29,6 +32,7 @@ const {
 vi.mock('@/lib/aws/storage', () => ({
   createMediaReadUrl,
   createMediaUploadUrl,
+  getMediaObject,
   headMediaObject,
   putMediaObject,
   deleteMediaObject,
@@ -63,6 +67,7 @@ describe('feed media adapter', () => {
     createMediaReadUrl.mockImplementation(async (key) => `https://s3.example/${key}`)
     createMediaUploadUrl.mockResolvedValue('https://s3.example/upload')
     headMediaObject.mockResolvedValue({ contentType: 'video/mp4', contentLength: 1024 })
+    getMediaObject.mockReset()
     putMediaObject.mockResolvedValue(undefined)
   })
 
@@ -87,6 +92,20 @@ describe('feed media adapter', () => {
       key: videoPath,
       contentType: 'video/mp4',
     })
+  })
+
+  it('reuses a caller-provided pending post id for additional gallery objects', async () => {
+    vi.spyOn(crypto, 'randomUUID').mockReturnValueOnce(randomId)
+
+    const upload = await createPendingPostMediaUpload({
+      profileId,
+      postId,
+      mimeType: 'image/jpeg',
+      size: 1024,
+    })
+
+    expect(upload.postId).toBe(postId)
+    expect(upload.storagePath).toBe(`${profileId}/${postId}/${randomId}.jpg`)
   })
 
   it('verifies the exact owned object MIME and byte length before finalization', async () => {
@@ -144,6 +163,57 @@ describe('feed media adapter', () => {
       mimeType: 'video/mp4',
       size: 1024,
     })).rejects.toThrow('feed_media_metadata_mismatch')
+  })
+
+  it('verifies the actual PDF page count server-side before publication', async () => {
+    const pdf = await PDFDocument.create()
+    pdf.addPage()
+    pdf.addPage()
+    const bytes = await pdf.save()
+    const pdfPath = `${profileId}/${postId}/${randomId}.pdf`
+    headMediaObject.mockResolvedValueOnce({ contentType: 'application/pdf', contentLength: bytes.byteLength })
+    getMediaObject.mockResolvedValueOnce({
+      body: bytes,
+      contentType: 'application/pdf',
+      contentLength: bytes.byteLength,
+    })
+
+    await expect(verifyPendingPostMedia({
+      profileId,
+      postId,
+      storagePath: pdfPath,
+      mimeType: 'application/pdf',
+      size: bytes.byteLength,
+      pageCount: 2,
+    })).resolves.toBeUndefined()
+
+    expect(getMediaObject).toHaveBeenCalledWith({
+      key: pdfPath,
+      maxBytes: 25 * 1024 * 1024,
+    })
+  })
+
+  it('rejects a PDF when the submitted page count does not match the stored document', async () => {
+    const pdf = await PDFDocument.create()
+    pdf.addPage()
+    pdf.addPage()
+    const bytes = await pdf.save()
+    const pdfPath = `${profileId}/${postId}/${randomId}.pdf`
+    headMediaObject.mockResolvedValueOnce({ contentType: 'application/pdf', contentLength: bytes.byteLength })
+    getMediaObject.mockResolvedValueOnce({
+      body: bytes,
+      contentType: 'application/pdf',
+      contentLength: bytes.byteLength,
+    })
+
+    await expect(verifyPendingPostMedia({
+      profileId,
+      postId,
+      storagePath: pdfPath,
+      mimeType: 'application/pdf',
+      size: bytes.byteLength,
+      pageCount: 3,
+    })).rejects.toThrow('feed_media_document_page_mismatch')
   })
 
   it('rejects an oversized/tampered media reference before HEAD verification', async () => {
