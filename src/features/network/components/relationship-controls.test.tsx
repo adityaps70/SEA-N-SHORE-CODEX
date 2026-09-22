@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RelationshipControls } from './relationship-controls'
 
@@ -25,36 +26,48 @@ const connectionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 afterEach(() => cleanup())
 
 describe('RelationshipControls', () => {
-  it('shows Connect as the primary relationship action and keeps Follow under More', () => {
+  it('shows Connect as the primary relationship action and keeps Follow under a dismissible More menu', async () => {
+    const user = userEvent.setup()
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} />)
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
-    expect(screen.getByText('More')).toBeInTheDocument()
-    expect(screen.getByText('Follow')).toBeInTheDocument()
+    const more = screen.getByRole('button', { name: 'More' })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    await user.click(more)
+    expect(screen.getByRole('menu')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Follow' })).toBeVisible()
+
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
   it('shows Following independently of connection state', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: true, connection: { kind: 'none', connectionId: null } }} />)
-    expect(screen.getByText('Following')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: 'Following' })).toBeInTheDocument()
   })
 
   it('shows Pending and moves request cancellation under More', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'outgoing_pending', connectionId } }} />)
     expect(screen.getByText('Pending')).toBeInTheDocument()
-    expect(screen.getByText('Cancel request')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: 'Cancel request' })).toBeInTheDocument()
   })
 
   it('shows Accept and keeps Decline under More for an incoming request', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'incoming_pending', connectionId } }} />)
     expect(screen.getByRole('button', { name: 'Accept' })).toBeInTheDocument()
-    expect(screen.getByText('Decline')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: 'Decline' })).toBeInTheDocument()
   })
 
   it('shows Message and moves removal under More for an accepted connection', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'connected', connectionId } }} />)
     expect(screen.getByRole('button', { name: 'Message' })).toBeInTheDocument()
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
-    expect(screen.getByText('Remove connection')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: 'Remove connection' })).toBeInTheDocument()
   })
 
   it('reconciles mounted optimistic state when canonical relationship props change', () => {
@@ -76,7 +89,8 @@ describe('RelationshipControls', () => {
 
     expect(screen.getByRole('button', { name: 'Message' })).toBeInTheDocument()
     expect(screen.queryByText('Pending')).not.toBeInTheDocument()
-    expect(screen.getByText('Following')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: 'Following' })).toBeInTheDocument()
   })
 
   it('supports an icon-only overflow menu for connection list rows', () => {
@@ -90,13 +104,22 @@ describe('RelationshipControls', () => {
     )
 
     expect(screen.getByText('Message')).toBeInTheDocument()
-    expect(screen.getByText('More actions')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'More actions' })).toBeInTheDocument()
     expect(screen.queryByText(/^More$/)).not.toBeInTheDocument()
+  })
+
+  it('closes More with Escape without requiring a second click on the trigger', () => {
+    render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('menu')).toBeVisible()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
   it('includes blocking without fake badges or reputation', () => {
     render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} />)
-    expect(screen.getByText('Block')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.getByRole('button', { name: 'Block' })).toBeInTheDocument()
     expect(screen.queryByText(/Verified|Reputation/i)).not.toBeInTheDocument()
   })
 })
