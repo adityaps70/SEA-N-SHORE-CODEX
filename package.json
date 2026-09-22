@@ -6,6 +6,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
+    "predev": "node scripts/copy-pdf-worker.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -16,7 +17,8 @@
     "test:e2e": "playwright test",
     "worker:outbox": "node --import tsx scripts/workers/publish-outbox.ts",
     "worker:notifications": "node --import tsx scripts/workers/consume-notifications.ts",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "prebuild": "node scripts/copy-pdf-worker.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-eventbridge": "3.1095.0",
@@ -34,7 +36,8 @@
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.6.0",
     "tsx": "^4.20.0",
-    "zod": "^4.5.4"
+    "zod": "^4.5.4",
+    "pdfjs-dist": "4.10.38"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
