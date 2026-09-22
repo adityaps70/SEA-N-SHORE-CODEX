@@ -3,8 +3,9 @@
 import Link from 'next/link'
 import { Bell, CheckCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useCallback, useEffect, useState, useTransition } from 'react'
 import { loadNotificationChrome, markAllNotificationsRead, markNotificationRead } from '../actions'
+import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import type { NetworkNotification } from '../types'
 
 function notificationDate(timestamp: string) {
@@ -28,6 +29,8 @@ export function NotificationBell({
   const [localUnreadCount, setLocalUnreadCount] = useState(unreadCount)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
+  const closePopover = useCallback(() => setOpen(false), [])
+  const rootRef = useDismissibleLayer<HTMLDivElement>(open, closePopover)
 
   useEffect(() => {
     let active = true
@@ -92,7 +95,7 @@ export function NotificationBell({
   }
 
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <button
         type="button"
         aria-label="Notifications"
@@ -109,7 +112,7 @@ export function NotificationBell({
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-xl">
+        <div role="region" aria-label="Notifications panel" className="absolute right-0 z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-xl">
           <div className="flex items-center justify-between gap-3 border-b border-mist-100 px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-navy-950">Notifications</p>
