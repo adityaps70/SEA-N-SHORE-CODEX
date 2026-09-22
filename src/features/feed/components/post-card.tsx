@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Bookmark, MessageCircle, Trash2 } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
+import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { deletePost, setPostReaction, setPostSaved } from '../actions'
 import {
   EMPTY_REACTION_SUMMARY,
@@ -251,6 +252,9 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
               >
                 <Bookmark aria-hidden="true" className="size-5" fill={saved ? 'currentColor' : 'none'} />
               </button>
+              {!post.viewerOwns ? (
+                <ReportContentButton targetType="post" targetId={post.id} label="Report post" iconOnly />
+              ) : null}
             </div>
             <div className="flex min-w-0 items-center justify-end pl-2">
               <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
