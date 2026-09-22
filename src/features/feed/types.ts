@@ -77,6 +77,9 @@ export type FeedMedia = {
   mimeType: string
   altText: string | null
   signedUrl: string | null
+  position?: number
+  fileName?: string | null
+  pageCount?: number | null
 }
 
 export type FeedPollOption = {
@@ -125,6 +128,7 @@ export type FeedRepostSource = {
   updatedAt: string
   author: FeedAuthor
   media: FeedMedia | null
+  mediaItems?: FeedMedia[]
   poll: FeedPoll | null
   mentions?: FeedMention[]
 }
@@ -138,6 +142,7 @@ export type FeedPost = {
   updatedAt: string
   author: FeedAuthor
   media: FeedMedia | null
+  mediaItems?: FeedMedia[]
   poll: FeedPoll | null
   repostOf?: FeedRepostSource | null
   reactionSummary?: ReactionSummary
