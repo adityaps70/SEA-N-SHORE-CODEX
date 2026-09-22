@@ -74,6 +74,29 @@ describe('GET /api/feed-media/[...path]', () => {
     expect(new TextDecoder().decode(await response.arrayBuffer())).toBe('video-bytes')
   })
 
+  it('serves canonical PDF media inline for the document carousel', async () => {
+    const { GET } = await loadRoute()
+    const pdfPath = [profileId, postId, `${objectId}.pdf`]
+    getMediaObject.mockResolvedValueOnce({
+      body: new TextEncoder().encode('%PDF-test'),
+      contentType: 'application/pdf',
+      contentLength: 9,
+    })
+
+    const response = await GET(
+      new Request(`https://seaandshore.example/api/feed-media/${pdfPath.join('/')}`),
+      { params: Promise.resolve({ path: pdfPath }) },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('application/pdf')
+    expect(response.headers.get('content-disposition')).toBe('inline')
+    expect(getMediaObject).toHaveBeenCalledWith({
+      key: pdfPath.join('/'),
+      maxBytes: 200 * 1024 * 1024,
+    })
+  })
+
   it('returns 404 when the private object cannot be read', async () => {
     getMediaObject.mockRejectedValueOnce(new Error('NoSuchKey'))
     const { GET } = await loadRoute()
