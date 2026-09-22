@@ -1,13 +1,15 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ShieldCheck } from 'lucide-react'
-import { requireAwsUser } from '@/features/auth/aws-queries'
-import { adminRepository } from '@/features/admin/repository'
+import { requirePlatformAdministratorUser } from '@/features/admin/access'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const user = await requireAwsUser()
-  const allowed = await adminRepository.isPlatformAdministrator(user.id)
-  if (!allowed) notFound()
+  try {
+    await requirePlatformAdministratorUser()
+  } catch (error) {
+    if (error instanceof Error && error.message === 'admin_forbidden') notFound()
+    throw error
+  }
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
