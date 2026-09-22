@@ -231,7 +231,7 @@ describe('PostComposer rich media', () => {
 
     await user.upload(input(), file)
 
-    expect(await screen.findByText(message)).toBeInTheDocument()
+    expect(await screen.findByRole('alert')).toHaveTextContent(message)
     expect(mocks.createPostMediaUploads).not.toHaveBeenCalled()
   })
 
