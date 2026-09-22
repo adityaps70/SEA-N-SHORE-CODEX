@@ -8,6 +8,7 @@ import {
   MessageCircleMore,
   MessagesSquare,
   Search,
+  ShieldCheck,
   UserRound,
   UsersRound,
 } from 'lucide-react'
@@ -37,11 +38,13 @@ export function AppHeader({
   unreadCount,
   messagingUnreadCount = 0,
   canStartHiring = false,
+  canAccessAdmin = false,
 }: {
   recentNotifications: NetworkNotification[]
   unreadCount: number
   messagingUnreadCount?: number
   canStartHiring?: boolean
+  canAccessAdmin?: boolean
 }) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
@@ -94,6 +97,18 @@ export function AppHeader({
             </ActiveNavLink>
           ) : null}
           <NotificationBell recent={recentNotifications} unreadCount={unreadCount} />
+          {canAccessAdmin ? (
+            <ActiveNavLink
+              href="/admin"
+              aria-label="Admin"
+              title="Admin"
+              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-ocean-200 bg-ocean-50 px-3 text-sm font-semibold text-ocean-800 transition hover:border-ocean-300 hover:bg-ocean-100"
+              activeClassName="border-ocean-700 bg-ocean-700 text-white"
+            >
+              <ShieldCheck aria-hidden="true" className="size-4" />
+              <span className="hidden whitespace-nowrap xl:inline">Admin</span>
+            </ActiveNavLink>
+          ) : null}
           <ActiveNavLink
             href="/profile"
             aria-label="Profile"
