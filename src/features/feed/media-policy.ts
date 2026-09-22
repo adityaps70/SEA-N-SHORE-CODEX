@@ -1,8 +1,8 @@
 export const POST_IMAGE_MAX_BYTES = 5 * 1024 * 1024
-export const POST_IMAGE_MAX_COUNT = 20
+export const POST_IMAGE_MAX_COUNT = 10
 export const POST_VIDEO_MAX_BYTES = 200 * 1024 * 1024
-export const POST_DOCUMENT_MAX_BYTES = 100 * 1024 * 1024
-export const POST_DOCUMENT_MAX_PAGES = 300
+export const POST_DOCUMENT_MAX_BYTES = 25 * 1024 * 1024
+export const POST_DOCUMENT_MAX_PAGES = 50
 
 export const POST_MEDIA_MIME_EXTENSION = {
   'image/jpeg': 'jpg',
@@ -43,7 +43,7 @@ export function validatePostMediaMetadata(input: {
 
   if (input.mimeType === 'application/pdf') {
     if (input.size > POST_DOCUMENT_MAX_BYTES) {
-      return { ok: false, error: 'PDF documents must be 100 MB or smaller.' }
+      return { ok: false, error: 'PDF documents must be 25 MB or smaller.' }
     }
   } else if (isVideoPostMediaMime(input.mimeType)) {
     if (input.size > POST_VIDEO_MAX_BYTES) {
