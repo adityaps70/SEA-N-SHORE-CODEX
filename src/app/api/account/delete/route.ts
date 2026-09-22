@@ -12,7 +12,7 @@ const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' }
 
 const requestSchema = z.object({
   confirmation: z.literal('DELETE', {
-    errorMap: () => ({ message: 'Type DELETE exactly to confirm permanent account deletion.' }),
+    message: 'Type DELETE exactly to confirm permanent account deletion.',
   }),
   password: z.string().min(1, 'Enter your password to continue.').max(256),
 })
