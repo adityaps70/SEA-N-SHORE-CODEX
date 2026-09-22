@@ -302,9 +302,11 @@ async function verifyExpiredPublishedJobVisible() {
   await expect(jobLink).toBeVisible()
   const applyButton = page.getByRole('button', { name: 'Easy Apply' })
   await expect(applyButton).toBeVisible()
-  const applyError = applyButton.locator('xpath=..').locator('p[role="alert"]')
   await applyButton.click()
-  await expect(applyError).toHaveText('This job is no longer accepting applications.', { timeout: 20_000 })
+  const applyDialog = page.getByRole('dialog', { name: 'Apply for this job' })
+  await expect(applyDialog).toBeVisible()
+  await applyDialog.getByRole('button', { name: 'Submit application' }).click()
+  await expect(applyDialog.getByRole('alert')).toHaveText('This job is no longer accepting applications.', { timeout: 20_000 })
   console.log('ORGANIZATION_HIRING_E2E_EXPIRED_PUBLISHED_VISIBLE=true')
   await context.close()
 }
@@ -354,6 +356,7 @@ async function applyToPublishedJob() {
   await expect(page.getByRole('button', { name: 'Easy Apply' })).toBeVisible()
 
   const postObservations = []
+  const uploadObservations = []
   const requestFailures = []
   const consoleErrors = []
   const startedAt = Date.now()
@@ -362,25 +365,41 @@ async function applyToPublishedJob() {
     if (request.method() === 'POST' && response.url().startsWith(siteUrl)) {
       postObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
     }
+    if (request.method() === 'PUT') {
+      uploadObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
+    }
   })
   page.on('requestfailed', (request) => {
-    if (request.url().startsWith(siteUrl)) requestFailures.push({ method: request.method(), url: request.url(), failure: request.failure()?.errorText ?? 'unknown' })
+    requestFailures.push({ method: request.method(), url: request.url(), failure: request.failure()?.errorText ?? 'unknown' })
   })
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
   })
 
   await page.getByRole('button', { name: 'Easy Apply' }).click()
+  const applyDialog = page.getByRole('dialog', { name: 'Apply for this job' })
+  await expect(applyDialog).toBeVisible()
+
+  const cvFileName = `e2e-cv-${runId}.pdf`
+  await applyDialog.getByLabel('Attach CV (PDF)').setInputFiles({
+    name: cvFileName,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n'),
+  })
+  await expect(applyDialog.getByText(cvFileName, { exact: true })).toBeVisible()
+  await applyDialog.getByRole('button', { name: 'Submit application' }).click()
+
   const applied = page.getByText('Applied', { exact: true }).first()
-  const alert = page.locator('p[role="alert"]').first()
+  const alert = applyDialog.getByRole('alert')
   const outcome = await Promise.race([
-    applied.waitFor({ state: 'visible', timeout: 20_000 }).then(() => ({ kind: 'applied' })),
-    alert.waitFor({ state: 'visible', timeout: 20_000 }).then(async () => ({ kind: 'error', text: (await alert.innerText()).trim() })),
+    applied.waitFor({ state: 'visible', timeout: 30_000 }).then(() => ({ kind: 'applied' })),
+    alert.waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'error', text: (await alert.innerText()).trim() })),
   ]).catch(() => null)
 
   if (outcome?.kind !== 'applied') {
-    throw new Error(`Job card Easy Apply failed: outcome=${JSON.stringify(outcome)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+    throw new Error(`Job card Easy Apply with CV failed: outcome=${JSON.stringify(outcome)} url=${page.url()} posts=${JSON.stringify(postObservations)} uploads=${JSON.stringify(uploadObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
   }
+  assert.ok(uploadObservations.some((entry) => entry.status >= 200 && entry.status < 300), `Expected a successful CV PUT upload, got ${JSON.stringify(uploadObservations)}`)
 
   await jobLink.click()
   await page.waitForURL((url) => url.pathname === `/jobs/${jobId}`, { timeout: 20_000 })
@@ -390,6 +409,24 @@ async function applyToPublishedJob() {
   await expect(page.getByText(jobTitle, { exact: true })).toBeVisible({ timeout: 20_000 })
   console.log('ORGANIZATION_HIRING_E2E_JOB_APPLICATION_UI_VERIFIED=true')
   await context.close()
+
+  const ownerContext = await browser.newContext()
+  const ownerPage = await ownerContext.newPage()
+  await signInCompleted(ownerPage, users.applicant)
+  await ownerPage.goto(`${siteUrl}/hiring/jobs/${jobId}/applicants`, { waitUntil: 'networkidle' })
+  await expect(ownerPage.getByText(users.unauthorized.fullName, { exact: true })).toBeVisible({ timeout: 20_000 })
+  await ownerPage.getByRole('link', { name: 'Review candidate' }).click()
+  await expect(ownerPage.getByText('Candidate CV', { exact: true })).toBeVisible()
+  await expect(ownerPage.getByText(cvFileName, { exact: true })).toBeVisible()
+  const cvLink = ownerPage.getByRole('link', { name: 'View CV (PDF)' })
+  await expect(cvLink).toBeVisible()
+  const cvHref = await cvLink.getAttribute('href')
+  assert.ok(cvHref, 'Recruiter CV link must have a signed href')
+  const cvResponse = await ownerContext.request.get(cvHref)
+  assert.equal(cvResponse.status(), 200, `Expected signed CV URL to return 200, got ${cvResponse.status()}`)
+  assert.match(cvResponse.headers()['content-type'] ?? '', /^application\/pdf(?:;|$)/i)
+  console.log('ORGANIZATION_HIRING_E2E_CV_UPLOAD_REVIEW_VERIFIED=true')
+  await ownerContext.close()
 }
 
 async function verifyUnauthorized() {
