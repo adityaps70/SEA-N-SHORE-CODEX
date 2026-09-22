@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import { markConversationReadAction } from '../actions'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
+import { isMessageSeen, type MessagingReadCursor } from '../thread-realtime'
 import {
   publishMessagingUnreadCount,
   subscribeMessagingUnreadCount,
@@ -52,6 +53,10 @@ function clock(value: string) {
     hour: 'numeric',
     minute: '2-digit',
   })
+}
+
+function deliveryState(message: DockMessage) {
+  return 'deliveryState' in message ? message.deliveryState : null
 }
 
 function avatar(
@@ -225,6 +230,26 @@ export function MessagingDock({
         void loadThread(active.conversationId)
           .then((next) => setMessages(next))
           .catch(() => undefined)
+        return
+      }
+
+      if (
+        signal.eventType === 'conversation.read_cursor_advanced'
+        && signal.payload.conversationId === active.conversationId
+        && signal.payload.readerProfileId === active.otherProfileId
+      ) {
+        const nextRead = {
+          otherLastReadMessageId: signal.payload.lastReadMessageId,
+          otherLastReadAt: signal.payload.lastReadAt,
+        }
+        setActive((current) => current?.conversationId === active.conversationId
+          ? { ...current, ...nextRead }
+          : current)
+        setInbox((current) => current.map((item) => (
+          item.conversationId === active.conversationId
+            ? { ...item, ...nextRead }
+            : item
+        )))
       }
     })
 
@@ -242,6 +267,14 @@ export function MessagingDock({
   }, [messages.length, otherTyping])
 
   const title = active?.otherName ?? 'Messaging'
+  const peerReadCursor = useMemo<MessagingReadCursor | null>(() => (
+    active?.otherLastReadMessageId && active.otherLastReadAt
+      ? {
+          id: active.otherLastReadMessageId,
+          createdAt: active.otherLastReadAt,
+        }
+      : null
+  ), [active?.otherLastReadAt, active?.otherLastReadMessageId])
 
   async function openConversation(item: MessagingInboxItem) {
     lastReadMessageIdRef.current = null
@@ -364,12 +397,26 @@ export function MessagingDock({
                   <div className="space-y-2">
                     {activeMessages.map((message) => {
                       const mine = message.senderProfileId === viewerId
+                      const state = deliveryState(message)
+                      const canonicalStatus = mine && !state
+                        ? (isMessageSeen(message, peerReadCursor) ? 'Seen' : 'Sent')
+                        : null
+                      const deliveryLabel = state === 'sending'
+                        ? 'Sending…'
+                        : state === 'failed'
+                          ? 'Failed'
+                          : canonicalStatus
+
                       return (
                         <div
                           key={`${message.clientMessageId}:${message.id}`}
                           className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}
                         >
-                          {!mine ? avatar(active, undefined, 'size-6') : null}
+                          {!mine ? (
+                            <span className="mb-4 self-end">
+                              {avatar(active, `dock-message-avatar-${message.id}`, 'size-6')}
+                            </span>
+                          ) : null}
                           <div className={`max-w-[78%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
                             <div className={`rounded-2xl px-3 py-2 text-xs leading-5 shadow-sm ${
                               mine
@@ -390,8 +437,10 @@ export function MessagingDock({
                               ) : null}
                               {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
                             </div>
-                            <span className="mt-0.5 px-1 text-[9px] text-muted">
-                              {clock(message.createdAt)}{message.editedAt ? ' · Edited' : ''}
+                            <span className={`mt-0.5 px-1 text-[9px] ${state === 'failed' ? 'font-semibold text-red-700' : 'text-muted'}`}>
+                              {clock(message.createdAt)}
+                              {message.editedAt ? ' · Edited' : ''}
+                              {mine && deliveryLabel ? ` · ${deliveryLabel}` : ''}
                             </span>
                           </div>
                         </div>
