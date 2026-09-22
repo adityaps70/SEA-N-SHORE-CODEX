@@ -72,6 +72,8 @@ describe('ProfileHeader', () => {
     expect(screen.getByTestId('profile-header-avatar')).toHaveClass('rounded-full')
     expect(screen.getByTestId('profile-header-identity')).toHaveClass('max-w-4xl')
     expect(screen.getByTestId('profile-header-actions')).toHaveClass('mt-5', 'w-full')
+    expect(screen.getByTestId('profile-header-shell')).toHaveClass('overflow-visible')
+    expect(screen.getByTestId('profile-header-cover')).toHaveClass('rounded-t-[1.75rem]')
   })
 
   it('prefers the exact onboarding identity and shows additional capacities', () => {
