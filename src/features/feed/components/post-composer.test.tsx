@@ -296,7 +296,7 @@ describe('PostComposer rich media', () => {
       postId,
       mimeType: 'image/jpeg',
     }))
-    expect(screen.queryByRole('img', { name: 'Selected photo 1 preview' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Selected photo 2 preview' })).not.toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Selected photo 1 preview' })).toHaveAttribute('src', 'blob:deck-2.jpg')
     const manifest = document.querySelector('input[name="mediaManifest"]') as HTMLInputElement
     expect(JSON.parse(manifest.value)).toEqual([
