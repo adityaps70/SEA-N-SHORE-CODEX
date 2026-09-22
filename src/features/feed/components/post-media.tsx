@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, FileText, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import type { FeedMedia } from '../types'
 
 function orderedMedia(value: FeedMedia | FeedMedia[]) {
@@ -20,7 +20,6 @@ function imageGridClass(count: number, index: number) {
 function PdfDocumentCarousel({ media }: { media: FeedMedia }) {
   const [page, setPage] = useState(1)
   const pageCount = Math.max(1, media.pageCount ?? 1)
-  const fileName = media.fileName || 'Document.pdf'
   const url = media.signedUrl
 
   if (!url) return null
@@ -28,55 +27,40 @@ function PdfDocumentCarousel({ media }: { media: FeedMedia }) {
   const pageUrl = `${url}#page=${page}&toolbar=0&navpanes=0&scrollbar=0&view=FitH`
 
   return (
-    <section className="mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-white" aria-label={`Document: ${fileName}`}>
-      <div className="flex items-center gap-3 border-b border-mist-100 bg-mist-50/70 px-4 py-3">
-        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-red-50 text-red-700">
-          <FileText aria-hidden="true" className="size-5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-navy-950">{fileName}</p>
-          <p className="text-xs text-muted">PDF document · {pageCount} {pageCount === 1 ? 'page' : 'pages'}</p>
-        </div>
-        <span className="shrink-0 rounded-full border border-mist-100 bg-white px-3 py-1 text-xs font-semibold text-muted">
-          {page} / {pageCount}
-        </span>
-      </div>
-
-      <div className="relative bg-mist-50">
+    <section
+      className="relative mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-mist-50"
+      aria-label="Document carousel"
+    >
+      <div className="relative flex min-h-[34rem] items-center justify-center bg-mist-50 sm:min-h-[42rem]">
         <iframe
           key={page}
           src={pageUrl}
-          title={`${fileName} page ${page}`}
+          title={`Document page ${page} of ${pageCount}`}
           className="block h-[34rem] w-full border-0 bg-white sm:h-[42rem]"
         />
-      </div>
 
-      <div className="flex items-center justify-between gap-3 border-t border-mist-100 px-4 py-3">
+        <span className="pointer-events-none absolute right-3 top-3 z-10 rounded-full bg-navy-950/80 px-3 py-1.5 text-xs font-semibold text-white shadow-sm backdrop-blur-sm">
+          {page} / {pageCount}
+        </span>
+
         <button
           type="button"
-          aria-label="Previous page"
+          aria-label="Previous slide"
           disabled={page <= 1}
           onClick={() => setPage((current) => Math.max(1, current - 1))}
-          className="inline-flex min-h-10 items-center gap-2 rounded-full border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950 transition hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="absolute left-3 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-white/95 text-navy-950 shadow-lg ring-1 ring-black/5 transition hover:scale-105 hover:bg-white disabled:pointer-events-none disabled:opacity-0"
         >
-          <ChevronLeft aria-hidden="true" className="size-4" /> Previous
+          <ChevronLeft aria-hidden="true" className="size-6" />
         </button>
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="hidden text-sm font-semibold text-ocean-700 hover:text-ocean-800 sm:inline"
-        >
-          Open PDF
-        </a>
+
         <button
           type="button"
-          aria-label="Next page"
+          aria-label="Next slide"
           disabled={page >= pageCount}
           onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-          className="inline-flex min-h-10 items-center gap-2 rounded-full bg-navy-950 px-4 text-sm font-semibold text-white transition hover:bg-ocean-700 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted"
+          className="absolute right-3 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-white/95 text-navy-950 shadow-lg ring-1 ring-black/5 transition hover:scale-105 hover:bg-white disabled:pointer-events-none disabled:opacity-0"
         >
-          Next <ChevronRight aria-hidden="true" className="size-4" />
+          <ChevronRight aria-hidden="true" className="size-6" />
         </button>
       </div>
     </section>
