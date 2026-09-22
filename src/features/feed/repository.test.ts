@@ -203,6 +203,42 @@ describe('feed repository', () => {
     expect(calls[2][1]).toEqual([postId, '44444444-4444-4444-8444-444444444444', viewerId])
   })
 
+  it('loads ordered post media collections and persists rich media metadata', async () => {
+    const query = vi.fn(async () => [])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await repository.listFeedRows({
+      viewerProfileId: viewerId,
+      limit: 2,
+    })
+
+    const [feedSql] = callsOf(query)[0]
+    expect(feedSql).toMatch(/json_agg\([\s\S]*storage_path[\s\S]*position[\s\S]*file_name[\s\S]*page_count/i)
+    expect(feedSql).toMatch(/order by media\.position asc/i)
+
+    await repository.insertPostMedia(postId, {
+      storagePath: `${viewerId}/${postId}/manual.pdf`,
+      mimeType: 'application/pdf',
+      altText: null,
+      position: 0,
+      fileName: 'manual.pdf',
+      pageCount: 24,
+    })
+
+    const [insertSql, values] = callsOf(query).at(-1) ?? []
+    expect(insertSql).toMatch(/insert into public\.post_media \(post_id, storage_path, mime_type, alt_text, position, file_name, page_count\)/i)
+    expect(values).toEqual([
+      postId,
+      `${viewerId}/${postId}/manual.pdf`,
+      'application/pdf',
+      null,
+      0,
+      'manual.pdf',
+      24,
+    ])
+  })
+
   it('checks whether an exact storage path is already attached before pending media can be deleted', async () => {
     const storagePath = `${viewerId}/${postId}/55555555-5555-4555-8555-555555555555.mp4`
     const query = vi.fn(async () => [{ attached: true }])
