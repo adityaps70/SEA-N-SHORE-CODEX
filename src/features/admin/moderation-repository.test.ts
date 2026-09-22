@@ -52,7 +52,30 @@ describe('platform moderation repository', () => {
     expect(seen[1]?.text).toContain('public.content_reports')
     expect(seen[1]?.text).toContain('count(*)::int as report_count')
     expect(seen[1]?.text).toContain('group by')
-    expect(seen[1]?.values).toContain('open')
+    expect(seen[1]?.text).toContain('where cr.status = $1')
+    expect(seen[1]?.text).toContain('limit $2')
+    expect(seen[1]?.values).toEqual(['open', 50])
+  })
+
+  it('binds content type and limit parameters instead of interpolating invalid SQL literals', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createAdminRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('public.user_roles')) return [{ allowed: true }]
+        return [moderationRow]
+      },
+    })
+
+    await repository.listModerationCases(adminId, {
+      status: 'reviewing',
+      targetType: 'job',
+      limit: 25,
+    })
+
+    expect(seen[1]?.text).toContain('where cr.status = $1 and cr.target_type = $2')
+    expect(seen[1]?.text).toContain('limit $3')
+    expect(seen[1]?.values).toEqual(['reviewing', 'job', 25])
   })
 
   it('removes a reported post, resolves its active reports, and writes moderation plus audit history atomically', async () => {
