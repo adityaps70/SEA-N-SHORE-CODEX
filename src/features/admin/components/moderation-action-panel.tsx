@@ -18,21 +18,47 @@ export function ModerationActionPanel({
   const router = useRouter()
   const [note, setNote] = useState('')
   const [message, setMessage] = useState('')
+  const [isError, setIsError] = useState(false)
+  const [activeAction, setActiveAction] = useState<ModerationAction | null>(null)
   const [pending, startTransition] = useTransition()
   const removed = targetState === 'removed' || targetState === 'closed' || targetState === 'cancelled'
 
   function run(action: ModerationAction) {
     setMessage('')
+    setIsError(false)
+
+    if (action !== 'reviewing' && !note.trim()) {
+      setIsError(true)
+      setMessage('Add a moderation note before taking this action.')
+      return
+    }
+
+    setActiveAction(action)
+    setMessage('Saving moderation action…')
+
     startTransition(async () => {
-      const result = await moderateContent({ targetType, targetId, action, note })
-      if (!result.ok) {
-        setMessage(result.error)
-        return
+      try {
+        const result = await moderateContent({ targetType, targetId, action, note })
+        if (!result.ok) {
+          setIsError(true)
+          setMessage(result.error)
+          return
+        }
+
+        setMessage('Moderation action saved.')
+        setNote('')
+        router.refresh()
+      } catch {
+        setIsError(true)
+        setMessage('The moderation request could not be completed. Refresh this page and try again.')
+      } finally {
+        setActiveAction(null)
       }
-      setMessage('Moderation action saved.')
-      setNote('')
-      router.refresh()
     })
+  }
+
+  function buttonLabel(action: ModerationAction, label: string) {
+    return pending && activeAction === action ? 'Saving…' : label
   }
 
   return (
@@ -54,49 +80,59 @@ export function ModerationActionPanel({
           type="button"
           disabled={pending}
           onClick={() => run('reviewing')}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 hover:bg-mist-50 disabled:opacity-60"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 hover:bg-mist-50 disabled:cursor-wait disabled:opacity-60"
         >
-          <Eye aria-hidden="true" className="size-3.5" /> Mark reviewing
+          <Eye aria-hidden="true" className="size-3.5" /> {buttonLabel('reviewing', 'Mark reviewing')}
         </button>
         <button
           type="button"
           disabled={pending}
           onClick={() => run('dismiss')}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 hover:bg-mist-50 disabled:opacity-60"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 hover:bg-mist-50 disabled:cursor-wait disabled:opacity-60"
         >
-          <XCircle aria-hidden="true" className="size-3.5" /> Dismiss
+          <XCircle aria-hidden="true" className="size-3.5" /> {buttonLabel('dismiss', 'Dismiss')}
         </button>
         <button
           type="button"
           disabled={pending}
           onClick={() => run('resolve')}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
         >
-          <CheckCircle2 aria-hidden="true" className="size-3.5" /> Resolve
+          <CheckCircle2 aria-hidden="true" className="size-3.5" /> {buttonLabel('resolve', 'Resolve')}
         </button>
         {removed ? (
           <button
             type="button"
             disabled={pending}
             onClick={() => run('restore')}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-ocean-700 px-3 text-xs font-bold text-white hover:bg-ocean-800 disabled:opacity-60"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-ocean-700 px-3 text-xs font-bold text-white hover:bg-ocean-800 disabled:cursor-wait disabled:opacity-60"
           >
-            <RotateCcw aria-hidden="true" className="size-3.5" /> Restore content
+            <RotateCcw aria-hidden="true" className="size-3.5" /> {buttonLabel('restore', 'Restore content')}
           </button>
         ) : (
           <button
             type="button"
             disabled={pending}
             onClick={() => run('remove')}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-red-700 px-3 text-xs font-bold text-white hover:bg-red-800 disabled:opacity-60"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-red-700 px-3 text-xs font-bold text-white hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
           >
-            <ShieldX aria-hidden="true" className="size-3.5" /> Remove content
+            <ShieldX aria-hidden="true" className="size-3.5" /> {buttonLabel('remove', 'Remove content')}
           </button>
         )}
       </div>
 
       {message ? (
-        <p role="status" className={`text-xs font-semibold ${message === 'Moderation action saved.' ? 'text-emerald-700' : 'text-red-700'}`}>
+        <p
+          role="status"
+          aria-live="polite"
+          className={`rounded-xl px-3 py-2 text-xs font-semibold ${
+            isError
+              ? 'bg-red-50 text-red-800'
+              : message === 'Moderation action saved.'
+                ? 'bg-emerald-50 text-emerald-800'
+                : 'bg-ocean-50 text-ocean-800'
+          }`}
+        >
           {message}
         </p>
       ) : null}
