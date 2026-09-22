@@ -128,7 +128,7 @@ describe('createPostInputSchema', () => {
       media: [document],
     })
 
-    expect(parsed.media).toEqual([document])
+    expect(parsed.media).toEqual([{ ...document, altText: 'Engine room walkthrough' }])
     expect(() => createPostInputSchema.parse({
       category: 'learning',
       body: 'Oversized document.',
