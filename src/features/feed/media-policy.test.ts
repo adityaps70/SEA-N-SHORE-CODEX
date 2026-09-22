@@ -29,10 +29,10 @@ describe('post media policy', () => {
       'application/pdf': 'pdf',
     })
     expect(POST_IMAGE_MAX_BYTES).toBe(5 * 1024 * 1024)
-    expect(POST_IMAGE_MAX_COUNT).toBe(20)
+    expect(POST_IMAGE_MAX_COUNT).toBe(10)
     expect(POST_VIDEO_MAX_BYTES).toBe(200 * 1024 * 1024)
-    expect(POST_DOCUMENT_MAX_BYTES).toBe(100 * 1024 * 1024)
-    expect(POST_DOCUMENT_MAX_PAGES).toBe(300)
+    expect(POST_DOCUMENT_MAX_BYTES).toBe(25 * 1024 * 1024)
+    expect(POST_DOCUMENT_MAX_PAGES).toBe(50)
   })
 
   it('accepts images at the 5 MiB boundary and rejects larger images', () => {
@@ -59,7 +59,7 @@ describe('post media policy', () => {
     })
   })
 
-  it('accepts PDFs at the LinkedIn-style 100 MB boundary and rejects larger documents', () => {
+  it('accepts PDFs at the Sea N Shore 25 MB boundary and rejects larger documents', () => {
     expect(validatePostMediaMetadata({ mimeType: 'application/pdf', size: POST_DOCUMENT_MAX_BYTES })).toEqual({
       ok: true,
       mimeType: 'application/pdf',
@@ -67,7 +67,7 @@ describe('post media policy', () => {
     })
     expect(validatePostMediaMetadata({ mimeType: 'application/pdf', size: POST_DOCUMENT_MAX_BYTES + 1 })).toEqual({
       ok: false,
-      error: 'PDF documents must be 100 MB or smaller.',
+      error: 'PDF documents must be 25 MB or smaller.',
     })
   })
 
