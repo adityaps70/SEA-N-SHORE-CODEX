@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import type { ModerationAction, ModerationReportStatus, ModerationTargetType } from '@/features/moderation/types'
 
 export const ADMIN_ORGANIZATION_STATUSES = ['pending', 'changes_requested', 'approved', 'rejected', 'suspended'] as const
 export type AdminOrganizationStatus = (typeof ADMIN_ORGANIZATION_STATUSES)[number]
@@ -11,6 +12,37 @@ export type AdminDashboardMetrics = {
   approvedOrganizations: number
   suspendedOrganizations: number
   pendingAccessRequests: number
+  openReports: number
+  reviewingReports: number
+  highPriorityReports: number
+  reportsLast24h: number
+  activePosts: number
+  publishedJobs: number
+  publishedEvents: number
+}
+
+export type AdminModerationCase = {
+  targetType: ModerationTargetType
+  targetId: string
+  title: string
+  excerpt: string | null
+  owner: {
+    id: string | null
+    fullName: string
+    slug: string | null
+  }
+  targetState: string
+  reportCount: number
+  firstReportedAt: string
+  latestReportedAt: string
+  reasons: string[]
+  latestDetails: string | null
+}
+
+export type AdminModerationFilter = {
+  status: ModerationReportStatus
+  targetType: ModerationTargetType | 'all'
+  limit: number
 }
 
 export type AdminOrganizationReview = {
@@ -56,6 +88,35 @@ type MetricsRow = QueryResultRow & {
   approved_organizations: string | number | null
   suspended_organizations: string | number | null
   pending_access_requests: string | number | null
+  open_reports: string | number | null
+  reviewing_reports: string | number | null
+  high_priority_reports: string | number | null
+  reports_last_24h: string | number | null
+  active_posts: string | number | null
+  published_jobs: string | number | null
+  published_events: string | number | null
+}
+type ModerationCaseRow = QueryResultRow & {
+  target_type: ModerationTargetType
+  target_id: string
+  target_title: string | null
+  target_excerpt: string | null
+  owner_id: string | null
+  owner_name: string | null
+  owner_slug: string | null
+  target_state: string | null
+  report_count: string | number
+  first_reported_at: string
+  latest_reported_at: string
+  reasons: string[] | null
+  latest_details: string | null
+}
+type ModerationReportLockRow = QueryResultRow & {
+  id: string
+  status: ModerationReportStatus
+}
+type ModerationTargetStateRow = QueryResultRow & {
+  state: string
 }
 type OrganizationReviewRow = QueryResultRow & {
   application_id: string
@@ -216,7 +277,17 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          count(*) filter (where oa.status = 'changes_requested') as changes_requested,
          count(*) filter (where oa.status = 'approved') as approved_organizations,
          count(*) filter (where oa.status = 'suspended') as suspended_organizations,
-         (select count(*) from public.company_access_requests car where car.status = 'pending') as pending_access_requests
+         (select count(*) from public.company_access_requests car where car.status = 'pending') as pending_access_requests,
+         (select count(*) from public.content_reports cr where cr.status = 'open') as open_reports,
+         (select count(*) from public.content_reports cr where cr.status = 'reviewing') as reviewing_reports,
+         (select count(*) from public.content_reports cr
+           where cr.status in ('open', 'reviewing')
+             and cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication')
+         ) as high_priority_reports,
+         (select count(*) from public.content_reports cr where cr.created_at >= now() - interval '24 hours') as reports_last_24h,
+         (select count(*) from public.posts p where p.deleted_at is null) as active_posts,
+         (select count(*) from public.jobs j where j.status = 'published') as published_jobs,
+         (select count(*) from public.events e where e.status = 'published') as published_events
        from public.organization_applications oa`,
     ) as MetricsRow[]
     const row = rows[0]
@@ -226,7 +297,260 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       approvedOrganizations: numberValue(row?.approved_organizations),
       suspendedOrganizations: numberValue(row?.suspended_organizations),
       pendingAccessRequests: numberValue(row?.pending_access_requests),
+      openReports: numberValue(row?.open_reports),
+      reviewingReports: numberValue(row?.reviewing_reports),
+      highPriorityReports: numberValue(row?.high_priority_reports),
+      reportsLast24h: numberValue(row?.reports_last_24h),
+      activePosts: numberValue(row?.active_posts),
+      publishedJobs: numberValue(row?.published_jobs),
+      publishedEvents: numberValue(row?.published_events),
     }
+  }
+
+  async function listModerationCases(
+    userId: string,
+    filter: AdminModerationFilter,
+  ): Promise<AdminModerationCase[]> {
+    await requirePlatformAdministrator(queryRows, userId)
+    const values: unknown[] = [filter.status]
+    const where = ['cr.status = $1']
+    if (filter.targetType !== 'all') {
+      values.push(filter.targetType)
+      where.push(`cr.target_type = ${values.length}`)
+    }
+    values.push(Math.min(Math.max(Math.trunc(filter.limit), 1), 100))
+    const limitParameter = values.length
+
+    const rows = await queryRows(
+      `select
+         cr.target_type,
+         cr.target_id,
+         case cr.target_type
+           when 'post' then 'Post by ' || coalesce(owner.full_name, 'Unknown member')
+           when 'comment' then 'Comment by ' || coalesce(owner.full_name, 'Unknown member')
+           when 'job' then coalesce(j.title, 'Unavailable job')
+           when 'event' then coalesce(e.title, 'Unavailable event')
+         end as target_title,
+         case cr.target_type
+           when 'post' then p.body
+           when 'comment' then pc.body
+           when 'job' then coalesce(j.summary, j.description)
+           when 'event' then e.summary
+         end as target_excerpt,
+         owner.id as owner_id,
+         owner.full_name as owner_name,
+         owner.slug as owner_slug,
+         case cr.target_type
+           when 'post' then case when p.id is null then 'missing' when p.deleted_at is null then 'visible' else 'removed' end
+           when 'comment' then case when pc.id is null then 'missing' when pc.deleted_at is null then 'visible' else 'removed' end
+           when 'job' then coalesce(j.status::text, 'missing')
+           when 'event' then coalesce(e.status, 'missing')
+         end as target_state,
+         count(*)::int as report_count,
+         min(cr.created_at) as first_reported_at,
+         max(cr.updated_at) as latest_reported_at,
+         array_agg(distinct cr.reason order by cr.reason) as reasons,
+         (array_agg(cr.details order by cr.updated_at desc) filter (where cr.details is not null))[1] as latest_details
+       from public.content_reports cr
+       left join public.posts p on cr.target_type = 'post' and p.id = cr.target_id
+       left join public.post_comments pc on cr.target_type = 'comment' and pc.id = cr.target_id
+       left join public.jobs j on cr.target_type = 'job' and j.id = cr.target_id
+       left join public.events e on cr.target_type = 'event' and e.id = cr.target_id
+       left join public.profiles owner on owner.id = case cr.target_type
+         when 'post' then p.author_id
+         when 'comment' then pc.author_id
+         when 'job' then j.created_by_user_id
+         when 'event' then e.host_user_id
+       end
+       where ${where.join(' and ')}
+       group by
+         cr.target_type,
+         cr.target_id,
+         p.id, p.body, p.deleted_at,
+         pc.id, pc.body, pc.deleted_at,
+         j.id, j.title, j.summary, j.description, j.status,
+         e.id, e.title, e.summary, e.status,
+         owner.id, owner.full_name, owner.slug
+       order by
+         max(case when cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication') then 1 else 0 end) desc,
+         max(cr.updated_at) desc,
+         cr.target_id desc
+       limit ${limitParameter}`,
+      values,
+    ) as ModerationCaseRow[]
+
+    return rows.map((row) => ({
+      targetType: row.target_type,
+      targetId: row.target_id,
+      title: row.target_title ?? 'Reported content',
+      excerpt: row.target_excerpt ?? null,
+      owner: {
+        id: row.owner_id ?? null,
+        fullName: row.owner_name ?? 'Unknown member',
+        slug: row.owner_slug ?? null,
+      },
+      targetState: row.target_state ?? 'unknown',
+      reportCount: numberValue(row.report_count),
+      firstReportedAt: row.first_reported_at,
+      latestReportedAt: row.latest_reported_at,
+      reasons: Array.isArray(row.reasons) ? row.reasons : [],
+      latestDetails: row.latest_details ?? null,
+    }))
+  }
+
+  function targetStateQuery(targetType: ModerationTargetType) {
+    if (targetType === 'post') {
+      return `select case when deleted_at is null then 'visible' else 'removed' end as state
+        from public.posts where id = $1 for update`
+    }
+    if (targetType === 'comment') {
+      return `select case when deleted_at is null then 'visible' else 'removed' end as state
+        from public.post_comments where id = $1 for update`
+    }
+    if (targetType === 'job') {
+      return `select status::text as state from public.jobs where id = $1 for update`
+    }
+    return `select status as state from public.events where id = $1 for update`
+  }
+
+  async function mutateModerationTarget(
+    query: AdminQuery,
+    targetType: ModerationTargetType,
+    targetId: string,
+    action: ModerationAction,
+  ) {
+    if (action !== 'remove' && action !== 'restore') return
+
+    if (targetType === 'post') {
+      await query(
+        action === 'remove'
+          ? 'update public.posts set deleted_at = coalesce(deleted_at, now()), updated_at = now() where id = $1'
+          : 'update public.posts set deleted_at = null, updated_at = now() where id = $1',
+        [targetId],
+      )
+      return
+    }
+    if (targetType === 'comment') {
+      await query(
+        action === 'remove'
+          ? 'update public.post_comments set deleted_at = coalesce(deleted_at, now()), updated_at = now() where id = $1'
+          : 'update public.post_comments set deleted_at = null, updated_at = now() where id = $1',
+        [targetId],
+      )
+      return
+    }
+    if (targetType === 'job') {
+      await query(
+        action === 'remove'
+          ? "update public.jobs set status = 'closed', updated_at = now() where id = $1"
+          : "update public.jobs set status = 'published', published_at = coalesce(published_at, now()), updated_at = now() where id = $1",
+        [targetId],
+      )
+      return
+    }
+    await query(
+      action === 'remove'
+        ? "update public.events set status = 'cancelled', updated_at = now() where id = $1"
+        : "update public.events set status = 'published', updated_at = now() where id = $1",
+      [targetId],
+    )
+  }
+
+  async function moderateContent(
+    adminId: string,
+    input: {
+      targetType: ModerationTargetType
+      targetId: string
+      action: ModerationAction
+      note: string | null
+    },
+  ) {
+    return transaction(async (txQuery) => {
+      await requirePlatformAdministrator(txQuery, adminId, true)
+
+      const reportRows = await txQuery(
+        `select id, status
+         from public.content_reports
+         where target_type = $1 and target_id = $2
+         for update`,
+        [input.targetType, input.targetId],
+      ) as ModerationReportLockRow[]
+      if (!reportRows.length) throw new Error('moderation_case_not_found')
+
+      const targetRows = await txQuery(targetStateQuery(input.targetType), [input.targetId]) as ModerationTargetStateRow[]
+      const target = targetRows[0]
+      if (!target) throw new Error('moderation_target_not_found')
+      const previousState = target.state
+
+      await mutateModerationTarget(txQuery, input.targetType, input.targetId, input.action)
+
+      const nextStatus: ModerationReportStatus = input.action === 'reviewing'
+        ? 'reviewing'
+        : input.action === 'dismiss'
+          ? 'dismissed'
+          : 'resolved'
+      await txQuery(
+        `update public.content_reports
+         set status = $3,
+             reviewed_by = $4,
+             reviewed_at = now(),
+             reviewer_note = $5,
+             updated_at = now()
+         where target_type = $1
+           and target_id = $2
+           and status in ('open', 'reviewing', 'resolved', 'dismissed')`,
+        [input.targetType, input.targetId, nextStatus, adminId, input.note],
+      )
+
+      const primaryReportId = reportRows[0]?.id ?? null
+      await txQuery(
+        `insert into public.moderation_actions (
+           actor_id,
+           target_type,
+           target_id,
+           report_id,
+           action,
+           note,
+           metadata
+         )
+         values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+        [
+          adminId,
+          input.targetType,
+          input.targetId,
+          primaryReportId,
+          input.action,
+          input.note,
+          JSON.stringify({
+            previousState,
+            reportIds: reportRows.map((row) => row.id),
+          }),
+        ],
+      )
+
+      const auditAction = input.action === 'remove'
+        ? 'moderation.content_removed'
+        : input.action === 'restore'
+          ? 'moderation.content_restored'
+          : `moderation.${input.action}`
+      await txQuery(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          adminId,
+          auditAction,
+          input.targetType,
+          input.targetId,
+          JSON.stringify({
+            note: input.note,
+            previousState,
+            reportCount: reportRows.length,
+          }),
+        ],
+      )
+
+      return true
+    })
   }
 
   async function listOrganizationApplications(userId: string, status: AdminOrganizationStatus): Promise<AdminOrganizationReview[]> {
@@ -353,6 +677,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
   return {
     isPlatformAdministrator,
     getAdminDashboardMetrics,
+    listModerationCases,
+    moderateContent,
     listOrganizationApplications,
     getOrganizationApplicationReview,
     reviewOrganizationApplication,
