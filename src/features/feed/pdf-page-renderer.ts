@@ -35,7 +35,7 @@ async function loadDocument(url: string): Promise<PdfDocument> {
     cached = loadPdfJs().then((pdfjs) => pdfjs.getDocument({
       url,
       withCredentials: true,
-    }).promise as Promise<PdfDocument>)
+    }).promise as unknown as Promise<PdfDocument>)
     documentCache.set(url, cached)
   }
   return cached
