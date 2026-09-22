@@ -9,6 +9,7 @@ const CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
   webp: 'image/webp',
   mp4: 'video/mp4',
   webm: 'video/webm',
+  pdf: 'application/pdf',
 }
 
 function canonicalFeedMediaKey(parts: string[]): string | null {
@@ -54,6 +55,7 @@ export async function GET(
         'cache-control': 'private, max-age=3600',
         'content-length': String(object.contentLength),
         'content-type': contentType,
+        ...(contentType === 'application/pdf' ? { 'content-disposition': 'inline' } : {}),
         'x-content-type-options': 'nosniff',
       },
     })
