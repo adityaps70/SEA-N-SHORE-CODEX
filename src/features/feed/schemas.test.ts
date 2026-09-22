@@ -12,6 +12,9 @@ const mediaReference = {
   mimeType: 'video/mp4',
   size: 1024,
   altText: '  Engine room walkthrough  ',
+  position: 0,
+  fileName: 'bridge-walkthrough.mp4',
+  pageCount: null,
 } as const
 
 describe('postMediaReferenceSchema', () => {
@@ -27,6 +30,7 @@ describe('postMediaReferenceSchema', () => {
     { ...mediaReference, storagePath: undefined },
     { ...mediaReference, mimeType: undefined },
     { ...mediaReference, size: undefined },
+    { ...mediaReference, position: undefined },
   ])('rejects a partial media reference', (input) => {
     expect(() => postMediaReferenceSchema.parse(input)).toThrow()
   })
@@ -55,10 +59,82 @@ describe('createPostInputSchema', () => {
       category: 'technical_discussion',
       body: 'Engine room walkthrough.',
       mode: 'standard',
-      media: mediaReference,
+      media: [mediaReference],
     })
 
-    expect(parsed.media).toEqual({ ...mediaReference, altText: 'Engine room walkthrough' })
+    expect(parsed.media).toEqual([{ ...mediaReference, altText: 'Engine room walkthrough' }])
+  })
+
+  it('accepts up to 20 ordered image references that share one pending post id', () => {
+    const media = Array.from({ length: 20 }, (_, position) => ({
+      ...mediaReference,
+      storagePath: `11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cccccccc-cccc-4ccc-8ccc-${String(position).padStart(12, '0')}.jpg`,
+      mimeType: 'image/jpeg',
+      fileName: `photo-${position + 1}.jpg`,
+      position,
+    }))
+    const parsed = createPostInputSchema.parse({
+      category: 'technical_discussion',
+      body: 'Multi-photo deck inspection.',
+      mode: 'standard',
+      media,
+    })
+
+    expect(parsed.media).toHaveLength(20)
+    expect(parsed.media?.map((item) => item.position)).toEqual(Array.from({ length: 20 }, (_, index) => index))
+  })
+
+  it('rejects more than 20 photos and rejects mixed image/video/document batches', () => {
+    const images = Array.from({ length: 21 }, (_, position) => ({
+      ...mediaReference,
+      storagePath: `11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/dddddddd-dddd-4ddd-8ddd-${String(position).padStart(12, '0')}.jpg`,
+      mimeType: 'image/jpeg',
+      fileName: `photo-${position + 1}.jpg`,
+      position,
+    }))
+
+    expect(() => createPostInputSchema.parse({
+      category: 'technical_discussion',
+      body: 'Too many photos.',
+      mode: 'standard',
+      media: images,
+    })).toThrow(/20/)
+
+    expect(() => createPostInputSchema.parse({
+      category: 'technical_discussion',
+      body: 'Mixed attachments.',
+      mode: 'standard',
+      media: [
+        { ...images[0], position: 0 },
+        { ...mediaReference, position: 1 },
+      ],
+    })).toThrow(/images|video|document/i)
+  })
+
+  it('accepts one PDF document with a LinkedIn-style page-count cap', () => {
+    const document = {
+      ...mediaReference,
+      storagePath: '11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee.pdf',
+      mimeType: 'application/pdf',
+      fileName: 'SIRE-2-readiness-guide.pdf',
+      size: 5 * 1024 * 1024,
+      pageCount: 32,
+      position: 0,
+    }
+    const parsed = createPostInputSchema.parse({
+      category: 'learning',
+      body: 'Sharing a guide for the community.',
+      mode: 'standard',
+      media: [document],
+    })
+
+    expect(parsed.media).toEqual([document])
+    expect(() => createPostInputSchema.parse({
+      category: 'learning',
+      body: 'Oversized document.',
+      mode: 'standard',
+      media: [{ ...document, pageCount: 301 }],
+    })).toThrow(/300/)
   })
 
   it('rejects a poll with fewer than two distinct options', () => {
@@ -86,7 +162,7 @@ describe('createPostInputSchema', () => {
       body: 'Which inspection first?',
       mode: 'poll',
       pollOptions: ['Mooring', 'Bridge'],
-      media: mediaReference,
+      media: [mediaReference],
     })).toThrow(/Technical polls cannot include media/)
   })
 })
