@@ -351,7 +351,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     const where = ['cr.status = $1']
     if (filter.targetType !== 'all') {
       values.push(filter.targetType)
-      where.push(`cr.target_type = ${values.length}`)
+      where.push(`cr.target_type = $${values.length}`)
     }
     values.push(Math.min(Math.max(Math.trunc(filter.limit), 1), 100))
     const limitParameter = values.length
@@ -410,7 +410,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          max(case when cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication') then 1 else 0 end) desc,
          max(cr.updated_at) desc,
          cr.target_id desc
-       limit ${limitParameter}`,
+       limit $${limitParameter}`,
       values,
     ) as ModerationCaseRow[]
 
