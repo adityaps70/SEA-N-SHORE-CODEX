@@ -2,10 +2,14 @@ import {
   createMediaReadUrl,
   createMediaUploadUrl,
   deleteMediaObject,
+  getMediaObject,
   headMediaObject,
   putMediaObject,
 } from '@/lib/aws/storage'
+import { PDFDocument } from 'pdf-lib'
 import {
+  POST_DOCUMENT_MAX_BYTES,
+  POST_DOCUMENT_MAX_PAGES,
   buildPostMediaStoragePath,
   isOwnedPostMediaStoragePath,
   validatePostMediaMetadata,
@@ -45,6 +49,7 @@ export async function createPendingPostMediaUpload(input: {
   profileId: string
   mimeType: string
   size: number
+  postId?: string
 }): Promise<{
   postId: string
   storagePath: string
@@ -58,7 +63,7 @@ export async function createPendingPostMediaUpload(input: {
   })
   if (!metadata.ok) throw new Error('feed_media_policy_invalid')
 
-  const postId = crypto.randomUUID()
+  const postId = input.postId ?? crypto.randomUUID()
   const storagePath = buildPostMediaStoragePath({
     profileId: input.profileId,
     postId,
@@ -84,6 +89,7 @@ export async function verifyPendingPostMedia(input: {
   storagePath: string
   mimeType: string
   size: number
+  pageCount?: number | null
 }): Promise<void> {
   const metadata = validatePostMediaMetadata({
     mimeType: input.mimeType,
@@ -108,6 +114,27 @@ export async function verifyPendingPostMedia(input: {
 
   if (stored.contentType !== metadata.mimeType || stored.contentLength !== input.size) {
     throw new Error('feed_media_metadata_mismatch')
+  }
+
+  if (metadata.mimeType === 'application/pdf') {
+    let pageCount: number
+    try {
+      const document = await getMediaObject({
+        key: input.storagePath,
+        maxBytes: POST_DOCUMENT_MAX_BYTES,
+      })
+      const pdf = await PDFDocument.load(document.body)
+      pageCount = pdf.getPageCount()
+    } catch {
+      throw new Error('feed_media_document_invalid')
+    }
+
+    if (pageCount < 1 || pageCount > POST_DOCUMENT_MAX_PAGES) {
+      throw new Error('feed_media_document_page_limit')
+    }
+    if (input.pageCount == null || input.pageCount !== pageCount) {
+      throw new Error('feed_media_document_page_mismatch')
+    }
   }
 }
 
