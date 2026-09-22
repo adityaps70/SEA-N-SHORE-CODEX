@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { renderPdfPage } from '../pdf-page-renderer'
 import type { FeedMedia } from '../types'
 
 function orderedMedia(value: FeedMedia | FeedMedia[]) {
@@ -19,27 +20,118 @@ function imageGridClass(count: number, index: number) {
 
 function PdfDocumentCarousel({ media }: { media: FeedMedia }) {
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null)
+  const [rendering, setRendering] = useState(true)
+  const [renderError, setRenderError] = useState(false)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const pageCount = Math.max(1, media.pageCount ?? 1)
   const url = media.signedUrl
+  const documentTitle = (media.fileName || 'Document').replace(/\.pdf$/i, '').trim() || 'Document'
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !url) return
+
+    let active = true
+    setRendering(true)
+    setRenderError(false)
+
+    void renderPdfPage(canvas, url, page)
+      .then((size) => {
+        if (!active) return
+        setPageSize(size)
+        setRendering(false)
+      })
+      .catch(() => {
+        if (!active) return
+        setRenderError(true)
+        setRendering(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [page, url])
 
   if (!url) return null
 
-  const pageUrl = `${url}#page=${page}&toolbar=0&navpanes=0&scrollbar=0&view=FitH`
+  function previousPage() {
+    setPage((current) => Math.max(1, current - 1))
+  }
+
+  function nextPage() {
+    setPage((current) => Math.min(pageCount, current + 1))
+  }
+
+  function onTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    const touch = event.touches[0]
+    if (!touch) return
+    touchStartRef.current = { x: touch.clientX, y: touch.clientY }
+  }
+
+  function onTouchEnd(event: React.TouchEvent<HTMLDivElement>) {
+    const start = touchStartRef.current
+    const touch = event.changedTouches[0]
+    touchStartRef.current = null
+    if (!start || !touch) return
+
+    const deltaX = touch.clientX - start.x
+    const deltaY = touch.clientY - start.y
+    const horizontal = Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2
+    if (!horizontal) return
+
+    if (deltaX < 0) nextPage()
+    else previousPage()
+  }
+
+  function onWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (Math.abs(event.deltaX) < 40 || Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return
+    event.preventDefault()
+    if (event.deltaX > 0) nextPage()
+    else previousPage()
+  }
+
+  const aspectRatio = pageSize ? `${pageSize.width} / ${pageSize.height}` : '1 / 1.4142'
 
   return (
     <section
-      className="relative mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-mist-50"
+      className="mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-mist-50"
       aria-label="Document carousel"
     >
-      <div className="relative flex min-h-[34rem] items-center justify-center bg-mist-50 sm:min-h-[42rem]">
-        <iframe
+      <div
+        data-testid="document-page-stage"
+        className="relative w-full touch-pan-y overflow-hidden bg-mist-50"
+        style={{ aspectRatio }}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+        onWheel={onWheel}
+      >
+        <canvas
           key={page}
-          src={pageUrl}
-          title={`Document page ${page} of ${pageCount}`}
-          className="block h-[34rem] w-full border-0 bg-white sm:h-[42rem]"
+          ref={canvasRef}
+          role="img"
+          aria-label={`Document page ${page} of ${pageCount}`}
+          className="absolute inset-0 block h-full w-full bg-white"
         />
 
-        <span className="pointer-events-none absolute right-3 top-3 z-10 rounded-full bg-navy-950/80 px-3 py-1.5 text-xs font-semibold text-white shadow-sm backdrop-blur-sm">
+        {rendering ? (
+          <div className="pointer-events-none absolute inset-0 grid place-items-center bg-mist-50/70" aria-hidden="true">
+            <span className="size-7 animate-spin rounded-full border-2 border-mist-200 border-t-ocean-700" />
+          </div>
+        ) : null}
+
+        {renderError ? (
+          <div className="absolute inset-0 grid place-items-center bg-white px-6 text-center">
+            <p className="text-sm font-semibold text-muted">This page could not be previewed.</p>
+          </div>
+        ) : null}
+
+        <span className="pointer-events-none absolute left-3 top-3 z-10 max-w-[70%] truncate rounded-lg bg-black/75 px-3 py-2 text-sm font-semibold text-white shadow-sm backdrop-blur-sm">
+          {documentTitle} · {pageCount} {pageCount === 1 ? 'page' : 'pages'}
+        </span>
+
+        <span className="pointer-events-none absolute right-3 top-3 z-10 rounded-full bg-black/75 px-3 py-1.5 text-xs font-semibold text-white shadow-sm backdrop-blur-sm">
           {page} / {pageCount}
         </span>
 
@@ -47,20 +139,20 @@ function PdfDocumentCarousel({ media }: { media: FeedMedia }) {
           type="button"
           aria-label="Previous slide"
           disabled={page <= 1}
-          onClick={() => setPage((current) => Math.max(1, current - 1))}
-          className="absolute left-3 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-white/95 text-navy-950 shadow-lg ring-1 ring-black/5 transition hover:scale-105 hover:bg-white disabled:pointer-events-none disabled:opacity-0"
+          onClick={previousPage}
+          className="absolute left-3 top-1/2 z-10 grid size-12 -translate-y-1/2 place-items-center rounded-full bg-black/80 text-white shadow-lg transition hover:bg-black disabled:pointer-events-none disabled:opacity-0"
         >
-          <ChevronLeft aria-hidden="true" className="size-6" />
+          <ChevronLeft aria-hidden="true" className="size-7" />
         </button>
 
         <button
           type="button"
           aria-label="Next slide"
           disabled={page >= pageCount}
-          onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-          className="absolute right-3 top-1/2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-white/95 text-navy-950 shadow-lg ring-1 ring-black/5 transition hover:scale-105 hover:bg-white disabled:pointer-events-none disabled:opacity-0"
+          onClick={nextPage}
+          className="absolute right-3 top-1/2 z-10 grid size-12 -translate-y-1/2 place-items-center rounded-full bg-black/80 text-white shadow-lg transition hover:bg-black disabled:pointer-events-none disabled:opacity-0"
         >
-          <ChevronRight aria-hidden="true" className="size-6" />
+          <ChevronRight aria-hidden="true" className="size-7" />
         </button>
       </div>
     </section>
