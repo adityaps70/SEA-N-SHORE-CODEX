@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import { markConversationReadAction } from '../actions'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
-import { isMessageSeen, type MessagingReadCursor } from '../thread-realtime'
+import { isMessageSeen } from '../thread-realtime'
 import {
   publishMessagingUnreadCount,
   subscribeMessagingUnreadCount,
@@ -267,14 +267,12 @@ export function MessagingDock({
   }, [messages.length, otherTyping])
 
   const title = active?.otherName ?? 'Messaging'
-  const peerReadCursor = useMemo<MessagingReadCursor | null>(() => (
-    active?.otherLastReadMessageId && active.otherLastReadAt
-      ? {
-          id: active.otherLastReadMessageId,
-          createdAt: active.otherLastReadAt,
-        }
-      : null
-  ), [active?.otherLastReadAt, active?.otherLastReadMessageId])
+  const peerReadCursor = active?.otherLastReadMessageId && active.otherLastReadAt
+    ? {
+        id: active.otherLastReadMessageId,
+        createdAt: active.otherLastReadAt,
+      }
+    : null
 
   async function openConversation(item: MessagingInboxItem) {
     lastReadMessageIdRef.current = null
