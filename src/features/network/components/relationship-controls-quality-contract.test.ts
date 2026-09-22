@@ -10,7 +10,7 @@ describe('relationship controls quality contract', () => {
   })
 
   it('keeps Pending as the outgoing primary state and moves cancellation under More', () => {
-    const moreIndex = controls.indexOf('<details')
+    const moreIndex = controls.indexOf('aria-haspopup="menu"')
     const pendingIndex = controls.indexOf('>Pending</span>')
     const cancelIndex = controls.indexOf("respond('cancel')")
 
@@ -20,10 +20,11 @@ describe('relationship controls quality contract', () => {
   })
 
   it('keeps destructive and secondary connection actions under More', () => {
-    const moreIndex = controls.indexOf('<details')
-    expect(controls.indexOf('onClick={toggleFollow}')).toBeGreaterThan(moreIndex)
-    expect(controls.indexOf("respond('decline')")).toBeGreaterThan(moreIndex)
-    expect(controls.indexOf("respond('remove')")).toBeGreaterThan(moreIndex)
-    expect(controls.indexOf('onClick={block}')).toBeGreaterThan(moreIndex)
+    const moreIndex = controls.indexOf('aria-haspopup="menu"')
+    expect(moreIndex).toBeGreaterThan(-1)
+    expect(controls.indexOf('toggleFollow()', moreIndex)).toBeGreaterThan(moreIndex)
+    expect(controls.indexOf("respond('decline')", moreIndex)).toBeGreaterThan(moreIndex)
+    expect(controls.indexOf("respond('remove')", moreIndex)).toBeGreaterThan(moreIndex)
+    expect(controls.indexOf('block()', moreIndex)).toBeGreaterThan(moreIndex)
   })
 })
