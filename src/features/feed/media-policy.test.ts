@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  POST_DOCUMENT_MAX_BYTES,
+  POST_DOCUMENT_MAX_PAGES,
   POST_IMAGE_MAX_BYTES,
+  POST_IMAGE_MAX_COUNT,
   POST_MEDIA_MIME_EXTENSION,
   POST_VIDEO_MAX_BYTES,
   buildPostMediaStoragePath,
@@ -23,9 +26,13 @@ describe('post media policy', () => {
       'image/webp': 'webp',
       'video/mp4': 'mp4',
       'video/webm': 'webm',
+      'application/pdf': 'pdf',
     })
     expect(POST_IMAGE_MAX_BYTES).toBe(5 * 1024 * 1024)
+    expect(POST_IMAGE_MAX_COUNT).toBe(20)
     expect(POST_VIDEO_MAX_BYTES).toBe(200 * 1024 * 1024)
+    expect(POST_DOCUMENT_MAX_BYTES).toBe(100 * 1024 * 1024)
+    expect(POST_DOCUMENT_MAX_PAGES).toBe(300)
   })
 
   it('accepts images at the 5 MiB boundary and rejects larger images', () => {
@@ -52,14 +59,25 @@ describe('post media policy', () => {
     })
   })
 
+  it('accepts PDFs at the LinkedIn-style 100 MB boundary and rejects larger documents', () => {
+    expect(validatePostMediaMetadata({ mimeType: 'application/pdf', size: POST_DOCUMENT_MAX_BYTES })).toEqual({
+      ok: true,
+      mimeType: 'application/pdf',
+      extension: 'pdf',
+    })
+    expect(validatePostMediaMetadata({ mimeType: 'application/pdf', size: POST_DOCUMENT_MAX_BYTES + 1 })).toEqual({
+      ok: false,
+      error: 'PDF documents must be 100 MB or smaller.',
+    })
+  })
+
   it.each([
     ['video/quicktime', 1024],
     ['image/gif', 1024],
-    ['application/pdf', 1024],
   ])('rejects unsupported MIME type %s', (mimeType, size) => {
     expect(validatePostMediaMetadata({ mimeType, size })).toEqual({
       ok: false,
-      error: 'Choose a JPEG, PNG, WebP, MP4, or WebM file.',
+      error: 'Choose a JPEG, PNG, WebP, MP4, WebM, or PDF file.',
     })
   })
 
@@ -75,6 +93,7 @@ describe('post media policy', () => {
     expect(isVideoPostMediaMime('video/webm')).toBe(true)
     expect(isVideoPostMediaMime('image/jpeg')).toBe(false)
     expect(isVideoPostMediaMime('video/quicktime')).toBe(false)
+    expect(isVideoPostMediaMime('application/pdf')).toBe(false)
   })
 
   it('builds the existing profile/post/object key shape with the MIME-derived extension', () => {
@@ -85,6 +104,9 @@ describe('post media policy', () => {
     )
     expect(buildPostMediaStoragePath({ profileId, postId, mimeType: 'image/webp', objectId })).toBe(
       `${profileId}/${postId}/${objectId}.webp`,
+    )
+    expect(buildPostMediaStoragePath({ profileId, postId, mimeType: 'application/pdf', objectId })).toBe(
+      `${profileId}/${postId}/${objectId}.pdf`,
     )
   })
 
