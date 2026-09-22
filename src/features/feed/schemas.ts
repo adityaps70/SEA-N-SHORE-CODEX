@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { POST_DOCUMENT_MAX_PAGES, POST_IMAGE_MAX_COUNT } from './media-policy'
 import { POST_CATEGORIES, POST_REACTIONS } from './types'
 
 const normalizePollOptions = (value: unknown) => {
@@ -41,17 +42,68 @@ export const reactionDetailsSchema = z.object({
 export const postMediaReferenceSchema = z.object({
   postId: z.string().uuid(),
   storagePath: z.string().min(1).max(500),
-  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm']),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'application/pdf']),
   size: z.coerce.number().int().positive(),
   altText: z.string().trim().max(300).optional().default(''),
+  position: z.coerce.number().int().min(0).max(POST_IMAGE_MAX_COUNT - 1),
+  fileName: z.string().trim().min(1).max(255),
+  pageCount: z.preprocess(
+    (value) => value === '' || value == null ? null : Number(value),
+    z.number().int().min(1).max(POST_DOCUMENT_MAX_PAGES, `PDF documents can have no more than ${POST_DOCUMENT_MAX_PAGES} pages.`).nullable(),
+  ).default(null),
+}).superRefine((media, context) => {
+  if (media.mimeType === 'application/pdf' && media.pageCount === null) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['pageCount'],
+      message: 'PDF page count is required.',
+    })
+  }
+  if (media.mimeType !== 'application/pdf' && media.pageCount !== null) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['pageCount'],
+      message: 'Only PDF documents can include a page count.',
+    })
+  }
 })
+
+const postMediaCollectionSchema = z.array(postMediaReferenceSchema)
+  .max(POST_IMAGE_MAX_COUNT, `Add no more than ${POST_IMAGE_MAX_COUNT} photos.`)
+  .superRefine((media, context) => {
+    if (!media.length) return
+    const postIds = new Set(media.map((item) => item.postId))
+    if (postIds.size !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'All media in a post must share one upload session.',
+      })
+    }
+
+    const positions = media.map((item) => item.position)
+    if (new Set(positions).size !== positions.length || positions.some((position) => position < 0 || position >= media.length)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Media positions must be unique and contiguous.',
+      })
+    }
+
+    const imageCount = media.filter((item) => item.mimeType.startsWith('image/')).length
+    if (media.length > 1 && imageCount !== media.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Choose up to 20 images, or attach one video or one PDF document.',
+      })
+    }
+  })
+  .transform((media) => [...media].sort((a, b) => a.position - b.position))
 
 const standardPostSchema = z.object({
   category: z.enum(POST_CATEGORIES),
   body: bodySchema,
   mode: z.literal('standard'),
   pollOptions: z.preprocess(() => [], z.array(z.never()).max(0)).optional().default([]),
-  media: postMediaReferenceSchema.optional(),
+  media: postMediaCollectionSchema.optional(),
   mentionProfileIds: mentionIdsSchema,
 })
 
