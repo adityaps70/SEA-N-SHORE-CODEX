@@ -68,12 +68,11 @@ vi.mock('@/features/network/queries', () => ({
 }))
 
 vi.mock('@/features/network/components/relationship-controls', () => ({
-  RelationshipControls: () => <div>Relationship controls</div>,
-}))
-
-vi.mock('@/features/messaging/components/start-conversation-button', () => ({
-  StartConversationButton: ({ targetProfileId }: { targetProfileId: string }) => (
-    <button type="button" data-testid="message-cta">Message {targetProfileId}</button>
+  RelationshipControls: ({ initialRelationship }: { initialRelationship: { connection: { kind: string } } }) => (
+    <div>
+      <span>Relationship controls</span>
+      {initialRelationship.connection.kind === 'connected' ? <button type="button">Message</button> : null}
+    </div>
   ),
 }))
 
@@ -140,7 +139,7 @@ describe('Public Profile page', () => {
 
     expect(screen.getByText('Profile header')).toBeInTheDocument()
     expect(screen.getByText('Relationship controls')).toBeInTheDocument()
-    expect(screen.queryByTestId('message-cta')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Posts' })).toBeInTheDocument()
     expect(screen.getByText('Public maritime update')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument()
@@ -164,7 +163,7 @@ describe('Public Profile page', () => {
 
     render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
 
-    expect(screen.getByTestId('message-cta')).toHaveTextContent('Message 22222222-2222-4222-8222-222222222222')
+    expect(screen.getAllByRole('button', { name: 'Message' })).toHaveLength(1)
   })
 
   it('keeps posts public while omitting personalized recommendations and messaging for a signed-out viewer', async () => {
@@ -177,7 +176,7 @@ describe('Public Profile page', () => {
     expect(screen.queryByRole('heading', { name: 'People you may know' })).not.toBeInTheDocument()
     expect(mocks.getPeopleYouMayKnow).not.toHaveBeenCalled()
     expect(screen.queryByText('Relationship controls')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('message-cta')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()
   })
 
   it('keeps About full-width in the main profile column instead of pairing it with Maritime Experience', () => {
