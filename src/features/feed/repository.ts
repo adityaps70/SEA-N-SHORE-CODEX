@@ -49,6 +49,9 @@ export type FeedMediaInput = {
   storagePath: string
   mimeType: string
   altText: string | null
+  position: number
+  fileName: string
+  pageCount: number | null
 }
 
 type ReactionDetailsLookup = {
@@ -80,16 +83,21 @@ const FEED_ROW_SELECT = `
         else json_build_object('rank', maritime.rank, 'current_company', maritime.current_company)
       end
     ) as profiles,
-    (
-      select json_build_object(
-        'storage_path', media.storage_path,
-        'mime_type', media.mime_type,
-        'alt_text', media.alt_text
+    coalesce((
+      select json_agg(
+        json_build_object(
+          'storage_path', media.storage_path,
+          'mime_type', media.mime_type,
+          'alt_text', media.alt_text,
+          'position', media.position,
+          'file_name', media.file_name,
+          'page_count', media.page_count
+        )
+        order by media.position asc, media.created_at asc, media.id asc
       )
       from public.post_media media
       where media.post_id = p.id
-      limit 1
-    ) as post_media,
+    ), '[]'::json) as post_media,
     case when p.post_type = 'poll' then json_build_object(
       'post_poll_options', coalesce((
         select json_agg(
@@ -584,7 +592,11 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
   }
 
   async function insertPostMedia(postId: string, media: FeedMediaInput) {
-    await queryRows(`insert into public.post_media (post_id, storage_path, mime_type, alt_text) values ($1, $2, $3, $4)`, [postId, media.storagePath, media.mimeType, media.altText])
+    await queryRows(
+      `insert into public.post_media (post_id, storage_path, mime_type, alt_text, position, file_name, page_count)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [postId, media.storagePath, media.mimeType, media.altText, media.position, media.fileName, media.pageCount],
+    )
   }
 
   async function isPostMediaAttached(storagePath: string) {
