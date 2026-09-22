@@ -4,6 +4,7 @@ import { Ellipsis, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useActionState, useEffect, useMemo, useState, useTransition } from 'react'
 import * as feedActions from '../actions'
+import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import type { CommentActionState } from '../actions'
 import {
   EMPTY_REACTION_SUMMARY,
@@ -247,6 +248,15 @@ function CommentItem({ postId, comment, rootCommentId, readOnly, isReply = false
           <div className="mt-0.5 flex min-h-8 items-center gap-1.5 px-1">
             {!readOnly ? <ReactionPicker value={reaction} disabled={reactionPending} onChange={changeReaction} compact /> : null}
             {!readOnly ? <button type="button" onClick={() => setReplying((value) => !value)} className="min-h-8 rounded-lg px-2 text-xs font-semibold text-navy-900 hover:bg-mist-50">Reply</button> : null}
+            {!readOnly && !comment.viewerOwns ? (
+              <ReportContentButton
+                targetType="comment"
+                targetId={comment.id}
+                label="Report comment"
+                iconOnly
+                className="inline-flex min-h-8 items-center justify-center rounded-lg px-1.5 text-muted transition hover:bg-red-50 hover:text-red-700"
+              />
+            ) : null}
             <CommentReplySummary count={replyCount} />
             <CommentReactionSummary summary={summary} onOpen={() => setReactionsOpen(true)} />
           </div>
