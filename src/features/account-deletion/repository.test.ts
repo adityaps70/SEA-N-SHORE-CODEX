@@ -3,6 +3,14 @@ import { createAccountDeletionRepository } from './repository'
 
 const profileId = '11111111-1111-4111-8111-111111111111'
 
+type TestQuery = (sql: string, values?: readonly unknown[]) => Promise<Array<Record<string, unknown>>>
+
+function transactionFor(query: TestQuery) {
+  return async function transaction<T>(work: (query: TestQuery) => Promise<T>): Promise<T> {
+    return work(query)
+  }
+}
+
 describe('account deletion repository', () => {
   it('purges user-owned data, anonymizes retained references, and tombstones the profile transactionally', async () => {
     const calls: Array<{ sql: string; values?: readonly unknown[] }> = []
@@ -19,7 +27,7 @@ describe('account deletion repository', () => {
       }
       return []
     })
-    const transaction = vi.fn(async (work: (query: typeof query) => Promise<unknown>) => work(query))
+    const transaction = transactionFor(query as TestQuery)
     const deleteIdentity = vi.fn(async () => undefined)
 
     const repository = createAccountDeletionRepository({ transaction })
@@ -49,7 +57,7 @@ describe('account deletion repository', () => {
       if (/select id, account_status/i.test(sql)) throw new Error('database_unavailable')
       return []
     })
-    const transaction = vi.fn(async (work: (query: typeof query) => Promise<unknown>) => work(query))
+    const transaction = transactionFor(query as TestQuery)
     const deleteIdentity = vi.fn(async () => undefined)
     const repository = createAccountDeletionRepository({ transaction })
 
@@ -63,7 +71,7 @@ describe('account deletion repository', () => {
       if (/as storage_path/i.test(sql) && /union all/i.test(sql)) return []
       return []
     })
-    const transaction = vi.fn(async (work: (query: typeof query) => Promise<unknown>) => work(query))
+    const transaction = transactionFor(query as TestQuery)
     const repository = createAccountDeletionRepository({ transaction })
 
     await expect(repository.finalizeAccountDeletion(profileId)).resolves.toEqual({ mediaPaths: [] })
