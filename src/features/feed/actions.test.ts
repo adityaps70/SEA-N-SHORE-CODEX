@@ -23,6 +23,7 @@ import {
   addComment,
   createPost,
   createPostMediaUpload,
+  createPostMediaUploads,
   deletePost,
   discardPendingPostMedia,
   setPollVote,
@@ -199,7 +200,7 @@ describe('feed actions', () => {
   it('rejects invalid media metadata before authenticating a presign request', async () => {
     await expect(createPostMediaUpload({ mimeType: 'image/gif', size: 1024 })).resolves.toEqual({
       ok: false,
-      error: 'Choose a JPEG, PNG, WebP, MP4, or WebM file.',
+      error: 'Choose a JPEG, PNG, WebP, MP4, WebM, or PDF file.',
     })
 
     expect(mockedRequireAwsUser).not.toHaveBeenCalled()
@@ -220,9 +221,48 @@ describe('feed actions', () => {
 
     expect(mockedCreatePendingPostMediaUpload).toHaveBeenCalledWith({
       profileId: viewerId,
+      postId: expect.any(String),
       mimeType: 'image/jpeg',
       size: 1024,
     })
+  })
+
+  it('creates one shared upload session for a multi-photo batch', async () => {
+    const result = await createPostMediaUploads({
+      files: [
+        { mimeType: 'image/jpeg', size: 1024, fileName: 'deck-1.jpg', pageCount: null },
+        { mimeType: 'image/png', size: 2048, fileName: 'deck-2.png', pageCount: null },
+      ],
+    })
+
+    expect(result.ok).toBe(true)
+    expect(mockedCreatePendingPostMediaUpload).toHaveBeenCalledTimes(2)
+    const first = mockedCreatePendingPostMediaUpload.mock.calls[0]?.[0]
+    const second = mockedCreatePendingPostMediaUpload.mock.calls[1]?.[0]
+    expect(first?.postId).toBeTruthy()
+    expect(second?.postId).toBe(first?.postId)
+  })
+
+  it('rejects oversized media batches and documents over 50 pages before authentication', async () => {
+    await expect(createPostMediaUploads({
+      files: Array.from({ length: 11 }, (_, index) => ({
+        mimeType: 'image/jpeg',
+        size: 1024,
+        fileName: `photo-${index}.jpg`,
+        pageCount: null,
+      })),
+    })).resolves.toEqual({ ok: false, error: 'Choose up to 10 supported media files.' })
+
+    await expect(createPostMediaUploads({
+      files: [{
+        mimeType: 'application/pdf',
+        size: 1024,
+        fileName: 'manual.pdf',
+        pageCount: 51,
+      }],
+    })).resolves.toEqual({ ok: false, error: 'Choose up to 10 supported media files.' })
+
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
   })
 
   it('discards only an authenticated pending object scoped to the current user and post', async () => {
@@ -286,16 +326,23 @@ describe('feed actions', () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     const state = await createPost({}, postFormWithCompletedMedia())
     expect(state).toEqual({ ok: true })
-    expect(mockedVerifyPendingPostMedia).toHaveBeenCalledWith({ profileId: viewerId, postId, storagePath, mimeType: 'image/jpeg', size: 1024 })
+    expect(mockedVerifyPendingPostMedia).toHaveBeenCalledWith({ profileId: viewerId, postId, storagePath, mimeType: 'image/jpeg', size: 1024, pageCount: null })
     expect(mockedCreateStandardPost).toHaveBeenCalledWith(viewerId, {
       id: postId,
       category: 'technical_discussion',
       body: 'A useful maritime technical lesson.',
-      media: { storagePath, mimeType: 'image/jpeg', altText: 'Annotated engine-room diagram' },
+      media: [{
+        storagePath,
+        mimeType: 'image/jpeg',
+        altText: 'Annotated engine-room diagram',
+        position: 0,
+        fileName: `${objectId}.jpg`,
+        pageCount: null,
+      }],
       mentionProfileIds: [],
     })
     expect(mockedUploadFeedImage).not.toHaveBeenCalled()
-    expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', { postId, hasMedia: true })
+    expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', { postId, hasMedia: true, mediaCount: 1 })
     infoSpy.mockRestore()
   })
 
