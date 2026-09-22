@@ -1,6 +1,7 @@
 'use client'
 
 import { useActionState, useMemo, useState } from 'react'
+import { Building2, Check, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { completeActivation, type ProfileActionState } from '../actions'
@@ -41,17 +42,32 @@ function IdentityRootButton({
 }) {
   const description = root === 'professional'
     ? 'Build your individual maritime identity around the work you actually do.'
-    : 'Represent a maritime organisation with its exact industry role.'
+    : 'Represent a maritime company, institute, or service provider with the right industry role.'
+  const Icon = root === 'professional' ? UserRound : Building2
 
   return (
     <button
       type="button"
       onClick={() => onSelect(root)}
       aria-pressed={selected}
-      className={`rounded-2xl border p-5 text-left transition ${selected ? 'border-ocean-700 bg-ocean-50 shadow-sm' : 'border-mist-100 bg-white hover:border-ocean-300'}`}
+      className={`group relative rounded-2xl border p-5 text-left transition-all duration-200 sm:p-6 ${
+        selected
+          ? 'border-ocean-600 bg-ocean-50 shadow-[0_12px_30px_rgba(15,113,151,0.10)] ring-1 ring-ocean-200'
+          : 'border-mist-100 bg-white hover:-translate-y-0.5 hover:border-ocean-300 hover:shadow-md'
+      }`}
     >
-      <span className="block text-lg font-semibold text-navy-950">{rootLabel(root)}</span>
-      <span className="mt-1 block text-sm leading-6 text-muted">{description}</span>
+      <span className={`mb-4 grid size-11 place-items-center rounded-xl transition ${
+        selected ? 'bg-ocean-700 text-white' : 'bg-mist-50 text-ocean-700 group-hover:bg-ocean-50'
+      }`}>
+        <Icon aria-hidden="true" className="size-5" />
+      </span>
+      <span className="block pr-10 text-lg font-semibold text-navy-950">{rootLabel(root)}</span>
+      <span className="mt-1.5 block text-sm leading-6 text-muted">{description}</span>
+      {selected ? (
+        <span className="absolute right-4 top-4 grid size-7 place-items-center rounded-full bg-ocean-700 text-white" aria-hidden="true">
+          <Check className="size-4" />
+        </span>
+      ) : null}
     </button>
   )
 }
@@ -156,7 +172,7 @@ function OnboardingFields({
     <>
       <fieldset>
         <legend className="text-xl font-semibold tracking-tight text-navy-950">I’m joining as</legend>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">Start with one clear identity. You can add more professional capacities without turning onboarding into a CV form.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">Choose the identity that best represents how you want to participate on Sea N Shore. You can expand it later.</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <IdentityRootButton root="professional" selected={root === 'professional'} onSelect={chooseRoot} />
           <IdentityRootButton root="organisation" selected={root === 'organisation'} onSelect={chooseRoot} />
@@ -324,7 +340,7 @@ export function OnboardingForm({ initialFullName }: { initialFullName: string })
 
       {state.error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{state.error}</p> : null}
       <div className="flex flex-col gap-3 border-t border-mist-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <p className="max-w-xl text-sm leading-6 text-muted">Join first. Build the deeper professional record at your own pace.</p>
+        <p className="max-w-xl text-sm leading-6 text-muted">Choose one to get started. You can add more profile depth as your maritime career evolves.</p>
         <Button type="submit" disabled={pending || !usernameReady} className="w-full sm:w-auto">
           {pending ? 'Saving your profile…' : 'Complete profile'}
         </Button>
