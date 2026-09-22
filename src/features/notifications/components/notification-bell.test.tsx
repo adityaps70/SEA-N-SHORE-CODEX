@@ -51,6 +51,22 @@ describe('NotificationBell', () => {
     expect(read).not.toHaveClass('border-l-4')
   })
 
+  it('closes the notification popover when the user clicks elsewhere or presses Escape', () => {
+    render(<NotificationBell recent={[notification]} unreadCount={1} />)
+    const trigger = screen.getByRole('button', { name: 'Notifications' })
+
+    fireEvent.click(trigger)
+    expect(screen.getByRole('region', { name: 'Notifications panel' })).toBeVisible()
+
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('region', { name: 'Notifications panel' })).not.toBeInTheDocument()
+
+    fireEvent.click(trigger)
+    expect(screen.getByRole('region', { name: 'Notifications panel' })).toBeVisible()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('region', { name: 'Notifications panel' })).not.toBeInTheDocument()
+  })
+
   it('renders a useful zero state with no unread badge', () => {
     render(<NotificationBell recent={[]} unreadCount={0} />)
     expect(screen.queryByText('9+')).not.toBeInTheDocument()
