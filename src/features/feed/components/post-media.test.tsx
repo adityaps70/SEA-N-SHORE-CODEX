@@ -73,19 +73,21 @@ describe('PostMedia', () => {
     expect(screen.getByRole('button', { name: 'View all 6 photos' })).toBeInTheDocument()
   })
 
-  it('renders a PDF as a paged document carousel with previous and next controls', () => {
+  it('renders document pages as a clean LinkedIn-style carousel without PDF chrome', () => {
     render(<PostMedia media={pdfMedia} authorName="Member A" />)
 
-    expect(screen.getByText('SIRE-2-readiness-guide.pdf')).toBeInTheDocument()
+    expect(screen.queryByText('SIRE-2-readiness-guide.pdf')).not.toBeInTheDocument()
+    expect(screen.queryByText(/PDF/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /open pdf/i })).not.toBeInTheDocument()
     expect(screen.getByText('1 / 12')).toBeInTheDocument()
-    const frame = screen.getByTitle('SIRE-2-readiness-guide.pdf page 1')
+    const frame = screen.getByTitle('Document page 1 of 12')
     expect(frame).toHaveAttribute('src', expect.stringContaining('#page=1'))
-    expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Previous slide' })).toBeDisabled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next slide' }))
 
     expect(screen.getByText('2 / 12')).toBeInTheDocument()
-    expect(screen.getByTitle('SIRE-2-readiness-guide.pdf page 2')).toHaveAttribute('src', expect.stringContaining('#page=2'))
+    expect(screen.getByTitle('Document page 2 of 12')).toHaveAttribute('src', expect.stringContaining('#page=2'))
   })
 
   it('uses author-aware fallback labels when media has no description', () => {
