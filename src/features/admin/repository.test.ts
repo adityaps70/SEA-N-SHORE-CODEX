@@ -70,7 +70,20 @@ describe('platform admin organization repository', () => {
       query: async (text, values) => {
         seen.push({ text, values })
         if (text.includes('public.user_roles')) return [{ allowed: true }]
-        return [{ pending_organizations: '5', changes_requested: '2', approved_organizations: '19', suspended_organizations: '1', pending_access_requests: '7' }]
+        return [{
+          pending_organizations: '5',
+          changes_requested: '2',
+          approved_organizations: '19',
+          suspended_organizations: '1',
+          pending_access_requests: '7',
+          open_reports: '11',
+          reviewing_reports: '3',
+          high_priority_reports: '4',
+          reports_last_24h: '6',
+          active_posts: '920',
+          published_jobs: '48',
+          published_events: '12',
+        }]
       },
     })
 
@@ -80,9 +93,20 @@ describe('platform admin organization repository', () => {
       approvedOrganizations: 19,
       suspendedOrganizations: 1,
       pendingAccessRequests: 7,
+      openReports: 11,
+      reviewingReports: 3,
+      highPriorityReports: 4,
+      reportsLast24h: 6,
+      activePosts: 920,
+      publishedJobs: 48,
+      publishedEvents: 12,
     })
     expect(seen[1]?.text).toContain('public.organization_applications')
     expect(seen[1]?.text).toContain('public.company_access_requests')
+    expect(seen[1]?.text).toContain('public.content_reports')
+    expect(seen[1]?.text).toContain('public.posts')
+    expect(seen[1]?.text).toContain('public.jobs')
+    expect(seen[1]?.text).toContain('public.events')
   })
 
   it('lists a bounded organization queue oldest-first with applicant and employer context', async () => {
