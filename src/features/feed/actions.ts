@@ -45,6 +45,10 @@ export type PostMediaUploadActionResult =
   | { ok: true; upload: Awaited<ReturnType<typeof createPendingPostMediaUpload>> }
   | { ok: false; error: string }
 
+export type PostMediaUploadsActionResult =
+  | { ok: true; uploads: Awaited<ReturnType<typeof createPendingPostMediaUpload>>[] }
+  | { ok: false; error: string }
+
 export type PostComposerState = {
   ok?: boolean
   error?: string
@@ -74,7 +78,17 @@ function safeErrorCode(error: unknown): string {
   return /^[a-z][a-z0-9_]{0,79}$/.test(message) ? message : 'unknown_error'
 }
 
-function postMediaReferenceFromFormData(formData: FormData) {
+function postMediaReferencesFromFormData(formData: FormData) {
+  const manifest = formData.get('mediaManifest')
+  if (typeof manifest === 'string' && manifest.trim()) {
+    try {
+      const parsed = JSON.parse(manifest)
+      return Array.isArray(parsed) ? parsed : parsed ? [parsed] : undefined
+    } catch {
+      return [{ invalidManifest: true }]
+    }
+  }
+
   const postId = formData.get('mediaPostId')
   const storagePath = formData.get('mediaStoragePath')
   const mimeType = formData.get('mediaMimeType')
@@ -84,7 +98,8 @@ function postMediaReferenceFromFormData(formData: FormData) {
     typeof value === 'string' && value.trim().length > 0
   ))
   if (!hasReference) return undefined
-  return { postId, storagePath, mimeType, size, altText }
+  const fileName = typeof storagePath === 'string' ? storagePath.split('/').at(-1) ?? 'media' : 'media'
+  return [{ postId, storagePath, mimeType, size, altText, position: 0, fileName, pageCount: null }]
 }
 
 function mentionIds(formData: FormData) {
@@ -98,7 +113,7 @@ function postInputFromFormData(formData: FormData) {
     body: formData.get('body'),
     mode,
     pollOptions: formData.getAll('pollOption'),
-    media: postMediaReferenceFromFormData(formData),
+    media: postMediaReferencesFromFormData(formData),
     mentionProfileIds: mentionIds(formData),
   }
 }
@@ -127,23 +142,81 @@ async function hydrateComment(postId: string, commentId: string) {
   return post?.comments.find((comment) => comment.id === commentId) ?? null
 }
 
-export async function createPostMediaUpload(input: { mimeType: string; size: number }): Promise<PostMediaUploadActionResult> {
-  const metadata = validatePostMediaMetadata(input)
-  if (!metadata.ok) return { ok: false, error: metadata.error }
+const postMediaUploadBatchSchema = z.object({
+  postId: z.string().uuid().optional(),
+  files: z.array(z.object({
+    mimeType: z.string().min(1).max(100),
+    size: z.number().int().positive(),
+    fileName: z.string().trim().min(1).max(255),
+    pageCount: z.number().int().min(1).max(300).nullable().optional(),
+  })).min(1).max(20),
+})
+
+export async function createPostMediaUploads(input: {
+  postId?: string
+  files: Array<{ mimeType: string; size: number; fileName: string; pageCount?: number | null }>
+}): Promise<PostMediaUploadsActionResult> {
+  const parsed = postMediaUploadBatchSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Choose up to 20 supported media files.' }
+
+  const validated = parsed.data.files.map((file) => ({
+    file,
+    metadata: validatePostMediaMetadata({ mimeType: file.mimeType, size: file.size }),
+  }))
+  const invalid = validated.find((entry) => !entry.metadata.ok)
+  if (invalid && !invalid.metadata.ok) return { ok: false, error: invalid.metadata.error }
+
+  if (parsed.data.files.length > 1 && parsed.data.files.some((file) => !file.mimeType.startsWith('image/'))) {
+    return { ok: false, error: 'Choose up to 20 images, or attach one video or one PDF document.' }
+  }
+
+  const pdf = parsed.data.files.find((file) => file.mimeType === 'application/pdf')
+  if (pdf && (pdf.pageCount == null || pdf.pageCount < 1 || pdf.pageCount > 300)) {
+    return { ok: false, error: 'PDF documents can have no more than 300 pages.' }
+  }
+
   const user = await requireAwsUser()
+  const postId = parsed.data.postId ?? crypto.randomUUID()
   try {
-    const upload = await createPendingPostMediaUpload({ profileId: user.id, mimeType: metadata.mimeType, size: input.size })
-    return { ok: true, upload }
+    const uploads = await Promise.all(validated.map(({ file, metadata }) => {
+      if (!metadata.ok) throw new Error('feed_media_policy_invalid')
+      return createPendingPostMediaUpload({
+        profileId: user.id,
+        postId,
+        mimeType: metadata.mimeType,
+        size: file.size,
+      })
+    }))
+    return { ok: true, uploads }
   } catch (error) {
     console.error('[feed_media_presign_failed]', { errorCode: safeErrorCode(error) })
     return { ok: false, error: 'We could not prepare your media upload. Please try again.' }
   }
 }
 
+export async function createPostMediaUpload(input: {
+  mimeType: string
+  size: number
+  fileName?: string
+  pageCount?: number | null
+}): Promise<PostMediaUploadActionResult> {
+  const result = await createPostMediaUploads({
+    files: [{
+      mimeType: input.mimeType,
+      size: input.size,
+      fileName: input.fileName?.trim() || 'media',
+      pageCount: input.pageCount ?? null,
+    }],
+  })
+  if (!result.ok) return result
+  const upload = result.uploads[0]
+  return upload ? { ok: true, upload } : { ok: false, error: 'We could not prepare your media upload. Please try again.' }
+}
+
 const discardPendingPostMediaSchema = z.object({
   postId: z.string().uuid(),
   storagePath: z.string().min(1).max(500),
-  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm']),
+  mimeType: z.enum(['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'application/pdf']),
 })
 
 export async function discardPendingPostMedia(input: { postId: string; storagePath: string; mimeType: string }): Promise<FeedActionResult> {
@@ -183,10 +256,20 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
       console.error('[feed_publish_failed]', { stage: 'aurora_create', hasMedia: false, errorCode: safeErrorCode(error) })
       return { error: 'We could not publish your poll. Your entries are still here.', values: safePostValues(formData) }
     }
-  } else if (data.media) {
-    const postId = data.media.postId
+  } else if (data.media?.length) {
+    const postId = data.media[0]?.postId
+    if (!postId) return { error: 'We could not verify your uploaded media. Please upload it again.', values: safePostValues(formData) }
     try {
-      await verifyPendingPostMedia({ profileId: user.id, postId, storagePath: data.media.storagePath, mimeType: data.media.mimeType, size: data.media.size })
+      for (const media of data.media) {
+        await verifyPendingPostMedia({
+          profileId: user.id,
+          postId,
+          storagePath: media.storagePath,
+          mimeType: media.mimeType,
+          size: media.size,
+          pageCount: media.pageCount,
+        })
+      }
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'media_verify', postId, hasMedia: true, errorCode: safeErrorCode(error) })
       return { error: 'We could not verify your uploaded media. Please upload it again.', values: safePostValues(formData) }
@@ -196,13 +279,20 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         id: postId,
         category: data.category,
         body: data.body,
-        media: { storagePath: data.media.storagePath, mimeType: data.media.mimeType, altText: data.media.altText || null },
+        media: data.media.map((media) => ({
+          storagePath: media.storagePath,
+          mimeType: media.mimeType,
+          altText: media.altText || null,
+          position: media.position,
+          fileName: media.fileName,
+          pageCount: media.pageCount,
+        })),
         mentionProfileIds: data.mentionProfileIds,
       })
-      console.info('[feed_publish_success]', { postId, hasMedia: true })
+      console.info('[feed_publish_success]', { postId, hasMedia: true, mediaCount: data.media.length })
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', postId, hasMedia: true, errorCode: safeErrorCode(error) })
-      try { await removeFeedImage(data.media.storagePath) } catch { /* compensating cleanup */ }
+      await Promise.allSettled(data.media.map((media) => removeFeedImage(media.storagePath)))
       return { error: 'We could not attach your media, so the post was not published.', values: safePostValues(formData) }
     }
   } else {
