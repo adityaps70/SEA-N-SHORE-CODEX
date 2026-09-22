@@ -263,6 +263,19 @@ describe('createCognitoApi', () => {
     ])
   })
 
+  it('deletes the authenticated Cognito user with the freshly re-authenticated access token', async () => {
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      expect(new Headers(init?.headers).get('x-amz-target')).toBe(
+        'AWSCognitoIdentityProviderService.DeleteUser',
+      )
+      expect(requestBody(init)).toEqual({ AccessToken: 'fresh-access-token' })
+      return jsonResponse({})
+    })
+
+    const api = createCognitoApi(config, transport)
+    await expect(api.deleteUser('fresh-access-token')).resolves.toBeUndefined()
+  })
+
   it('globally signs out an access token', async () => {
     const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).get('x-amz-target')).toBe(
