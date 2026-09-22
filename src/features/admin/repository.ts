@@ -440,31 +440,36 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     await requirePlatformAdministrator(queryRows, userId)
     const values: unknown[] = []
     const where: string[] = []
-    if (filter.targetType !== 'all') {
-      values.push(filter.targetType)
-      where.push('ae.target_type = 
-    values.push(Math.min(Math.max(Math.trunc(filter.limit), 1), 100))
-    const limitParameter = values.length
-    const whereSql = where.length ? `where ${where.join(' and ')}` : ''
+    const bind = (value: unknown) => {
+      values.push(value)
+      return String.fromCharCode(36) + values.length
+    }
 
-    const rows = await queryRows(
-      `select
-         ae.id,
-         ae.actor_id,
-         actor.full_name as actor_name,
-         actor.slug as actor_slug,
-         ae.action,
-         ae.target_type,
-         ae.target_id,
-         ae.metadata,
-         ae.created_at
-       from public.audit_events ae
-       left join public.profiles actor on actor.id = ae.actor_id
-       ${whereSql}
-       order by ae.created_at desc, ae.id desc
-       limit ${limitParameter}`,
-      values,
-    ) as AuditEventRow[]
+    if (filter.targetType !== 'all') {
+      where.push('ae.target_type = ' + bind(filter.targetType))
+    }
+    const limitParameter = bind(Math.min(Math.max(Math.trunc(filter.limit), 1), 100))
+    const whereSql = where.length ? 'where ' + where.join(' and ') : ''
+
+    const sql = [
+      'select',
+      '  ae.id,',
+      '  ae.actor_id,',
+      '  actor.full_name as actor_name,',
+      '  actor.slug as actor_slug,',
+      '  ae.action,',
+      '  ae.target_type,',
+      '  ae.target_id,',
+      '  ae.metadata,',
+      '  ae.created_at',
+      'from public.audit_events ae',
+      'left join public.profiles actor on actor.id = ae.actor_id',
+      whereSql,
+      'order by ae.created_at desc, ae.id desc',
+      'limit ' + limitParameter,
+    ].filter(Boolean).join('\n')
+
+    const rows = await queryRows(sql, values) as AuditEventRow[]
 
     return rows.map((row) => ({
       id: row.id,
