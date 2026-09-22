@@ -65,8 +65,8 @@ describe('createPostInputSchema', () => {
     expect(parsed.media).toEqual([{ ...mediaReference, altText: 'Engine room walkthrough' }])
   })
 
-  it('accepts up to 20 ordered image references that share one pending post id', () => {
-    const media = Array.from({ length: 20 }, (_, position) => ({
+  it('accepts up to 10 ordered image references that share one pending post id', () => {
+    const media = Array.from({ length: 10 }, (_, position) => ({
       ...mediaReference,
       storagePath: `11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/cccccccc-cccc-4ccc-8ccc-${String(position).padStart(12, '0')}.jpg`,
       mimeType: 'image/jpeg',
@@ -80,12 +80,12 @@ describe('createPostInputSchema', () => {
       media,
     })
 
-    expect(parsed.media).toHaveLength(20)
-    expect(parsed.media?.map((item) => item.position)).toEqual(Array.from({ length: 20 }, (_, index) => index))
+    expect(parsed.media).toHaveLength(10)
+    expect(parsed.media?.map((item) => item.position)).toEqual(Array.from({ length: 10 }, (_, index) => index))
   })
 
-  it('rejects more than 20 photos and rejects mixed image/video/document batches', () => {
-    const images = Array.from({ length: 21 }, (_, position) => ({
+  it('rejects more than 10 photos and rejects mixed image/video/document batches', () => {
+    const images = Array.from({ length: 11 }, (_, position) => ({
       ...mediaReference,
       storagePath: `11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/dddddddd-dddd-4ddd-8ddd-${String(position).padStart(12, '0')}.jpg`,
       mimeType: 'image/jpeg',
@@ -98,7 +98,7 @@ describe('createPostInputSchema', () => {
       body: 'Too many photos.',
       mode: 'standard',
       media: images,
-    })).toThrow(/20/)
+    })).toThrow(/10/)
 
     expect(() => createPostInputSchema.parse({
       category: 'technical_discussion',
@@ -133,8 +133,8 @@ describe('createPostInputSchema', () => {
       category: 'learning',
       body: 'Oversized document.',
       mode: 'standard',
-      media: [{ ...document, pageCount: 301 }],
-    })).toThrow(/300/)
+      media: [{ ...document, pageCount: 51 }],
+    })).toThrow(/50/)
   })
 
   it('rejects a poll with fewer than two distinct options', () => {
