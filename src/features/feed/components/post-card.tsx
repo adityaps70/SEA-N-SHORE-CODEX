@@ -70,6 +70,7 @@ function RepostSourcePoll({ source }: { source: FeedRepostSource }) {
 }
 
 function RepostSourceCard({ source }: { source: FeedRepostSource }) {
+  const media = source.mediaItems?.length ? source.mediaItems : source.media ? [source.media] : []
   return (
     <section
       role="region"
@@ -99,7 +100,7 @@ function RepostSourceCard({ source }: { source: FeedRepostSource }) {
       <p className="mt-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink">
         <MentionText body={source.body} mentions={source.mentions} />
       </p>
-      {source.media?.signedUrl ? <PostMedia media={source.media} authorName={source.author.fullName} /> : null}
+      {media.some((item) => item.signedUrl) ? <PostMedia media={media} authorName={source.author.fullName} /> : null}
       <RepostSourcePoll source={source} />
       <Link href={`/posts/${source.id}`} className="mt-4 inline-flex text-sm font-semibold text-ocean-700 hover:text-ocean-800">
         View original post
@@ -174,6 +175,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
   if (deleted) return null
 
   const isRepost = post.postType === 'repost'
+  const postMedia = post.mediaItems?.length ? post.mediaItems : post.media ? [post.media] : []
 
   return (
     <Card className="overflow-visible border border-mist-100">
@@ -212,7 +214,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
           ) : (
             <>
               <p className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"><MentionText body={post.body} mentions={post.mentions} /></p>
-              {post.media?.signedUrl ? <PostMedia media={post.media} authorName={post.author.fullName} /> : null}
+              {postMedia.some((item) => item.signedUrl) ? <PostMedia media={postMedia} authorName={post.author.fullName} /> : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
             </>
           )}
