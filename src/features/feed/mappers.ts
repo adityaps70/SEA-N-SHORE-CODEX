@@ -53,6 +53,9 @@ type MediaRow = {
   storage_path: string
   mime_type: string
   alt_text: string | null
+  position?: number | null
+  file_name?: string | null
+  page_count?: number | null
 }
 
 type PollOptionRow = {
@@ -130,8 +133,19 @@ export function feedAuthorAvatarPath(row: AuthorRow | AuthorRow[] | null | undef
   return firstOrNull(row)?.avatar_path ?? null
 }
 
+function mediaRows(value: FeedPostRow['post_media']): MediaRow[] {
+  if (!value) return []
+  return (Array.isArray(value) ? value : [value])
+    .filter((item): item is MediaRow => Boolean(item?.storage_path))
+    .sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0))
+}
+
+export function feedPostMediaPaths(row: FeedPostRow) {
+  return mediaRows(row.post_media).map((media) => media.storage_path)
+}
+
 export function feedPostMediaPath(row: FeedPostRow) {
-  return firstOrNull(row.post_media)?.storage_path ?? null
+  return feedPostMediaPaths(row)[0] ?? null
 }
 
 function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, string>): FeedAuthor {
@@ -169,16 +183,20 @@ function mapComment(row: FeedCommentRow, signedUrls: Map<string, string>): FeedC
   }
 }
 
+function mapMediaItems(row: FeedPostRow, signedUrls: Map<string, string>) {
+  return mediaRows(row.post_media).map((media, index) => ({
+    storagePath: media.storage_path,
+    mimeType: media.mime_type,
+    altText: media.alt_text,
+    signedUrl: signedUrls.get(media.storage_path) ?? null,
+    position: Number(media.position ?? index),
+    fileName: media.file_name ?? null,
+    pageCount: media.page_count == null ? null : Number(media.page_count),
+  }))
+}
+
 function mapMedia(row: FeedPostRow, signedUrls: Map<string, string>) {
-  const media = firstOrNull(row.post_media)
-  return media
-    ? {
-        storagePath: media.storage_path,
-        mimeType: media.mime_type,
-        altText: media.alt_text,
-        signedUrl: signedUrls.get(media.storage_path) ?? null,
-      }
-    : null
+  return mapMediaItems(row, signedUrls)[0] ?? null
 }
 
 function mapPoll(row: FeedPostRow, viewer: FeedViewerState) {
@@ -210,6 +228,7 @@ function mapRepostSource(row: FeedPostRow | null, viewer: FeedViewerState, signe
     updatedAt: row.updated_at,
     author: mapAuthor(row.profiles, signedUrls),
     media: mapMedia(row, signedUrls),
+    mediaItems: mapMediaItems(row, signedUrls),
     poll: mapPoll(row, viewer),
     mentions: mapMentions(row.post_mentions),
   }
@@ -237,6 +256,7 @@ export function mapFeedPost(
     updatedAt: row.updated_at,
     author,
     media: mapMedia(row, signedUrls),
+    mediaItems: mapMediaItems(row, signedUrls),
     poll: mapPoll(row, viewer),
     repostOf: mapRepostSource(repostSource, viewer, signedUrls),
     reactionSummary,
