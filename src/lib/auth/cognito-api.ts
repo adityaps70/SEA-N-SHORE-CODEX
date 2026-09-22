@@ -269,6 +269,12 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
       })
     },
 
+    async deleteUser(accessToken: string): Promise<void> {
+      await request('DeleteUser', {
+        AccessToken: accessToken,
+      })
+    },
+
     async globalSignOut(accessToken: string): Promise<void> {
       await request('GlobalSignOut', {
         AccessToken: accessToken,
