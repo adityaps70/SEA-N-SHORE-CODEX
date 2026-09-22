@@ -70,8 +70,8 @@ export function ProfileHeader({
   const labelClass = 'block text-sm font-semibold text-navy-950'
 
   return (
-    <section className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
-      <div className="relative h-36 overflow-hidden bg-[linear-gradient(115deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))] sm:h-48">
+    <section data-testid="profile-header-shell" className="overflow-visible rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
+      <div data-testid="profile-header-cover" className="relative h-36 overflow-hidden rounded-t-[1.75rem] bg-[linear-gradient(115deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))] sm:h-48">
         {profile.coverUrl ? (
           <img
             src={profile.coverUrl}
