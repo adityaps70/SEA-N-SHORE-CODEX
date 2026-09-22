@@ -1,5 +1,8 @@
 export const POST_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+export const POST_IMAGE_MAX_COUNT = 20
 export const POST_VIDEO_MAX_BYTES = 200 * 1024 * 1024
+export const POST_DOCUMENT_MAX_BYTES = 100 * 1024 * 1024
+export const POST_DOCUMENT_MAX_PAGES = 300
 
 export const POST_MEDIA_MIME_EXTENSION = {
   'image/jpeg': 'jpg',
@@ -7,6 +10,7 @@ export const POST_MEDIA_MIME_EXTENSION = {
   'image/webp': 'webp',
   'video/mp4': 'mp4',
   'video/webm': 'webm',
+  'application/pdf': 'pdf',
 } as const
 
 export type PostMediaMime = keyof typeof POST_MEDIA_MIME_EXTENSION
@@ -34,10 +38,14 @@ export function validatePostMediaMetadata(input: {
   }
 
   if (!isPostMediaMime(input.mimeType)) {
-    return { ok: false, error: 'Choose a JPEG, PNG, WebP, MP4, or WebM file.' }
+    return { ok: false, error: 'Choose a JPEG, PNG, WebP, MP4, WebM, or PDF file.' }
   }
 
-  if (isVideoPostMediaMime(input.mimeType)) {
+  if (input.mimeType === 'application/pdf') {
+    if (input.size > POST_DOCUMENT_MAX_BYTES) {
+      return { ok: false, error: 'PDF documents must be 100 MB or smaller.' }
+    }
+  } else if (isVideoPostMediaMime(input.mimeType)) {
     if (input.size > POST_VIDEO_MAX_BYTES) {
       return { ok: false, error: 'Videos must be 200 MB or smaller.' }
     }
