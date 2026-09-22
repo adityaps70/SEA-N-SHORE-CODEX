@@ -82,7 +82,7 @@ describe('platform moderation repository', () => {
     })).resolves.toBe(true)
 
     expect(seen.some((entry) => entry.text.includes('update public.posts') && entry.text.includes('deleted_at'))).toBe(true)
-    expect(seen.some((entry) => entry.text.includes('update public.content_reports') && entry.text.includes("status = 'resolved'"))).toBe(true)
+    expect(seen.some((entry) => entry.text.includes('update public.content_reports') && entry.text.includes('status = $3') && entry.values?.includes('resolved'))).toBe(true)
     expect(seen.some((entry) => entry.text.includes('insert into public.moderation_actions'))).toBe(true)
     expect(seen.find((entry) => entry.text.includes('insert into public.audit_events'))?.values).toContain('moderation.content_removed')
   })
