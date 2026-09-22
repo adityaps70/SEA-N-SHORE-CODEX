@@ -82,11 +82,14 @@ describe('feed service authorization', () => {
       id: mediaPostId,
       category: 'learning',
       body: 'Mooring station setup.',
-      media: {
+      media: [{
         storagePath: `${viewerId}/${mediaPostId}/image.webp`,
         mimeType: 'image/webp',
         altText: 'Mooring station layout',
-      },
+        position: 0,
+        fileName: 'image.webp',
+        pageCount: null,
+      }],
     })).resolves.toBe(mediaPostId)
 
     expect(repo.insertStandardPost).toHaveBeenCalledWith({
@@ -99,6 +102,9 @@ describe('feed service authorization', () => {
       storagePath: `${viewerId}/${mediaPostId}/image.webp`,
       mimeType: 'image/webp',
       altText: 'Mooring station layout',
+      position: 0,
+      fileName: 'image.webp',
+      pageCount: null,
     })
   })
 
