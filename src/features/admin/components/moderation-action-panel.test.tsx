@@ -49,7 +49,7 @@ describe('ModerationActionPanel', () => {
     }))
 
     render(<ModerationActionPanel targetType="post" targetId={targetId} targetState="visible" />)
-    fireEvent.change(screen.getByLabelText(/moderator note/i), { target: { value: 'Reviewed against community rules.' } })
+    fireEvent.change(screen.getByPlaceholderText('Record why this decision was made.'), { target: { value: 'Reviewed against community rules.' } })
     fireEvent.click(screen.getByRole('button', { name: /resolve/i }))
 
     expect(screen.getByRole('status')).toHaveTextContent('Saving moderation action…')
@@ -80,7 +80,7 @@ describe('ModerationActionPanel', () => {
     }, false))
 
     render(<ModerationActionPanel targetType="job" targetId={targetId} targetState="published" />)
-    fireEvent.change(screen.getByLabelText(/moderator note/i), { target: { value: 'Reviewed.' } })
+    fireEvent.change(screen.getByPlaceholderText('Record why this decision was made.'), { target: { value: 'Reviewed.' } })
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
@@ -93,7 +93,7 @@ describe('ModerationActionPanel', () => {
     mocks.fetch.mockRejectedValueOnce(new Error('network failure'))
 
     render(<ModerationActionPanel targetType="job" targetId={targetId} targetState="published" />)
-    fireEvent.change(screen.getByLabelText(/moderator note/i), { target: { value: 'Reviewed.' } })
+    fireEvent.change(screen.getByPlaceholderText('Record why this decision was made.'), { target: { value: 'Reviewed.' } })
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
