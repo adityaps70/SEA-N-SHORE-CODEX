@@ -124,6 +124,9 @@ export async function moderateContent(input: {
     if (code === 'moderation_target_not_found') {
       return { ok: false, error: 'The reported content is no longer available.' }
     }
+    if (code === 'moderation_restore_forbidden') {
+      return { ok: false, error: 'This content was not removed by moderation, so it cannot be restored from this console.' }
+    }
     return { ok: false, error: 'The moderation action could not be saved. Please try again.' }
   }
 
