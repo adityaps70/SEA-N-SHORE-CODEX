@@ -2,7 +2,6 @@ import { notFound } from 'next/navigation'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { PostCard } from '@/features/feed/components/post-card'
 import { getPublicPostsByAuthor } from '@/features/feed/queries'
-import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-know'
 import { RelationshipControls } from '@/features/network/components/relationship-controls'
 import { getPeopleYouMayKnow, getRelationshipState } from '@/features/network/queries'
@@ -41,9 +40,6 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           actions={relationship ? (
             <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
               <RelationshipControls key={relationshipKey} profileId={profile.id} initialRelationship={relationship} />
-              {relationship.connection.kind === 'connected' ? (
-                <StartConversationButton targetProfileId={profile.id} />
-              ) : null}
             </div>
           ) : undefined}
         />
