@@ -59,6 +59,40 @@ describe('mapFeedPost', () => {
     expect(mapped.poll?.options.map((option) => option.id)).toEqual(['option-a', 'option-b'])
   })
 
+  it('maps ordered rich-media collections and preserves document metadata', () => {
+    const mapped = mapFeedPost(row({
+      post_type: 'standard',
+      post_polls: null,
+      post_media: [
+        {
+          storage_path: '111/post/second.jpg',
+          mime_type: 'image/jpeg',
+          alt_text: 'Second',
+          position: 1,
+          file_name: 'second.jpg',
+          page_count: null,
+        },
+        {
+          storage_path: '111/post/first.jpg',
+          mime_type: 'image/jpeg',
+          alt_text: 'First',
+          position: 0,
+          file_name: 'first.jpg',
+          page_count: null,
+        },
+      ],
+    }), viewer, new Map([
+      ['111/post/first.jpg', 'https://example.test/first'],
+      ['111/post/second.jpg', 'https://example.test/second'],
+    ]))
+
+    expect(mapped.mediaItems).toEqual([
+      expect.objectContaining({ storagePath: '111/post/first.jpg', position: 0, fileName: 'first.jpg', signedUrl: 'https://example.test/first' }),
+      expect.objectContaining({ storagePath: '111/post/second.jpg', position: 1, fileName: 'second.jpg', signedUrl: 'https://example.test/second' }),
+    ])
+    expect(mapped.media).toEqual(mapped.mediaItems?.[0])
+  })
+
   it('maps comments with real authors', () => {
     const mapped = mapFeedPost(row({
       post_type: 'standard',
