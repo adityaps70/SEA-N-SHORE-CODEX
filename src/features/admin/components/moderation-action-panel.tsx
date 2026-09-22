@@ -3,7 +3,6 @@
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { CheckCircle2, Eye, RotateCcw, ShieldX, XCircle } from 'lucide-react'
-import { moderateContent } from '../actions'
 import type { ModerationAction, ModerationTargetType } from '@/features/moderation/types'
 
 export function ModerationActionPanel({
@@ -38,10 +37,19 @@ export function ModerationActionPanel({
 
     startTransition(async () => {
       try {
-        const result = await moderateContent({ targetType, targetId, action, note })
-        if (!result.ok) {
+        const response = await fetch('/api/admin/moderation', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ targetType, targetId, action, note }),
+        })
+        const result = await response.json() as { ok: boolean; error?: string }
+
+        if (!response.ok || !result.ok) {
           setIsError(true)
-          setMessage(result.error)
+          setMessage(result.error ?? 'The moderation action could not be saved. Please try again.')
           return
         }
 
