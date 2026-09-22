@@ -87,6 +87,24 @@ describe('platform moderation repository', () => {
     expect(seen.find((entry) => entry.text.includes('insert into public.audit_events'))?.values).toContain('moderation.content_removed')
   })
 
+  it('does not restore content that was not removed by moderation', async () => {
+    const query = async (text: string) => {
+      if (text.includes('public.user_roles')) return [{ allowed: true }]
+      if (text.includes('from public.content_reports') && text.includes('for update')) return [{ id: 'report-1', status: 'resolved' }]
+      if (text.includes('from public.posts') && text.includes('for update')) return [{ state: 'removed' }]
+      if (text.includes('from public.moderation_actions') && text.includes('order by created_at desc')) return []
+      return []
+    }
+    const repository = createAdminRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.moderateContent(adminId, {
+      targetType: 'post',
+      targetId,
+      action: 'restore',
+      note: 'Restore requested.',
+    })).rejects.toThrow('moderation_restore_forbidden')
+  })
+
   it('restores a job to published status and records the action', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
@@ -94,6 +112,7 @@ describe('platform moderation repository', () => {
       if (text.includes('public.user_roles')) return [{ allowed: true }]
       if (text.includes('from public.content_reports') && text.includes('for update')) return [{ id: 'report-1', status: 'resolved' }]
       if (text.includes('from public.jobs') && text.includes('for update')) return [{ state: 'closed' }]
+      if (text.includes('from public.moderation_actions') && text.includes('order by created_at desc')) return [{ action: 'remove' }]
       return []
     }
     const repository = createAdminRepository({ query, transaction: async (work) => work(query) })
