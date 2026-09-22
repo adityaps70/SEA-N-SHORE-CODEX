@@ -29,15 +29,7 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
-    return [
-      { source: '/(.*)', headers: securityHeaders },
-      {
-        source: '/api/feed-media/:path*',
-        headers: [
-          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
-        ],
-      },
-    ]
+    return [{ source: '/(.*)', headers: securityHeaders }]
   },
 }
 
