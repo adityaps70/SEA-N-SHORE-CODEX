@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Ellipsis } from 'lucide-react'
+import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import { useRouter } from 'next/navigation'
 import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import {
@@ -38,6 +39,8 @@ export function RelationshipControls({
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
   const [awaitingRefresh, setAwaitingRefresh] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useDismissibleLayer<HTMLDivElement>(menuOpen, () => setMenuOpen(false))
 
   if (lastCanonicalRelationshipKey !== canonicalRelationshipKey) {
     setLastCanonicalRelationshipKey(canonicalRelationshipKey)
@@ -156,43 +159,90 @@ export function RelationshipControls({
           <StartConversationButton targetProfileId={profileId} className={compact ? 'min-h-9 px-3 text-xs' : ''} />
         ) : null}
 
-        <details className="relative">
-          <summary
+        <div ref={menuRef} className="relative">
+          <button
+            type="button"
+            aria-label={menuIconOnly ? 'More actions' : 'More'}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            onClick={() => setMenuOpen((value) => !value)}
             className={menuIconOnly
-              ? 'grid size-9 cursor-pointer list-none place-items-center rounded-full text-navy-900 transition hover:bg-mist-50'
-              : `${buttonClass} inline-flex cursor-pointer list-none items-center`}
+              ? 'grid size-9 place-items-center rounded-full text-navy-900 transition hover:bg-mist-50'
+              : `${buttonClass} inline-flex items-center`}
           >
-            {menuIconOnly ? (
-              <>
-                <span className="sr-only">More actions</span>
-                <Ellipsis aria-hidden="true" className="size-5" />
-              </>
-            ) : 'More'}
-          </summary>
-          <div className="absolute right-0 z-20 mt-1 min-w-44 rounded-xl border border-mist-100 bg-white p-1 shadow-lg">
-            <button type="button" disabled={pending} onClick={toggleFollow} className={menuItemClass}>
-              {relationship.following ? 'Following' : 'Follow'}
-            </button>
-            {relationship.connection.kind === 'outgoing_pending' ? (
-              <button type="button" disabled={pending || awaitingRefresh} onClick={() => respond('cancel')} className={menuItemClass}>
-                Cancel request
+            {menuIconOnly ? <Ellipsis aria-hidden="true" className="size-5" /> : 'More'}
+          </button>
+          {menuOpen ? (
+            <div role="menu" aria-label="Relationship actions" className="absolute right-0 z-[70] mt-2 min-w-48 rounded-xl border border-mist-100 bg-white p-1.5 shadow-xl">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={pending}
+                onClick={() => {
+                  setMenuOpen(false)
+                  toggleFollow()
+                }}
+                className={menuItemClass}
+              >
+                {relationship.following ? 'Following' : 'Follow'}
               </button>
-            ) : null}
-            {relationship.connection.kind === 'incoming_pending' ? (
-              <button type="button" disabled={pending || awaitingRefresh} onClick={() => respond('decline')} className={menuItemClass}>
-                Decline
+              {relationship.connection.kind === 'outgoing_pending' ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={pending || awaitingRefresh}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    respond('cancel')
+                  }}
+                  className={menuItemClass}
+                >
+                  Cancel request
+                </button>
+              ) : null}
+              {relationship.connection.kind === 'incoming_pending' ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={pending || awaitingRefresh}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    respond('decline')
+                  }}
+                  className={menuItemClass}
+                >
+                  Decline
+                </button>
+              ) : null}
+              {relationship.connection.kind === 'connected' ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={pending || awaitingRefresh}
+                  onClick={() => {
+                    setMenuOpen(false)
+                    respond('remove')
+                  }}
+                  className={menuItemClass}
+                >
+                  Remove connection
+                </button>
+              ) : null}
+              <button
+                type="button"
+                role="menuitem"
+                disabled={pending}
+                onClick={() => {
+                  setMenuOpen(false)
+                  block()
+                }}
+                className="min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                Block
               </button>
-            ) : null}
-            {relationship.connection.kind === 'connected' ? (
-              <button type="button" disabled={pending || awaitingRefresh} onClick={() => respond('remove')} className={menuItemClass}>
-                Remove connection
-              </button>
-            ) : null}
-            <button type="button" disabled={pending} onClick={block} className="min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">
-              Block
-            </button>
-          </div>
-        </details>
+            </div>
+          ) : null}
+        </div>
       </div>
       {error ? <p role="alert" className="text-xs font-medium text-red-700">{error}</p> : null}
     </div>
