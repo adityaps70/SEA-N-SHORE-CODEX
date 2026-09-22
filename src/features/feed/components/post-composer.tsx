@@ -1,21 +1,24 @@
 'use client'
 
 import { useActionState, useEffect, useId, useRef, useState } from 'react'
-import { BarChart3, ImagePlus, MessageCircleQuestion, PencilLine, X } from 'lucide-react'
+import { BarChart3, FileText, ImagePlus, MessageCircleQuestion, PencilLine, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import type { OwnProfile } from '@/features/profiles/types'
 import {
   createPost,
-  createPostMediaUpload,
+  createPostMediaUploads,
   discardPendingPostMedia,
   type PostComposerState,
 } from '../actions'
 import {
+  POST_DOCUMENT_MAX_PAGES,
+  POST_IMAGE_MAX_COUNT,
   isVideoPostMediaMime,
   validatePostMediaMetadata,
   type PostMediaMime,
 } from '../media-policy'
+import { readPdfPageCount } from '../pdf-page-count'
 import type { PostCategory } from '../types'
 import { EmojiPicker } from './emoji-picker'
 import { MentionInput, type SelectedMention } from './mention-input'
@@ -23,6 +26,7 @@ import { uploadPostMediaFile } from './upload-post-media'
 
 const initialState: PostComposerState = {}
 const POST_MEDIA_ACCEPT = 'image/jpeg,image/png,image/webp,video/mp4,video/webm'
+const POST_DOCUMENT_ACCEPT = 'application/pdf'
 const POST_CHARACTER_LIMIT = 5000
 
 type ComposerMode = 'update' | 'question' | 'poll'
@@ -42,6 +46,7 @@ type ComposerMedia = {
   storagePath: string | null
   mimeType: PostMediaMime
   size: number
+  pageCount: number | null
   progress: number
   status: 'requesting' | 'uploading' | 'ready' | 'error'
   error?: string
@@ -71,6 +76,17 @@ function bodyWithTopicTags(body: string, topicTags: string) {
   return `${body.trimEnd()}\n\n${suffix}`
 }
 
+function isImageMime(mimeType: string) {
+  return mimeType === 'image/jpeg' || mimeType === 'image/png' || mimeType === 'image/webp'
+}
+
+function mediaStatus(media: ComposerMedia) {
+  if (media.status === 'requesting') return 'Preparing media…'
+  if (media.status === 'uploading') return `Uploading ${media.progress}%`
+  if (media.status === 'ready') return 'Ready to post'
+  return media.error ?? 'Upload failed'
+}
+
 function ProfileAvatar({ profile, size = 'size-12' }: { profile: OwnProfile; size?: string }) {
   return (
     <div className={`grid ${size} shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100`}>
@@ -88,7 +104,8 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   const nextPollFieldNumber = useRef(3)
   const formRef = useRef<HTMLFormElement>(null)
   const mediaInputRef = useRef<HTMLInputElement>(null)
-  const mediaStateRef = useRef<ComposerMedia | null>(null)
+  const documentInputRef = useRef<HTMLInputElement>(null)
+  const mediaStateRef = useRef<ComposerMedia[]>([])
   const uploadSequenceRef = useRef(0)
   const draftKey = `sea-n-shore:post-draft:${profile.id}`
   const [open, setOpen] = useState(false)
@@ -97,7 +114,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   const [mode, setMode] = useState<ComposerMode>('update')
   const [topicTags, setTopicTags] = useState('')
   const [pollFields, setPollFields] = useState<PollField[]>(() => newPollFields(pollIdPrefix))
-  const [media, setMediaState] = useState<ComposerMedia | null>(null)
+  const [media, setMediaState] = useState<ComposerMedia[]>([])
   const [mediaError, setMediaError] = useState<string | null>(null)
   const [draftHydrated, setDraftHydrated] = useState(false)
 
@@ -156,30 +173,51 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
     }
   }, [open])
 
-  function setMedia(next: ComposerMedia | null) {
+  function setMedia(next: ComposerMedia[]) {
     mediaStateRef.current = next
     setMediaState(next)
   }
 
+  function updateMediaByUrl(localUrl: string, update: (media: ComposerMedia) => ComposerMedia) {
+    const next = mediaStateRef.current.map((item) => item.localUrl === localUrl ? update(item) : item)
+    setMedia(next)
+  }
+
   function discardMediaReference(snapshot: ComposerMedia) {
     if (!snapshot.postId || !snapshot.storagePath) return
-    void discardPendingPostMedia({ postId: snapshot.postId, storagePath: snapshot.storagePath, mimeType: snapshot.mimeType })
+    void discardPendingPostMedia({
+      postId: snapshot.postId,
+      storagePath: snapshot.storagePath,
+      mimeType: snapshot.mimeType,
+    })
   }
 
   function clearMedia(options: { discard: boolean }) {
     uploadSequenceRef.current += 1
-    const snapshot = mediaStateRef.current
-    if (snapshot) {
+    const snapshots = mediaStateRef.current
+    for (const snapshot of snapshots) {
       URL.revokeObjectURL(snapshot.localUrl)
       if (options.discard) discardMediaReference(snapshot)
     }
     if (mediaInputRef.current) mediaInputRef.current.value = ''
-    setMedia(null)
+    if (documentInputRef.current) documentInputRef.current.value = ''
+    setMedia([])
+    setMediaError(null)
+  }
+
+  function removeMedia(localUrl: string) {
+    const snapshot = mediaStateRef.current.find((item) => item.localUrl === localUrl)
+    if (!snapshot || snapshot.status === 'requesting' || snapshot.status === 'uploading') return
+    URL.revokeObjectURL(snapshot.localUrl)
+    discardMediaReference(snapshot)
+    setMedia(mediaStateRef.current.filter((item) => item.localUrl !== localUrl))
+    if (mediaInputRef.current) mediaInputRef.current.value = ''
+    if (documentInputRef.current) documentInputRef.current.value = ''
     setMediaError(null)
   }
 
   function resetComposer(options: { discardMedia: boolean; clearDraft: boolean }) {
-    if (mediaStateRef.current) clearMedia({ discard: options.discardMedia })
+    if (mediaStateRef.current.length) clearMedia({ discard: options.discardMedia })
     formRef.current?.reset()
     setBody('')
     setMentions([])
@@ -191,7 +229,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   }
 
   function closeComposer() {
-    if (mediaStateRef.current) clearMedia({ discard: true })
+    if (mediaStateRef.current.length) clearMedia({ discard: true })
     setOpen(false)
   }
 
@@ -219,7 +257,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
 
   function chooseMode(nextMode: ComposerMode) {
     setMode(nextMode)
-    if (nextMode === 'poll' && mediaStateRef.current) clearMedia({ discard: true })
+    if (nextMode === 'poll' && mediaStateRef.current.length) clearMedia({ discard: true })
   }
 
   function addPollField() {
@@ -230,86 +268,170 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
     })
   }
 
-  async function chooseMedia(file: File | undefined) {
+  async function uploadFiles(files: Array<{ file: File; pageCount: number | null }>, options: { appendImages?: boolean } = {}) {
+    const existingImages = options.appendImages
+      ? mediaStateRef.current.filter((item) => isImageMime(item.mimeType) && item.status === 'ready')
+      : []
+    const existingPostId = existingImages[0]?.postId ?? undefined
+
+    if (!options.appendImages && mediaStateRef.current.length) clearMedia({ discard: true })
+
+    const sequence = uploadSequenceRef.current + 1
+    uploadSequenceRef.current = sequence
+    const pendingItems: ComposerMedia[] = files.map(({ file, pageCount }) => ({
+      file,
+      localUrl: URL.createObjectURL(file),
+      postId: null,
+      storagePath: null,
+      mimeType: file.type as PostMediaMime,
+      size: file.size,
+      pageCount,
+      progress: 0,
+      status: 'requesting',
+    }))
+    setMedia([...existingImages, ...pendingItems])
+    setMediaError(null)
+
+    const target = await createPostMediaUploads({
+      ...(existingPostId ? { postId: existingPostId } : {}),
+      files: files.map(({ file, pageCount }) => ({
+        mimeType: file.type,
+        size: file.size,
+        fileName: file.name,
+        pageCount,
+      })),
+    })
+
+    if (uploadSequenceRef.current !== sequence) {
+      pendingItems.forEach((item) => URL.revokeObjectURL(item.localUrl))
+      return
+    }
+
+    if (!target.ok || target.uploads.length !== pendingItems.length) {
+      const error = target.ok ? 'We could not prepare your media upload. Please try again.' : target.error
+      setMedia([...existingImages, ...pendingItems.map((item) => ({ ...item, status: 'error' as const, error }))])
+      return
+    }
+
+    const uploading = pendingItems.map((item, index) => {
+      const upload = target.uploads[index]
+      if (!upload) return { ...item, status: 'error' as const, error: 'We could not prepare this upload.' }
+      return {
+        ...item,
+        postId: upload.postId,
+        storagePath: upload.storagePath,
+        mimeType: upload.mimeType,
+        size: upload.size,
+        status: 'uploading' as const,
+      }
+    })
+    setMedia([...existingImages, ...uploading])
+
+    try {
+      await Promise.all(uploading.map(async (item, index) => {
+        const upload = target.uploads[index]
+        if (!upload || !item.storagePath) throw new Error('media_upload_target_missing')
+        await uploadPostMediaFile({
+          uploadUrl: upload.uploadUrl,
+          file: item.file,
+          onProgress: (progress) => {
+            if (uploadSequenceRef.current !== sequence) return
+            updateMediaByUrl(item.localUrl, (current) => ({ ...current, progress }))
+          },
+        })
+        if (uploadSequenceRef.current !== sequence) {
+          discardMediaReference(item)
+          return
+        }
+        updateMediaByUrl(item.localUrl, (current) => ({ ...current, progress: 100, status: 'ready', error: undefined }))
+      }))
+    } catch {
+      if (uploadSequenceRef.current !== sequence) return
+      for (const item of uploading) discardMediaReference(item)
+      const failedUrls = new Set(uploading.map((item) => item.localUrl))
+      setMedia(mediaStateRef.current.map((item) => failedUrls.has(item.localUrl)
+        ? { ...item, status: 'error', error: 'We could not upload this media. Please try again.' }
+        : item))
+    }
+  }
+
+  async function choosePhotoVideo(files: File[]) {
+    if (!files.length) return
+    const existingImages = mediaStateRef.current.length > 0 && mediaStateRef.current.every((item) => isImageMime(item.mimeType))
+      ? mediaStateRef.current
+      : []
+    const allNewImages = files.every((file) => isImageMime(file.type))
+
+    if (files.length > 1 && !allNewImages) {
+      setMediaError('Choose up to 10 photos, or attach one video or one PDF document.')
+      if (mediaInputRef.current) mediaInputRef.current.value = ''
+      return
+    }
+
+    if (allNewImages && existingImages.length + files.length > POST_IMAGE_MAX_COUNT) {
+      setMediaError(`Add no more than ${POST_IMAGE_MAX_COUNT} photos to one post.`)
+      if (mediaInputRef.current) mediaInputRef.current.value = ''
+      return
+    }
+
+    for (const file of files) {
+      const validation = validatePostMediaMetadata({ mimeType: file.type, size: file.size })
+      if (!validation.ok) {
+        setMediaError(validation.error)
+        if (mediaInputRef.current) mediaInputRef.current.value = ''
+        return
+      }
+    }
+
+    const appendImages = allNewImages && existingImages.length > 0
+    await uploadFiles(files.map((file) => ({ file, pageCount: null })), { appendImages })
+  }
+
+  async function chooseDocument(file: File | undefined) {
     if (!file) return
     const validation = validatePostMediaMetadata({ mimeType: file.type, size: file.size })
     if (!validation.ok) {
       setMediaError(validation.error)
-      if (mediaInputRef.current) mediaInputRef.current.value = ''
-      return
-    }
-    if (mediaStateRef.current) clearMedia({ discard: true })
-    setMediaError(null)
-    const sequence = uploadSequenceRef.current + 1
-    uploadSequenceRef.current = sequence
-    const localUrl = URL.createObjectURL(file)
-    const initialMedia: ComposerMedia = {
-      file,
-      localUrl,
-      postId: null,
-      storagePath: null,
-      mimeType: validation.mimeType,
-      size: file.size,
-      progress: 0,
-      status: 'requesting',
-    }
-    setMedia(initialMedia)
-
-    const target = await createPostMediaUpload({ mimeType: validation.mimeType, size: file.size })
-    if (uploadSequenceRef.current !== sequence) {
-      URL.revokeObjectURL(localUrl)
-      return
-    }
-    if (!target.ok) {
-      setMedia({ ...initialMedia, status: 'error', error: target.error })
+      if (documentInputRef.current) documentInputRef.current.value = ''
       return
     }
 
-    const uploadingMedia: ComposerMedia = {
-      ...initialMedia,
-      postId: target.upload.postId,
-      storagePath: target.upload.storagePath,
-      mimeType: target.upload.mimeType,
-      size: target.upload.size,
-      status: 'uploading',
-    }
-    setMedia(uploadingMedia)
-
+    let pageCount: number
     try {
-      await uploadPostMediaFile({
-        uploadUrl: target.upload.uploadUrl,
-        file,
-        onProgress: (progress) => {
-          if (uploadSequenceRef.current !== sequence) return
-          const current = mediaStateRef.current
-          if (!current || current.localUrl !== localUrl) return
-          setMedia({ ...current, progress })
-        },
-      })
-      if (uploadSequenceRef.current !== sequence) {
-        discardMediaReference(uploadingMedia)
-        return
-      }
-      const current = mediaStateRef.current
-      if (!current || current.localUrl !== localUrl) return
-      setMedia({ ...current, progress: 100, status: 'ready', error: undefined })
+      pageCount = await readPdfPageCount(file)
     } catch {
-      if (uploadSequenceRef.current !== sequence) {
-        discardMediaReference(uploadingMedia)
-        return
-      }
-      discardMediaReference(uploadingMedia)
-      const current = mediaStateRef.current
-      if (!current || current.localUrl !== localUrl) return
-      setMedia({ ...current, status: 'error', error: 'We could not upload this media. Please try again.' })
+      setMediaError('Choose a valid PDF document.')
+      if (documentInputRef.current) documentInputRef.current.value = ''
+      return
     }
+
+    if (pageCount > POST_DOCUMENT_MAX_PAGES) {
+      setMediaError(`PDF documents can have no more than ${POST_DOCUMENT_MAX_PAGES} pages.`)
+      if (documentInputRef.current) documentInputRef.current.value = ''
+      return
+    }
+
+    await uploadFiles([{ file, pageCount }])
   }
 
   const publishBody = bodyWithTopicTags(body, topicTags)
   const characterCount = publishBody.length
-  const mediaIsReady = media?.status === 'ready' && Boolean(media.postId && media.storagePath)
-  const mediaBlocksPost = Boolean(media && !mediaIsReady)
+  const mediaIsReady = media.length > 0 && media.every((item) => item.status === 'ready' && Boolean(item.postId && item.storagePath))
+  const mediaBlocksPost = media.some((item) => item.status !== 'ready')
+  const mediaManifest = mediaIsReady
+    ? JSON.stringify(media.map((item, position) => ({
+        postId: item.postId,
+        storagePath: item.storagePath,
+        mimeType: item.mimeType,
+        size: item.size,
+        altText: '',
+        position,
+        fileName: item.file.name,
+        pageCount: item.pageCount,
+      })))
+    : ''
   const canSubmit = body.trim().length > 0 && characterCount <= POST_CHARACTER_LIMIT && !mediaBlocksPost
+
   return (
     <>
       <Card className="border border-mist-100 p-4">
@@ -335,14 +457,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
             <form ref={formRef} action={formAction}>
               <input type="hidden" name="mode" value={mode === 'poll' ? 'poll' : 'standard'} />
               <input type="hidden" name="category" value={defaultCategory ?? 'technical_discussion'} />
-              {mediaIsReady && media ? (
-                <>
-                  <input type="hidden" name="mediaPostId" value={media.postId ?? ''} />
-                  <input type="hidden" name="mediaStoragePath" value={media.storagePath ?? ''} />
-                  <input type="hidden" name="mediaMimeType" value={media.mimeType} />
-                  <input type="hidden" name="mediaSize" value={String(media.size)} />
-                </>
-              ) : null}
+              {mediaIsReady ? <input type="hidden" name="mediaManifest" value={mediaManifest} /> : null}
 
               <div className="flex flex-wrap items-center gap-3 px-5 pt-4">
                 <ProfileAvatar profile={profile} />
@@ -413,41 +528,110 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
                 </fieldset>
               ) : null}
 
-              {media && mode !== 'poll' ? (
+              {media.length > 0 && mode !== 'poll' ? (
                 <div className="mx-5 mb-4 overflow-hidden rounded-2xl border border-mist-100 bg-mist-50/40">
-                  <div className="flex items-center justify-between gap-3 border-b border-mist-100 px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-navy-950">{media.file.name}</p>
-                      <p className="text-xs text-muted">
-                        {media.status === 'requesting' ? 'Preparing media…' : null}
-                        {media.status === 'uploading' ? `Uploading ${media.progress}%` : null}
-                        {media.status === 'ready' ? 'Ready to post' : null}
-                        {media.status === 'error' ? media.error : null}
-                      </p>
+                  {media.length === 1 && media[0]?.mimeType === 'application/pdf' ? (
+                    <div className="flex items-center gap-3 p-4">
+                      <div className="grid size-12 shrink-0 place-items-center rounded-xl bg-red-50 text-red-700">
+                        <FileText aria-hidden="true" className="size-6" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-navy-950">{media[0].file.name}</p>
+                        <p className="text-xs text-muted">{media[0].pageCount ?? 0} pages · {mediaStatus(media[0])}</p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${media[0].file.name}`}
+                        disabled={media[0].status === 'requesting' || media[0].status === 'uploading'}
+                        onClick={() => removeMedia(media[0].localUrl)}
+                        className="grid size-9 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-navy-950 disabled:opacity-40"
+                      >
+                        <X aria-hidden="true" className="size-4" />
+                      </button>
                     </div>
-                    <button type="button" aria-label="Remove media" onClick={() => clearMedia({ discard: true })} className="grid size-9 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-navy-950"><X aria-hidden="true" className="size-4" /></button>
-                  </div>
-                  {isVideoPostMediaMime(media.mimeType) ? (
-                    <div className="grid max-h-[48vh] place-items-center overflow-auto bg-black/[0.03]"><video src={media.localUrl} controls preload="metadata" className="max-h-[48vh] w-full object-contain" /></div>
+                  ) : media.length === 1 && isVideoPostMediaMime(media[0]?.mimeType ?? '') ? (
+                    <div>
+                      <div className="flex items-center justify-between gap-3 border-b border-mist-100 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-navy-950">{media[0]?.file.name}</p>
+                          <p className="text-xs text-muted">{media[0] ? mediaStatus(media[0]) : null}</p>
+                        </div>
+                        {media[0] ? (
+                          <button
+                            type="button"
+                            aria-label={`Remove ${media[0].file.name}`}
+                            disabled={media[0].status === 'requesting' || media[0].status === 'uploading'}
+                            onClick={() => removeMedia(media[0].localUrl)}
+                            className="grid size-9 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-navy-950 disabled:opacity-40"
+                          >
+                            <X aria-hidden="true" className="size-4" />
+                          </button>
+                        ) : null}
+                      </div>
+                      {media[0] ? <video src={media[0].localUrl} controls preload="metadata" className="max-h-[48vh] w-full bg-black object-contain" /> : null}
+                    </div>
                   ) : (
-                    <div className="w-full overflow-hidden bg-black/[0.03]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={media.localUrl} alt="Selected post media preview" className="max-h-[48vh] w-full object-contain" />
+                    <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
+                      {media.map((item, index) => (
+                        <div key={item.localUrl} className="overflow-hidden rounded-xl border border-mist-100 bg-white">
+                          <div className="relative aspect-square overflow-hidden bg-mist-50">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={item.localUrl} alt={`Selected photo ${index + 1} preview`} className="h-full w-full object-cover" />
+                            <button
+                              type="button"
+                              aria-label={`Remove ${item.file.name}`}
+                              disabled={item.status === 'requesting' || item.status === 'uploading'}
+                              onClick={() => removeMedia(item.localUrl)}
+                              className="absolute right-2 top-2 grid size-8 place-items-center rounded-full bg-white/95 text-navy-950 shadow-sm hover:bg-white disabled:opacity-50"
+                            >
+                              <X aria-hidden="true" className="size-4" />
+                            </button>
+                          </div>
+                          <div className="px-2.5 py-2">
+                            <p className="truncate text-xs font-semibold text-navy-950">{item.file.name}</p>
+                            <p className="mt-0.5 truncate text-[11px] text-muted">{mediaStatus(item)}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
-                  <label className="block border-t border-mist-100 px-3 py-3 text-sm text-muted">
-                    <span className="sr-only">Media description</span>
-                    <input name="altText" maxLength={300} placeholder="Optional media description for accessibility" className="min-h-10 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink" />
-                  </label>
                 </div>
               ) : null}
 
               <div className="flex flex-wrap items-center gap-1 border-t border-mist-100 px-5 py-3">
                 <EmojiPicker onSelect={(emoji) => setBody((current) => `${current}${current && !current.endsWith(' ') ? ' ' : ''}${emoji}`)} />
-                <input ref={mediaInputRef} id="post-media" type="file" accept={POST_MEDIA_ACCEPT} className="sr-only" disabled={mode === 'poll'} onChange={(event) => void chooseMedia(event.target.files?.[0])} />
-                <label htmlFor="post-media" aria-disabled={mode === 'poll'} className={`inline-flex min-h-10 items-center gap-2 rounded-full px-3 text-sm font-semibold ${mode === 'poll' ? 'cursor-not-allowed text-muted opacity-50' : 'cursor-pointer text-navy-900 hover:bg-mist-50'}`}>
-                  <ImagePlus aria-hidden="true" className="size-5 text-ocean-700" /> Photo / Video
+
+                <input
+                  ref={mediaInputRef}
+                  id="post-media"
+                  type="file"
+                  multiple
+                  accept={POST_MEDIA_ACCEPT}
+                  className="sr-only"
+                  disabled={mode === 'poll'}
+                  onChange={(event) => void choosePhotoVideo(Array.from(event.target.files ?? []))}
+                />
+                <label htmlFor="post-media" aria-disabled={mode === 'poll'} className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full px-3 text-sm font-semibold ${mode === 'poll' ? 'pointer-events-none text-muted opacity-50' : 'text-navy-900 hover:bg-mist-50'}`}>
+                  <ImagePlus aria-hidden="true" className="size-5 text-ocean-700" />
+                  <span>Photo / Video</span>
                 </label>
+                <span className="hidden text-xs text-muted sm:inline">Up to 10 photos</span>
+
+                <input
+                  ref={documentInputRef}
+                  id="post-document"
+                  type="file"
+                  accept={POST_DOCUMENT_ACCEPT}
+                  className="sr-only"
+                  disabled={mode === 'poll'}
+                  onChange={(event) => void chooseDocument(event.target.files?.[0])}
+                />
+                <label htmlFor="post-document" aria-disabled={mode === 'poll'} className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full px-3 text-sm font-semibold ${mode === 'poll' ? 'pointer-events-none text-muted opacity-50' : 'text-navy-900 hover:bg-mist-50'}`}>
+                  <FileText aria-hidden="true" className="size-5 text-ocean-700" />
+                  <span>Document</span>
+                </label>
+                <span className="hidden text-xs text-muted lg:inline">PDF · Max 25 MB · 50 pages</span>
+
                 <span className="ml-auto text-xs text-muted">Audience: Sea N Shore community</span>
               </div>
 
