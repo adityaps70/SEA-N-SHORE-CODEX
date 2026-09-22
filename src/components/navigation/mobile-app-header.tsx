@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Bell, Bookmark, BriefcaseBusiness, MessageCircleMore } from 'lucide-react'
+import { Bell, Bookmark, BriefcaseBusiness, MessageCircleMore, ShieldCheck } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 
@@ -7,10 +7,12 @@ export function MobileAppHeader({
   unreadCount,
   messagingUnreadCount = 0,
   canStartHiring = false,
+  canAccessAdmin = false,
 }: {
   unreadCount: number
   messagingUnreadCount?: number
   canStartHiring?: boolean
+  canAccessAdmin?: boolean
 }) {
   return (
     <header className="border-b border-mist-100 bg-white md:hidden">
@@ -25,6 +27,15 @@ export function MobileAppHeader({
             >
               <BriefcaseBusiness aria-hidden="true" className="size-4 shrink-0" />
               <span className="whitespace-nowrap">Start Hiring</span>
+            </Link>
+          ) : null}
+          {canAccessAdmin ? (
+            <Link
+              href="/admin"
+              aria-label="Admin"
+              className="grid min-h-10 min-w-10 place-items-center rounded-xl border border-ocean-200 bg-ocean-50 text-ocean-800 transition hover:bg-ocean-100"
+            >
+              <ShieldCheck aria-hidden="true" className="size-5" />
             </Link>
           ) : null}
           <Link
