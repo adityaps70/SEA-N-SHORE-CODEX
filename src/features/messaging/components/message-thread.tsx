@@ -182,6 +182,7 @@ export function MessageThread({
   const name = otherName ?? 'Sea N Shore member'
   const lastRequestedReadIdRef = useRef<string | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const threadRef = useRef<HTMLElement | null>(null)
   const [interactionError, setInteractionError] = useState('')
   const [pendingMessageId, setPendingMessageId] = useState<string | null>(null)
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -232,6 +233,29 @@ export function MessageThread({
     const timer = window.setInterval(() => setEditWindowNow(Date.now()), 10_000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    const closeMenus = (target?: EventTarget | null) => {
+      const menus = threadRef.current?.querySelectorAll<HTMLDetailsElement>('details[data-dismissible-menu][open]') ?? []
+      for (const menu of menus) {
+        if (target && menu.contains(target as Node)) continue
+        menu.open = false
+      }
+    }
+
+    const onPointerDown = (event: PointerEvent) => closeMenus(event.target)
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenus()
+    }
+
+    document.addEventListener('pointerdown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
 
   useEffect(() => {
     const onPotentialView = () => attemptMarkRead()
@@ -311,7 +335,7 @@ export function MessageThread({
   }
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,white,var(--mist-50))]">
+    <section ref={threadRef} className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,white,var(--mist-50))]">
       <header className="flex min-h-18 items-center gap-3 border-b border-mist-100 bg-white px-4 py-3 sm:px-5">
         <Link
           href="/messages"
@@ -526,7 +550,7 @@ export function MessageThread({
                           onSelect={(emoji) => void react(message.id, emoji)}
                         />
                         {canonicalForReply ? (
-                          <details className="relative">
+                          <details data-dismissible-menu className="relative">
                             <summary
                               role="button"
                               aria-label={`More actions for message ${message.id}`}
