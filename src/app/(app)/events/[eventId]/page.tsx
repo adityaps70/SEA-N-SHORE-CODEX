@@ -6,6 +6,7 @@ import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { AttendanceControl } from '@/features/events/components/attendance-control'
 import { EventNav } from '@/features/events/components/event-nav'
 import { EventShareButton } from '@/features/events/components/event-share-button'
+import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 
 function dateTime(value: string, timeZone: string) {
   try {
@@ -187,6 +188,10 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
             </div>
 
             <EventShareButton title={event.title} />
+
+            {!event.viewerIsHost ? (
+              <ReportContentButton targetType="event" targetId={event.id} label="Report event" />
+            ) : null}
 
             {canJoinOnline ? (
               <a
