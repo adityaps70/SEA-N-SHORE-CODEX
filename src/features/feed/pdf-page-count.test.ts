@@ -9,7 +9,8 @@ describe('readPdfPageCount', () => {
     pdf.addPage()
     pdf.addPage()
     const bytes = await pdf.save()
-    const file = new File([bytes], 'inspection-guide.pdf', { type: 'application/pdf' })
+    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+    const file = new File([arrayBuffer], 'inspection-guide.pdf', { type: 'application/pdf' })
 
     await expect(readPdfPageCount(file)).resolves.toBe(3)
   })
