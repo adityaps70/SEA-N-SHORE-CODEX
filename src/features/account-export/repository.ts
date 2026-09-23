@@ -188,8 +188,8 @@ select jsonb_build_object(
     from public.user_blocks block_row
     join public.profiles blocked_profile on blocked_profile.id = block_row.blocked_id
     where block_row.blocker_id = $1
-  ), '[]'::jsonb),
-
+  ), '[]'::jsonb)
+) || jsonb_build_object(
   'conversationPreferences', coalesce((
     select jsonb_agg(to_jsonb(participant))
     from public.conversation_participants participant
@@ -284,8 +284,8 @@ select jsonb_build_object(
     select jsonb_agg(to_jsonb(attendee))
     from public.event_attendees attendee
     where attendee.user_id = $1
-  ), '[]'::jsonb),
-
+  ), '[]'::jsonb)
+) || jsonb_build_object(
   'learningMentorApplication', (
     select to_jsonb(application) - 'reviewed_by' - 'admin_review_note'
     from public.learning_mentor_applications application
