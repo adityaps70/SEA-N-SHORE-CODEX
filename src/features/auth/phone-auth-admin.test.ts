@@ -141,7 +141,11 @@ describe('phone auth Cognito administration', () => {
 
     await admin.markPhoneVerified('uuid-user')
 
-    const command = client.send.mock.calls[0]?.[0] as { constructor: { name: string }; input: Record<string, unknown> }
+    const command = (client.send as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0] as
+      | { constructor: { name: string }; input: Record<string, unknown> }
+      | undefined
+    expect(command).toBeDefined()
+    if (!command) throw new Error('missing Cognito admin command')
     expect(command.constructor.name).toBe('AdminUpdateUserAttributesCommand')
     expect(command.input).toEqual({
       UserPoolId: 'ap-south-1_pool',
