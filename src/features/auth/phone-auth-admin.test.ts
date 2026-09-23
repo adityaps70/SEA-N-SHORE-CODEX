@@ -30,6 +30,10 @@ describe('phone auth Cognito administration', () => {
       randomPassword: () => 'RandomSecret123!random',
     })
 
+    await expect(admin.findUserByPhone('+919876543210')).resolves.toEqual({
+      username: 'uuid-user',
+      verified: true,
+    })
     await expect(admin.findVerifiedUserByPhone('+919876543210')).resolves.toEqual({
       username: 'uuid-user',
     })
@@ -50,9 +54,34 @@ describe('phone auth Cognito administration', () => {
       region: 'ap-south-1',
     })
 
-    await expect(admin.findVerifiedUserByPhone('+919876543210')).rejects.toThrow(
+    await expect(admin.findUserByPhone('+919876543210')).rejects.toThrow(
       'phone_identity_ambiguous',
     )
+  })
+
+
+  it('returns an existing unverified phone user so signup can safely resume', async () => {
+    const client = {
+      send: vi.fn(async () => ({
+        Users: [{
+          Username: 'pending-user',
+          Attributes: [
+            { Name: 'phone_number', Value: '+919876543210' },
+            { Name: 'phone_number_verified', Value: 'false' },
+          ],
+        }],
+      })),
+    }
+    const admin = createPhoneAuthAdmin({
+      client: client as never,
+      userPoolId: 'ap-south-1_pool',
+      region: 'ap-south-1',
+    })
+
+    await expect(admin.findUserByPhone('+919876543210')).resolves.toEqual({
+      username: 'pending-user',
+      verified: false,
+    })
   })
 
   it('creates a confirmed Cognito user without sending a password message', async () => {
