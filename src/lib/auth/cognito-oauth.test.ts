@@ -9,8 +9,12 @@ describe('Cognito Google OAuth with PKCE', () => {
   }
 
   it('builds a Google authorize URL with state and S256 PKCE', () => {
+    let call = 0
     const oauth = createCognitoOAuth(config, {
-      randomBytes: () => Buffer.from('01234567890123456789012345678901'),
+      randomBytes: (size) => {
+        call += 1
+        return Buffer.alloc(size, call)
+      },
     })
     const request = oauth.createAuthorizationRequest()
 
