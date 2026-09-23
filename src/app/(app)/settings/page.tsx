@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { LockKeyhole, ShieldCheck } from 'lucide-react'
+import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
 import { DeleteAccountPanel } from '@/features/account-deletion/components/delete-account-panel'
 
 export default function SettingsPage() {
@@ -44,6 +45,7 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      <DataExportPanel />
       <DeleteAccountPanel />
     </section>
   )
