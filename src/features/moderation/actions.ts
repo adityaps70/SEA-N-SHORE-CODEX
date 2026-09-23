@@ -12,6 +12,8 @@ import {
 
 export type ModerationReportResult = { ok: true } | { ok: false; error: string }
 
+const COPYRIGHT_DETAILS_ERROR = 'Please identify the copyrighted work, explain your rights or authority, and describe where the infringing material appears.'
+
 const reportSchema = z.object({
   targetType: z.enum(MODERATION_TARGET_TYPES),
   targetId: z.string().uuid(),
@@ -24,6 +26,15 @@ const reportSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['reason'],
       message: 'Please choose a valid report reason.',
+    })
+    return
+  }
+
+  if (value.reason === 'copyright_infringement' && value.details.length < 50) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['details'],
+      message: COPYRIGHT_DETAILS_ERROR,
     })
   }
 })
