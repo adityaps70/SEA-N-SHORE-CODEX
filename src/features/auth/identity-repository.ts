@@ -8,6 +8,7 @@ import {
 
 type IdentityRow = QueryResultRow & {
   profile_id: string
+  account_status?: 'active' | 'restricted' | 'suspended' | 'deletion_requested'
 }
 
 type IdentityQuery = (
@@ -80,6 +81,23 @@ export function createIdentityRepository(
       return rows[0]?.profile_id ?? null
     },
 
+    async getProfileAccountStatus(profileId: string) {
+      const rows = await queryRows(
+        `select id as profile_id, account_status::text as account_status
+         from public.profiles
+         where id = $1
+         limit 1`,
+        [profileId],
+      )
+      const status = rows[0]?.account_status
+      return status === 'active'
+        || status === 'restricted'
+        || status === 'suspended'
+        || status === 'deletion_requested'
+        ? status
+        : null
+    },
+
     async provisionProfileForCognitoPrincipal(principal: CognitoPrincipal): Promise<string> {
       if (!principal.sub.trim()) throw new IdentityMappingError()
 
@@ -124,4 +142,8 @@ export function resolveProfileIdForCognitoSub(sub: string) {
 
 export function provisionProfileForCognitoPrincipal(principal: CognitoPrincipal) {
   return identityRepository.provisionProfileForCognitoPrincipal(principal)
+}
+
+export function getProfileAccountStatus(profileId: string) {
+  return identityRepository.getProfileAccountStatus(profileId)
 }
