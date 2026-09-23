@@ -168,6 +168,19 @@ describe('feed repository', () => {
     expect(result.nextCursor).toBe(`${first.reacted_at}|${first.profile_id}`)
   })
 
+  it('never returns a soft-deleted post from the direct public post lookup', async () => {
+    const query = vi.fn(async () => [] as FeedPostRow[])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await expect(repository.getPostRow(viewerId, postId)).resolves.toBeNull()
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/p\.id = \$2/i)
+    expect(sql).toMatch(/p\.deleted_at is null/i)
+    expect(values).toEqual([viewerId, postId])
+  })
+
   it('checks post interaction availability with active viewer and bilateral block exclusion', async () => {
     const query = vi.fn(async () => [{ id: postId, author_id: authorId, post_type: 'standard' }])
     const { createFeedRepository } = await import('./repository')
