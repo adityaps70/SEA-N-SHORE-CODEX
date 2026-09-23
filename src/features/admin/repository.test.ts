@@ -222,3 +222,119 @@ describe('platform admin organization repository', () => {
     expect(seen.find((entry) => entry.text.includes('insert into public.audit_events'))?.values).toContain('organization.suspended')
   })
 })
+
+describe('platform admin user controls', () => {
+  const targetId = '55555555-5555-4555-8555-555555555555'
+  const userRow = {
+    profile_id: targetId,
+    full_name: 'Capt. Member',
+    slug: 'capt-member',
+    headline: 'Master Mariner',
+    account_status: 'active',
+    email: 'member@example.com',
+    provider_subject: 'cognito-sub-member',
+    is_administrator: false,
+    created_at: '2026-07-01T10:00:00.000Z',
+    updated_at: '2026-09-20T10:00:00.000Z',
+  }
+
+  it('searches users by name, username or email with account status context', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createAdminRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('public.user_roles ur') && text.includes("role::text = 'administrator'") && !text.includes('is_administrator')) {
+          return [{ allowed: true }]
+        }
+        return [userRow]
+      },
+    })
+
+    const users = await repository.searchUsers(adminId, { query: 'member@example.com', status: 'all', limit: 30 })
+
+    expect(users).toEqual([expect.objectContaining({
+      id: targetId,
+      fullName: 'Capt. Member',
+      slug: 'capt-member',
+      email: 'member@example.com',
+      status: 'active',
+      isAdministrator: false,
+    })])
+    expect(seen[1]?.text).toContain('public.identity_accounts')
+    expect(seen[1]?.text).toContain('lower(coalesce(ia.email')
+    expect(seen[1]?.values).toContain('%member@example.com%')
+  })
+
+  it('suspends and restores a normal user transactionally and records the reason in audit history', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    let status = 'active'
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('public.user_roles ur') && text.includes("role::text = 'administrator'") && !text.includes('target_admin')) {
+        return [{ allowed: true }]
+      }
+      if (text.includes('from public.profiles p') && text.includes('for update')) {
+        return [{ ...userRow, account_status: status }]
+      }
+      if (text.includes('update public.profiles')) {
+        status = String(values?.[1] ?? status)
+      }
+      return []
+    }
+    const repository = createAdminRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.setUserAccountStatus(adminId, targetId, 'suspended', 'Repeated unsafe recruitment messages.')).resolves.toBe(true)
+    expect(status).toBe('suspended')
+    let audit = seen.find((entry) => entry.text.includes('insert into public.audit_events') && entry.values?.includes('account.suspended'))
+    expect(audit?.values).toContain(targetId)
+    expect(String(audit?.values?.at(-1))).toContain('Repeated unsafe recruitment messages.')
+
+    seen.length = 0
+    await expect(repository.setUserAccountStatus(adminId, targetId, 'active', 'Appeal reviewed and access restored.')).resolves.toBe(true)
+    expect(status).toBe('active')
+    audit = seen.find((entry) => entry.text.includes('insert into public.audit_events') && entry.values?.includes('account.restored'))
+    expect(String(audit?.values?.at(-1))).toContain('Appeal reviewed and access restored.')
+  })
+
+  it('does not let an administrator suspend themselves or another administrator', async () => {
+    const selfRepository = createAdminRepository({
+      query: async (text) => text.includes('public.user_roles ur') ? [{ allowed: true }] : [],
+      transaction: async (work) => work(async (text) => text.includes('public.user_roles ur') ? [{ allowed: true }] : []),
+    })
+    await expect(selfRepository.setUserAccountStatus(adminId, adminId, 'suspended', 'No.')).rejects.toThrow('admin_user_self_action_forbidden')
+
+    const query = async (text: string) => {
+      if (text.includes('public.user_roles ur') && text.includes("role::text = 'administrator'") && !text.includes('target_admin')) return [{ allowed: true }]
+      if (text.includes('from public.profiles p') && text.includes('for update')) return [{ ...userRow, is_administrator: true }]
+      return []
+    }
+    const repository = createAdminRepository({ query, transaction: async (work) => work(query) })
+    await expect(repository.setUserAccountStatus(adminId, targetId, 'suspended', 'No.')).rejects.toThrow('admin_user_target_administrator_forbidden')
+  })
+
+  it('loads user-specific moderation history including reasons', async () => {
+    const repository = createAdminRepository({
+      query: async (text) => {
+        if (text.includes('public.user_roles')) return [{ allowed: true }]
+        return [{
+          id: '99',
+          actor_id: adminId,
+          actor_name: 'Platform Admin',
+          actor_slug: 'platform-admin',
+          action: 'account.suspended',
+          target_type: 'user_account',
+          target_id: targetId,
+          metadata: { reason: 'Safety review', previousStatus: 'active', nextStatus: 'suspended' },
+          created_at: '2026-09-22T10:00:00.000Z',
+        }]
+      },
+    })
+
+    const history = await repository.listUserAccountHistory(adminId, targetId, 50)
+    expect(history[0]).toMatchObject({
+      action: 'account.suspended',
+      targetId,
+      metadata: { reason: 'Safety review' },
+    })
+  })
+})
