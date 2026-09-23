@@ -13,8 +13,9 @@ describe('AWS auth queries', () => {
     const getPrincipal = vi.fn(async () => null)
     const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
     const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
     const { createAwsAuthQueries } = await import('./aws-queries')
-    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId })
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus })
 
     await expect(queries.getAwsVerifiedUser()).resolves.toBeNull()
     expect(resolveProfileId).not.toHaveBeenCalled()
@@ -25,8 +26,9 @@ describe('AWS auth queries', () => {
     const getPrincipal = vi.fn(async () => principal)
     const resolveProfileId = vi.fn(async () => null)
     const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
     const { createAwsAuthQueries } = await import('./aws-queries')
-    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId })
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus })
 
     await expect(queries.getAwsVerifiedUser()).resolves.toEqual({
       id: '22222222-2222-4222-8222-222222222222',
@@ -41,8 +43,9 @@ describe('AWS auth queries', () => {
     const getPrincipal = vi.fn(async () => principal)
     const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
     const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
     const { createAwsAuthQueries } = await import('./aws-queries')
-    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId })
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus })
 
     await expect(queries.getAwsVerifiedUser()).resolves.toEqual({
       id: '11111111-1111-4111-8111-111111111111',
@@ -61,8 +64,9 @@ describe('AWS auth queries', () => {
       cached ??= loader()
       return cached as Promise<T>
     }
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
     const { createAwsAuthQueries } = await import('./aws-queries')
-    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, cacheVerifiedUser })
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus, cacheVerifiedUser })
 
     await Promise.all([
       queries.requireAwsUser(),
@@ -74,6 +78,25 @@ describe('AWS auth queries', () => {
     expect(getPrincipal).toHaveBeenCalledTimes(1)
     expect(resolveProfileId).toHaveBeenCalledTimes(1)
     expect(provisionProfileId).not.toHaveBeenCalled()
+  })
+
+  it('rejects suspended and deleted profiles even when their Cognito access token is still valid', async () => {
+    const getPrincipal = vi.fn(async () => principal)
+    const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
+    const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const { createAwsAuthQueries } = await import('./aws-queries')
+
+    for (const status of ['suspended', 'deletion_requested'] as const) {
+      const queries = createAwsAuthQueries({
+        getPrincipal,
+        resolveProfileId,
+        provisionProfileId,
+        getProfileAccountStatus: vi.fn(async () => status),
+      })
+
+      await expect(queries.getAwsVerifiedUser()).resolves.toBeNull()
+      await expect(queries.requireAwsUser()).rejects.toThrow('Authentication required.')
+    }
   })
 
   it('treats only a real Cognito authorization failure as an unauthenticated principal', async () => {
