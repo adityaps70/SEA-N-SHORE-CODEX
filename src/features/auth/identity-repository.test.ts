@@ -12,8 +12,8 @@ const principal: CognitoPrincipal = {
   username: 'member@example.com',
   email: 'Member@Example.com',
   emailVerified: true,
-  phoneNumber: '+919876543210',
-  phoneNumberVerified: true,
+  phoneNumber: null,
+  phoneNumberVerified: false,
   name: 'Member One',
 }
 
@@ -71,6 +71,8 @@ describe('Cognito identity repository', () => {
     const transactionQuery = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
       .mockResolvedValueOnce({ rows: [] })
     const client = { query: transactionQuery } as unknown as DatabaseQueryClient
@@ -97,13 +99,23 @@ describe('Cognito identity repository', () => {
     )
     expect(transactionQuery).toHaveBeenNthCalledWith(
       3,
+      expect.stringContaining('pg_advisory_xact_lock'),
+      ['verified-login:member@example.com:'],
+    )
+    expect(transactionQuery).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('email_verified = true'),
+      ['member@example.com'],
+    )
+    expect(transactionQuery).toHaveBeenNthCalledWith(
+      5,
       expect.stringContaining('insert into public.profiles'),
       ['Member One'],
     )
     expect(transactionQuery).toHaveBeenNthCalledWith(
-      4,
+      6,
       expect.stringContaining('insert into public.identity_accounts'),
-      [profileId, 'cognito', 'cognito-sub-1', 'member@example.com', 'member@example.com', true, '+919876543210', true],
+      [profileId, 'cognito', 'cognito-sub-1', 'member@example.com', 'member@example.com', true, null, false],
     )
   })
 
@@ -137,6 +149,37 @@ describe('Cognito identity repository', () => {
       && values[2] === 'google-federated-sub')).toBe(true)
   })
 
+  it('links a verified phone login to the existing profile without creating another profile', async () => {
+    const profileId = '56565656-5656-4565-8565-565656565656'
+    const transactionQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
+      .mockResolvedValueOnce({ rows: [] })
+    const client = { query: transactionQuery } as unknown as DatabaseQueryClient
+    const withTransaction = async <T>(fn: (value: DatabaseQueryClient) => Promise<T>): Promise<T> => fn(client)
+    const { createIdentityRepository } = await import('./identity-repository')
+    const repository = createIdentityRepository({ withTransaction })
+
+    await expect(repository.provisionProfileForCognitoPrincipal({
+      ...principal,
+      sub: 'phone-login-sub',
+      username: 'phone-login@auth.seaandshore.in',
+      email: null,
+      emailVerified: false,
+      phoneNumber: '+919876543210',
+      phoneNumberVerified: true,
+    })).resolves.toBe(profileId)
+
+    expect(transactionQuery.mock.calls.some(([sql]) => String(sql).includes('insert into public.profiles'))).toBe(false)
+    expect(transactionQuery.mock.calls.some(([sql, values]) =>
+      String(sql).includes('insert into public.identity_accounts')
+      && Array.isArray(values)
+      && values[0] === profileId
+      && values[2] === 'phone-login-sub')).toBe(true)
+  })
+
   it('fails closed instead of merging when verified email and phone point at different profiles', async () => {
     const transactionQuery = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
@@ -149,7 +192,11 @@ describe('Cognito identity repository', () => {
     const { createIdentityRepository, IdentityMappingError } = await import('./identity-repository')
     const repository = createIdentityRepository({ withTransaction })
 
-    await expect(repository.provisionProfileForCognitoPrincipal(principal)).rejects.toBeInstanceOf(IdentityMappingError)
+    await expect(repository.provisionProfileForCognitoPrincipal({
+      ...principal,
+      phoneNumber: '+919876543210',
+      phoneNumberVerified: true,
+    })).rejects.toBeInstanceOf(IdentityMappingError)
     expect(transactionQuery.mock.calls.some(([sql]) => String(sql).includes('insert into public.profiles'))).toBe(false)
     expect(transactionQuery.mock.calls.some(([sql]) => String(sql).includes('insert into public.identity_accounts'))).toBe(false)
   })
@@ -159,13 +206,14 @@ describe('Cognito identity repository', () => {
     const transactionQuery = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
+      .mockResolvedValueOnce({ rows: [] })
     const client = { query: transactionQuery } as unknown as DatabaseQueryClient
     const withTransaction = async <T>(fn: (value: DatabaseQueryClient) => Promise<T>): Promise<T> => fn(client)
     const { createIdentityRepository } = await import('./identity-repository')
     const repository = createIdentityRepository({ withTransaction })
 
     await expect(repository.provisionProfileForCognitoPrincipal(principal)).resolves.toBe(profileId)
-    expect(transactionQuery).toHaveBeenCalledTimes(2)
+    expect(transactionQuery).toHaveBeenCalledTimes(3)
     expect(transactionQuery.mock.calls.some(([sql]) => String(sql).includes('insert into public.profiles'))).toBe(false)
   })
 })
