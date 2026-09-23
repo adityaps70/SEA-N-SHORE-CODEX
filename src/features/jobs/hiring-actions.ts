@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
+import { moderationRepository } from '@/features/moderation/repository'
 import { hiringRepository, type HiringJobInput, type HiringJobUpdateInput } from './hiring-repository'
 import { JOB_APPLICATION_STATUSES, type JobApplicationStatus } from './types'
 
@@ -87,6 +89,44 @@ function logHiringMutationError(operation: string, error: unknown) {
   })
 }
 
+function assessJobContent(input: HiringJobInput | HiringJobUpdateInput) {
+  if (input.status !== 'published') {
+    return { decision: 'allow', category: null, reason: null, ruleIds: [] } as AutomatedModerationAssessment
+  }
+  return assessPlatformText([
+    input.title,
+    input.department,
+    input.rank,
+    input.location,
+    input.summary,
+    input.description,
+    input.requirements,
+    ...input.vesselTypes,
+    ...input.regions,
+    ...input.certificates,
+    ...input.visas,
+  ])
+}
+
+async function flagAutomatedJobModeration(jobId: string, assessment: AutomatedModerationAssessment) {
+  if (assessment.decision !== 'review' || !assessment.reason) return
+  const details = automatedModerationDetails(assessment)
+  if (!details) return
+  try {
+    await moderationRepository.flagContentAutomatically({
+      targetType: 'job',
+      targetId: jobId,
+      reason: assessment.reason,
+      details,
+    })
+  } catch (error) {
+    console.error('hiring_automated_moderation_flag_failed', {
+      jobId,
+      message: error instanceof Error ? error.message : null,
+    })
+  }
+}
+
 function refreshJobMutation(jobId: string) {
   revalidatePath('/hiring')
   revalidatePath('/hiring/jobs')
@@ -98,10 +138,13 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
   const parsed = createJobSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
   if (parsed.data.status === 'closed') return { ok: false, error: 'New jobs cannot be created as archived.' }
+  const moderation = assessJobContent(parsed.data)
+  if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
 
   try {
     const user = await requireAwsUser()
     const jobId = await hiringRepository.createJob(user.id, parsed.data)
+    await flagAutomatedJobModeration(jobId, moderation)
     refreshJobMutation(jobId)
     return { ok: true, jobId }
   } catch (error) {
@@ -115,10 +158,13 @@ export async function updateHiringJob(jobId: string, input: HiringJobUpdateInput
   const parsed = updateJobSchema.safeParse(input)
   if (!parsedJobId.success) return { ok: false, error: 'Invalid job.' }
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  const moderation = assessJobContent(parsed.data)
+  if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
 
   try {
     const user = await requireAwsUser()
     await hiringRepository.updateJob(user.id, parsedJobId.data, parsed.data)
+    await flagAutomatedJobModeration(parsedJobId.data, moderation)
     refreshJobMutation(parsedJobId.data)
     revalidatePath(`/hiring/jobs/${parsedJobId.data}/edit`)
     return { ok: true }
