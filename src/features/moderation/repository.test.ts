@@ -45,7 +45,7 @@ describe('content reporting repository', () => {
     })
 
     const insert = seen.find((entry) => entry.text.includes('insert into public.content_reports'))
-    expect(insert?.text).toContain('on conflict (target_type, target_id, reporter_id)')
+    expect(insert?.text).toContain('on conflict (target_type, target_id, reporter_id) where reporter_id is not null')
     expect(insert?.text).toContain("status = 'open'")
     expect(insert?.values).toEqual([
       'event',
@@ -109,6 +109,36 @@ describe('content reporting repository', () => {
       reporterId,
       'fake_profile',
       'The profile appears to use invented credentials and identity details.',
+    ])
+  })
+
+  it('creates an automated report without a member reporter and refreshes the active automated case', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createModerationRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('from public.posts')) return [{ owner_id: '33333333-3333-4333-8333-333333333333' }]
+        return []
+      },
+    })
+
+    await repository.flagContentAutomatically({
+      targetType: 'post',
+      targetId,
+      reason: 'harassment',
+      details: '[AUTOMATED MODERATION]\\nCategory: abusive content\\nDecision: review',
+    })
+
+    const insert = seen.find((entry) => entry.text.includes('insert into public.content_reports'))
+    expect(insert?.text).toContain('reporter_id')
+    expect(insert?.text).toContain('null')
+    expect(insert?.text).toContain('on conflict (target_type, target_id, reason)')
+    expect(insert?.text).toContain('where reporter_id is null')
+    expect(insert?.values).toEqual([
+      'post',
+      targetId,
+      'harassment',
+      '[AUTOMATED MODERATION]\\nCategory: abusive content\\nDecision: review',
     ])
   })
 
