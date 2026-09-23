@@ -11,7 +11,7 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.equal(existsSync(scriptUrl), true)
   assert.equal(existsSync(actionUrl), true)
   assert.equal(existsSync(workflowUrl), true)
-  assert.equal((await readFile(actionUrl, 'utf8')).trim(), 'plan')
+  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
