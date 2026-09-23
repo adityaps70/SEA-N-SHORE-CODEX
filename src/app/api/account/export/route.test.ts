@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({
-  requireAwsUser: vi.fn(),
-  exportAccountData: vi.fn(),
-}))
+const mocks = vi.hoisted(() => {
+  class AwsAuthenticationRequiredError extends Error {}
 
-class MockAuthenticationRequiredError extends Error {}
+  return {
+    requireAwsUser: vi.fn(),
+    exportAccountData: vi.fn(),
+    AwsAuthenticationRequiredError,
+  }
+})
 
 vi.mock('@/features/auth/aws-queries', () => ({
   requireAwsUser: mocks.requireAwsUser,
-  AwsAuthenticationRequiredError: MockAuthenticationRequiredError,
+  AwsAuthenticationRequiredError: mocks.AwsAuthenticationRequiredError,
 }))
 
 vi.mock('@/features/account-export/repository', () => ({
@@ -62,7 +65,7 @@ describe('GET /api/account/export', () => {
   })
 
   it('rejects unauthenticated export requests without exposing account data', async () => {
-    mocks.requireAwsUser.mockRejectedValueOnce(new MockAuthenticationRequiredError())
+    mocks.requireAwsUser.mockRejectedValueOnce(new mocks.AwsAuthenticationRequiredError())
 
     const response = await GET()
 
