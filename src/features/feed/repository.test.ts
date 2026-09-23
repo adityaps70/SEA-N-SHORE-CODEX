@@ -254,6 +254,24 @@ describe('feed repository', () => {
     expect(values).toEqual([storagePath])
   })
 
+  it('soft-deletes an owned post with actor, reason and a 30-day recovery deadline', async () => {
+    const query = vi.fn(async () => [{ id: postId }])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await expect(repository.deleteOwnPost(viewerId, postId)).resolves.toBe(true)
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/update public\.posts/i)
+    expect(sql).toMatch(/deleted_at = now\(\)/i)
+    expect(sql).toMatch(/deleted_by = \$1/i)
+    expect(sql).toMatch(/deletion_reason = 'Deleted by post author\.'/i)
+    expect(sql).toMatch(/purge_after = now\(\) \+ interval '30 days'/i)
+    expect(sql).toMatch(/author_id = \$1/i)
+    expect(sql).toMatch(/deleted_at is null/i)
+    expect(values).toEqual([viewerId, postId])
+  })
+
   it('updates an owned non-deleted comment only before the strict database 15-minute cutoff', async () => {
     const query = vi.fn(async () => [{ id: commentId, post_id: postId, parent_comment_id: null }])
     const { createFeedRepository } = await import('./repository')
