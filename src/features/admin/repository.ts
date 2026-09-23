@@ -734,6 +734,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       values.push(input.status)
       const statusParameter = String.fromCharCode(36) + values.length
       where.push(`p.account_status::text = ${statusParameter}`)
+    } else {
+      where.push("p.account_status::text <> 'deletion_requested'")
     }
 
     values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
