@@ -29,6 +29,9 @@ const VIOLENT_IMPERATIVE = /\b(?:kill|shoot|stab|attack|beat up)\s+(?:you|him|he
 const HATE_TARGET = /\b(?:muslims?|hindus?|christians?|jews?|sikhs?|buddhists?|women|men|gay people|lesbians?|trans(?:gender)? people|black people|white people|asians?)\b/i
 const HATE_ACTION = /\b(?:should|must|need to|deserve to)\s+(?:die|be killed|be attacked|be beaten|be exterminated|be driven out)\b/i
 const ABUSIVE_ADDRESS = /\b(?:you are|you're|ur)\s+(?:an?\s+)?(?:idiot|moron|stupid|useless|worthless|loser|trash)\b/i
+const ENGLISH_ABUSIVE_LANGUAGE = /\b(?:fuck(?:ing)?\s+you|motherfucker|motherfucking|asshole|arsehole|bastard|bitch|dumbass|shithead|piece\s+of\s+shit|prick|cunt)\b/i
+const ROMAN_HINDI_ABUSIVE_LANGUAGE = /\b(?:chutiya|chutiye|madar\s*chod|madarchod|bhen\s*chod|behen\s*chod|bhenchod|behenchod|bhosdike|bhosdi\s*ke|gandu|gaand[u]?|harami|kamina|kamine|saala|saale|randi|kutta|kutti|maa\s+ki\s+chut|behen\s+ke\s+lode)\b/i
+const DEVANAGARI_HINDI_ABUSIVE_LANGUAGE = /(?:चूतिया|चूतिये|मादरचोद|मादर\s*चोद|बहनचोद|बहन\s*चोद|भेंचोद|भोसड़ीके|भोसड़ी\s*के|गांडू|हरामी|कमीना|कमीने|साला|साले|रंडी|कुत्ता|कुत्ती|माँ\s*की\s*चूत|बहन\s*के\s*लौड़े)/u
 const CREDENTIAL_THEFT = /\b(?:send|share|give|tell)\b.{0,45}\b(?:otp|one[- ]time password|password|pin|cvv)\b/i
 const RECRUITMENT_FEE = /\b(?:pay|send|deposit|transfer)\b.{0,50}\b(?:registration|processing|placement|recruitment|joining|security)\s+fee\b/i
 const GUARANTEED_JOB = /\bguaranteed\s+(?:job|placement|joining|selection)\b/i
@@ -74,6 +77,20 @@ const rules: Rule[] = [
     category: 'abusive_content',
     reason: 'harassment',
     test: (text) => ABUSIVE_ADDRESS.test(text),
+  },
+  {
+    id: 'english_abusive_language',
+    decision: 'review',
+    category: 'abusive_content',
+    reason: 'harassment',
+    test: (text) => ENGLISH_ABUSIVE_LANGUAGE.test(text),
+  },
+  {
+    id: 'hindi_abusive_language',
+    decision: 'review',
+    category: 'abusive_content',
+    reason: 'harassment',
+    test: (text) => ROMAN_HINDI_ABUSIVE_LANGUAGE.test(text) || DEVANAGARI_HINDI_ABUSIVE_LANGUAGE.test(text),
   },
   {
     id: 'recruitment_fee_scam',
