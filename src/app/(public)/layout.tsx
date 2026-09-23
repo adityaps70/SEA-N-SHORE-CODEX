@@ -1,3 +1,4 @@
+import { PublicFooter } from '@/components/navigation/public-footer'
 import { PublicHeader } from '@/components/navigation/public-header'
 
 export default function PublicProfileLayout({ children }: { children: React.ReactNode }) {
@@ -5,6 +6,7 @@ export default function PublicProfileLayout({ children }: { children: React.Reac
     <div className="min-h-screen bg-mist-50">
       <PublicHeader />
       {children}
+      <PublicFooter />
     </div>
   )
 }
