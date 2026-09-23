@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ reportContent: vi.fn() }))
 vi.mock('../actions', () => ({ reportContent: mocks.reportContent }))
@@ -7,6 +7,8 @@ vi.mock('../actions', () => ({ reportContent: mocks.reportContent }))
 import { ReportContentButton } from './report-content-button'
 
 describe('ReportContentButton', () => {
+  afterEach(() => cleanup())
+
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.reportContent.mockResolvedValue({ ok: true })
