@@ -58,6 +58,7 @@ describe('deleted post recovery repository', () => {
           id: postId,
           deleted_at: '2026-09-20T10:00:00.000Z',
           purge_after: '2026-10-20T10:00:00.000Z',
+          recoverable: true,
         }]
       }
       return []
