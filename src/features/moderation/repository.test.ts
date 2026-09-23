@@ -84,6 +84,34 @@ describe('content reporting repository', () => {
     ])
   })
 
+  it('accepts reports for another member profile and uses the profile as the report owner', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createModerationRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('from public.profiles')) return [{ owner_id: '33333333-3333-4333-8333-333333333333' }]
+        return []
+      },
+    })
+
+    await repository.reportContent({
+      reporterId,
+      targetType: 'profile',
+      targetId,
+      reason: 'fake_profile',
+      details: 'The profile appears to use invented credentials and identity details.',
+    })
+
+    expect(seen[0]?.text).toContain('from public.profiles')
+    expect(seen.find((entry) => entry.text.includes('insert into public.content_reports'))?.values).toEqual([
+      'profile',
+      targetId,
+      reporterId,
+      'fake_profile',
+      'The profile appears to use invented credentials and identity details.',
+    ])
+  })
+
   it('fails closed when the target is unavailable', async () => {
     const repository = createModerationRepository({ query: async () => [] })
 
