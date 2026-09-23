@@ -155,6 +155,10 @@ describe('Cognito server session verification', () => {
       COGNITO_COOKIE_NAMES.refresh,
       COGNITO_COOKIE_NAMES.challenge,
       COGNITO_COOKIE_NAMES.challengeUser,
+      COGNITO_COOKIE_NAMES.phoneChallenge,
+      COGNITO_COOKIE_NAMES.phoneChallengeUser,
+      COGNITO_COOKIE_NAMES.oauthState,
+      COGNITO_COOKIE_NAMES.oauthVerifier,
     ])
   })
 
