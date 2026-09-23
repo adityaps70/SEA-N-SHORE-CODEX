@@ -37,6 +37,7 @@ export type AdminModerationCase = {
   latestReportedAt: string
   reasons: string[]
   latestDetails: string | null
+  hasAutomatedFlag: boolean
 }
 
 export type AdminModerationFilter = {
@@ -173,6 +174,7 @@ type ModerationCaseRow = QueryResultRow & {
   latest_reported_at: string
   reasons: string[] | null
   latest_details: string | null
+  has_automated_flag: boolean | null
 }
 type ModerationReportLockRow = QueryResultRow & {
   id: string
@@ -412,7 +414,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          (select count(*) from public.content_reports cr
            where cr.status in ('open', 'reviewing')
              and (
-               cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication', 'impersonation', 'spam_or_scam', 'fake_profile')
+               cr.reporter_id is null
+               or cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication', 'impersonation', 'spam_or_scam', 'fake_profile')
                or cr.details like '[COPYRIGHT/IP COMPLAINT]%'
              )
          ) as high_priority_reports,
@@ -485,6 +488,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          min(cr.created_at) as first_reported_at,
          max(cr.updated_at) as latest_reported_at,
          array_agg(distinct cr.reason order by cr.reason) as reasons,
+         bool_or(cr.reporter_id is null) as has_automated_flag,
          (array_agg(cr.details order by cr.updated_at desc) filter (where cr.details is not null))[1] as latest_details
        from public.content_reports cr
        left join public.posts p on cr.target_type = 'post' and p.id = cr.target_id
@@ -510,7 +514,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          reported_profile.id, reported_profile.full_name, reported_profile.headline, reported_profile.summary, reported_profile.account_status,
          owner.id, owner.full_name, owner.slug
        order by
-         max(case when cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication', 'impersonation', 'spam_or_scam', 'fake_profile')
+         max(case when cr.reporter_id is null
+           or cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication', 'impersonation', 'spam_or_scam', 'fake_profile')
            or cr.details like '[COPYRIGHT/IP COMPLAINT]%' then 1 else 0 end) desc,
          max(cr.updated_at) desc,
          cr.target_id desc
@@ -534,6 +539,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       latestReportedAt: row.latest_reported_at,
       reasons: Array.isArray(row.reasons) ? row.reasons : [],
       latestDetails: row.latest_details ?? null,
+      hasAutomatedFlag: Boolean(row.has_automated_flag),
     }))
   }
 
