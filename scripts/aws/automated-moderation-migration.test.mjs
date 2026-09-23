@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const sql = fs.readFileSync('infra/aws/database/migrations/0030_automated_moderation_reports.sql', 'utf8')
+const script = fs.readFileSync('scripts/aws/automated-moderation-migration.sh', 'utf8')
+const guard = fs.readFileSync('scripts/aws/automated-moderation-migration-action.txt', 'utf8').trim()
+const workflow = fs.readFileSync('.github/workflows/aws-automated-moderation-migration.yml', 'utf8')
+
+assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.match(sql, /alter column reporter_id drop not null/i)
+assert.match(sql, /content_reports_target_type_target_id_reporter_id_key/i)
+assert.match(sql, /where reporter_id is not null/i)
+assert.match(sql, /where reporter_id is null\s+and status in \('open', 'reviewing'\)/i)
+assert.match(sql, /target_type, target_id, reason/i)
+assert.doesNotMatch(sql, /drop table/i)
+assert.doesNotMatch(sql, /drop column/i)
+assert.doesNotMatch(sql, /truncate/i)
+assert.doesNotMatch(sql, /delete from/i)
+
+assert.match(script, /310356785722/)
+assert.match(script, /AUTOMATED_MODERATION_MIGRATION_EXPECTED_SHA/)
+assert.match(script, /plan\|migrate-once/)
+assert.match(script, /0030_automated_moderation_reports\.sql/)
+assert.match(script, /sea-n-shore-automated-moderation-0030/)
+assert.match(script, /begin-transaction/)
+assert.match(script, /commit-transaction/)
+assert.match(script, /rollback-transaction/)
+assert.match(script, /AUTOMATED_MODERATION_MIGRATION_PLAN_ONLY_NO_APPLY/)
+assert.match(script, /AUTOMATED_MODERATION_MIGRATION_APPLY_VERIFIED=true/)
+assert.match(script, /AUTOMATED_MODERATION_MIGRATION_ALREADY_APPLIED=true/)
+assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.doesNotMatch(script, /992382634586/)
+
+assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+assert.match(workflow, /Guard migration against a moved branch/)
+assert.match(workflow, /environment:\s*staging/)
+assert.match(workflow, /AUTOMATED_MODERATION_MIGRATION_EXPECTED_SHA/)
+assert.match(workflow, /bash scripts\/aws\/automated-moderation-migration\.sh/)
+
+console.log('AUTOMATED_MODERATION_MIGRATION_CONTRACT_VERIFIED=true')
