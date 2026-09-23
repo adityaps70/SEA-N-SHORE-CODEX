@@ -25,6 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <nav aria-label="Admin navigation" className="flex flex-wrap gap-2 text-sm font-bold">
             <Link href="/admin" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Overview</Link>
             <Link href="/admin/moderation" className="rounded-xl bg-white px-4 py-2.5 text-navy-950 transition hover:bg-mist-50">Moderation</Link>
+            <Link href="/admin/users" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Users</Link>
             <Link href="/admin/audit" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Audit</Link>
             <Link href="/admin/organizations" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Organizations</Link>
             <Link href="/admin/learning" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Learning</Link>
