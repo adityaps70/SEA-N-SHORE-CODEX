@@ -14,6 +14,7 @@ import {
   createStandardPostWithAurora,
   deleteCommentWithAurora,
   deletePostWithAurora,
+  restoreDeletedPostWithAurora,
   setPollVoteWithAurora,
   setPostLikedWithAurora,
   setPostSavedWithAurora,
@@ -25,6 +26,7 @@ import {
   createPostMediaUpload,
   createPostMediaUploads,
   deletePost,
+  restoreDeletedPost,
   discardPendingPostMedia,
   setPollVote,
   setPostLiked,
@@ -66,6 +68,7 @@ vi.mock('./service', () => ({
   assertPendingMediaDiscardableWithAurora: vi.fn(async () => true),
   createPollPostWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
   deletePostWithAurora: vi.fn(async () => true),
+  restoreDeletedPostWithAurora: vi.fn(async () => true),
   setPostLikedWithAurora: vi.fn(async () => true),
   setPostReactionWithAurora: vi.fn(async () => true),
   setPostSavedWithAurora: vi.fn(async () => true),
@@ -102,6 +105,7 @@ const mockedCreateStandardPost = vi.mocked(createStandardPostWithAurora)
 const mockedAssertPendingMediaDiscardable = vi.mocked(assertPendingMediaDiscardableWithAurora)
 const mockedCreatePollPost = vi.mocked(createPollPostWithAurora)
 const mockedDeletePost = vi.mocked(deletePostWithAurora)
+const mockedRestoreDeletedPost = vi.mocked(restoreDeletedPostWithAurora)
 const mockedSetLiked = vi.mocked(setPostLikedWithAurora)
 const mockedSetSaved = vi.mocked(setPostSavedWithAurora)
 const mockedAddComment = vi.mocked(addPostCommentWithAurora)
@@ -396,6 +400,19 @@ describe('feed actions', () => {
   it('routes owner post deletion through the authenticated Aurora service', async () => {
     expect(await deletePost(postId)).toEqual({ ok: true })
     expect(mockedDeletePost).toHaveBeenCalledWith(viewerId, postId)
+  })
+
+  it('routes member post recovery through the authenticated Aurora service', async () => {
+    expect(await restoreDeletedPost(postId)).toEqual({ ok: true })
+    expect(mockedRestoreDeletedPost).toHaveBeenCalledWith(viewerId, postId)
+  })
+
+  it('uses safe copy when a recently deleted post can no longer be restored', async () => {
+    mockedRestoreDeletedPost.mockRejectedValueOnce(new Error('feed_post_restore_unavailable'))
+    expect(await restoreDeletedPost(postId)).toEqual({
+      ok: false,
+      error: 'This post can no longer be restored.',
+    })
   })
 
   it('routes like and save toggles through the Aurora service with the permanent UUID', async () => {
