@@ -26,6 +26,7 @@ vi.mock('@/features/auth/actions', () => ({ signOut: vi.fn() }))
 vi.mock('@/features/feed/queries', () => ({
   getMyActivityPosts: vi.fn().mockResolvedValue([]),
   getMyCommentActivity: vi.fn().mockResolvedValue([]),
+  getMyRecentlyDeletedPosts: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('@/features/feed/components/feed-profile-card', () => ({
@@ -74,7 +75,7 @@ describe('My Activities and jobs integration contract', () => {
     }
   })
 
-  it('places Jobs Applied beside My Posts and My Comments as the third activity tab', async () => {
+  it('keeps Jobs Applied third and adds Recently Deleted as the fourth activity tab', async () => {
     render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'jobs' }) }))
 
     const tabs = screen.getByRole('navigation', { name: 'Activity sections' })
@@ -82,6 +83,7 @@ describe('My Activities and jobs integration contract', () => {
       'My Posts',
       'My Comments',
       'Jobs Applied',
+      'Recently Deleted',
     ])
     expect(within(tabs).getByRole('link', { name: 'Jobs Applied' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByTestId('job-applications')).toBeInTheDocument()
