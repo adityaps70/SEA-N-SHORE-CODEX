@@ -9,6 +9,7 @@ import {
   KeyRound,
   MessageSquareWarning,
   ShieldAlert,
+  UserCog,
 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { adminRepository } from '@/features/admin/repository'
@@ -71,6 +72,23 @@ export default async function AdminPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1.25fr_1fr_1fr]">
+        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 lg:col-span-3">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex gap-3">
+              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
+                <UserCog aria-hidden="true" className="size-5" />
+              </span>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">User administration</p>
+                <h2 className="mt-1 text-xl font-bold text-navy-950">Search, suspend, restore or permanently delete user accounts</h2>
+                <p className="mt-1 text-sm leading-6 text-muted">Every account action requires a reason and is retained in the administrator audit history.</p>
+              </div>
+            </div>
+            <Link href="/admin/users" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">
+              Manage users
+            </Link>
+          </div>
+        </article>
         <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">Content moderation</p>
           <h2 className="mt-2 text-xl font-bold text-navy-950">One queue for posts, comments, jobs and events</h2>
