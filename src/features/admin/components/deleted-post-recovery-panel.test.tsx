@@ -1,6 +1,10 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}))
+
 import { DeletedPostRecoveryPanel } from './deleted-post-recovery-panel'
 
 const postId = '22222222-2222-4222-8222-222222222222'
