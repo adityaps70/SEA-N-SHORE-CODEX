@@ -30,6 +30,7 @@ test('ECS task Cognito admin policy has a guarded single-resource Terraform rele
   assert.match(script, /AdminSetUserPassword/)
   assert.match(script, /AdminUpdateUserAttributes/)
   assert.match(script, /terraform[^\n]+apply/)
+  assert.match(script, /ECS_TASK_COGNITO_ADMIN_POLICY_PLAN_VERIFIED=(?:CREATE_ONLY|IMPORT_REQUIRED|UPDATE_ONLY|NO_CHANGES)/)
   assert.match(script, /ECS_TASK_COGNITO_ADMIN_POLICY_APPLY_VERIFIED=true/)
   assert.doesNotMatch(script, /aws\s+iam\s+put-role-policy/)
   assert.doesNotMatch(script, /aws\s+ecs\s+update-service/)
