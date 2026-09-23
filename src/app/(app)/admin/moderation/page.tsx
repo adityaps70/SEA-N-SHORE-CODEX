@@ -117,11 +117,15 @@ export default async function AdminModerationPage({
         {cases.map((item) => {
           const href = targetHref(item.targetType, item.targetId)
           const copyrightPrefix = '[COPYRIGHT/IP COMPLAINT]\n'
+          const automatedPrefix = '[AUTOMATED MODERATION]\n'
           const copyrightComplaint = item.latestDetails?.startsWith(copyrightPrefix) ?? false
+          const automatedDetails = item.latestDetails?.startsWith(automatedPrefix) ?? false
           const displayDetails = copyrightComplaint
             ? item.latestDetails?.slice(copyrightPrefix.length) ?? null
-            : item.latestDetails
-          const highPriority = copyrightComplaint || item.reasons.some((reason) => [
+            : automatedDetails
+              ? item.latestDetails?.slice(automatedPrefix.length) ?? null
+              : item.latestDetails
+          const highPriority = item.hasAutomatedFlag || copyrightComplaint || item.reasons.some((reason) => [
             'scam',
             'unsafe_or_illegal',
             'recruitment_fee',
@@ -145,6 +149,9 @@ export default async function AdminModerationPage({
                     </span>
                     {copyrightComplaint ? (
                       <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800">Copyright / IP complaint</span>
+                    ) : null}
+                    {item.hasAutomatedFlag ? (
+                      <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-bold text-sky-800">Automated flag</span>
                     ) : null}
                     {highPriority ? (
                       <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">Priority review</span>
