@@ -43,8 +43,20 @@ describe('phone auth Cognito administration', () => {
     const client = {
       send: vi.fn(async () => ({
         Users: [
-          { Username: 'one', Attributes: [{ Name: 'phone_number_verified', Value: 'true' }] },
-          { Username: 'two', Attributes: [{ Name: 'phone_number_verified', Value: 'true' }] },
+          {
+            Username: 'one',
+            Attributes: [
+              { Name: 'phone_number', Value: '+919876543210' },
+              { Name: 'phone_number_verified', Value: 'true' },
+            ],
+          },
+          {
+            Username: 'two',
+            Attributes: [
+              { Name: 'phone_number', Value: '+919876543210' },
+              { Name: 'phone_number_verified', Value: 'true' },
+            ],
+          },
         ],
       })),
     }
