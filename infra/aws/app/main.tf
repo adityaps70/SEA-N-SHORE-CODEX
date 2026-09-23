@@ -400,6 +400,8 @@ resource "aws_ecs_task_definition" "web" {
         { name = "AWS_COGNITO_REGION", value = var.aws_region },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.app.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
+        { name = "AWS_COGNITO_DOMAIN", value = "${aws_cognito_user_pool_domain.app.domain}.auth.${var.aws_region}.amazoncognito.com" },
+        { name = "AWS_COGNITO_GOOGLE_ENABLED", value = tostring(var.enable_google_identity_provider) },
         { name = "AWS_MEDIA_BUCKET", value = aws_s3_bucket.app["media"].bucket },
         { name = "REALTIME_WEBSOCKET_URL", value = local.realtime_websocket_url },
         { name = "AURORA_HOST", value = aws_rds_cluster.aurora.endpoint },
