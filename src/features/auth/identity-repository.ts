@@ -40,7 +40,7 @@ function normalizedEmail(email: string | null) {
   return value && value.length >= 3 && value.length <= 320 ? value : null
 }
 
-function normalizedPhoneNumber(phoneNumber: string | null) {
+function normalizedPhoneNumber(phoneNumber: string | null | undefined) {
   const value = phoneNumber?.trim()
   return value && /^\+[1-9]\d{7,14}$/.test(value) ? value : null
 }
