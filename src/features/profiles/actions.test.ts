@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const moderationMocks = vi.hoisted(() => ({
+  flagContentAutomatically: vi.fn(async () => undefined),
+}))
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAwsOwnProfile } from './aws-queries'
 import { completeOnboardingWithAurora } from './onboarding-service'
@@ -9,6 +13,9 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn((path: string) => {
     throw new Error(`NEXT_REDIRECT:${path}`)
   }),
+}))
+vi.mock('@/features/moderation/repository', () => ({
+  moderationRepository: { flagContentAutomatically: moderationMocks.flagContentAutomatically },
 }))
 vi.mock('@/features/auth/aws-queries', () => ({
   requireAwsUser: vi.fn(async () => ({
@@ -86,6 +93,30 @@ describe('profile onboarding action', () => {
     expect(result.fieldErrors?.slug).toBeTruthy()
     expect(mockedRequireAwsUser).not.toHaveBeenCalled()
     expect(mockedCompleteOnboarding).not.toHaveBeenCalled()
+  })
+
+  it('blocks high-confidence unsafe profile text before onboarding mutation', async () => {
+    const formData = validForm()
+    formData.set('summary', 'Send your OTP and password to verify your account immediately.')
+
+    const result = await completeOnboarding({}, formData)
+
+    expect(result.error).toMatch(/community safety rules/i)
+    expect(mockedCompleteOnboarding).not.toHaveBeenCalled()
+  })
+
+  it('flags review-level profile text in the centralized moderation queue', async () => {
+    const formData = validForm()
+    formData.set('summary', 'You are a useless idiot and should never work on a ship.')
+
+    await expect(completeOnboarding({}, formData)).rejects.toThrow('NEXT_REDIRECT:/home')
+
+    expect(moderationMocks.flagContentAutomatically).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: 'profile',
+      targetId: viewerId,
+      reason: 'harassment',
+      details: expect.stringContaining('[AUTOMATED MODERATION]'),
+    }))
   })
 
   it('passes normalized onboarding data with the permanent profile UUID to Aurora', async () => {
