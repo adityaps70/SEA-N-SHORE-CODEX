@@ -128,8 +128,9 @@ describe('AWS auth queries', () => {
     const getPrincipal = vi.fn(async () => null)
     const resolveProfileId = vi.fn(async () => null)
     const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
     const { AwsAuthenticationRequiredError, createAwsAuthQueries } = await import('./aws-queries')
-    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId })
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus })
 
     await expect(queries.requireAwsUser()).rejects.toBeInstanceOf(AwsAuthenticationRequiredError)
   })
