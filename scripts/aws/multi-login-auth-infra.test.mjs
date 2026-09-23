@@ -15,6 +15,7 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
+  assert.match(script, /PUBLIC_SITE_URL="https:\/\/d3prih0q6jofyr\.cloudfront\.net"/)
   assert.match(script, /MULTI_LOGIN_AUTH_INFRA_EXPECTED_SHA/)
   assert.match(script, /plan\|apply-once/)
   assert.match(script, /aws_cognito_user_pool\.app/)
