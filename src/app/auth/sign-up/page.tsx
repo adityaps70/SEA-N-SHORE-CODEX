@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Wordmark } from "@/components/brand/wordmark";
 import { Button } from "@/components/ui/button";
 import { AuthForm } from "@/features/auth/components/auth-form";
+import { AuthMethodLinks } from "@/features/auth/components/auth-method-links";
 import { confirmSignUp, resendConfirmationCode, signUp } from "@/features/auth/actions";
 
 export default async function SignUpPage({
@@ -38,7 +39,10 @@ export default async function SignUpPage({
             </form>
           </>
         ) : (
-          <AuthForm mode="sign-up" action={signUp} />
+          <>
+            <AuthForm mode="sign-up" action={signUp} />
+            <AuthMethodLinks intent="sign-up" />
+          </>
         )}
         <p className="mt-6 text-sm text-muted">
           Already have an account?{" "}
