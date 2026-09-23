@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCognitoOAuth } from './cognito-oauth'
+import { createCognitoOAuth, verifyOAuthState } from './cognito-oauth'
 
 describe('Cognito Google OAuth with PKCE', () => {
   const config = {
@@ -60,6 +60,12 @@ describe('Cognito Google OAuth with PKCE', () => {
       refreshToken: 'refresh-token',
       expiresIn: 3600,
     })
+  })
+
+  it('compares OAuth state exactly and rejects malformed values', () => {
+    expect(verifyOAuthState('state-value', 'state-value')).toBe(true)
+    expect(verifyOAuthState('state-value', 'state-value2')).toBe(false)
+    expect(verifyOAuthState('', '')).toBe(false)
   })
 
   it('returns a safe OAuth error without echoing codes or token responses', async () => {
