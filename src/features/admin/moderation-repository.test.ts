@@ -58,6 +58,39 @@ describe('platform moderation repository', () => {
     expect(seen[1]?.values).toEqual(['open', 50])
   })
 
+  it('includes profiles in the centralized moderation queue query', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createAdminRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('public.user_roles')) return [{ allowed: true }]
+        return [{
+          ...moderationRow,
+          target_type: 'profile',
+          target_title: 'Profile: Captain Public',
+          target_excerpt: 'Master Mariner',
+          target_state: 'active',
+          reasons: ['impersonation'],
+        }]
+      },
+    })
+
+    await expect(repository.listModerationCases(adminId, {
+      status: 'open',
+      targetType: 'profile',
+      limit: 25,
+    })).resolves.toEqual([expect.objectContaining({
+      targetType: 'profile',
+      title: 'Profile: Captain Public',
+      targetState: 'active',
+      reasons: ['impersonation'],
+    })])
+
+    expect(seen[1]?.text).toContain("cr.target_type = 'profile'")
+    expect(seen[1]?.text).toContain('reported_profile')
+    expect(seen[1]?.values).toEqual(['open', 'profile', 25])
+  })
+
   it('binds content type and limit parameters instead of interpolating invalid SQL literals', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createAdminRepository({
@@ -77,6 +110,29 @@ describe('platform moderation repository', () => {
     expect(seen[1]?.text).toContain('where cr.status = $1 and cr.target_type = $2')
     expect(seen[1]?.text).toContain('limit $3')
     expect(seen[1]?.values).toEqual(['reviewing', 'job', 25])
+  })
+
+  it('suspends a reported profile through the same moderation action workflow', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('public.user_roles')) return [{ allowed: true }]
+      if (text.includes('from public.content_reports') && text.includes('for update')) return [{ id: 'report-profile', status: 'open' }]
+      if (text.includes('from public.profiles') && text.includes('for update')) return [{ state: 'active' }]
+      return []
+    }
+    const repository = createAdminRepository({ query, transaction: async (work) => work(query) })
+
+    await repository.moderateContent(adminId, {
+      targetType: 'profile',
+      targetId,
+      action: 'remove',
+      note: 'Confirmed impersonation.',
+    })
+
+    const suspension = seen.find((entry) => entry.text.includes('update public.profiles') && entry.text.includes("account_status = 'suspended'"))
+    expect(suspension?.values).toEqual([targetId])
+    expect(seen.some((entry) => entry.text.includes('insert into public.moderation_actions'))).toBe(true)
   })
 
   it('removes a reported post, resolves its active reports, and writes moderation plus audit history atomically', async () => {
