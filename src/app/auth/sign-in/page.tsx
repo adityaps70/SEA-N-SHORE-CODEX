@@ -3,12 +3,15 @@ import { Wordmark } from "@/components/brand/wordmark";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { AuthMethodLinks } from "@/features/auth/components/auth-method-links";
 import { signIn } from "@/features/auth/actions";
+import { getCognitoEnvironment } from "@/lib/env";
 
 export default function SignInPage() {
+  const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;
+
   return (
     <AuthPage>
       <AuthForm mode="sign-in" action={signIn} />
-      <AuthMethodLinks intent="sign-in" />
+      <AuthMethodLinks intent="sign-in" googleEnabled={googleEnabled} />
       <p className="mt-6 text-sm text-muted">
         New to Sea N Shore?{" "}
         <Link href="/auth/sign-up" className="font-semibold text-ocean-700">Create your profile</Link>
