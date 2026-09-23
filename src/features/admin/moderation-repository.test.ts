@@ -18,6 +18,7 @@ const moderationRow = {
   latest_reported_at: '2026-09-21T10:00:00.000Z',
   reasons: ['spam', 'scam'],
   latest_details: 'Asked users to transfer money.',
+  has_automated_flag: false,
 }
 
 describe('platform moderation repository', () => {
@@ -47,10 +48,12 @@ describe('platform moderation repository', () => {
       latestReportedAt: moderationRow.latest_reported_at,
       reasons: ['spam', 'scam'],
       latestDetails: 'Asked users to transfer money.',
+      hasAutomatedFlag: false,
     }])
 
     expect(seen[1]?.text).toContain('public.content_reports')
     expect(seen[1]?.text).toContain('count(*)::int as report_count')
+    expect(seen[1]?.text).toContain('bool_or(cr.reporter_id is null) as has_automated_flag')
     expect(seen[1]?.text).toContain('group by')
     expect(seen[1]?.text).toContain("[COPYRIGHT/IP COMPLAINT]%")
     expect(seen[1]?.text).toContain('where cr.status = $1')
@@ -71,6 +74,7 @@ describe('platform moderation repository', () => {
           target_excerpt: 'Master Mariner',
           target_state: 'active',
           reasons: ['impersonation'],
+          has_automated_flag: true,
         }]
       },
     })
@@ -84,6 +88,7 @@ describe('platform moderation repository', () => {
       title: 'Profile: Captain Public',
       targetState: 'active',
       reasons: ['impersonation'],
+      hasAutomatedFlag: true,
     })])
 
     expect(seen[1]?.text).toContain("cr.target_type = 'profile'")
