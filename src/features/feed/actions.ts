@@ -32,6 +32,7 @@ import {
   createStandardPostWithAurora,
   deleteCommentWithAurora,
   deletePostWithAurora,
+  restoreDeletedPostWithAurora,
   loadReactionDetailsWithAurora,
   repostPostWithAurora,
   setCommentReactionWithAurora,
@@ -346,6 +347,24 @@ export async function deletePost(postId: string): Promise<FeedActionResult> {
   try { await deletePostWithAurora(user.id, parsedId.data) }
   catch { return { ok: false, error: 'We could not delete this post.' } }
   revalidatePath('/saved')
+  revalidateSocialFeed()
+  return { ok: true }
+}
+
+export async function restoreDeletedPost(postId: string): Promise<FeedActionResult> {
+  const parsedId = postIdSchema.safeParse(postId)
+  if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
+  const user = await requireAwsUser()
+  try {
+    await restoreDeletedPostWithAurora(user.id, parsedId.data)
+  } catch (error) {
+    return {
+      ok: false,
+      error: safeErrorCode(error) === 'feed_post_restore_unavailable'
+        ? 'This post can no longer be restored.'
+        : 'We could not restore this post.',
+    }
+  }
   revalidateSocialFeed()
   return { ok: true }
 }
