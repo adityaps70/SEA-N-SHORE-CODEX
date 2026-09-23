@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import { AuthMethodLinks } from './auth-method-links'
+
+afterEach(() => cleanup())
 
 describe('alternative authentication methods', () => {
   it('offers mobile OTP and Google alongside existing sign-in', () => {
