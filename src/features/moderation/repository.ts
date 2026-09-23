@@ -70,7 +70,7 @@ export function createModerationRepository(input: { query?: ModerationQuery } = 
          updated_at
        )
        values ($1, $2, $3, $4, $5, 'open', now(), now())
-       on conflict (target_type, target_id, reporter_id)
+       on conflict (target_type, target_id, reporter_id) where reporter_id is not null
        do update set
          reason = excluded.reason,
          details = excluded.details,
@@ -89,7 +89,41 @@ export function createModerationRepository(input: { query?: ModerationQuery } = 
     )
   }
 
-  return { reportContent }
+  async function flagContentAutomatically(input: {
+    targetType: ModerationTargetType
+    targetId: string
+    reason: ModerationReportReason
+    details: string
+  }) {
+    const rows = await queryRows(targetLookupSql(input.targetType), [input.targetId]) as OwnerRow[]
+    if (!rows[0]) throw new Error('moderation_target_unavailable')
+
+    await queryRows(
+      `insert into public.content_reports (
+         target_type,
+         target_id,
+         reporter_id,
+         reason,
+         details,
+         status,
+         created_at,
+         updated_at
+       )
+       values ($1, $2, null, $3, $4, 'open', now(), now())
+       on conflict (target_type, target_id, reason)
+         where reporter_id is null and status in ('open', 'reviewing')
+       do update set
+         details = excluded.details,
+         status = 'open',
+         reviewed_by = null,
+         reviewed_at = null,
+         reviewer_note = null,
+         updated_at = now()`,
+      [input.targetType, input.targetId, input.reason, input.details.slice(0, 4000)],
+    )
+  }
+
+  return { reportContent, flagContentAutomatically }
 }
 
 export type ModerationRepository = ReturnType<typeof createModerationRepository>
