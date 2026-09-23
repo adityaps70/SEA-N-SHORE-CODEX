@@ -18,6 +18,13 @@ describe('alternative authentication methods', () => {
     )
   })
 
+  it('hides Google when federation is not configured yet', () => {
+    render(<AuthMethodLinks intent="sign-in" googleEnabled={false} />)
+
+    expect(screen.getByRole('link', { name: /continue with mobile number/i })).toBeVisible()
+    expect(screen.queryByRole('link', { name: /continue with google/i })).not.toBeInTheDocument()
+  })
+
   it('preserves sign-up intent for the same providers', () => {
     render(<AuthMethodLinks intent="sign-up" />)
 
