@@ -124,6 +124,70 @@ describe('createCognitoApi', () => {
     })
   })
 
+  it('starts and answers a custom authentication challenge without exposing the OTP', async () => {
+    const operations: string[] = []
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const target = new Headers(init?.headers).get('x-amz-target') ?? ''
+      operations.push(target)
+      const body = requestBody(init)
+
+      if (operations.length === 1) {
+        expect(body).toEqual({
+          AuthFlow: 'CUSTOM_AUTH',
+          ClientId: config.clientId,
+          AuthParameters: { USERNAME: 'phone-user@example.com' },
+        })
+        return jsonResponse({
+          ChallengeName: 'CUSTOM_CHALLENGE',
+          Session: 'phone-challenge-session',
+          ChallengeParameters: { USERNAME: 'phone-user@example.com' },
+        })
+      }
+
+      expect(body).toEqual({
+        ChallengeName: 'CUSTOM_CHALLENGE',
+        ClientId: config.clientId,
+        Session: 'phone-challenge-session',
+        ChallengeResponses: {
+          USERNAME: 'phone-user@example.com',
+          ANSWER: '123456',
+        },
+      })
+      return jsonResponse({
+        AuthenticationResult: {
+          AccessToken: 'phone-access-token',
+          IdToken: 'phone-id-token',
+          RefreshToken: 'phone-refresh-token',
+          ExpiresIn: 3600,
+        },
+      })
+    })
+
+    const api = createCognitoApi(config, transport)
+    await expect(api.startCustomAuth('phone-user@example.com')).resolves.toEqual({
+      kind: 'challenge',
+      session: 'phone-challenge-session',
+      username: 'phone-user@example.com',
+    })
+    await expect(api.respondToCustomChallenge({
+      username: 'phone-user@example.com',
+      session: 'phone-challenge-session',
+      answer: '123456',
+    })).resolves.toEqual({
+      kind: 'authenticated',
+      authentication: {
+        accessToken: 'phone-access-token',
+        idToken: 'phone-id-token',
+        refreshToken: 'phone-refresh-token',
+        expiresIn: 3600,
+      },
+    })
+    expect(operations).toEqual([
+      'AWSCognitoIdentityProviderService.InitiateAuth',
+      'AWSCognitoIdentityProviderService.RespondToAuthChallenge',
+    ])
+  })
+
   it('refreshes authentication using REFRESH_TOKEN_AUTH', async () => {
     const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).get('x-amz-target')).toBe(
