@@ -74,7 +74,7 @@ describe('deleted post recovery repository', () => {
     expect(restore?.values).toEqual([postId])
 
     const moderation = seen.find((entry) => entry.text.includes('insert into public.moderation_actions'))
-    expect(moderation?.values).toContain('restore')
+    expect(moderation?.text).toMatch(/'restore'/i)
     expect(String(moderation?.values?.at(-2))).toContain('Author confirmed the post was deleted accidentally.')
 
     const audit = seen.find((entry) => entry.text.includes('insert into public.audit_events'))
