@@ -48,6 +48,18 @@ describe('Cognito identity repository', () => {
     )
   })
 
+  it('loads the current profile account status used by the auth gate', async () => {
+    const query = vi.fn(async () => [{ profile_id: '11111111-1111-4111-8111-111111111111', account_status: 'suspended' }])
+    const { createIdentityRepository } = await import('./identity-repository')
+    const repository = createIdentityRepository({ query })
+
+    await expect(repository.getProfileAccountStatus('11111111-1111-4111-8111-111111111111')).resolves.toBe('suspended')
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('account_status'),
+      ['11111111-1111-4111-8111-111111111111'],
+    )
+  })
+
   it('provisions one incomplete profile and Cognito mapping inside one locked transaction', async () => {
     const profileId = '33333333-3333-4333-8333-333333333333'
     const transactionQuery = vi.fn()
