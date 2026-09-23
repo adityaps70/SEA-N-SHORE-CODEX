@@ -412,7 +412,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          (select count(*) from public.content_reports cr
            where cr.status in ('open', 'reviewing')
              and (
-               cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication')
+               cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication', 'impersonation', 'spam_or_scam', 'fake_profile')
                or cr.details like '[COPYRIGHT/IP COMPLAINT]%'
              )
          ) as high_priority_reports,
@@ -462,12 +462,14 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
            when 'comment' then 'Comment by ' || coalesce(owner.full_name, 'Unknown member')
            when 'job' then coalesce(j.title, 'Unavailable job')
            when 'event' then coalesce(e.title, 'Unavailable event')
+           when 'profile' then 'Profile: ' || coalesce(reported_profile.full_name, 'Unavailable profile')
          end as target_title,
          case cr.target_type
            when 'post' then p.body
            when 'comment' then pc.body
            when 'job' then coalesce(j.summary, j.description)
            when 'event' then e.summary
+           when 'profile' then coalesce(reported_profile.headline, reported_profile.summary)
          end as target_excerpt,
          owner.id as owner_id,
          owner.full_name as owner_name,
@@ -477,6 +479,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
            when 'comment' then case when pc.id is null then 'missing' when pc.deleted_at is null then 'visible' else 'removed' end
            when 'job' then coalesce(j.status::text, 'missing')
            when 'event' then coalesce(e.status, 'missing')
+           when 'profile' then coalesce(reported_profile.account_status::text, 'missing')
          end as target_state,
          count(*)::int as report_count,
          min(cr.created_at) as first_reported_at,
@@ -488,11 +491,13 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
        left join public.post_comments pc on cr.target_type = 'comment' and pc.id = cr.target_id
        left join public.jobs j on cr.target_type = 'job' and j.id = cr.target_id
        left join public.events e on cr.target_type = 'event' and e.id = cr.target_id
+       left join public.profiles reported_profile on cr.target_type = 'profile' and reported_profile.id = cr.target_id
        left join public.profiles owner on owner.id = case cr.target_type
          when 'post' then p.author_id
          when 'comment' then pc.author_id
          when 'job' then j.created_by_user_id
          when 'event' then e.host_user_id
+         when 'profile' then reported_profile.id
        end
        where ${where.join(' and ')}
        group by
@@ -502,9 +507,10 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          pc.id, pc.body, pc.deleted_at,
          j.id, j.title, j.summary, j.description, j.status,
          e.id, e.title, e.summary, e.status,
+         reported_profile.id, reported_profile.full_name, reported_profile.headline, reported_profile.summary, reported_profile.account_status,
          owner.id, owner.full_name, owner.slug
        order by
-         max(case when cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication')
+         max(case when cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication', 'impersonation', 'spam_or_scam', 'fake_profile')
            or cr.details like '[COPYRIGHT/IP COMPLAINT]%' then 1 else 0 end) desc,
          max(cr.updated_at) desc,
          cr.target_id desc
@@ -596,7 +602,10 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     if (targetType === 'job') {
       return `select status::text as state from public.jobs where id = $1 for update`
     }
-    return `select status as state from public.events where id = $1 for update`
+    if (targetType === 'event') {
+      return `select status as state from public.events where id = $1 for update`
+    }
+    return `select account_status::text as state from public.profiles where id = $1 for update`
   }
 
   async function mutateModerationTarget(
@@ -650,10 +659,19 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       )
       return
     }
+    if (targetType === 'event') {
+      await query(
+        action === 'remove'
+          ? "update public.events set status = 'cancelled', updated_at = now() where id = $1"
+          : "update public.events set status = 'published', updated_at = now() where id = $1",
+        [targetId],
+      )
+      return
+    }
     await query(
       action === 'remove'
-        ? "update public.events set status = 'cancelled', updated_at = now() where id = $1"
-        : "update public.events set status = 'published', updated_at = now() where id = $1",
+        ? "update public.profiles set account_status = 'suspended', updated_at = now() where id = $1"
+        : "update public.profiles set account_status = 'active', updated_at = now() where id = $1",
       [targetId],
     )
   }
