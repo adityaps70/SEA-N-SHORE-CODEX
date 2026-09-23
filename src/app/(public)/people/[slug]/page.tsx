@@ -3,6 +3,7 @@ import { getVerifiedUser } from '@/features/auth/queries'
 import { PostCard } from '@/features/feed/components/post-card'
 import { getPublicPostsByAuthor } from '@/features/feed/queries'
 import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-know'
+import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { RelationshipControls } from '@/features/network/components/relationship-controls'
 import { getPeopleYouMayKnow, getRelationshipState } from '@/features/network/queries'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
@@ -40,6 +41,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           actions={relationship ? (
             <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
               <RelationshipControls key={relationshipKey} profileId={profile.id} initialRelationship={relationship} />
+              <ReportContentButton targetType="profile" targetId={profile.id} label="Report profile" />
             </div>
           ) : undefined}
         />
