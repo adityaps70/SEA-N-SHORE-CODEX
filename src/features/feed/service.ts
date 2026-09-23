@@ -255,6 +255,16 @@ export function createFeedService(input: {
     })
   }
 
+  async function restoreDeletedPost(actorId: string, postId: string) {
+    return input.withTransaction(async (repository) => {
+      await assertMemberReady(repository, actorId)
+      if (!await repository.restoreOwnDeletedPost(actorId, postId)) {
+        serviceError('feed_post_restore_unavailable')
+      }
+      return true
+    })
+  }
+
   async function getReactionDetails(actorId: string, request: ReactionDetailsRequest): Promise<ReactionDetailsPage> {
     const page = await input.withTransaction(async (repository) => {
       await assertMemberReady(repository, actorId)
@@ -486,6 +496,7 @@ export function createFeedService(input: {
     createPollPost,
     repostPost,
     deletePost,
+    restoreDeletedPost,
     getReactionDetails,
     setPostReaction,
     setLiked,
@@ -510,6 +521,7 @@ export const assertPendingMediaDiscardableWithAurora = productionService.assertP
 export const createPollPostWithAurora = productionService.createPollPost
 export const repostPostWithAurora = productionService.repostPost
 export const deletePostWithAurora = productionService.deletePost
+export const restoreDeletedPostWithAurora = productionService.restoreDeletedPost
 export const loadReactionDetailsWithAurora = productionService.getReactionDetails
 export const setPostReactionWithAurora = productionService.setPostReaction
 export const setPostLikedWithAurora = productionService.setLiked
