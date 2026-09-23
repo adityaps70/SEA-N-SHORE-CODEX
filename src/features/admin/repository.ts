@@ -66,6 +66,29 @@ export type AdminAuditFilter = {
   limit: number
 }
 
+export const ADMIN_USER_STATUSES = ['active', 'restricted', 'suspended', 'deletion_requested'] as const
+export type AdminUserStatus = (typeof ADMIN_USER_STATUSES)[number]
+export type AdminUserStatusFilter = AdminUserStatus | 'all'
+
+export type AdminUserSummary = {
+  id: string
+  fullName: string
+  slug: string | null
+  headline: string | null
+  email: string | null
+  cognitoSubject: string | null
+  status: AdminUserStatus
+  isAdministrator: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type AdminUserSearch = {
+  query: string
+  status: AdminUserStatusFilter
+  limit: number
+}
+
 export type AdminOrganizationReview = {
   applicationId: string
   status: AdminOrganizationStatus
@@ -153,6 +176,18 @@ type AuditEventRow = QueryResultRow & {
   metadata: Record<string, unknown> | null
   created_at: string
 }
+type AdminUserRow = QueryResultRow & {
+  profile_id: string
+  full_name: string
+  slug: string | null
+  headline: string | null
+  account_status: AdminUserStatus
+  email: string | null
+  provider_subject: string | null
+  is_administrator: boolean | null
+  created_at: string
+  updated_at: string
+}
 type OrganizationReviewRow = QueryResultRow & {
   application_id: string
   company_id: string
@@ -233,6 +268,26 @@ function organizationStatus(value: string): AdminOrganizationStatus {
     return value as AdminOrganizationStatus
   }
   throw new Error('organization_review_status_invalid')
+}
+
+function adminUserStatus(value: string): AdminUserStatus {
+  if (ADMIN_USER_STATUSES.includes(value as AdminUserStatus)) return value as AdminUserStatus
+  throw new Error('admin_user_status_invalid')
+}
+
+function mapAdminUser(row: AdminUserRow): AdminUserSummary {
+  return {
+    id: row.profile_id,
+    fullName: row.full_name,
+    slug: row.slug ?? null,
+    headline: row.headline ?? null,
+    email: row.email ?? null,
+    cognitoSubject: row.provider_subject ?? null,
+    status: adminUserStatus(row.account_status),
+    isAdministrator: Boolean(row.is_administrator),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
 }
 
 function mapOrganizationReview(row: OrganizationReviewRow): AdminOrganizationReview {
@@ -653,6 +708,503 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
 
       return true
     })
+  }
+
+  async function searchUsers(
+    adminId: string,
+    input: AdminUserSearch,
+  ): Promise<AdminUserSummary[]> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const values: unknown[] = []
+    const where: string[] = []
+    const normalizedQuery = input.query.trim().toLowerCase()
+    if (normalizedQuery) {
+      values.push(`%${normalizedQuery}%`)
+      const parameter = '
+    await requirePlatformAdministrator(queryRows, userId)
+    const rows = await queryRows(
+      `${ORGANIZATION_REVIEW_SELECT}
+       where oa.status = $1
+       order by oa.submitted_at asc, oa.id asc
+       limit 100`,
+      [status],
+    ) as OrganizationReviewRow[]
+    return rows.map(mapOrganizationReview)
+  }
+
+  async function getOrganizationApplicationReview(userId: string, applicationId: string): Promise<AdminOrganizationReview | null> {
+    await requirePlatformAdministrator(queryRows, userId)
+    const rows = await queryRows(
+      `${ORGANIZATION_REVIEW_SELECT}
+       where oa.id = $1
+       limit 1`,
+      [applicationId],
+    ) as OrganizationReviewRow[]
+    return rows[0] ? mapOrganizationReview(rows[0]) : null
+  }
+
+  async function reviewOrganizationApplication(
+    adminId: string,
+    applicationId: string,
+    decision: AdminOrganizationDecision,
+    reviewerNote: string | null,
+  ) {
+    return transaction(async (txQuery) => {
+      await requirePlatformAdministrator(txQuery, adminId, true)
+
+      const lockedRows = await txQuery(
+        `select id, company_id, submitted_by, status
+         from public.organization_applications
+         where id = $1
+         for update`,
+        [applicationId],
+      ) as LockedOrganizationApplicationRow[]
+      const application = lockedRows[0]
+      if (!application) throw new Error('organization_application_not_found')
+
+      const transitionAllowed = application.status === 'pending'
+        ? ['approved', 'changes_requested', 'rejected'].includes(decision)
+        : application.status === 'approved' && decision === 'suspended'
+      if (!transitionAllowed) throw new Error('organization_review_transition_forbidden')
+
+      if (decision === 'approved') {
+        await txQuery(
+          `update public.companies
+           set is_verified = true,
+               verified_at = now(),
+               verified_by = $2,
+               updated_at = now()
+           where id = $1`,
+          [application.company_id, adminId],
+        )
+        await txQuery(
+          `update public.company_members
+           set approved_at = coalesce(approved_at, now()),
+               is_verified = true,
+               verified_at = coalesce(verified_at, now()),
+               verified_by = $3
+           where company_id = $1
+             and user_id = $2
+             and role::text = 'owner'`,
+          [application.company_id, application.submitted_by, adminId],
+        )
+      } else if (decision === 'suspended') {
+        await txQuery(
+          `update public.companies
+           set is_verified = false,
+               verified_at = null,
+               verified_by = null,
+               updated_at = now()
+           where id = $1`,
+          [application.company_id],
+        )
+        await txQuery(
+          `update public.company_members
+           set is_verified = false,
+               verified_at = null,
+               verified_by = null
+           where company_id = $1`,
+          [application.company_id],
+        )
+      }
+
+      await txQuery(
+        `update public.organization_applications
+         set status = $2,
+             reviewed_by = $3,
+             reviewed_at = now(),
+             admin_review_note = $4,
+             updated_at = now()
+         where id = $1`,
+        [applicationId, decision, adminId, reviewerNote],
+      )
+
+      await txQuery(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          adminId,
+          `organization.${decision}`,
+          'organization_application',
+          applicationId,
+          JSON.stringify({
+            companyId: application.company_id,
+            submittedBy: application.submitted_by,
+            previousStatus: application.status,
+            decision,
+            reviewerNote,
+          }),
+        ],
+      )
+
+      return true
+    })
+  }
+
+  return {
+    isPlatformAdministrator,
+    getAdminDashboardMetrics,
+    listModerationCases,
+    listAuditEvents,
+    moderateContent,
+    searchUsers,
+    getAdminUser,
+    listUserAccountHistory,
+    setUserAccountStatus,
+    recordUserDeletionAudit,
+    listOrganizationApplications,
+    getOrganizationApplicationReview,
+    reviewOrganizationApplication,
+  }
+}
+
+export type AdminRepository = ReturnType<typeof createAdminRepository>
+
+export const adminRepository = createAdminRepository()
+ + values.length
+      where.push(`(
+        lower(p.full_name) like ${parameter}
+        or lower(coalesce(p.slug, '')) like ${parameter}
+        or lower(coalesce(p.headline, '')) like ${parameter}
+        or lower(coalesce(ia.email, '')) like ${parameter}
+      )`)
+    }
+    if (input.status !== 'all') {
+      values.push(input.status)
+      where.push(`p.account_status::text = ${values.length}`)
+    }
+    values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
+    const limitParameter = '
+    await requirePlatformAdministrator(queryRows, userId)
+    const rows = await queryRows(
+      `${ORGANIZATION_REVIEW_SELECT}
+       where oa.status = $1
+       order by oa.submitted_at asc, oa.id asc
+       limit 100`,
+      [status],
+    ) as OrganizationReviewRow[]
+    return rows.map(mapOrganizationReview)
+  }
+
+  async function getOrganizationApplicationReview(userId: string, applicationId: string): Promise<AdminOrganizationReview | null> {
+    await requirePlatformAdministrator(queryRows, userId)
+    const rows = await queryRows(
+      `${ORGANIZATION_REVIEW_SELECT}
+       where oa.id = $1
+       limit 1`,
+      [applicationId],
+    ) as OrganizationReviewRow[]
+    return rows[0] ? mapOrganizationReview(rows[0]) : null
+  }
+
+  async function reviewOrganizationApplication(
+    adminId: string,
+    applicationId: string,
+    decision: AdminOrganizationDecision,
+    reviewerNote: string | null,
+  ) {
+    return transaction(async (txQuery) => {
+      await requirePlatformAdministrator(txQuery, adminId, true)
+
+      const lockedRows = await txQuery(
+        `select id, company_id, submitted_by, status
+         from public.organization_applications
+         where id = $1
+         for update`,
+        [applicationId],
+      ) as LockedOrganizationApplicationRow[]
+      const application = lockedRows[0]
+      if (!application) throw new Error('organization_application_not_found')
+
+      const transitionAllowed = application.status === 'pending'
+        ? ['approved', 'changes_requested', 'rejected'].includes(decision)
+        : application.status === 'approved' && decision === 'suspended'
+      if (!transitionAllowed) throw new Error('organization_review_transition_forbidden')
+
+      if (decision === 'approved') {
+        await txQuery(
+          `update public.companies
+           set is_verified = true,
+               verified_at = now(),
+               verified_by = $2,
+               updated_at = now()
+           where id = $1`,
+          [application.company_id, adminId],
+        )
+        await txQuery(
+          `update public.company_members
+           set approved_at = coalesce(approved_at, now()),
+               is_verified = true,
+               verified_at = coalesce(verified_at, now()),
+               verified_by = $3
+           where company_id = $1
+             and user_id = $2
+             and role::text = 'owner'`,
+          [application.company_id, application.submitted_by, adminId],
+        )
+      } else if (decision === 'suspended') {
+        await txQuery(
+          `update public.companies
+           set is_verified = false,
+               verified_at = null,
+               verified_by = null,
+               updated_at = now()
+           where id = $1`,
+          [application.company_id],
+        )
+        await txQuery(
+          `update public.company_members
+           set is_verified = false,
+               verified_at = null,
+               verified_by = null
+           where company_id = $1`,
+          [application.company_id],
+        )
+      }
+
+      await txQuery(
+        `update public.organization_applications
+         set status = $2,
+             reviewed_by = $3,
+             reviewed_at = now(),
+             admin_review_note = $4,
+             updated_at = now()
+         where id = $1`,
+        [applicationId, decision, adminId, reviewerNote],
+      )
+
+      await txQuery(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          adminId,
+          `organization.${decision}`,
+          'organization_application',
+          applicationId,
+          JSON.stringify({
+            companyId: application.company_id,
+            submittedBy: application.submitted_by,
+            previousStatus: application.status,
+            decision,
+            reviewerNote,
+          }),
+        ],
+      )
+
+      return true
+    })
+  }
+
+  return {
+    isPlatformAdministrator,
+    getAdminDashboardMetrics,
+    listModerationCases,
+    listAuditEvents,
+    moderateContent,
+    listOrganizationApplications,
+    getOrganizationApplicationReview,
+    reviewOrganizationApplication,
+  }
+}
+
+export type AdminRepository = ReturnType<typeof createAdminRepository>
+
+export const adminRepository = createAdminRepository()
+ + values.length
+    const whereSql = where.length ? 'where ' + where.join(' and ') : ''
+
+    const rows = await queryRows(
+      `select
+         p.id as profile_id,
+         p.full_name,
+         p.slug,
+         p.headline,
+         p.account_status::text as account_status,
+         ia.email,
+         ia.provider_subject,
+         exists (
+           select 1
+           from public.user_roles target_admin
+           where target_admin.user_id = p.id
+             and target_admin.role::text = 'administrator'
+         ) as is_administrator,
+         p.created_at,
+         p.updated_at
+       from public.profiles p
+       left join public.identity_accounts ia
+         on ia.profile_id = p.id and ia.provider = 'cognito'
+       ${whereSql}
+       order by
+         case p.account_status::text
+           when 'suspended' then 0
+           when 'restricted' then 1
+           when 'active' then 2
+           else 3
+         end,
+         p.updated_at desc,
+         p.id asc
+       limit ${limitParameter}`,
+      values,
+    ) as AdminUserRow[]
+
+    return rows.map(mapAdminUser)
+  }
+
+  async function getAdminUser(adminId: string, profileId: string): Promise<AdminUserSummary | null> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const rows = await queryRows(
+      `select
+         p.id as profile_id,
+         p.full_name,
+         p.slug,
+         p.headline,
+         p.account_status::text as account_status,
+         ia.email,
+         ia.provider_subject,
+         exists (
+           select 1
+           from public.user_roles target_admin
+           where target_admin.user_id = p.id
+             and target_admin.role::text = 'administrator'
+         ) as is_administrator,
+         p.created_at,
+         p.updated_at
+       from public.profiles p
+       left join public.identity_accounts ia
+         on ia.profile_id = p.id and ia.provider = 'cognito'
+       where p.id = $1
+       limit 1`,
+      [profileId],
+    ) as AdminUserRow[]
+    return rows[0] ? mapAdminUser(rows[0]) : null
+  }
+
+  async function listUserAccountHistory(
+    adminId: string,
+    profileId: string,
+    limit: number,
+  ): Promise<AdminAuditEvent[]> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const rows = await queryRows(
+      `select
+         ae.id,
+         ae.actor_id,
+         actor.full_name as actor_name,
+         actor.slug as actor_slug,
+         ae.action,
+         ae.target_type,
+         ae.target_id,
+         ae.metadata,
+         ae.created_at
+       from public.audit_events ae
+       left join public.profiles actor on actor.id = ae.actor_id
+       where ae.target_type = 'user_account'
+         and ae.target_id = $1
+       order by ae.created_at desc, ae.id desc
+       limit $2`,
+      [profileId, Math.min(Math.max(Math.trunc(limit), 1), 100)],
+    ) as AuditEventRow[]
+    return rows.map((row) => ({
+      id: row.id,
+      actor: {
+        id: row.actor_id ?? null,
+        fullName: row.actor_name ?? 'System',
+        slug: row.actor_slug ?? null,
+      },
+      action: row.action,
+      targetType: row.target_type,
+      targetId: row.target_id,
+      metadata: row.metadata && typeof row.metadata === 'object' ? row.metadata : {},
+      createdAt: row.created_at,
+    }))
+  }
+
+  async function setUserAccountStatus(
+    adminId: string,
+    profileId: string,
+    nextStatus: Extract<AdminUserStatus, 'active' | 'suspended'>,
+    reason: string,
+  ) {
+    return transaction(async (txQuery) => {
+      await requirePlatformAdministrator(txQuery, adminId, true)
+      if (adminId === profileId) throw new Error('admin_user_self_action_forbidden')
+
+      const rows = await txQuery(
+        `select
+           p.id as profile_id,
+           p.full_name,
+           p.slug,
+           p.headline,
+           p.account_status::text as account_status,
+           ia.email,
+           ia.provider_subject,
+           exists (
+             select 1
+             from public.user_roles target_admin
+             where target_admin.user_id = p.id
+               and target_admin.role::text = 'administrator'
+           ) as is_administrator,
+           p.created_at,
+           p.updated_at
+         from public.profiles p
+         left join public.identity_accounts ia
+           on ia.profile_id = p.id and ia.provider = 'cognito'
+         where p.id = $1
+         for update of p`,
+        [profileId],
+      ) as AdminUserRow[]
+      const target = rows[0]
+      if (!target) throw new Error('admin_user_not_found')
+      if (target.is_administrator) throw new Error('admin_user_target_administrator_forbidden')
+
+      const previousStatus = adminUserStatus(target.account_status)
+      if (previousStatus === 'deletion_requested') throw new Error('admin_user_deleted')
+      if (nextStatus === 'suspended' && previousStatus === 'suspended') return true
+      if (nextStatus === 'active' && previousStatus !== 'suspended') {
+        throw new Error('admin_user_restore_forbidden')
+      }
+
+      await txQuery(
+        `update public.profiles
+         set account_status = $2::public.account_status,
+             updated_at = now()
+         where id = $1`,
+        [profileId, nextStatus],
+      )
+      const action = nextStatus === 'suspended' ? 'account.suspended' : 'account.restored'
+      await txQuery(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, $2, 'user_account', $3, $4::jsonb)`,
+        [
+          adminId,
+          action,
+          profileId,
+          JSON.stringify({
+            reason: reason.trim(),
+            previousStatus,
+            nextStatus,
+          }),
+        ],
+      )
+      return true
+    })
+  }
+
+  async function recordUserDeletionAudit(adminId: string, profileId: string, reason: string) {
+    await requirePlatformAdministrator(queryRows, adminId)
+    await queryRows(
+      `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+       values ($1, 'account.permanently_deleted', 'user_account', $2, $3::jsonb)`,
+      [
+        adminId,
+        profileId,
+        JSON.stringify({
+          reason: reason.trim(),
+          nextStatus: 'deletion_requested',
+        }),
+      ],
+    )
+    return true
   }
 
   async function listOrganizationApplications(userId: string, status: AdminOrganizationStatus): Promise<AdminOrganizationReview[]> {
