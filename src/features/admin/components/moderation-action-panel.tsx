@@ -20,7 +20,9 @@ export function ModerationActionPanel({
   const [isError, setIsError] = useState(false)
   const [activeAction, setActiveAction] = useState<ModerationAction | null>(null)
   const [pending, startTransition] = useTransition()
-  const removed = targetState === 'removed' || targetState === 'closed' || targetState === 'cancelled'
+  const removed = targetState === 'removed' || targetState === 'closed' || targetState === 'cancelled' || targetState === 'suspended'
+  const removeLabel = targetType === 'profile' ? 'Suspend profile' : 'Remove content'
+  const restoreLabel = targetType === 'profile' ? 'Restore profile' : 'Restore content'
 
   function run(action: ModerationAction) {
     setMessage('')
@@ -115,7 +117,7 @@ export function ModerationActionPanel({
             onClick={() => run('restore')}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-ocean-700 px-3 text-xs font-bold text-white hover:bg-ocean-800 disabled:cursor-wait disabled:opacity-60"
           >
-            <RotateCcw aria-hidden="true" className="size-3.5" /> {buttonLabel('restore', 'Restore content')}
+            <RotateCcw aria-hidden="true" className="size-3.5" /> {buttonLabel('restore', restoreLabel)}
           </button>
         ) : (
           <button
@@ -124,7 +126,7 @@ export function ModerationActionPanel({
             onClick={() => run('remove')}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-red-700 px-3 text-xs font-bold text-white hover:bg-red-800 disabled:cursor-wait disabled:opacity-60"
           >
-            <ShieldX aria-hidden="true" className="size-3.5" /> {buttonLabel('remove', 'Remove content')}
+            <ShieldX aria-hidden="true" className="size-3.5" /> {buttonLabel('remove', removeLabel)}
           </button>
         )}
       </div>
