@@ -56,6 +56,34 @@ describe('content reporting repository', () => {
     ])
   })
 
+  it('stores copyright complaints compatibly while preserving a clear admin marker', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createModerationRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('from public.posts')) return [{ owner_id: '33333333-3333-4333-8333-333333333333' }]
+        return []
+      },
+    })
+
+    await repository.reportContent({
+      reporterId,
+      targetType: 'post',
+      targetId,
+      reason: 'copyright_infringement',
+      details: 'I own the original image and this post reproduces it without permission.',
+    })
+
+    const insert = seen.find((entry) => entry.text.includes('insert into public.content_reports'))
+    expect(insert?.values).toEqual([
+      'post',
+      targetId,
+      reporterId,
+      'other',
+      '[COPYRIGHT/IP COMPLAINT]\nI own the original image and this post reproduces it without permission.',
+    ])
+  })
+
   it('fails closed when the target is unavailable', async () => {
     const repository = createModerationRepository({ query: async () => [] })
 
