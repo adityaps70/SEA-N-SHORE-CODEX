@@ -3,6 +3,10 @@ export const COGNITO_COOKIE_NAMES = {
   refresh: 'sns_cognito_refresh',
   challenge: 'sns_cognito_challenge',
   challengeUser: 'sns_cognito_challenge_user',
+  phoneChallenge: 'sns_cognito_phone_challenge',
+  phoneChallengeUser: 'sns_cognito_phone_challenge_user',
+  oauthState: 'sns_cognito_oauth_state',
+  oauthVerifier: 'sns_cognito_oauth_verifier',
 } as const
 
 type CookieOptions = {
@@ -84,11 +88,45 @@ export function createCognitoCookieManager(
       store.set(COGNITO_COOKIE_NAMES.challengeUser, input.username, challengeOptions)
     },
 
+    setPhoneChallenge(input: { session: string; username: string }) {
+      const challengeOptions = {
+        ...baseOptions,
+        maxAge: CHALLENGE_MAX_AGE_SECONDS,
+      }
+
+      store.set(COGNITO_COOKIE_NAMES.phoneChallenge, input.session, challengeOptions)
+      store.set(COGNITO_COOKIE_NAMES.phoneChallengeUser, input.username, challengeOptions)
+    },
+
+    clearPhoneChallenge() {
+      store.delete(COGNITO_COOKIE_NAMES.phoneChallenge)
+      store.delete(COGNITO_COOKIE_NAMES.phoneChallengeUser)
+    },
+
+    setOAuthChallenge(input: { state: string; verifier: string }) {
+      const challengeOptions = {
+        ...baseOptions,
+        maxAge: CHALLENGE_MAX_AGE_SECONDS,
+      }
+
+      store.set(COGNITO_COOKIE_NAMES.oauthState, input.state, challengeOptions)
+      store.set(COGNITO_COOKIE_NAMES.oauthVerifier, input.verifier, challengeOptions)
+    },
+
+    clearOAuthChallenge() {
+      store.delete(COGNITO_COOKIE_NAMES.oauthState)
+      store.delete(COGNITO_COOKIE_NAMES.oauthVerifier)
+    },
+
     clearCognitoCookies() {
       store.delete(COGNITO_COOKIE_NAMES.access)
       store.delete(COGNITO_COOKIE_NAMES.refresh)
       store.delete(COGNITO_COOKIE_NAMES.challenge)
       store.delete(COGNITO_COOKIE_NAMES.challengeUser)
+      store.delete(COGNITO_COOKIE_NAMES.phoneChallenge)
+      store.delete(COGNITO_COOKIE_NAMES.phoneChallengeUser)
+      store.delete(COGNITO_COOKIE_NAMES.oauthState)
+      store.delete(COGNITO_COOKIE_NAMES.oauthVerifier)
     },
   }
 }
