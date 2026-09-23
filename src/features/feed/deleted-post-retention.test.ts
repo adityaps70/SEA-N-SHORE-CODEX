@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createDeletedPostRetention } from './deleted-post-retention'
 
+type Query = (text: string, values?: readonly unknown[]) => Promise<Array<{ id: string }>>
+
 describe('deleted post retention', () => {
   it('audits and permanently purges only expired soft-deleted posts in bounded batches', async () => {
-    const query = vi.fn<(text: string, values?: readonly unknown[]) => Promise<Array<{ id: string }>>>()
+    const query = vi.fn<Query>()
     query.mockResolvedValue([
       { id: '11111111-1111-4111-8111-111111111111' },
       { id: '22222222-2222-4222-8222-222222222222' },
@@ -31,7 +33,7 @@ describe('deleted post retention', () => {
   })
 
   it('clamps the batch size to a safe range', async () => {
-    const query = vi.fn<(text: string, values?: readonly unknown[]) => Promise<Array<{ id: string }>>>()
+    const query = vi.fn<Query>()
     query.mockResolvedValue([])
     const retention = createDeletedPostRetention({ query })
 
