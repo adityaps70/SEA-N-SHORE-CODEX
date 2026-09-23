@@ -114,7 +114,12 @@ export default async function AdminModerationPage({
       <section className="space-y-4">
         {cases.map((item) => {
           const href = targetHref(item.targetType, item.targetId)
-          const highPriority = item.reasons.some((reason) => [
+          const copyrightPrefix = '[COPYRIGHT/IP COMPLAINT]\n'
+          const copyrightComplaint = item.latestDetails?.startsWith(copyrightPrefix) ?? false
+          const displayDetails = copyrightComplaint
+            ? item.latestDetails?.slice(copyrightPrefix.length) ?? null
+            : item.latestDetails
+          const highPriority = copyrightComplaint || item.reasons.some((reason) => [
             'scam',
             'unsafe_or_illegal',
             'recruitment_fee',
@@ -133,6 +138,9 @@ export default async function AdminModerationPage({
                     <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-800">
                       {item.reportCount} report{item.reportCount === 1 ? '' : 's'}
                     </span>
+                    {copyrightComplaint ? (
+                      <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-800">Copyright / IP complaint</span>
+                    ) : null}
                     {highPriority ? (
                       <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">Priority review</span>
                     ) : null}
@@ -164,9 +172,9 @@ export default async function AdminModerationPage({
                     ))}
                   </div>
 
-                  {item.latestDetails ? (
+                  {displayDetails ? (
                     <blockquote className="mt-4 rounded-2xl border-l-4 border-red-300 bg-red-50/60 px-4 py-3 text-sm leading-6 text-red-950">
-                      “{item.latestDetails}”
+                      “{displayDetails}”
                     </blockquote>
                   ) : null}
 
