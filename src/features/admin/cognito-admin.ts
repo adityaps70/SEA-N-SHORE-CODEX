@@ -52,3 +52,19 @@ export function createAdminIdentityControl(input: {
   }
 }
 
+
+
+export const adminIdentityControl: AdminIdentityControl = {
+  async disableUser(username: string) {
+    return createAdminIdentityControl().disableUser(username)
+  },
+  async enableUser(username: string) {
+    return createAdminIdentityControl().enableUser(username)
+  },
+  async deleteUser(username: string) {
+    return createAdminIdentityControl().deleteUser(username)
+  },
+  async globalSignOut(username: string) {
+    return createAdminIdentityControl().globalSignOut(username)
+  },
+}
