@@ -32,6 +32,7 @@ describe('admin route boundary', () => {
     render(await AdminLayout({ children: <div>Restricted workspace</div> }))
 
     expect(screen.getByText('Restricted workspace')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Deleted content' })).toHaveAttribute('href', '/admin/deleted-content')
     expect(mocks.notFound).not.toHaveBeenCalled()
   })
 
