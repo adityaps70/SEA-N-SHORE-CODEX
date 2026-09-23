@@ -11,8 +11,11 @@ export type CognitoSignInResult =
 
 export type CognitoPrincipal = {
   sub: string
+  username: string | null
   email: string | null
   emailVerified: boolean
+  phoneNumber: string | null
+  phoneNumberVerified: boolean
   name: string | null
 }
 
@@ -41,6 +44,7 @@ type CognitoAuthenticationResponse = {
 }
 
 type CognitoGetUserResponse = {
+  Username?: string
   UserAttributes?: Array<{ Name?: string; Value?: string }>
 }
 
@@ -205,8 +209,11 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
 
       return {
         sub: attributes.get('sub') ?? '',
+        username: response.Username ?? null,
         email: attributes.get('email') ?? null,
         emailVerified: attributes.get('email_verified') === 'true',
+        phoneNumber: attributes.get('phone_number') ?? null,
+        phoneNumberVerified: attributes.get('phone_number_verified') === 'true',
         name: attributes.get('name') ?? null,
       }
     },
