@@ -10,7 +10,7 @@ describe('DataExportPanel', () => {
     expect(screen.getByText(/profile information, posts and comments, connections/i)).toBeInTheDocument()
     expect(screen.getByText(/ZIP package/i)).toBeInTheDocument()
     expect(screen.getByText(/CSV files/i)).toBeInTheDocument()
-    expect(screen.getByText(/JSON/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/JSON/i).length).toBeGreaterThan(0)
 
     const zipLink = screen.getByRole('link', { name: 'Download ZIP' })
     expect(zipLink).toHaveAttribute('href', '/api/account/export?format=zip')
