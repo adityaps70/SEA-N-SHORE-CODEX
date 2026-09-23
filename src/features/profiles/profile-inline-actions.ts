@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
+import { moderationRepository } from '@/features/moderation/repository'
 import { getAwsOwnProfile } from './aws-queries'
 import {
   updateProfileAboutSectionWithAurora,
@@ -19,6 +21,34 @@ export type ProfileInlineActionState = {
   fieldErrors?: Record<string, string[]>
   success?: boolean
   revision?: number
+}
+
+function assessProfileSection(value: object): AutomatedModerationAssessment {
+  const parts = Object.values(value).flatMap((entry) => {
+    if (typeof entry === 'string') return [entry]
+    if (Array.isArray(entry)) return entry.filter((item): item is string => typeof item === 'string')
+    return []
+  })
+  return assessPlatformText(parts)
+}
+
+async function flagProfileModeration(profileId: string, assessment: AutomatedModerationAssessment) {
+  if (assessment.decision !== 'review' || !assessment.reason) return
+  const details = automatedModerationDetails(assessment)
+  if (!details) return
+  try {
+    await moderationRepository.flagContentAutomatically({
+      targetType: 'profile',
+      targetId: profileId,
+      reason: assessment.reason,
+      details,
+    })
+  } catch (error) {
+    console.error('profile_inline_automated_moderation_flag_failed', {
+      profileId,
+      message: error instanceof Error ? error.message : null,
+    })
+  }
 }
 
 function isUniqueViolation(error: unknown) {
@@ -65,6 +95,8 @@ export async function updateProfileIdentitySection(
 
   const parsed = profileIdentitySectionSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return validationFailure(previousState, parsed.error)
+  const moderation = assessProfileSection(parsed.data)
+  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
 
   try {
     await updateProfileIdentitySectionWithAurora(
@@ -72,6 +104,7 @@ export async function updateProfileIdentitySection(
       parsed.data,
       profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional',
     )
+    await flagProfileModeration(user.id, moderation)
   } catch (error) {
     if (isUniqueViolation(error)) {
       return nextFailure(previousState, { fieldErrors: { slug: ['That username is already in use.'] } })
@@ -97,9 +130,12 @@ export async function updateProfileAboutSection(
 
   const parsed = profileAboutSectionSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return validationFailure(previousState, parsed.error)
+  const moderation = assessProfileSection(parsed.data)
+  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
 
   try {
     await updateProfileAboutSectionWithAurora(user.id, parsed.data)
+    await flagProfileModeration(user.id, moderation)
   } catch {
     return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
   }
@@ -124,9 +160,12 @@ export async function updateProfileProfessionalSection(
     profileType: profile.profileType,
   })
   if (!parsed.success) return validationFailure(previousState, parsed.error)
+  const moderation = assessProfileSection(parsed.data)
+  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
 
   try {
     await updateProfileProfessionalSectionWithAurora(user.id, parsed.data)
+    await flagProfileModeration(user.id, moderation)
   } catch {
     return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })
   }
