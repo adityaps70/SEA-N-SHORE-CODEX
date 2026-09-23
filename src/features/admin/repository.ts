@@ -721,7 +721,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
 
     if (normalizedQuery) {
       values.push(`%${normalizedQuery}%`)
-      const parameter = `${values.length}`
+      const parameter = String.fromCharCode(36) + values.length
       where.push(`(
         lower(p.full_name) like ${parameter}
         or lower(coalesce(p.slug, '')) like ${parameter}
@@ -732,11 +732,12 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
 
     if (input.status !== 'all') {
       values.push(input.status)
-      where.push(`p.account_status::text = ${values.length}`)
+      const statusParameter = String.fromCharCode(36) + values.length
+      where.push(`p.account_status::text = ${statusParameter}`)
     }
 
     values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
-    const limitParameter = `${values.length}`
+    const limitParameter = String.fromCharCode(36) + values.length
     const whereSql = where.length ? `where ${where.join(' and ')}` : ''
 
     const rows = await queryRows(
