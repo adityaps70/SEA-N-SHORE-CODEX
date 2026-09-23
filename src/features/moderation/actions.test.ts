@@ -32,6 +32,20 @@ describe('content reporting actions', () => {
     expect(mocks.requireAwsUser).not.toHaveBeenCalled()
   })
 
+  it('requires meaningful details for copyright complaints before authentication', async () => {
+    await expect(reportContent({
+      targetType: 'post',
+      targetId,
+      reason: 'copyright_infringement',
+      details: 'Too short',
+    })).resolves.toEqual({
+      ok: false,
+      error: 'Please identify the copyrighted work, explain your rights or authority, and describe where the infringing material appears.',
+    })
+
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+  })
+
   it('submits a valid report with the authenticated reporter identity', async () => {
     await expect(reportContent({
       targetType: 'comment',
@@ -46,6 +60,25 @@ describe('content reporting actions', () => {
       targetId,
       reason: 'harassment',
       details: 'Repeated personal attacks.',
+    })
+  })
+
+  it('submits a detailed copyright complaint through the moderation workflow', async () => {
+    const details = 'I own the training image shown in this post. The original is in our 2026 training handbook and the post reproduces it without permission.'
+
+    await expect(reportContent({
+      targetType: 'post',
+      targetId,
+      reason: 'copyright_infringement',
+      details,
+    })).resolves.toEqual({ ok: true })
+
+    expect(mocks.reportContent).toHaveBeenCalledWith({
+      reporterId: 'reporter-1',
+      targetType: 'post',
+      targetId,
+      reason: 'copyright_infringement',
+      details,
     })
   })
 
