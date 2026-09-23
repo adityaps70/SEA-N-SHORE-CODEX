@@ -3,14 +3,21 @@ import { describe, expect, it } from 'vitest'
 import { DataExportPanel } from './data-export-panel'
 
 describe('DataExportPanel', () => {
-  it('offers a clear portable account data download from Settings', () => {
+  it('offers both a normal-user ZIP package and a raw JSON export from Settings', () => {
     render(<DataExportPanel />)
 
     expect(screen.getByRole('heading', { name: 'Download my data' })).toBeInTheDocument()
     expect(screen.getByText(/profile information, posts and comments, connections/i)).toBeInTheDocument()
+    expect(screen.getByText(/ZIP package/i)).toBeInTheDocument()
+    expect(screen.getByText(/CSV files/i)).toBeInTheDocument()
     expect(screen.getByText(/JSON/i)).toBeInTheDocument()
 
-    const link = screen.getByRole('link', { name: 'Export my data' })
-    expect(link).toHaveAttribute('href', '/api/account/export')
+    const zipLink = screen.getByRole('link', { name: 'Download ZIP' })
+    expect(zipLink).toHaveAttribute('href', '/api/account/export?format=zip')
+    expect(zipLink).toHaveAttribute('download')
+
+    const jsonLink = screen.getByRole('link', { name: 'Download JSON' })
+    expect(jsonLink).toHaveAttribute('href', '/api/account/export?format=json')
+    expect(jsonLink).toHaveAttribute('download')
   })
 })
