@@ -558,7 +558,16 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
 
   async function deleteOwnPost(ownerProfileId: string, postId: string) {
     const rows = await queryRows(
-      `update public.posts set deleted_at = now(), updated_at = now() where id = $2 and author_id = $1 and deleted_at is null returning id`,
+      `update public.posts
+       set deleted_at = now(),
+           deleted_by = $1,
+           deletion_reason = 'Deleted by post author.',
+           purge_after = now() + interval '30 days',
+           updated_at = now()
+       where id = $2
+         and author_id = $1
+         and deleted_at is null
+       returning id`,
       [ownerProfileId, postId],
     ) as DeletedPostRow[]
     return rows.length === 1
