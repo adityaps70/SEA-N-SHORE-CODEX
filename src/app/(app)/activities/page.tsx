@@ -1,12 +1,13 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { BriefcaseBusiness, MapPin, MessageSquareText, PenSquare } from 'lucide-react'
+import { BriefcaseBusiness, MapPin, MessageSquareText, PenSquare, Trash2 } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { Card } from '@/components/ui/card'
 import { CommentActivityCard } from '@/features/feed/components/comment-activity-card'
 import { FeedProfileCard } from '@/features/feed/components/feed-profile-card'
 import { PostCard } from '@/features/feed/components/post-card'
-import { getMyActivityPosts, getMyCommentActivity } from '@/features/feed/queries'
+import { RecentlyDeletedPostCard } from '@/features/feed/components/recently-deleted-post-card'
+import { getMyActivityPosts, getMyCommentActivity, getMyRecentlyDeletedPosts } from '@/features/feed/queries'
 import { JobApplicationList } from '@/features/jobs/components/job-application-list'
 import { getMyJobApplications, getPublishedJobs } from '@/features/jobs/queries'
 import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-know'
@@ -32,7 +33,7 @@ function EmptyPosts({ mode }: { mode: 'posts' | 'comments' }) {
   )
 }
 
-type ActivityTab = 'posts' | 'comments' | 'jobs'
+type ActivityTab = 'posts' | 'comments' | 'jobs' | 'deleted'
 
 export default async function ActivitiesPage({
   searchParams,
@@ -40,15 +41,22 @@ export default async function ActivitiesPage({
   searchParams: Promise<{ tab?: string }>
 }) {
   const { tab: rawTab } = await searchParams
-  const tab: ActivityTab = rawTab === 'comments' ? 'comments' : rawTab === 'jobs' ? 'jobs' : 'posts'
+  const tab: ActivityTab = rawTab === 'comments'
+    ? 'comments'
+    : rawTab === 'jobs'
+      ? 'jobs'
+      : rawTab === 'deleted'
+        ? 'deleted'
+        : 'posts'
 
-  const [profile, recommendations, jobs, posts, comments, applications, portfolio] = await Promise.all([
+  const [profile, recommendations, jobs, posts, comments, applications, deletedPosts, portfolio] = await Promise.all([
     getOwnProfile(),
     getPeopleYouMayKnow(4),
     getPublishedJobs(),
     tab === 'posts' ? getMyActivityPosts() : Promise.resolve([]),
     tab === 'comments' ? getMyCommentActivity() : Promise.resolve([]),
     tab === 'jobs' ? getMyJobApplications() : Promise.resolve([]),
+    tab === 'deleted' ? getMyRecentlyDeletedPosts() : Promise.resolve([]),
     getOwnProfilePortfolio(),
   ])
   if (!profile) redirect('/onboarding')
@@ -75,9 +83,9 @@ export default async function ActivitiesPage({
         <PremiumPageHero
           eyebrow="Member workspace"
           title="My Activities"
-          description="Review what you have shared, revisit conversations you joined, and follow the status of every maritime job application."
+          description="Review what you have shared, revisit conversations you joined, follow job applications, and recover posts you recently deleted."
         >
-          <nav aria-label="Activity sections" className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-1.5 sm:max-w-xl">
+          <nav aria-label="Activity sections" className="mt-6 grid grid-cols-4 gap-2 rounded-2xl border border-white/10 bg-white/10 p-1.5 sm:max-w-2xl">
             <Link href="/activities?tab=posts" aria-current={tab === 'posts' ? 'page' : undefined} className={tabClass(tab === 'posts')}>
               <PenSquare aria-hidden="true" className="size-4" />
               <span>My Posts</span>
@@ -90,19 +98,33 @@ export default async function ActivitiesPage({
               <BriefcaseBusiness aria-hidden="true" className="size-4" />
               <span>Jobs Applied</span>
             </Link>
+            <Link href="/activities?tab=deleted" aria-current={tab === 'deleted' ? 'page' : undefined} className={tabClass(tab === 'deleted')}>
+              <Trash2 aria-hidden="true" className="size-4" />
+              <span>Recently Deleted</span>
+            </Link>
           </nav>
         </PremiumPageHero>
 
         <section aria-labelledby="activity-panel-heading" className="mt-5">
           <h2 id="activity-panel-heading" className="sr-only">
-            {tab === 'posts' ? 'My Posts' : tab === 'comments' ? 'My Comments' : 'Jobs Applied'}
+            {tab === 'posts' ? 'My Posts' : tab === 'comments' ? 'My Comments' : tab === 'jobs' ? 'Jobs Applied' : 'Recently Deleted'}
           </h2>
           {tab === 'posts' ? (
             posts.length ? <div className="space-y-4">{posts.map((post) => <PostCard key={post.id} post={post} />)}</div> : <EmptyPosts mode="posts" />
           ) : tab === 'comments' ? (
             comments.length ? <div className="space-y-5">{comments.map((item) => <CommentActivityCard key={item.post.id} activity={item} />)}</div> : <EmptyPosts mode="comments" />
-          ) : (
+          ) : tab === 'jobs' ? (
             <JobApplicationList applications={applications} />
+          ) : deletedPosts.length ? (
+            <div className="space-y-4">{deletedPosts.map((post) => <RecentlyDeletedPostCard key={post.id} post={post} />)}</div>
+          ) : (
+            <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-10 text-center">
+              <Trash2 aria-hidden="true" className="mx-auto size-6 text-muted" />
+              <p className="mt-3 font-semibold text-navy-950">No recently deleted posts.</p>
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">
+                Posts you delete yourself remain recoverable here for 30 days before they are permanently removed.
+              </p>
+            </div>
           )}
         </section>
       </main>
