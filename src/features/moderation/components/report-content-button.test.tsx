@@ -41,6 +41,36 @@ describe('ReportContentButton', () => {
     expect(await screen.findByText('Report submitted for review.')).toBeVisible()
   })
 
+  it('shows profile-specific reasons and submits a profile report', async () => {
+    render(
+      <ReportContentButton
+        targetType="profile"
+        targetId="11111111-1111-4111-8111-111111111111"
+        label="Report profile"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Report profile' }))
+    expect(screen.getByRole('option', { name: 'Impersonation' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Harassment or bullying' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Spam or scam' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Inappropriate content' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Fake profile' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Other' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Recruitment fee requested' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'impersonation' } })
+    fireEvent.change(screen.getByLabelText('Additional details'), { target: { value: 'This profile is using another seafarer’s identity and photo.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit report' }))
+
+    await waitFor(() => expect(mocks.reportContent).toHaveBeenCalledWith({
+      targetType: 'profile',
+      targetId: '11111111-1111-4111-8111-111111111111',
+      reason: 'impersonation',
+      details: 'This profile is using another seafarer’s identity and photo.',
+    }))
+  })
+
   it('shows copyright-specific guidance when the complaint reason is selected', () => {
     render(
       <ReportContentButton
