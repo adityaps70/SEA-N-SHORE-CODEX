@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import type { FeedCommentRow, FeedPostRow, FeedViewerState } from './mappers'
-import type { FeedCursor, FeedPostType, PostCategory, PostReactionType, ReactionTargetType } from './types'
+import type { FeedCursor, FeedPostType, PostCategory, PostReactionType, ReactionTargetType, RecentlyDeletedPost } from './types'
 
 type FeedQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -24,6 +24,13 @@ type CommentMutationRow = QueryResultRow & {
 }
 type PostStateRow = QueryResultRow & { post_id: string; option_id?: string; reaction_type?: PostReactionType }
 type DeletedPostRow = QueryResultRow & { id: string }
+type RecentlyDeletedPostRow = QueryResultRow & {
+  id: string
+  category: PostCategory
+  body: string
+  deleted_at: string
+  purge_after: string
+}
 type IdRow = QueryResultRow & { id: string }
 
 export type ReactorRow = QueryResultRow & {
@@ -265,6 +272,58 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
        order by p.created_at desc, p.id desc${limitSql}`,
       values,
     ) as FeedRow[]
+  }
+
+  async function listOwnRecentlyDeletedPosts(ownerProfileId: string): Promise<RecentlyDeletedPost[]> {
+    const rows = await queryRows(
+      `select
+         p.id,
+         p.category::text as category,
+         p.body,
+         p.deleted_at,
+         p.purge_after
+       from public.posts p
+       where p.author_id = $1
+         and p.deleted_by = $1
+         and p.deleted_at is not null
+         and p.purge_after > now()
+       order by p.deleted_at desc, p.id desc`,
+      [ownerProfileId],
+    ) as RecentlyDeletedPostRow[]
+
+    return rows.map((row) => ({
+      id: row.id,
+      category: row.category,
+      body: row.body,
+      deletedAt: row.deleted_at,
+      purgeAfter: row.purge_after,
+    }))
+  }
+
+  async function restoreOwnDeletedPost(ownerProfileId: string, postId: string) {
+    const rows = await queryRows(
+      `update public.posts
+       set deleted_at = null,
+           deleted_by = null,
+           deletion_reason = null,
+           purge_after = null,
+           updated_at = now()
+       where author_id = $1
+         and id = $2
+         and deleted_by = $1
+         and deleted_at is not null
+         and purge_after > now()
+       returning id`,
+      [ownerProfileId, postId],
+    ) as DeletedPostRow[]
+    if (rows.length !== 1) return false
+
+    await queryRows(
+      `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+       values ($1, 'content.post_restored_by_author', 'post', $2, '{}'::jsonb)`,
+      [ownerProfileId, postId],
+    )
+    return true
   }
 
   async function listCommentedRows(lookup: { viewerProfileId: string; limit?: number }): Promise<FeedPostRow[]> {
@@ -766,6 +825,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     listFeedRows,
     listSavedRows,
     listAuthorRows,
+    listOwnRecentlyDeletedPosts,
+    restoreOwnDeletedPost,
     listCommentedRows,
     getPostRow,
     listRepostSourceRows,
