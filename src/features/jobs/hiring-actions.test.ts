@@ -8,10 +8,14 @@ const mocks = vi.hoisted(() => ({
   updateApplicationStatus: vi.fn(),
   saveRecruiterNote: vi.fn(),
   revalidatePath: vi.fn(),
+  flagContentAutomatically: vi.fn(async () => undefined),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/moderation/repository', () => ({
+  moderationRepository: { flagContentAutomatically: mocks.flagContentAutomatically },
+}))
 vi.mock('./hiring-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('./hiring-repository')>()
   return {
@@ -94,6 +98,28 @@ describe('hiring server actions', () => {
     await expect(createHiringJob(createInput({ salaryMin: 9000, salaryMax: 8000 }))).resolves.toMatchObject({ ok: false })
     await expect(createHiringJob(createInput({ joiningFrom: '2026-10-01', joiningUntil: '2026-09-30' }))).resolves.toMatchObject({ ok: false })
     expect(mocks.createJob).not.toHaveBeenCalled()
+  })
+
+  it('blocks high-confidence unsafe vacancy text before creation', async () => {
+    await expect(createHiringJob(createInput({
+      description: 'Send your OTP and password to verify your account immediately.',
+    }))).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/community safety rules/i) })
+
+    expect(mocks.createJob).not.toHaveBeenCalled()
+    expect(mocks.flagContentAutomatically).not.toHaveBeenCalled()
+  })
+
+  it('creates an automated moderation case for review-level published vacancy text', async () => {
+    await expect(createHiringJob(createInput({
+      description: 'Guaranteed job. Pay the registration fee now and contact us on WhatsApp.',
+    }))).resolves.toEqual({ ok: true, jobId })
+
+    expect(mocks.flagContentAutomatically).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: 'job',
+      targetId: jobId,
+      reason: 'scam',
+      details: expect.stringContaining('[AUTOMATED MODERATION]'),
+    }))
   })
 
   it('creates a vacancy with the server-authenticated recruiter and revalidates candidate and hiring surfaces', async () => {
