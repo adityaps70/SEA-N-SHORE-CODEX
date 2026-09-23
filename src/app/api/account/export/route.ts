@@ -1,10 +1,11 @@
 import { accountExportRepository } from '@/features/account-export/repository'
+import { createAccountExportZip, type AccountExportPayload } from '@/features/account-export/zip'
 import { AwsAuthenticationRequiredError, requireAwsUser } from '@/features/auth/aws-queries'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const JSON_HEADERS = {
+const EXPORT_HEADERS = {
   'Cache-Control': 'private, no-store',
   'Pragma': 'no-cache',
   'X-Content-Type-Options': 'nosniff',
@@ -13,11 +14,24 @@ const JSON_HEADERS = {
 function errorResponse(error: string, status: number) {
   return Response.json({ ok: false, error }, {
     status,
-    headers: JSON_HEADERS,
+    headers: EXPORT_HEADERS,
   })
 }
 
-export async function GET() {
+function exportFormat(request?: Request) {
+  if (!request) {
+    return 'json'
+  }
+
+  return new URL(request.url).searchParams.get('format') ?? 'json'
+}
+
+export async function GET(request?: Request) {
+  const format = exportFormat(request)
+  if (format !== 'json' && format !== 'zip') {
+    return errorResponse('Choose either ZIP or JSON for your data export.', 400)
+  }
+
   let user: Awaited<ReturnType<typeof requireAwsUser>>
   try {
     user = await requireAwsUser()
@@ -32,7 +46,7 @@ export async function GET() {
     const data = await accountExportRepository.exportAccountData(user.id)
     const generatedAt = new Date().toISOString()
     const date = generatedAt.slice(0, 10)
-    const payload = {
+    const payload: AccountExportPayload = {
       schemaVersion: 1,
       generatedAt,
       account: {
@@ -42,10 +56,22 @@ export async function GET() {
       data,
     }
 
+    if (format === 'zip') {
+      const zip = createAccountExportZip(payload)
+      return new Response(zip, {
+        status: 200,
+        headers: {
+          ...EXPORT_HEADERS,
+          'Content-Type': 'application/zip',
+          'Content-Disposition': 'attachment; filename="sea-n-shore-data-export-' + date + '.zip"',
+        },
+      })
+    }
+
     return new Response(JSON.stringify(payload, null, 2) + '\n', {
       status: 200,
       headers: {
-        ...JSON_HEADERS,
+        ...EXPORT_HEADERS,
         'Content-Type': 'application/json; charset=utf-8',
         'Content-Disposition': 'attachment; filename="sea-n-shore-data-export-' + date + '.json"',
       },
