@@ -39,7 +39,7 @@ describe('GET /api/account/export', () => {
   })
 
   it('returns the authenticated user account export as a downloadable no-store JSON file', async () => {
-    const response = await GET()
+    const response = await GET(new Request('https://seaandshore.in/api/account/export?format=json'))
 
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toContain('application/json')
@@ -62,6 +62,42 @@ describe('GET /api/account/export', () => {
       },
     })
     expect(body.generatedAt).toEqual(expect.any(String))
+  })
+
+  it('returns a normal-user ZIP package with JSON, CSV files, and a README', async () => {
+    const response = await GET(new Request('https://seaandshore.in/api/account/export?format=zip'))
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe('application/zip')
+    expect(response.headers.get('content-disposition')).toMatch(/attachment; filename="sea-n-shore-data-export-\d{4}-\d{2}-\d{2}\.zip"/)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    expect(Array.from(bytes.subarray(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04])
+
+    const readable = Buffer.from(bytes).toString('utf8')
+    expect(readable).toContain('README.txt')
+    expect(readable).toContain('data.json')
+    expect(readable).toContain('csv/profile.csv')
+    expect(readable).toContain('csv/posts.csv')
+  })
+
+  it('keeps JSON as the default format for existing download links', async () => {
+    const response = await GET()
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('application/json')
+  })
+
+  it('rejects unsupported export formats', async () => {
+    const response = await GET(new Request('https://seaandshore.in/api/account/export?format=pdf'))
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: 'Choose either ZIP or JSON for your data export.',
+    })
+    expect(mocks.exportAccountData).not.toHaveBeenCalled()
   })
 
   it('rejects unauthenticated export requests without exposing account data', async () => {
