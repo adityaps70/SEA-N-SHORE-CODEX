@@ -718,150 +718,10 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     const values: unknown[] = []
     const where: string[] = []
     const normalizedQuery = input.query.trim().toLowerCase()
+
     if (normalizedQuery) {
       values.push(`%${normalizedQuery}%`)
-      const parameter = '
-    await requirePlatformAdministrator(queryRows, userId)
-    const rows = await queryRows(
-      `${ORGANIZATION_REVIEW_SELECT}
-       where oa.status = $1
-       order by oa.submitted_at asc, oa.id asc
-       limit 100`,
-      [status],
-    ) as OrganizationReviewRow[]
-    return rows.map(mapOrganizationReview)
-  }
-
-  async function getOrganizationApplicationReview(userId: string, applicationId: string): Promise<AdminOrganizationReview | null> {
-    await requirePlatformAdministrator(queryRows, userId)
-    const rows = await queryRows(
-      `${ORGANIZATION_REVIEW_SELECT}
-       where oa.id = $1
-       limit 1`,
-      [applicationId],
-    ) as OrganizationReviewRow[]
-    return rows[0] ? mapOrganizationReview(rows[0]) : null
-  }
-
-  async function reviewOrganizationApplication(
-    adminId: string,
-    applicationId: string,
-    decision: AdminOrganizationDecision,
-    reviewerNote: string | null,
-  ) {
-    return transaction(async (txQuery) => {
-      await requirePlatformAdministrator(txQuery, adminId, true)
-
-      const lockedRows = await txQuery(
-        `select id, company_id, submitted_by, status
-         from public.organization_applications
-         where id = $1
-         for update`,
-        [applicationId],
-      ) as LockedOrganizationApplicationRow[]
-      const application = lockedRows[0]
-      if (!application) throw new Error('organization_application_not_found')
-
-      const transitionAllowed = application.status === 'pending'
-        ? ['approved', 'changes_requested', 'rejected'].includes(decision)
-        : application.status === 'approved' && decision === 'suspended'
-      if (!transitionAllowed) throw new Error('organization_review_transition_forbidden')
-
-      if (decision === 'approved') {
-        await txQuery(
-          `update public.companies
-           set is_verified = true,
-               verified_at = now(),
-               verified_by = $2,
-               updated_at = now()
-           where id = $1`,
-          [application.company_id, adminId],
-        )
-        await txQuery(
-          `update public.company_members
-           set approved_at = coalesce(approved_at, now()),
-               is_verified = true,
-               verified_at = coalesce(verified_at, now()),
-               verified_by = $3
-           where company_id = $1
-             and user_id = $2
-             and role::text = 'owner'`,
-          [application.company_id, application.submitted_by, adminId],
-        )
-      } else if (decision === 'suspended') {
-        await txQuery(
-          `update public.companies
-           set is_verified = false,
-               verified_at = null,
-               verified_by = null,
-               updated_at = now()
-           where id = $1`,
-          [application.company_id],
-        )
-        await txQuery(
-          `update public.company_members
-           set is_verified = false,
-               verified_at = null,
-               verified_by = null
-           where company_id = $1`,
-          [application.company_id],
-        )
-      }
-
-      await txQuery(
-        `update public.organization_applications
-         set status = $2,
-             reviewed_by = $3,
-             reviewed_at = now(),
-             admin_review_note = $4,
-             updated_at = now()
-         where id = $1`,
-        [applicationId, decision, adminId, reviewerNote],
-      )
-
-      await txQuery(
-        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
-         values ($1, $2, $3, $4, $5::jsonb)`,
-        [
-          adminId,
-          `organization.${decision}`,
-          'organization_application',
-          applicationId,
-          JSON.stringify({
-            companyId: application.company_id,
-            submittedBy: application.submitted_by,
-            previousStatus: application.status,
-            decision,
-            reviewerNote,
-          }),
-        ],
-      )
-
-      return true
-    })
-  }
-
-  return {
-    isPlatformAdministrator,
-    getAdminDashboardMetrics,
-    listModerationCases,
-    listAuditEvents,
-    moderateContent,
-    searchUsers,
-    getAdminUser,
-    listUserAccountHistory,
-    setUserAccountStatus,
-    recordUserDeletionAudit,
-    listOrganizationApplications,
-    getOrganizationApplicationReview,
-    reviewOrganizationApplication,
-  }
-}
-
-export type AdminRepository = ReturnType<typeof createAdminRepository>
-
-export const adminRepository = createAdminRepository()
- + values.length
+      const parameter = `${values.length}`
       where.push(`(
         lower(p.full_name) like ${parameter}
         or lower(coalesce(p.slug, '')) like ${parameter}
@@ -869,149 +729,15 @@ export const adminRepository = createAdminRepository()
         or lower(coalesce(ia.email, '')) like ${parameter}
       )`)
     }
+
     if (input.status !== 'all') {
       values.push(input.status)
       where.push(`p.account_status::text = ${values.length}`)
     }
+
     values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
-    const limitParameter = '
-    await requirePlatformAdministrator(queryRows, userId)
-    const rows = await queryRows(
-      `${ORGANIZATION_REVIEW_SELECT}
-       where oa.status = $1
-       order by oa.submitted_at asc, oa.id asc
-       limit 100`,
-      [status],
-    ) as OrganizationReviewRow[]
-    return rows.map(mapOrganizationReview)
-  }
-
-  async function getOrganizationApplicationReview(userId: string, applicationId: string): Promise<AdminOrganizationReview | null> {
-    await requirePlatformAdministrator(queryRows, userId)
-    const rows = await queryRows(
-      `${ORGANIZATION_REVIEW_SELECT}
-       where oa.id = $1
-       limit 1`,
-      [applicationId],
-    ) as OrganizationReviewRow[]
-    return rows[0] ? mapOrganizationReview(rows[0]) : null
-  }
-
-  async function reviewOrganizationApplication(
-    adminId: string,
-    applicationId: string,
-    decision: AdminOrganizationDecision,
-    reviewerNote: string | null,
-  ) {
-    return transaction(async (txQuery) => {
-      await requirePlatformAdministrator(txQuery, adminId, true)
-
-      const lockedRows = await txQuery(
-        `select id, company_id, submitted_by, status
-         from public.organization_applications
-         where id = $1
-         for update`,
-        [applicationId],
-      ) as LockedOrganizationApplicationRow[]
-      const application = lockedRows[0]
-      if (!application) throw new Error('organization_application_not_found')
-
-      const transitionAllowed = application.status === 'pending'
-        ? ['approved', 'changes_requested', 'rejected'].includes(decision)
-        : application.status === 'approved' && decision === 'suspended'
-      if (!transitionAllowed) throw new Error('organization_review_transition_forbidden')
-
-      if (decision === 'approved') {
-        await txQuery(
-          `update public.companies
-           set is_verified = true,
-               verified_at = now(),
-               verified_by = $2,
-               updated_at = now()
-           where id = $1`,
-          [application.company_id, adminId],
-        )
-        await txQuery(
-          `update public.company_members
-           set approved_at = coalesce(approved_at, now()),
-               is_verified = true,
-               verified_at = coalesce(verified_at, now()),
-               verified_by = $3
-           where company_id = $1
-             and user_id = $2
-             and role::text = 'owner'`,
-          [application.company_id, application.submitted_by, adminId],
-        )
-      } else if (decision === 'suspended') {
-        await txQuery(
-          `update public.companies
-           set is_verified = false,
-               verified_at = null,
-               verified_by = null,
-               updated_at = now()
-           where id = $1`,
-          [application.company_id],
-        )
-        await txQuery(
-          `update public.company_members
-           set is_verified = false,
-               verified_at = null,
-               verified_by = null
-           where company_id = $1`,
-          [application.company_id],
-        )
-      }
-
-      await txQuery(
-        `update public.organization_applications
-         set status = $2,
-             reviewed_by = $3,
-             reviewed_at = now(),
-             admin_review_note = $4,
-             updated_at = now()
-         where id = $1`,
-        [applicationId, decision, adminId, reviewerNote],
-      )
-
-      await txQuery(
-        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
-         values ($1, $2, $3, $4, $5::jsonb)`,
-        [
-          adminId,
-          `organization.${decision}`,
-          'organization_application',
-          applicationId,
-          JSON.stringify({
-            companyId: application.company_id,
-            submittedBy: application.submitted_by,
-            previousStatus: application.status,
-            decision,
-            reviewerNote,
-          }),
-        ],
-      )
-
-      return true
-    })
-  }
-
-  return {
-    isPlatformAdministrator,
-    getAdminDashboardMetrics,
-    listModerationCases,
-    listAuditEvents,
-    moderateContent,
-    listOrganizationApplications,
-    getOrganizationApplicationReview,
-    reviewOrganizationApplication,
-  }
-}
-
-export type AdminRepository = ReturnType<typeof createAdminRepository>
-
-export const adminRepository = createAdminRepository()
- + values.length
-    const whereSql = where.length ? 'where ' + where.join(' and ') : ''
+    const limitParameter = `${values.length}`
+    const whereSql = where.length ? `where ${where.join(' and ')}` : ''
 
     const rows = await queryRows(
       `select
@@ -1104,6 +830,7 @@ export const adminRepository = createAdminRepository()
        limit $2`,
       [profileId, Math.min(Math.max(Math.trunc(limit), 1), 100)],
     ) as AuditEventRow[]
+
     return rows.map((row) => ({
       id: row.id,
       actor: {
@@ -1171,6 +898,7 @@ export const adminRepository = createAdminRepository()
          where id = $1`,
         [profileId, nextStatus],
       )
+
       const action = nextStatus === 'suspended' ? 'account.suspended' : 'account.restored'
       await txQuery(
         `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
@@ -1334,6 +1062,11 @@ export const adminRepository = createAdminRepository()
     listModerationCases,
     listAuditEvents,
     moderateContent,
+    searchUsers,
+    getAdminUser,
+    listUserAccountHistory,
+    setUserAccountStatus,
+    recordUserDeletionAudit,
     listOrganizationApplications,
     getOrganizationApplicationReview,
     reviewOrganizationApplication,
