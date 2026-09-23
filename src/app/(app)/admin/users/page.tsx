@@ -18,6 +18,11 @@ const statusLabels: Record<AdminUserStatusFilter, string> = {
   deletion_requested: 'Deleted',
 }
 
+const filterLabels: Record<AdminUserStatusFilter, string> = {
+  ...statusLabels,
+  deletion_requested: 'Deletion records',
+}
+
 function readSingle(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] ?? '' : value ?? ''
 }
@@ -47,15 +52,21 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
     limit: 100,
   })
 
+  const viewingDeletionRecords = status === 'deletion_requested'
+
   return (
     <main className="space-y-5">
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">User safety</p>
-            <h2 className="mt-1 text-2xl font-bold text-navy-950">User accounts</h2>
+            <h2 className="mt-1 text-2xl font-bold text-navy-950">
+              {viewingDeletionRecords ? 'Deleted account records' : 'User accounts'}
+            </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              Search members, review account status and moderation history, then suspend, restore or permanently delete accounts where appropriate.
+              {viewingDeletionRecords
+                ? 'These are not active or manageable users. They are anonymized tombstones retained only so moderation history and integrity records remain traceable.'
+                : 'Search members, review account status and moderation history, then suspend, restore or permanently delete accounts where appropriate.'}
             </p>
           </div>
           <div className="rounded-xl bg-mist-50 px-3 py-2 text-sm font-semibold text-muted">
@@ -96,7 +107,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                   item === status ? 'bg-navy-950 text-white' : 'bg-mist-50 text-navy-900 hover:bg-mist-100'
                 }`}
               >
-                {statusLabels[item]}
+                {filterLabels[item]}
               </Link>
             )
           })}
@@ -123,16 +134,22 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                   ) : null}
                 </div>
                 <p className="mt-2 truncate text-sm text-muted">
-                  {user.email ?? 'No email retained'}
-                  {user.slug ? ` · @${user.slug}` : ''}
-                  {user.headline ? ` · ${user.headline}` : ''}
+                  {user.status === 'deletion_requested'
+                    ? 'Personal account data removed · audit tombstone only'
+                    : (
+                      <>
+                        {user.email ?? 'No email retained'}
+                        {user.slug ? ` · @${user.slug}` : ''}
+                        {user.headline ? ` · ${user.headline}` : ''}
+                      </>
+                    )}
                 </p>
               </div>
               <Link
                 href={`/admin/users/${user.id}`}
                 className="inline-flex min-h-10 items-center justify-center rounded-xl bg-navy-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-navy-900"
               >
-                Manage user
+                {user.status === 'deletion_requested' ? 'View deletion record' : 'Manage user'}
               </Link>
             </article>
           ))}
