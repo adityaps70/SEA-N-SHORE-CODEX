@@ -411,7 +411,10 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          (select count(*) from public.content_reports cr where cr.status = 'reviewing') as reviewing_reports,
          (select count(*) from public.content_reports cr
            where cr.status in ('open', 'reviewing')
-             and cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication')
+             and (
+               cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication')
+               or cr.details like '[COPYRIGHT/IP COMPLAINT]%'
+             )
          ) as high_priority_reports,
          (select count(*) from public.content_reports cr where cr.created_at >= now() - interval '24 hours') as reports_last_24h,
          (select count(*) from public.posts p where p.deleted_at is null) as active_posts,
@@ -501,7 +504,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          e.id, e.title, e.summary, e.status,
          owner.id, owner.full_name, owner.slug
        order by
-         max(case when cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication') then 1 else 0 end) desc,
+         max(case when cr.reason in ('scam', 'unsafe_or_illegal', 'recruitment_fee', 'fake_company', 'suspicious_communication')
+           or cr.details like '[COPYRIGHT/IP COMPLAINT]%' then 1 else 0 end) desc,
          max(cr.updated_at) desc,
          cr.target_id desc
        limit $${limitParameter}`,
