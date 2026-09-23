@@ -23,6 +23,7 @@ function repository(overrides: Partial<FeedRepository> = {}) {
     })),
     updateOwnCommentWithinEditWindow: vi.fn(async () => ({ id: commentId, postId, parentCommentId: null })),
     softDeleteOwnComment: vi.fn(async () => ({ id: commentId, postId, parentCommentId: null })),
+    restoreOwnDeletedPost: vi.fn(async () => true),
     replaceCommentMentions: vi.fn(async () => ({ mentionProfileIds: [], newlyIntroducedProfileIds: [] })),
     insertStandardPost: vi.fn(async () => undefined),
     insertPostMedia: vi.fn(async () => undefined),
@@ -146,6 +147,23 @@ describe('feed service authorization', () => {
     expect(repo.insertPollOption).toHaveBeenNthCalledWith(1, postId, 'Mooring', 0)
     expect(repo.insertPollOption).toHaveBeenNthCalledWith(2, postId, 'Cargo', 1)
     expect(repo.insertPollOption).toHaveBeenNthCalledWith(3, postId, 'Bridge', 2)
+  })
+
+  it('restores only a still-retained post deleted by the same member', async () => {
+    const restoreOwnDeletedPost = vi.fn(async () => true)
+    const repo = repository({ restoreOwnDeletedPost })
+    const service = await serviceFor(repo)
+
+    await expect(service.restoreDeletedPost(viewerId, postId)).resolves.toBe(true)
+    expect(repo.isMemberReady).toHaveBeenCalledWith(viewerId)
+    expect(restoreOwnDeletedPost).toHaveBeenCalledWith(viewerId, postId)
+  })
+
+  it('refuses member recovery when the post is no longer self-recoverable', async () => {
+    const repo = repository({ restoreOwnDeletedPost: vi.fn(async () => false) })
+    const service = await serviceFor(repo)
+
+    await expect(service.restoreDeletedPost(viewerId, postId)).rejects.toThrow('feed_post_restore_unavailable')
   })
 
   it.each([
