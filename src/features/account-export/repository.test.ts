@@ -49,7 +49,7 @@ describe('account export repository', () => {
   })
 
   it('chunks the top-level JSON object so PostgreSQL never receives more than 100 function arguments', async () => {
-    const query = vi.fn(async () => [{ export_data: {} }])
+    const query = vi.fn(async (_sql: string, _values?: readonly unknown[]) => [{ export_data: {} }])
     const repository = createAccountExportRepository({ query })
 
     await repository.exportAccountData(profileId)
@@ -59,7 +59,7 @@ describe('account export repository', () => {
   })
 
   it('returns a stable empty export shape when the database returns no row', async () => {
-    const query = vi.fn(async () => [])
+    const query = vi.fn(async (_sql: string, _values?: readonly unknown[]) => [])
     const repository = createAccountExportRepository({ query })
 
     await expect(repository.exportAccountData(profileId)).resolves.toEqual({})
