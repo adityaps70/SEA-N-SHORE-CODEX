@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const moderationMocks = vi.hoisted(() => ({
+  flagContentAutomatically: vi.fn(async () => undefined),
+}))
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   createPendingPostMediaUpload,
@@ -35,6 +39,11 @@ import {
 import * as feedActions from './actions'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+vi.mock('@/features/moderation/repository', () => ({
+  moderationRepository: {
+    flagContentAutomatically: moderationMocks.flagContentAutomatically,
+  },
+}))
 vi.mock('@/features/auth/aws-queries', () => {
   const user = {
     id: '11111111-1111-4111-8111-111111111111',
@@ -311,6 +320,32 @@ describe('feed actions', () => {
     expect(mockedCreateStandardPost).not.toHaveBeenCalled()
   })
 
+  it('blocks a high-confidence threat before publishing', async () => {
+    const formData = basePostForm()
+    formData.set('body', 'I will kill you when I see you at the port.')
+
+    const state = await createPost({}, formData)
+
+    expect(state.error).toMatch(/community safety rules/i)
+    expect(mockedCreateStandardPost).not.toHaveBeenCalled()
+    expect(moderationMocks.flagContentAutomatically).not.toHaveBeenCalled()
+  })
+
+  it('publishes review-level content but opens an automated moderation case', async () => {
+    const formData = basePostForm()
+    formData.set('body', 'You are a useless idiot and should never work on a ship.')
+
+    await expect(createPost({}, formData)).resolves.toEqual({ ok: true })
+
+    expect(mockedCreateStandardPost).toHaveBeenCalled()
+    expect(moderationMocks.flagContentAutomatically).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: 'post',
+      targetId: postId,
+      reason: 'harassment',
+      details: expect.stringContaining('[AUTOMATED MODERATION]'),
+    }))
+  })
+
   it('creates a standard post through Aurora using the permanent profile UUID', async () => {
     const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     const state = await createPost({}, basePostForm())
@@ -420,6 +455,25 @@ describe('feed actions', () => {
     expect(await setPostSaved(postId, true)).toEqual({ ok: true })
     expect(mockedSetLiked).toHaveBeenCalledWith(viewerId, postId, false)
     expect(mockedSetSaved).toHaveBeenCalledWith(viewerId, postId, true)
+  })
+
+  it('blocks threatening comments before mutation and flags review-level comments after creation', async () => {
+    const blocked = new FormData()
+    blocked.set('postId', postId)
+    blocked.set('body', 'I will attack you when you reach the terminal.')
+    await expect(addComment({}, blocked)).resolves.toMatchObject({ error: expect.stringMatching(/community safety rules/i) })
+    expect(mockedAddComment).not.toHaveBeenCalled()
+
+    const review = new FormData()
+    review.set('postId', postId)
+    review.set('body', 'You are a useless idiot and should never work here.')
+    mockedGetPostById.mockResolvedValueOnce(hydratedPost([{ ...hydratedComment, body: 'You are a useless idiot and should never work here.' }]))
+    await expect(addComment({}, review)).resolves.toMatchObject({ ok: true })
+    expect(moderationMocks.flagContentAutomatically).toHaveBeenCalledWith(expect.objectContaining({
+      targetType: 'comment',
+      targetId: commentId,
+      reason: 'harassment',
+    }))
   })
 
   it('routes comments and poll votes through Aurora with the permanent UUID', async () => {
