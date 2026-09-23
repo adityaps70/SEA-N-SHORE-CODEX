@@ -12,6 +12,7 @@ export const GENERAL_REPORT_REASONS = [
   'hate_or_abuse',
   'unsafe_or_illegal',
   'inappropriate_content',
+  'copyright_infringement',
   'other',
 ] as const
 
@@ -23,6 +24,7 @@ export const JOB_REPORT_REASONS = [
   'suspicious_communication',
   'inappropriate_content',
   'scam',
+  'copyright_infringement',
   'other',
 ] as const
 
@@ -43,6 +45,7 @@ export const REPORT_REASON_LABELS: Record<ModerationReportReason, string> = {
   false_vacancy: 'False or expired vacancy',
   suspicious_communication: 'Suspicious communication',
   inappropriate_content: 'Inappropriate content',
+  copyright_infringement: 'Copyright or intellectual property infringement',
   other: 'Other',
 }
 
