@@ -74,3 +74,26 @@ resource "aws_secretsmanager_secret" "google_oauth" {
   recovery_window_in_days = 7
   tags                    = local.common_tags
 }
+
+
+resource "aws_iam_role_policy" "ecs_task_cognito_admin" {
+  name = "${local.name_prefix}-cognito-admin-runtime"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AdministerUserAccounts"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:AdminDisableUser",
+          "cognito-idp:AdminEnableUser",
+          "cognito-idp:AdminDeleteUser",
+          "cognito-idp:AdminUserGlobalSignOut"
+        ]
+        Resource = aws_cognito_user_pool.app.arn
+      }
+    ]
+  })
+}
