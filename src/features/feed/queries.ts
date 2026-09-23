@@ -142,6 +142,11 @@ export function createFeedQueries(input: {
     return hydratePosts(rows, user.id)
   }
 
+  async function getMyRecentlyDeletedPosts() {
+    const user = await input.requireUser()
+    return input.repository.listOwnRecentlyDeletedPosts(user.id)
+  }
+
   async function getMyCommentActivity(): Promise<CommentActivity[]> {
     const user = await input.requireUser()
     const rows = await input.repository.listCommentedRows({ viewerProfileId: user.id })
@@ -157,7 +162,7 @@ export function createFeedQueries(input: {
     return post ?? null
   }
 
-  return { getFeedPage, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyCommentActivity, getPostById }
+  return { getFeedPage, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyCommentActivity, getPostById }
 }
 
 const productionQueries = createFeedQueries({
@@ -172,5 +177,6 @@ export const getSavedPosts = productionQueries.getSavedPosts
 export const getPostsByAuthor = productionQueries.getPostsByAuthor
 export const getPublicPostsByAuthor = productionQueries.getPublicPostsByAuthor
 export const getMyActivityPosts = productionQueries.getMyActivityPosts
+export const getMyRecentlyDeletedPosts = productionQueries.getMyRecentlyDeletedPosts
 export const getMyCommentActivity = productionQueries.getMyCommentActivity
 export const getPostById = productionQueries.getPostById
