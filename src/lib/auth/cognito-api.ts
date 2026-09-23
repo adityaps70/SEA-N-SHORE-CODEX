@@ -11,11 +11,11 @@ export type CognitoSignInResult =
 
 export type CognitoPrincipal = {
   sub: string
-  username: string | null
+  username?: string | null
   email: string | null
   emailVerified: boolean
-  phoneNumber: string | null
-  phoneNumberVerified: boolean
+  phoneNumber?: string | null
+  phoneNumberVerified?: boolean
   name: string | null
 }
 
