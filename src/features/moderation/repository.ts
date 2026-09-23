@@ -5,6 +5,8 @@ import type { ModerationReportReason, ModerationTargetType } from './types'
 type ModerationQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type OwnerRow = QueryResultRow & { owner_id: string | null }
 
+const COPYRIGHT_COMPLAINT_PREFIX = '[COPYRIGHT/IP COMPLAINT]\\n'
+
 function targetLookupSql(targetType: ModerationTargetType) {
   if (targetType === 'post') {
     return `select author_id as owner_id
@@ -45,6 +47,11 @@ export function createModerationRepository(input: { query?: ModerationQuery } = 
     if (!target) throw new Error('moderation_target_unavailable')
     if (target.owner_id === input.reporterId) throw new Error('moderation_self_report_forbidden')
 
+    const storedReason = input.reason === 'copyright_infringement' ? 'other' : input.reason
+    const storedDetails = input.reason === 'copyright_infringement'
+      ? `${COPYRIGHT_COMPLAINT_PREFIX}${(input.details ?? '').slice(0, 4000 - COPYRIGHT_COMPLAINT_PREFIX.length)}`
+      : input.details
+
     await queryRows(
       `insert into public.content_reports (
          target_type,
@@ -70,8 +77,8 @@ export function createModerationRepository(input: { query?: ModerationQuery } = 
         input.targetType,
         input.targetId,
         input.reporterId,
-        input.reason,
-        input.details,
+        storedReason,
+        storedDetails,
       ],
     )
   }
