@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
+import { moderationRepository } from '@/features/moderation/repository'
 import {
   createPendingPostMediaUpload,
   removeFeedImage,
@@ -135,6 +137,30 @@ function safePostValues(formData: FormData): PostComposerState['values'] {
   }
 }
 
+async function flagAutomatedModeration(
+  targetType: 'post' | 'comment',
+  targetId: string,
+  assessment: AutomatedModerationAssessment,
+) {
+  if (assessment.decision !== 'review' || !assessment.reason) return
+  const details = automatedModerationDetails(assessment)
+  if (!details) return
+  try {
+    await moderationRepository.flagContentAutomatically({
+      targetType,
+      targetId,
+      reason: assessment.reason,
+      details,
+    })
+  } catch (error) {
+    console.error('[automated_moderation_flag_failed]', {
+      targetType,
+      targetId,
+      errorCode: safeErrorCode(error),
+    })
+  }
+}
+
 function revalidateSocialFeed() {
   revalidatePath('/home')
   revalidatePath('/activities')
@@ -246,8 +272,17 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
   if (!parsed.success) {
     return { fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]>, values: safePostValues(formData) }
   }
-  const user = await requireAwsUser()
   const data = parsed.data
+  const moderation = assessPlatformText([
+    data.body,
+    ...(data.mode === 'poll' ? data.pollOptions : []),
+    ...(data.media?.map((media) => media.altText) ?? []),
+  ])
+  if (moderation.decision === 'block') {
+    return { error: moderationBlockMessage(), values: safePostValues(formData) }
+  }
+
+  const user = await requireAwsUser()
 
   if (data.mode === 'poll') {
     try {
@@ -257,6 +292,7 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         pollOptions: data.pollOptions,
         mentionProfileIds: data.mentionProfileIds,
       })
+      await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: false })
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', hasMedia: false, errorCode: safeErrorCode(error) })
@@ -295,6 +331,7 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         })),
         mentionProfileIds: data.mentionProfileIds,
       })
+      await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: true, mediaCount: data.media.length })
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', postId, hasMedia: true, errorCode: safeErrorCode(error) })
@@ -308,6 +345,7 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         body: data.body,
         mentionProfileIds: data.mentionProfileIds,
       })
+      await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: false })
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', hasMedia: false, errorCode: safeErrorCode(error) })
@@ -442,6 +480,10 @@ export async function addComment(_previousState: CommentActionState, formData: F
       value: typeof raw.body === 'string' && raw.body.length <= 2000 ? raw.body : undefined,
     }
   }
+  const moderation = assessPlatformText([parsed.data.body])
+  if (moderation.decision === 'block') {
+    return { error: moderationBlockMessage(), value: parsed.data.body }
+  }
   const user = await requireAwsUser()
   try {
     const commentId = await addPostCommentWithAurora(
@@ -451,6 +493,7 @@ export async function addComment(_previousState: CommentActionState, formData: F
       parsed.data.parentCommentId ?? null,
       parsed.data.mentionProfileIds,
     )
+    await flagAutomatedModeration('comment', commentId, moderation)
     const comment = await hydrateComment(parsed.data.postId, commentId)
     if (!comment) return { error: 'We could not refresh your comment.', value: parsed.data.body }
     return { ok: true, comment }
@@ -473,6 +516,10 @@ export async function updateComment(_previousState: CommentActionState, formData
       value: rawValue,
     }
   }
+  const moderation = assessPlatformText([parsed.data.body])
+  if (moderation.decision === 'block') {
+    return { error: moderationBlockMessage(), value: rawValue }
+  }
   const user = await requireAwsUser()
   try {
     const updated = await updateCommentWithAurora(
@@ -481,6 +528,7 @@ export async function updateComment(_previousState: CommentActionState, formData
       parsed.data.body,
       parsed.data.mentionProfileIds,
     )
+    await flagAutomatedModeration('comment', updated.id, moderation)
     const comment = await hydrateComment(updated.postId, updated.id)
     if (!comment) return { error: 'We could not refresh your comment.', value: rawValue }
     return { ok: true, comment }
