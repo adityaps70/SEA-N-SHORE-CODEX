@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
 const sql = fs.readFileSync('infra/aws/database/migrations/0031_multi_login_identity.sql', 'utf8')
+const script = fs.readFileSync('scripts/aws/multi-login-identity-migration.sh', 'utf8')
+const guard = fs.readFileSync('scripts/aws/multi-login-identity-migration-action.txt', 'utf8').trim()
+const workflow = fs.readFileSync('.github/workflows/aws-multi-login-identity-migration.yml', 'utf8')
 
 assert.match(sql, /add column if not exists provider_username text/i)
 assert.match(sql, /add column if not exists email_verified boolean/i)
@@ -16,5 +19,19 @@ assert.doesNotMatch(sql, /drop table/i)
 assert.doesNotMatch(sql, /drop column/i)
 assert.doesNotMatch(sql, /truncate/i)
 assert.doesNotMatch(sql, /delete from/i)
+
+assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.match(script, /310356785722/)
+assert.match(script, /MULTI_LOGIN_IDENTITY_MIGRATION_EXPECTED_SHA/)
+assert.match(script, /0031_multi_login_identity\.sql/)
+assert.match(script, /sea-n-shore-multi-login-identity-0031/)
+assert.match(script, /MULTI_LOGIN_IDENTITY_MIGRATION_PLAN_ONLY_NO_APPLY/)
+assert.match(script, /MULTI_LOGIN_IDENTITY_MIGRATION_APPLY_VERIFIED=true/)
+assert.match(script, /MULTI_LOGIN_IDENTITY_MIGRATION_ALREADY_APPLIED=true/)
+assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+assert.match(workflow, /Guard migration against a moved branch/)
+assert.match(workflow, /environment:\s*staging/)
+assert.match(workflow, /MULTI_LOGIN_IDENTITY_MIGRATION_EXPECTED_SHA/)
+assert.match(workflow, /bash scripts\/aws\/multi-login-identity-migration\.sh/)
 
 console.log('MULTI_LOGIN_IDENTITY_SCHEMA_CONTRACT_VERIFIED=true')
