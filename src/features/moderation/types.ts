@@ -1,4 +1,4 @@
-export const MODERATION_TARGET_TYPES = ['post', 'comment', 'job', 'event'] as const
+export const MODERATION_TARGET_TYPES = ['post', 'comment', 'job', 'event', 'profile'] as const
 export type ModerationTargetType = (typeof MODERATION_TARGET_TYPES)[number]
 
 export const MODERATION_REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'] as const
@@ -28,9 +28,19 @@ export const JOB_REPORT_REASONS = [
   'other',
 ] as const
 
+export const PROFILE_REPORT_REASONS = [
+  'impersonation',
+  'harassment',
+  'spam_or_scam',
+  'inappropriate_content',
+  'fake_profile',
+  'other',
+] as const
+
 export type ModerationReportReason =
   | (typeof GENERAL_REPORT_REASONS)[number]
   | (typeof JOB_REPORT_REASONS)[number]
+  | (typeof PROFILE_REPORT_REASONS)[number]
 
 export const REPORT_REASON_LABELS: Record<ModerationReportReason, string> = {
   spam: 'Spam or unwanted promotion',
@@ -46,11 +56,16 @@ export const REPORT_REASON_LABELS: Record<ModerationReportReason, string> = {
   suspicious_communication: 'Suspicious communication',
   inappropriate_content: 'Inappropriate content',
   copyright_infringement: 'Copyright or intellectual property infringement',
+  impersonation: 'Impersonation',
+  spam_or_scam: 'Spam or scam',
+  fake_profile: 'Fake profile',
   other: 'Other',
 }
 
 export function allowedReportReasons(targetType: ModerationTargetType): readonly ModerationReportReason[] {
-  return targetType === 'job' ? JOB_REPORT_REASONS : GENERAL_REPORT_REASONS
+  if (targetType === 'job') return JOB_REPORT_REASONS
+  if (targetType === 'profile') return PROFILE_REPORT_REASONS
+  return GENERAL_REPORT_REASONS
 }
 
 export type ModerationAction =
