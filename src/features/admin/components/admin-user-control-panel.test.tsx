@@ -22,15 +22,18 @@ afterEach(() => {
 })
 
 describe('AdminUserControlPanel', () => {
-  it('requires a reason before suspending an active account', async () => {
+  it('keeps suspension visibly available and explains when a moderation reason is still required', async () => {
     const user = userEvent.setup()
     render(<AdminUserControlPanel profileId={profileId} status="active" isAdministrator={false} />)
 
     const suspend = screen.getByRole('button', { name: 'Suspend account' })
-    expect(suspend).toBeDisabled()
+    expect(suspend).toBeEnabled()
+
+    await user.click(suspend)
+    expect(screen.getByRole('status')).toHaveTextContent(/enter at least 10 characters/i)
+    expect(fetch).not.toHaveBeenCalled()
 
     await user.type(screen.getByLabelText('Moderation reason'), 'Repeated unsafe recruitment messages.')
-    expect(suspend).toBeEnabled()
     await user.click(suspend)
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(
@@ -43,24 +46,32 @@ describe('AdminUserControlPanel', () => {
     })
   })
 
-  it('offers restore instead of suspend for a suspended account', async () => {
+  it('clearly explains restore versus permanent deletion for a suspended account', () => {
     render(<AdminUserControlPanel profileId={profileId} status="suspended" isAdministrator={false} />)
 
-    expect(screen.getByRole('button', { name: 'Restore account' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Suspended account — choose what happens next' })).toBeInTheDocument()
+    expect(screen.getByText(/temporary suspension/i)).toBeInTheDocument()
+    expect(screen.getByText(/all existing account data is retained/i)).toBeInTheDocument()
+    expect(screen.getByText(/permanent deletion/i)).toBeInTheDocument()
+    expect(screen.getByText(/cannot be restored/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Restore account' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Permanently delete account' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Suspend account' })).not.toBeInTheDocument()
   })
 
-  it('requires DELETE confirmation before permanent deletion', async () => {
+  it('lets the admin open permanent deletion before entering a reason but requires reason and DELETE to confirm', async () => {
     const user = userEvent.setup()
     render(<AdminUserControlPanel profileId={profileId} status="suspended" isAdministrator={false} />)
 
-    await user.type(screen.getByLabelText('Moderation reason'), 'Fraudulent account confirmed after review.')
     await user.click(screen.getByRole('button', { name: 'Permanently delete account' }))
 
     const confirmDelete = screen.getByRole('button', { name: 'Confirm permanent deletion' })
     expect(confirmDelete).toBeDisabled()
 
     await user.type(screen.getByLabelText('Type DELETE to confirm'), 'DELETE')
+    expect(confirmDelete).toBeDisabled()
+
+    await user.type(screen.getByLabelText('Moderation reason'), 'Fraudulent account confirmed after review.')
     expect(confirmDelete).toBeEnabled()
   })
 
