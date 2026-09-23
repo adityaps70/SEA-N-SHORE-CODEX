@@ -48,6 +48,16 @@ describe('account export repository', () => {
     expect(sql).toMatch(/from public\.organization_applications/i)
   })
 
+  it('chunks the top-level JSON object so PostgreSQL never receives more than 100 function arguments', async () => {
+    const query = vi.fn(async () => [{ export_data: {} }])
+    const repository = createAccountExportRepository({ query })
+
+    await repository.exportAccountData(profileId)
+
+    const sql = vi.mocked(query).mock.calls[0]?.[0] ?? ''
+    expect(sql).toMatch(/jsonb_build_object\([\s\S]*\)\s*\|\|\s*jsonb_build_object\(/i)
+  })
+
   it('returns a stable empty export shape when the database returns no row', async () => {
     const query = vi.fn(async () => [])
     const repository = createAccountExportRepository({ query })
