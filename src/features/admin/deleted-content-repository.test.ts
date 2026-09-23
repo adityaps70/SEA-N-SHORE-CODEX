@@ -78,7 +78,7 @@ describe('deleted post recovery repository', () => {
     expect(String(moderation?.values?.at(-2))).toContain('Author confirmed the post was deleted accidentally.')
 
     const audit = seen.find((entry) => entry.text.includes('insert into public.audit_events'))
-    expect(audit?.values).toContain('content.post_restored_from_recovery')
+    expect(audit?.text).toMatch(/content\.post_restored_from_recovery/i)
   })
 
   it('refuses recovery after the retention deadline', async () => {
