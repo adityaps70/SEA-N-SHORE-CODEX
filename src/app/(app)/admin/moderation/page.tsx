@@ -27,6 +27,7 @@ function targetHref(targetType: ModerationTargetType, targetId: string) {
   if (targetType === 'post') return `/posts/${targetId}`
   if (targetType === 'job') return `/jobs/${targetId}`
   if (targetType === 'event') return `/events/${targetId}`
+  if (targetType === 'profile') return `/admin/users/${targetId}`
   return null
 }
 
@@ -65,6 +66,7 @@ export default async function AdminModerationPage({
     { value: 'comment', label: 'Comments' },
     { value: 'job', label: 'Jobs' },
     { value: 'event', label: 'Events' },
+    { value: 'profile', label: 'Profiles' },
   ]
 
   return (
@@ -78,7 +80,7 @@ export default async function AdminModerationPage({
             </p>
             <h2 className="mt-2 text-2xl font-bold text-navy-950">Moderation & reports</h2>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-              Review member reports across posts, comments, jobs and events. Reports for the same content are grouped into one case so repeated complaints raise the case priority instead of creating duplicate work.
+              Review member reports across profiles, posts, comments, jobs and events. Reports for the same target are grouped into one case so repeated complaints raise the case priority instead of creating duplicate work.
             </p>
           </div>
           <div className="rounded-2xl bg-mist-50 px-4 py-3 text-sm font-semibold text-navy-950">
@@ -125,6 +127,9 @@ export default async function AdminModerationPage({
             'recruitment_fee',
             'fake_company',
             'suspicious_communication',
+            'impersonation',
+            'spam_or_scam',
+            'fake_profile',
           ].includes(reason))
 
           return (
@@ -153,7 +158,7 @@ export default async function AdminModerationPage({
                     <h3 className="text-xl font-bold text-navy-950">{item.title}</h3>
                     {href ? (
                       <Link href={href} className="text-sm font-bold text-ocean-700 hover:underline">
-                        Open content
+                        {item.targetType === 'profile' ? 'Open profile' : 'Open content'}
                       </Link>
                     ) : null}
                   </div>
@@ -161,7 +166,7 @@ export default async function AdminModerationPage({
                   {item.excerpt ? (
                     <p className="mt-3 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-ink">{item.excerpt}</p>
                   ) : (
-                    <p className="mt-3 text-sm italic text-muted">Content is unavailable or has already been removed.</p>
+                    <p className="mt-3 text-sm italic text-muted">{item.targetType === 'profile' ? 'Profile information is unavailable.' : 'Content is unavailable or has already been removed.'}</p>
                   )}
 
                   <div className="mt-4 flex flex-wrap gap-2">
