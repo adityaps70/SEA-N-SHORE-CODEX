@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const sql = fs.readFileSync('infra/aws/database/migrations/0029_profile_reporting.sql', 'utf8')
+const script = fs.readFileSync('scripts/aws/profile-reporting-migration.sh', 'utf8')
+const guard = fs.readFileSync('scripts/aws/profile-reporting-migration-action.txt', 'utf8').trim()
+const workflow = fs.readFileSync('.github/workflows/aws-profile-reporting-migration.yml', 'utf8')
+
+assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.match(sql, /content_reports_target_type_check/i)
+assert.match(sql, /target_type in \('post', 'comment', 'job', 'event', 'profile'\)/i)
+assert.match(sql, /content_reports_reason_check/i)
+assert.match(sql, /'impersonation'/i)
+assert.match(sql, /'spam_or_scam'/i)
+assert.match(sql, /'fake_profile'/i)
+assert.match(sql, /moderation_actions_target_type_check/i)
+assert.doesNotMatch(sql, /drop table/i)
+assert.doesNotMatch(sql, /drop column/i)
+assert.doesNotMatch(sql, /truncate/i)
+assert.doesNotMatch(sql, /delete from/i)
+
+assert.match(script, /310356785722/)
+assert.match(script, /PROFILE_REPORTING_MIGRATION_EXPECTED_SHA/)
+assert.match(script, /plan\|migrate-once/)
+assert.match(script, /0029_profile_reporting\.sql/)
+assert.match(script, /sea-n-shore-profile-reporting-0029/)
+assert.match(script, /begin-transaction/)
+assert.match(script, /commit-transaction/)
+assert.match(script, /rollback-transaction/)
+assert.match(script, /PROFILE_REPORTING_MIGRATION_PLAN_ONLY_NO_APPLY/)
+assert.match(script, /PROFILE_REPORTING_MIGRATION_APPLY_VERIFIED=true/)
+assert.match(script, /PROFILE_REPORTING_MIGRATION_ALREADY_APPLIED=true/)
+assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.doesNotMatch(script, /992382634586/)
+
+assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+assert.match(workflow, /Guard migration against a moved branch/)
+assert.match(workflow, /environment:\s*staging/)
+assert.match(workflow, /PROFILE_REPORTING_MIGRATION_EXPECTED_SHA/)
+assert.match(workflow, /bash scripts\/aws\/profile-reporting-migration\.sh/)
+
+console.log('PROFILE_REPORTING_MIGRATION_CONTRACT_VERIFIED=true')
