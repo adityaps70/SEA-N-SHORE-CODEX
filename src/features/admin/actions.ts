@@ -144,5 +144,11 @@ export async function moderateContent(input: {
     revalidatePath('/events')
     revalidatePath(`/events/${parsed.data.targetId}`)
   }
+  if (parsed.data.targetType === 'profile') {
+    revalidatePath('/network')
+    revalidatePath('/people/[slug]', 'page')
+    revalidatePath('/admin/users')
+    revalidatePath(`/admin/users/${parsed.data.targetId}`)
+  }
   return { ok: true }
 }
