@@ -93,6 +93,15 @@ export function ReportContentButton({
               </select>
             </label>
 
+            {reason === 'copyright_infringement' ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-950">
+                <p className="font-bold">Copyright/IP complaint</p>
+                <p className="mt-1">
+                  Identify the copyrighted work, explain where it appears here, and state that you are the rights holder or authorised to act for the rights holder. Include an original/source reference where available.
+                </p>
+              </div>
+            ) : null}
+
             <label className="mt-4 block text-sm font-semibold text-navy-950">
               Additional details
               <textarea
@@ -102,7 +111,9 @@ export function ReportContentButton({
                 maxLength={4000}
                 rows={4}
                 className="mt-1.5 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500"
-                placeholder="Add useful context for the moderation team."
+                placeholder={reason === 'copyright_infringement'
+                  ? 'Identify the original work, your rights/authority, and the material you believe infringes it.'
+                  : 'Add useful context for the moderation team.'}
               />
             </label>
 
