@@ -15,11 +15,11 @@ export function createAdminIdentityControl(input: {
   userPoolId?: string
   region?: string
 } = {}): AdminIdentityControl {
-  const environment = getCognitoEnvironment()
-  const userPoolId = input.userPoolId ?? environment.AWS_COGNITO_USER_POOL_ID
-  const client = input.client ?? new CognitoIdentityProviderClient({
-    region: input.region ?? environment.AWS_COGNITO_REGION,
-  })
+  const environment = input.userPoolId && input.region ? null : getCognitoEnvironment()
+  const userPoolId = input.userPoolId ?? environment?.AWS_COGNITO_USER_POOL_ID
+  const region = input.region ?? environment?.AWS_COGNITO_REGION
+  if (!userPoolId || !region) throw new Error('cognito_admin_environment_unavailable')
+  const client = input.client ?? new CognitoIdentityProviderClient({ region })
 
   return {
     async disableUser(username: string) {
@@ -52,4 +52,3 @@ export function createAdminIdentityControl(input: {
   }
 }
 
-export const adminIdentityControl = createAdminIdentityControl()
