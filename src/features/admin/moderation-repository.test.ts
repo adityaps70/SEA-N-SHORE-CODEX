@@ -52,6 +52,7 @@ describe('platform moderation repository', () => {
     expect(seen[1]?.text).toContain('public.content_reports')
     expect(seen[1]?.text).toContain('count(*)::int as report_count')
     expect(seen[1]?.text).toContain('group by')
+    expect(seen[1]?.text).toContain("[COPYRIGHT/IP COMPLAINT]%")
     expect(seen[1]?.text).toContain('where cr.status = $1')
     expect(seen[1]?.text).toContain('limit $2')
     expect(seen[1]?.values).toEqual(['open', 50])
