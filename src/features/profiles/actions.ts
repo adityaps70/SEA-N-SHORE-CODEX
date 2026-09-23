@@ -2,6 +2,8 @@
 
 import { redirect } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
+import { moderationRepository } from '@/features/moderation/repository'
 import { getAwsOwnProfile } from './aws-queries'
 import { completeActivationWithAurora, completeOnboardingWithAurora } from './onboarding-service'
 import { updateProfileWithAurora } from './profile-edit-service'
@@ -105,6 +107,34 @@ function isServiceError(error: unknown, code: string) {
   return error instanceof Error && error.message === code
 }
 
+function profileModerationAssessment(value: object): AutomatedModerationAssessment {
+  const parts = Object.values(value).flatMap((entry) => {
+    if (typeof entry === 'string') return [entry]
+    if (Array.isArray(entry)) return entry.filter((item): item is string => typeof item === 'string')
+    return []
+  })
+  return assessPlatformText(parts)
+}
+
+async function flagProfileModeration(profileId: string, assessment: AutomatedModerationAssessment) {
+  if (assessment.decision !== 'review' || !assessment.reason) return
+  const details = automatedModerationDetails(assessment)
+  if (!details) return
+  try {
+    await moderationRepository.flagContentAutomatically({
+      targetType: 'profile',
+      targetId: profileId,
+      reason: assessment.reason,
+      details,
+    })
+  } catch (error) {
+    console.error('profile_automated_moderation_flag_failed', {
+      profileId,
+      message: error instanceof Error ? error.message : null,
+    })
+  }
+}
+
 function validationFailure(previousState: ProfileActionState, formData: FormData, error: { flatten: () => { fieldErrors: unknown } }) {
   return failureState(previousState, formData, {
     fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
@@ -118,11 +148,16 @@ export async function completeOnboarding(
   const parsed = onboardingSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
-  const user = await requireAwsUser()
   const data = parsed.data
+  const moderation = profileModerationAssessment(data)
+  if (moderation.decision === 'block') {
+    return failureState(previousState, formData, { error: moderationBlockMessage() })
+  }
+  const user = await requireAwsUser()
 
   try {
     await completeOnboardingWithAurora(user.id, data)
+    await flagProfileModeration(user.id, moderation)
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
@@ -144,10 +179,15 @@ export async function completeActivation(
   const parsed = onboardingActivationSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
+  const moderation = profileModerationAssessment(parsed.data)
+  if (moderation.decision === 'block') {
+    return failureState(previousState, formData, { error: moderationBlockMessage() })
+  }
   const user = await requireAwsUser()
 
   try {
     await completeActivationWithAurora(user.id, parsed.data)
+    await flagProfileModeration(user.id, moderation)
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
@@ -178,8 +218,14 @@ export async function updateProfile(
   const parsed = onboardingSchema.safeParse({ ...rawValues, profileType: profile.profileType })
   if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
+  const moderation = profileModerationAssessment(parsed.data)
+  if (moderation.decision === 'block') {
+    return failureState(previousState, formData, { error: moderationBlockMessage() })
+  }
+
   try {
     await updateProfileWithAurora(user.id, parsed.data)
+    await flagProfileModeration(user.id, moderation)
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
