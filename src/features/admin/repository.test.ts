@@ -265,6 +265,35 @@ describe('platform admin user controls', () => {
     expect(seen[1]?.values).toContain('%member@example.com%')
   })
 
+  it('excludes deleted tombstones from the normal All users view but allows the explicit deleted-records filter', async () => {
+    const allSeen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const allRepository = createAdminRepository({
+      query: async (text, values) => {
+        allSeen.push({ text, values })
+        if (text.includes('public.user_roles ur')) return [{ allowed: true }]
+        return []
+      },
+    })
+
+    await allRepository.searchUsers(adminId, { query: '', status: 'all', limit: 100 })
+    expect(allSeen[1]?.text).toContain("p.account_status::text <> 'deletion_requested'")
+    expect(allSeen[1]?.values).toEqual([100])
+
+    const deletedSeen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const deletedRepository = createAdminRepository({
+      query: async (text, values) => {
+        deletedSeen.push({ text, values })
+        if (text.includes('public.user_roles ur')) return [{ allowed: true }]
+        return []
+      },
+    })
+
+    await deletedRepository.searchUsers(adminId, { query: '', status: 'deletion_requested', limit: 100 })
+    expect(deletedSeen[1]?.text).toContain('p.account_status::text = $1')
+    expect(deletedSeen[1]?.text).not.toContain("p.account_status::text <> 'deletion_requested'")
+    expect(deletedSeen[1]?.values).toEqual(['deletion_requested', 100])
+  })
+
   it('binds the default admin user list limit instead of sending an unused query parameter', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createAdminRepository({
