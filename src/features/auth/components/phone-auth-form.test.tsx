@@ -1,8 +1,10 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PhoneAuthForm } from './phone-auth-form'
 
 const action = vi.fn(async () => ({}))
+
+afterEach(() => cleanup())
 
 describe('PhoneAuthForm', () => {
   it('asks for full name when creating a profile with a mobile number', () => {
