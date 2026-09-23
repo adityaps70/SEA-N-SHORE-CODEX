@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { AuthMethodLinks } from "@/features/auth/components/auth-method-links";
 import { confirmSignUp, resendConfirmationCode, signUp } from "@/features/auth/actions";
+import { getCognitoEnvironment } from "@/lib/env";
 
 export default async function SignUpPage({
   searchParams,
@@ -12,6 +13,7 @@ export default async function SignUpPage({
 }) {
   const params = await searchParams;
   const confirming = params.confirm === "1";
+  const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;
 
   return (
     <main className="grid min-h-screen place-items-center bg-mist-50 px-4 py-10">
@@ -41,7 +43,7 @@ export default async function SignUpPage({
         ) : (
           <>
             <AuthForm mode="sign-up" action={signUp} />
-            <AuthMethodLinks intent="sign-up" />
+            <AuthMethodLinks intent="sign-up" googleEnabled={googleEnabled} />
           </>
         )}
         <p className="mt-6 text-sm text-muted">
