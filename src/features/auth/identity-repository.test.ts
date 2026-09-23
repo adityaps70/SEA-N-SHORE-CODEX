@@ -2,7 +2,10 @@ import type { CognitoPrincipal } from '@/lib/auth/cognito-api'
 import type { DatabaseQueryClient } from '@/lib/db/client'
 import { describe, expect, it, vi } from 'vitest'
 
-type IdentityRow = { profile_id: string }
+type IdentityRow = {
+  profile_id: string
+  account_status?: 'active' | 'restricted' | 'suspended' | 'deletion_requested'
+}
 
 const principal: CognitoPrincipal = {
   sub: 'cognito-sub-1',
@@ -49,7 +52,7 @@ describe('Cognito identity repository', () => {
   })
 
   it('loads the current profile account status used by the auth gate', async () => {
-    const query = vi.fn(async () => [{ profile_id: '11111111-1111-4111-8111-111111111111', account_status: 'suspended' }])
+    const query = vi.fn(async (): Promise<IdentityRow[]> => [{ profile_id: '11111111-1111-4111-8111-111111111111', account_status: 'suspended' }])
     const { createIdentityRepository } = await import('./identity-repository')
     const repository = createIdentityRepository({ query })
 
