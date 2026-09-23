@@ -37,7 +37,8 @@
     "tailwind-merge": "^3.6.0",
     "tsx": "^4.20.0",
     "zod": "^4.5.4",
-    "pdfjs-dist": "4.10.38"
+    "pdfjs-dist": "4.10.38",
+    "@aws-sdk/client-cognito-identity-provider": "3.1095.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
