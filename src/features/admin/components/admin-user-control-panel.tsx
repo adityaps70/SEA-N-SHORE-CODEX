@@ -6,6 +6,8 @@ import type { AdminUserStatus } from '../repository'
 
 type ApiResult = { ok: boolean; error?: string }
 
+const MIN_REASON_LENGTH = 10
+
 export function AdminUserControlPanel({
   profileId,
   status,
@@ -22,11 +24,19 @@ export function AdminUserControlPanel({
   const [message, setMessage] = useState<string | null>(null)
   const [isError, setIsError] = useState(false)
 
-  const validReason = reason.trim().length >= 10
+  const trimmedReason = reason.trim()
+  const validReason = trimmedReason.length >= MIN_REASON_LENGTH
   const deleted = status === 'deletion_requested'
 
+  function requireReason() {
+    if (validReason) return true
+    setIsError(true)
+    setMessage(`Enter at least ${MIN_REASON_LENGTH} characters in Moderation reason before continuing.`)
+    return false
+  }
+
   async function runStatus(action: 'suspend' | 'restore') {
-    if (!validReason || pending) return
+    if (pending || !requireReason()) return
     setPending(true)
     setMessage(null)
     setIsError(false)
@@ -35,7 +45,7 @@ export function AdminUserControlPanel({
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, reason: reason.trim() }),
+        body: JSON.stringify({ action, reason: trimmedReason }),
       })
       const result = await response.json() as ApiResult
       if (!response.ok || !result.ok) {
@@ -54,7 +64,7 @@ export function AdminUserControlPanel({
   }
 
   async function permanentlyDelete() {
-    if (!validReason || confirmation !== 'DELETE' || pending) return
+    if (pending || confirmation !== 'DELETE' || !requireReason()) return
     setPending(true)
     setMessage(null)
     setIsError(false)
@@ -65,7 +75,7 @@ export function AdminUserControlPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           confirmation,
-          reason: reason.trim(),
+          reason: trimmedReason,
         }),
       })
       const result = await response.json() as ApiResult
@@ -105,22 +115,41 @@ export function AdminUserControlPanel({
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <h2 className="text-lg font-bold text-navy-950">Account controls</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          This account has already been permanently deleted and cannot be restored from the admin console.
+          This account has already been permanently deleted. Its sign-in identity has been removed and it cannot be restored from the admin console.
         </p>
       </section>
     )
   }
+
+  const suspended = status === 'suspended'
 
   return (
     <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.15em] text-red-700">Account control</p>
         <h2 className="mt-1 text-xl font-bold text-navy-950">
-          {status === 'suspended' ? 'Restore or permanently delete' : 'Suspend or permanently delete'}
+          {suspended ? 'Suspended account — choose what happens next' : 'Account actions'}
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted">
-          Every action requires a reason and is written to the audit trail. Suspension blocks authenticated access immediately.
+          Every action is recorded in the moderation history. A moderation reason of at least {MIN_REASON_LENGTH} characters is required before an action is applied.
         </p>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+          <p className="text-sm font-bold text-amber-950">Temporary suspension</p>
+          <p className="mt-1 text-sm leading-6 text-amber-900">
+            {suspended
+              ? 'This account is currently blocked from signing in. All existing account data is retained. Restore account re-enables sign-in and authenticated features.'
+              : 'Suspend account blocks sign-in and authenticated features while retaining the account data so the user can be restored later.'}
+          </p>
+        </div>
+        <div className="rounded-2xl border border-red-200 bg-red-50/60 p-4">
+          <p className="text-sm font-bold text-red-950">Permanent deletion</p>
+          <p className="mt-1 text-sm leading-6 text-red-900">
+            Removes the sign-in identity and purges or anonymizes associated account data. This action cannot be restored.
+          </p>
+        </div>
       </div>
 
       <div className="mt-5">
@@ -136,16 +165,19 @@ export function AdminUserControlPanel({
           placeholder="Record the evidence, policy concern, appeal outcome, or reason for permanent deletion."
           className="mt-2 min-h-28 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100"
         />
-        <p id="admin-moderation-reason-help" className="mt-1 text-xs text-muted">
-          Minimum 10 characters. This reason is visible in admin history.
-        </p>
+        <div id="admin-moderation-reason-help" className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+          <span>Minimum {MIN_REASON_LENGTH} characters. This reason is visible in admin history.</span>
+          <span className={validReason ? 'font-semibold text-emerald-700' : ''}>
+            {Math.min(trimmedReason.length, MIN_REASON_LENGTH)}/{MIN_REASON_LENGTH} minimum
+          </span>
+        </div>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {status === 'suspended' ? (
+        {suspended ? (
           <button
             type="button"
-            disabled={!validReason || pending}
+            disabled={pending}
             onClick={() => void runStatus('restore')}
             className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -155,7 +187,7 @@ export function AdminUserControlPanel({
         ) : (
           <button
             type="button"
-            disabled={!validReason || pending}
+            disabled={pending}
             onClick={() => void runStatus('suspend')}
             className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-amber-100 px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -166,7 +198,7 @@ export function AdminUserControlPanel({
 
         <button
           type="button"
-          disabled={!validReason || pending}
+          disabled={pending}
           onClick={() => {
             setConfirmation('')
             setDeleteOpen(true)
@@ -192,6 +224,11 @@ export function AdminUserControlPanel({
               <p className="mt-1 text-sm leading-6 text-red-900">
                 Sea N Shore will remove the sign-in identity, purge or anonymize associated account data, and preserve only integrity records that must remain without a usable member identity.
               </p>
+              {!validReason ? (
+                <p className="mt-2 text-sm font-semibold text-red-800">
+                  Complete the Moderation reason above with at least {MIN_REASON_LENGTH} characters before confirming deletion.
+                </p>
+              ) : null}
             </div>
             <button
               type="button"
