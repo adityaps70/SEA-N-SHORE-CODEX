@@ -5,7 +5,7 @@ import type { ModerationReportReason, ModerationTargetType } from './types'
 type ModerationQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type OwnerRow = QueryResultRow & { owner_id: string | null }
 
-const COPYRIGHT_COMPLAINT_PREFIX = '[COPYRIGHT/IP COMPLAINT]\\n'
+const COPYRIGHT_COMPLAINT_PREFIX = '[COPYRIGHT/IP COMPLAINT]\n'
 
 function targetLookupSql(targetType: ModerationTargetType) {
   if (targetType === 'post') {
