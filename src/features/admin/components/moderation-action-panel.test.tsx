@@ -73,6 +73,14 @@ describe('ModerationActionPanel', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Moderation action saved.')
   })
 
+  it('uses profile-specific suspend and restore labels', () => {
+    const { rerender } = render(<ModerationActionPanel targetType="profile" targetId={targetId} targetState="active" />)
+    expect(screen.getByRole('button', { name: /suspend profile/i })).toBeInTheDocument()
+
+    rerender(<ModerationActionPanel targetType="profile" targetId={targetId} targetState="suspended" />)
+    expect(screen.getByRole('button', { name: /restore profile/i })).toBeInTheDocument()
+  })
+
   it('surfaces API error copy instead of silently doing nothing', async () => {
     mocks.fetch.mockResolvedValueOnce(response({
       ok: false,
