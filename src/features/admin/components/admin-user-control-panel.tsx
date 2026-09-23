@@ -123,17 +123,23 @@ export function AdminUserControlPanel({
         </p>
       </div>
 
-      <label className="mt-5 block text-sm font-semibold text-navy-950">
-        Moderation reason
+      <div className="mt-5">
+        <label htmlFor="admin-moderation-reason" className="block text-sm font-semibold text-navy-950">
+          Moderation reason
+        </label>
         <textarea
+          id="admin-moderation-reason"
+          aria-describedby="admin-moderation-reason-help"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           maxLength={2000}
           placeholder="Record the evidence, policy concern, appeal outcome, or reason for permanent deletion."
           className="mt-2 min-h-28 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100"
         />
-        <span className="mt-1 block text-xs font-normal text-muted">Minimum 10 characters. This reason is visible in admin history.</span>
-      </label>
+        <p id="admin-moderation-reason-help" className="mt-1 text-xs text-muted">
+          Minimum 10 characters. This reason is visible in admin history.
+        </p>
+      </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
         {status === 'suspended' ? (
