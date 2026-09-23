@@ -59,29 +59,31 @@ verify_live_policy() {
     .PolicyDocument.Statement[0].Sid == "AdministerUserAccounts" and
     .PolicyDocument.Statement[0].Effect == "Allow" and
     ((.PolicyDocument.Statement[0].Action | as_array | sort) == ([
+      "cognito-idp:AdminCreateUser",
       "cognito-idp:AdminDeleteUser",
       "cognito-idp:AdminDisableUser",
       "cognito-idp:AdminEnableUser",
-      "cognito-idp:AdminUserGlobalSignOut"
+      "cognito-idp:AdminSetUserPassword",
+      "cognito-idp:AdminUpdateUserAttributes",
+      "cognito-idp:AdminUserGlobalSignOut",
+      "cognito-idp:ListUsers"
     ] | sort)) and
     ((.PolicyDocument.Statement[0].Resource | as_array) == [$resource])
   ' "$output_path" >/dev/null
 }
 
-if [[ "$STATE_COUNT" == "1" ]]; then
-  verify_live_policy "$WORK_DIR/live-policy-existing.json"
-  echo "ECS_TASK_COGNITO_ADMIN_POLICY_STATE_ALREADY_RECONCILED=true"
-  echo "ECS_TASK_COGNITO_ADMIN_POLICY_LIVE_POLICY_MATCHES_DESIRED=true"
-  exit 0
-fi
-
 LIVE_EXISTS=false
 if aws iam get-role-policy --role-name "$ROLE_NAME" --policy-name "$POLICY_NAME" --output json > "$WORK_DIR/live-policy-before.json" 2>"$WORK_DIR/live-policy-before.err"; then
   LIVE_EXISTS=true
-  verify_live_policy "$WORK_DIR/live-policy-before-verified.json"
-  echo "ECS_TASK_COGNITO_ADMIN_POLICY_LIVE_POLICY_MATCHES_DESIRED_BEFORE=true"
+  if [[ "$STATE_COUNT" == "0" ]]; then
+    verify_live_policy "$WORK_DIR/live-policy-before-verified.json"
+    echo "ECS_TASK_COGNITO_ADMIN_POLICY_LIVE_POLICY_MATCHES_DESIRED_BEFORE=true"
+  fi
 elif ! grep -q 'NoSuchEntity' "$WORK_DIR/live-policy-before.err"; then
   cat "$WORK_DIR/live-policy-before.err" >&2
+  exit 1
+elif [[ "$STATE_COUNT" == "1" ]]; then
+  echo "Terraform state manages the Cognito admin policy but the live IAM policy is absent." >&2
   exit 1
 else
   echo "ECS_TASK_COGNITO_ADMIN_POLICY_LIVE_ABSENT_VERIFIED=true"
@@ -152,25 +154,48 @@ echo "ECS_TASK_COGNITO_ADMIN_POLICY_PROVIDER_LOCK_VERIFIED=true"
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s   -target="$RESOURCE"   -var-file="$WORK_DIR/variables.json"   -out="$WORK_DIR/before.tfplan" > "$WORK_DIR/plan-before.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/before.tfplan" > "$WORK_DIR/plan-before.json"
 
-jq -e --arg resource "$RESOURCE" '
-  ([.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])]) as $changes |
-  ($changes | length) == 1 and
-  $changes[0].address == $resource and
-  $changes[0].change.actions == ["create"]
-' "$WORK_DIR/plan-before.json" >/dev/null || {
-  echo "ECS task Cognito admin policy plan contains unexpected actual changes." >&2
-  jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"]) | {address, actions:.change.actions}]' "$WORK_DIR/plan-before.json" >&2
-  exit 1
-}
-
+CHANGE_COUNT="$(jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])] | length' "$WORK_DIR/plan-before.json")"
 STATE_SERIAL_BEFORE="$(jq -r '.serial' "$WORK_DIR/state.json")"
 echo "ECS_TASK_COGNITO_ADMIN_POLICY_ACTION=$ACTION"
-echo "ECS_TASK_COGNITO_ADMIN_POLICY_STATE_COUNT_BEFORE=0"
+echo "ECS_TASK_COGNITO_ADMIN_POLICY_STATE_COUNT_BEFORE=$STATE_COUNT"
 echo "STATE_SERIAL_BEFORE=$STATE_SERIAL_BEFORE"
-if [[ "$LIVE_EXISTS" == "true" ]]; then
-  echo "ECS_TASK_COGNITO_ADMIN_POLICY_PLAN_VERIFIED=IMPORT_REQUIRED"
+
+if [[ "$CHANGE_COUNT" == "0" ]]; then
+  verify_live_policy "$WORK_DIR/live-policy-steady.json"
+  echo "ECS_TASK_COGNITO_ADMIN_POLICY_PLAN_VERIFIED=NO_CHANGES"
+  echo "ECS_TASK_COGNITO_ADMIN_POLICY_LIVE_POLICY_MATCHES_DESIRED=true"
+  echo "ECS_TASK_COGNITO_ADMIN_POLICY_PLAN_ONLY_NO_APPLY"
+  exit 0
+fi
+
+if [[ "$STATE_COUNT" == "1" ]]; then
+  jq -e --arg resource "$RESOURCE" '
+    ([.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])]) as $changes |
+    ($changes | length) == 1 and
+    $changes[0].address == $resource and
+    $changes[0].change.actions == ["update"]
+  ' "$WORK_DIR/plan-before.json" >/dev/null || {
+    echo "ECS task Cognito admin policy update plan contains unexpected actual changes." >&2
+    jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"]) | {address, actions:.change.actions}]' "$WORK_DIR/plan-before.json" >&2
+    exit 1
+  }
+  echo "ECS_TASK_COGNITO_ADMIN_POLICY_PLAN_VERIFIED=UPDATE_ONLY"
 else
-  echo "ECS_TASK_COGNITO_ADMIN_POLICY_PLAN_VERIFIED=CREATE_ONLY"
+  jq -e --arg resource "$RESOURCE" '
+    ([.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])]) as $changes |
+    ($changes | length) == 1 and
+    $changes[0].address == $resource and
+    $changes[0].change.actions == ["create"]
+  ' "$WORK_DIR/plan-before.json" >/dev/null || {
+    echo "ECS task Cognito admin policy create plan contains unexpected actual changes." >&2
+    jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"]) | {address, actions:.change.actions}]' "$WORK_DIR/plan-before.json" >&2
+    exit 1
+  }
+  if [[ "$LIVE_EXISTS" == "true" ]]; then
+    echo "ECS_TASK_COGNITO_ADMIN_POLICY_PLAN_VERIFIED=IMPORT_REQUIRED"
+  else
+    echo "ECS_TASK_COGNITO_ADMIN_POLICY_PLAN_VERIFIED=CREATE_ONLY"
+  fi
 fi
 echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/before.tfplan" | cut -d' ' -f1)"
 
@@ -185,7 +210,7 @@ STATE_BACKUP_VERSION="$(jq -r '.VersionId // empty' "$WORK_DIR/object.json")"
 [[ -n "$STATE_BACKUP_VERSION" ]]
 echo "STATE_BACKUP_VERSION=$STATE_BACKUP_VERSION"
 
-if [[ "$LIVE_EXISTS" == "true" ]]; then
+if [[ "$STATE_COUNT" == "0" && "$LIVE_EXISTS" == "true" ]]; then
   echo "IMPORTING_EXISTING_ECS_TASK_COGNITO_ADMIN_POLICY_INTO_TERRAFORM_STATE"
   terraform -chdir="$APP_DIR" import -input=false -no-color     -var-file="$WORK_DIR/variables.json"     "$RESOURCE" "$ROLE_NAME:$POLICY_NAME" > "$WORK_DIR/import.log"
 else
