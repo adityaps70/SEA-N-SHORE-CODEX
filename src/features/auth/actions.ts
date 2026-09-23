@@ -6,6 +6,9 @@ import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
 import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 import { createCognitoAuthActions } from './cognito-actions'
+import { createPhoneAuthActions, type PhoneAuthActionState } from './phone-auth-actions'
+import { createPhoneAuthAdmin } from './phone-auth-admin'
+import { createPhoneAuthActionHandlers } from './phone-action-handlers'
 
 export type { AuthActionState } from './action-handlers'
 
@@ -29,6 +32,32 @@ async function getProductionActions(): Promise<CognitoActions> {
 
 const handlers = createAuthActionHandlers({
   getActions: getProductionActions,
+  redirect: nextRedirect,
+})
+
+async function getProductionPhoneActions() {
+  const cookieStore = await cookies()
+  const environment = getCognitoEnvironment()
+  const api = createCognitoApi({
+    region: environment.AWS_COGNITO_REGION,
+    clientId: environment.AWS_COGNITO_CLIENT_ID,
+  })
+  const admin = createPhoneAuthAdmin({
+    userPoolId: environment.AWS_COGNITO_USER_POOL_ID,
+    region: environment.AWS_COGNITO_REGION,
+  })
+
+  return createPhoneAuthActions({
+    api,
+    admin,
+    cookieStore: cookieStore as unknown as Parameters<typeof createPhoneAuthActions>[0]['cookieStore'],
+    siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+    allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+  })
+}
+
+const phoneHandlers = createPhoneAuthActionHandlers({
+  getActions: getProductionPhoneActions,
   redirect: nextRedirect,
 })
 
@@ -64,4 +93,19 @@ export async function updatePassword(state: AuthActionState, formData: FormData)
 
 export async function signOut(): Promise<void> {
   return handlers.signOut()
+}
+
+
+export async function requestPhoneOtp(
+  state: PhoneAuthActionState,
+  formData: FormData,
+): Promise<PhoneAuthActionState> {
+  return phoneHandlers.requestOtp(state, formData)
+}
+
+export async function confirmPhoneOtp(
+  state: PhoneAuthActionState,
+  formData: FormData,
+): Promise<PhoneAuthActionState> {
+  return phoneHandlers.confirmOtp(state, formData)
 }
