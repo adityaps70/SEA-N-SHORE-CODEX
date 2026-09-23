@@ -61,7 +61,7 @@ describe('POST /api/account/delete', () => {
       email: 'captain@example.com',
       password: 'CorrectPassword123',
     })
-    expect(mocks.cookieDelete).toHaveBeenCalledTimes(4)
+    expect(mocks.cookieDelete).toHaveBeenCalledTimes(8)
   })
 
   it('rejects deletion unless the user types DELETE exactly', async () => {
