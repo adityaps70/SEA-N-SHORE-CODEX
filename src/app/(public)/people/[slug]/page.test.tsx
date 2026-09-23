@@ -76,6 +76,12 @@ vi.mock('@/features/network/components/relationship-controls', () => ({
   ),
 }))
 
+vi.mock('@/features/moderation/components/report-content-button', () => ({
+  ReportContentButton: ({ targetType, targetId, label }: { targetType: string; targetId: string; label: string }) => (
+    <button type="button" data-target-type={targetType} data-target-id={targetId}>{label}</button>
+  ),
+}))
+
 vi.mock('@/features/network/components/people-you-may-know', () => ({
   PeopleYouMayKnow: ({ profiles }: { profiles: Array<{ fullName: string }> }) => (
     <aside aria-label="Profile recommendations">
@@ -139,6 +145,9 @@ describe('Public Profile page', () => {
 
     expect(screen.getByText('Profile header')).toBeInTheDocument()
     expect(screen.getByText('Relationship controls')).toBeInTheDocument()
+    const reportProfile = screen.getByRole('button', { name: 'Report profile' })
+    expect(reportProfile).toHaveAttribute('data-target-type', 'profile')
+    expect(reportProfile).toHaveAttribute('data-target-id', '22222222-2222-4222-8222-222222222222')
     expect(screen.queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Posts' })).toBeInTheDocument()
     expect(screen.getByText('Public maritime update')).toBeInTheDocument()
@@ -176,6 +185,7 @@ describe('Public Profile page', () => {
     expect(screen.queryByRole('heading', { name: 'People you may know' })).not.toBeInTheDocument()
     expect(mocks.getPeopleYouMayKnow).not.toHaveBeenCalled()
     expect(screen.queryByText('Relationship controls')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Report profile' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Message' })).not.toBeInTheDocument()
   })
 
