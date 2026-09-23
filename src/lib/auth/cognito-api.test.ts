@@ -91,7 +91,7 @@ describe('createCognitoApi', () => {
     })
   })
 
-  it('maps GetUser attributes to sub, email, emailVerified and name', async () => {
+  it('maps GetUser attributes to the stable subject plus verified email/phone identifiers', async () => {
     const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).get('x-amz-target')).toBe(
         'AWSCognitoIdentityProviderService.GetUser',
@@ -105,6 +105,8 @@ describe('createCognitoApi', () => {
           { Name: 'email', Value: 'captain@example.com' },
           { Name: 'email_verified', Value: 'true' },
           { Name: 'name', Value: 'Captain Example' },
+          { Name: 'phone_number', Value: '+919876543210' },
+          { Name: 'phone_number_verified', Value: 'true' },
         ],
       })
     })
@@ -113,8 +115,11 @@ describe('createCognitoApi', () => {
 
     await expect(api.getUser('access-token')).resolves.toEqual({
       sub: 'cognito-sub-123',
+      username: 'internal-cognito-username',
       email: 'captain@example.com',
       emailVerified: true,
+      phoneNumber: '+919876543210',
+      phoneNumberVerified: true,
       name: 'Captain Example',
     })
   })
