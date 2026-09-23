@@ -38,3 +38,11 @@ test('workers do not log notification payloads or email data', () => {
   assert.doesNotMatch(consumer, /console\.(info|error)\([^\n]*message\.Body/)
   assert.doesNotMatch(consumer, /email/i)
 })
+
+
+test('outbox worker also performs bounded deleted-post retention sweeps', () => {
+  assert.match(publisher, /deletedPostRetention/)
+  assert.match(publisher, /purgeExpiredDeletedPosts\(200\)/)
+  assert.match(publisher, /60 \* 60 \* 1000/)
+  assert.match(publisher, /deleted_post_retention_sweep/)
+})
