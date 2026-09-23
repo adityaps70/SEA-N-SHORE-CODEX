@@ -1,4 +1,4 @@
-import { createHash, randomBytes as nodeRandomBytes } from 'node:crypto'
+import { createHash, randomBytes as nodeRandomBytes, timingSafeEqual } from 'node:crypto'
 import type { CognitoAuthenticationResult } from './cognito-api'
 
 type OAuthConfig = {
@@ -22,6 +22,14 @@ function normalizedDomain(domain: string) {
 
 function callbackUrl(siteUrl: string) {
   return `${siteUrl.replace(/\/+$/g, '')}/auth/google/callback`
+}
+
+export function verifyOAuthState(expected: string | null | undefined, actual: string | null | undefined) {
+  if (!expected || !actual) return false
+  const expectedBuffer = Buffer.from(expected)
+  const actualBuffer = Buffer.from(actual)
+  if (expectedBuffer.length !== actualBuffer.length) return false
+  return timingSafeEqual(expectedBuffer, actualBuffer)
 }
 
 export function createCognitoOAuth(
