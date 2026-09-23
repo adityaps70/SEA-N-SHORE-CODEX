@@ -460,7 +460,8 @@ resource "aws_ecs_task_definition" "web" {
     aws_iam_role_policy.ecs_execution_aurora_secret,
     aws_iam_role_policy.ecs_execution_realtime_ticket_secret,
     aws_iam_role_policy.ecs_task_aurora_secret,
-    aws_iam_role_policy.ecs_task_media
+    aws_iam_role_policy.ecs_task_media,
+    aws_iam_role_policy.ecs_task_cognito_admin
   ]
 
   tags = local.common_tags
