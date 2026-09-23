@@ -26,9 +26,15 @@ function targetLookupSql(targetType: ModerationTargetType) {
       where id = $1 and status = 'published'
       limit 1`
   }
-  return `select host_user_id as owner_id
-    from public.events
-    where id = $1 and status = 'published'
+  if (targetType === 'event') {
+    return `select host_user_id as owner_id
+      from public.events
+      where id = $1 and status = 'published'
+      limit 1`
+  }
+  return `select id as owner_id
+    from public.profiles
+    where id = $1 and account_status::text <> 'deletion_requested'
     limit 1`
 }
 
