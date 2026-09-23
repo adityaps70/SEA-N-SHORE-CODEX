@@ -265,6 +265,22 @@ describe('platform admin user controls', () => {
     expect(seen[1]?.values).toContain('%member@example.com%')
   })
 
+  it('binds the default admin user list limit instead of sending an unused query parameter', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createAdminRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('public.user_roles ur')) return [{ allowed: true }]
+        return []
+      },
+    })
+
+    await expect(repository.searchUsers(adminId, { query: '', status: 'all', limit: 100 })).resolves.toEqual([])
+
+    expect(seen[1]?.text).toContain('limit $1')
+    expect(seen[1]?.values).toEqual([100])
+  })
+
   it('suspends and restores a normal user transactionally and records the reason in audit history', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     let status = 'active'
