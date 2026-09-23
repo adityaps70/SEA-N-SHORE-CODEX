@@ -158,6 +158,14 @@ export type FeedPost = {
   comments: FeedComment[]
 }
 
+export type RecentlyDeletedPost = {
+  id: string
+  category: PostCategory
+  body: string
+  deletedAt: string
+  purgeAfter: string
+}
+
 export type FeedPage = {
   posts: FeedPost[]
   nextCursor: FeedCursor | null
