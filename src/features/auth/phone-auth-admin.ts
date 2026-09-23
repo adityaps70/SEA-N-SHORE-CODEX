@@ -42,23 +42,35 @@ export function createPhoneAuthAdmin(input: {
   const randomPassword = input.randomPassword ?? defaultRandomPassword
   const syntheticEmailForPhone = input.syntheticEmailForPhone ?? defaultSyntheticEmailForPhone
 
+  async function findUserByPhone(phoneNumber: string): Promise<{ username: string; verified: boolean } | null> {
+    const response = await client.send(new ListUsersCommand({
+      UserPoolId: userPoolId,
+      Filter: `phone_number = "${phoneNumber.replace(/["\\]/g, '')}"`,
+      Limit: 2,
+    }))
+
+    const matches = (response.Users ?? []).filter((user) =>
+      Boolean(user.Username)
+      && attributeValue(user.Attributes, 'phone_number') === phoneNumber,
+    )
+
+    if (matches.length > 1) throw new Error('phone_identity_ambiguous')
+    const user = matches[0]
+    const username = user?.Username
+    if (!username) return null
+
+    return {
+      username,
+      verified: attributeValue(user.Attributes, 'phone_number_verified') === 'true',
+    }
+  }
+
   return {
+    findUserByPhone,
+
     async findVerifiedUserByPhone(phoneNumber: string): Promise<{ username: string } | null> {
-      const response = await client.send(new ListUsersCommand({
-        UserPoolId: userPoolId,
-        Filter: `phone_number = "${phoneNumber.replace(/["\\]/g, '')}"`,
-        Limit: 2,
-      }))
-
-      const verified = (response.Users ?? []).filter((user) =>
-        Boolean(user.Username)
-        && attributeValue(user.Attributes, 'phone_number') === phoneNumber
-        && attributeValue(user.Attributes, 'phone_number_verified') === 'true',
-      )
-
-      if (verified.length > 1) throw new Error('phone_identity_ambiguous')
-      const username = verified[0]?.Username
-      return username ? { username } : null
+      const user = await findUserByPhone(phoneNumber)
+      return user?.verified ? { username: user.username } : null
     },
 
     async createPhoneUser(inputUser: {
