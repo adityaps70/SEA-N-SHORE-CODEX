@@ -44,6 +44,10 @@ describe('Cognito cookie primitives', () => {
       refresh: 'sns_cognito_refresh',
       challenge: 'sns_cognito_challenge',
       challengeUser: 'sns_cognito_challenge_user',
+      phoneChallenge: 'sns_cognito_phone_challenge',
+      phoneChallengeUser: 'sns_cognito_phone_challenge_user',
+      oauthState: 'sns_cognito_oauth_state',
+      oauthVerifier: 'sns_cognito_oauth_verifier',
     })
 
     for (const name of Object.values(COGNITO_COOKIE_NAMES)) {
@@ -139,6 +143,36 @@ describe('Cognito cookie primitives', () => {
     }
   })
 
+  it('stores phone and OAuth challenges only in short-lived HttpOnly cookies', () => {
+    const fake = createFakeCookieStore()
+    const cookies = createCognitoCookieManager(fake.store, 'https://staging.example.com')
+
+    cookies.setPhoneChallenge({
+      session: 'phone-session',
+      username: 'internal-phone-user',
+    })
+    cookies.setOAuthChallenge({
+      state: 'oauth-state',
+      verifier: 'pkce-verifier',
+    })
+
+    expect(fake.writes.map((write) => write.name)).toEqual([
+      COGNITO_COOKIE_NAMES.phoneChallenge,
+      COGNITO_COOKIE_NAMES.phoneChallengeUser,
+      COGNITO_COOKIE_NAMES.oauthState,
+      COGNITO_COOKIE_NAMES.oauthVerifier,
+    ])
+    for (const write of fake.writes) {
+      expect(write.options).toMatchObject({
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: true,
+        path: '/',
+        maxAge: 600,
+      })
+    }
+  })
+
   it('clears every Cognito credential and challenge cookie together', () => {
     const fake = createFakeCookieStore()
     const cookies = createCognitoCookieManager(fake.store, 'https://staging.example.com')
@@ -150,6 +184,10 @@ describe('Cognito cookie primitives', () => {
       COGNITO_COOKIE_NAMES.refresh,
       COGNITO_COOKIE_NAMES.challenge,
       COGNITO_COOKIE_NAMES.challengeUser,
+      COGNITO_COOKIE_NAMES.phoneChallenge,
+      COGNITO_COOKIE_NAMES.phoneChallengeUser,
+      COGNITO_COOKIE_NAMES.oauthState,
+      COGNITO_COOKIE_NAMES.oauthVerifier,
     ])
   })
 })
