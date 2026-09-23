@@ -89,6 +89,25 @@ export type AdminUserSearch = {
   limit: number
 }
 
+export type DeletedPostRecord = {
+  id: string
+  body: string
+  category: string
+  author: {
+    id: string
+    fullName: string
+    slug: string | null
+  }
+  deletedAt: string
+  deletedBy: {
+    id: string | null
+    fullName: string
+  }
+  reason: string
+  purgeAfter: string
+  recoverable: boolean
+}
+
 export type AdminOrganizationReview = {
   applicationId: string
   status: AdminOrganizationStatus
@@ -187,6 +206,26 @@ type AdminUserRow = QueryResultRow & {
   is_administrator: boolean | null
   created_at: string
   updated_at: string
+}
+type DeletedPostRow = QueryResultRow & {
+  post_id: string
+  body: string
+  category: string
+  author_id: string
+  author_name: string
+  author_slug: string | null
+  deleted_at: string
+  deleted_by: string | null
+  deleted_by_name: string | null
+  deletion_reason: string
+  purge_after: string
+  recoverable: boolean
+}
+type DeletedPostLockRow = QueryResultRow & {
+  id: string
+  deleted_at: string
+  purge_after: string
+  recoverable: boolean
 }
 type OrganizationReviewRow = QueryResultRow & {
   application_id: string
@@ -561,15 +600,31 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     targetType: ModerationTargetType,
     targetId: string,
     action: ModerationAction,
+    actorId: string,
+    note: string | null,
   ) {
     if (action !== 'remove' && action !== 'restore') return
 
     if (targetType === 'post') {
       await query(
         action === 'remove'
-          ? 'update public.posts set deleted_at = coalesce(deleted_at, now()), updated_at = now() where id = $1'
-          : 'update public.posts set deleted_at = null, updated_at = now() where id = $1',
-        [targetId],
+          ? `update public.posts
+             set deleted_at = coalesce(deleted_at, now()),
+                 deleted_by = $2,
+                 deletion_reason = $3,
+                 purge_after = coalesce(purge_after, now() + interval '30 days'),
+                 updated_at = now()
+             where id = $1`
+          : `update public.posts
+             set deleted_at = null,
+                 deleted_by = null,
+                 deletion_reason = null,
+                 purge_after = null,
+                 updated_at = now()
+             where id = $1`,
+        action === 'remove'
+          ? [targetId, actorId, note?.trim() || 'Removed by platform moderation.']
+          : [targetId],
       )
       return
     }
@@ -639,7 +694,14 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
         }
       }
 
-      await mutateModerationTarget(txQuery, input.targetType, input.targetId, input.action)
+      await mutateModerationTarget(
+        txQuery,
+        input.targetType,
+        input.targetId,
+        input.action,
+        adminId,
+        input.note,
+      )
 
       const nextStatus: ModerationReportStatus = input.action === 'reviewing'
         ? 'reviewing'
@@ -702,6 +764,123 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
             note: input.note,
             previousState,
             reportCount: reportRows.length,
+          }),
+        ],
+      )
+
+      return true
+    })
+  }
+
+  async function listDeletedPosts(adminId: string, limit: number): Promise<DeletedPostRecord[]> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const rows = await queryRows(
+      `select
+         p.id as post_id,
+         p.body,
+         p.category::text as category,
+         p.author_id,
+         author.full_name as author_name,
+         author.slug as author_slug,
+         p.deleted_at,
+         p.deleted_by,
+         deletion_actor.full_name as deleted_by_name,
+         p.deletion_reason,
+         p.purge_after,
+         (p.purge_after > now()) as recoverable
+       from public.posts p
+       join public.profiles author on author.id = p.author_id
+       left join public.profiles deletion_actor on deletion_actor.id = p.deleted_by
+       where p.deleted_at is not null
+       order by p.deleted_at desc, p.id desc
+       limit $1`,
+      [Math.min(Math.max(Math.trunc(limit), 1), 100)],
+    ) as DeletedPostRow[]
+
+    return rows.map((row) => ({
+      id: row.post_id,
+      body: row.body,
+      category: row.category,
+      author: {
+        id: row.author_id,
+        fullName: row.author_name,
+        slug: row.author_slug ?? null,
+      },
+      deletedAt: row.deleted_at,
+      deletedBy: {
+        id: row.deleted_by ?? null,
+        fullName: row.deleted_by_name ?? 'Unknown or removed account',
+      },
+      reason: row.deletion_reason,
+      purgeAfter: row.purge_after,
+      recoverable: Boolean(row.recoverable),
+    }))
+  }
+
+  async function restoreDeletedPost(adminId: string, postId: string, reason: string) {
+    return transaction(async (txQuery) => {
+      await requirePlatformAdministrator(txQuery, adminId, true)
+
+      const rows = await txQuery(
+        `select
+           id,
+           deleted_at,
+           purge_after,
+           (purge_after > now()) as recoverable
+         from public.posts
+         where id = $1
+           and deleted_at is not null
+         for update`,
+        [postId],
+      ) as DeletedPostLockRow[]
+      const post = rows[0]
+      if (!post) throw new Error('deleted_post_not_found')
+      if (!post.recoverable) throw new Error('deleted_post_retention_expired')
+
+      await txQuery(
+        `update public.posts
+         set deleted_at = null,
+             deleted_by = null,
+             deletion_reason = null,
+             purge_after = null,
+             updated_at = now()
+         where id = $1`,
+        [postId],
+      )
+
+      await txQuery(
+        `insert into public.moderation_actions (
+           actor_id,
+           target_type,
+           target_id,
+           report_id,
+           action,
+           note,
+           metadata
+         )
+         values ($1, 'post', $2, null, 'restore', $3, $4::jsonb)`,
+        [
+          adminId,
+          postId,
+          reason.trim(),
+          JSON.stringify({
+            source: 'deleted_content_recovery',
+            previousDeletedAt: post.deleted_at,
+            previousPurgeAfter: post.purge_after,
+          }),
+        ],
+      )
+
+      await txQuery(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, 'content.post_restored_from_recovery', 'post', $2, $3::jsonb)`,
+        [
+          adminId,
+          postId,
+          JSON.stringify({
+            reason: reason.trim(),
+            previousDeletedAt: post.deleted_at,
+            previousPurgeAfter: post.purge_after,
           }),
         ],
       )
@@ -1065,6 +1244,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     listModerationCases,
     listAuditEvents,
     moderateContent,
+    listDeletedPosts,
+    restoreDeletedPost,
     searchUsers,
     getAdminUser,
     listUserAccountHistory,
