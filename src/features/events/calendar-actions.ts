@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
+import { moderationRepository } from '@/features/moderation/repository'
 import { prepareEventBannerUpload, verifyEventBannerReference } from './event-banner-media'
 import { validateEventBannerMetadata } from './event-banner-policy'
 import type { CalendarActionResult, CalendarCreateResult, CalendarEventInput, EventBannerUploadResult } from './calendar-types'
@@ -10,6 +12,44 @@ import { calendarEventRepository } from './calendar-repository'
 import { calendarValidationMessage, parseCalendarEventInput } from './calendar-validation'
 
 const uuidSchema = z.string().uuid()
+
+function assessEventContent(input: CalendarEventInput): AutomatedModerationAssessment {
+  if (input.status !== 'published') {
+    return { decision: 'allow', category: null, reason: null, ruleIds: [] }
+  }
+  return assessPlatformText([
+    input.title,
+    input.summary,
+    input.description,
+    input.locationName,
+    input.locationAddress,
+    input.city,
+    input.country,
+    ...input.topics,
+    ...input.agenda,
+    ...input.speakers,
+    ...input.speakerDetails.flatMap((speaker) => [speaker.name, speaker.title, speaker.organization]),
+  ])
+}
+
+async function flagAutomatedEventModeration(eventId: string, assessment: AutomatedModerationAssessment) {
+  if (assessment.decision !== 'review' || !assessment.reason) return
+  const details = automatedModerationDetails(assessment)
+  if (!details) return
+  try {
+    await moderationRepository.flagContentAutomatically({
+      targetType: 'event',
+      targetId: eventId,
+      reason: assessment.reason,
+      details,
+    })
+  } catch (error) {
+    console.error('calendar_automated_moderation_flag_failed', {
+      eventId,
+      message: error instanceof Error ? error.message : null,
+    })
+  }
+}
 
 function refreshEventPaths(eventId?: string) {
   revalidatePath('/events')
@@ -48,10 +88,13 @@ export async function createEventBannerUploadAction(input: { mimeType: string; s
 export async function createEventAction(input: CalendarEventInput): Promise<CalendarCreateResult> {
   const parsed = parseCalendarEventInput(input)
   if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error) }
+  const moderation = assessEventContent(parsed.data)
+  if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   try {
     const user = await requireAwsUser()
     await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
     const eventId = await calendarEventRepository.createEvent(user.id, parsed.data)
+    await flagAutomatedEventModeration(eventId, moderation)
     refreshEventPaths(eventId)
     return { ok: true, eventId }
   } catch (error) {
@@ -65,10 +108,13 @@ export async function updateEventAction(eventId: string, input: CalendarEventInp
   const parsed = parseCalendarEventInput(input)
   if (!id.success) return { ok: false, error: 'Invalid event.' }
   if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error) }
+  const moderation = assessEventContent(parsed.data)
+  if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   try {
     const user = await requireAwsUser()
     await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
     await calendarEventRepository.updateEvent(user.id, id.data, parsed.data)
+    await flagAutomatedEventModeration(id.data, moderation)
     refreshEventPaths(id.data)
     return { ok: true }
   } catch (error) {
