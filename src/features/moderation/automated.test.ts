@@ -30,6 +30,27 @@ describe('automated content moderation', () => {
     expect(result.reason).toBe('harassment')
   })
 
+  it('flags explicit English abusive language for administrator review', () => {
+    const result = assessPlatformText(['You fucking asshole. Get lost.'])
+
+    expect(result.decision).toBe('review')
+    expect(result.category).toBe('abusive_content')
+    expect(result.reason).toBe('harassment')
+    expect(result.ruleIds).toContain('english_abusive_language')
+  })
+
+  it('flags Roman Hindi and Devanagari abusive language for administrator review', () => {
+    const romanHindi = assessPlatformText(['Tu chutiya hai, bhosdike.'])
+    const devanagari = assessPlatformText(['तू मादरचोद है।'])
+
+    for (const result of [romanHindi, devanagari]) {
+      expect(result.decision).toBe('review')
+      expect(result.category).toBe('abusive_content')
+      expect(result.reason).toBe('harassment')
+      expect(result.ruleIds).toContain('hindi_abusive_language')
+    }
+  })
+
   it('blocks explicit hate incitement', () => {
     const result = assessPlatformText(['All Muslims should be attacked and driven out.'])
 
