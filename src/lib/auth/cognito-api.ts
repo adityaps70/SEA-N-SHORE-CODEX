@@ -9,6 +9,10 @@ export type CognitoSignInResult =
   | { kind: 'authenticated'; authentication: CognitoAuthenticationResult }
   | { kind: 'new-password-required'; session: string; username: string }
 
+export type CognitoCustomAuthResult =
+  | { kind: 'authenticated'; authentication: CognitoAuthenticationResult }
+  | { kind: 'challenge'; session: string; username: string }
+
 export type CognitoPrincipal = {
   sub: string
   username?: string | null
@@ -119,6 +123,29 @@ function mapSignInResult(response: CognitoAuthenticationResponse): CognitoSignIn
   throw new CognitoApiError('UnexpectedResponse')
 }
 
+
+function mapCustomAuthResult(
+  response: CognitoAuthenticationResponse,
+  fallbackUsername: string,
+): CognitoCustomAuthResult {
+  if (response.AuthenticationResult) {
+    return {
+      kind: 'authenticated',
+      authentication: mapAuthenticationTokens(response),
+    }
+  }
+
+  if (response.ChallengeName === 'CUSTOM_CHALLENGE' && response.Session) {
+    return {
+      kind: 'challenge',
+      session: response.Session,
+      username: response.ChallengeParameters?.USERNAME ?? fallbackUsername,
+    }
+  }
+
+  throw new CognitoApiError('UnexpectedResponse')
+}
+
 export function createCognitoApi(config: CognitoConfig, transport: Transport = fetch) {
   const endpoint = `https://cognito-idp.${config.region}.amazonaws.com/`
 
@@ -165,6 +192,36 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
       })
 
       return mapSignInResult(response)
+    },
+
+    async startCustomAuth(username: string): Promise<CognitoCustomAuthResult> {
+      const response = await request<CognitoAuthenticationResponse>('InitiateAuth', {
+        AuthFlow: 'CUSTOM_AUTH',
+        ClientId: config.clientId,
+        AuthParameters: {
+          USERNAME: username,
+        },
+      })
+
+      return mapCustomAuthResult(response, username)
+    },
+
+    async respondToCustomChallenge(input: {
+      username: string
+      session: string
+      answer: string
+    }): Promise<CognitoCustomAuthResult> {
+      const response = await request<CognitoAuthenticationResponse>('RespondToAuthChallenge', {
+        ChallengeName: 'CUSTOM_CHALLENGE',
+        ClientId: config.clientId,
+        Session: input.session,
+        ChallengeResponses: {
+          USERNAME: input.username,
+          ANSWER: input.answer,
+        },
+      })
+
+      return mapCustomAuthResult(response, input.username)
     },
 
     async respondToNewPassword(input: {
