@@ -18,7 +18,7 @@ describe('multi-login Cognito infrastructure contract', () => {
 
   it('limits OTP challenge attempts and sends the code only to the Cognito phone attribute', () => {
     expect(defineChallenge).toMatch(/session\.length\s*>=\s*3/)
-    expect(createChallenge).toMatch(/request\.userAttributes\?\.phone_number/)
+    expect(createChallenge).toMatch(/request\?\.userAttributes\?\.phone_number/)
     expect(createChallenge).toMatch(/sns:Publish|PublishCommand/)
     expect(createChallenge).not.toMatch(/console\.log\([^)]*code/i)
     expect(verifyChallenge).toMatch(/privateChallengeParameters\?\.answer/)
