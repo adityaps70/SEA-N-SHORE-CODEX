@@ -105,7 +105,7 @@ data "aws_secretsmanager_secret_version" "google_oauth" {
 locals {
   google_oauth_credentials = var.enable_google_identity_provider ? jsondecode(
     data.aws_secretsmanager_secret_version.google_oauth[0].secret_string
-  ) : {
+    ) : {
     client_id     = ""
     client_secret = ""
   }
