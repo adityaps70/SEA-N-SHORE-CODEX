@@ -5,6 +5,7 @@ import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { createCognitoPrincipalResolver } from '@/lib/auth/cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 import {
+  getProfileAccountStatus,
   provisionProfileForCognitoPrincipal,
   resolveProfileIdForCognitoSub,
 } from './identity-repository'
@@ -18,6 +19,7 @@ export type AwsVerifiedUser = {
 type GetPrincipal = () => Promise<CognitoPrincipal | null>
 type ResolveProfileId = (sub: string) => Promise<string | null>
 type ProvisionProfileId = (principal: CognitoPrincipal) => Promise<string>
+type GetProfileAccountStatus = (profileId: string) => Promise<'active' | 'restricted' | 'suspended' | 'deletion_requested' | null>
 type CacheVerifiedUser = <T>(loader: () => Promise<T>) => () => Promise<T>
 
 export class AwsAuthenticationRequiredError extends Error {
@@ -31,6 +33,7 @@ export function createAwsAuthQueries(input: {
   getPrincipal: GetPrincipal
   resolveProfileId: ResolveProfileId
   provisionProfileId: ProvisionProfileId
+  getProfileAccountStatus: GetProfileAccountStatus
   cacheVerifiedUser?: CacheVerifiedUser
 }) {
   async function loadAwsVerifiedUser(): Promise<AwsVerifiedUser | null> {
@@ -39,6 +42,10 @@ export function createAwsAuthQueries(input: {
 
     const existingProfileId = await input.resolveProfileId(principal.sub)
     const profileId = existingProfileId ?? await input.provisionProfileId(principal)
+    const accountStatus = await input.getProfileAccountStatus(profileId)
+    if (!accountStatus || accountStatus === 'suspended' || accountStatus === 'deletion_requested') {
+      return null
+    }
 
     return {
       id: profileId,
@@ -98,6 +105,7 @@ const productionQueries = createAwsAuthQueries({
   getPrincipal: getServerCognitoPrincipal,
   resolveProfileId: resolveProfileIdForCognitoSub,
   provisionProfileId: provisionProfileForCognitoPrincipal,
+  getProfileAccountStatus,
   cacheVerifiedUser: (loader) => cache(loader),
 })
 
