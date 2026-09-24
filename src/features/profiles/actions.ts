@@ -8,11 +8,13 @@ import { getAwsOwnProfile } from './aws-queries'
 import { completeActivationWithAurora, completeOnboardingWithAurora } from './onboarding-service'
 import { updateProfileWithAurora } from './profile-edit-service'
 import { onboardingActivationSchema, onboardingSchema } from './schemas'
-import { IDENTITY_ROOTS } from './identity-catalog'
+import { PERSONAS, type Persona } from './persona'
 import { PROFILE_TYPES, type ProfileType } from './types'
 
 export type OnboardingFormValues = {
   profileType?: ProfileType
+  persona?: Persona
+  profileIntents?: string
   identityRoot?: 'professional' | 'organisation'
   primaryIdentity?: string
   primaryIdentityFamily?: string
@@ -26,6 +28,9 @@ export type OnboardingFormValues = {
   skills?: string
   rank?: string
   currentCompany?: string
+  specialization?: string
+  institutionName?: string
+  familyRelationship?: string
   currentVessel?: string
   sailingExperienceYears?: string
   vesselTypes?: string
@@ -42,6 +47,7 @@ export type ProfileActionState = {
 }
 
 const boundedTextFields = {
+  profileIntents: 512,
   primaryIdentity: 120,
   primaryIdentityFamily: 120,
   secondaryIdentities: 1600,
@@ -53,6 +59,9 @@ const boundedTextFields = {
   skills: 2000,
   rank: 100,
   currentCompany: 160,
+  specialization: 500,
+  institutionName: 160,
+  familyRelationship: 80,
   currentVessel: 160,
   sailingExperienceYears: 32,
   vesselTypes: 2000,
@@ -70,11 +79,13 @@ function captureSafeValues(formData: FormData): OnboardingFormValues {
     shoreCareerPreference: ['on', 'true'].includes(String(formData.get('shoreCareerPreference') ?? '')),
   }
   const profileType = PROFILE_TYPES.find((value) => value === formData.get('profileType'))
-  const identityRoot = IDENTITY_ROOTS.find((value) => value === formData.get('identityRoot'))
+  const persona = PERSONAS.find((value) => value === formData.get('persona'))
+  const identityRoot = (['professional', 'organisation'] as const).find((value) => value === formData.get('identityRoot'))
   const contactVisibility = (['private', 'members', 'public'] as const)
     .find((value) => value === formData.get('contactVisibility'))
 
   if (profileType) values.profileType = profileType
+  if (persona) values.persona = persona
   if (identityRoot) values.identityRoot = identityRoot
   if (contactVisibility) values.contactVisibility = contactVisibility
 
@@ -212,7 +223,7 @@ export async function completeActivation(
     })
   }
 
-  redirect(parsed.data.identityRoot === 'organisation' ? '/hiring/organization' : '/home')
+  redirect('/home')
 }
 
 export async function updateProfile(
