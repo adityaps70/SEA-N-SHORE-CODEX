@@ -86,15 +86,14 @@ function validForm() {
 
 function validActivationForm() {
   const formData = new FormData()
-  formData.set('identityRoot', 'professional')
-  formData.set('primaryIdentity', 'Chief Engineer')
-  formData.set('primaryIdentityFamily', 'Sea-going · Engine')
-  formData.set('secondaryIdentities', '[]')
+  formData.set('persona', 'seafarer')
+  formData.set('profileIntents', JSON.stringify(['find_jobs', 'network']))
   formData.set('fullName', 'Asha Singh')
   formData.set('slug', 'asha-singh')
   formData.set('location', 'Mumbai')
   formData.set('currentCompany', 'Oceanic Shipping')
-  formData.set('headline', 'Chief Engineer')
+  formData.set('rank', 'Chief Engineer')
+  formData.set('headline', '')
   formData.set('contactVisibility', 'members')
   return formData
 }
