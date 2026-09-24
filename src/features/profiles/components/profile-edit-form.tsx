@@ -69,6 +69,11 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
               <FieldError state={state} name="headline" />
             </label>
             {supportsCurrentCompany ? (
+              <label className={labelClass}>
+                Current company
+                <input name="currentCompany" maxLength={160} defaultValue={textValue('currentCompany', profile.currentCompany ?? '')} className={inputClass} />
+                <FieldError state={state} name="currentCompany" />
+              </label>
             ) : null}
           </div>
         </section>
@@ -111,11 +116,6 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
                 Rank
                 <input name="rank" maxLength={100} defaultValue={textValue('rank', profile.rank ?? '')} className={inputClass} />
                 <FieldError state={state} name="rank" />
-              </label>
-              <label className={labelClass}>
-                Current company
-                <input name="currentCompany" maxLength={160} defaultValue={textValue('currentCompany', profile.currentCompany ?? '')} className={inputClass} />
-                <FieldError state={state} name="currentCompany" />
               </label>
               <label className={labelClass}>
                 Current vessel
