@@ -106,31 +106,60 @@ describe('persona onboarding activation schema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('returns corrective human-readable messages for invalid onboarding fields', () => {
-    const result = onboardingActivationSchema.safeParse({
+  it('returns corrective human-readable messages for invalid fields relevant to the selected persona', () => {
+    const seafarer = onboardingActivationSchema.safeParse({
       ...base,
       fullName: 'x'.repeat(161),
       location: 'x'.repeat(121),
       currentCompany: 'x'.repeat(161),
       headline: 'x'.repeat(161),
-      specialization: 'x'.repeat(501),
-      institutionName: 'x'.repeat(161),
-      familyRelationship: 'x'.repeat(81),
       contactVisibility: 'invalid',
     })
 
-    expect(result.success).toBe(false)
-    if (result.success) return
+    expect(seafarer.success).toBe(false)
+    if (!seafarer.success) {
+      const errors = seafarer.error.flatten().fieldErrors
+      expect(errors.fullName?.[0]).toMatch(/160 characters or fewer/i)
+      expect(errors.location?.[0]).toMatch(/120 characters or fewer/i)
+      expect(errors.currentCompany?.[0]).toMatch(/160 characters or fewer/i)
+      expect(errors.headline?.[0]).toMatch(/160 characters or fewer/i)
+      expect(errors.contactVisibility?.[0]).toMatch(/choose who can see your contact details/i)
+    }
 
-    const errors = result.error.flatten().fieldErrors
-    expect(errors.fullName?.[0]).toMatch(/160 characters or fewer/i)
-    expect(errors.location?.[0]).toMatch(/120 characters or fewer/i)
-    expect(errors.currentCompany?.[0]).toMatch(/160 characters or fewer/i)
-    expect(errors.headline?.[0]).toMatch(/160 characters or fewer/i)
-    expect(errors.specialization?.[0]).toMatch(/500 characters or fewer/i)
-    expect(errors.institutionName?.[0]).toMatch(/160 characters or fewer/i)
-    expect(errors.familyRelationship?.[0]).toMatch(/80 characters or fewer/i)
-    expect(errors.contactVisibility?.[0]).toMatch(/choose who can see your contact details/i)
+    const trainer = onboardingActivationSchema.safeParse({
+      ...base,
+      persona: 'trainer_instructor',
+      rank: '',
+      specialization: 'x'.repeat(501),
+    })
+    expect(trainer.success).toBe(false)
+    if (!trainer.success) {
+      expect(trainer.error.flatten().fieldErrors.specialization?.[0]).toMatch(/500 characters or fewer/i)
+    }
+
+    const student = onboardingActivationSchema.safeParse({
+      ...base,
+      persona: 'student_cadet',
+      rank: '',
+      currentCompany: '',
+      institutionName: 'x'.repeat(161),
+    })
+    expect(student.success).toBe(false)
+    if (!student.success) {
+      expect(student.error.flatten().fieldErrors.institutionName?.[0]).toMatch(/160 characters or fewer/i)
+    }
+
+    const family = onboardingActivationSchema.safeParse({
+      ...base,
+      persona: 'seafarer_family',
+      rank: '',
+      currentCompany: '',
+      familyRelationship: 'x'.repeat(81),
+    })
+    expect(family.success).toBe(false)
+    if (!family.success) {
+      expect(family.error.flatten().fieldErrors.familyRelationship?.[0]).toMatch(/80 characters or fewer/i)
+    }
   })
 
   it('keeps legacy profile-edit onboarding validation human-readable', () => {
