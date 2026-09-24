@@ -29,6 +29,7 @@ vi.mock('./aws-queries', () => ({
     id: '22222222-2222-4222-8222-222222222222',
     slug: 'captain-example',
     profileType: 'seafarer',
+    identityRoot: 'professional',
     fullName: 'Captain Example',
     avatarPath: null,
     location: 'Mumbai',
@@ -180,6 +181,46 @@ describe('completed profile update action', () => {
       headline: 'Master Mariner and tanker specialist',
       skills: ['Navigation', 'SIRE 2.0'],
     }))
+  })
+
+  it('preserves current company for professional identities with non-maritime legacy profile types', async () => {
+    mockedGetOwnProfile.mockResolvedValueOnce({
+      id: viewerId,
+      slug: 'mentor-example',
+      profileType: 'mentor',
+      identityRoot: 'professional',
+      fullName: 'Mentor Example',
+      avatarPath: null,
+      location: 'Mumbai',
+      headline: 'Maritime Mentor',
+      summary: 'Experienced maritime mentor supporting safer professional development.',
+      rank: null,
+      currentCompany: 'Example Shipping',
+      currentVessel: null,
+      sailingExperienceYears: null,
+      vesselTypes: [],
+      tradingAreas: [],
+      shoreCareerPreference: false,
+      availability: null,
+      skills: ['Mentoring'],
+      contactVisibility: 'members',
+      onboardingCompletedAt: '2026-09-01T00:00:00.000Z',
+    })
+    const formData = validForm()
+    formData.set('fullName', 'Mentor Example')
+    formData.set('slug', 'mentor-example')
+    formData.set('headline', 'Maritime Mentor')
+    formData.set('summary', 'Experienced maritime mentor supporting safer professional development.')
+    formData.set('skills', 'Mentoring')
+    formData.set('currentCompany', 'New Shipping Co')
+
+    await expect(updateProfile({}, formData)).rejects.toThrow('NEXT_REDIRECT:/profile')
+
+    expect(mockedUpdateProfile).toHaveBeenCalledWith(
+      viewerId,
+      expect.objectContaining({ profileType: 'mentor', currentCompany: 'New Shipping Co' }),
+      true,
+    )
   })
 
   it('returns the username collision message', async () => {
