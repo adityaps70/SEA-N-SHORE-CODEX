@@ -156,7 +156,7 @@ describe('profile onboarding action', () => {
 
     const result = await completeOnboarding({}, validForm())
 
-    expect(result.fieldErrors?.slug).toEqual(['That username is already in use.'])
+    expect(result.fieldErrors?.slug).toEqual(['That username is already in use. Choose a different username and try again.'])
   })
 
   it('preserves generic safe error copy for unavailable or failed onboarding', async () => {
