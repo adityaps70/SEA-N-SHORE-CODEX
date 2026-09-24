@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { findIdentityOption, IDENTITY_ROOTS } from './identity-catalog'
+import {
+  defaultHeadlineForPersona,
+  PERSONAS,
+  PROFILE_INTENTS,
+  personaUsesProfessionalCompany,
+} from './persona'
 import { PROFILE_TYPES } from './types'
 import { usernameSchema } from './username'
 
@@ -95,66 +100,72 @@ export const onboardingSchema = z.preprocess(discardIrrelevantMaritimeValues, on
 
 export type OnboardingInput = z.infer<typeof onboardingSchema>
 
-const secondaryIdentitySchema = z.preprocess(
+const profileIntentsSchema = z.preprocess(
   (value) => {
     if (Array.isArray(value)) return value
     if (typeof value !== 'string' || value.trim() === '') return []
     try {
-      const parsed: unknown = JSON.parse(value)
-      return parsed
+      return JSON.parse(value) as unknown
     } catch {
       return value
     }
   },
   z.array(
-    z.string().trim()
-      .min(2, 'Each additional identity must have at least 2 characters.')
-      .max(120, 'Keep each additional identity to 120 characters or fewer.'),
-  ).max(10, 'Add no more than 10 additional identities.'),
-).transform((values) => {
-  const seen = new Set<string>()
-  return values.filter((value) => {
-    const key = value.toLocaleLowerCase('en')
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-})
+    z.enum(PROFILE_INTENTS, { error: 'Choose a valid Sea N Shore activity.' }),
+  )
+    .min(1, 'Choose at least one thing you want to do on Sea N Shore.')
+    .max(PROFILE_INTENTS.length, 'Choose only the available Sea N Shore activities.'),
+).transform((values) => [...new Set(values)])
 
 const activationFieldsSchema = z.object({
-  identityRoot: z.enum(IDENTITY_ROOTS, { error: 'Choose Professional or Organisation.' }),
-  primaryIdentity: z.string().trim()
-    .min(2, 'Choose your exact maritime identity.')
-    .max(120, 'Keep your maritime identity to 120 characters or fewer.'),
-  primaryIdentityFamily: z.string().trim()
-    .min(2, 'Choose the category for your maritime identity.')
-    .max(120, 'Keep the identity category to 120 characters or fewer.'),
-  secondaryIdentities: secondaryIdentitySchema,
+  persona: z.enum(PERSONAS, { error: 'Choose the option that best describes you.' }),
+  profileIntents: profileIntentsSchema,
   fullName: z.string().trim()
     .min(2, 'Add your name.')
     .max(160, 'Keep your name to 160 characters or fewer.'),
   slug: usernameSchema,
   location: optionalText(120, 'Keep your location to 120 characters or fewer.'),
   currentCompany: optionalText(160, 'Keep the company or organisation name to 160 characters or fewer.'),
+  rank: optionalText(100, 'Keep your rank to 100 characters or fewer.'),
   headline: optionalText(160, 'Keep your professional headline to 160 characters or fewer.'),
+  specialization: optionalText(500, 'Keep your specialization to 500 characters or fewer.'),
+  institutionName: optionalText(160, 'Keep your institution name to 160 characters or fewer.'),
+  familyRelationship: optionalText(80, 'Keep your relationship to 80 characters or fewer.'),
   contactVisibility: z.enum(['private', 'members', 'public'], { error: 'Choose who can see your contact details.' }).default('members'),
 })
 
-export const onboardingActivationSchema = activationFieldsSchema
-  .superRefine((data, context) => {
-    if (data.primaryIdentityFamily === 'Custom identity') return
-    const option = findIdentityOption(data.identityRoot, data.primaryIdentity)
-    if (!option || option.family !== data.primaryIdentityFamily) {
-      context.addIssue({
-        code: 'custom',
-        path: ['primaryIdentity'],
-        message: 'Choose an identity from the maritime list or use a custom identity.',
-      })
-    }
-  })
-  .transform((data) => ({
-    ...data,
-    headline: data.headline ?? data.primaryIdentity,
-  }))
+function discardIrrelevantPersonaValues(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const source = value as Record<string, unknown>
+  const persona = PERSONAS.find((entry) => entry === source.persona)
+  if (!persona) return source
+
+  return {
+    ...source,
+    rank: persona === 'seafarer' ? source.rank : undefined,
+    currentCompany: personaUsesProfessionalCompany(persona) ? source.currentCompany : undefined,
+    specialization: persona === 'trainer_instructor' ? source.specialization : undefined,
+    institutionName: persona === 'student_cadet' ? source.institutionName : undefined,
+    familyRelationship: persona === 'seafarer_family' ? source.familyRelationship : undefined,
+  }
+}
+
+export const onboardingActivationSchema = z.preprocess(
+  discardIrrelevantPersonaValues,
+  activationFieldsSchema
+    .superRefine((data, context) => {
+      if (data.persona === 'seafarer' && (!data.rank || data.rank.length < 2)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['rank'],
+          message: 'Add your current or most recent rank.',
+        })
+      }
+    })
+    .transform((data) => ({
+      ...data,
+      headline: defaultHeadlineForPersona(data),
+    })),
+)
 
 export type OnboardingActivationInput = z.infer<typeof onboardingActivationSchema>
