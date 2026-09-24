@@ -129,7 +129,7 @@ function organizationCapabilities(
 
   return uniqueCapabilities([
     ...FREE_CAPABILITIES,
-    ...membership.entitlements,
+    ...membership.entitlements.filter((capability) => roleCapabilities.includes(capability)),
     ...planCapabilities.filter((capability) => roleCapabilities.includes(capability)),
   ])
 }
