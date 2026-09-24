@@ -66,6 +66,31 @@ describe('profile inline automated moderation', () => {
       details: expect.stringContaining('[AUTOMATED MODERATION]'),
     }))
   })
+  it('persists company name for Shipowner and other organisation identities', async () => {
+    mocks.getAwsOwnProfile.mockResolvedValueOnce({
+      id: profileId,
+      slug: 'shipowner-example',
+      profileType: 'company',
+      identityRoot: 'organisation',
+      primaryIdentity: 'Shipowner',
+    })
+    const form = new FormData()
+    form.set('fullName', 'Aditya Pratap Singh')
+    form.set('slug', 'shipowner-example')
+    form.set('location', 'Lucknow')
+    form.set('headline', 'Shipowner')
+    form.set('currentCompany', 'Beaufort Marine Services')
+    form.set('contactVisibility', 'public')
+
+    await expect(updateProfileIdentitySection({}, form)).resolves.toMatchObject({ success: true })
+
+    expect(mocks.updateIdentity).toHaveBeenCalledWith(
+      profileId,
+      expect.objectContaining({ currentCompany: 'Beaufort Marine Services' }),
+      true,
+    )
+  })
+
   it('persists current company for every professional identity, not only maritime legacy profile types', async () => {
     mocks.getAwsOwnProfile.mockResolvedValueOnce({
       id: profileId,
