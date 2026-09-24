@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   reviewOrganizationApplication: vi.fn(),
+  reviewCompanyAccessRequest: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
@@ -11,10 +12,11 @@ vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAws
 vi.mock('./repository', () => ({
   adminRepository: {
     reviewOrganizationApplication: mocks.reviewOrganizationApplication,
+    reviewCompanyAccessRequest: mocks.reviewCompanyAccessRequest,
   },
 }))
 
-import { reviewOrganizationApplication } from './actions'
+import { reviewCompanyAccessRequest, reviewOrganizationApplication } from './actions'
 
 const applicationId = '22222222-2222-4222-8222-222222222222'
 
@@ -23,6 +25,7 @@ describe('platform admin organization review actions', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1', cognitoSub: 'sub-1', email: 'admin@example.com' })
     mocks.reviewOrganizationApplication.mockResolvedValue(true)
+    mocks.reviewCompanyAccessRequest.mockResolvedValue(true)
   })
 
   it('rejects invalid ids and decisions before authentication', async () => {
@@ -66,6 +69,45 @@ describe('platform admin organization review actions', () => {
     await expect(reviewOrganizationApplication(applicationId, 'suspended', 'Review required.')).resolves.toEqual({
       ok: false,
       error: 'This organization application cannot move to that review state.',
+    })
+  })
+})
+
+
+describe('platform admin company access review actions', () => {
+  const requestId = '66666666-6666-4666-8666-666666666666'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1', cognitoSub: 'sub-1', email: 'admin@example.com' })
+    mocks.reviewCompanyAccessRequest.mockResolvedValue(true)
+  })
+
+  it('validates request id and requires a rejection note before authentication', async () => {
+    await expect(reviewCompanyAccessRequest('bad-id', 'approved', null)).resolves.toMatchObject({ ok: false })
+    await expect(reviewCompanyAccessRequest(requestId, 'rejected', '   ')).resolves.toMatchObject({ ok: false })
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.reviewCompanyAccessRequest).not.toHaveBeenCalled()
+  })
+
+  it('approves an access request with authenticated administrator identity', async () => {
+    await expect(reviewCompanyAccessRequest(requestId, 'approved', 'Verified relationship.')).resolves.toEqual({ ok: true })
+    expect(mocks.reviewCompanyAccessRequest).toHaveBeenCalledWith(
+      'admin-1',
+      requestId,
+      'approved',
+      'Verified relationship.',
+    )
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/admin')
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/admin/access')
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/hiring/organization')
+  })
+
+  it('returns safe copy when the access request was already reviewed', async () => {
+    mocks.reviewCompanyAccessRequest.mockRejectedValueOnce(new Error('company_access_request_review_forbidden'))
+    await expect(reviewCompanyAccessRequest(requestId, 'approved', null)).resolves.toEqual({
+      ok: false,
+      error: 'This organization access request has already been reviewed.',
     })
   })
 })
