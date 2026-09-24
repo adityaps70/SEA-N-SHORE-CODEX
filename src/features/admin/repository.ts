@@ -6,6 +6,33 @@ export const ADMIN_ORGANIZATION_STATUSES = ['pending', 'changes_requested', 'app
 export type AdminOrganizationStatus = (typeof ADMIN_ORGANIZATION_STATUSES)[number]
 export type AdminOrganizationDecision = Exclude<AdminOrganizationStatus, 'pending'>
 
+export const ADMIN_COMPANY_ACCESS_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const
+export type AdminCompanyAccessStatus = (typeof ADMIN_COMPANY_ACCESS_STATUSES)[number]
+export type AdminCompanyAccessDecision = Extract<AdminCompanyAccessStatus, 'approved' | 'rejected'>
+
+export type AdminCompanyAccessRequest = {
+  id: string
+  status: AdminCompanyAccessStatus
+  requestedRole: 'member' | 'recruiter' | 'administrator'
+  requestType: 'join_company' | 'recruiter_access'
+  message: string | null
+  requestedAt: string
+  reviewedAt: string | null
+  reviewerNote: string | null
+  company: {
+    id: string
+    name: string
+    slug: string
+    verified: boolean
+  }
+  requester: {
+    id: string
+    fullName: string
+    slug: string | null
+    headline: string | null
+  }
+}
+
 export type AdminDashboardMetrics = {
   pendingOrganizations: number
   changesRequested: number
@@ -263,6 +290,31 @@ type LockedOrganizationApplicationRow = QueryResultRow & {
   submitted_by: string
   status: string
 }
+type CompanyAccessRequestRow = QueryResultRow & {
+  request_id: string
+  request_status: string
+  requested_role: string
+  request_type: string
+  message: string | null
+  requested_at: string
+  reviewed_at: string | null
+  reviewer_note: string | null
+  company_id: string
+  company_name: string
+  company_slug: string
+  company_verified: boolean | null
+  requester_id: string
+  requester_name: string
+  requester_slug: string | null
+  requester_headline: string | null
+}
+type LockedCompanyAccessRequestRow = QueryResultRow & {
+  id: string
+  company_id: string
+  user_id: string
+  requested_role: string
+  status: string
+}
 
 const ORGANIZATION_REVIEW_SELECT = `
   select
@@ -314,6 +366,48 @@ function organizationStatus(value: string): AdminOrganizationStatus {
 function adminUserStatus(value: string): AdminUserStatus {
   if (ADMIN_USER_STATUSES.includes(value as AdminUserStatus)) return value as AdminUserStatus
   throw new Error('admin_user_status_invalid')
+}
+
+function adminCompanyAccessStatus(value: string): AdminCompanyAccessStatus {
+  if (ADMIN_COMPANY_ACCESS_STATUSES.includes(value as AdminCompanyAccessStatus)) {
+    return value as AdminCompanyAccessStatus
+  }
+  throw new Error('admin_company_access_status_invalid')
+}
+
+function adminCompanyAccessRole(value: string): AdminCompanyAccessRequest['requestedRole'] {
+  if (value === 'member' || value === 'recruiter' || value === 'administrator') return value
+  throw new Error('admin_company_access_role_invalid')
+}
+
+function adminCompanyAccessType(value: string): AdminCompanyAccessRequest['requestType'] {
+  if (value === 'join_company' || value === 'recruiter_access') return value
+  throw new Error('admin_company_access_type_invalid')
+}
+
+function mapCompanyAccessRequest(row: CompanyAccessRequestRow): AdminCompanyAccessRequest {
+  return {
+    id: row.request_id,
+    status: adminCompanyAccessStatus(row.request_status),
+    requestedRole: adminCompanyAccessRole(row.requested_role),
+    requestType: adminCompanyAccessType(row.request_type),
+    message: row.message ?? null,
+    requestedAt: row.requested_at,
+    reviewedAt: row.reviewed_at ?? null,
+    reviewerNote: row.reviewer_note ?? null,
+    company: {
+      id: row.company_id,
+      name: row.company_name,
+      slug: row.company_slug,
+      verified: Boolean(row.company_verified),
+    },
+    requester: {
+      id: row.requester_id,
+      fullName: row.requester_name,
+      slug: row.requester_slug ?? null,
+      headline: row.requester_headline ?? null,
+    },
+  }
 }
 
 function mapAdminUser(row: AdminUserRow): AdminUserSummary {
