@@ -58,6 +58,18 @@ describe('organization application server actions', () => {
     expect(mocks.submitOrganizationApplication).not.toHaveBeenCalled()
   })
 
+  it('returns field-specific correction guidance for invalid organization onboarding data', async () => {
+    const result = await submitOrganizationApplication(validInput({ officialEmail: 'not-an-email' }))
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: 'Please correct the highlighted information and try again.',
+      fieldErrors: {
+        officialEmail: [expect.stringMatching(/valid work email/i)],
+      },
+    })
+  })
+
   it('rejects an invalid organization website before authentication', async () => {
     const result = await submitOrganizationApplication(validInput({ website: 'not-a-url' }))
 
