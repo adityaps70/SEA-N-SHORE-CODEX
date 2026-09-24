@@ -38,5 +38,7 @@ describe('organization hiring verification experience', () => {
     expect(page).toContain('Submitted')
     expect(page).toContain('OrganizationApplicationForm')
     expect(page).toContain("redirect('/hiring')")
+    expect(page).toContain('verification and plan access are separate')
+    expect(page).toContain('Organization Pro')
   })
 })
