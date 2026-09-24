@@ -99,10 +99,12 @@ export async function updateProfileIdentitySection(
   if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
 
   try {
+    const supportsCurrentCompany = profile.identityRoot === 'professional'
+      || (profile.identityRoot == null && profile.profileType !== 'company')
     await updateProfileIdentitySectionWithAurora(
       user.id,
       parsed.data,
-      profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional',
+      supportsCurrentCompany,
     )
     await flagProfileModeration(user.id, moderation)
   } catch (error) {
