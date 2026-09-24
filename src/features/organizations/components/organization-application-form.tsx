@@ -127,7 +127,15 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
   }
 
   return (
-    <form ref={formRef} action={submit} className="space-y-5" noValidate>
+    <form
+      ref={formRef}
+      className="space-y-5"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault()
+        submit(new FormData(event.currentTarget))
+      }}
+    >
       {isError ? (
         <FormErrorSummary error={message} fieldErrors={fieldErrors} fieldLabels={fieldLabels} />
       ) : null}
