@@ -1266,6 +1266,101 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     })
   }
 
+  async function listCompanyAccessRequests(
+    adminId: string,
+    status: AdminCompanyAccessStatus,
+  ): Promise<AdminCompanyAccessRequest[]> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const rows = await queryRows(
+      `select
+         car.id as request_id,
+         car.status as request_status,
+         car.requested_role::text as requested_role,
+         car.request_type,
+         car.message,
+         car.requested_at,
+         car.reviewed_at,
+         car.reviewer_note,
+         c.id as company_id,
+         c.name as company_name,
+         c.slug as company_slug,
+         coalesce(c.is_verified, false) as company_verified,
+         p.id as requester_id,
+         p.full_name as requester_name,
+         p.slug as requester_slug,
+         p.headline as requester_headline
+       from public.company_access_requests car
+       join public.companies c on c.id = car.company_id
+       join public.profiles p on p.id = car.user_id
+       where car.status = $1
+       order by car.requested_at asc, car.id asc
+       limit 100`,
+      [status],
+    ) as CompanyAccessRequestRow[]
+    return rows.map(mapCompanyAccessRequest)
+  }
+
+  async function reviewCompanyAccessRequest(
+    adminId: string,
+    requestId: string,
+    decision: AdminCompanyAccessDecision,
+    reviewerNote: string | null,
+  ) {
+    return transaction(async (txQuery) => {
+      await requirePlatformAdministrator(txQuery, adminId, true)
+      const rows = await txQuery(
+        `select id, company_id, user_id, requested_role::text as requested_role, status
+         from public.company_access_requests
+         where id = $1
+         for update`,
+        [requestId],
+      ) as LockedCompanyAccessRequestRow[]
+      const request = rows[0]
+      if (!request) throw new Error('company_access_request_not_found')
+      if (request.status !== 'pending') throw new Error('company_access_request_review_forbidden')
+      const requestedRole = adminCompanyAccessRole(request.requested_role)
+
+      if (decision === 'approved') {
+        await txQuery(
+          `insert into public.company_members (company_id, user_id, role, approved_at, created_at)
+           values ($1, $2, $3::public.company_member_role, now(), now())
+           on conflict (company_id, user_id)
+           do update set
+             role = excluded.role,
+             approved_at = coalesce(public.company_members.approved_at, now())`,
+          [request.company_id, request.user_id, requestedRole],
+        )
+      }
+
+      await txQuery(
+        `update public.company_access_requests
+         set status = $2,
+             reviewed_by = $3,
+             reviewed_at = now(),
+             reviewer_note = $4
+         where id = $1`,
+        [requestId, decision, adminId, reviewerNote],
+      )
+
+      await txQuery(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, $2, 'company_access_request', $3, $4::jsonb)`,
+        [
+          adminId,
+          `organization_access.${decision}`,
+          requestId,
+          JSON.stringify({
+            companyId: request.company_id,
+            userId: request.user_id,
+            requestedRole,
+            reviewerNote,
+          }),
+        ],
+      )
+      return true
+    })
+  }
+
   return {
     isPlatformAdministrator,
     getAdminDashboardMetrics,
@@ -1282,6 +1377,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     listOrganizationApplications,
     getOrganizationApplicationReview,
     reviewOrganizationApplication,
+    listCompanyAccessRequests,
+    reviewCompanyAccessRequest,
   }
 }
 
