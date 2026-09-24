@@ -7,10 +7,12 @@ const mocks = vi.hoisted(() => ({
   updateCourse: vi.fn(),
   submitCourse: vi.fn(),
   revalidatePath: vi.fn(),
+  requireCapability: vi.fn(async () => undefined),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/access/server', () => ({ requireCapability: mocks.requireCapability }))
 vi.mock('./course-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('./course-repository')>()
   return {
@@ -58,6 +60,7 @@ describe('learning course server actions', () => {
     mocks.createCourse.mockResolvedValue({ courseId })
     mocks.updateCourse.mockResolvedValue(true)
     mocks.submitCourse.mockResolvedValue(true)
+    mocks.requireCapability.mockResolvedValue(undefined)
   })
 
   it('rejects inconsistent paid pricing before authentication or mutation', async () => {
@@ -118,6 +121,22 @@ describe('learning course server actions', () => {
     await expect(submitCourseForReview('not-a-uuid')).resolves.toEqual({ ok: false, error: 'Invalid course.' })
 
     expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.submitCourse).not.toHaveBeenCalled()
+  })
+
+  it('requires central course publishing capability when a draft is submitted for review', async () => {
+    await expect(submitCourseForReview(courseId)).resolves.toEqual({ ok: true })
+
+    expect(mocks.requireCapability).toHaveBeenCalledWith('user-1', 'course.publish')
+  })
+
+  it('fails closed when course publishing entitlement or trainer verification is missing', async () => {
+    mocks.requireCapability.mockRejectedValueOnce(new Error('capability_required'))
+
+    await expect(submitCourseForReview(courseId)).resolves.toEqual({
+      ok: false,
+      error: expect.stringMatching(/creator pro|organization pro|course publishing/i),
+    })
     expect(mocks.submitCourse).not.toHaveBeenCalled()
   })
 
