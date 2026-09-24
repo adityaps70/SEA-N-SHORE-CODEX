@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { onboardingActivationSchema } from './schemas'
+import { onboardingActivationSchema, onboardingSchema } from './schemas'
 
 const base = {
   identityRoot: 'professional',
@@ -85,6 +85,38 @@ describe('onboarding activation schema', () => {
     expect(errors.currentCompany?.[0]).toMatch(/160 characters or fewer/i)
     expect(errors.headline?.[0]).toMatch(/160 characters or fewer/i)
     expect(errors.contactVisibility?.[0]).toMatch(/choose who can see your contact details/i)
+  })
+
+
+  it('keeps legacy onboarding validation messages human-readable and corrective', () => {
+    const result = onboardingSchema.safeParse({
+      profileType: 'seafarer',
+      fullName: 'x'.repeat(121),
+      slug: 'captain-example',
+      location: 'Mumbai',
+      headline: 'x'.repeat(161),
+      summary: 'short',
+      contactVisibility: 'invalid',
+      skills: '',
+      rank: 'Master',
+      currentCompany: 'Example Shipping',
+      currentVessel: 'MV Example',
+      sailingExperienceYears: '100',
+      vesselTypes: '',
+      tradingAreas: '',
+      shoreCareerPreference: 'false',
+      availability: '',
+    })
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+
+    const errors = result.error.flatten().fieldErrors
+    expect(errors.fullName?.[0]).toMatch(/120 characters or fewer/i)
+    expect(errors.headline?.[0]).toMatch(/160 characters or fewer/i)
+    expect(errors.summary?.[0]).toMatch(/at least 20 characters/i)
+    expect(errors.contactVisibility?.[0]).toMatch(/choose who can see your contact details/i)
+    expect(errors.sailingExperienceYears?.[0]).toMatch(/between 0 and 70 years/i)
   })
 
 })
