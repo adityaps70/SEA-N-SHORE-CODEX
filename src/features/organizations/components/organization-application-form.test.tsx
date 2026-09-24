@@ -49,7 +49,7 @@ describe('OrganizationApplicationForm onboarding errors', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Please correct the highlighted information')
-    expect(screen.getByText('Enter a valid work email address, for example name@company.com.')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Official company email' })).toHaveAccessibleDescription('Enter a valid work email address, for example name@company.com.')
     expect(screen.getByRole('textbox', { name: 'Organization name' })).toHaveValue('Oceanic Shipping')
     expect(screen.getByRole('textbox', { name: 'Official company email' })).toHaveValue('not-an-email')
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Official company email' })))
