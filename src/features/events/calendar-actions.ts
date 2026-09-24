@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { requireCapability } from '@/features/access/server'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
 import { prepareEventBannerUpload, verifyEventBannerReference } from './event-banner-media'
@@ -69,6 +70,7 @@ function safeError(error: unknown) {
   if (code === 'event_not_open') return 'Registration is not open for this event.'
   if (code === 'event_full') return 'This event has reached its attendee capacity.'
   if (code.startsWith('event_banner_')) return 'Please upload the banner image again.'
+  if (code === 'capability_required') return 'Creator Pro or Organization Pro with verified event publishing access is required to publish events.'
   return 'Something went wrong. Please try again.'
 }
 
@@ -92,6 +94,7 @@ export async function createEventAction(input: CalendarEventInput): Promise<Cale
   if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   try {
     const user = await requireAwsUser()
+    if (parsed.data.status === 'published') await requireCapability(user.id, 'event.publish')
     await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
     const eventId = await calendarEventRepository.createEvent(user.id, parsed.data)
     await flagAutomatedEventModeration(eventId, moderation)
@@ -112,6 +115,7 @@ export async function updateEventAction(eventId: string, input: CalendarEventInp
   if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   try {
     const user = await requireAwsUser()
+    if (parsed.data.status === 'published') await requireCapability(user.id, 'event.publish')
     await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
     await calendarEventRepository.updateEvent(user.id, id.data, parsed.data)
     await flagAutomatedEventModeration(id.data, moderation)
