@@ -11,6 +11,7 @@ const profile: OwnProfile = {
   id: '11111111-1111-4111-8111-111111111111',
   slug: 'captain-example',
   profileType: 'seafarer',
+  identityRoot: 'professional',
   fullName: 'Captain Example',
   avatarPath: null,
   location: 'Mumbai',
@@ -46,5 +47,11 @@ describe('ProfileEditForm', () => {
 
     expect(screen.getByRole('button', { name: /save changes/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /cancel/i })).toHaveAttribute('href', '/profile')
+  })
+
+  it('keeps current company editable for professional identities with non-maritime legacy profile types', () => {
+    render(<ProfileEditForm profile={{ ...profile, profileType: 'mentor', identityRoot: 'professional' }} />)
+
+    expect(screen.getByRole('textbox', { name: /current company/i })).toHaveValue('Example Shipping')
   })
 })
