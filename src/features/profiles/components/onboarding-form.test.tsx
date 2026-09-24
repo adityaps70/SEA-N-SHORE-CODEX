@@ -96,4 +96,44 @@ describe('OnboardingForm exact identity activation', () => {
     await waitFor(() => expect(document.activeElement).toHaveTextContent(/I.m joining as/i))
   })
 
+  it('preserves entered onboarding values after server validation fails', async () => {
+    actionMocks.completeActivation.mockResolvedValueOnce({
+      revision: 1,
+      fieldErrors: {
+        slug: ['That username is already in use. Choose a different username and try again.'],
+      },
+      values: {
+        identityRoot: 'professional',
+        primaryIdentity: 'Chief Engineer',
+        primaryIdentityFamily: 'Sea-going · Engine',
+        secondaryIdentities: '[]',
+        fullName: 'Asha Updated',
+        slug: 'asha-singh',
+        location: 'Goa',
+        currentCompany: 'Oceanic Shipping',
+        headline: 'Chief Engineer',
+        contactVisibility: 'members',
+      },
+    })
+
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: /Professional/i }))
+    fireEvent.change(screen.getByRole('searchbox', { name: /Search professional identities/i }), {
+      target: { value: 'chief eng' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Chief Engineer.*Sea-going · Engine/i }))
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
+    fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
+    fireEvent.change(screen.getByLabelText('Current organisation'), { target: { value: 'Oceanic Shipping' } })
+
+    const form = screen.getByRole('button', { name: 'Complete profile' }).closest('form')
+    fireEvent.submit(form!)
+
+    await screen.findByRole('alert')
+    expect(screen.getByLabelText('Full name')).toHaveValue('Asha Updated')
+    expect(screen.getByLabelText('Location')).toHaveValue('Goa')
+    expect(screen.getByLabelText('Current organisation')).toHaveValue('Oceanic Shipping')
+    expect(screen.getByText('Chief Engineer', { selector: '[data-primary-identity="true"]' })).toBeInTheDocument()
+  })
+
 })
