@@ -1,0 +1,39 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const sql = fs.readFileSync('infra/aws/database/migrations/0032_membership_access_foundation.sql', 'utf8')
+const script = fs.readFileSync('scripts/aws/membership-access-migration.sh', 'utf8')
+const guard = fs.readFileSync('scripts/aws/membership-access-migration-action.txt', 'utf8').trim()
+const workflow = fs.readFileSync('.github/workflows/aws-membership-access-migration.yml', 'utf8')
+
+assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.match(sql, /add column if not exists persona text/i)
+assert.match(sql, /create table if not exists public\.account_subscriptions/i)
+assert.match(sql, /create table if not exists public\.feature_verifications/i)
+assert.match(sql, /create table if not exists public\.entitlement_grants/i)
+assert.match(sql, /legacy_migration/i)
+assert.doesNotMatch(sql, /drop table/i)
+assert.doesNotMatch(sql, /drop column/i)
+assert.doesNotMatch(sql, /truncate/i)
+assert.doesNotMatch(sql, /delete from/i)
+
+assert.match(script, /310356785722/)
+assert.match(script, /MEMBERSHIP_ACCESS_MIGRATION_EXPECTED_SHA/)
+assert.match(script, /plan\|migrate-once/)
+assert.match(script, /0032_membership_access_foundation\.sql/)
+assert.match(script, /sea-n-shore-membership-access-0032/)
+assert.match(script, /begin-transaction/)
+assert.match(script, /commit-transaction/)
+assert.match(script, /rollback-transaction/)
+assert.match(script, /MEMBERSHIP_ACCESS_MIGRATION_PLAN_ONLY_NO_APPLY/)
+assert.match(script, /MEMBERSHIP_ACCESS_MIGRATION_APPLY_VERIFIED=true/)
+assert.match(script, /MEMBERSHIP_ACCESS_MIGRATION_ALREADY_APPLIED=true/)
+assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+
+assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+assert.match(workflow, /Guard migration against a moved branch/)
+assert.match(workflow, /environment:\s*staging/)
+assert.match(workflow, /MEMBERSHIP_ACCESS_MIGRATION_EXPECTED_SHA/)
+assert.match(workflow, /bash scripts\/aws\/membership-access-migration\.sh/)
+
+console.log('MEMBERSHIP_ACCESS_MIGRATION_CONTRACT_VERIFIED=true')
