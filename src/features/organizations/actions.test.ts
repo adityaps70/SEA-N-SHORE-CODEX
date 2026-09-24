@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   submitOrganizationApplication: vi.fn(),
   resubmitOrganizationApplication: vi.fn(),
+  searchCompanies: vi.fn(),
+  requestCompanyAccess: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
@@ -17,11 +19,13 @@ vi.mock('./repository', async (importOriginal) => {
     organizationRepository: {
       submitOrganizationApplication: mocks.submitOrganizationApplication,
       resubmitOrganizationApplication: mocks.resubmitOrganizationApplication,
+      searchCompanies: mocks.searchCompanies,
+      requestCompanyAccess: mocks.requestCompanyAccess,
     },
   }
 })
 
-import { resubmitOrganizationApplication, submitOrganizationApplication } from './actions'
+import { requestOrganizationAccess, resubmitOrganizationApplication, searchOrganizations, submitOrganizationApplication } from './actions'
 
 const applicationId = '22222222-2222-4222-8222-222222222222'
 
@@ -48,6 +52,8 @@ describe('organization application server actions', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'founder@example.com' })
     mocks.submitOrganizationApplication.mockResolvedValue({ companyId: 'company-1', applicationId })
     mocks.resubmitOrganizationApplication.mockResolvedValue(true)
+    mocks.searchCompanies.mockResolvedValue([])
+    mocks.requestCompanyAccess.mockResolvedValue({ requestId: '44444444-4444-4444-8444-444444444444' })
   })
 
   it('validates before authentication or repository mutation', async () => {
@@ -125,4 +131,60 @@ describe('organization application server actions', () => {
       error: 'This organization application cannot be resubmitted in its current state.',
     })
   })
+
+  it('searches existing organizations only for an authenticated member', async () => {
+    mocks.searchCompanies.mockResolvedValueOnce([{
+      id: '33333333-3333-4333-8333-333333333333',
+      slug: 'oceanic',
+      name: 'Oceanic Shipping',
+      companyType: 'Ship Manager',
+      verified: true,
+      website: 'https://oceanic.example.com',
+    }])
+
+    await expect(searchOrganizations('  Oceanic  ')).resolves.toEqual({
+      ok: true,
+      organizations: [expect.objectContaining({ name: 'Oceanic Shipping', verified: true })],
+    })
+    expect(mocks.requireAwsUser).toHaveBeenCalledTimes(1)
+    expect(mocks.searchCompanies).toHaveBeenCalledWith('Oceanic')
+  })
+
+  it('validates organization access requests before authentication', async () => {
+    await expect(requestOrganizationAccess('bad-id', 'administrator', 'Director')).resolves.toMatchObject({ ok: false })
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.requestCompanyAccess).not.toHaveBeenCalled()
+  })
+
+  it('requests recruiter or admin access without granting membership directly', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+    await expect(requestOrganizationAccess(companyId, 'administrator', 'I am the company director.')).resolves.toEqual({
+      ok: true,
+      requestId: '44444444-4444-4444-8444-444444444444',
+    })
+
+    expect(mocks.requestCompanyAccess).toHaveBeenCalledWith(
+      'user-1',
+      companyId,
+      'administrator',
+      'I am the company director.',
+    )
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/hiring/organization')
+  })
+
+  it('returns useful copy for an already-pending or existing organization membership', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+    mocks.requestCompanyAccess.mockRejectedValueOnce(new Error('organization_access_request_exists'))
+    await expect(requestOrganizationAccess(companyId, 'recruiter', null)).resolves.toEqual({
+      ok: false,
+      error: 'You already have a pending access request for this organization and role.',
+    })
+
+    mocks.requestCompanyAccess.mockRejectedValueOnce(new Error('organization_membership_exists'))
+    await expect(requestOrganizationAccess(companyId, 'member', null)).resolves.toEqual({
+      ok: false,
+      error: 'You already belong to this organization.',
+    })
+  })
+
 })
