@@ -21,30 +21,47 @@ vi.mock('./onboarding-service', () => ({
 vi.mock('./profile-edit-service', () => ({ updateProfileWithAurora: vi.fn(async () => true) }))
 vi.mock('./aws-queries', () => ({ getAwsOwnProfile: vi.fn(async () => null) }))
 
-function activationForm(identityRoot: 'professional' | 'organisation') {
+function activationForm(persona: 'seafarer' | 'recruiter_hr' = 'seafarer') {
   const form = new FormData()
-  form.set('identityRoot', identityRoot)
-  form.set('primaryIdentity', identityRoot === 'organisation' ? 'Shipowner' : 'Chief Engineer')
-  form.set('primaryIdentityFamily', 'Custom identity')
-  form.set('secondaryIdentities', '[]')
-  form.set('fullName', identityRoot === 'organisation' ? 'Oceanic Marine Pvt Ltd' : 'Asha Singh')
-  form.set('slug', identityRoot === 'organisation' ? 'oceanic-marine' : 'asha-singh')
+  form.set('persona', persona)
+  form.set('profileIntents', JSON.stringify(persona === 'recruiter_hr' ? ['hire', 'network'] : ['find_jobs', 'network']))
+  form.set('fullName', 'Asha Singh')
+  form.set('slug', 'asha-singh')
   form.set('location', 'Mumbai')
-  form.set('headline', identityRoot === 'organisation' ? 'Shipowner' : 'Chief Engineer')
+  form.set('currentCompany', 'Oceanic Shipping')
+  form.set('rank', persona === 'seafarer' ? 'Chief Engineer' : '')
+  form.set('headline', persona === 'recruiter_hr' ? 'Crewing Manager' : '')
   form.set('contactVisibility', 'members')
   return form
 }
 
-describe('organization onboarding continuation', () => {
+describe('persona onboarding continuation', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('routes Organisation activation directly into organization verification setup', async () => {
-    await expect(completeActivation({}, activationForm('organisation'))).rejects.toThrow('NEXT_REDIRECT:/hiring/organization')
+  it('routes completed persona onboarding to Home instead of treating organization as a competing account identity', async () => {
+    await expect(completeActivation({}, activationForm('seafarer'))).rejects.toThrow('NEXT_REDIRECT:/home')
     expect(vi.mocked(completeActivationWithAurora)).toHaveBeenCalledTimes(1)
   })
 
-  it('keeps Professional activation on the existing home destination', async () => {
-    await expect(completeActivation({}, activationForm('professional'))).rejects.toThrow('NEXT_REDIRECT:/home')
+  it('keeps recruiter persona activation on Home; organization setup remains a separate workspace flow', async () => {
+    await expect(completeActivation({}, activationForm('recruiter_hr'))).rejects.toThrow('NEXT_REDIRECT:/home')
     expect(vi.mocked(completeActivationWithAurora)).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects the retired organisation onboarding shape instead of redirecting into company setup', async () => {
+    const legacy = new FormData()
+    legacy.set('identityRoot', 'organisation')
+    legacy.set('primaryIdentity', 'Shipowner')
+    legacy.set('primaryIdentityFamily', 'Custom identity')
+    legacy.set('fullName', 'Oceanic Marine Pvt Ltd')
+    legacy.set('slug', 'oceanic-marine')
+    legacy.set('location', 'Mumbai')
+    legacy.set('headline', 'Shipowner')
+    legacy.set('contactVisibility', 'members')
+
+    const result = await completeActivation({}, legacy)
+
+    expect(result.fieldErrors?.persona?.[0]).toMatch(/best describes you/i)
+    expect(vi.mocked(completeActivationWithAurora)).not.toHaveBeenCalled()
   })
 })
