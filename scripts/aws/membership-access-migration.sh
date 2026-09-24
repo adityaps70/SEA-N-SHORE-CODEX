@@ -34,7 +34,8 @@ if len(parts) < 20:
 allowed = re.compile(
     r'^(alter\s+table\s+public\.profiles\b|'
     r'alter\s+type\s+public\.company_member_role\b|'
-    r'create\s+(table|unique\s+index|index)\s+if\s+not\s+exists\s+public\.|'
+    r'create\s+table\s+if\s+not\s+exists\s+public\.|'
+    r'create\s+(unique\s+)?index\s+if\s+not\s+exists\s+[a-z0-9_]+\s+on\s+public\.|'
     r'insert\s+into\s+public\.)',
     re.I | re.S,
 )
