@@ -1,8 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ProfileActionState } from '../actions'
 
 const actionMocks = vi.hoisted(() => ({
-  completeActivation: vi.fn(async () => ({ revision: 0 })),
+  completeActivation: vi.fn(async (): Promise<ProfileActionState> => ({ revision: 0 })),
 }))
 
 vi.mock('../actions', () => ({
