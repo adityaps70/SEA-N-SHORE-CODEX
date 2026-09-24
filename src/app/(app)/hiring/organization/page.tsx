@@ -14,7 +14,7 @@ function ReviewHeader({ organizationName }: { organizationName?: string }) {
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
           {organizationName
             ? `Track the employer review for ${organizationName}.`
-            : 'Create your employer identity once. After approval, Hiring and job posting unlock automatically.'}
+            : 'Create or verify your organization workspace. Organization verification and plan access are separate: verification establishes trust, while Organization Pro controls paid publishing capabilities.'}
         </p>
       </div>
       <Link href="/hiring" className="text-sm font-bold text-navy-950 hover:underline">Back to Hiring</Link>
