@@ -22,14 +22,14 @@ const termsSchema = z.preprocess(
   z.array(z.string().min(1).max(80, 'Keep every entry to 80 characters or fewer.')).max(20, 'Add no more than 20 entries.'),
 )
 
-const optionalText = (maximum: number) =>
+const optionalText = (maximum: number, message = `Keep this field to ${maximum} characters or fewer.`) =>
   z.preprocess(
     (value) => {
       if (typeof value !== 'string') return undefined
       const normalized = value.trim()
       return normalized || undefined
     },
-    z.string().max(maximum).optional(),
+    z.string().max(maximum, message).optional(),
   )
 
 const sailingExperienceSchema = z.preprocess(
@@ -38,7 +38,11 @@ const sailingExperienceSchema = z.preprocess(
     if (typeof value === 'string' && value.trim() === '') return undefined
     return typeof value === 'string' ? Number(value) : value
   },
-  z.number().finite().min(0).max(70).optional(),
+  z.number({ error: 'Enter sailing experience as a number of years.' })
+    .finite('Enter sailing experience as a valid number of years.')
+    .min(0, 'Sailing experience cannot be negative.')
+    .max(70, 'Enter sailing experience between 0 and 70 years.')
+    .optional(),
 )
 
 const discardIrrelevantMaritimeValues = (value: unknown) => {
@@ -62,16 +66,16 @@ const discardIrrelevantMaritimeValues = (value: unknown) => {
 const onboardingFieldsSchema = z
   .object({
     profileType: z.enum(PROFILE_TYPES, { error: 'Choose the professional profile that fits you best.' }),
-    fullName: z.string().trim().min(2, 'Add your full name.').max(120),
+    fullName: z.string().trim().min(2, 'Add your full name.').max(120, 'Keep your full name to 120 characters or fewer.'),
     slug: usernameSchema,
-    location: optionalText(120),
-    headline: z.string().trim().min(4, 'Add a professional headline.').max(160),
-    summary: z.string().trim().min(20, 'Write at least 20 characters.').max(2000),
-    contactVisibility: z.enum(['private', 'members', 'public']),
+    location: optionalText(120, 'Keep your location to 120 characters or fewer.'),
+    headline: z.string().trim().min(4, 'Add a professional headline.').max(160, 'Keep your professional headline to 160 characters or fewer.'),
+    summary: z.string().trim().min(20, 'Write at least 20 characters describing your professional background.').max(2000, 'Keep your professional summary to 2,000 characters or fewer.'),
+    contactVisibility: z.enum(['private', 'members', 'public'], { error: 'Choose who can see your contact details.' }),
     skills: termsSchema,
-    rank: optionalText(100),
-    currentCompany: optionalText(160),
-    currentVessel: optionalText(160),
+    rank: optionalText(100, 'Keep your rank to 100 characters or fewer.'),
+    currentCompany: optionalText(160, 'Keep the company or organisation name to 160 characters or fewer.'),
+    currentVessel: optionalText(160, 'Keep the vessel name to 160 characters or fewer.'),
     sailingExperienceYears: sailingExperienceSchema,
     vesselTypes: termsSchema,
     tradingAreas: termsSchema,
@@ -79,7 +83,7 @@ const onboardingFieldsSchema = z
       (value) => value === true || value === 'true' || value === 'on',
       z.boolean(),
     ),
-    availability: optionalText(100),
+    availability: optionalText(100, 'Keep availability details to 100 characters or fewer.'),
   })
   .superRefine((data, context) => {
     if (data.profileType === 'seafarer' && (!data.rank || data.rank.length < 2)) {
@@ -102,7 +106,11 @@ const secondaryIdentitySchema = z.preprocess(
       return value
     }
   },
-  z.array(z.string().trim().min(2).max(120)).max(10, 'Add no more than 10 additional identities.'),
+  z.array(
+    z.string().trim()
+      .min(2, 'Each additional identity must have at least 2 characters.')
+      .max(120, 'Keep each additional identity to 120 characters or fewer.'),
+  ).max(10, 'Add no more than 10 additional identities.'),
 ).transform((values) => {
   const seen = new Set<string>()
   return values.filter((value) => {
@@ -115,15 +123,21 @@ const secondaryIdentitySchema = z.preprocess(
 
 const activationFieldsSchema = z.object({
   identityRoot: z.enum(IDENTITY_ROOTS, { error: 'Choose Professional or Organisation.' }),
-  primaryIdentity: z.string().trim().min(2, 'Choose your exact maritime identity.').max(120),
-  primaryIdentityFamily: z.string().trim().min(2).max(120),
+  primaryIdentity: z.string().trim()
+    .min(2, 'Choose your exact maritime identity.')
+    .max(120, 'Keep your maritime identity to 120 characters or fewer.'),
+  primaryIdentityFamily: z.string().trim()
+    .min(2, 'Choose the category for your maritime identity.')
+    .max(120, 'Keep the identity category to 120 characters or fewer.'),
   secondaryIdentities: secondaryIdentitySchema,
-  fullName: z.string().trim().min(2, 'Add your name.').max(160),
+  fullName: z.string().trim()
+    .min(2, 'Add your name.')
+    .max(160, 'Keep your name to 160 characters or fewer.'),
   slug: usernameSchema,
-  location: optionalText(120),
-  currentCompany: optionalText(160),
-  headline: optionalText(160),
-  contactVisibility: z.enum(['private', 'members', 'public']).default('members'),
+  location: optionalText(120, 'Keep your location to 120 characters or fewer.'),
+  currentCompany: optionalText(160, 'Keep the company or organisation name to 160 characters or fewer.'),
+  headline: optionalText(160, 'Keep your professional headline to 160 characters or fewer.'),
+  contactVisibility: z.enum(['private', 'members', 'public'], { error: 'Choose who can see your contact details.' }).default('members'),
 })
 
 export const onboardingActivationSchema = activationFieldsSchema
