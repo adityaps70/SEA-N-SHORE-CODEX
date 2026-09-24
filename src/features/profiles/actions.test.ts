@@ -227,6 +227,52 @@ describe('completed profile update action', () => {
     )
   })
 
+  it('persists company name for Shipowner organisation identities', async () => {
+    mockedGetOwnProfile.mockResolvedValueOnce({
+      id: viewerId,
+      slug: 'shipowner-example',
+      profileType: 'company',
+      identityRoot: 'organisation',
+      primaryIdentity: 'Shipowner',
+      fullName: 'Aditya Pratap Singh',
+      avatarPath: null,
+      location: 'Lucknow',
+      headline: 'Shipowner',
+      summary: 'Maritime business owner and industry professional.',
+      rank: null,
+      currentCompany: 'Old Company',
+      currentVessel: null,
+      sailingExperienceYears: null,
+      vesselTypes: [],
+      tradingAreas: [],
+      shoreCareerPreference: false,
+      availability: null,
+      skills: ['Shipping'],
+      contactVisibility: 'public',
+      onboardingCompletedAt: '2026-09-01T00:00:00.000Z',
+    })
+    const formData = validForm()
+    formData.set('fullName', 'Aditya Pratap Singh')
+    formData.set('slug', 'shipowner-example')
+    formData.set('location', 'Lucknow')
+    formData.set('headline', 'Shipowner')
+    formData.set('summary', 'Maritime business owner and industry professional.')
+    formData.set('skills', 'Shipping')
+    formData.set('contactVisibility', 'public')
+    formData.set('currentCompany', 'Beaufort Marine Services')
+
+    await expect(updateProfile({}, formData)).rejects.toThrow('NEXT_REDIRECT:/profile')
+
+    expect(mockedUpdateProfile).toHaveBeenCalledWith(
+      viewerId,
+      expect.objectContaining({
+        profileType: 'company',
+        currentCompany: 'Beaufort Marine Services',
+      }),
+      true,
+    )
+  })
+
   it('returns the username collision message', async () => {
     mockedUpdateProfile.mockRejectedValueOnce(Object.assign(new Error('duplicate'), { code: '23505' }))
 
