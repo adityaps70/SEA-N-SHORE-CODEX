@@ -188,6 +188,7 @@ function OnboardingFields({
                   key={option.id}
                   type="button"
                   onClick={() => toggleIntent(option.id)}
+                  aria-label={option.label}
                   aria-pressed={selected}
                   className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                     selected
