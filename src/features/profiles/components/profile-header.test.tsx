@@ -103,22 +103,23 @@ describe('ProfileHeader', () => {
     expect(screen.getByRole('button', { name: 'Change profile photo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Change cover photo' })).toBeInTheDocument()
   })
-  it('does not offer a current-company field to organisation profiles', () => {
+  it('offers a company-name field to Shipowner and other organisation identities', () => {
     render(
       <ProfileHeader
         profile={{
           ...profile,
           profileType: 'company',
           identityRoot: 'organisation',
-          fullName: 'Oceanic Shipping',
-          currentCompany: null,
+          primaryIdentity: 'Shipowner',
+          fullName: 'Aditya Pratap Singh',
+          currentCompany: 'Oceanic Shipping',
         }}
         editHref="/profile/edit#identity"
       />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
-    expect(screen.queryByRole('textbox', { name: 'Current company' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Company name' })).toHaveValue('Oceanic Shipping')
   })
 
 })
