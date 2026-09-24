@@ -50,7 +50,6 @@ const discardIrrelevantMaritimeValues = (value: unknown) => {
   return {
     ...source,
     rank: undefined,
-    currentCompany: undefined,
     currentVessel: undefined,
     sailingExperienceYears: undefined,
     vesselTypes: undefined,
