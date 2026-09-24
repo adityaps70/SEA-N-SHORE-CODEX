@@ -83,11 +83,33 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
   async function updateActivationProfile(profileId: string, data: OnboardingActivationInput, profileType: ProfileType) {
     await query(
       `update public.profiles
-       set profile_type = $2, identity_root = $3, primary_identity = $4, primary_identity_family = $5,
-           secondary_identities = $6::text[], full_name = $7, slug = $8, location = $9,
-           headline = $10, contact_visibility = $11, updated_at = now()
+       set profile_type = $2,
+           persona = $3,
+           profile_intents = $4::text[],
+           full_name = $5,
+           slug = $6,
+           location = $7,
+           headline = $8,
+           contact_visibility = $9,
+           community_relationship = $10,
+           institution_name = $11,
+           specialization = $12,
+           updated_at = now()
        where id = $1 and account_status = 'active' and onboarding_completed_at is null`,
-      [profileId, profileType, data.identityRoot, data.primaryIdentity, data.primaryIdentityFamily, data.secondaryIdentities, data.fullName, data.slug, data.location ?? null, data.headline, data.contactVisibility],
+      [
+        profileId,
+        profileType,
+        data.persona,
+        data.profileIntents,
+        data.fullName,
+        data.slug,
+        data.location ?? null,
+        data.headline,
+        data.contactVisibility,
+        data.familyRelationship ?? null,
+        data.institutionName ?? null,
+        data.specialization ?? null,
+      ],
     )
   }
 
@@ -124,12 +146,17 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     )
   }
 
-  async function upsertActivationMaritimeProfile(profileId: string, currentCompany?: string) {
+  async function upsertActivationMaritimeProfile(profileId: string, currentCompany?: string, rank?: string) {
     await query(
-      `insert into public.maritime_profiles (user_id, current_company, vessel_types, trading_areas, shore_career_preference, updated_at)
-       values ($1, $2, '{}'::text[], '{}'::text[], false, now())
-       on conflict (user_id) do update set current_company = excluded.current_company, updated_at = now()`,
-      [profileId, currentCompany ?? null],
+      `insert into public.maritime_profiles (
+         user_id, rank, current_company, vessel_types, trading_areas, shore_career_preference, updated_at
+       )
+       values ($1, $2, $3, '{}'::text[], '{}'::text[], false, now())
+       on conflict (user_id) do update set
+         rank = excluded.rank,
+         current_company = excluded.current_company,
+         updated_at = now()`,
+      [profileId, rank ?? null, currentCompany ?? null],
     )
   }
 
