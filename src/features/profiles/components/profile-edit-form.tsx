@@ -19,8 +19,7 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
   const [usernameReady, setUsernameReady] = useState(true)
   const values = state.values
   const isMaritime = profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional'
-  const supportsCurrentCompany = profile.identityRoot === 'professional'
-    || (profile.identityRoot == null && profile.profileType !== 'company')
+  const companyFieldLabel = profile.identityRoot === 'organisation' ? 'Company name' : 'Current company'
   const usernameChangesRemaining = Math.max(0, 2 - (profile.usernameChangeCount ?? 0))
 
   function textValue(name: keyof OnboardingFormValues, fallback = '') {
@@ -68,13 +67,11 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
               <input name="headline" required maxLength={160} defaultValue={textValue('headline', profile.headline ?? '')} className={inputClass} />
               <FieldError state={state} name="headline" />
             </label>
-            {supportsCurrentCompany ? (
-              <label className={labelClass}>
-                Current company
-                <input name="currentCompany" maxLength={160} defaultValue={textValue('currentCompany', profile.currentCompany ?? '')} className={inputClass} />
-                <FieldError state={state} name="currentCompany" />
-              </label>
-            ) : null}
+            <label className={labelClass}>
+              {companyFieldLabel}
+              <input name="currentCompany" maxLength={160} defaultValue={textValue('currentCompany', profile.currentCompany ?? '')} className={inputClass} />
+              <FieldError state={state} name="currentCompany" />
+            </label>
           </div>
         </section>
 
