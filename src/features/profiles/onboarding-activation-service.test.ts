@@ -9,23 +9,25 @@ type Repository = {
   updateProfile: (profileId: string, input: OnboardingInput) => Promise<void>
   upsertMaritimeProfile: (profileId: string, input: OnboardingInput) => Promise<void>
   updateActivationProfile: (profileId: string, input: OnboardingActivationInput, profileType: ProfileType) => Promise<void>
-  upsertActivationMaritimeProfile: (profileId: string, currentCompany?: string) => Promise<void>
+  upsertActivationMaritimeProfile: (profileId: string, currentCompany?: string, rank?: string) => Promise<void>
   deleteMaritimeProfile: (profileId: string) => Promise<void>
   replaceSkills: (profileId: string, skills: string[]) => Promise<void>
   finalizeOnboarding: (profileId: string) => Promise<boolean>
 }
 
-function professionalInput(): OnboardingActivationInput {
+function seafarerInput(): OnboardingActivationInput {
   return {
-    identityRoot: 'professional',
-    primaryIdentity: 'Chief Engineer',
-    primaryIdentityFamily: 'Sea-going · Engine',
-    secondaryIdentities: ['Mentor', 'ISM Auditor'],
+    persona: 'seafarer',
+    profileIntents: ['find_jobs', 'network'],
     fullName: 'Asha Singh',
     slug: 'asha-singh',
     location: 'Mumbai',
     currentCompany: 'Oceanic Shipping',
+    rank: 'Chief Engineer',
     headline: 'Chief Engineer',
+    specialization: undefined,
+    institutionName: undefined,
+    familyRelationship: undefined,
     contactVisibility: 'members',
   }
 }
@@ -50,40 +52,61 @@ async function serviceFor(repository: Repository) {
   return createOnboardingService({ withTransaction })
 }
 
-describe('exact identity onboarding persistence', () => {
-  it('persists a professional exact identity and only projects the legacy broad type', async () => {
+describe('persona onboarding persistence', () => {
+  it('persists a seafarer persona and projects the compatible legacy profile type', async () => {
     const repository = makeRepository()
     const service = await serviceFor(repository)
-    const input = professionalInput()
+    const input = seafarerInput()
 
     await expect(service.completeActivation(actorId, input)).resolves.toBe(true)
 
     expect(repository.updateActivationProfile).toHaveBeenCalledWith(actorId, input, 'seafarer')
-    expect(repository.upsertActivationMaritimeProfile).toHaveBeenCalledWith(actorId, 'Oceanic Shipping')
+    expect(repository.upsertActivationMaritimeProfile).toHaveBeenCalledWith(
+      actorId,
+      'Oceanic Shipping',
+      'Chief Engineer',
+    )
     expect(repository.deleteMaritimeProfile).not.toHaveBeenCalled()
-    expect(repository.replaceSkills).not.toHaveBeenCalled()
     expect(repository.finalizeOnboarding).toHaveBeenCalledWith(actorId)
   })
 
-  it('maps an organisation to the legacy company type and clears maritime-only state', async () => {
+  it('maps recruiter persona to the legacy recruiter type without granting permission by profile type', async () => {
     const repository = makeRepository()
     const service = await serviceFor(repository)
     const input: OnboardingActivationInput = {
-      identityRoot: 'organisation',
-      primaryIdentity: 'Shipowner',
-      primaryIdentityFamily: 'Shipping & Ship Management',
-      secondaryIdentities: ['Technical Ship Manager'],
-      fullName: 'Oceanic Marine Pvt Ltd',
-      slug: 'oceanic-marine',
-      location: 'Mumbai',
-      currentCompany: undefined,
-      headline: 'Shipowner',
-      contactVisibility: 'members',
+      ...seafarerInput(),
+      persona: 'recruiter_hr',
+      profileIntents: ['hire', 'network'],
+      rank: undefined,
+      headline: 'Crewing Manager',
     }
 
     await service.completeActivation(actorId, input)
 
-    expect(repository.updateActivationProfile).toHaveBeenCalledWith(actorId, input, 'company')
+    expect(repository.updateActivationProfile).toHaveBeenCalledWith(actorId, input, 'recruiter')
+    expect(repository.upsertActivationMaritimeProfile).toHaveBeenCalledWith(
+      actorId,
+      'Oceanic Shipping',
+      undefined,
+    )
+  })
+
+  it('keeps seafarer family free from maritime-only persistence', async () => {
+    const repository = makeRepository()
+    const service = await serviceFor(repository)
+    const input: OnboardingActivationInput = {
+      ...seafarerInput(),
+      persona: 'seafarer_family',
+      profileIntents: ['community'],
+      currentCompany: undefined,
+      rank: undefined,
+      familyRelationship: 'Spouse / partner',
+      headline: 'Seafarer Family',
+    }
+
+    await service.completeActivation(actorId, input)
+
+    expect(repository.updateActivationProfile).toHaveBeenCalledWith(actorId, input, 'maritime_professional')
     expect(repository.deleteMaritimeProfile).toHaveBeenCalledWith(actorId)
     expect(repository.upsertActivationMaritimeProfile).not.toHaveBeenCalled()
   })
@@ -92,7 +115,7 @@ describe('exact identity onboarding persistence', () => {
     const repository = makeRepository({ lockOnboardingProfile: vi.fn(async () => false) })
     const service = await serviceFor(repository)
 
-    await expect(service.completeActivation(actorId, professionalInput())).rejects.toThrow('onboarding_unavailable')
+    await expect(service.completeActivation(actorId, seafarerInput())).rejects.toThrow('onboarding_unavailable')
     expect(repository.updateActivationProfile).not.toHaveBeenCalled()
   })
 })
