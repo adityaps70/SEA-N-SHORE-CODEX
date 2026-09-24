@@ -1,5 +1,5 @@
 import { withTransaction as databaseTransaction } from '@/lib/db/client'
-import { legacyProfileTypeForIdentity } from './identity-catalog'
+import { legacyProfileTypeForPersona, personaUsesProfessionalCompany } from './persona'
 import {
   createOnboardingRepositoryForClient,
   type OnboardingRepository,
@@ -55,15 +55,11 @@ export function createOnboardingService(input: { withTransaction: OnboardingTran
         serviceError('onboarding_unavailable')
       }
 
-      const profileType = legacyProfileTypeForIdentity(
-        data.identityRoot,
-        data.primaryIdentity,
-        data.primaryIdentityFamily,
-      )
+      const profileType = legacyProfileTypeForPersona(data.persona)
       await repository.updateActivationProfile(actorId, data, profileType)
 
-      if (data.identityRoot === 'professional') {
-        await repository.upsertActivationMaritimeProfile(actorId, data.currentCompany)
+      if (personaUsesProfessionalCompany(data.persona)) {
+        await repository.upsertActivationMaritimeProfile(actorId, data.currentCompany, data.rank)
       } else {
         await repository.deleteMaritimeProfile(actorId)
       }
