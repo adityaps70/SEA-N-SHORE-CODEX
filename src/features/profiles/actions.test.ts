@@ -174,13 +174,17 @@ describe('completed profile update action', () => {
     await expect(updateProfile({}, formData)).rejects.toThrow('NEXT_REDIRECT:/profile')
 
     expect(mockedRequireAwsUser).toHaveBeenCalledTimes(1)
-    expect(mockedUpdateProfile).toHaveBeenCalledWith(viewerId, expect.objectContaining({
-      profileType: 'seafarer',
-      fullName: 'Captain Example',
-      slug: 'captain-example',
-      headline: 'Master Mariner and tanker specialist',
-      skills: ['Navigation', 'SIRE 2.0'],
-    }))
+    expect(mockedUpdateProfile).toHaveBeenCalledWith(
+      viewerId,
+      expect.objectContaining({
+        profileType: 'seafarer',
+        fullName: 'Captain Example',
+        slug: 'captain-example',
+        headline: 'Master Mariner and tanker specialist',
+        skills: ['Navigation', 'SIRE 2.0'],
+      }),
+      true,
+    )
   })
 
   it('preserves current company for professional identities with non-maritime legacy profile types', async () => {
