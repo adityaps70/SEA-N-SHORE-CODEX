@@ -383,3 +383,118 @@ describe('platform admin user controls', () => {
     })
   })
 })
+
+
+describe('platform admin organization access requests', () => {
+  const requestId = '66666666-6666-4666-8666-666666666666'
+  const companyId = '33333333-3333-4333-8333-333333333333'
+  const requesterId = '77777777-7777-4777-8777-777777777777'
+
+  it('lists pending access requests with organization and requester context', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createAdminRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('public.user_roles')) return [{ allowed: true }]
+        return [{
+          request_id: requestId,
+          request_status: 'pending',
+          requested_role: 'recruiter',
+          request_type: 'recruiter_access',
+          message: 'I manage crewing.',
+          requested_at: '2026-09-24T10:00:00.000Z',
+          reviewed_at: null,
+          reviewer_note: null,
+          company_id: companyId,
+          company_name: 'Oceanic Shipping',
+          company_slug: 'oceanic',
+          company_verified: true,
+          requester_id: requesterId,
+          requester_name: 'Asha Singh',
+          requester_slug: 'asha-singh',
+          requester_headline: 'Crewing Manager',
+        }]
+      },
+    })
+
+    await expect(repository.listCompanyAccessRequests(adminId, 'pending')).resolves.toEqual([{
+      id: requestId,
+      status: 'pending',
+      requestedRole: 'recruiter',
+      requestType: 'recruiter_access',
+      message: 'I manage crewing.',
+      requestedAt: '2026-09-24T10:00:00.000Z',
+      reviewedAt: null,
+      reviewerNote: null,
+      company: {
+        id: companyId,
+        name: 'Oceanic Shipping',
+        slug: 'oceanic',
+        verified: true,
+      },
+      requester: {
+        id: requesterId,
+        fullName: 'Asha Singh',
+        slug: 'asha-singh',
+        headline: 'Crewing Manager',
+      },
+    }])
+    expect(seen[1]?.text).toContain('public.company_access_requests')
+    expect(seen[1]?.text).toContain('car.status = $1')
+    expect(seen[1]?.values).toEqual(['pending'])
+  })
+
+  it('approves an access request transactionally, creates membership and records audit history', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('public.user_roles') && text.includes('for update')) return [{ allowed: true }]
+      if (text.includes('from public.company_access_requests') && text.includes('for update')) {
+        return [{
+          id: requestId,
+          company_id: companyId,
+          user_id: requesterId,
+          requested_role: 'recruiter',
+          status: 'pending',
+        }]
+      }
+      return []
+    }
+    const repository = createAdminRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.reviewCompanyAccessRequest(adminId, requestId, 'approved', 'Verified employment.')).resolves.toBe(true)
+
+    const membership = seen.find((entry) => entry.text.includes('insert into public.company_members'))
+    expect(membership?.values).toContain(companyId)
+    expect(membership?.values).toContain(requesterId)
+    expect(membership?.values).toContain('recruiter')
+    expect(seen.some((entry) => entry.text.includes('update public.company_access_requests') && entry.values?.includes('approved'))).toBe(true)
+    const audit = seen.find((entry) => entry.text.includes('insert into public.audit_events'))
+    expect(audit?.values).toContain('organization_access.approved')
+    expect(audit?.values).toContain(requestId)
+  })
+
+  it('rejects an access request without creating membership', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('public.user_roles') && text.includes('for update')) return [{ allowed: true }]
+      if (text.includes('from public.company_access_requests') && text.includes('for update')) {
+        return [{
+          id: requestId,
+          company_id: companyId,
+          user_id: requesterId,
+          requested_role: 'administrator',
+          status: 'pending',
+        }]
+      }
+      return []
+    }
+    const repository = createAdminRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.reviewCompanyAccessRequest(adminId, requestId, 'rejected', 'Unable to verify relationship.')).resolves.toBe(true)
+
+    expect(seen.some((entry) => entry.text.includes('insert into public.company_members'))).toBe(false)
+    expect(seen.some((entry) => entry.text.includes('update public.company_access_requests') && entry.values?.includes('rejected'))).toBe(true)
+  })
+})
