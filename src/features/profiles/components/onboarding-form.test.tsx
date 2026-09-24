@@ -19,68 +19,85 @@ beforeEach(() => {
 
 afterEach(() => cleanup())
 
-describe('OnboardingForm exact identity activation', () => {
-  it('starts with only Professional and Organisation identity roots', () => {
+describe('OnboardingForm persona activation', () => {
+  it('starts with the human persona choices instead of Professional and Organisation roots', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    expect(screen.getByRole('button', { name: /Professional/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Organisation/i })).toBeInTheDocument()
-    expect(screen.queryByText('Seafarer')).not.toBeInTheDocument()
-    expect(screen.queryByText('Recruiter')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Seafarer/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Shore Professional/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Recruiter \/ HR/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Trainer \/ Instructor/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Student \/ Cadet/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Seafarer Family/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Maritime Enthusiast/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Other/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Professional$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Organisation$/i })).not.toBeInTheDocument()
   })
 
-  it('searches and selects an exact professional identity', () => {
+  it('shows intent choices and relevant seafarer fields after selecting Seafarer', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    fireEvent.click(screen.getByRole('button', { name: /Professional/i }))
-    fireEvent.change(screen.getByRole('searchbox', { name: /Search professional identities/i }), {
-      target: { value: 'chief eng' },
-    })
+    fireEvent.click(screen.getByRole('button', { name: /^Seafarer/i }))
 
-    expect(screen.getByRole('button', { name: /Chief Engineer.*Sea-going · Engine/i })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Chief Engineer.*Sea-going · Engine/i }))
-    expect(screen.getByText('Chief Engineer', { selector: '[data-primary-identity="true"]' })).toBeInTheDocument()
-  })
+    expect(screen.getByText('What are you here to do?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Find jobs/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Hire people/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Learn/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Teach/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Attend events/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Host events/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Network/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Community/i })).toBeInTheDocument()
 
-  it('keeps activation lightweight and provides additional/custom identity controls', () => {
-    render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: /Professional/i }))
-
-    expect(screen.getByText(/Can.t find your role/i)).toBeInTheDocument()
-    expect(screen.getByText(/Add another identity/i)).toBeInTheDocument()
     expect(screen.getByLabelText('Full name')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /Username/i })).toBeInTheDocument()
     expect(screen.getByLabelText('Location')).toBeInTheDocument()
-    expect(screen.getByLabelText('Current organisation')).toBeInTheDocument()
-    expect(screen.getByLabelText('Professional headline')).toBeInTheDocument()
-
+    expect(screen.getByLabelText('Current or most recent rank')).toBeInTheDocument()
+    expect(screen.getByLabelText('Current / last organisation')).toBeInTheDocument()
     expect(screen.queryByLabelText('Professional summary')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Skills')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Current or most recent rank')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Sailing experience in years')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Vessel types')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Trading areas')).not.toBeInTheDocument()
   })
 
-  it('switches the lightweight details to organisation language', () => {
-    render(<OnboardingForm initialFullName="Oceanic Marine" />)
-    fireEvent.click(screen.getByRole('button', { name: /Organisation/i }))
+  it('keeps seafarer family onboarding lightweight and removes irrelevant professional fields', () => {
+    render(<OnboardingForm initialFullName="Priya Singh" />)
 
-    expect(screen.getByLabelText('Organisation name')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Current organisation')).not.toBeInTheDocument()
-    expect(screen.getByRole('searchbox', { name: /Search organisation identities/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Seafarer Family/i }))
+
+    expect(screen.getByLabelText('Relationship to the maritime community')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Current or most recent rank')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Current / last organisation')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Training specialization')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Institute / academy')).not.toBeInTheDocument()
   })
+
+  it('shows trainer and student fields only for those personas', () => {
+    const { unmount } = render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: /^Trainer \/ Instructor/i }))
+
+    expect(screen.getByLabelText('Training specialization')).toBeInTheDocument()
+    expect(screen.getByLabelText('Organisation / institute')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Institute / academy')).not.toBeInTheDocument()
+
+    unmount()
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: /^Student \/ Cadet/i }))
+
+    expect(screen.getByLabelText('Institute / academy')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Training specialization')).not.toBeInTheDocument()
+  })
+
   it('keeps Complete profile actionable so missing fields produce visible validation instead of a silent disabled button', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
     expect(screen.getByRole('button', { name: 'Complete profile' })).toBeEnabled()
   })
 
-  it('shows and focuses a clear error summary when the server rejects an onboarding step', async () => {
+  it('shows and focuses a clear persona error summary when the server rejects onboarding', async () => {
     actionMocks.completeActivation.mockResolvedValueOnce({
       revision: 1,
       fieldErrors: {
-        identityRoot: ['Choose Professional or Organisation to continue.'],
+        persona: ['Choose the option that best describes you.'],
       },
       values: {},
     })
@@ -92,39 +109,37 @@ describe('OnboardingForm exact identity activation', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Please correct the highlighted information')
-    expect(alert).toHaveTextContent('Choose Professional or Organisation to continue.')
-    await waitFor(() => expect(document.activeElement).toHaveTextContent(/I.m joining as/i))
+    expect(alert).toHaveTextContent('Choose the option that best describes you.')
+    await waitFor(() => expect(document.activeElement).toHaveTextContent(/Which best describes you/i))
   })
 
-  it('preserves entered onboarding values after server validation fails', async () => {
+  it('preserves persona, intent and entered values after server validation fails', async () => {
     actionMocks.completeActivation.mockResolvedValueOnce({
       revision: 1,
       fieldErrors: {
         slug: ['That username is already in use. Choose a different username and try again.'],
       },
       values: {
-        identityRoot: 'professional',
-        primaryIdentity: 'Chief Engineer',
-        primaryIdentityFamily: 'Sea-going · Engine',
-        secondaryIdentities: '[]',
+        persona: 'seafarer',
+        profileIntents: JSON.stringify(['find_jobs', 'network']),
         fullName: 'Asha Updated',
         slug: 'asha-singh',
         location: 'Goa',
         currentCompany: 'Oceanic Shipping',
+        rank: 'Chief Engineer',
         headline: 'Chief Engineer',
         contactVisibility: 'members',
       },
     })
 
     render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: /Professional/i }))
-    fireEvent.change(screen.getByRole('searchbox', { name: /Search professional identities/i }), {
-      target: { value: 'chief eng' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /Chief Engineer.*Sea-going · Engine/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^Seafarer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Network/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
-    fireEvent.change(screen.getByLabelText('Current organisation'), { target: { value: 'Oceanic Shipping' } })
+    fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'Chief Engineer' } })
+    fireEvent.change(screen.getByLabelText('Current / last organisation'), { target: { value: 'Oceanic Shipping' } })
 
     const form = screen.getByRole('button', { name: 'Complete profile' }).closest('form')
     fireEvent.submit(form!)
@@ -132,23 +147,22 @@ describe('OnboardingForm exact identity activation', () => {
     await screen.findByRole('alert')
     expect(screen.getByLabelText('Full name')).toHaveValue('Asha Updated')
     expect(screen.getByLabelText('Location')).toHaveValue('Goa')
-    expect(screen.getByLabelText('Current organisation')).toHaveValue('Oceanic Shipping')
-    expect(screen.getByText('Chief Engineer', { selector: '[data-primary-identity="true"]' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('Chief Engineer')
+    expect(screen.getByLabelText('Current / last organisation')).toHaveValue('Oceanic Shipping')
+    expect(screen.getByRole('button', { name: /Find jobs/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Network/i })).toHaveAttribute('aria-pressed', 'true')
   })
 
-
-  it('shows an unexpected submit failure without clearing the entered onboarding information', async () => {
+  it('shows an unexpected submit failure without clearing entered onboarding information', async () => {
     actionMocks.completeActivation.mockRejectedValueOnce(new Error('network unavailable'))
 
     render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: /Professional/i }))
-    fireEvent.change(screen.getByRole('searchbox', { name: /Search professional identities/i }), {
-      target: { value: 'chief eng' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /Chief Engineer.*Sea-going · Engine/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^Seafarer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
-    fireEvent.change(screen.getByLabelText('Current organisation'), { target: { value: 'Oceanic Shipping' } })
+    fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'Chief Engineer' } })
+    fireEvent.change(screen.getByLabelText('Current / last organisation'), { target: { value: 'Oceanic Shipping' } })
 
     const form = screen.getByRole('button', { name: 'Complete profile' }).closest('form')
     fireEvent.submit(form!)
@@ -158,9 +172,8 @@ describe('OnboardingForm exact identity activation', () => {
     expect(alert).toHaveTextContent(/try again/i)
     expect(screen.getByLabelText('Full name')).toHaveValue('Asha Updated')
     expect(screen.getByLabelText('Location')).toHaveValue('Goa')
-    expect(screen.getByLabelText('Current organisation')).toHaveValue('Oceanic Shipping')
-    expect(screen.getByText('Chief Engineer', { selector: '[data-primary-identity="true"]' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('Chief Engineer')
+    expect(screen.getByLabelText('Current / last organisation')).toHaveValue('Oceanic Shipping')
     await waitFor(() => expect(document.activeElement).toBe(alert))
   })
-
 })
