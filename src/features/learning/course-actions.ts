@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { requireCapability } from '@/features/access/server'
 import {
   CourseSubmissionReadinessError,
   courseRepository,
@@ -145,6 +146,7 @@ function mutationError(error: unknown) {
   if (error instanceof CourseSubmissionReadinessError) return readinessErrorCopy(error)
   if (error instanceof Error) {
     if (error.message === 'mentor_required') return 'Approved mentor access is required to manage courses.'
+    if (error.message === 'capability_required') return 'Creator Pro or Organization Pro with verified course publishing access is required to submit courses for publication.'
     if (error.message === 'course_not_found') return 'We could not find this course in your Mentor Studio.'
     if (error.message === 'course_edit_forbidden') return 'This course cannot be edited while it is in review or published.'
     if (error.message === 'course_submit_forbidden') return 'This course cannot be submitted for review in its current state.'
@@ -211,6 +213,7 @@ export async function submitCourseForReview(courseId: string): Promise<CourseAct
 
   try {
     const user = await requireAwsUser()
+    await requireCapability(user.id, 'course.publish')
     await courseRepository.submitCourse(user.id, parsedId.data)
     refreshStudio()
     revalidatePath(`/learn/studio/courses/${parsedId.data}/edit`)
