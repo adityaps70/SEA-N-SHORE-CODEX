@@ -63,4 +63,28 @@ describe('onboarding activation schema', () => {
     expect(result.identityRoot).toBe('organisation')
     expect(result.headline).toBe('Shipowner')
   })
+
+  it('returns corrective human-readable messages for invalid onboarding fields', () => {
+    const result = onboardingActivationSchema.safeParse({
+      ...base,
+      primaryIdentityFamily: 'x'.repeat(121),
+      fullName: 'x'.repeat(161),
+      location: 'x'.repeat(121),
+      currentCompany: 'x'.repeat(161),
+      headline: 'x'.repeat(161),
+      contactVisibility: 'invalid',
+    })
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+
+    const errors = result.error.flatten().fieldErrors
+    expect(errors.primaryIdentityFamily?.[0]).toMatch(/120 characters or fewer/i)
+    expect(errors.fullName?.[0]).toMatch(/160 characters or fewer/i)
+    expect(errors.location?.[0]).toMatch(/120 characters or fewer/i)
+    expect(errors.currentCompany?.[0]).toMatch(/160 characters or fewer/i)
+    expect(errors.headline?.[0]).toMatch(/160 characters or fewer/i)
+    expect(errors.contactVisibility?.[0]).toMatch(/choose who can see your contact details/i)
+  })
+
 })
