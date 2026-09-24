@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AlertTriangle, Building2, CheckCircle2, Clock3, ShieldAlert } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { OrganizationAccessPanel } from '@/features/organizations/components/organization-access-panel'
 import { OrganizationApplicationForm } from '@/features/organizations/components/organization-application-form'
 import { organizationRepository } from '@/features/organizations/repository'
 
@@ -79,21 +80,32 @@ function StatusPanel({
 
 export default async function HiringOrganizationPage() {
   const user = await requireAwsUser()
-  const state = await organizationRepository.getUserOrganizationState(user.id)
+  const [state, accessRequests] = await Promise.all([
+    organizationRepository.getUserOrganizationState(user.id),
+    organizationRepository.listUserAccessRequests(user.id),
+  ])
 
   if (state.kind === 'none') {
     return (
       <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <ReviewHeader />
+        <OrganizationAccessPanel initialRequests={accessRequests} />
+
+        <div className="flex items-center gap-3 py-1">
+          <span className="h-px flex-1 bg-mist-100" />
+          <span className="text-xs font-bold uppercase tracking-[0.14em] text-muted">or create a new organization</span>
+          <span className="h-px flex-1 bg-mist-100" />
+        </div>
+
         <section className="rounded-[1.5rem] border border-mist-100 bg-navy-950 p-5 text-white shadow-[var(--shadow-card)] sm:p-6">
           <div className="flex gap-4">
             <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-white/10">
               <Building2 aria-hidden="true" className="size-6" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">Create your verified employer profile</h2>
+              <h2 className="text-xl font-bold">Create a new organization only if it does not already exist</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">
-                This is the organization identity Sea N Shore will review before owners, administrators or recruiters can manage vacancies.
+                Sea N Shore will review the organization and your authority to represent it. Search above first to avoid duplicate company pages.
               </p>
             </div>
           </div>
