@@ -136,4 +136,31 @@ describe('OnboardingForm exact identity activation', () => {
     expect(screen.getByText('Chief Engineer', { selector: '[data-primary-identity="true"]' })).toBeInTheDocument()
   })
 
+
+  it('shows an unexpected submit failure without clearing the entered onboarding information', async () => {
+    actionMocks.completeActivation.mockRejectedValueOnce(new Error('network unavailable'))
+
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: /Professional/i }))
+    fireEvent.change(screen.getByRole('searchbox', { name: /Search professional identities/i }), {
+      target: { value: 'chief eng' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Chief Engineer.*Sea-going · Engine/i }))
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
+    fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
+    fireEvent.change(screen.getByLabelText('Current organisation'), { target: { value: 'Oceanic Shipping' } })
+
+    const form = screen.getByRole('button', { name: 'Complete profile' }).closest('form')
+    fireEvent.submit(form!)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/could not submit your profile/i)
+    expect(alert).toHaveTextContent(/try again/i)
+    expect(screen.getByLabelText('Full name')).toHaveValue('Asha Updated')
+    expect(screen.getByLabelText('Location')).toHaveValue('Goa')
+    expect(screen.getByLabelText('Current organisation')).toHaveValue('Oceanic Shipping')
+    expect(screen.getByText('Chief Engineer', { selector: '[data-primary-identity="true"]' })).toBeInTheDocument()
+    await waitFor(() => expect(document.activeElement).toBe(alert))
+  })
+
 })
