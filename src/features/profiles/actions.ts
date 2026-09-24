@@ -224,9 +224,7 @@ export async function updateProfile(
   }
 
   try {
-    const supportsCurrentCompany = profile.identityRoot === 'professional'
-      || (profile.identityRoot == null && profile.profileType !== 'company')
-    await updateProfileWithAurora(user.id, parsed.data, supportsCurrentCompany)
+    await updateProfileWithAurora(user.id, parsed.data, true)
     await flagProfileModeration(user.id, moderation)
   } catch (error) {
     if (isUniqueViolation(error)) {
