@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { OwnProfile } from '../types'
 import { ProfileEditForm } from './profile-edit-form'
 
@@ -29,6 +29,8 @@ const profile: OwnProfile = {
   contactVisibility: 'members',
   onboardingCompletedAt: '2026-09-01T00:00:00.000Z',
 }
+
+afterEach(() => cleanup())
 
 describe('ProfileEditForm', () => {
   it('prefills editable profile fields and keeps the stored profile type fixed', () => {
