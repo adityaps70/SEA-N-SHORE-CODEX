@@ -3,8 +3,29 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { adminRepository, type AdminOrganizationDecision } from './repository'
+import { adminRepository, type AdminCompanyAccessDecision, type AdminOrganizationDecision } from './repository'
 import { MODERATION_TARGET_TYPES, type ModerationAction } from '@/features/moderation/types'
+
+const accessReviewSchema = z.object({
+  requestId: z.string().uuid(),
+  decision: z.enum(['approved', 'rejected']),
+  reviewerNote: z.preprocess(
+    (value) => {
+      if (typeof value !== 'string') return null
+      const normalized = value.trim()
+      return normalized || null
+    },
+    z.string().max(4000).nullable(),
+  ),
+}).superRefine((value, context) => {
+  if (value.decision === 'rejected' && !value.reviewerNote) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['reviewerNote'],
+      message: 'Add a reviewer note when rejecting an organization access request.',
+    })
+  }
+})
 
 const reviewSchema = z.object({
   applicationId: z.string().uuid(),
@@ -52,6 +73,45 @@ const moderationSchema = z.object({
 })
 
 export type AdminModerationActionResult = { ok: true } | { ok: false; error: string }
+
+export async function reviewCompanyAccessRequest(
+  requestId: string,
+  decision: AdminCompanyAccessDecision,
+  reviewerNote: string | null,
+): Promise<AdminReviewActionResult> {
+  const parsed = accessReviewSchema.safeParse({ requestId, decision, reviewerNote })
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid organization access review request.' }
+  }
+
+  const user = await requireAwsUser()
+  try {
+    await adminRepository.reviewCompanyAccessRequest(
+      user.id,
+      parsed.data.requestId,
+      parsed.data.decision,
+      parsed.data.reviewerNote,
+    )
+  } catch (error) {
+    const code = error instanceof Error ? error.message : ''
+    if (code === 'admin_forbidden') {
+      return { ok: false, error: 'You do not have permission to review organization access requests.' }
+    }
+    if (code === 'company_access_request_not_found') {
+      return { ok: false, error: 'This organization access request could not be found.' }
+    }
+    if (code === 'company_access_request_review_forbidden') {
+      return { ok: false, error: 'This organization access request has already been reviewed.' }
+    }
+    return { ok: false, error: 'The organization access review could not be saved. Please try again.' }
+  }
+
+  revalidatePath('/admin')
+  revalidatePath('/admin/access')
+  revalidatePath('/hiring')
+  revalidatePath('/hiring/organization')
+  return { ok: true }
+}
 
 export async function reviewOrganizationApplication(
   applicationId: string,
