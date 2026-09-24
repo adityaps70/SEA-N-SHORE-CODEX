@@ -47,7 +47,7 @@ describe('OnboardingForm persona activation', () => {
     expect(screen.getByRole('button', { name: /Teach/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Attend events/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Host events/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Network/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Network$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Community/i })).toBeInTheDocument()
 
     expect(screen.getByLabelText('Full name')).toBeInTheDocument()
@@ -135,7 +135,7 @@ describe('OnboardingForm persona activation', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
     fireEvent.click(screen.getByRole('button', { name: /^SeafarerMaster,/i }))
     fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
-    fireEvent.click(screen.getByRole('button', { name: /Network/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^Network$/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
     fireEvent.change(screen.getByLabelText('Current or most recent rank'), { target: { value: 'Chief Engineer' } })
@@ -150,7 +150,7 @@ describe('OnboardingForm persona activation', () => {
     expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('Chief Engineer')
     expect(screen.getByLabelText('Current / last organisation')).toHaveValue('Oceanic Shipping')
     expect(screen.getByRole('button', { name: /Find jobs/i })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: /Network/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /^Network$/i })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('shows an unexpected submit failure without clearing entered onboarding information', async () => {
