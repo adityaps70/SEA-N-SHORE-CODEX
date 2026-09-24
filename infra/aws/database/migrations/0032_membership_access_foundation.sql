@@ -95,6 +95,16 @@ alter table public.profiles
   );
 -- statement-breakpoint
 
+-- Extend organization workspace roles without changing existing memberships.
+alter type public.company_member_role add value if not exists 'lms_manager';
+-- statement-breakpoint
+alter type public.company_member_role add value if not exists 'event_manager';
+-- statement-breakpoint
+alter type public.company_member_role add value if not exists 'content_manager';
+-- statement-breakpoint
+alter type public.company_member_role add value if not exists 'analyst';
+-- statement-breakpoint
+
 create table if not exists public.plan_entitlements (
   plan_code text not null,
   capability text not null,
