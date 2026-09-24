@@ -14,6 +14,23 @@ export type CompanyAccessRequestType = (typeof COMPANY_ACCESS_REQUEST_TYPES)[num
 export const COMPANY_ACCESS_REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const
 export type CompanyAccessRequestStatus = (typeof COMPANY_ACCESS_REQUEST_STATUSES)[number]
 
+
+
+export const COMPANY_ACCESS_REQUEST_ROLES = ['member', 'recruiter', 'administrator'] as const
+export type CompanyAccessRequestRole = (typeof COMPANY_ACCESS_REQUEST_ROLES)[number]
+
+export type CompanyAccessRequestSummary = {
+  id: string
+  status: CompanyAccessRequestStatus
+  requestedRole: CompanyAccessRequestRole
+  requestType: CompanyAccessRequestType
+  message: string | null
+  requestedAt: string
+  reviewedAt: string | null
+  reviewerNote: string | null
+  company: OrganizationCompanySummary
+}
+
 export type OrganizationApplicationInput = {
   organizationName: string
   organizationType: string
