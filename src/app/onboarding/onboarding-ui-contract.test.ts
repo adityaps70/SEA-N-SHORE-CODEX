@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const page = readFileSync('src/app/onboarding/page.tsx', 'utf8')
 const form = readFileSync('src/features/profiles/components/onboarding-form.tsx', 'utf8')
+const persona = readFileSync('src/features/profiles/persona.ts', 'utf8')
 
 describe('onboarding UI contract', () => {
   it('uses the Sea N Shore wordmark and removes the decorative route squiggle', () => {
@@ -31,10 +32,10 @@ describe('onboarding UI contract', () => {
 
   it('asks what the member wants to do and supports dynamic persona fields', () => {
     expect(form).toContain('What are you here to do?')
-    expect(form).toContain('Find jobs')
-    expect(form).toContain('Hire people')
-    expect(form).toContain('Teach')
-    expect(form).toContain('Host events')
+    expect(persona).toContain('Find jobs')
+    expect(persona).toContain('Hire people')
+    expect(persona).toContain('Teach')
+    expect(persona).toContain('Host events')
     expect(form).toContain("persona === 'seafarer'")
     expect(form).toContain("persona === 'seafarer_family'")
   })
