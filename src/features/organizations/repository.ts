@@ -1,7 +1,14 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import {
+  COMPANY_ACCESS_REQUEST_ROLES,
+  COMPANY_ACCESS_REQUEST_STATUSES,
+  COMPANY_ACCESS_REQUEST_TYPES,
   ORGANIZATION_APPLICATION_STATUSES,
+  type CompanyAccessRequestRole,
+  type CompanyAccessRequestStatus,
+  type CompanyAccessRequestSummary,
+  type CompanyAccessRequestType,
   type CompanySearchResult,
   type OrganizationApplicationInput,
   type OrganizationApplicationStatus,
@@ -53,6 +60,24 @@ type CompanySearchRow = QueryResultRow & {
 
 type ReturningCompanyRow = QueryResultRow & { id: string; slug: string }
 type ReturningIdRow = QueryResultRow & { id: string }
+type CompanyAccessRequestRow = QueryResultRow & {
+  request_id: string
+  status: string
+  requested_role: string
+  request_type: string
+  message: string | null
+  requested_at: string
+  reviewed_at: string | null
+  reviewer_note: string | null
+  company_id: string
+  company_slug: string
+  company_name: string
+  company_verified: boolean | null
+}
+type ExistingMembershipRow = QueryResultRow & {
+  role: string
+  approved_at: string | null
+}
 type LockedApplicationRow = QueryResultRow & {
   id: string
   company_id: string
@@ -84,6 +109,28 @@ function applicationStatus(value: string): OrganizationApplicationStatus {
     return value as OrganizationApplicationStatus
   }
   throw new Error('organization_application_status_invalid')
+}
+
+
+function companyAccessRequestStatus(value: string): CompanyAccessRequestStatus {
+  if (COMPANY_ACCESS_REQUEST_STATUSES.includes(value as CompanyAccessRequestStatus)) {
+    return value as CompanyAccessRequestStatus
+  }
+  throw new Error('company_access_request_status_invalid')
+}
+
+function companyAccessRequestRole(value: string): CompanyAccessRequestRole {
+  if (COMPANY_ACCESS_REQUEST_ROLES.includes(value as CompanyAccessRequestRole)) {
+    return value as CompanyAccessRequestRole
+  }
+  throw new Error('company_access_request_role_invalid')
+}
+
+function companyAccessRequestType(value: string): CompanyAccessRequestType {
+  if (COMPANY_ACCESS_REQUEST_TYPES.includes(value as CompanyAccessRequestType)) {
+    return value as CompanyAccessRequestType
+  }
+  throw new Error('company_access_request_type_invalid')
 }
 
 export function createOrganizationRepository(input: {
@@ -302,6 +349,93 @@ export function createOrganizationRepository(input: {
     })
   }
 
+  async function requestCompanyAccess(
+    userId: string,
+    companyId: string,
+    requestedRole: CompanyAccessRequestRole,
+    message: string | null,
+  ) {
+    return transaction(async (txQuery) => {
+      const companyRows = await txQuery(
+        `select id
+         from public.companies
+         where id = $1
+         limit 1`,
+        [companyId],
+      ) as ReturningIdRow[]
+      if (!companyRows[0]) throw new Error('organization_company_not_found')
+
+      const membershipRows = await txQuery(
+        `select role::text as role, approved_at
+         from public.company_members
+         where company_id = $1 and user_id = $2
+         limit 1`,
+        [companyId, userId],
+      ) as ExistingMembershipRow[]
+      if (membershipRows[0]) throw new Error('organization_membership_exists')
+
+      const requestType: CompanyAccessRequestType = requestedRole === 'member'
+        ? 'join_company'
+        : 'recruiter_access'
+
+      const rows = await txQuery(
+        `insert into public.company_access_requests (
+           company_id, user_id, requested_role, request_type, message, status, requested_at
+         )
+         values ($1, $2, $3::public.company_member_role, $4, $5, 'pending', now())
+         on conflict (company_id, user_id, requested_role)
+           where status = 'pending'
+         do nothing
+         returning id`,
+        [companyId, userId, requestedRole, requestType, message],
+      ) as ReturningIdRow[]
+      const request = rows[0]
+      if (!request) throw new Error('organization_access_request_exists')
+      return { requestId: request.id }
+    })
+  }
+
+  async function listUserAccessRequests(userId: string): Promise<CompanyAccessRequestSummary[]> {
+    const rows = await query(
+      `select
+         car.id as request_id,
+         car.status,
+         car.requested_role::text as requested_role,
+         car.request_type,
+         car.message,
+         car.requested_at,
+         car.reviewed_at,
+         car.reviewer_note,
+         c.id as company_id,
+         c.slug as company_slug,
+         c.name as company_name,
+         coalesce(c.is_verified, false) as company_verified
+       from public.company_access_requests car
+       join public.companies c on c.id = car.company_id
+       where car.user_id = $1
+       order by car.requested_at desc, car.id desc
+       limit 100`,
+      [userId],
+    ) as CompanyAccessRequestRow[]
+
+    return rows.map((row) => ({
+      id: row.request_id,
+      status: companyAccessRequestStatus(row.status),
+      requestedRole: companyAccessRequestRole(row.requested_role),
+      requestType: companyAccessRequestType(row.request_type),
+      message: row.message ?? null,
+      requestedAt: row.requested_at,
+      reviewedAt: row.reviewed_at ?? null,
+      reviewerNote: row.reviewer_note ?? null,
+      company: {
+        id: row.company_id,
+        slug: row.company_slug,
+        name: row.company_name,
+        verified: Boolean(row.company_verified),
+      },
+    }))
+  }
+
   async function searchCompanies(term: string): Promise<CompanySearchResult[]> {
     const normalized = term.trim()
     if (normalized.length < 2) return []
@@ -329,6 +463,8 @@ export function createOrganizationRepository(input: {
     getOrganizationApplication,
     submitOrganizationApplication,
     resubmitOrganizationApplication,
+    requestCompanyAccess,
+    listUserAccessRequests,
     searchCompanies,
   }
 }
