@@ -176,4 +176,80 @@ describe('organization approval repository', () => {
     expect(seen[0]?.text).toContain('ilike')
     expect(seen[0]?.values).toEqual(['%oceanic%'])
   })
+
+  it('requests controlled access to an existing organization without creating a duplicate company', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('from public.companies') && text.includes('where id = $1')) return [{ id: companyId }]
+      if (text.includes('from public.company_members')) return []
+      if (text.includes('insert into public.company_access_requests')) return [{ id: 'request-1' }]
+      return []
+    }
+    const repository = createOrganizationRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.requestCompanyAccess(actorId, companyId, 'recruiter', 'I manage crewing for this company.')).resolves.toEqual({
+      requestId: 'request-1',
+    })
+
+    const requestInsert = seen.find((entry) => entry.text.includes('insert into public.company_access_requests'))
+    expect(requestInsert?.values).toEqual([
+      companyId,
+      actorId,
+      'recruiter',
+      'recruiter_access',
+      'I manage crewing for this company.',
+    ])
+    expect(seen.some((entry) => entry.text.includes('insert into public.companies'))).toBe(false)
+  })
+
+  it('fails closed when requesting access to a company the member already belongs to', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+    const query = async (text: string) => {
+      if (text.includes('from public.companies')) return [{ id: companyId }]
+      if (text.includes('from public.company_members')) return [{ role: 'member', approved_at: '2026-09-01T00:00:00.000Z' }]
+      return []
+    }
+    const repository = createOrganizationRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.requestCompanyAccess(actorId, companyId, 'member', null)).rejects.toThrow('organization_membership_exists')
+  })
+
+  it('lists the members organization access requests with company and review state', async () => {
+    const repository = createOrganizationRepository({
+      query: async () => [{
+        request_id: 'request-1',
+        status: 'pending',
+        requested_role: 'administrator',
+        request_type: 'recruiter_access',
+        message: 'I am the company director.',
+        requested_at: '2026-09-24T10:00:00.000Z',
+        reviewed_at: null,
+        reviewer_note: null,
+        company_id: '33333333-3333-4333-8333-333333333333',
+        company_slug: 'oceanic',
+        company_name: 'Oceanic Shipping',
+        company_verified: true,
+      }],
+    })
+
+    await expect(repository.listUserAccessRequests(actorId)).resolves.toEqual([{
+      id: 'request-1',
+      status: 'pending',
+      requestedRole: 'administrator',
+      requestType: 'recruiter_access',
+      message: 'I am the company director.',
+      requestedAt: '2026-09-24T10:00:00.000Z',
+      reviewedAt: null,
+      reviewerNote: null,
+      company: {
+        id: '33333333-3333-4333-8333-333333333333',
+        slug: 'oceanic',
+        name: 'Oceanic Shipping',
+        verified: true,
+      },
+    }])
+  })
+
 })
