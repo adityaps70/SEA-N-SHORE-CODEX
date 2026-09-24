@@ -33,11 +33,12 @@ export function UsernameField({
   const normalizedInitial = normalizeUsername(initialValue)
   const normalizedCurrent = currentUsername ? normalizeUsername(currentUsername) : ''
   const [value, setValue] = useState(normalizedInitial)
+  const [serverErrorActive, setServerErrorActive] = useState(Boolean(serverError))
   const [remoteState, setRemoteState] = useState<RemoteUsernameState | null>(null)
   const parsed = usernameSchema.safeParse(value)
   const candidate = parsed.success ? parsed.data : ''
   const isCurrent = Boolean(normalizedCurrent && candidate === normalizedCurrent)
-  const shouldCheck = !locked && parsed.success && !isCurrent
+  const shouldCheck = !locked && parsed.success && !isCurrent && !serverErrorActive
   const matchingRemoteState = shouldCheck && remoteState?.username === candidate ? remoteState : null
 
   let status: UsernameStatus
@@ -48,6 +49,10 @@ export function UsernameField({
     status = 'current'
     message = 'Your username is locked because both username changes have been used.'
     ready = true
+  } else if (serverErrorActive && serverError) {
+    status = 'invalid'
+    message = serverError
+    ready = false
   } else if (!parsed.success) {
     status = value ? 'invalid' : 'idle'
     message = value ? (parsed.error.issues[0]?.message ?? 'Choose a valid username.') : ''
@@ -117,7 +122,11 @@ export function UsernameField({
         <input
           name="slug"
           value={value}
-          onChange={(event) => setValue(normalizeUsername(event.target.value))}
+          onChange={(event) => {
+            setServerErrorActive(false)
+            setRemoteState(null)
+            setValue(normalizeUsername(event.target.value))
+          }}
           readOnly={locked}
           maxLength={30}
           autoComplete="off"
