@@ -1,11 +1,20 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../actions', () => ({
+const actionMocks = vi.hoisted(() => ({
   completeActivation: vi.fn(async () => ({ revision: 0 })),
 }))
 
+vi.mock('../actions', () => ({
+  completeActivation: actionMocks.completeActivation,
+}))
+
 import { OnboardingForm } from './onboarding-form'
+
+beforeEach(() => {
+  actionMocks.completeActivation.mockReset()
+  actionMocks.completeActivation.mockResolvedValue({ revision: 0 })
+})
 
 afterEach(() => cleanup())
 
@@ -60,4 +69,30 @@ describe('OnboardingForm exact identity activation', () => {
     expect(screen.queryByLabelText('Current organisation')).not.toBeInTheDocument()
     expect(screen.getByRole('searchbox', { name: /Search organisation identities/i })).toBeInTheDocument()
   })
+  it('keeps Complete profile actionable so missing fields produce visible validation instead of a silent disabled button', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+
+    expect(screen.getByRole('button', { name: 'Complete profile' })).toBeEnabled()
+  })
+
+  it('shows and focuses a clear error summary when the server rejects an onboarding step', async () => {
+    actionMocks.completeActivation.mockResolvedValueOnce({
+      revision: 1,
+      fieldErrors: {
+        identityRoot: ['Choose Professional or Organisation to continue.'],
+      },
+      values: {},
+    })
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+
+    const form = screen.getByRole('button', { name: 'Complete profile' }).closest('form')
+    expect(form).not.toBeNull()
+    fireEvent.submit(form!)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Please correct the highlighted information')
+    expect(alert).toHaveTextContent('Choose Professional or Organisation to continue.')
+    await waitFor(() => expect(document.activeElement).toHaveTextContent(/I.m joining as/i))
+  })
+
 })
