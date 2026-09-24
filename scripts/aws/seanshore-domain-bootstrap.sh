@@ -90,9 +90,7 @@ with open(sys.argv[2],'w') as f:
     json.dump(values,f)
 PY
 
-PLUGIN_DIR="$HOME/SEA-N-SHORE-CODEX/infra/aws/app/.terraform/providers"
-[[ -x "$PLUGIN_DIR/registry.terraform.io/hashicorp/aws/6.62.0/linux_amd64/terraform-provider-aws_v6.62.0_x5" ]]
-terraform -chdir="$APP_DIR" init -input=false -no-color -lockfile=readonly -plugin-dir="$PLUGIN_DIR" \
+terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" \
   -backend-config="key=$STATE_KEY" \
   -backend-config="region=$AWS_REGION" \
