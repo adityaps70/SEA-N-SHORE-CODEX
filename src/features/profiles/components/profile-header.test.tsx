@@ -99,7 +99,26 @@ describe('ProfileHeader', () => {
     fireEvent.click(edit)
     expect(screen.getByRole('textbox', { name: 'Full name' })).toHaveValue('Member A')
     expect(screen.getByRole('textbox', { name: 'Headline' })).toHaveValue('Chief Officer | Tankers')
+    expect(screen.getByRole('textbox', { name: 'Current company' })).toHaveValue('Example Shipping')
     expect(screen.getByRole('button', { name: 'Change profile photo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Change cover photo' })).toBeInTheDocument()
   })
+  it('does not offer a current-company field to organisation profiles', () => {
+    render(
+      <ProfileHeader
+        profile={{
+          ...profile,
+          profileType: 'company',
+          identityRoot: 'organisation',
+          fullName: 'Oceanic Shipping',
+          currentCompany: null,
+        }}
+        editHref="/profile/edit#identity"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
+    expect(screen.queryByRole('textbox', { name: 'Current company' })).not.toBeInTheDocument()
+  })
+
 })
