@@ -113,8 +113,13 @@ export default async function AdminPage() {
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Access control</p>
           <h2 className="mt-2 text-xl font-bold text-navy-950">Membership queue</h2>
           <p className="mt-2 text-sm leading-6 text-muted">{metrics.pendingAccessRequests} request{metrics.pendingAccessRequests === 1 ? '' : 's'} currently wait for controlled organization access review.</p>
-          <div className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
-            <CheckCircle2 aria-hidden="true" className="size-4" /> Administrator-only
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+              <CheckCircle2 aria-hidden="true" className="size-4" /> Administrator-only
+            </div>
+            <Link href="/admin/access" className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
+              Review access
+            </Link>
           </div>
         </article>
       </section>
