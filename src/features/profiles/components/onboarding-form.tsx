@@ -1,9 +1,10 @@
 'use client'
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { Building2, Check, UserRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
+import { FormErrorSummary, focusFirstFormError, hasFormErrors } from '@/components/ui/form-error-summary'
 import { completeActivation, type ProfileActionState } from '../actions'
 import {
   findIdentityOption,
@@ -95,11 +96,9 @@ function IdentityResult({
 function OnboardingFields({
   initialFullName,
   state,
-  onUsernameReadyChange,
 }: {
   initialFullName: string
   state: ProfileActionState
-  onUsernameReadyChange: (ready: boolean) => void
 }) {
   const values = state.values
   const initialRoot = values?.identityRoot
@@ -165,22 +164,36 @@ function OnboardingFields({
     setSecondarySearch('')
   }
 
-  const identityError = firstError(state, 'primaryIdentity') ?? firstError(state, 'identityRoot')
+  const rootError = firstError(state, 'identityRoot')
+  const identityError = firstError(state, 'primaryIdentity')
+    ?? firstError(state, 'primaryIdentityFamily')
+    ?? firstError(state, 'secondaryIdentities')
   const contactVisibilityError = firstError(state, 'contactVisibility')
 
   return (
     <>
-      <fieldset>
+      <fieldset
+        aria-invalid={Boolean(rootError)}
+        data-form-error-target={rootError ? 'true' : undefined}
+        tabIndex={rootError ? -1 : undefined}
+        className={rootError ? 'rounded-2xl outline-none focus:ring-2 focus:ring-red-300' : undefined}
+      >
         <legend className="text-xl font-semibold tracking-tight text-navy-950">I’m joining as</legend>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">Choose the identity that best represents how you want to participate on Sea N Shore. You can expand it later.</p>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <IdentityRootButton root="professional" selected={root === 'professional'} onSelect={chooseRoot} />
           <IdentityRootButton root="organisation" selected={root === 'organisation'} onSelect={chooseRoot} />
         </div>
+        {rootError ? <p className="mt-3 text-sm font-medium text-red-700">{rootError}</p> : null}
       </fieldset>
 
       {root ? (
-        <fieldset className="grid gap-5 rounded-3xl border border-mist-100 bg-mist-50 p-5 sm:p-7">
+        <fieldset
+          aria-invalid={Boolean(identityError)}
+          data-form-error-target={identityError ? 'true' : undefined}
+          tabIndex={identityError ? -1 : undefined}
+          className={`grid gap-5 rounded-3xl border bg-mist-50 p-5 outline-none sm:p-7 ${identityError ? 'border-red-200 focus:ring-2 focus:ring-red-300' : 'border-mist-100'}`}
+        >
           <legend className="px-2 text-xl font-semibold tracking-tight text-navy-950">Choose your exact maritime identity</legend>
           <p className="text-sm leading-6 text-muted">Search by role, function, or maritime sector. Your selected identity will be kept exactly as chosen on your profile.</p>
 
@@ -290,7 +303,6 @@ function OnboardingFields({
             <UsernameField
               initialValue={values?.slug}
               serverError={firstError(state, 'slug')}
-              onReadyChange={onUsernameReadyChange}
             />
             <Field label="Location" name="location" defaultValue={values?.location} error={firstError(state, 'location')} autoComplete="address-level2" />
             {root === 'professional' ? (
@@ -325,23 +337,56 @@ function OnboardingFields({
   )
 }
 
+const onboardingFieldLabels: Record<string, string> = {
+  identityRoot: 'Profile type',
+  primaryIdentity: 'Maritime identity',
+  primaryIdentityFamily: 'Maritime identity',
+  secondaryIdentities: 'Additional identities',
+  fullName: 'Name',
+  slug: 'Username',
+  location: 'Location',
+  currentCompany: 'Current organisation',
+  headline: 'Professional headline',
+  contactVisibility: 'Contact visibility',
+}
+
+async function completeActivationSafely(previousState: ProfileActionState, formData: FormData): Promise<ProfileActionState> {
+  try {
+    return await completeActivation(previousState, formData)
+  } catch {
+    return {
+      ...previousState,
+      error: 'We could not submit your profile. Check your connection and try again. Your information is still here.',
+      fieldErrors: undefined,
+    }
+  }
+}
+
 export function OnboardingForm({ initialFullName }: { initialFullName: string }) {
-  const [state, formAction, pending] = useActionState(completeActivation, { revision: 0 })
-  const [usernameReady, setUsernameReady] = useState(false)
+  const [state, formAction, pending] = useActionState(completeActivationSafely, { revision: 0 })
+  const formRef = useRef<HTMLFormElement>(null)
+
+  useEffect(() => {
+    if (!hasFormErrors(state.error, state.fieldErrors)) return
+    focusFirstFormError(formRef.current)
+  }, [state])
 
   return (
-    <form action={formAction} className="onboarding-form grid gap-10" noValidate>
-      <OnboardingFields
-        key={state.revision ?? 0}
-        initialFullName={initialFullName}
-        state={state}
-        onUsernameReadyChange={setUsernameReady}
+    <form ref={formRef} action={formAction} className="onboarding-form grid gap-10" noValidate>
+      <FormErrorSummary
+        error={state.error}
+        fieldErrors={state.fieldErrors}
+        fieldLabels={onboardingFieldLabels}
       />
 
-      {state.error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{state.error}</p> : null}
+      <OnboardingFields
+        initialFullName={initialFullName}
+        state={state}
+      />
+
       <div className="flex flex-col gap-3 border-t border-mist-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-xl text-sm leading-6 text-muted">Choose one to get started. You can add more profile depth as your maritime career evolves.</p>
-        <Button type="submit" disabled={pending || !usernameReady} className="w-full sm:w-auto">
+        <Button type="submit" disabled={pending} className="w-full sm:w-auto">
           {pending ? 'Saving your profile…' : 'Complete profile'}
         </Button>
       </div>
