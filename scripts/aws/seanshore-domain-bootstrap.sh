@@ -99,17 +99,26 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   -target=aws_route53_zone.seanshore \
   -target=aws_acm_certificate.seanshore_edge \
+  -target=aws_route53_record.seanshore_legacy_apex \
+  -target=aws_route53_record.seanshore_legacy_www \
+  -target=aws_route53_record.seanshore_edge_validation \
   -var-file="$WORK_DIR/variables.json" \
   -out="$WORK_DIR/domain.tfplan" > "$WORK_DIR/plan.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/domain.tfplan" > "$WORK_DIR/plan.json"
 
 python3 - "$WORK_DIR/plan.json" <<'PY'
 import json, sys
-allowed={'aws_route53_zone.seanshore','aws_acm_certificate.seanshore_edge'}
+allowed={
+  'aws_route53_zone.seanshore',
+  'aws_acm_certificate.seanshore_edge',
+  'aws_route53_record.seanshore_legacy_apex',
+  'aws_route53_record.seanshore_legacy_www',
+}
+validation_prefix='aws_route53_record.seanshore_edge_validation['
 with open(sys.argv[1]) as f: plan=json.load(f)
 changes=[r for r in plan.get('resource_changes',[]) if r.get('mode')!='data' and r.get('change',{}).get('actions')!=['no-op']]
 for r in changes:
-    if r['address'] not in allowed:
+    if r['address'] not in allowed and not r['address'].startswith(validation_prefix):
         raise SystemExit(f"unexpected domain bootstrap change: {r['address']} {r['change']['actions']}")
     if r['change']['actions'] != ['create']:
         raise SystemExit(f"non-create domain bootstrap change refused: {r['address']} {r['change']['actions']}")
@@ -161,6 +170,14 @@ jq -e --arg domain "$EXPECTED_DOMAIN" '
 echo "ACM_CERTIFICATE_ARN=$CERT_ARN"
 echo "ACM_CERTIFICATE_STATUS=$(jq -r '.Certificate.Status' "$WORK_DIR/cert-after.json")"
 jq -r '.Certificate.DomainValidationOptions[] | select(.ResourceRecord != null) | "ACM_VALIDATION_RECORD=" + .ResourceRecord.Type + "|" + .ResourceRecord.Name + "|" + .ResourceRecord.Value' "$WORK_DIR/cert-after.json" | sort -u
+
+aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" --output json > "$WORK_DIR/records-after.json"
+jq -e '
+  any(.ResourceRecordSets[]; .Name=="seanshore.in." and .Type=="A" and .TTL==300 and .ResourceRecords==[{"Value":"162.215.226.7"}])
+  and any(.ResourceRecordSets[]; .Name=="www.seanshore.in." and .Type=="A" and .TTL==300 and .ResourceRecords==[{"Value":"162.215.226.7"}])
+' "$WORK_DIR/records-after.json" >/dev/null
+echo "LEGACY_DNS_CONTINUITY_RECORDS_VERIFIED=true"
+echo "ACM_DNS_VALIDATION_RECORD_COUNT=$(jq '[.ResourceRecordSets[] | select(.Type=="CNAME" and (.Name|startswith("_")))] | length' "$WORK_DIR/records-after.json")"
 
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$WORK_DIR/state-after.json")"
 echo "SEANSHORE_DOMAIN_BOOTSTRAP_APPLY_VERIFIED=true"
