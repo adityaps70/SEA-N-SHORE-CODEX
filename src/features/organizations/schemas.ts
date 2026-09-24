@@ -6,7 +6,7 @@ const optionalText = (maximum: number) => z.preprocess(
     const normalized = value.trim()
     return normalized || null
   },
-  z.string().max(maximum).nullable(),
+  z.string().max(maximum, `Keep this field to ${maximum} characters or fewer.`).nullable(),
 )
 
 const optionalUrl = z.preprocess(
@@ -15,7 +15,7 @@ const optionalUrl = z.preprocess(
     const normalized = value.trim()
     return normalized || null
   },
-  z.string().url('Add a valid website URL.').max(320).nullable(),
+  z.string().url('Enter a complete website address, for example https://company.com.').max(320, 'Keep the website address to 320 characters or fewer.').nullable(),
 )
 
 const vesselTypesSchema = z.preprocess(
@@ -31,19 +31,31 @@ const vesselTypesSchema = z.preprocess(
       return [normalized]
     })
   },
-  z.array(z.string().min(1).max(120)).max(30),
+  z.array(z.string().min(1).max(120, 'Keep each vessel type to 120 characters or fewer.')).max(30, 'Add no more than 30 vessel types.'),
 )
 
 export const organizationApplicationSchema = z.object({
-  organizationName: z.string().trim().min(2).max(160),
-  organizationType: z.string().trim().min(2).max(160),
+  organizationName: z.string().trim()
+    .min(2, 'Enter the organization name using at least 2 characters.')
+    .max(160, 'Keep the organization name to 160 characters or fewer.'),
+  organizationType: z.string().trim()
+    .min(2, 'Enter the organization type, for example Shipowner or Ship Manager.')
+    .max(160, 'Keep the organization type to 160 characters or fewer.'),
   website: optionalUrl,
-  officialEmail: z.string().trim().toLowerCase().email().max(320),
-  officeLocation: z.string().trim().min(2).max(240),
-  description: z.string().trim().min(20).max(4000),
+  officialEmail: z.string().trim().toLowerCase()
+    .email('Enter a valid work email address, for example name@company.com.')
+    .max(320, 'Keep the work email address to 320 characters or fewer.'),
+  officeLocation: z.string().trim()
+    .min(2, 'Enter the organization office location.')
+    .max(240, 'Keep the office location to 240 characters or fewer.'),
+  description: z.string().trim()
+    .min(20, 'Add at least 20 characters describing the organization and its maritime work.')
+    .max(4000, 'Keep the organization description to 4,000 characters or fewer.'),
   fleetSummary: optionalText(2000),
   vesselTypes: vesselTypesSchema,
-  applicantRole: z.string().trim().min(2).max(160),
+  applicantRole: z.string().trim()
+    .min(2, 'Enter your role or relationship with the organization.')
+    .max(160, 'Keep your role to 160 characters or fewer.'),
   registrationReference: optionalText(160),
   supportingNotes: optionalText(4000),
 })
