@@ -21,7 +21,7 @@ describe('UsernameField server validation', () => {
       />,
     )
 
-    const input = screen.getByRole('textbox', { name: 'Username' })
+    const input = screen.getByRole('textbox', { name: /Username/i })
     expect(input).toHaveAttribute('aria-invalid', 'true')
     expect(screen.getByText(/choose a different username and try again/i)).toBeInTheDocument()
   })
