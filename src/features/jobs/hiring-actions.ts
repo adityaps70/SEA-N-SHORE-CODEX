@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { requireCapability } from '@/features/access/server'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
 import { hiringRepository, type HiringJobInput, type HiringJobUpdateInput } from './hiring-repository'
@@ -65,6 +66,9 @@ function validationError(error: z.ZodError) {
 function safeMutationError(error: unknown) {
   if (error instanceof Error && error.message === 'hiring_forbidden') {
     return 'You do not have permission to manage this hiring workspace.'
+  }
+  if (error instanceof Error && error.message === 'capability_required') {
+    return 'Creator Pro or Organization Pro with verified hiring access is required for job publishing.'
   }
   return 'Something went wrong. Please try again.'
 }
@@ -143,6 +147,7 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
 
   try {
     const user = await requireAwsUser()
+    await requireCapability(user.id, 'job.publish', { companyId: parsed.data.companyId })
     const jobId = await hiringRepository.createJob(user.id, parsed.data)
     await flagAutomatedJobModeration(jobId, moderation)
     refreshJobMutation(jobId)
