@@ -5,9 +5,9 @@ const moderationMocks = vi.hoisted(() => ({
 }))
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAwsOwnProfile } from './aws-queries'
-import { completeOnboardingWithAurora } from './onboarding-service'
+import { completeActivationWithAurora, completeOnboardingWithAurora } from './onboarding-service'
 import { updateProfileWithAurora } from './profile-edit-service'
-import { completeOnboarding, updateProfile } from './actions'
+import { completeActivation, completeOnboarding, updateProfile } from './actions'
 
 vi.mock('next/navigation', () => ({
   redirect: vi.fn((path: string) => {
@@ -50,6 +50,7 @@ vi.mock('./aws-queries', () => ({
 }))
 vi.mock('./onboarding-service', () => ({
   completeOnboardingWithAurora: vi.fn(async () => true),
+  completeActivationWithAurora: vi.fn(async () => true),
 }))
 vi.mock('./profile-edit-service', () => ({
   updateProfileWithAurora: vi.fn(async () => true),
@@ -59,6 +60,7 @@ const viewerId = '11111111-1111-4111-8111-111111111111'
 const mockedRequireAwsUser = vi.mocked(requireAwsUser)
 const mockedGetOwnProfile = vi.mocked(getAwsOwnProfile)
 const mockedCompleteOnboarding = vi.mocked(completeOnboardingWithAurora)
+const mockedCompleteActivation = vi.mocked(completeActivationWithAurora)
 const mockedUpdateProfile = vi.mocked(updateProfileWithAurora)
 
 function validForm() {
@@ -79,6 +81,21 @@ function validForm() {
   formData.set('tradingAreas', 'Worldwide')
   formData.set('shoreCareerPreference', 'false')
   formData.set('availability', ' Open to mentoring ')
+  return formData
+}
+
+function validActivationForm() {
+  const formData = new FormData()
+  formData.set('identityRoot', 'professional')
+  formData.set('primaryIdentity', 'Chief Engineer')
+  formData.set('primaryIdentityFamily', 'Sea-going · Engine')
+  formData.set('secondaryIdentities', '[]')
+  formData.set('fullName', 'Asha Singh')
+  formData.set('slug', 'asha-singh')
+  formData.set('location', 'Mumbai')
+  formData.set('currentCompany', 'Oceanic Shipping')
+  formData.set('headline', 'Chief Engineer')
+  formData.set('contactVisibility', 'members')
   return formData
 }
 
@@ -150,6 +167,35 @@ describe('profile onboarding action', () => {
     expect(result.error).toBe('We could not save your profile. Your entries are still here; please try again.')
   })
 })
+
+describe('lightweight activation error handling', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('turns an authentication failure into a visible corrective message and preserves entered values', async () => {
+    mockedRequireAwsUser.mockRejectedValueOnce(new Error('Authentication required.'))
+    const formData = validActivationForm()
+
+    const result = await completeActivation({}, formData)
+
+    expect(result.error).toMatch(/sign in again/i)
+    expect(result.values).toMatchObject({
+      fullName: 'Asha Singh',
+      slug: 'asha-singh',
+      location: 'Mumbai',
+      currentCompany: 'Oceanic Shipping',
+    })
+    expect(mockedCompleteActivation).not.toHaveBeenCalled()
+  })
+
+  it('explains how to correct a duplicate username', async () => {
+    mockedCompleteActivation.mockRejectedValueOnce(Object.assign(new Error('duplicate'), { code: '23505' }))
+
+    const result = await completeActivation({}, validActivationForm())
+
+    expect(result.fieldErrors?.slug?.[0]).toMatch(/choose a different username/i)
+  })
+})
+
 
 describe('completed profile update action', () => {
   beforeEach(() => vi.clearAllMocks())
