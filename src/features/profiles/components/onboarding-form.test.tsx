@@ -48,7 +48,7 @@ describe('OnboardingForm persona activation', () => {
     expect(screen.getByRole('button', { name: /Attend events/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Host events/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Network$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Community/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Community$/i })).toBeInTheDocument()
 
     expect(screen.getByLabelText('Full name')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /Username/i })).toBeInTheDocument()
