@@ -9,10 +9,12 @@ const mocks = vi.hoisted(() => ({
   saveRecruiterNote: vi.fn(),
   revalidatePath: vi.fn(),
   flagContentAutomatically: vi.fn(async () => undefined),
+  requireCapability: vi.fn(async () => undefined),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/access/server', () => ({ requireCapability: mocks.requireCapability }))
 vi.mock('@/features/moderation/repository', () => ({
   moderationRepository: { flagContentAutomatically: mocks.flagContentAutomatically },
 }))
@@ -120,6 +122,21 @@ describe('hiring server actions', () => {
       reason: 'scam',
       details: expect.stringContaining('[AUTOMATED MODERATION]'),
     }))
+  })
+
+  it('requires the central job publishing capability for the selected organization', async () => {
+    await expect(createHiringJob(createInput())).resolves.toEqual({ ok: true, jobId })
+    expect(mocks.requireCapability).toHaveBeenCalledWith('recruiter-1', 'job.publish', { companyId })
+  })
+
+  it('fails closed when paid or verified job publishing access is missing', async () => {
+    mocks.requireCapability.mockRejectedValueOnce(new Error('capability_required'))
+
+    await expect(createHiringJob(createInput())).resolves.toEqual({
+      ok: false,
+      error: expect.stringMatching(/creator pro|organization pro|publishing access/i),
+    })
+    expect(mocks.createJob).not.toHaveBeenCalled()
   })
 
   it('creates a vacancy with the server-authenticated recruiter and revalidates candidate and hiring surfaces', async () => {
