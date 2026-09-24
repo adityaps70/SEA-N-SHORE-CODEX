@@ -23,7 +23,7 @@ describe('OnboardingForm persona activation', () => {
   it('starts with the human persona choices instead of Professional and Organisation roots', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    expect(screen.getByRole('button', { name: /^Seafarer/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^SeafarerMaster,/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Shore Professional/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Recruiter \/ HR/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Trainer \/ Instructor/i })).toBeInTheDocument()
@@ -38,7 +38,7 @@ describe('OnboardingForm persona activation', () => {
   it('shows intent choices and relevant seafarer fields after selecting Seafarer', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    fireEvent.click(screen.getByRole('button', { name: /^Seafarer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^SeafarerMaster,/i }))
 
     expect(screen.getByText('What are you here to do?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Find jobs/i })).toBeInTheDocument()
@@ -133,7 +133,7 @@ describe('OnboardingForm persona activation', () => {
     })
 
     render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: /^Seafarer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^SeafarerMaster,/i }))
     fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
     fireEvent.click(screen.getByRole('button', { name: /Network/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
@@ -157,7 +157,7 @@ describe('OnboardingForm persona activation', () => {
     actionMocks.completeActivation.mockRejectedValueOnce(new Error('network unavailable'))
 
     render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: /^Seafarer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^SeafarerMaster,/i }))
     fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
