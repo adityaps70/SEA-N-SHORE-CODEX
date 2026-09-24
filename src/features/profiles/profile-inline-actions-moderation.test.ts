@@ -22,7 +22,7 @@ vi.mock('./profile-inline-edit-service', () => ({
   updateProfileProfessionalSectionWithAurora: mocks.updateProfessional,
 }))
 
-import { updateProfileAboutSection } from './profile-inline-actions'
+import { updateProfileAboutSection, updateProfileIdentitySection } from './profile-inline-actions'
 
 const profileId = '11111111-1111-4111-8111-111111111111'
 
@@ -36,6 +36,7 @@ describe('profile inline automated moderation', () => {
       profileType: 'seafarer',
     })
     mocks.updateAbout.mockResolvedValue(undefined)
+    mocks.updateIdentity.mockResolvedValue(undefined)
     mocks.flagContentAutomatically.mockResolvedValue(undefined)
   })
 
@@ -64,5 +65,28 @@ describe('profile inline automated moderation', () => {
       reason: 'harassment',
       details: expect.stringContaining('[AUTOMATED MODERATION]'),
     }))
+  })
+  it('persists current company for every professional identity, not only maritime legacy profile types', async () => {
+    mocks.getAwsOwnProfile.mockResolvedValueOnce({
+      id: profileId,
+      slug: 'mentor-example',
+      profileType: 'mentor',
+      identityRoot: 'professional',
+    })
+    const form = new FormData()
+    form.set('fullName', 'Mentor Example')
+    form.set('slug', 'mentor-example')
+    form.set('location', 'Mumbai')
+    form.set('headline', 'Maritime Mentor')
+    form.set('currentCompany', 'New Shipping Co')
+    form.set('contactVisibility', 'members')
+
+    await expect(updateProfileIdentitySection({}, form)).resolves.toMatchObject({ success: true })
+
+    expect(mocks.updateIdentity).toHaveBeenCalledWith(
+      profileId,
+      expect.objectContaining({ currentCompany: 'New Shipping Co' }),
+      true,
+    )
   })
 })
