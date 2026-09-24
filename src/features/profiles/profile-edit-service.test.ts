@@ -16,9 +16,10 @@ function repositoryDouble(
   const lockCompletedProfile: ProfileEditRepository['lockCompletedProfile'] = vi.fn(async () => editState)
   const updateCompletedProfile: ProfileEditRepository['updateCompletedProfile'] = vi.fn(async () => updateResult)
   const upsertMaritimeProfile: ProfileEditRepository['upsertMaritimeProfile'] = vi.fn(async () => undefined)
+  const upsertActivationMaritimeProfile: ProfileEditRepository['upsertActivationMaritimeProfile'] = vi.fn(async () => undefined)
   const deleteMaritimeProfile: ProfileEditRepository['deleteMaritimeProfile'] = vi.fn(async () => undefined)
   const replaceSkills: ProfileEditRepository['replaceSkills'] = vi.fn(async () => undefined)
-  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, deleteMaritimeProfile, replaceSkills }
+  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, upsertActivationMaritimeProfile, deleteMaritimeProfile, replaceSkills }
 }
 
 function withRepository(repository: ProfileEditRepository) {
@@ -87,6 +88,18 @@ describe('completed profile edit service', () => {
 
     await expect(service.updateProfile(actorId, input())).resolves.toBe(true)
     expect(vi.mocked(repository.updateCompletedProfile)).toHaveBeenCalled()
+  })
+
+  it('preserves current company for a professional identity whose legacy profile type is non-maritime', async () => {
+    const repository = repositoryDouble()
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
+    const data = { ...input('mentor'), currentCompany: 'New Shipping Co' }
+
+    await service.updateProfile(actorId, data, true)
+
+    expect(vi.mocked(repository.upsertActivationMaritimeProfile)).toHaveBeenCalledWith(actorId, 'New Shipping Co')
+    expect(vi.mocked(repository.deleteMaritimeProfile)).not.toHaveBeenCalled()
+    expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
   })
 
   it('removes stale maritime details when the stored profile type is non-maritime', async () => {
