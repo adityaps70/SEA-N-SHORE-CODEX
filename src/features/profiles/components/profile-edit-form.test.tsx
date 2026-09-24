@@ -56,4 +56,21 @@ describe('ProfileEditForm', () => {
 
     expect(screen.getByRole('textbox', { name: /current company/i })).toHaveValue('Example Shipping')
   })
+  it('shows company name for Shipowner organisation identities', () => {
+    render(
+      <ProfileEditForm
+        profile={{
+          ...profile,
+          profileType: 'company',
+          identityRoot: 'organisation',
+          primaryIdentity: 'Shipowner',
+          fullName: 'Aditya Pratap Singh',
+          currentCompany: 'Beaufort Marine Services',
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('textbox', { name: 'Company name' })).toHaveValue('Beaufort Marine Services')
+  })
+
 })
