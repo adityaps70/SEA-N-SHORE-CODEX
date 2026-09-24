@@ -7,7 +7,12 @@ import type { OnboardingInput } from './schemas'
 
 export type ProfileEditRepository = Pick<
   OnboardingRepository,
-  'lockCompletedProfile' | 'updateCompletedProfile' | 'upsertMaritimeProfile' | 'deleteMaritimeProfile' | 'replaceSkills'
+  | 'lockCompletedProfile'
+  | 'updateCompletedProfile'
+  | 'upsertMaritimeProfile'
+  | 'upsertActivationMaritimeProfile'
+  | 'deleteMaritimeProfile'
+  | 'replaceSkills'
 >
 
 type ProfileEditTransaction = <T>(fn: (repository: ProfileEditRepository) => Promise<T>) => Promise<T>
@@ -17,7 +22,11 @@ function serviceError(code: string): never {
 }
 
 export function createProfileEditService(input: { withTransaction: ProfileEditTransaction }) {
-  async function updateProfile(actorId: string, data: OnboardingInput) {
+  async function updateProfile(
+    actorId: string,
+    data: OnboardingInput,
+    supportsCurrentCompany = data.profileType === 'seafarer' || data.profileType === 'maritime_professional',
+  ) {
     return input.withTransaction(async (repository) => {
       const current = await repository.lockCompletedProfile(actorId)
       if (!current) serviceError('profile_edit_unavailable')
@@ -33,6 +42,8 @@ export function createProfileEditService(input: { withTransaction: ProfileEditTr
 
       if (data.profileType === 'seafarer' || data.profileType === 'maritime_professional') {
         await repository.upsertMaritimeProfile(actorId, data)
+      } else if (supportsCurrentCompany) {
+        await repository.upsertActivationMaritimeProfile(actorId, data.currentCompany)
       } else {
         await repository.deleteMaritimeProfile(actorId)
       }
