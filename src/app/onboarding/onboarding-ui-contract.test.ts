@@ -16,10 +16,26 @@ describe('onboarding UI contract', () => {
     expect(page).toContain('Build your maritime presence')
   })
 
-  it('makes identity roots feel like real selectable product cards', () => {
-    expect(form).toContain('UserRound')
-    expect(form).toContain('Building2')
-    expect(form).toContain('Check')
-    expect(form).toContain('Choose the identity that best represents how you want to participate on Sea N Shore.')
+  it('uses human personas instead of Professional / Organisation as competing account identities', () => {
+    expect(form).toContain('Which best describes you?')
+    expect(form).toContain('Seafarer')
+    expect(form).toContain('Shore Professional')
+    expect(form).toContain('Recruiter / HR')
+    expect(form).toContain('Trainer / Instructor')
+    expect(form).toContain('Student / Cadet')
+    expect(form).toContain('Seafarer Family')
+    expect(form).toContain('Maritime Enthusiast')
+    expect(form).not.toContain('I’m joining as')
+    expect(form).not.toContain('IdentityRootButton')
+  })
+
+  it('asks what the member wants to do and supports dynamic persona fields', () => {
+    expect(form).toContain('What are you here to do?')
+    expect(form).toContain('Find jobs')
+    expect(form).toContain('Hire people')
+    expect(form).toContain('Teach')
+    expect(form).toContain('Host events')
+    expect(form).toContain("persona === 'seafarer'")
+    expect(form).toContain("persona === 'seafarer_family'")
   })
 })
