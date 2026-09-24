@@ -350,14 +350,43 @@ const onboardingFieldLabels: Record<string, string> = {
   contactVisibility: 'Contact visibility',
 }
 
+function captureSubmittedActivationValues(formData: FormData): ProfileActionState['values'] {
+  const text = (name: string) => {
+    const value = formData.get(name)
+    return typeof value === 'string' ? value : undefined
+  }
+  const identityRootValue = text('identityRoot')
+  const contactVisibilityValue = text('contactVisibility')
+
+  return {
+    identityRoot: identityRootValue === 'professional' || identityRootValue === 'organisation'
+      ? identityRootValue
+      : undefined,
+    primaryIdentity: text('primaryIdentity'),
+    primaryIdentityFamily: text('primaryIdentityFamily'),
+    secondaryIdentities: text('secondaryIdentities'),
+    fullName: text('fullName'),
+    slug: text('slug'),
+    location: text('location'),
+    currentCompany: text('currentCompany'),
+    headline: text('headline'),
+    contactVisibility: contactVisibilityValue === 'private'
+      || contactVisibilityValue === 'members'
+      || contactVisibilityValue === 'public'
+      ? contactVisibilityValue
+      : undefined,
+  }
+}
+
 async function completeActivationSafely(previousState: ProfileActionState, formData: FormData): Promise<ProfileActionState> {
   try {
     return await completeActivation(previousState, formData)
   } catch {
     return {
-      ...previousState,
       error: 'We could not submit your profile. Check your connection and try again. Your information is still here.',
       fieldErrors: undefined,
+      revision: (previousState.revision ?? 0) + 1,
+      values: captureSubmittedActivationValues(formData),
     }
   }
 }
