@@ -42,7 +42,6 @@ export type ProfileActionState = {
 }
 
 const boundedTextFields = {
-  identityRoot: 20,
   primaryIdentity: 120,
   primaryIdentityFamily: 120,
   secondaryIdentities: 1600,
@@ -153,7 +152,14 @@ export async function completeOnboarding(
   if (moderation.decision === 'block') {
     return failureState(previousState, formData, { error: moderationBlockMessage() })
   }
-  const user = await requireAwsUser()
+  let user
+  try {
+    user = await requireAwsUser()
+  } catch {
+    return failureState(previousState, formData, {
+      error: 'Your session may have expired. Sign in again, return to onboarding, and submit this step again.',
+    })
+  }
 
   try {
     await completeOnboardingWithAurora(user.id, data)
@@ -161,7 +167,7 @@ export async function completeOnboarding(
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
-        fieldErrors: { slug: ['That username is already in use.'] },
+        fieldErrors: { slug: ['That username is already in use. Choose a different username and try again.'] },
       })
     }
     return failureState(previousState, formData, {
@@ -183,7 +189,14 @@ export async function completeActivation(
   if (moderation.decision === 'block') {
     return failureState(previousState, formData, { error: moderationBlockMessage() })
   }
-  const user = await requireAwsUser()
+  let user
+  try {
+    user = await requireAwsUser()
+  } catch {
+    return failureState(previousState, formData, {
+      error: 'Your session may have expired. Sign in again, return to onboarding, and submit this step again.',
+    })
+  }
 
   try {
     await completeActivationWithAurora(user.id, parsed.data)
@@ -191,7 +204,7 @@ export async function completeActivation(
   } catch (error) {
     if (isUniqueViolation(error)) {
       return failureState(previousState, formData, {
-        fieldErrors: { slug: ['That username is already in use.'] },
+        fieldErrors: { slug: ['That username is already in use. Choose a different username and try again.'] },
       })
     }
     return failureState(previousState, formData, {
