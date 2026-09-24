@@ -6,13 +6,23 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { organizationRepository, type OrganizationApplicationInput } from './repository'
 import { organizationApplicationSchema } from './schemas'
 
-type OrganizationActionResult = { ok: true } | { ok: false; error: string }
-type OrganizationSubmitResult = { ok: true; applicationId: string } | { ok: false; error: string }
+type OrganizationFailure = {
+  ok: false
+  error: string
+  fieldErrors?: Record<string, string[]>
+}
+
+type OrganizationActionResult = { ok: true } | OrganizationFailure
+type OrganizationSubmitResult = { ok: true; applicationId: string } | OrganizationFailure
 
 const applicationIdSchema = z.string().uuid()
 
-function validationError(error: z.ZodError) {
-  return error.issues[0]?.message ?? 'Please check the organization information and try again.'
+function validationFailure(error: z.ZodError): OrganizationFailure {
+  return {
+    ok: false,
+    error: 'Please correct the highlighted information and try again.',
+    fieldErrors: error.flatten().fieldErrors as Record<string, string[]>,
+  }
 }
 
 function mutationError(error: unknown) {
@@ -24,7 +34,10 @@ function mutationError(error: unknown) {
       return 'We could not find this organization application.'
     }
   }
-  return 'We could not save the organization application. Please try again.'
+  if (error instanceof Error && /authentication required/i.test(error.message)) {
+    return 'Your session may have expired. Sign in again, return to organization verification, and submit this step again.'
+  }
+  return 'We could not save the organization application. Check your connection and try again; your entered information is still here.'
 }
 
 function refreshOrganizationHiring() {
@@ -34,7 +47,7 @@ function refreshOrganizationHiring() {
 
 export async function submitOrganizationApplication(input: OrganizationApplicationInput): Promise<OrganizationSubmitResult> {
   const parsed = organizationApplicationSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  if (!parsed.success) return validationFailure(parsed.error)
 
   try {
     const user = await requireAwsUser()
@@ -52,8 +65,8 @@ export async function resubmitOrganizationApplication(
 ): Promise<OrganizationActionResult> {
   const parsedId = applicationIdSchema.safeParse(applicationId)
   const parsed = organizationApplicationSchema.safeParse(input)
-  if (!parsedId.success) return { ok: false, error: 'Invalid organization application.' }
-  if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  if (!parsedId.success) return { ok: false, error: 'This application link is invalid. Return to Organization verification and open the current application again.' }
+  if (!parsed.success) return validationFailure(parsed.error)
 
   try {
     const user = await requireAwsUser()
