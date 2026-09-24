@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LockKeyhole, ShieldCheck } from 'lucide-react'
+import { CreditCard, LockKeyhole, ShieldCheck } from 'lucide-react'
 import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
 import { DeleteAccountPanel } from '@/features/account-deletion/components/delete-account-panel'
 
@@ -28,6 +28,16 @@ export default function SettingsPage() {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <Link
+            href="/settings/billing"
+            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+          >
+            <div className="flex items-center gap-2">
+              <CreditCard aria-hidden="true" className="size-4 text-ocean-700" />
+              <p className="font-semibold text-navy-950">Membership & billing</p>
+            </div>
+            <p className="mt-1 text-sm leading-5 text-muted">Review Free, Creator Pro and Organization Pro access.</p>
+          </Link>
           <Link
             href="/privacy"
             className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
