@@ -39,7 +39,7 @@ describe('OrganizationApplicationForm onboarding errors', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Organization name' }), {
       target: { value: 'Oceanic Shipping' },
     })
-    fireEvent.change(screen.getByRole('textbox', { name: 'Official company email' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: /Official company email/i }), {
       target: { value: 'not-an-email' },
     })
 
@@ -49,10 +49,10 @@ describe('OrganizationApplicationForm onboarding errors', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Please correct the highlighted information')
-    expect(screen.getByRole('textbox', { name: 'Official company email' })).toHaveAccessibleDescription('Enter a valid work email address, for example name@company.com.')
+    expect(screen.getByRole('textbox', { name: /Official company email/i })).toHaveAccessibleDescription('Enter a valid work email address, for example name@company.com.')
     expect(screen.getByRole('textbox', { name: 'Organization name' })).toHaveValue('Oceanic Shipping')
-    expect(screen.getByRole('textbox', { name: 'Official company email' })).toHaveValue('not-an-email')
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Official company email' })))
+    expect(screen.getByRole('textbox', { name: /Official company email/i })).toHaveValue('not-an-email')
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox', { name: /Official company email/i })))
   })
 
   it('turns an unexpected submit rejection into a visible retry message without clearing the form', async () => {
