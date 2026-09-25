@@ -45,7 +45,7 @@ test('seanshore.in AWS bootstrap has a guarded create-only release path', async 
   assert.match(script, /-target=aws_route53_record\.seanshore_legacy_www/)
   assert.match(script, /-target=aws_route53_record\.seanshore_edge_validation/)
   assert.match(script, /-target=aws_route53_record\.seanshore_ses_dkim/)
-  assert.match(script, /stale SES DKIM delete/)
+  assert.match(script, /STALE_SES_DKIM_DELETE/)
   assert.match(script, /r\['address'\]\.startswith\(ses_dkim_prefix\)/)
   assert.match(script, /actions == \['delete'\]/)
   assert.match(script, /_domainkey\.seanshore\.in\./)
