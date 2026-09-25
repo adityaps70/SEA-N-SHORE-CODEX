@@ -17,6 +17,16 @@ describe('onboarding UI contract', () => {
     expect(page).toContain('Build your maritime presence')
   })
 
+  it('keeps the onboarding journey mobile-first without horizontal multi-column pressure', () => {
+    expect(page).toContain('px-4 py-4 sm:px-6 sm:py-6')
+    expect(page).toContain('p-5 shadow-')
+    expect(page).toContain('sm:p-7 lg:p-8')
+    expect(form).toContain('grid gap-3 sm:grid-cols-2 lg:grid-cols-4')
+    expect(form).toContain('grid gap-5 sm:grid-cols-2')
+    expect(form).toContain('w-full sm:w-auto')
+    expect(form).not.toContain('min-w-[')
+  })
+
   it('uses human personas instead of Professional / Organisation as competing account identities', () => {
     expect(form).toContain('Which best describes you?')
     expect(form).toContain('Seafarer')
