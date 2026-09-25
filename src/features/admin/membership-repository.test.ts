@@ -129,6 +129,33 @@ describe('admin membership repository', () => {
     })
   })
 
+  it('joins verification audit history without comparing uuid directly to text target ids', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('from public.user_roles')) return [{ allowed: true }]
+      if (text.includes('from public.profiles profile')) {
+        return [{
+          profile_id: profileId,
+          persona: 'recruiter_hr',
+          profile_intents: ['hire'],
+          account_status: 'active',
+        }]
+      }
+      return []
+    }
+    const repository = createAdminMembershipRepository({
+      query,
+      loadAccessContext: async () => access(),
+    })
+
+    await repository.getUserAccessOverview(adminId, profileId)
+
+    const auditQuery = seen.find((entry) => entry.text.includes('from public.audit_events audit'))
+    expect(auditQuery?.text).toContain('verification.id::text = audit.target_id')
+    expect(auditQuery?.text).not.toContain('verification.id = audit.target_id')
+  })
+
   it('shows no effective capability when the account is suspended even if a paid plan and grant exist', async () => {
     const query = async (text: string) => {
       if (text.includes('from public.user_roles')) return [{ allowed: true }]
