@@ -54,7 +54,10 @@ PASS_ROLE_RESOURCES="$(jq -nc \
   --arg notifications "$NOTIFICATION_WORKER_ROLE_ARN" \
   '[$execution,$task,$outbox,$notifications]')"
 
-jq --arg resource "$MEDIA_BUCKET_ARN" --argjson passRoles "$PASS_ROLE_RESOURCES" '
+jq --arg resource "$MEDIA_BUCKET_ARN" \
+  --argjson passRoles "$PASS_ROLE_RESOURCES" \
+  --arg sesIdentity "$SES_IDENTITY_ARN" \
+  --arg sesConfigurationSet "$SES_CONFIGURATION_SET_ARN" '
   .Statement = (
     [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate")]
     + [{
@@ -84,7 +87,7 @@ jq --arg resource "$MEDIA_BUCKET_ARN" --argjson passRoles "$PASS_ROLE_RESOURCES"
       Resource: $sesIdentity
     }]
   )
-' --arg sesIdentity "$SES_IDENTITY_ARN" --arg sesConfigurationSet "$SES_CONFIGURATION_SET_ARN" "$CURRENT" > "$DESIRED"
+' "$CURRENT" > "$DESIRED"
 
 jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate"))' "$CURRENT" > "$CURRENT_UNMANAGED"
 
