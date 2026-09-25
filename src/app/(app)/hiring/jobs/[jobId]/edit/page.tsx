@@ -7,18 +7,21 @@ import { hiringRepository } from '@/features/jobs/hiring-repository'
 export default async function EditHiringJobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params
   const user = await requireAwsUser()
-  const company = await hiringRepository.getAuthorizedCompany(user.id)
-  if (!company) notFound()
+  const managedJobs = await hiringRepository.listManagedJobs(user.id)
+  const jobSummary = managedJobs.find((item) => item.id === jobId)
+  if (!jobSummary) notFound()
 
-  const job = await hiringRepository.getEditableJob(user.id, company.id, jobId)
+  const job = await hiringRepository.getEditableJob(user.id, jobSummary.companyId, jobId)
   if (!job) notFound()
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">{company.name}</p>
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">{jobSummary.publisherName}</p>
         <h1 className="mt-2 text-3xl font-bold text-navy-950">Edit vacancy</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">Update the structured role requirements without changing the verified employer identity attached to this vacancy.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+          Update the structured role requirements without changing the publishing identity attached to this vacancy.
+        </p>
       </div>
       <HiringSubnav active="jobs" />
       <HiringJobForm mode="edit" jobId={jobId} initial={job} />
