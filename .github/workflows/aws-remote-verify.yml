@@ -250,6 +250,9 @@ jobs:
           IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ec "$EXPECTED_ADMIN_FORBIDDEN_PATTERN" \
             || true)
+          EXPECTED_COGNITO_THROTTLE_COUNT=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
+            | grep -Fc "$EXPECTED_COGNITO_THROTTLE_MESSAGE" \
+            || true)
           COGNITO_ISSUE_COUNT=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ec "$COGNITO_ISSUE_PATTERN" \
             || true)
@@ -281,6 +284,7 @@ jobs:
           echo "IGNORED_STALE_SERVER_ACTION_REQUESTS=$IGNORED_STALE_SERVER_ACTION_REQUESTS"
           echo "IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS=$IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS"
           echo "IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS=$IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS"
+          echo "EXPECTED_COGNITO_THROTTLE_COUNT=$EXPECTED_COGNITO_THROTTLE_COUNT"
           echo "COGNITO_ISSUE_COUNT=$COGNITO_ISSUE_COUNT"
           echo "COGNITO_ISSUE_REASONS=${COGNITO_ISSUE_REASONS:-none}"
           echo "STRONG_RUNTIME_ERROR_MATCHES=$MATCH_COUNT"
