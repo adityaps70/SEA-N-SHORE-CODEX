@@ -217,18 +217,44 @@ Added:
 - `scripts/aws/membership-access-migration-action.txt`
 - `.github/workflows/aws-membership-access-migration.yml`
 
+Deterministic existing-user persona backfill is now implemented in migration `0032`:
+- fills only completed profiles where `persona is null`
+- maps only unambiguous legacy profile/identity values
+- never overwrites an explicit persona
+- leaves ambiguous legacy identities untouched for progressive prompting
+- remains additive/non-destructive
+
+The migration contract is green. A prior migration-workflow failure after the contract fix was the expected moved-branch safety guard refusing stale execution, not a SQL contract failure.
+
 The migration action guard remains:
 `plan`
 
 No membership schema migration has been intentionally applied to staging yet.
 
+### Authorization matrix and launch regression
+- Added exhaustive central-policy coverage for every personal plan × verification combination × capability.
+- Added exhaustive organization plan × role × verification-state × capability coverage.
+- Organization-scoped manual grants are regression-tested so they cannot escape the selected company/role scope.
+- Exact-head application verification passed at 359 test files / 1,719 tests.
+- Docker build, Terraform validations, Terraform plan guards and GitHub SSM execution-contract checks passed on the same implementation head.
+
+### Guarded eight-persona onboarding E2E readiness
+- Replaced the obsolete Professional / Organisation staging browser journeys with all eight current persona journeys.
+- The harness now creates disposable Seafarer, Shore Professional, Recruiter / HR, Trainer / Instructor, Student / Cadet, Seafarer Family, Maritime Enthusiast and Other users.
+- It verifies intent selection, persona-specific fields, username protections, profile completion and database persistence for `persona` / `profile_intents` plus compatible legacy profile projections.
+- Cleanup remains guarded and deletes only disposable E2E identities.
+- `scripts/aws/onboarding-e2e-action.txt` remains `plan`.
+- The workflow parses and completes successfully in plan mode, but the live eight-persona staging journey has **not** been executed.
+
 ## Tests added/updated
 
-- central capability policy tests
-- membership access schema contract
+- exhaustive central plan / verification / organization-role capability matrix
+- membership access schema contract, including deterministic persona backfill
 - persona onboarding schema tests
 - persona onboarding service tests
 - persona onboarding UI contract
+- onboarding error/input-preservation component regression
+- eight-persona guarded staging E2E contract and browser harness
 - job publishing capability test
 - event publishing capability tests
 - course publishing capability tests
@@ -240,17 +266,17 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Pricing decision, currency/tax behavior and payment-provider selection.
-2. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
-3. Existing-user persona backfill where deterministic.
-4. Exhaustive plan × verification × organization-role authorization tests and launch regression.
-5. Full staging migration, deploy and E2E only through guarded one-shot execution.
+1. Mobile onboarding UX regression and broader keyboard/accessibility verification.
+2. Live all-eight-persona staging onboarding E2E, but only after the migration/deploy sequence is explicitly approved and armed one-shot.
+3. Pricing decision, currency/tax behavior and payment-provider selection.
+4. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+5. Final guarded staging migration → deploy → E2E sequence, followed by re-arming every execution guard to `plan`.
 
 ## Exact next action
 
-Continue with **Phase 11: deterministic existing-user persona backfill**, using TDD. Infer `profiles.persona` only from exact legacy identity/profile values where the mapping is unambiguous, only when `persona is null`, and leave ambiguous accounts untouched for progressive prompting. Never overwrite an explicit/new persona.
+Continue **Phase 12 launch readiness without deploying**: strengthen mobile onboarding and keyboard/accessibility regression coverage, then re-check all action guards remain `plan`.
 
-Jobs, Events, LMS, independent Recruiter/Event Host verification applications, Phase 10 admin membership controls and organization billing management are complete in code and CI. Pricing/provider-specific billing remains intentionally blocked on product decisions. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
+The deterministic Phase 11 persona backfill and exhaustive Phase 3 authorization matrix are complete in code and exact-head CI. The eight-persona staging E2E harness is prepared but intentionally unexecuted. Jobs, Events, LMS, independent Recruiter/Event Host verification applications, admin membership controls and organization billing management remain complete in code and regression-tested. Pricing/provider-specific billing is still blocked on product decisions. Do not apply the membership migration, deploy new schema-dependent application code, or arm staging E2E until the one-shot staging sequence is explicitly approved.
 
 ## New-chat handoff prompt
 
