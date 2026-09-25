@@ -44,6 +44,10 @@ describe('SCORM repository', () => {
     const repository = createScormRepository({ transaction: async (work) => work(query) })
     const result = await repository.startAttempt('learner-1', 'course-slug', 'lesson-1')
     expect(result).toMatchObject({ id: 'attempt-1', attemptNumber: 1, scormVersion: '2004' })
+    const accessSql = String(query.mock.calls[0]?.[0] ?? '')
+    expect(accessSql).toContain('course.company_id')
+    expect(accessSql).toContain('public.companies company')
+    expect(accessSql).toContain('company.is_verified = true')
   })
 
   it('refuses to start another attempt after max attempts', async () => {
@@ -135,4 +139,26 @@ describe('SCORM repository', () => {
     expect(seen.some(({ text }) => text.includes('update public.learning_enrollments'))).toBe(false)
     expect(seen.some(({ text }) => text.includes('learning_certificates'))).toBe(false)
   })
+
+  it('uses the same published-course visibility rule for organization SCORM courses', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce([{
+        package_id: 'package-org',
+        enrollment_id: 'enrollment-org',
+        lesson_id: 'lesson-org',
+        scorm_version: '2004',
+        max_attempts: null,
+        attempts_used: 0,
+      }])
+      .mockResolvedValueOnce([{ id: 'attempt-org', attempt_number: 1 }])
+      .mockResolvedValueOnce([])
+
+    const repository = createScormRepository({ transaction: async (work) => work(query) })
+    await expect(repository.startAttempt('learner-1', 'org-course', 'lesson-org')).resolves.toMatchObject({
+      id: 'attempt-org',
+      attemptNumber: 1,
+    })
+    expect(String(query.mock.calls[0]?.[0] ?? '')).toContain('company.is_verified = true')
+  })
+
 })
