@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
-  getMentorApplicationState: vi.fn(),
   getOwnedCourse: vi.fn(),
   getCurriculum: vi.fn(),
   redirect: vi.fn(),
@@ -17,9 +16,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
-vi.mock('@/features/learning/repository', () => ({
-  learningRepository: { getMentorApplicationState: mocks.getMentorApplicationState },
-}))
 vi.mock('@/features/learning/course-repository', () => ({
   courseRepository: { getOwnedCourse: mocks.getOwnedCourse },
 }))
@@ -99,16 +95,6 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     mocks.capturedCurriculumCourseId = null
     mocks.capturedCurriculum = null
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'mentor@example.com' })
-    mocks.getMentorApplicationState.mockResolvedValue({
-      kind: 'mentor',
-      applicationId: '11111111-1111-4111-8111-111111111111',
-      status: 'approved',
-      submittedAt: '2026-09-14T12:00:00.000Z',
-      updatedAt: '2026-09-14T14:00:00.000Z',
-      adminReviewNote: 'Approved.',
-      mentorId: 'mentor-1',
-      mentorStatus: 'active',
-    })
     mocks.getOwnedCourse.mockResolvedValue(draftCourse)
     mocks.getCurriculum.mockResolvedValue(curriculum)
   })
@@ -156,14 +142,12 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     expect(screen.getByTestId('course-submit-control')).toBeInTheDocument()
   })
 
-  it('returns users without active mentor access to Teach before reading course data', async () => {
-    mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
+  it('relies on unified course ownership instead of a personal mentor pre-gate', async () => {
+    render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
 
-    await EditMentorCoursePage({ params: Promise.resolve({ courseId }) })
-
-    expect(mocks.redirect).toHaveBeenCalledWith('/learn/teach')
-    expect(mocks.getOwnedCourse).not.toHaveBeenCalled()
-    expect(mocks.getCurriculum).not.toHaveBeenCalled()
+    expect(mocks.getOwnedCourse).toHaveBeenCalledWith('user-1', courseId)
+    expect(mocks.redirect).not.toHaveBeenCalledWith('/learn/teach')
+    expect(screen.getByTestId('course-form')).toBeInTheDocument()
   })
 
   it('uses not found when the owned course does not exist', async () => {
