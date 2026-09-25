@@ -319,7 +319,7 @@ jobs:
           retention-days: 3
 
       - name: Audit persona persistence through SSM
-        if: steps.action.outputs.run_e2e == 'true' && steps.journeys.outcome == 'success' && steps.instance.outputs.instance_id != ''
+        if: always() && steps.action.outputs.run_e2e == 'true' && steps.journeys.outcome == 'success' && steps.instance.outputs.instance_id != ''
         id: audit
         env:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
