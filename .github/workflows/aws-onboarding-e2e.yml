@@ -195,26 +195,50 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PROFESSIONAL_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-professional@example.com"
-          CUSTOM_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-custom@example.com"
-          ORGANISATION_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-organisation@example.com"
-          PROFESSIONAL_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Professional9"
-          CUSTOM_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Custom9"
-          ORGANISATION_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Organisation9"
-          for SECRET_VALUE in "$PROFESSIONAL_PASSWORD" "$CUSTOM_PASSWORD" "$ORGANISATION_PASSWORD"; do echo "::add-mask::$SECRET_VALUE"; done
+          SEAFARER_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-seafarer@example.com"
+          SHORE_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-shore@example.com"
+          RECRUITER_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-recruiter@example.com"
+          TRAINER_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-trainer@example.com"
+          STUDENT_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-student@example.com"
+          FAMILY_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-family@example.com"
+          ENTHUSIAST_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-enthusiast@example.com"
+          OTHER_EMAIL="sea-n-shore-e2e-${GITHUB_RUN_ID}-other@example.com"
+          SEAFARER_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Seafarer9"
+          SHORE_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Shore9"
+          RECRUITER_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Recruiter9"
+          TRAINER_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Trainer9"
+          STUDENT_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Student9"
+          FAMILY_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Family9"
+          ENTHUSIAST_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Enthusiast9"
+          OTHER_PASSWORD="SeaNShore!${GITHUB_RUN_ID}Other9"
+          for SECRET_VALUE in "$SEAFARER_PASSWORD" "$SHORE_PASSWORD" "$RECRUITER_PASSWORD" "$TRAINER_PASSWORD" "$STUDENT_PASSWORD" "$FAMILY_PASSWORD" "$ENTHUSIAST_PASSWORD" "$OTHER_PASSWORD"; do echo "::add-mask::$SECRET_VALUE"; done
           {
-            echo "E2E_PROFESSIONAL_EMAIL=$PROFESSIONAL_EMAIL"
-            echo "E2E_CUSTOM_EMAIL=$CUSTOM_EMAIL"
-            echo "E2E_ORGANISATION_EMAIL=$ORGANISATION_EMAIL"
-            echo "E2E_PROFESSIONAL_PASSWORD=$PROFESSIONAL_PASSWORD"
-            echo "E2E_CUSTOM_PASSWORD=$CUSTOM_PASSWORD"
-            echo "E2E_ORGANISATION_PASSWORD=$ORGANISATION_PASSWORD"
-            echo "E2E_PROFESSIONAL_NAME=E2E Professional ${GITHUB_RUN_ID}"
-            echo "E2E_CUSTOM_NAME=E2E Custom ${GITHUB_RUN_ID}"
-            echo "E2E_ORGANISATION_NAME=E2E Organisation ${GITHUB_RUN_ID}"
+            echo "E2E_SEAFARER_EMAIL=$SEAFARER_EMAIL"
+            echo "E2E_SHORE_EMAIL=$SHORE_EMAIL"
+            echo "E2E_RECRUITER_EMAIL=$RECRUITER_EMAIL"
+            echo "E2E_TRAINER_EMAIL=$TRAINER_EMAIL"
+            echo "E2E_STUDENT_EMAIL=$STUDENT_EMAIL"
+            echo "E2E_FAMILY_EMAIL=$FAMILY_EMAIL"
+            echo "E2E_ENTHUSIAST_EMAIL=$ENTHUSIAST_EMAIL"
+            echo "E2E_OTHER_EMAIL=$OTHER_EMAIL"
+            echo "E2E_SEAFARER_PASSWORD=$SEAFARER_PASSWORD"
+            echo "E2E_SHORE_PASSWORD=$SHORE_PASSWORD"
+            echo "E2E_RECRUITER_PASSWORD=$RECRUITER_PASSWORD"
+            echo "E2E_TRAINER_PASSWORD=$TRAINER_PASSWORD"
+            echo "E2E_STUDENT_PASSWORD=$STUDENT_PASSWORD"
+            echo "E2E_FAMILY_PASSWORD=$FAMILY_PASSWORD"
+            echo "E2E_ENTHUSIAST_PASSWORD=$ENTHUSIAST_PASSWORD"
+            echo "E2E_OTHER_PASSWORD=$OTHER_PASSWORD"
+            echo "E2E_SEAFARER_NAME=E2E Seafarer ${GITHUB_RUN_ID}"
+            echo "E2E_SHORE_NAME=E2E Shore ${GITHUB_RUN_ID}"
+            echo "E2E_RECRUITER_NAME=E2E Recruiter ${GITHUB_RUN_ID}"
+            echo "E2E_TRAINER_NAME=E2E Trainer ${GITHUB_RUN_ID}"
+            echo "E2E_STUDENT_NAME=E2E Student ${GITHUB_RUN_ID}"
+            echo "E2E_FAMILY_NAME=E2E Family ${GITHUB_RUN_ID}"
+            echo "E2E_ENTHUSIAST_NAME=E2E Enthusiast ${GITHUB_RUN_ID}"
+            echo "E2E_OTHER_NAME=E2E Other ${GITHUB_RUN_ID}"
           } >> "$GITHUB_ENV"
-
-      - name: Verify public sign-up UI creates three disposable users
+      - name: Verify public sign-up UI creates eight disposable users
         if: steps.action.outputs.run_e2e == 'true'
         env:
           E2E_PHASE: signup
@@ -229,7 +253,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 - "$COGNITO_POOL_NAME" "$E2E_PROFESSIONAL_EMAIL" "$E2E_CUSTOM_EMAIL" "$E2E_ORGANISATION_EMAIL" > /tmp/onboarding-e2e-confirm.json <<'PYTHON'
+          python3 - "$COGNITO_POOL_NAME" "$E2E_SEAFARER_EMAIL" "$E2E_SHORE_EMAIL" "$E2E_RECRUITER_EMAIL" "$E2E_TRAINER_EMAIL" "$E2E_STUDENT_EMAIL" "$E2E_FAMILY_EMAIL" "$E2E_ENTHUSIAST_EMAIL" "$E2E_OTHER_EMAIL" > /tmp/onboarding-e2e-confirm.json <<'PYTHON'
           import json, shlex, sys
           pool_name, *emails = sys.argv[1:]
           for email in emails:
@@ -303,10 +327,14 @@ jobs:
         run: |
           set -euo pipefail
           case "$AUDIT_EXPECTED" in true|false) ;; *) echo "Invalid AUDIT_EXPECTED." >&2; exit 1 ;; esac
-          python3 - "$COGNITO_POOL_NAME" "$E2E_PROFESSIONAL_EMAIL" "$E2E_CUSTOM_EMAIL" "$E2E_ORGANISATION_EMAIL" "$AUDIT_EXPECTED" > /tmp/onboarding-e2e-cleanup.json <<'PYTHON'
+          python3 - "$COGNITO_POOL_NAME" "$E2E_SEAFARER_EMAIL" "$E2E_SHORE_EMAIL" "$E2E_RECRUITER_EMAIL" "$E2E_TRAINER_EMAIL" "$E2E_STUDENT_EMAIL" "$E2E_FAMILY_EMAIL" "$E2E_ENTHUSIAST_EMAIL" "$E2E_OTHER_EMAIL" "$AUDIT_EXPECTED" > /tmp/onboarding-e2e-cleanup.json <<'PYTHON'
           import json, shlex, sys
-          pool_name, professional, custom, organisation, audit_expected = sys.argv[1:]
-          emails = [professional, custom, organisation]
+          pool_name = sys.argv[1]
+          *emails, audit_expected = sys.argv[2:]
+          keys = ['seafarer', 'shore', 'recruiter', 'trainer', 'student', 'family', 'enthusiast', 'other']
+          if len(emails) != len(keys):
+              raise SystemExit('Expected eight disposable onboarding identities')
+          identities = dict(zip(keys, emails))
           if audit_expected not in ('true', 'false'):
               raise SystemExit('Unsafe audit expectation')
           for email in emails:
@@ -316,9 +344,14 @@ jobs:
           script = f"""set -euo pipefail
           AWS_REGION=ap-south-1
           POOL_NAME={shlex.quote(pool_name)}
-          PROFESSIONAL={shlex.quote(professional)}
-          CUSTOM={shlex.quote(custom)}
-          ORGANISATION={shlex.quote(organisation)}
+          SEAFARER={shlex.quote(identities['seafarer'])}
+          SHORE={shlex.quote(identities['shore'])}
+          RECRUITER={shlex.quote(identities['recruiter'])}
+          TRAINER={shlex.quote(identities['trainer'])}
+          STUDENT={shlex.quote(identities['student'])}
+          FAMILY={shlex.quote(identities['family'])}
+          ENTHUSIAST={shlex.quote(identities['enthusiast'])}
+          OTHER={shlex.quote(identities['other'])}
           AUDIT_EXPECTED={shlex.quote(audit_expected)}
           for EMAIL in {args}; do [[ \"$EMAIL\" == sea-n-shore-e2e-* && \"$EMAIL\" == *@example.com ]]; done
 
@@ -333,24 +366,34 @@ jobs:
           if [[ \"$AUDIT_EXPECTED\" == true ]]; then
             read_profile() {{
               local EMAIL=\"$1\"
-              local SQL=\"SELECT coalesce(p.identity_root,''), coalesce(p.primary_identity,''), coalesce(p.primary_identity_family,''), coalesce(array_to_string(p.secondary_identities,','),''), coalesce(p.profile_type::text,''), coalesce(mp.current_company,''), CASE WHEN mp.user_id IS NULL THEN 'true' ELSE 'false' END, CASE WHEN p.onboarding_completed_at IS NOT NULL THEN 'true' ELSE 'false' END FROM public.identity_accounts ia JOIN public.profiles p ON p.id=ia.profile_id LEFT JOIN public.maritime_profiles mp ON mp.user_id=p.id WHERE ia.provider='cognito' AND ia.email='$EMAIL'\"
-              aws rds-data execute-statement --region \"$AWS_REGION\" --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"$SQL\" --output json | jq -r '.records[0] | map(.stringValue // "") | @tsv'
+              local SQL=\"SELECT coalesce(p.persona,''), coalesce(array_to_string(p.profile_intents,','),''), coalesce(p.profile_type::text,''), coalesce(p.headline,''), coalesce(p.specialization,''), coalesce(p.institution_name,''), coalesce(p.community_relationship,''), coalesce(mp.current_company,''), coalesce(mp.rank,''), CASE WHEN mp.user_id IS NULL THEN 'true' ELSE 'false' END, CASE WHEN p.onboarding_completed_at IS NOT NULL THEN 'true' ELSE 'false' END FROM public.identity_accounts ia JOIN public.profiles p ON p.id=ia.profile_id LEFT JOIN public.maritime_profiles mp ON mp.user_id=p.id WHERE ia.provider='cognito' AND ia.email='$EMAIL'\"
+              aws rds-data execute-statement --region \"$AWS_REGION\" --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"$SQL\" --output json | jq -r '.records[0] | map(.stringValue // \"\") | @tsv'
             }}
 
-            PROFESSIONAL_ROW=$(read_profile \"$PROFESSIONAL\" || true)
-            CUSTOM_ROW=$(read_profile \"$CUSTOM\" || true)
-            ORGANISATION_ROW=$(read_profile \"$ORGANISATION\" || true)
-            [[ \"$PROFESSIONAL_ROW\" == $'professional\\tMaster\\tSea-going · Deck\\tMentor\\tseafarer\\tE2E Shipping\\tfalse\\ttrue' ]] || AUDIT_OK=false
-            [[ \"$CUSTOM_ROW\" == $'professional\\tHydrographic Survey Expedition Lead\\tCustom identity\\t\\tmaritime_professional\\tE2E Hydro\\tfalse\\ttrue' ]] || AUDIT_OK=false
-            [[ \"$ORGANISATION_ROW\" == $'organisation\\tShipowner\\tShipping & Ship Management\\t\\tcompany\\t\\ttrue\\ttrue' ]] || AUDIT_OK=false
-            if [[ \"$AUDIT_OK\" == true ]]; then echo 'ONBOARDING_E2E_PERSISTENCE_VERIFIED=true'; else echo 'ONBOARDING_E2E_PERSISTENCE_VERIFIED=false' >&2; fi
+            SEAFARER_ROW=$(read_profile \"$SEAFARER\" || true)
+            SHORE_ROW=$(read_profile \"$SHORE\" || true)
+            RECRUITER_ROW=$(read_profile \"$RECRUITER\" || true)
+            TRAINER_ROW=$(read_profile \"$TRAINER\" || true)
+            STUDENT_ROW=$(read_profile \"$STUDENT\" || true)
+            FAMILY_ROW=$(read_profile \"$FAMILY\" || true)
+            ENTHUSIAST_ROW=$(read_profile \"$ENTHUSIAST\" || true)
+            OTHER_ROW=$(read_profile \"$OTHER\" || true)
+            [[ \"$SEAFARER_ROW\" == $'seafarer\\tfind_jobs\\tseafarer\\tChief Engineer\\t\\t\\t\\tE2E Shipping\\tChief Engineer\\tfalse\\ttrue' ]] || AUDIT_OK=false
+            [[ \"$SHORE_ROW\" == $'shore_professional\\tnetwork\\tmaritime_professional\\tMarine Superintendent\\t\\t\\t\\tE2E Shore\\t\\tfalse\\ttrue' ]] || AUDIT_OK=false
+            [[ \"$RECRUITER_ROW\" == $'recruiter_hr\\thire\\trecruiter\\tCrewing Manager\\t\\t\\t\\tE2E Manning\\t\\tfalse\\ttrue' ]] || AUDIT_OK=false
+            [[ \"$TRAINER_ROW\" == $'trainer_instructor\\tteach\\ttrainer\\tSIRE 2.0\\tSIRE 2.0\\t\\t\\tE2E Academy\\t\\tfalse\\ttrue' ]] || AUDIT_OK=false
+            [[ \"$STUDENT_ROW\" == $'student_cadet\\tlearn\\tmaritime_professional\\tStudent / Cadet\\t\\tE2E Maritime Institute\\t\\t\\t\\ttrue\\ttrue' ]] || AUDIT_OK=false
+            [[ \"$FAMILY_ROW\" == $'seafarer_family\\tcommunity\\tmaritime_professional\\tSeafarer Family\\t\\t\\tSpouse / partner\\t\\t\\ttrue\\ttrue' ]] || AUDIT_OK=false
+            [[ \"$ENTHUSIAST_ROW\" == $'maritime_enthusiast\\tattend_events\\tmaritime_professional\\tMaritime Enthusiast\\t\\t\\t\\t\\t\\ttrue\\ttrue' ]] || AUDIT_OK=false
+            [[ \"$OTHER_ROW\" == $'other\\thost_events\\tmaritime_professional\\tMaritime technology supporter\\t\\t\\t\\t\\t\\ttrue\\ttrue' ]] || AUDIT_OK=false
+            if [[ \"$AUDIT_OK\" == true ]]; then echo 'ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true'; else echo 'ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=false' >&2; fi
           else
             echo 'ONBOARDING_E2E_PERSISTENCE_SKIPPED=true'
           fi
 
-          DELETE_SQL=\"DELETE FROM public.profiles WHERE id IN (SELECT profile_id FROM public.identity_accounts WHERE provider='cognito' AND email IN ('$PROFESSIONAL','$CUSTOM','$ORGANISATION'))\"
+          DELETE_SQL=\"DELETE FROM public.profiles WHERE id IN (SELECT profile_id FROM public.identity_accounts WHERE provider='cognito' AND email IN ('$SEAFARER','$SHORE','$RECRUITER','$TRAINER','$STUDENT','$FAMILY','$ENTHUSIAST','$OTHER'))\"
           aws rds-data execute-statement --region \"$AWS_REGION\" --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"$DELETE_SQL\" >/dev/null
-          COUNT_SQL=\"SELECT count(*)::text FROM public.identity_accounts WHERE provider='cognito' AND email IN ('$PROFESSIONAL','$CUSTOM','$ORGANISATION')\"
+          COUNT_SQL=\"SELECT count(*)::text FROM public.identity_accounts WHERE provider='cognito' AND email IN ('$SEAFARER','$SHORE','$RECRUITER','$TRAINER','$STUDENT','$FAMILY','$ENTHUSIAST','$OTHER')\"
           LEFT_COUNT=$(aws rds-data execute-statement --region \"$AWS_REGION\" --resource-arn \"$CLUSTER_ARN\" --secret-arn \"$SECRET_ARN\" --database sea_n_shore --sql \"$COUNT_SQL\" --output json | jq -r '.records[0][0].stringValue')
           [[ \"$LEFT_COUNT\" == 0 ]]
 
@@ -368,8 +411,8 @@ jobs:
           done
           echo 'ONBOARDING_E2E_CLEANUP_VERIFIED=true'
           if [[ \"$AUDIT_EXPECTED\" == true ]]; then [[ \"$AUDIT_OK\" == true ]]; fi
-          """
-          print(json.dumps({"executionTimeout": ["600"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          \"\"\"
+          print(json.dumps({\"executionTimeout\": [\"600\"], \"commands\": [\"runuser -u ssm-user -- bash -lc \" + shlex.quote(script)]}))
           PYTHON
           COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore onboarding E2E audit cleanup ${GITHUB_SHA}" --timeout-seconds 600 --parameters file:///tmp/onboarding-e2e-cleanup.json --query 'Command.CommandId' --output text)
           test -n "$COMMAND_ID"
@@ -397,7 +440,11 @@ jobs:
           STDOUT_CONTENT=$(jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-cleanup-result.json)
           grep -q '^ONBOARDING_E2E_CLEANUP_VERIFIED=true$' <<<"$STDOUT_CONTENT"
           if [[ "$AUDIT_EXPECTED" == true ]]; then
-            grep -q '^ONBOARDING_E2E_PERSISTENCE_VERIFIED=true$' <<<"$STDOUT_CONTENT"
+            grep -q '^ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true
+          else
+            grep -q '^ONBOARDING_E2E_PERSISTENCE_SKIPPED=true$' <<<"$STDOUT_CONTENT"
+          fi
+ <<<"$STDOUT_CONTENT"
           else
             grep -q '^ONBOARDING_E2E_PERSISTENCE_SKIPPED=true$' <<<"$STDOUT_CONTENT"
           fi
