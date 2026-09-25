@@ -12,6 +12,7 @@ const companyRow = {
 
 function jobInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
   return {
+    publisherType: 'organization',
     companyId: 'company-1',
     title: 'Chief Officer',
     domain: 'sea',
@@ -42,8 +43,9 @@ function jobInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
 }
 
 function jobUpdateInput(overrides: Partial<HiringJobUpdateInput> = {}): HiringJobUpdateInput {
-  const { companyId, ...input } = jobInput()
+  const { companyId, publisherType, ...input } = jobInput()
   void companyId
+  void publisherType
   return { ...input, ...overrides }
 }
 
