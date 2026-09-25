@@ -5,6 +5,7 @@ import { createCourseRepository } from './course-repository'
 const mentorUserId = '11111111-1111-4111-8111-111111111111'
 const mentorId = '22222222-2222-4222-8222-222222222222'
 const courseId = '33333333-3333-4333-8333-333333333333'
+const companyId = '44444444-4444-4444-8444-444444444444'
 
 function courseInput(overrides: Partial<CourseDraftInput> = {}): CourseDraftInput {
   return {
@@ -145,4 +146,136 @@ describe('learning course repository', () => {
     await expect(repository.updateCourse(mentorUserId, courseId, courseInput())).rejects.toThrow('course_edit_forbidden')
     expect(seen.some((text) => text.includes('update public.learning_courses'))).toBe(false)
   })
+
+  it('creates an organization course draft for an approved LMS manager without requiring mentor status', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createCourseRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('from public.company_members')) {
+          return [{ role: 'lms_manager', approved_at: '2026-09-25T00:00:00.000Z' }]
+        }
+        if (text.includes('insert into public.learning_courses')) return [{ id: courseId }]
+        return []
+      },
+    })
+
+    await expect(repository.createCourse(mentorUserId, {
+      publisherType: 'organization',
+      companyId,
+      ...courseInput(),
+    })).resolves.toEqual({ courseId })
+
+    const membership = seen.find((entry) => entry.text.includes('from public.company_members'))
+    expect(membership?.text).toContain("role::text in ('owner', 'administrator', 'lms_manager')")
+    expect(membership?.values).toEqual([companyId, mentorUserId])
+
+    const insert = seen.find((entry) => entry.text.includes('insert into public.learning_courses'))
+    expect(insert?.text).toContain('created_by_user_id')
+    expect(insert?.text).toContain('company_id')
+    expect(insert?.values).toContain(mentorUserId)
+    expect(insert?.values).toContain(companyId)
+    expect(insert?.values).toContain(null)
+  })
+
+  it('rejects organization course creation without approved LMS management authority', async () => {
+    const seen: string[] = []
+    const repository = createCourseRepository({
+      query: async (text) => {
+        seen.push(text)
+        return []
+      },
+    })
+
+    await expect(repository.createCourse(mentorUserId, {
+      publisherType: 'organization',
+      companyId,
+      ...courseInput(),
+    })).rejects.toThrow('course_forbidden')
+    expect(seen.some((text) => text.includes('insert into public.learning_courses'))).toBe(false)
+  })
+
+  it('lists personal mentor and organization-managed courses together', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createCourseRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          id: courseId,
+          slug: 'bridge-resource-management',
+          title: 'Bridge Resource Management',
+          subtitle: null,
+          category: 'Leadership',
+          level: 'advanced',
+          course_format: 'recorded',
+          access_type: 'free',
+          status: 'draft',
+          admin_review_note: null,
+          updated_at: new Date('2026-09-25T01:00:00.000Z'),
+          company_id: companyId,
+          publisher_name: 'Sea Academy',
+          publisher_slug: 'sea-academy',
+        }]
+      },
+    })
+
+    await expect(repository.listOwnedCourses(mentorUserId)).resolves.toEqual([
+      expect.objectContaining({
+        id: courseId,
+        companyId,
+        publisherType: 'organization',
+        publisherName: 'Sea Academy',
+      }),
+    ])
+    expect(seen[0]?.text).toContain('public.company_members')
+    expect(seen[0]?.text).toContain('lms_manager')
+  })
+
+  it('loads an organization course for an approved LMS manager and keeps its publisher locked', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createCourseRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          id: courseId,
+          slug: 'bridge-resource-management',
+          title: 'Bridge Resource Management',
+          subtitle: null,
+          description: 'A detailed maritime course for bridge teams covering practical bridge resource management and decision making.',
+          category: 'Leadership',
+          level: 'advanced',
+          language: 'English',
+          thumbnail_path: null,
+          trailer_path: null,
+          learning_outcomes: [],
+          requirements: [],
+          target_audience: [],
+          price_minor: '0',
+          discount_price_minor: null,
+          currency: 'INR',
+          access_type: 'free',
+          certificate_enabled: true,
+          course_format: 'recorded',
+          status: 'draft',
+          admin_review_note: null,
+          updated_at: new Date('2026-09-25T01:00:00.000Z'),
+          company_id: companyId,
+          publisher_name: 'Sea Academy',
+          publisher_slug: 'sea-academy',
+        }]
+      },
+    })
+
+    await expect(repository.getOwnedCourse(mentorUserId, courseId)).resolves.toEqual(
+      expect.objectContaining({
+        id: courseId,
+        companyId,
+        publisherType: 'organization',
+        publisherName: 'Sea Academy',
+      }),
+    )
+    expect(seen[0]?.text).toContain('public.company_members')
+    expect(seen[0]?.text).toContain('lms_manager')
+  })
+
 })
