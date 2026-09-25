@@ -114,9 +114,14 @@ describe('legacy organization conversion action', () => {
   it('fails safely when existing organization authority is no longer sufficient', async () => {
     mocks.completeConversion.mockRejectedValueOnce(new Error('legacy_company_admin_required'))
 
-    await expect(completeLegacyOrganizationConversion({}, form())).resolves.toEqual({
+    await expect(completeLegacyOrganizationConversion({}, form())).resolves.toMatchObject({
       ok: false,
       error: 'Owner or Administrator access is required to link this organization. Request Administrator access first, then return here.',
+      values: expect.objectContaining({
+        fullName: 'Asha Singh',
+        strategy: 'existing',
+        companyId,
+      }),
     })
   })
 })
