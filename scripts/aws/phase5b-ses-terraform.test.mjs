@@ -47,7 +47,7 @@ test('Phase 5B ops role may read only the approved SES identity and configuratio
   assert.match(bootstrapTf, /"ses:GetConfigurationSet"/)
   assert.match(
     bootstrapTf,
-    /arn:aws:ses:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:identity\/seaandshore\.in/,
+    /arn:aws:ses:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:identity\/seanshore\.in/,
   )
   assert.match(
     bootstrapTf,
@@ -61,7 +61,7 @@ test('Phase 5B ops role may create only the approved SES domain identity', () =>
   assert.match(bootstrapTf, /"ses:CreateEmailIdentity"/)
   assert.match(
     bootstrapTf,
-    /arn:aws:ses:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:identity\/seaandshore\.in/,
+    /arn:aws:ses:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:identity\/seanshore\.in/,
   )
   assert.doesNotMatch(bootstrapTf, /"ses:\*"/i)
 })
@@ -81,13 +81,13 @@ test('Phase 5B ops role may describe only the discovered staging Cognito user po
 })
 
 test('Phase 5B email variables default to the approved domain and sender with cutover disabled', () => {
-  assert.match(varsTf, /variable "ses_domain"[\s\S]*default\s*=\s*"seaandshore\.in"/)
-  assert.match(varsTf, /variable "ses_from_address"[\s\S]*default\s*=\s*"no-reply@seaandshore\.in"/)
+  assert.match(varsTf, /variable "ses_domain"[\s\S]*default\s*=\s*"seanshore\.in"/)
+  assert.match(varsTf, /variable "ses_from_address"[\s\S]*default\s*=\s*"no-reply@seanshore\.in"/)
   assert.match(varsTf, /variable "ses_from_display_name"[\s\S]*default\s*=\s*"Sea N Shore"/)
   assert.match(varsTf, /variable "enable_cognito_ses_email"[\s\S]*default\s*=\s*false/)
 
-  assert.match(tfvarsExample, /ses_domain\s*=\s*"seaandshore\.in"/)
-  assert.match(tfvarsExample, /ses_from_address\s*=\s*"no-reply@seaandshore\.in"/)
+  assert.match(tfvarsExample, /ses_domain\s*=\s*"seanshore\.in"/)
+  assert.match(tfvarsExample, /ses_from_address\s*=\s*"no-reply@seanshore\.in"/)
   assert.match(tfvarsExample, /ses_from_display_name\s*=\s*"Sea N Shore"/)
   assert.match(tfvarsExample, /enable_cognito_ses_email\s*=\s*false/)
 })
@@ -181,7 +181,7 @@ test('Phase 5B SES identity has a single-resource guarded Terraform state-import
   assert.match(runner, /EXPECTED_ACCOUNT="310356785722"/)
   assert.match(runner, /STATE_BUCKET="sea-n-shore-310356785722-ap-south-1-tfstate"/)
   assert.match(runner, /RESOURCE="aws_sesv2_email_identity\.transactional_domain"/)
-  assert.match(runner, /IMPORT_ID="seaandshore\.in"/)
+  assert.match(runner, /IMPORT_ID="seanshore\.in"/)
   assert.match(runner, /SES_CONFIGURATION_SET="sea-n-shore-staging-transactional"/)
   assert.match(runner, /ses-identity-state-action\.txt/)
   assert.match(runner, /plan\|apply-once/)
@@ -230,7 +230,7 @@ test('Phase 5B SES identity tags reconcile through a guarded exact-head SSM path
 
   const runner = fs.readFileSync(runnerUrl, 'utf8')
   assert.match(runner, /EXPECTED_ACCOUNT="310356785722"/)
-  assert.match(runner, /SES_IDENTITY_ARN="arn:aws:ses:ap-south-1:310356785722:identity\/seaandshore\.in"/)
+  assert.match(runner, /SES_IDENTITY_ARN="arn:aws:ses:ap-south-1:310356785722:identity\/seanshore\.in"/)
   assert.match(runner, /ses-identity-tags-action\.txt/)
   assert.match(runner, /plan\|apply-once/)
   assert.match(runner, /SES_IDENTITY_TAGS_CALLER_ARN=/)
