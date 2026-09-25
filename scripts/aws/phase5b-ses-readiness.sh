@@ -44,6 +44,45 @@ echo "AUTHORITATIVE_NS_BEGIN"
 dig +short NS "$SES_DOMAIN" | sed 's/\.$//' | sort
 echo "AUTHORITATIVE_NS_END"
 
+aws route53 list-hosted-zones-by-name \
+  --dns-name "$SES_DOMAIN" \
+  --max-items 20 \
+  --output json > /tmp/phase5b-route53-zones.json
+
+route53_ses_zone_count="$(jq --arg name "$SES_DOMAIN." '[.HostedZones[]? | select(.Name==$name and .Config.PrivateZone==false)] | length' /tmp/phase5b-route53-zones.json)"
+echo "ROUTE53_SES_ZONE_COUNT=$route53_ses_zone_count"
+if [[ "$route53_ses_zone_count" == "1" ]]; then
+  route53_ses_zone_id="$(jq -r --arg name "$SES_DOMAIN." '[.HostedZones[]? | select(.Name==$name and .Config.PrivateZone==false)][0].Id // empty' /tmp/phase5b-route53-zones.json | sed 's#^/hostedzone/##')"
+  echo "ROUTE53_SES_ZONE_ID=$route53_ses_zone_id"
+  aws route53 get-hosted-zone --id "$route53_ses_zone_id" --output json > /tmp/phase5b-route53-zone.json
+  echo "ROUTE53_SES_NAME_SERVERS_BEGIN"
+  jq -r '.DelegationSet.NameServers[]? // empty' /tmp/phase5b-route53-zone.json | sort
+  echo "ROUTE53_SES_NAME_SERVERS_END"
+else
+  echo "ROUTE53_SES_ZONE_ID="
+fi
+
+echo "LIVE_DNS_A_BEGIN"
+dig +short A "$SES_DOMAIN" | sort
+echo "LIVE_DNS_A_END"
+
+echo "LIVE_DNS_WWW_BEGIN"
+dig +short A "www.$SES_DOMAIN" | sort
+dig +short CNAME "www.$SES_DOMAIN" | sort
+echo "LIVE_DNS_WWW_END"
+
+echo "LIVE_DNS_MX_BEGIN"
+dig +short MX "$SES_DOMAIN" | sort -n
+echo "LIVE_DNS_MX_END"
+
+echo "LIVE_DNS_TXT_BEGIN"
+dig +short TXT "$SES_DOMAIN" | sort
+echo "LIVE_DNS_TXT_END"
+
+echo "LIVE_DNS_CAA_BEGIN"
+dig +short CAA "$SES_DOMAIN" | sort
+echo "LIVE_DNS_CAA_END"
+
 production_access="$(aws sesv2 get-account \
   --region "$AWS_REGION" \
   --query 'ProductionAccessEnabled' \
