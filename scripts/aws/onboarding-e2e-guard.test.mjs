@@ -94,6 +94,17 @@ test('onboarding e2e audits persistence without destructive inline cleanup', () 
   assert.doesNotMatch(workflow, /delete from public\.profiles/i)
 })
 
+test('persona persistence audit still runs after an unrelated avatar proof failure', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const start = workflow.indexOf('- name: Audit persona persistence through SSM')
+  const end = workflow.indexOf('- name: Wait and surface persistence evidence')
+  assert.ok(start >= 0 && end > start)
+  const auditBlock = workflow.slice(start, end)
+  assert.match(auditBlock, /if:\s*always\(\)/)
+  assert.match(auditBlock, /steps\.journeys\.outcome == 'success'/)
+  assert.doesNotMatch(auditBlock, /steps\.feed_avatar\.outcome/)
+})
+
 test('run-once includes mobile viewport and serious accessibility regression checks', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
