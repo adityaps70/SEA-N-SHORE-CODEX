@@ -226,7 +226,7 @@ Current note: deterministic persona backfill is implemented and contract-tested.
 
 ## Phase 12 — Full regression / launch readiness
 
-Current note: exact-head automated application regression is green at 359 test files / 1,719 tests, with Docker, Terraform validations, plan guards and the SSM execution contract also green. The guarded browser harness has been upgraded from the retired Professional/Organisation onboarding to all eight persona journeys and persona/intents persistence checks, but it remains at `plan` and has **not** been executed against staging.
+Current note: exact-head automated application regression is green at 359 test files / 1,721 tests, with Docker, Terraform validations, plan guards, Remote Verify and the SSM execution contract also green. Keyboard activation, error-focus behavior and mobile-first layout contracts are covered in CI. The guarded browser harness has been upgraded from the retired Professional/Organisation onboarding to all eight persona journeys, representative 390×844 mobile journeys, serious/critical Axe accessibility checks, horizontal-overflow checks and persona/intents persistence checks, but it remains at `plan` and has **not** been executed against staging.
 
 - [ ] Onboarding E2E: all 8 personas. *(Harness prepared; staging execution still pending explicit one-shot approval.)*
 - [x] Onboarding preserves inputs on failure.
@@ -244,8 +244,8 @@ Current note: exact-head automated application regression is green at 359 test f
 - [x] Events/attendance regression.
 - [x] LMS/enrollment/course review regression.
 - [x] Admin/suspension regression.
-- [ ] Mobile onboarding UX.
-- [ ] Accessibility/keyboard/focus/error states.
+- [x] Mobile onboarding UX. *(Responsive contract + guarded mobile browser probes prepared.)*
+- [x] Accessibility/keyboard/focus/error states. *(Keyboard/focus/error tests pass; guarded Axe browser probes prepared for the live one-shot.)*
 - [ ] Staging E2E only after its guard is explicitly armed for the one-shot run.
 - [ ] Re-arm all action guards to `plan` after any approved execution.
 
