@@ -43,10 +43,7 @@ export default async function HiringApplicantsPage({
     : undefined
 
   const user = await requireAwsUser()
-  const company = await hiringRepository.getAuthorizedCompany(user.id)
-  if (!company) notFound()
-
-  const jobs = await hiringRepository.listCompanyJobs(user.id, company.id)
+  const jobs = await hiringRepository.listManagedJobs(user.id)
   const job = jobs.find((item) => item.id === jobId)
   if (!job) notFound()
 
@@ -56,7 +53,7 @@ export default async function HiringApplicantsPage({
     <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">{company.name}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">{job.publisherName}</p>
           <h1 className="mt-2 text-3xl font-bold text-navy-950">Applicants · {job.title}</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
             Candidates are ordered by Sea N Shore Match using structured Rank, Vessel experience, credentials, availability and other maritime profile signals.
