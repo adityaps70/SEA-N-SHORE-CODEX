@@ -146,11 +146,13 @@ Current note: personal Creator Pro and Organization Pro publishing now share one
 
 ## Phase 6 — Events migration
 
+Current note: Events now support personal Creator Pro and Organization Pro publishing identities while preserving the responsible human host and all legacy events.
+
 - [x] Free users can discover/join events.
 - [x] Draft/publish policy defined explicitly.
 - [x] Event publishing checks `event.publish` server-side.
 - [x] Event organizer verification is enforced at publish time.
-- [ ] Organization event manager path supported.
+- [x] Organization event manager path supported.
 - [x] Existing hosted events remain editable by their hosts.
 - [x] Attendance flows remain unaffected.
 
@@ -168,7 +170,7 @@ Current note: personal Creator Pro and Organization Pro publishing now share one
 - [x] Add `/plans` with FREE / Creator Pro / Organization Pro.
 - [ ] Keep paid actions visible to Free users with clear PRO treatment rather than silently hiding them.
 - [x] Add upgrade gate for Post Job.
-- [ ] Add upgrade gate for Create/Publish Event.
+- [x] Add upgrade gate for Create/Publish Event.
 - [ ] Add upgrade gate for Create/Publish Course.
 - [x] Explain verification requirement separately from payment requirement.
 - [x] Add plan status to account/settings.
