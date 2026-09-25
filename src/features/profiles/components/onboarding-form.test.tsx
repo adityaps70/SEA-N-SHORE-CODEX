@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProfileActionState } from '../actions'
 
@@ -33,6 +34,28 @@ describe('OnboardingForm persona activation', () => {
     expect(screen.getByRole('button', { name: /^Other/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Professional$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Organisation$/i })).not.toBeInTheDocument()
+  })
+
+  it('supports keyboard activation for persona and intent choices with selected state exposed to assistive technology', async () => {
+    const user = userEvent.setup()
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+
+    const seafarer = screen.getByRole('button', { name: /^SeafarerMaster,/i })
+    seafarer.focus()
+    expect(seafarer).toHaveFocus()
+    await user.keyboard('{Enter}')
+
+    expect(seafarer).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByText('What are you here to do?')).toBeInTheDocument()
+
+    const network = screen.getByRole('button', { name: /^Network$/i })
+    network.focus()
+    expect(network).toHaveFocus()
+    await user.keyboard('{Enter}')
+
+    expect(network).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('textbox', { name: /Username/i })).toHaveAttribute('aria-describedby', 'username-description')
+    expect(screen.getByLabelText('Who can see my contact details?')).toBeInTheDocument()
   })
 
   it('shows intent choices and relevant seafarer fields after selecting Seafarer', () => {
