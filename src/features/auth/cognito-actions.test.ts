@@ -137,6 +137,37 @@ describe('Cognito auth actions', () => {
     expect(api.resendConfirmationCode).toHaveBeenCalledWith('new@example.com')
   })
 
+  it.each(['LimitExceededException', 'TooManyRequestsException'])(
+    'shows a clear retry message when Cognito throttles sign-up with %s',
+    async (code) => {
+      const api = fakeApi()
+      api.signUp.mockRejectedValueOnce(new CognitoApiError(code))
+      const { actions } = setup(api)
+      await expect(
+        actions.signUp(
+          {},
+          form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1!' }),
+        ),
+      ).resolves.toEqual({
+        error: 'Too many sign-up requests. Please wait a moment and try again.',
+      })
+    },
+  )
+
+  it('shows a clear password-policy error when Cognito rejects the sign-up password', async () => {
+    const api = fakeApi()
+    api.signUp.mockRejectedValueOnce(new CognitoApiError('InvalidPasswordException'))
+    const { actions } = setup(api)
+    await expect(
+      actions.signUp(
+        {},
+        form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1!' }),
+      ),
+    ).resolves.toEqual({
+      error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.',
+    })
+  })
+
   it('keeps forgot-password non-enumerating for a missing user', async () => {
     const api = fakeApi()
     api.forgotPassword.mockRejectedValueOnce(new CognitoApiError('UserNotFoundException'))
