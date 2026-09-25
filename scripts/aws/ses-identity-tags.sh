@@ -5,8 +5,8 @@ export AWS_PAGER=""
 
 EXPECTED_ACCOUNT="310356785722"
 AWS_REGION="${AWS_REGION:-ap-south-1}"
-SES_IDENTITY="seaandshore.in"
-SES_IDENTITY_ARN="arn:aws:ses:ap-south-1:310356785722:identity/seaandshore.in"
+SES_IDENTITY="seanshore.in"
+SES_IDENTITY_ARN="arn:aws:ses:ap-south-1:310356785722:identity/seanshore.in"
 BOOTSTRAP_ROLE_ARN="arn:aws:iam::310356785722:role/SeaNShore-Bootstrap-Role"
 ACTION_FILE="scripts/aws/ses-identity-tags-action.txt"
 DESIRED_TAGS='[{"Key":"Environment","Value":"staging"},{"Key":"ManagedBy","Value":"Terraform"},{"Key":"Project","Value":"Sea N Shore"}]'
