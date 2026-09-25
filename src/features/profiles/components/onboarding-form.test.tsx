@@ -34,7 +34,7 @@ describe('OnboardingForm persona activation', () => {
       'Maritime Enthusiast',
       'Other',
     ]) {
-      expect(screen.getByRole('button', { name: label, exact: true })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     }
     expect(screen.queryByRole('button', { name: /^Professional$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Organisation$/i })).not.toBeInTheDocument()
@@ -44,7 +44,7 @@ describe('OnboardingForm persona activation', () => {
     const user = userEvent.setup()
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    const seafarer = screen.getByRole('button', { name: 'Seafarer', exact: true })
+    const seafarer = screen.getByRole('button', { name: 'Seafarer' })
     seafarer.focus()
     expect(seafarer).toHaveFocus()
     await user.keyboard('{Enter}')
@@ -65,7 +65,7 @@ describe('OnboardingForm persona activation', () => {
   it('shows intent choices and relevant seafarer fields after selecting Seafarer', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Seafarer', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
 
     expect(screen.getByText('What are you here to do?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Find jobs/i })).toBeInTheDocument()
@@ -160,7 +160,7 @@ describe('OnboardingForm persona activation', () => {
     })
 
     render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: 'Seafarer', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
     fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
     fireEvent.click(screen.getByRole('button', { name: /^Network$/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
@@ -184,7 +184,7 @@ describe('OnboardingForm persona activation', () => {
     actionMocks.completeActivation.mockRejectedValueOnce(new Error('network unavailable'))
 
     render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: 'Seafarer', exact: true }))
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
     fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
