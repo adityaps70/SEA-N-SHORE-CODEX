@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CAPABILITIES,
+  PLAN_CODES,
+  VERIFICATION_TYPES,
   canUseCapability,
   effectiveCapabilities,
   type AccessContext,
+  type Capability,
+  type OrganizationAccessRole,
+  type PlanCode,
+  type VerificationType,
 } from './policy'
 
 function context(overrides: Partial<AccessContext> = {}): AccessContext {
@@ -130,5 +137,130 @@ describe('central paid capability policy', () => {
     expect(canUseCapability(access, 'course.publish')).toBe(false)
     expect(canUseCapability(access, 'job.publish', { companyId: 'company-1' })).toBe(false)
     expect(canUseCapability(access, 'analytics.view', { companyId: 'company-1' })).toBe(false)
+  })
+})
+
+
+const FREE_CAPABILITIES = new Set<Capability>([
+  'job.apply',
+  'event.attend',
+  'course.enroll',
+])
+
+const PERSONAL_PUBLISH_REQUIREMENTS: Partial<Record<Capability, VerificationType>> = {
+  'job.publish': 'recruiter',
+  'event.publish': 'event_host',
+  'course.publish': 'trainer',
+}
+
+const ORGANIZATION_ROLES: OrganizationAccessRole[] = [
+  'owner',
+  'administrator',
+  'recruiter',
+  'lms_manager',
+  'event_manager',
+  'content_manager',
+  'analyst',
+  'member',
+]
+
+const ORGANIZATION_ROLE_CAPABILITIES: Record<OrganizationAccessRole, readonly Capability[]> = {
+  owner: CAPABILITIES,
+  administrator: CAPABILITIES,
+  recruiter: ['job.publish', 'job.manage_applicants'],
+  lms_manager: ['course.publish', 'course.manage_students'],
+  event_manager: ['event.publish', 'event.manage_attendees'],
+  content_manager: [],
+  analyst: ['analytics.view'],
+  member: [],
+}
+
+const VERIFICATION_COMBINATIONS = VERIFICATION_TYPES.reduce<VerificationType[][]>(
+  (sets, verification) => [
+    ...sets,
+    ...sets.map((set) => [...set, verification]),
+  ],
+  [[]],
+)
+
+function expectedPersonalCapability(
+  plan: PlanCode,
+  verifications: readonly VerificationType[],
+  capability: Capability,
+) {
+  if (FREE_CAPABILITIES.has(capability)) return true
+  if (plan !== 'creator_pro') return false
+
+  const requirement = PERSONAL_PUBLISH_REQUIREMENTS[capability]
+  return Boolean(requirement && verifications.includes(requirement))
+}
+
+function expectedOrganizationCapability(
+  plan: PlanCode,
+  role: OrganizationAccessRole,
+  verified: boolean,
+  capability: Capability,
+) {
+  if (!verified) return false
+  if (FREE_CAPABILITIES.has(capability)) return true
+  if (plan !== 'organization_pro') return false
+
+  return ORGANIZATION_ROLE_CAPABILITIES[role].includes(capability)
+}
+
+describe('central paid capability matrix', () => {
+  it.each(PLAN_CODES)('enforces every personal plan and verification combination for %s', (plan) => {
+    for (const verifications of VERIFICATION_COMBINATIONS) {
+      const access = context({
+        personalPlan: plan,
+        verifications,
+      })
+
+      for (const capability of CAPABILITIES) {
+        expect(canUseCapability(access, capability)).toBe(
+          expectedPersonalCapability(plan, verifications, capability),
+        )
+      }
+    }
+  })
+
+  it.each(PLAN_CODES)('enforces every organization plan, role and verification combination for %s', (plan) => {
+    for (const role of ORGANIZATION_ROLES) {
+      for (const verified of [false, true]) {
+        const access = context({
+          verifications: [...VERIFICATION_TYPES],
+          organizationMemberships: [{
+            companyId: 'company-matrix',
+            plan,
+            role,
+            verified,
+            entitlements: [],
+          }],
+        })
+
+        for (const capability of CAPABILITIES) {
+          expect(canUseCapability(access, capability, { companyId: 'company-matrix' })).toBe(
+            expectedOrganizationCapability(plan, role, verified, capability),
+          )
+        }
+      }
+    }
+  })
+
+  it('keeps organization-scoped grants inside the selected organization role', () => {
+    const access = context({
+      organizationMemberships: [{
+        companyId: 'company-1',
+        plan: 'free',
+        role: 'recruiter',
+        verified: true,
+        entitlements: ['job.publish', 'event.publish', 'analytics.view'],
+      }],
+    })
+
+    expect(canUseCapability(access, 'job.publish', { companyId: 'company-1' })).toBe(true)
+    expect(canUseCapability(access, 'event.publish', { companyId: 'company-1' })).toBe(false)
+    expect(canUseCapability(access, 'analytics.view', { companyId: 'company-1' })).toBe(false)
+    expect(canUseCapability(access, 'job.publish', { companyId: 'company-2' })).toBe(false)
   })
 })
