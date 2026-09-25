@@ -11,3 +11,14 @@ test('feed avatar staging proof preserves the primary failure and uses cleanup-s
   assert.match(source, /if \(primaryError\) throw primaryError/)
   assert.match(source, /if \(cleanupErrors\.length\) throw new Error/)
 })
+
+test('feed avatar staging proof uses current eight-persona onboarding identities', () => {
+  assert.match(source, /E2E_SEAFARER_EMAIL/)
+  assert.match(source, /E2E_SHORE_EMAIL/)
+  assert.match(source, /E2E_ENTHUSIAST_EMAIL/)
+  assert.match(source, /-\(seafarer\|shore\|enthusiast\)@example\\\.com/)
+  assert.doesNotMatch(source, /E2E_PROFESSIONAL_EMAIL/)
+  assert.doesNotMatch(source, /E2E_CUSTOM_EMAIL/)
+  assert.doesNotMatch(source, /E2E_ORGANISATION_EMAIL/)
+  assert.doesNotMatch(source, /professional\|custom\|organisation/)
+})
