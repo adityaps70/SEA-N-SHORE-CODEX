@@ -241,7 +241,7 @@ describe('admin membership repository', () => {
     })).resolves.toEqual({ grantId })
 
     const grant = seen.find((entry) => entry.text.includes('insert into public.entitlement_grants'))
-    expect(grant?.values).toContain('admin')
+    expect(grant?.text).toContain("'admin'")
     expect(grant?.values).toContain('job.publish')
     expect(seen.some((entry) => entry.text.includes('insert into public.audit_events') && entry.values?.includes('entitlement.granted'))).toBe(true)
 
