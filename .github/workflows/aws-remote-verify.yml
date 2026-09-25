@@ -230,6 +230,15 @@ jobs:
           test -n "$COGNITO_USER_POOL_ID"
           test -n "$COGNITO_CLIENT_ID"
 
+          aws cognito-idp describe-user-pool \
+            --region "$AWS_REGION" \
+            --user-pool-id "$COGNITO_USER_POOL_ID" \
+            --output json > /tmp/cognito-user-pool.json
+
+          EMAIL_SENDING_ACCOUNT=$(jq -r '.UserPool.EmailConfiguration.EmailSendingAccount // "COGNITO_DEFAULT"' /tmp/cognito-user-pool.json)
+          EMAIL_SOURCE_CONFIGURED=$(jq -r '((.UserPool.EmailConfiguration.SourceArn // "") | length) > 0' /tmp/cognito-user-pool.json)
+          EMAIL_FROM_CONFIGURED=$(jq -r '((.UserPool.EmailConfiguration.From // "") | length) > 0' /tmp/cognito-user-pool.json)
+
           aws cognito-idp get-provisioned-limit \
             --region "$AWS_REGION" \
             --limit-definition '{"LimitClass":"API_CATEGORY","Attributes":{"Category":"UserCreation"}}' \
@@ -287,6 +296,9 @@ jobs:
           echo "=== COGNITO SIGNUP CAPACITY (READ ONLY) ==="
           echo "WINDOW_START=$START_TIME"
           echo "WINDOW_END=$END_TIME"
+          echo "COGNITO_EMAIL_SENDING_ACCOUNT=$EMAIL_SENDING_ACCOUNT"
+          echo "COGNITO_EMAIL_SOURCE_CONFIGURED=$EMAIL_SOURCE_CONFIGURED"
+          echo "COGNITO_EMAIL_FROM_CONFIGURED=$EMAIL_FROM_CONFIGURED"
           echo "COGNITO_USER_CREATION_PROVISIONED_RPS=$PROVISIONED_RPS"
           echo "COGNITO_USER_CREATION_FREE_RPS=$FREE_RPS"
           echo "COGNITO_SIGNUP_THROTTLES_60M=$SIGNUP_THROTTLES"
