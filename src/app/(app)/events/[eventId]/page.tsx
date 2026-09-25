@@ -145,7 +145,16 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
           <aside className="space-y-4 rounded-2xl border border-mist-100 bg-white p-5 shadow-sm lg:sticky lg:top-24 lg:self-start">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted">Hosted by</p>
-              {event.hostSlug ? <Link href={`/profile/${event.hostSlug}`} className="mt-1 block font-bold text-navy-950 hover:text-teal-700">{event.hostName}</Link> : <p className="mt-1 font-bold text-navy-950">{event.hostName}</p>}
+              {event.publisherType === 'personal' && event.publisherSlug ? (
+                <Link href={`/profile/${event.publisherSlug}`} className="mt-1 block font-bold text-navy-950 hover:text-teal-700">
+                  {event.publisherName}
+                </Link>
+              ) : (
+                <p className="mt-1 font-bold text-navy-950">{event.publisherName}</p>
+              )}
+              {event.publisherType === 'organization' && event.publisherVerified ? (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">Verified organization</p>
+              ) : null}
             </div>
 
             <div className="rounded-xl bg-mist-50 p-3 text-xs leading-5 text-navy-700" aria-live="polite">
