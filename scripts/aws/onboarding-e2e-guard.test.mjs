@@ -76,6 +76,21 @@ test('run-once covers the new eight-persona onboarding model and excludes the re
   assert.doesNotMatch(browserScript, /Search organisation identities/)
 })
 
+test('run-once includes mobile viewport and serious accessibility regression checks', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.match(browserScript, /@axe-core\/playwright/)
+  assert.match(browserScript, /new AxeBuilder\(\{ page \}\)/)
+  assert.match(browserScript, /critical/)
+  assert.match(browserScript, /serious/)
+  assert.match(browserScript, /width:\s*390/)
+  assert.match(browserScript, /height:\s*844/)
+  assert.match(browserScript, /scrollWidth/)
+  assert.match(browserScript, /clientWidth/)
+  assert.match(browserScript, /ONBOARDING_E2E_ACCESSIBILITY_VERIFIED=true/)
+  assert.match(browserScript, /ONBOARDING_E2E_MOBILE_LAYOUT_VERIFIED=true/)
+})
+
 test('run-once performs disposable public sign-up browser journeys and guarded cleanup', () => {
   assert.equal(existsSync(browserScriptPath), true, `${browserScriptPath} must exist`)
   const workflow = readFileSync(workflowPath, 'utf8')
