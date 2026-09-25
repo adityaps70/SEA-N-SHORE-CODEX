@@ -139,9 +139,12 @@ describe('Cognito auth actions', () => {
     expect(api.resendConfirmationCode).toHaveBeenCalledWith('new@example.com')
   })
 
-  it.each(['LimitExceededException', 'TooManyRequestsException'])(
-    'shows a clear retry message when Cognito throttles sign-up with %s',
-    async (code) => {
+  it.each([
+    ['TooManyRequestsException', 'Too many sign-up requests. Please wait a moment and try again.'],
+    ['LimitExceededException', 'Sign-up attempt limit reached. Please try again later.'],
+  ])(
+    'shows the correct safe sign-up limit message for %s',
+    async (code, expectedError) => {
       const api = fakeApi()
       api.signUp.mockRejectedValueOnce(new CognitoApiError(code))
       const { actions } = setup(api)
@@ -150,9 +153,7 @@ describe('Cognito auth actions', () => {
           {},
           form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1!' }),
         ),
-      ).resolves.toEqual({
-        error: 'Too many sign-up requests. Please wait a moment and try again.',
-      })
+      ).resolves.toEqual({ error: expectedError })
     },
   )
 
@@ -170,9 +171,12 @@ describe('Cognito auth actions', () => {
     })
   })
 
-  it.each(['TooManyRequestsException', 'LimitExceededException'])(
-    'maps signup throttling safely and reports only the normalized reason for %s',
-    async (code) => {
+  it.each([
+    ['TooManyRequestsException', 'Too many sign-up requests. Please wait a moment and try again.'],
+    ['LimitExceededException', 'Sign-up attempt limit reached. Please try again later.'],
+  ])(
+    'maps signup limits safely and reports only the normalized reason for %s',
+    async (code, expectedError) => {
       const api = fakeApi()
       api.signUp.mockRejectedValueOnce(new CognitoApiError(code))
       const onCognitoIssue = vi.fn()
@@ -183,9 +187,7 @@ describe('Cognito auth actions', () => {
           {},
           form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1' }),
         ),
-      ).resolves.toEqual({
-        error: 'Too many sign-up requests. Please wait a moment and try again.',
-      })
+      ).resolves.toEqual({ error: expectedError })
 
       expect(onCognitoIssue).toHaveBeenCalledWith({
         operation: 'signUp',
