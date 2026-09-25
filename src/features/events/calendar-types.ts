@@ -52,10 +52,10 @@ export type CalendarEventInput = {
   registrationClosesAt: string | null
 }
 
-export type CalendarEventCreateInput = CalendarEventInput & (
-  | { publisherType: 'personal'; companyId: null }
-  | { publisherType: 'organization'; companyId: string }
-)
+export type CalendarEventCreateInput = CalendarEventInput & {
+  publisherType: CalendarEventPublisherType
+  companyId: string | null
+}
 
 export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
   id: string
