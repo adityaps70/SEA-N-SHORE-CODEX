@@ -6,6 +6,7 @@ import {
   type MaterialLockReason,
   type MaterialReleaseMode,
 } from './lms-material-policy'
+import { coursePublisherNameSql, publishedCourseVisibilitySql } from './course-publication'
 
 type LearnerCourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -246,7 +247,7 @@ export function createLearnerCourseRepository(input: {
          course.course_format,
          course.certificate_enabled,
          course.navigation_mode,
-         application.applicant_name as mentor_name,
+         ${coursePublisherNameSql()} as mentor_name,
          section.id as section_id,
          section.title as section_title,
          section.position as section_position,
@@ -286,14 +287,13 @@ export function createLearnerCourseRepository(input: {
        from public.learning_enrollments enrollment
        inner join public.learning_courses course
          on course.id = enrollment.course_id
-        and course.status = 'published'
-       inner join public.learning_mentors mentor
+       left join public.learning_mentors mentor
          on mentor.id = course.mentor_id
-        and mentor.status = 'active'
-       inner join public.learning_mentor_applications application
+       left join public.learning_mentor_applications application
          on application.id = mentor.application_id
         and application.user_id = mentor.user_id
-        and application.status = 'approved'
+       left join public.companies company
+         on company.id = course.company_id
        left join public.learning_course_sections section
          on section.course_id = course.id
        left join public.learning_lessons lesson
@@ -312,6 +312,7 @@ export function createLearnerCourseRepository(input: {
        where enrollment.learner_id = $1
          and course.slug = $2
          and enrollment.status in ('active', 'completed')
+         and ${publishedCourseVisibilitySql()}
        order by section.position asc, lesson.position asc`,
       [learnerId, slug],
     ) as LearnerCourseRow[]
