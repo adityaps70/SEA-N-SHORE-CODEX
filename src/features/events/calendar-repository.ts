@@ -70,6 +70,10 @@ const EVENT_MANAGER_ACCESS_SQL = `
   )
 `
 
+type EventPublisherScopeRow = QueryResultRow & {
+  company_id: string | null
+}
+
 type EventLockRow = QueryResultRow & {
   id: string
   host_user_id: string
@@ -361,6 +365,19 @@ async function getEvent(eventId: string, viewerId: string) {
   return rows[0] ?? null
 }
 
+async function getManagedEventPublisher(userId: string, eventId: string) {
+  const rows = await query<EventPublisherScopeRow>(`
+    select e.company_id
+    from public.events e
+    where e.id = $2::uuid
+      and ${EVENT_MANAGER_ACCESS_SQL}
+    limit 1
+  `, [userId, eventId])
+
+  const row = rows[0]
+  return row ? { companyId: row.company_id ?? null } : null
+}
+
 async function createEvent(hostUserId: string, input: CalendarEventCreateInput) {
   let companyId: string | null = null
 
@@ -477,6 +494,7 @@ export const calendarEventRepository = {
   listHostedEvents,
   listPastEvents,
   getEvent,
+  getManagedEventPublisher,
   createEvent,
   updateEvent,
   cancelEvent,
