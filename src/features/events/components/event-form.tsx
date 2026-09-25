@@ -305,6 +305,11 @@ export function EventForm(props: Props) {
                               ? 'Event organizer verification must be approved.'
                               : 'The organization must be verified.'}
                           </span>
+                          {option.kind === 'personal' ? (
+                            <Link href="/settings/verifications/event-host" className="text-xs font-bold text-teal-700 hover:underline">
+                              Apply for verification
+                            </Link>
+                          ) : null}
                         </div>
                       ) : null}
 
