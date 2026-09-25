@@ -72,6 +72,13 @@ test('remote verify reports Cognito signup capacity and throttle telemetry witho
   assert.doesNotMatch(workflow, /service-quotas request-service-quota-increase/)
 })
 
+test('remote verify reports live Cognito confirmation email delivery mode', () => {
+  assert.match(workflow, /COGNITO_EMAIL_SENDING_ACCOUNT=/)
+  assert.match(workflow, /COGNITO_EMAIL_SOURCE_CONFIGURED=/)
+  assert.match(workflow, /COGNITO_EMAIL_FROM_CONFIGURED=/)
+  assert.match(workflow, /cognito-idp describe-user-pool/)
+})
+
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
   assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
   assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
