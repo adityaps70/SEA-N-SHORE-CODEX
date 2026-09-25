@@ -109,14 +109,26 @@ describe('central paid capability policy', () => {
     }), 'job.publish', { companyId: 'company-1' })).toBe(false)
   })
 
-  it('denies all paid capabilities when the account is suspended', () => {
+  it('denies every personal, manual and organization capability when the account is suspended', () => {
     const access = context({
       accountActive: false,
       personalPlan: 'creator_pro',
+      personalEntitlements: ['job.publish', 'event.publish', 'course.publish'],
       verifications: ['recruiter', 'trainer', 'event_host'],
+      organizationMemberships: [{
+        companyId: 'company-1',
+        plan: 'organization_pro',
+        role: 'owner',
+        verified: true,
+        entitlements: ['analytics.view', 'job.publish'],
+      }],
     })
 
-    expect(effectiveCapabilities(access)).not.toContain('job.publish')
+    expect(effectiveCapabilities(access)).toEqual([])
     expect(canUseCapability(access, 'job.publish')).toBe(false)
+    expect(canUseCapability(access, 'event.publish')).toBe(false)
+    expect(canUseCapability(access, 'course.publish')).toBe(false)
+    expect(canUseCapability(access, 'job.publish', { companyId: 'company-1' })).toBe(false)
+    expect(canUseCapability(access, 'analytics.view', { companyId: 'company-1' })).toBe(false)
   })
 })
