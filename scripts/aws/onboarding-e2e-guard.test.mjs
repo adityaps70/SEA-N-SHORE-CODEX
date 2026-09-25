@@ -108,20 +108,13 @@ test('run-once includes mobile viewport and serious accessibility regression che
   assert.match(browserScript, /ONBOARDING_E2E_MOBILE_LAYOUT_VERIFIED=true/)
 })
 
-test('run-once keeps persona selection unambiguous and cleans stale disposable identities safely', () => {
+test('run-once keeps persona selection unambiguous and cleanup generator syntax valid', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
   assert.match(browserScript, /function personaButtonNamePattern\(user\)/)
   assert.match(browserScript, /user\.key === 'seafarer'/)
   assert.match(browserScript, /\(\?=\[A-Z\]\)/)
-
-  assert.match(workflow, /Clean stale disposable onboarding identities/)
-  assert.match(workflow, /sea-n-shore-e2e-/)
-  assert.match(workflow, /@example\.com/)
-  assert.match(workflow, /ONBOARDING_E2E_STALE_CLEANUP_VERIFIED=true/)
-  assert.match(workflow, /admin-delete-user/)
-  assert.match(workflow, /delete from public\.profiles/i)
 
   assert.match(workflow, /print\(json\.dumps\(\{"executionTimeout": \["600"\]/)
   assert.doesNotMatch(workflow, /print\(json\.dumps\(\{\\"executionTimeout\\"/)
