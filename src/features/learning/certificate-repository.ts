@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { coursePublisherNameSql } from './course-publication'
 
 export type CertificateQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type CertificateTransaction = <T>(work: (query: CertificateQuery) => Promise<T>) => Promise<T>
@@ -113,17 +114,19 @@ export async function issueCertificateForCompletedEnrollmentWithQuery(
        enrollment.learner_id,
        learner.full_name as learner_name,
        course.title as course_title,
-       application.applicant_name as mentor_name,
+       ${coursePublisherNameSql()} as mentor_name,
        enrollment.completed_at
      from public.learning_enrollments enrollment
      inner join public.learning_courses course
        on course.id = enrollment.course_id
      inner join public.profiles learner
        on learner.id = enrollment.learner_id
-     inner join public.learning_mentors mentor
+     left join public.learning_mentors mentor
        on mentor.id = course.mentor_id
-     inner join public.learning_mentor_applications application
+     left join public.learning_mentor_applications application
        on application.id = mentor.application_id
+     left join public.companies company
+       on company.id = course.company_id
      where enrollment.id = $1
        and enrollment.status = 'completed'
        and enrollment.completed_at is not null
