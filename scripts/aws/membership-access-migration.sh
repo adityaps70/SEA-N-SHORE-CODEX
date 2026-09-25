@@ -73,13 +73,13 @@ FOUNDATION_COUNT="$(read_count "SELECT count(*)::bigint FROM information_schema.
 shape() {
   local COLUMNS TABLES ROLES
   COLUMNS="$(read_count "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema='public' AND table_name='profiles' AND column_name IN ('persona','profile_intents','community_relationship','institution_name','specialization')")"
-  TABLES="$(read_count "SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('plan_entitlements','account_subscriptions','feature_verifications','entitlement_grants')")"
+  TABLES="$(read_count "SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('plan_entitlements','account_subscriptions','feature_verifications','entitlement_grants','legacy_organization_conversions')")"
   ROLES="$(read_count "SELECT count(*)::bigint FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname='public' AND t.typname='company_member_role' AND e.enumlabel IN ('lms_manager','event_manager','content_manager','analyst')")"
   printf '%s/%s/%s\n' "$COLUMNS" "$TABLES" "$ROLES"
 }
 
 BEFORE="$(shape)"
-COMPLETE="5/4/4"
+COMPLETE="5/5/4"
 EMPTY="0/0/0"
 echo "MEMBERSHIP_ACCESS_MIGRATION_SHAPE_BEFORE=$BEFORE"
 
