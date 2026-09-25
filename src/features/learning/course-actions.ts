@@ -7,11 +7,16 @@ import { requireCapability } from '@/features/access/server'
 import {
   CourseSubmissionReadinessError,
   courseRepository,
+  type CourseCreateInput,
   type CourseDraftInput,
 } from './course-repository'
 import { verifyLearningMediaObject } from './media'
 
 const courseIdSchema = z.string().uuid()
+const coursePublisherSchema = z.discriminatedUnion('publisherType', [
+  z.object({ publisherType: z.literal('personal'), companyId: z.null() }),
+  z.object({ publisherType: z.literal('organization'), companyId: z.string().uuid() }),
+])
 const courseCategories = new Set([
   'Deck',
   'Engine',
@@ -145,7 +150,8 @@ function readinessErrorCopy(error: CourseSubmissionReadinessError) {
 function mutationError(error: unknown) {
   if (error instanceof CourseSubmissionReadinessError) return readinessErrorCopy(error)
   if (error instanceof Error) {
-    if (error.message === 'mentor_required') return 'Approved mentor access is required to manage courses.'
+    if (error.message === 'mentor_required') return 'Approved mentor access is required to manage personal courses.'
+    if (error.message === 'course_forbidden') return 'Approved Owner, Administrator or LMS Manager access is required to manage courses for this organization.'
     if (error.message === 'capability_required') return 'Creator Pro or Organization Pro with verified course publishing access is required to submit courses for publication.'
     if (error.message === 'course_not_found') return 'We could not find this course in your Mentor Studio.'
     if (error.message === 'course_edit_forbidden') return 'This course cannot be edited while it is in review or published.'
@@ -160,7 +166,7 @@ function refreshStudio() {
   revalidatePath('/learn/studio/courses')
 }
 
-export async function createCourseDraft(input: CourseDraftInput): Promise<CourseCreateActionResult> {
+export async function createCourseDraft(input: CourseDraftInput | CourseCreateInput): Promise<CourseCreateActionResult> {
   const parsed = courseDraftSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
   if (parsed.data.thumbnailPath || parsed.data.trailerPath) {
@@ -169,7 +175,15 @@ export async function createCourseDraft(input: CourseDraftInput): Promise<Course
 
   try {
     const user = await requireAwsUser()
-    const result = await courseRepository.createCourse(user.id, parsed.data)
+    const publisher = 'publisherType' in input
+      ? coursePublisherSchema.safeParse({ publisherType: input.publisherType, companyId: input.companyId })
+      : null
+    if (publisher && !publisher.success) return { ok: false, error: 'Choose a valid course publishing identity.' }
+
+    const result = await courseRepository.createCourse(
+      user.id,
+      publisher?.success ? { ...parsed.data, ...publisher.data } : parsed.data,
+    )
     refreshStudio()
     return { ok: true, courseId: result.courseId }
   } catch (error) {
