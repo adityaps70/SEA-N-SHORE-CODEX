@@ -7,7 +7,6 @@ import { CourseSubmitControl } from '@/features/learning/components/course-submi
 import { MentorCurriculumEditor } from '@/features/learning/components/mentor-curriculum-editor'
 import { courseRepository, type CourseDraftInput } from '@/features/learning/course-repository'
 import { mentorMaterialRepository } from '@/features/learning/mentor-material-repository'
-import { learningRepository } from '@/features/learning/repository'
 
 export default async function EditMentorCoursePage({
   params,
@@ -16,12 +15,6 @@ export default async function EditMentorCoursePage({
 }) {
   const { courseId } = await params
   const user = await requireAwsUser()
-  const mentorState = await learningRepository.getMentorApplicationState(user.id)
-
-  if (mentorState.kind !== 'mentor' || mentorState.mentorStatus !== 'active') {
-    return redirect('/learn/teach')
-  }
-
   const course = await courseRepository.getOwnedCourse(user.id, courseId)
   if (!course) return notFound()
 
@@ -81,7 +74,7 @@ export default async function EditMentorCoursePage({
       ) : null}
 
       <div className="mt-5">
-        <CourseForm initialValue={initialValue} courseId={course.id} />
+        <CourseForm initialValue={initialValue} courseId={course.id} publisherName={course.publisherName} />
       </div>
 
       <div className="mt-5">
