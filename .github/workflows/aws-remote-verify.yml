@@ -236,6 +236,7 @@ jobs:
           EXPECTED_PROFILE_DISCOVERY_MESSAGE='Complete your professional profile to discover the network'
           EXPECTED_PROFILE_ACTION_MESSAGE='Complete your professional profile before using this action'
           EXPECTED_COGNITO_THROTTLE_MESSAGE='Too many Cognito requests. Please try again later'
+          COGNITO_ISSUE_PATTERN='\\[cognito_issue\\]'
           EXPECTED_DESTINATION_STREAM_MESSAGE='The destination stream closed early'
           IGNORED_MALFORMED_SERVER_REFERENCE_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ec "$MALFORMED_SERVER_REFERENCE_PATTERN" \
@@ -248,6 +249,15 @@ jobs:
             || true)
           IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ec "$EXPECTED_ADMIN_FORBIDDEN_PATTERN" \
+            || true)
+          COGNITO_ISSUE_COUNT=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
+            | grep -Ec "$COGNITO_ISSUE_PATTERN" \
+            || true)
+          COGNITO_ISSUE_REASONS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
+            | grep -E "$COGNITO_ISSUE_PATTERN" \
+            | sed -nE "s/.*reason: '([^']+)'.*/\\1/p" \
+            | sort -u \
+            | paste -sd, - \
             || true)
           MATCHES=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ev "$MALFORMED_SERVER_REFERENCE_PATTERN" \
@@ -271,6 +281,8 @@ jobs:
           echo "IGNORED_STALE_SERVER_ACTION_REQUESTS=$IGNORED_STALE_SERVER_ACTION_REQUESTS"
           echo "IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS=$IGNORED_EXPECTED_AUTH_REQUIRED_REQUESTS"
           echo "IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS=$IGNORED_EXPECTED_ADMIN_FORBIDDEN_REQUESTS"
+          echo "COGNITO_ISSUE_COUNT=$COGNITO_ISSUE_COUNT"
+          echo "COGNITO_ISSUE_REASONS=${COGNITO_ISSUE_REASONS:-none}"
           echo "STRONG_RUNTIME_ERROR_MATCHES=$MATCH_COUNT"
 
           if [ "$MATCH_COUNT" -gt 1 ]; then
