@@ -76,6 +76,23 @@ test('run-once covers the new eight-persona onboarding model and excludes the re
   assert.doesNotMatch(browserScript, /Search organisation identities/)
 })
 
+test('persona selection uses exact accessible names so Seafarer does not collide with Seafarer Family', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.match(
+    browserScript,
+    /getByRole\('button',\s*\{\s*name:\s*user\.label,\s*exact:\s*true\s*\}\)/s,
+  )
+  assert.doesNotMatch(browserScript, /name:\s*new RegExp\('\^' \+ escapeRegExp\(user\.label\)\)/)
+})
+
+test('cleanup command generator emits valid Python JSON syntax even after a failed journey', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.ok(workflow.includes('print(json.dumps({"executionTimeout": ["600"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))'))
+  assert.doesNotMatch(workflow, /print\(json\.dumps\(\{\\\"executionTimeout/)
+})
+
 test('run-once includes mobile viewport and serious accessibility regression checks', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
