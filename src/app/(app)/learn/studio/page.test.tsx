@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getMentorApplicationState: vi.fn(),
   listOwnedCourses: vi.fn(),
   listForMentor: vi.fn(),
+  listUserOrganizations: vi.fn(),
   redirect: vi.fn(),
 }))
 
@@ -20,6 +21,9 @@ vi.mock('@/features/learning/course-repository', () => ({
 vi.mock('@/features/learning/assignment-grading-repository', () => ({
   assignmentGradingRepository: { listForMentor: mocks.listForMentor },
 }))
+vi.mock('@/features/organizations/repository', () => ({
+  organizationRepository: { listUserOrganizations: mocks.listUserOrganizations },
+}))
 
 import MentorStudioPage from './page'
 
@@ -29,6 +33,7 @@ describe('/learn/studio', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'mentor@example.com' })
+    mocks.listUserOrganizations.mockResolvedValue([])
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
       applicationId: '11111111-1111-4111-8111-111111111111',
@@ -154,4 +159,25 @@ describe('/learn/studio', () => {
     expect(mocks.listOwnedCourses).not.toHaveBeenCalled()
     expect(mocks.listForMentor).not.toHaveBeenCalled()
   })
+
+  it('opens Studio for an approved organization LMS manager without personal mentor access', async () => {
+    mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
+    mocks.listUserOrganizations.mockResolvedValue([{
+      id: 'company-1',
+      slug: 'sea-academy',
+      name: 'Sea Academy',
+      verified: true,
+      role: 'lms_manager',
+    }])
+    mocks.listOwnedCourses.mockResolvedValue([])
+    mocks.listForMentor.mockResolvedValue([])
+
+    render(await MentorStudioPage())
+
+    expect(screen.getByRole('heading', { name: 'Learning Studio' })).toBeInTheDocument()
+    expect(screen.getByText('Organization LMS workspace')).toBeInTheDocument()
+    expect(mocks.listOwnedCourses).toHaveBeenCalledWith('user-1')
+    expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
 })
