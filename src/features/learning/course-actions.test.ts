@@ -101,6 +101,26 @@ describe('learning course server actions', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/studio/courses')
   })
 
+
+
+  it('creates an organization course draft with an explicit organization publisher', async () => {
+    const companyId = '44444444-4444-4444-8444-444444444444'
+
+    await expect(createCourseDraft({
+      ...validInput(),
+      publisherType: 'organization',
+      companyId,
+    })).resolves.toEqual({ ok: true, courseId })
+
+    expect(mocks.createCourse).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      publisherType: 'organization',
+      companyId,
+      slug: 'sire-2-readiness-for-tanker-officers',
+      title: 'SIRE 2.0 Readiness for Tanker Officers',
+    }))
+    expect(mocks.requireCapability).not.toHaveBeenCalled()
+  })
+
   it('rejects an invalid course id before authentication on update', async () => {
     const result = await updateCourseDraft('not-a-uuid', validInput())
 
