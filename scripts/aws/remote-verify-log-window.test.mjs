@@ -56,6 +56,22 @@ test('CloudWatch runtime review reports safe Cognito issue reasons without treat
   assert.match(workflow, /COGNITO_ISSUE_PATTERN='\\\\\[cognito_issue\\\\\]'/)
 })
 
+test('remote verify reports Cognito signup capacity and throttle telemetry without mutating limits', () => {
+  assert.match(workflow, /COGNITO_USER_CREATION_PROVISIONED_RPS=/)
+  assert.match(workflow, /COGNITO_USER_CREATION_FREE_RPS=/)
+  assert.match(workflow, /COGNITO_SIGNUP_THROTTLES_60M=/)
+  assert.match(workflow, /COGNITO_SIGNUP_SUCCESSES_60M=/)
+  assert.match(workflow, /COGNITO_SIGNUP_ATTEMPTS_60M=/)
+  assert.match(workflow, /COGNITO_USER_CREATION_CALLS_60M=/)
+  assert.match(workflow, /COGNITO_USER_CREATION_THROTTLES_60M=/)
+  assert.match(workflow, /cognito-idp get-provisioned-limit/)
+  assert.match(workflow, /--metric-name SignUpThrottles/)
+  assert.match(workflow, /--metric-name SignUpSuccesses/)
+  assert.match(workflow, /--namespace AWS\/Usage/)
+  assert.doesNotMatch(workflow, /cognito-idp update-provisioned-limit/)
+  assert.doesNotMatch(workflow, /service-quotas request-service-quota-increase/)
+})
+
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
   assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
   assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
