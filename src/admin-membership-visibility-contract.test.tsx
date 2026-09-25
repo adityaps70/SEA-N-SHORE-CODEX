@@ -38,7 +38,7 @@ describe('admin membership visibility and controls', () => {
 
     expect(repository).toContain("'entitlement.granted'")
     expect(repository).toContain("'entitlement.revoked'")
-    expect(repository).toContain("source = 'admin'")
+    expect(repository).toContain("values ($1, $2, 'admin'")
     expect(repository).toContain("source in ('admin', 'legacy_migration')")
     expect(policy).toContain('ADMIN_PERSONAL_GRANTABLE_CAPABILITIES')
     expect(policy).toContain('ADMIN_ORGANIZATION_GRANTABLE_CAPABILITIES')
