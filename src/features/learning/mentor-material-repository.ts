@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { canMentorEditCourse, type CourseStatus } from './course-workflow'
+import { courseManagerAccessSql } from './course-access'
 import type { MentorQuizDefinition } from './mentor-curriculum-repository'
 
 export type MaterialType =
@@ -128,7 +129,7 @@ type Row = QueryResultRow & {
 
 type IdRow = QueryResultRow & { id: string }
 type NextPositionRow = QueryResultRow & { next_position: string | number }
-type LockedCourseRow = QueryResultRow & { id: string; status: string; mentor_id: string }
+type LockedCourseRow = QueryResultRow & { id: string; status: string; mentor_id: string | null }
 
 function runtimeTransaction<T>(work: (query: Query) => Promise<T>) {
   return databaseTransaction(async (client: DatabaseQueryClient) => work(async (text, values) => {
@@ -156,8 +157,8 @@ async function requireEditableCourse(query: Query, actorId: string, courseId: st
   const rows = await query(
     `select course.id, course.status, course.mentor_id
      from public.learning_courses course
-     inner join public.learning_mentors mentor on mentor.id = course.mentor_id
-     where course.id = $1 and mentor.user_id = $2 and mentor.status = 'active'
+     where course.id = $1
+       and ${courseManagerAccessSql('course', '$2')}
      for update`,
     [courseId, actorId],
   ) as LockedCourseRow[]
@@ -316,7 +317,6 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
          question.id as question_id, question.prompt as question_prompt, question.position as question_position,
          option.id as option_id, option.label as option_label, option.position as option_position, option.is_correct as option_is_correct
        from public.learning_courses course
-       inner join public.learning_mentors mentor on mentor.id = course.mentor_id
        left join public.learning_course_sections section on section.course_id = course.id
        left join public.learning_lessons lesson on lesson.section_id = section.id
        left join public.learning_assignments assignment on assignment.lesson_id = lesson.id
@@ -324,7 +324,7 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
        left join public.learning_quizzes quiz on quiz.lesson_id = lesson.id
        left join public.learning_quiz_questions question on question.quiz_id = quiz.id
        left join public.learning_quiz_options option on option.question_id = question.id
-       where mentor.user_id = $1 and mentor.status = 'active' and course.id = $2
+       where course.id = $2 and ${courseManagerAccessSql('course', '$1')}
        order by section.position asc nulls last, section.id asc nulls last,
                 lesson.position asc nulls last, lesson.id asc nulls last,
                 question.position asc nulls last, question.id asc nulls last,
@@ -413,10 +413,11 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
     return transaction(async (query) => {
       await requireEditableCourse(query, actorId, courseId)
       const rows = await query(
-        `update public.learning_courses set navigation_mode = $3, updated_at = now()
-         where id = $1 and mentor_id = (select id from public.learning_mentors where user_id = $2 and status = 'active' limit 1)
+        `update public.learning_courses
+         set navigation_mode = $2, updated_at = now()
+         where id = $1
          returning id`,
-        [courseId, actorId, navigationMode],
+        [courseId, navigationMode],
       ) as IdRow[]
       if (!rows[0]) throw new Error('course_update_failed')
       return true
