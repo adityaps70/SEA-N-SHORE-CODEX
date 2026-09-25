@@ -43,6 +43,12 @@ test('seanshore.in AWS bootstrap has a guarded create-only release path', async 
   assert.match(script, /SEANSHORE_DOMAIN_BOOTSTRAP_PLAN_VERIFIED=true/)
   assert.match(script, /SEANSHORE_DOMAIN_BOOTSTRAP_APPLY_VERIFIED=true/)
   assert.match(script, /ROUTE53_NAME_SERVER=/)
+  assert.match(script, /PUBLIC_NAME_SERVER=/)
+  assert.match(script, /SEANSHORE_DOMAIN_LIVE_ZONE_ID=/)
+  assert.ok(
+    script.indexOf('SEANSHORE_DOMAIN_LIVE_ZONE_ID=') <
+      script.indexOf('SEANSHORE_DOMAIN_BOOTSTRAP_PLAN_ONLY_NO_APPLY'),
+  )
   assert.match(script, /ACM_VALIDATION_RECORD=/)
   assert.doesNotMatch(script, /change-resource-record-sets/)
   assert.doesNotMatch(script, /update-distribution/)
