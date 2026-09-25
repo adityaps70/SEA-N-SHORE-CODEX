@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { canMentorEditCourse, type CourseStatus } from './course-workflow'
+import { courseManagerAccessSql } from './course-access'
 
 type OwnedCourseRow = QueryResultRow & { id: string; status: string }
 type ReferenceRow = QueryResultRow & { referenced: boolean }
@@ -22,11 +23,8 @@ export function createLearningMediaRepository() {
     const rows = await databaseQuery<OwnedCourseRow>(
       `select course.id, course.status
        from public.learning_courses course
-       inner join public.learning_mentors mentor
-         on mentor.id = course.mentor_id
        where course.id = $1
-         and mentor.user_id = $2
-         and mentor.status = 'active'
+         and ${courseManagerAccessSql('course', '$2')}
        limit 1`,
       [courseId, actorId],
     )
@@ -46,11 +44,8 @@ export function createLearningMediaRepository() {
       `select exists (
          select 1
          from public.learning_courses course
-         inner join public.learning_mentors mentor
-           on mentor.id = course.mentor_id
          where course.id = $2
-           and mentor.user_id = $1
-           and mentor.status = 'active'
+           and ${courseManagerAccessSql('course', '$1')}
            and (
              course.thumbnail_path = $3
              or course.trailer_path = $3
