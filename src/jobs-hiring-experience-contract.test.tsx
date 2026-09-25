@@ -7,32 +7,34 @@ function source(path: string) {
 }
 
 describe('premium hiring workspace contract', () => {
-  it('provides a recruiter overview with company trust context and hiring funnel metrics', () => {
+  it('provides a unified recruiter overview with personal and organization hiring funnel metrics', () => {
     const page = source('src/app/(app)/hiring/page.tsx')
     const subnav = source('src/features/jobs/components/hiring-subnav.tsx')
 
-    expect(page).toContain('getDashboardMetrics')
+    expect(page).toContain('getManagedDashboardMetrics')
     expect(page).toContain('Active Jobs')
     expect(page).toContain('Applicants')
     expect(page).toContain('Shortlisted')
     expect(page).toContain('Interviews')
     expect(page).toContain('Post a job')
-    expect(page).toContain('Verified')
+    expect(page).toContain('Publishing setup required')
     expect(subnav).toContain('/hiring/jobs')
     expect(subnav).toContain('/hiring/company')
   })
 
-  it('directs users without hiring access into organization verification', () => {
+  it('keeps upgrade and verification paths visible without making organization verification the only hiring route', () => {
     const page = source('src/app/(app)/hiring/page.tsx')
 
+    expect(page).toContain('/plans')
     expect(page).toContain('/hiring/organization')
-    expect(page).toContain('Verify your organization')
-    expect(page).toContain('Track verification')
+    expect(page).toContain('Verification and paid plan access are checked separately')
+    expect(page).not.toContain('HiringAccessRequired')
   })
 
-  it('lists company vacancies with applicant and edit workflows', () => {
+  it('lists personal and organization vacancies with applicant and edit workflows', () => {
     const page = source('src/app/(app)/hiring/jobs/page.tsx')
-    expect(page).toContain('listCompanyJobs')
+    expect(page).toContain('listManagedJobs')
+    expect(page).toContain('publisherName')
     expect(page).toContain('View applicants')
     expect(page).toContain('/applicants')
     expect(page).toContain('/edit')
@@ -61,8 +63,12 @@ describe('premium hiring workspace contract', () => {
     const createPage = source('src/app/(app)/hiring/jobs/new/page.tsx')
     const editPage = source('src/app/(app)/hiring/jobs/[jobId]/edit/page.tsx')
 
-    expect(createPage).toContain('getAuthorizedCompany')
+    expect(createPage).toContain('getAccessContext')
+    expect(createPage).toContain('listAuthorizedCompanies')
+    expect(createPage).toContain('getPersonalPublisher')
+    expect(createPage).toContain('buildHiringPublisherOptions')
     expect(createPage).toContain('HiringJobForm')
+    expect(editPage).toContain('listManagedJobs')
     expect(editPage).toContain('getEditableJob')
     expect(editPage).toContain('HiringJobForm')
   })
@@ -111,14 +117,16 @@ describe('premium hiring workspace contract', () => {
     expect(page).not.toContain('verified_by =')
   })
 
-  it('shows Start Hiring in app headers only when the signed-in user has authorized organization hiring access', () => {
+  it('shows Start Hiring when the signed-in user has either organization hiring access or approved personal recruiter verification', () => {
     const layout = source('src/app/(app)/layout.tsx')
     const desktopHeader = source('src/components/navigation/app-header.tsx')
     const mobileHeader = source('src/components/navigation/mobile-app-header.tsx')
     const repository = source('src/features/jobs/hiring-repository.ts')
 
     expect(layout).toContain('hiringRepository.getAuthorizedCompany(user.id)')
-    expect(layout).toContain('canStartHiring={Boolean(authorizedCompany)}')
+    expect(layout).toContain('getAccessContext(user.id)')
+    expect(layout).toContain("access?.verifications.includes('recruiter')")
+    expect(layout).toContain('canStartHiring={canStartHiring}')
     expect(desktopHeader).toContain('canStartHiring')
     expect(desktopHeader).toContain('Start Hiring')
     expect(desktopHeader).toContain('href="/hiring"')
