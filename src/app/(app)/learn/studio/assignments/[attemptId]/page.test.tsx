@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getMentorApplicationState: vi.fn(),
   getForMentor: vi.fn(),
+  listUserOrganizations: vi.fn(),
   createMediaReadUrl: vi.fn(),
   redirect: vi.fn(),
   notFound: vi.fn(),
@@ -18,6 +19,9 @@ vi.mock('@/features/learning/repository', () => ({
 }))
 vi.mock('@/features/learning/assignment-grading-repository', () => ({
   assignmentGradingRepository: { getForMentor: mocks.getForMentor },
+}))
+vi.mock('@/features/organizations/repository', () => ({
+  organizationRepository: { listUserOrganizations: mocks.listUserOrganizations },
 }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
 vi.mock('@/features/learning/components/assignment-grading-control', () => ({
@@ -71,6 +75,7 @@ describe('/learn/studio/assignments/[attemptId]', () => {
     vi.clearAllMocks()
     mocks.capturedGradingProps = null
     mocks.requireAwsUser.mockResolvedValue({ id: 'mentor-user-1' })
+    mocks.listUserOrganizations.mockResolvedValue([])
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
       applicationId: '11111111-1111-4111-8111-111111111111',
@@ -126,12 +131,20 @@ describe('/learn/studio/assignments/[attemptId]', () => {
     expect(mocks.capturedGradingProps).toBeNull()
   })
 
-  it('returns users without active mentor access to Teach before reading assignment data', async () => {
+  it('allows an organization LMS manager to review an assignment without personal mentor access', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
+    mocks.listUserOrganizations.mockResolvedValue([{
+      id: 'company-1',
+      slug: 'sea-academy',
+      name: 'Sea Academy',
+      verified: true,
+      role: 'lms_manager',
+    }])
 
-    await MentorAssignmentReviewPage({ params: Promise.resolve({ attemptId }) })
+    render(await MentorAssignmentReviewPage({ params: Promise.resolve({ attemptId }) }))
 
-    expect(mocks.redirect).toHaveBeenCalledWith('/learn/teach')
-    expect(mocks.getForMentor).not.toHaveBeenCalled()
+    expect(screen.getByTestId('assignment-grading-control')).toBeInTheDocument()
+    expect(mocks.getForMentor).toHaveBeenCalledWith('mentor-user-1', attemptId)
+    expect(mocks.redirect).not.toHaveBeenCalled()
   })
 })
