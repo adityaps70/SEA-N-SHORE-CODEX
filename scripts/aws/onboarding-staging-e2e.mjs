@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { chromium, expect } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
 
 const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
@@ -8,6 +9,7 @@ const runId = process.env.GITHUB_RUN_ID
 const personaSpecs = [
   {
     key: 'other',
+    mobile: true,
     label: 'Other',
     intent: 'Host events',
     fields: [
@@ -58,6 +60,7 @@ const personaSpecs = [
   },
   {
     key: 'student',
+    mobile: true,
     label: 'Student / Cadet',
     intent: 'Learn',
     fields: [
@@ -67,6 +70,7 @@ const personaSpecs = [
   },
   {
     key: 'family',
+    mobile: true,
     label: 'Seafarer Family',
     intent: 'Community',
     fields: [
@@ -76,6 +80,7 @@ const personaSpecs = [
   },
   {
     key: 'enthusiast',
+    mobile: true,
     label: 'Maritime Enthusiast',
     intent: 'Attend events',
     fields: [
@@ -130,6 +135,33 @@ function escapeRegExp(value) {
 }
 
 const browser = await chromium.launch()
+
+async function verifyAccessibility(page, label) {
+  const results = await new AxeBuilder({ page }).analyze()
+  const blocking = results.violations
+    .filter((violation) => violation.impact === 'critical' || violation.impact === 'serious')
+    .map((violation) => ({
+      id: violation.id,
+      impact: violation.impact,
+      help: violation.help,
+      targets: violation.nodes.slice(0, 3).flatMap((node) => node.target),
+    }))
+
+  assert.deepEqual(blocking, [], label + ' has serious or critical accessibility violations')
+  console.log('ONBOARDING_E2E_ACCESSIBILITY_VERIFIED=true')
+}
+
+async function verifyMobileLayout(page, label) {
+  const dimensions = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }))
+  assert.ok(
+    dimensions.scrollWidth <= dimensions.clientWidth + 1,
+    label + ' onboarding overflows horizontally: ' + JSON.stringify(dimensions),
+  )
+  console.log('ONBOARDING_E2E_MOBILE_LAYOUT_VERIFIED=true')
+}
 
 async function signUp(user) {
   const context = await browser.newContext()
@@ -317,7 +349,7 @@ async function verifyUsernameEditLifecycle(page, user, initialUsername, takenUse
 }
 
 async function completePersona(user, takenUsername) {
-  const context = await browser.newContext()
+  const context = await browser.newContext(user.mobile ? { viewport: { width: 390, height: 844 } } : {})
   const page = await context.newPage()
   await signIn(page, user)
 
@@ -335,6 +367,9 @@ async function completePersona(user, takenUsername) {
   for (const [label, value] of user.fields) {
     await page.getByLabel(label, { exact: true }).fill(value)
   }
+
+  await verifyAccessibility(page, user.label)
+  if (user.mobile) await verifyMobileLayout(page, user.label)
 
   const username = e2eUsername(user.key)
   if (user.verifyUsernameLifecycle) {
