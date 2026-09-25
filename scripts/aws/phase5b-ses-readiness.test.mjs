@@ -7,7 +7,7 @@ const scriptUrl = new URL('./phase5b-ses-readiness.sh', import.meta.url)
 test('Phase 5B readiness checks SES production access, identity, DKIM, DNS and Cognito', () => {
   const script = fs.readFileSync(scriptUrl, 'utf8')
 
-  assert.match(script, /seaandshore\.in/)
+  assert.match(script, /seanshore\.in/)
   assert.match(script, /ap-south-1/)
   assert.match(script, /sesv2 get-account/)
   assert.match(script, /sesv2 get-email-identity/)
