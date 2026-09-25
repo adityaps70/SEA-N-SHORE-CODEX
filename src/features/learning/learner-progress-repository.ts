@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { issueCertificateForCompletedEnrollmentWithQuery } from './certificate-repository'
+import { publishedCourseVisibilitySql } from './course-publication'
 
 export type LearnerProgressQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type ProgressTransaction = <T>(work: (query: LearnerProgressQuery) => Promise<T>) => Promise<T>
@@ -154,14 +155,13 @@ export async function completeLearningLessonWithQuery(
      from public.learning_enrollments enrollment
      inner join public.learning_courses course
        on course.id = enrollment.course_id
-      and course.status = 'published'
-     inner join public.learning_mentors mentor
+     left join public.learning_mentors mentor
        on mentor.id = course.mentor_id
-      and mentor.status = 'active'
-     inner join public.learning_mentor_applications application
+     left join public.learning_mentor_applications application
        on application.id = mentor.application_id
       and application.user_id = mentor.user_id
-      and application.status = 'approved'
+     left join public.companies company
+       on company.id = course.company_id
      inner join public.learning_course_sections section
        on section.course_id = course.id
      inner join public.learning_lessons lesson
@@ -170,6 +170,7 @@ export async function completeLearningLessonWithQuery(
        and course.slug = $2
        and lesson.id = $3
        and enrollment.status in ('active', 'completed')
+       and ${publishedCourseVisibilitySql()}
        ${manualRuleSql}
        ${accessPolicySql}
      for update of enrollment`,
@@ -257,6 +258,7 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
            and lesson.id = $3
            and lesson.lesson_type in ('video', 'audio')
            and enrollment.status in ('active', 'completed')
+           and ${publishedCourseVisibilitySql()}
            ${accessPolicySql}
          for update of enrollment`,
         [learnerId, slug, lessonId],
