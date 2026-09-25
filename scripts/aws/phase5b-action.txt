@@ -1,1 +1,1 @@
-discover
+verify-ready
