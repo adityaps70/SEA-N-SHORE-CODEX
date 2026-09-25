@@ -11,35 +11,16 @@ import {
   type PlanCode,
   type VerificationType,
 } from '@/features/access/policy'
+import {
+  ADMIN_ORGANIZATION_GRANTABLE_CAPABILITIES,
+  ADMIN_PERSONAL_GRANTABLE_CAPABILITIES,
+  type AdminEntitlementGrantInput,
+  type AdminEntitlementSubjectType,
+} from './membership-policy'
 
 type AdminMembershipQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type AdminMembershipTransaction = <T>(work: (query: AdminMembershipQuery) => Promise<T>) => Promise<T>
 type LoadAccessContext = (profileId: string) => Promise<AccessContext>
-
-export const ADMIN_PERSONAL_GRANTABLE_CAPABILITIES = [
-  'job.publish',
-  'event.publish',
-  'course.publish',
-] as const satisfies readonly Capability[]
-
-export const ADMIN_ORGANIZATION_GRANTABLE_CAPABILITIES = [
-  'job.publish',
-  'event.publish',
-  'course.publish',
-  'job.manage_applicants',
-  'event.manage_attendees',
-  'course.manage_students',
-  'analytics.view',
-] as const satisfies readonly Capability[]
-
-export type AdminEntitlementSubjectType = 'profile' | 'company'
-
-export type AdminEntitlementGrantInput = {
-  subjectType: AdminEntitlementSubjectType
-  subjectId: string
-  capability: Capability
-  reason: string
-}
 
 type UserProfileRow = QueryResultRow & {
   profile_id: string
