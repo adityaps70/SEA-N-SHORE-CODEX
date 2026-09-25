@@ -40,6 +40,8 @@ describe('learning enrollment repository', () => {
     expect(insert?.text).toContain("course.status = 'published'")
     expect(insert?.text).toContain("mentor.status = 'active'")
     expect(insert?.text).toContain("application.status = 'approved'")
+    expect(insert?.text).toContain('public.companies company')
+    expect(insert?.text).toContain('company.is_verified = true')
     expect(insert?.text).toContain("course.access_type = 'free'")
     expect(insert?.text).toContain('course.price_minor = 0')
     expect(insert?.text).toContain('on conflict (course_id, learner_id) do nothing')
@@ -164,6 +166,64 @@ describe('learning enrollment repository', () => {
     expect(seen[0]?.text).toContain('enrollment.learner_id = $1')
     expect(seen[0]?.text).toContain("enrollment.status in ('active', 'completed')")
     expect(seen[0]?.text).toContain('public.learning_progress')
+    expect(seen[0]?.text).toContain('public.companies company')
+    expect(seen[0]?.text).toContain('company.is_verified = true')
     expect(seen[0]?.text).toContain('order by enrollment.updated_at desc, enrollment.id desc')
   })
+
+  it('allows free enrollment into a verified organization-published course', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createEnrollmentRepository({
+      query: async (text: string, values?: readonly unknown[]) => {
+        seen.push({ text, values })
+        if (text.includes('insert into public.learning_enrollments')) return [enrollmentRow]
+        return []
+      },
+    })
+
+    await expect(repository.enrollFreeCourse(learnerId, courseId)).resolves.toMatchObject({
+      enrollmentId,
+      status: 'active',
+      alreadyEnrolled: false,
+    })
+
+    expect(seen[0]?.text).toContain('course.company_id')
+    expect(seen[0]?.text).toContain('public.companies company')
+    expect(seen[0]?.text).toContain('company.is_verified = true')
+  })
+
+  it('lists an organization course using the organization name in the legacy mentorName display field', async () => {
+    const repository = createEnrollmentRepository({
+      query: async () => [{
+        enrollment_id: enrollmentId,
+        enrollment_status: 'active',
+        enrolled_at: new Date('2026-09-14T12:00:00.000Z'),
+        completed_at: null,
+        course_id: courseId,
+        slug: 'bridge-resource-management',
+        title: 'Bridge Resource Management',
+        subtitle: null,
+        category: 'Leadership',
+        level: 'advanced',
+        language: 'English',
+        thumbnail_path: null,
+        course_format: 'recorded',
+        certificate_enabled: true,
+        mentor_name: 'Sea Academy',
+        certificate_id: null,
+        certificate_verification_code: null,
+        total_lessons: '5',
+        completed_lessons: '1',
+      }],
+    })
+
+    await expect(repository.listLearnerEnrollments(learnerId)).resolves.toEqual([
+      expect.objectContaining({
+        courseId,
+        mentorName: 'Sea Academy',
+        progressPercent: 20,
+      }),
+    ])
+  })
+
 })
