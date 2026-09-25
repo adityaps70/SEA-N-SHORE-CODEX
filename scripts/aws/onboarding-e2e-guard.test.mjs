@@ -83,11 +83,13 @@ test('persona selection uses exact accessible labels without Seafarer collisions
   assert.match(browserScript, /getByRole\('button', \{\s*name:\s*user\.label,\s*exact:\s*true\s*\}\)/)
 })
 
-test('cleanup command generator emits valid Python JSON syntax even after a failed journey', () => {
+test('onboarding e2e audits persistence without destructive inline cleanup', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
 
-  assert.ok(workflow.includes('print(json.dumps({"executionTimeout": ["600"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))'))
-  assert.doesNotMatch(workflow, /print\(json\.dumps\(\{\\\"executionTimeout/)
+  assert.match(workflow, /Audit persona persistence through SSM/)
+  assert.match(workflow, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
+  assert.doesNotMatch(workflow, /admin-delete-user/)
+  assert.doesNotMatch(workflow, /delete from public\.profiles/i)
 })
 
 test('run-once includes mobile viewport and serious accessibility regression checks', () => {
@@ -105,17 +107,14 @@ test('run-once includes mobile viewport and serious accessibility regression che
   assert.match(browserScript, /ONBOARDING_E2E_MOBILE_LAYOUT_VERIFIED=true/)
 })
 
-test('run-once keeps persona selection unambiguous and cleanup generator syntax valid', () => {
+test('run-once keeps persona selection unambiguous and persistence audit syntax valid', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
   assert.match(browserScript, /name:\s*user\.label/)
   assert.match(browserScript, /exact:\s*true/)
-
-  assert.match(workflow, /print\(json\.dumps\(\{"executionTimeout": \["600"\]/)
-  assert.doesNotMatch(workflow, /print\(json\.dumps\(\{\\"executionTimeout\\"/)
-  assert.ok(workflow.includes('\n          """\n          print(json.dumps({"executionTimeout": ["600"]'))
-  assert.ok(!workflow.includes('\n          \\\"\\\"\\\"\n          print(json.dumps({"executionTimeout": ["600"]'))
+  assert.match(workflow, /ONBOARDING_E2E_PERSISTENCE_SKIPPED=true/)
+  assert.doesNotMatch(workflow, /ONBOARDING_E2E_CLEANUP_VERIFIED=true/)
 })
 
 test('run-once performs disposable public sign-up browser journeys and guarded cleanup', () => {
@@ -126,11 +125,11 @@ test('run-once performs disposable public sign-up browser journeys and guarded c
   assert.match(workflow, /npx playwright install --with-deps chromium/)
   assert.match(workflow, /node scripts\/aws\/onboarding-staging-e2e\.mjs/)
   assert.match(workflow, /admin-confirm-sign-up/)
-  assert.match(workflow, /admin-delete-user/)
-  assert.match(workflow, /delete from public\.profiles/i)
+  assert.doesNotMatch(workflow, /admin-delete-user/)
+  assert.doesNotMatch(workflow, /delete from public\.profiles/i)
   assert.match(workflow, /sea-n-shore-e2e-/)
   assert.match(workflow, /example\.com/)
-  assert.match(workflow, /ONBOARDING_E2E_CLEANUP_VERIFIED=true/)
+  assert.match(workflow, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
 
   assert.match(browserScript, /\/auth\/sign-up/)
   assert.match(browserScript, /Create account/)
@@ -209,5 +208,5 @@ test('signup diagnostics ignore the empty Next.js route announcer and cleanup au
   assert.match(workflow, /id:\s*journeys/)
   assert.match(workflow, /AUDIT_EXPECTED/)
   assert.match(workflow, /steps\.journeys\.outcome/)
-  assert.match(workflow, /ONBOARDING_E2E_CLEANUP_VERIFIED=true/)
+  assert.match(workflow, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
 })
