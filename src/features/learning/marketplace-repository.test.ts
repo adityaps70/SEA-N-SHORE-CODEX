@@ -63,11 +63,15 @@ describe('learning marketplace repository', () => {
     }])
 
     const query = seen[0]
-    expect(query?.text).toContain('application.applicant_name as mentor_name')
+    expect(query?.text).toContain('case')
+    expect(query?.text).toContain('company.name')
+    expect(query?.text).toContain('as mentor_name')
     expect(query?.text).toContain("course.status = 'published'")
     expect(query?.text).toContain('course.is_discoverable = true')
     expect(query?.text).toContain("mentor.status = 'active'")
     expect(query?.text).toContain("application.status = 'approved'")
+    expect(query?.text).toContain('public.companies company')
+    expect(query?.text).toContain('company.is_verified = true')
     expect(query?.text).not.toContain("course.access_type = 'free'")
     expect(query?.text).not.toContain('course.price_minor = 0')
     expect(query?.text).toContain('order by course.published_at desc, course.id desc')
@@ -88,7 +92,8 @@ describe('learning marketplace repository', () => {
     expect(seen[0]?.text).toContain('course.category = $1')
     expect(seen[0]?.text).toContain('course.title ilike $2')
     expect(seen[0]?.text).toContain('course.description ilike $2')
-    expect(seen[0]?.text).toContain('application.applicant_name ilike $2')
+    expect(seen[0]?.text).toContain('company.name')
+    expect(seen[0]?.text).toContain('ilike $2')
     expect(seen[0]?.text).toContain("course.status = 'published'")
     expect(seen[0]?.text).toContain('course.is_discoverable = true')
   })
@@ -115,6 +120,7 @@ describe('learning marketplace repository', () => {
     expect(seen[0]?.text).toContain("course.status = 'published'")
     expect(seen[0]?.text).toContain("mentor.status = 'active'")
     expect(seen[0]?.text).toContain("application.status = 'approved'")
+    expect(seen[0]?.text).toContain('company.is_verified = true')
     expect(seen[0]?.text).not.toContain('course.is_discoverable = true')
     expect(seen[0]?.text).not.toContain("course.access_type = 'free'")
     expect(seen[0]?.text).not.toContain('course.price_minor = 0')
@@ -125,4 +131,23 @@ describe('learning marketplace repository', () => {
 
     await expect(repository.getPublishedCourseBySlug('missing-course')).resolves.toBeNull()
   })
+
+  it('lists a verified organization-published course with the organization as publisher', async () => {
+    const repository = createMarketplaceRepository({
+      query: async () => [{
+        ...publishedRow,
+        mentor_id: '99999999-9999-4999-8999-999999999999',
+        mentor_name: 'Sea Academy',
+      }],
+    })
+
+    await expect(repository.listPublishedCourses()).resolves.toEqual([
+      expect.objectContaining({
+        id: courseId,
+        mentorName: 'Sea Academy',
+        title: 'SIRE 2.0 Readiness for Tanker Officers',
+      }),
+    ])
+  })
+
 })
