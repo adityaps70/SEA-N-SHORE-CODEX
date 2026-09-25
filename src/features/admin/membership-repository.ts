@@ -264,7 +264,7 @@ export function createAdminMembershipRepository(input: {
            actor.full_name as actor_name
          from public.audit_events audit
          join public.feature_verifications verification
-           on verification.id = audit.target_id
+           on verification.id::text = audit.target_id
          left join public.profiles actor on actor.id = audit.actor_id
          where verification.profile_id = $1
            and audit.target_type = 'feature_verification'
