@@ -207,6 +207,94 @@ jobs:
           fi
           echo "No legacy Supabase env vars are present in task definition $ECS_TASK_DEFINITION."
 
+      - name: Report Cognito signup capacity and throttling
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          COGNITO_USER_POOL_ID=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '
+            .containerDefinitions[]
+            | select(.name == $NAME)
+            | (.environment // [])[]
+            | select(.name == "AWS_COGNITO_USER_POOL_ID")
+            | .value
+          ' /tmp/task-definition.json)
+          COGNITO_CLIENT_ID=$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '
+            .containerDefinitions[]
+            | select(.name == $NAME)
+            | (.environment // [])[]
+            | select(.name == "AWS_COGNITO_CLIENT_ID")
+            | .value
+          ' /tmp/task-definition.json)
+
+          test -n "$COGNITO_USER_POOL_ID"
+          test -n "$COGNITO_CLIENT_ID"
+
+          aws cognito-idp get-provisioned-limit \
+            --region "$AWS_REGION" \
+            --limit-definition '{"LimitClass":"API_CATEGORY","Attributes":{"Category":"UserCreation"}}' \
+            --output json > /tmp/cognito-user-creation-limit.json
+
+          PROVISIONED_RPS=$(jq -r '.Limit.ProvisionedLimitValue' /tmp/cognito-user-creation-limit.json)
+          FREE_RPS=$(jq -r '.Limit.FreeLimitValue' /tmp/cognito-user-creation-limit.json)
+          test "$PROVISIONED_RPS" != "null"
+          test "$FREE_RPS" != "null"
+
+          END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          START_TIME=$(date -u -d '60 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+
+          aws cloudwatch get-metric-statistics \
+            --region "$AWS_REGION" \
+            --namespace AWS/Cognito \
+            --metric-name SignUpThrottles \
+            --dimensions "Name=UserPool,Value=$COGNITO_USER_POOL_ID" "Name=UserPoolClient,Value=$COGNITO_CLIENT_ID" \
+            --start-time "$START_TIME" \
+            --end-time "$END_TIME" \
+            --period 60 \
+            --statistics Sum \
+            --output json > /tmp/cognito-signup-throttles.json
+
+          aws cloudwatch get-metric-statistics \
+            --region "$AWS_REGION" \
+            --namespace AWS/Cognito \
+            --metric-name SignUpSuccesses \
+            --dimensions "Name=UserPool,Value=$COGNITO_USER_POOL_ID" "Name=UserPoolClient,Value=$COGNITO_CLIENT_ID" \
+            --start-time "$START_TIME" \
+            --end-time "$END_TIME" \
+            --period 60 \
+            --statistics Sum SampleCount \
+            --output json > /tmp/cognito-signup-successes.json
+
+          for METRIC in CallCount ThrottleCount; do
+            aws cloudwatch get-metric-statistics \
+              --region "$AWS_REGION" \
+              --namespace AWS/Usage \
+              --metric-name "$METRIC" \
+              --dimensions "Name=Service,Value=Cognito user pool" "Name=Type,Value=API" "Name=Resource,Value=UserCreation" \
+              --start-time "$START_TIME" \
+              --end-time "$END_TIME" \
+              --period 60 \
+              --statistics Sum \
+              --output json > "/tmp/cognito-user-creation-${METRIC}.json"
+          done
+
+          SIGNUP_THROTTLES=$(jq '[.Datapoints[]?.Sum // 0] | add // 0' /tmp/cognito-signup-throttles.json)
+          SIGNUP_SUCCESSES=$(jq '[.Datapoints[]?.Sum // 0] | add // 0' /tmp/cognito-signup-successes.json)
+          SIGNUP_ATTEMPTS=$(jq '[.Datapoints[]?.SampleCount // 0] | add // 0' /tmp/cognito-signup-successes.json)
+          USER_CREATION_CALLS=$(jq '[.Datapoints[]?.Sum // 0] | add // 0' /tmp/cognito-user-creation-CallCount.json)
+          USER_CREATION_THROTTLES=$(jq '[.Datapoints[]?.Sum // 0] | add // 0' /tmp/cognito-user-creation-ThrottleCount.json)
+
+          echo "=== COGNITO SIGNUP CAPACITY (READ ONLY) ==="
+          echo "WINDOW_START=$START_TIME"
+          echo "WINDOW_END=$END_TIME"
+          echo "COGNITO_USER_CREATION_PROVISIONED_RPS=$PROVISIONED_RPS"
+          echo "COGNITO_USER_CREATION_FREE_RPS=$FREE_RPS"
+          echo "COGNITO_SIGNUP_THROTTLES_60M=$SIGNUP_THROTTLES"
+          echo "COGNITO_SIGNUP_SUCCESSES_60M=$SIGNUP_SUCCESSES"
+          echo "COGNITO_SIGNUP_ATTEMPTS_60M=$SIGNUP_ATTEMPTS"
+          echo "COGNITO_USER_CREATION_CALLS_60M=$USER_CREATION_CALLS"
+          echo "COGNITO_USER_CREATION_THROTTLES_60M=$USER_CREATION_THROTTLES"
+
       - name: Review current deployment CloudWatch strong runtime errors
         run: |
           set -euo pipefail
