@@ -326,6 +326,23 @@ create table if not exists public.feature_verifications (
 );
 -- statement-breakpoint
 
+alter table public.feature_verifications
+  add column if not exists application_payload jsonb not null default '{}'::jsonb,
+  add column if not exists submitted_at timestamptz;
+-- statement-breakpoint
+
+update public.feature_verifications
+set submitted_at = coalesce(submitted_at, created_at)
+where submitted_at is null;
+-- statement-breakpoint
+
+alter table public.feature_verifications
+  drop constraint if exists feature_verifications_payload_object_check,
+  add constraint feature_verifications_payload_object_check check (
+    jsonb_typeof(application_payload) = 'object'
+  );
+-- statement-breakpoint
+
 create index if not exists feature_verifications_admin_queue_idx
   on public.feature_verifications (verification_type, status, updated_at asc, id asc);
 -- statement-breakpoint
