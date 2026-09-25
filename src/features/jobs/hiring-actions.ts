@@ -50,7 +50,16 @@ const jobFieldsSchema = z.object({
   }
 })
 
-const createJobSchema = z.object({ companyId: uuidSchema }).and(jobFieldsSchema)
+const createJobSchema = z.union([
+  z.object({
+    publisherType: z.literal('personal'),
+    companyId: z.null(),
+  }).and(jobFieldsSchema),
+  z.object({
+    publisherType: z.literal('organization'),
+    companyId: uuidSchema,
+  }).and(jobFieldsSchema),
+])
 const updateJobSchema = jobFieldsSchema
 const applicationStatusSchema = z.enum(JOB_APPLICATION_STATUSES)
 const statusNoteSchema = z.string().trim().max(1000).nullable()
@@ -147,7 +156,11 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
 
   try {
     const user = await requireAwsUser()
-    await requireCapability(user.id, 'job.publish', { companyId: parsed.data.companyId })
+    if (parsed.data.publisherType === 'personal') {
+      await requireCapability(user.id, 'job.publish')
+    } else {
+      await requireCapability(user.id, 'job.publish', { companyId: parsed.data.companyId })
+    }
     const jobId = await hiringRepository.createJob(user.id, parsed.data)
     await flagAutomatedJobModeration(jobId, moderation)
     refreshJobMutation(jobId)
