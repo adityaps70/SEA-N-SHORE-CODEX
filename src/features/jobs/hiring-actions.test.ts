@@ -44,6 +44,7 @@ const applicationId = '33333333-3333-4333-8333-333333333333'
 
 function createInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
   return {
+    publisherType: 'organization',
     companyId,
     title: 'Chief Officer',
     domain: 'sea',
@@ -75,8 +76,9 @@ function createInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
 
 function updateInput(overrides: Partial<HiringJobUpdateInput> = {}): HiringJobUpdateInput {
   const input = createInput()
-  const { companyId: _ignored, ...rest } = input
-  void _ignored
+  const { companyId: _companyId, publisherType: _publisherType, ...rest } = input
+  void _companyId
+  void _publisherType
   return { ...rest, ...overrides }
 }
 
@@ -127,6 +129,19 @@ describe('hiring server actions', () => {
   it('requires the central job publishing capability for the selected organization', async () => {
     await expect(createHiringJob(createInput())).resolves.toEqual({ ok: true, jobId })
     expect(mocks.requireCapability).toHaveBeenCalledWith('recruiter-1', 'job.publish', { companyId })
+  })
+
+  it('requires personal Creator Pro capability when publishing as the recruiter', async () => {
+    await expect(createHiringJob(createInput({
+      publisherType: 'personal',
+      companyId: null,
+    }))).resolves.toEqual({ ok: true, jobId })
+
+    expect(mocks.requireCapability).toHaveBeenCalledWith('recruiter-1', 'job.publish')
+    expect(mocks.createJob).toHaveBeenCalledWith(
+      'recruiter-1',
+      expect.objectContaining({ publisherType: 'personal', companyId: null }),
+    )
   })
 
   it('fails closed when paid or verified job publishing access is missing', async () => {
