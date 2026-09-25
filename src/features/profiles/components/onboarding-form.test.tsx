@@ -24,14 +24,18 @@ describe('OnboardingForm persona activation', () => {
   it('starts with the human persona choices instead of Professional and Organisation roots', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    expect(screen.getByRole('button', { name: /^SeafarerMaster,/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Shore Professional/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Recruiter \/ HR/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Trainer \/ Instructor/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Student \/ Cadet/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Seafarer Family/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Maritime Enthusiast/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Other/i })).toBeInTheDocument()
+    for (const label of [
+      'Seafarer',
+      'Shore Professional',
+      'Recruiter / HR',
+      'Trainer / Instructor',
+      'Student / Cadet',
+      'Seafarer Family',
+      'Maritime Enthusiast',
+      'Other',
+    ]) {
+      expect(screen.getByRole('button', { name: label, exact: true })).toBeInTheDocument()
+    }
     expect(screen.queryByRole('button', { name: /^Professional$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Organisation$/i })).not.toBeInTheDocument()
   })
@@ -40,7 +44,7 @@ describe('OnboardingForm persona activation', () => {
     const user = userEvent.setup()
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    const seafarer = screen.getByRole('button', { name: /^SeafarerMaster,/i })
+    const seafarer = screen.getByRole('button', { name: 'Seafarer', exact: true })
     seafarer.focus()
     expect(seafarer).toHaveFocus()
     await user.keyboard('{Enter}')
@@ -61,7 +65,7 @@ describe('OnboardingForm persona activation', () => {
   it('shows intent choices and relevant seafarer fields after selecting Seafarer', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
-    fireEvent.click(screen.getByRole('button', { name: /^SeafarerMaster,/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer', exact: true }))
 
     expect(screen.getByText('What are you here to do?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Find jobs/i })).toBeInTheDocument()
@@ -156,7 +160,7 @@ describe('OnboardingForm persona activation', () => {
     })
 
     render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: /^SeafarerMaster,/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer', exact: true }))
     fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
     fireEvent.click(screen.getByRole('button', { name: /^Network$/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
@@ -180,7 +184,7 @@ describe('OnboardingForm persona activation', () => {
     actionMocks.completeActivation.mockRejectedValueOnce(new Error('network unavailable'))
 
     render(<OnboardingForm initialFullName="Asha Singh" />)
-    fireEvent.click(screen.getByRole('button', { name: /^SeafarerMaster,/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer', exact: true }))
     fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
     fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Asha Updated' } })
     fireEvent.change(screen.getByLabelText('Location'), { target: { value: 'Goa' } })
