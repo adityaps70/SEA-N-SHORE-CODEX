@@ -1247,7 +1247,6 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     getPersonalPublisher,
     getManagedDashboardMetrics,
     getDashboardMetrics,
-    getManagedDashboardMetrics,
     listCompanyJobs,
     listManagedJobs,
     getEditableJob,
