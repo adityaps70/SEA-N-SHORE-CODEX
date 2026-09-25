@@ -252,4 +252,51 @@ describe('organization approval repository', () => {
     }])
   })
 
+
+  it('lists all approved organization memberships for publisher selection', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createOrganizationRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [
+          {
+            company_id: 'company-1',
+            company_slug: 'oceanic',
+            company_name: 'Oceanic Shipping',
+            company_verified: true,
+            member_role: 'event_manager',
+          },
+          {
+            company_id: 'company-2',
+            company_slug: 'academy',
+            company_name: 'Sea Academy',
+            company_verified: false,
+            member_role: 'lms_manager',
+          },
+        ]
+      },
+    })
+
+    await expect(repository.listUserOrganizations(actorId)).resolves.toEqual([
+      {
+        id: 'company-1',
+        slug: 'oceanic',
+        name: 'Oceanic Shipping',
+        verified: true,
+        role: 'event_manager',
+      },
+      {
+        id: 'company-2',
+        slug: 'academy',
+        name: 'Sea Academy',
+        verified: false,
+        role: 'lms_manager',
+      },
+    ])
+
+    expect(seen[0]?.text).toContain('public.company_members')
+    expect(seen[0]?.text).toContain('cm.approved_at is not null')
+    expect(seen[0]?.values).toEqual([actorId])
+  })
+
 })
