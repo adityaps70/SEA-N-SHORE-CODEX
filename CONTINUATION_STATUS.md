@@ -186,6 +186,14 @@ Payment, verification and organization role are independent concepts.
 - Prices and payment provider have intentionally not been invented.
 - No fake checkout is shown.
 
+### Organization billing management
+- `/settings/billing` lists organization billing-management links only when the member's effective organization access includes `billing.manage`.
+- `/settings/billing/organizations/[companyId]` rechecks `billing.manage` server-side before showing any organization billing state.
+- The organization billing view is provider-neutral and read-only: current plan, subscription status, billing-provider label, billing period and cancellation state.
+- Provider customer/subscription secrets are not selected for this user-facing view.
+- Pricing, currency/tax behavior, payment provider and checkout remain intentionally unimplemented rather than being invented.
+- Organization billing integrated CI passed: 359 test files / 1,712 tests, Docker, Terraform validations/guards, execution contract and Remote Verify.
+
 ### Database foundation
 Added migration:
 `infra/aws/database/migrations/0032_membership_access_foundation.sql`
@@ -232,18 +240,17 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Organization billing-management entry for authorized roles.
-2. Pricing decision, currency/tax behavior and payment-provider selection.
-3. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
-4. Existing-user persona backfill where deterministic.
-5. Exhaustive plan × verification × organization-role authorization tests and launch regression.
-6. Full staging migration, deploy and E2E only through guarded one-shot execution.
+1. Pricing decision, currency/tax behavior and payment-provider selection.
+2. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+3. Existing-user persona backfill where deterministic.
+4. Exhaustive plan × verification × organization-role authorization tests and launch regression.
+5. Full staging migration, deploy and E2E only through guarded one-shot execution.
 
 ## Exact next action
 
-Continue with **Phase 8: organization billing-management entry for authorized roles**, using TDD. Add a safe Organization Billing surface that is visible only to members with `billing.manage` for that organization, shows the current provider-neutral organization plan/subscription state, and does not invent pricing, checkout or provider behavior.
+Continue with **Phase 11: deterministic existing-user persona backfill**, using TDD. Infer `profiles.persona` only from exact legacy identity/profile values where the mapping is unambiguous, only when `persona is null`, and leave ambiguous accounts untouched for progressive prompting. Never overwrite an explicit/new persona.
 
-Jobs, Events, LMS, independent Recruiter/Event Host verification applications and Phase 10 admin membership controls are complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
+Jobs, Events, LMS, independent Recruiter/Event Host verification applications, Phase 10 admin membership controls and organization billing management are complete in code and CI. Pricing/provider-specific billing remains intentionally blocked on product decisions. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
 
 ## New-chat handoff prompt
 
