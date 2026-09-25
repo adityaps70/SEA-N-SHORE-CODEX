@@ -175,6 +175,8 @@ Current note: Personal Creator Pro trainers and Organization Pro LMS Managers no
 
 ## Phase 8 — Paid-plan UX
 
+Current note: Provider-neutral organization billing management is implemented for members whose effective organization access includes `billing.manage`. The user-facing billing route rechecks the organization capability server-side, shows current plan/subscription metadata only, excludes provider secrets, and intentionally shows no pricing or checkout until those decisions are approved. Integrated CI passed with 359 test files / 1,712 tests.
+
 - [x] Add `/plans` with FREE / Creator Pro / Organization Pro.
 - [x] Keep paid actions visible to Free users with clear PRO treatment rather than silently hiding them.
 - [x] Add upgrade gate for Post Job.
@@ -182,7 +184,7 @@ Current note: Personal Creator Pro trainers and Organization Pro LMS Managers no
 - [x] Add upgrade gate for Create/Publish Course.
 - [x] Explain verification requirement separately from payment requirement.
 - [x] Add plan status to account/settings.
-- [ ] Add organization billing-management entry for authorized roles.
+- [x] Add organization billing-management entry for authorized roles.
 
 ## Phase 9 — Billing integration
 
