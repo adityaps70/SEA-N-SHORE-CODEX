@@ -46,14 +46,16 @@ function form(values: Record<string, string>) {
   return data
 }
 
-function setup(api = fakeApi(), cookies = fakeCookies()) {
+function setup(api = fakeApi(), cookies = fakeCookies(), onCognitoIssue = vi.fn()) {
   return {
     api,
     cookies,
+    onCognitoIssue,
     actions: createCognitoAuthActions({
       api,
       cookieStore: cookies.store,
       siteUrl: 'https://staging.example.com',
+      onCognitoIssue,
     }),
   }
 }
@@ -166,6 +168,49 @@ describe('Cognito auth actions', () => {
     ).resolves.toEqual({
       error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.',
     })
+  })
+
+  it.each(['TooManyRequestsException', 'LimitExceededException'])(
+    'maps signup throttling safely and reports only the normalized reason for %s',
+    async (code) => {
+      const api = fakeApi()
+      api.signUp.mockRejectedValueOnce(new CognitoApiError(code))
+      const onCognitoIssue = vi.fn()
+      const { actions } = setup(api, fakeCookies(), onCognitoIssue)
+
+      await expect(
+        actions.signUp(
+          {},
+          form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1' }),
+        ),
+      ).resolves.toEqual({ error: 'Too many sign-up attempts. Please try again shortly.' })
+
+      expect(onCognitoIssue).toHaveBeenCalledWith({
+        operation: 'signUp',
+        reason: code.replace(/Exception$/, ''),
+      })
+      expect(JSON.stringify(onCognitoIssue.mock.calls)).not.toContain('new@example.com')
+    },
+  )
+
+  it('reports an unexpected signup Cognito code without exposing submitted identity data', async () => {
+    const api = fakeApi()
+    api.signUp.mockRejectedValueOnce(new CognitoApiError('InvalidParameterException'))
+    const onCognitoIssue = vi.fn()
+    const { actions } = setup(api, fakeCookies(), onCognitoIssue)
+
+    await expect(
+      actions.signUp(
+        {},
+        form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1' }),
+      ),
+    ).resolves.toEqual({ error: 'We could not create your account. Please try again.' })
+
+    expect(onCognitoIssue).toHaveBeenCalledWith({
+      operation: 'signUp',
+      reason: 'InvalidParameter',
+    })
+    expect(JSON.stringify(onCognitoIssue.mock.calls)).not.toContain('new@example.com')
   })
 
   it('keeps forgot-password non-enumerating for a missing user', async () => {
