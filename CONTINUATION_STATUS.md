@@ -88,10 +88,17 @@ Payment, verification and organization role are independent concepts.
 - billing management
 
 ### Jobs
-- Job creation now checks central `job.publish` server-side for the selected organization.
-- Existing company/recruiter authorization remains in place.
-- Legacy verified hiring organizations receive narrow grandfather grants in the migration.
-- Independent Creator Pro recruiter publishing is **not yet implemented**; current job creation is still company-based.
+- Job publishing now supports two explicit publisher identities: personal recruiter and organization workspace.
+- Personal publishing requires approved recruiter verification plus personal `job.publish` entitlement (Creator Pro or an applicable grant).
+- Organization publishing requires the selected organization membership/verification plus organization-scoped `job.publish` entitlement.
+- Added reusable `buildHiringPublisherOptions` policy and a visible **Publish as** selector.
+- Free/unverified identities remain visible with separate `upgrade_required` or `verification_required` blockers instead of silently disappearing.
+- Hiring overview, vacancy list and metrics now combine personally published and organization-published jobs.
+- Personal recruiter vacancies support edit, applicant review, pipeline status updates and recruiter notes without a company membership.
+- Publisher identity is locked after job creation; editing cannot move a vacancy between personal and organization identities.
+- Global Start Hiring access now recognizes approved personal recruiters as well as authorized hiring organizations.
+- Existing company/recruiter authorization and legacy verified organization access remain compatible.
+- Phase 5 integrated verification passed: Docker build, Terraform validations/guards and full application suite (344 test files / 1,617 tests).
 
 ### Events
 - Draft creation remains available.
@@ -189,11 +196,11 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Independent Creator Pro recruiter job publishing and a reusable “Publish as” identity selector.
-2. Organization Event Manager and LMS Manager authoring contexts.
+1. Organization Event Manager publishing context and reusable event Publish-as flow.
+2. Organization LMS Manager authoring/publishing context.
 3. New-user recruiter and event-host verification application flows; trainer can continue using the existing mentor/trainer review flow.
 4. Admin views for persona, plan, capabilities, verification and entitlement history.
-5. Paid-feature upgrade UI at the exact Post Job / Publish Event / Submit Course moments.
+5. Paid-feature upgrade UI at Publish Event and Submit Course; Post Job upgrade/verification blockers are now implemented.
 6. Pricing decision, currency/tax behavior and payment-provider selection.
 7. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
 8. Existing-user persona backfill where deterministic.
@@ -201,9 +208,9 @@ Use the master checklist as the authoritative list. Highest-priority unfinished 
 
 ## Exact next action
 
-Continue with **Phase 5: independent Creator Pro recruiter job publishing and a reusable Publish-as selector**, using TDD. The legacy conversion head passed full AWS Infrastructure CI and AWS Remote Verify.
+Continue with **Phase 6: Organization Event Manager publishing context**, using TDD and the same identity/verification/entitlement separation established for Jobs. Then continue to the Organization LMS Manager authoring context.
 
-Do not apply the membership migration or deploy new schema-dependent application code until CI is green and the one-shot staging migration/deploy sequence is explicitly armed.
+Phase 5 Jobs is complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
 
 ## New-chat handoff prompt
 
