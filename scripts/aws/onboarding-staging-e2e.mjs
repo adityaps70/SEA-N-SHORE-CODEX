@@ -5,6 +5,8 @@ import AxeBuilder from '@axe-core/playwright'
 const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
 const runId = process.env.GITHUB_RUN_ID
+const SIGNUP_THROTTLE_MESSAGE = 'Too many sign-up requests. Please wait a moment and try again.'
+const SIGNUP_THROTTLE_RETRY_DELAYS_MS = [5_000, 15_000, 30_000]
 
 const personaSpecs = [
   {
@@ -182,30 +184,43 @@ async function signUp(user) {
     if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
   })
 
-  await page.goto(siteUrl + '/auth/sign-up', { waitUntil: 'networkidle' })
-  await page.getByLabel('Full name').fill(user.fullName)
-  await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
-  await page.getByRole('button', { name: 'Create account' }).click()
+  try {
+    for (let attempt = 0; attempt <= SIGNUP_THROTTLE_RETRY_DELAYS_MS.length; attempt += 1) {
+      await page.goto(siteUrl + '/auth/sign-up', { waitUntil: 'networkidle' })
+      await page.getByLabel('Full name').fill(user.fullName)
+      await page.getByLabel('Email').fill(user.email)
+      await page.getByLabel('Password').fill(user.password)
+      await page.getByRole('button', { name: 'Create account' }).click()
 
-  const authError = page.locator('p[role="alert"]')
-  const authStatus = page.locator('p[role="status"]')
-  const outcome = await Promise.race([
-    page.waitForURL((url) => url.pathname === '/auth/sign-up' && url.searchParams.get('confirm') === '1', { timeout: 30_000 }).then(() => ({ kind: 'confirm' })),
-    authError.waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'error', text: await authError.innerText() })),
-    authStatus.waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'status', text: await authStatus.innerText() })),
-  ]).catch(() => null)
+      const authError = page.locator('p[role="alert"]')
+      const authStatus = page.locator('p[role="status"]')
+      const outcome = await Promise.race([
+        page.waitForURL((url) => url.pathname === '/auth/sign-up' && url.searchParams.get('confirm') === '1', { timeout: 30_000 }).then(() => ({ kind: 'confirm' })),
+        authError.waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'error', text: await authError.innerText() })),
+        authStatus.waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'status', text: await authStatus.innerText() })),
+      ]).catch(() => null)
 
-  if (!outcome || outcome.kind !== 'confirm') {
-    const safeText = outcome?.text?.trim() || 'no rendered auth status'
-    const posts = postObservations.length ? JSON.stringify(postObservations) : 'none'
-    const failures = requestFailures.length ? JSON.stringify(requestFailures) : 'none'
-    const consoles = consoleErrors.length ? JSON.stringify(consoleErrors) : 'none'
-    throw new Error('Public sign-up did not reach confirmation. path=' + new URL(page.url()).pathname + ' state=' + (outcome?.kind ?? 'timeout') + ' text=' + safeText + ' posts=' + posts + ' requestFailures=' + failures + ' consoleErrors=' + consoles)
+      if (outcome?.kind === 'confirm') {
+        await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible()
+        return
+      }
+
+      const safeText = outcome?.text?.trim() || 'no rendered auth status'
+      const retryDelay = SIGNUP_THROTTLE_RETRY_DELAYS_MS[attempt]
+      if (outcome?.kind === 'error' && safeText === SIGNUP_THROTTLE_MESSAGE && retryDelay !== undefined) {
+        console.log('ONBOARDING_E2E_SIGNUP_THROTTLE_RETRY=' + (attempt + 1))
+        await page.waitForTimeout(retryDelay)
+        continue
+      }
+
+      const posts = postObservations.length ? JSON.stringify(postObservations) : 'none'
+      const failures = requestFailures.length ? JSON.stringify(requestFailures) : 'none'
+      const consoles = consoleErrors.length ? JSON.stringify(consoleErrors) : 'none'
+      throw new Error('Public sign-up did not reach confirmation. path=' + new URL(page.url()).pathname + ' state=' + (outcome?.kind ?? 'timeout') + ' text=' + safeText + ' posts=' + posts + ' requestFailures=' + failures + ' consoleErrors=' + consoles)
+    }
+  } finally {
+    await context.close()
   }
-
-  await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible()
-  await context.close()
 }
 
 async function signIn(page, user) {
