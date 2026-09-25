@@ -38,3 +38,12 @@ test('Phase 5B discovery audits the SES domain DNS before migration', () => {
   assert.match(script, /dig \+short TXT "\$SES_DOMAIN"/)
   assert.match(script, /dig \+short CAA "\$SES_DOMAIN"/)
 })
+
+test('Phase 5B discovery reports SES production-access review status', () => {
+  const script = fs.readFileSync(scriptUrl, 'utf8')
+
+  assert.match(script, /sesv2 get-account/)
+  assert.match(script, /ReviewDetails\.Status/)
+  assert.match(script, /SES_PRODUCTION_ACCESS_REVIEW_STATUS=/)
+  assert.match(script, /SES_PRODUCTION_ACCESS_REVIEW_CASE_ID=/)
+})
