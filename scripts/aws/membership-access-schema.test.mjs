@@ -32,6 +32,11 @@ test('membership access foundation is additive and separates persona, plans, ver
 
   assert.match(normalized, /alter table public\.events add column if not exists company_id uuid references public\.companies\(id\) on delete set null/)
   assert.match(normalized, /events_company_idx/)
+  assert.match(normalized, /alter table public\.learning_courses add column if not exists created_by_user_id uuid references public\.profiles\(id\) on delete restrict/)
+  assert.match(normalized, /add column if not exists company_id uuid references public\.companies\(id\) on delete set null/)
+  assert.match(normalized, /alter column mentor_id drop not null/)
+  assert.match(normalized, /learning_courses_publisher_shape_check/)
+  assert.match(normalized, /learning_courses_company_idx/)
 
   assert.match(normalized, /insert into public\.feature_verifications/)
   assert.match(normalized, /learning_mentors/)
