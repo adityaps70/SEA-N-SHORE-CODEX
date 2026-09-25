@@ -127,6 +127,18 @@ Payment, verification and organization role are independent concepts.
 - Free or unverified identities stay visible with separate verification/PRO blockers and can still save drafts.
 - Phase 7 integrated CI passed: 350 test files / 1,672 tests, Docker, Terraform validations/guards, execution contract and Remote Verify.
 
+
+### Verification applications
+- Independent Recruiter and Event Host verification applications are implemented under Settings.
+- Applications capture professional role, organization (optional), years of relevant experience, focus areas, experience summary, optional public evidence URL and additional note.
+- Validation errors preserve previously entered values; rejected applications can be corrected and resubmitted.
+- Pending, approved and suspended verification states are protected from duplicate submission.
+- Administrator review is available at `/admin/verifications` with status/type filters, evidence review, approve/reject controls and audit events.
+- Recruiter and Event publishing blockers now link directly to the correct verification application.
+- Verification approval changes only the verification record; it never creates a subscription or `entitlement_grants` record.
+- The additive membership migration stores verification application payload + submission time while retaining legacy trust backfills.
+- Integrated CI passed: 353 test files / 1,688 tests, Docker, Terraform validations/guards, execution contract and Remote Verify.
+
 ### Organization model
 - Organization is removed from new-user onboarding.
 - Existing company/application/membership tables are preserved.
@@ -211,20 +223,19 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. New-user recruiter and event-host verification application flows.
-2. Admin views for persona, plan, capabilities, verification and entitlement history.
-3. Organization billing-management entry for authorized roles.
-4. Pricing decision, currency/tax behavior and payment-provider selection.
-5. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
-6. Existing-user persona backfill where deterministic.
-7. Exhaustive plan × verification × organization-role authorization tests and launch regression.
-8. Full staging migration, deploy and E2E only through guarded one-shot execution.
+1. Admin views for persona, plan, capabilities, verification and entitlement history.
+2. Organization billing-management entry for authorized roles.
+3. Pricing decision, currency/tax behavior and payment-provider selection.
+4. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+5. Existing-user persona backfill where deterministic.
+6. Exhaustive plan × verification × organization-role authorization tests and launch regression.
+7. Full staging migration, deploy and E2E only through guarded one-shot execution.
 
 ## Exact next action
 
-Continue with **Verification applications: independent Recruiter verification and Event Host verification**, using TDD. Reuse the existing verification schema/admin patterns, keep each verification independent, and do not grant paid publishing capability merely because verification is approved.
+Continue with **Phase 10 Admin visibility and entitlement controls**, using TDD. Extend the existing admin user/organization views to show persona + intents, subscription plan/status, effective capabilities, recruiter/trainer/event-host verification source/status, entitlement grant history, organization plan/managers, and ensure suspension overrides paid access. Manual/grandfather entitlement grant/revoke operations must be audited and narrowly scoped.
 
-Jobs, Events and LMS publisher migrations are complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
+Jobs, Events, LMS and independent Recruiter/Event Host verification applications are complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
 
 ## New-chat handoff prompt
 
