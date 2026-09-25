@@ -2,7 +2,7 @@
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-ap-south-1}"
-SES_DOMAIN="${SES_DOMAIN:-seaandshore.in}"
+SES_DOMAIN="${SES_DOMAIN:-seanshore.in}"
 COGNITO_USER_POOL_NAME="${COGNITO_USER_POOL_NAME:-sea-n-shore-staging-users}"
 ECS_CLUSTER_NAME="${ECS_CLUSTER_NAME:-sea-n-shore-staging}"
 ECS_SERVICE_NAME="${ECS_SERVICE_NAME:-sea-n-shore-staging-web}"
