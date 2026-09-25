@@ -44,21 +44,28 @@ echo "AUTHORITATIVE_NS_BEGIN"
 dig +short NS "$SES_DOMAIN" | sed 's/\.$//' | sort
 echo "AUTHORITATIVE_NS_END"
 
-aws route53 list-hosted-zones-by-name \
+if aws route53 list-hosted-zones-by-name \
   --dns-name "$SES_DOMAIN" \
   --max-items 20 \
-  --output json > /tmp/phase5b-route53-zones.json
-
-route53_ses_zone_count="$(jq --arg name "$SES_DOMAIN." '[.HostedZones[]? | select(.Name==$name and .Config.PrivateZone==false)] | length' /tmp/phase5b-route53-zones.json)"
-echo "ROUTE53_SES_ZONE_COUNT=$route53_ses_zone_count"
-if [[ "$route53_ses_zone_count" == "1" ]]; then
-  route53_ses_zone_id="$(jq -r --arg name "$SES_DOMAIN." '[.HostedZones[]? | select(.Name==$name and .Config.PrivateZone==false)][0].Id // empty' /tmp/phase5b-route53-zones.json | sed 's#^/hostedzone/##')"
-  echo "ROUTE53_SES_ZONE_ID=$route53_ses_zone_id"
-  aws route53 get-hosted-zone --id "$route53_ses_zone_id" --output json > /tmp/phase5b-route53-zone.json
-  echo "ROUTE53_SES_NAME_SERVERS_BEGIN"
-  jq -r '.DelegationSet.NameServers[]? // empty' /tmp/phase5b-route53-zone.json | sort
-  echo "ROUTE53_SES_NAME_SERVERS_END"
+  --output json > /tmp/phase5b-route53-zones.json 2>/tmp/phase5b-route53-zones.err; then
+  route53_ses_zone_count="$(jq --arg name "$SES_DOMAIN." '[.HostedZones[]? | select(.Name==$name and .Config.PrivateZone==false)] | length' /tmp/phase5b-route53-zones.json)"
+  echo "ROUTE53_SES_ZONE_COUNT=$route53_ses_zone_count"
+  if [[ "$route53_ses_zone_count" == "1" ]]; then
+    route53_ses_zone_id="$(jq -r --arg name "$SES_DOMAIN." '[.HostedZones[]? | select(.Name==$name and .Config.PrivateZone==false)][0].Id // empty' /tmp/phase5b-route53-zones.json | sed 's#^/hostedzone/##')"
+    echo "ROUTE53_SES_ZONE_ID=$route53_ses_zone_id"
+    if aws route53 get-hosted-zone --id "$route53_ses_zone_id" --output json > /tmp/phase5b-route53-zone.json 2>/dev/null; then
+      echo "ROUTE53_SES_NAME_SERVERS_BEGIN"
+      jq -r '.DelegationSet.NameServers[]? // empty' /tmp/phase5b-route53-zone.json | sort
+      echo "ROUTE53_SES_NAME_SERVERS_END"
+    else
+      echo "ROUTE53_SES_NAME_SERVERS_UNAVAILABLE=true"
+    fi
+  else
+    echo "ROUTE53_SES_ZONE_ID="
+  fi
 else
+  echo "ROUTE53_SES_ZONE_AUDIT=UNAVAILABLE"
+  echo "ROUTE53_SES_ZONE_COUNT=UNKNOWN"
   echo "ROUTE53_SES_ZONE_ID="
 fi
 
