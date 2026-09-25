@@ -134,6 +134,8 @@ describe('learner course repository', () => {
     expect(seen[0]?.text).toContain("course.status = 'published'")
     expect(seen[0]?.text).toContain("mentor.status = 'active'")
     expect(seen[0]?.text).toContain("application.status = 'approved'")
+    expect(seen[0]?.text).toContain('public.companies company')
+    expect(seen[0]?.text).toContain('company.is_verified = true')
     expect(seen[0]?.text).toContain('lesson.prerequisite_lesson_id')
   })
 
@@ -232,4 +234,40 @@ describe('learner course repository', () => {
     const repository = createLearnerCourseRepository({ query: async () => [] })
     await expect(repository.getLearnerCourse(learnerId, slug)).resolves.toBeNull()
   })
+
+  it('loads an enrolled organization-published course with the organization as publisher', async () => {
+    const repository = createLearnerCourseRepository({
+      now: () => new Date('2026-09-15T12:00:00.000Z'),
+      query: async () => [{
+        ...baseRow,
+        mentor_name: 'Sea Academy',
+        section_id: sectionOneId,
+        section_title: 'Bridge foundations',
+        section_position: 0,
+        lesson_id: lessonOneId,
+        lesson_title: 'Bridge Resource Management',
+        lesson_type: 'article',
+        lesson_position: 0,
+        lesson_summary: null,
+        article_body: 'Organization-published lesson.',
+        asset_path: null,
+        external_url: null,
+        duration_seconds: null,
+        is_downloadable: false,
+        completed: false,
+        completed_at: null,
+        last_position_seconds: 0,
+        ...materialControls(),
+      }],
+    })
+
+    await expect(repository.getLearnerCourse(learnerId, slug)).resolves.toEqual(
+      expect.objectContaining({
+        courseId,
+        mentorName: 'Sea Academy',
+        totalLessons: 1,
+      }),
+    )
+  })
+
 })
