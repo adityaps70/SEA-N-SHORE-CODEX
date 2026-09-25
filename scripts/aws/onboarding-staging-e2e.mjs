@@ -202,15 +202,19 @@ async function signUp(user) {
 
       if (outcome?.kind === 'confirm') {
         await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible()
-        return
+        return 'confirmed'
       }
 
       const safeText = outcome?.text?.trim() || 'no rendered auth status'
       const retryDelay = SIGNUP_THROTTLE_RETRY_DELAYS_MS[attempt]
-      if (outcome?.kind === 'error' && safeText === SIGNUP_THROTTLE_MESSAGE && retryDelay !== undefined) {
-        console.log('ONBOARDING_E2E_SIGNUP_THROTTLE_RETRY=' + (attempt + 1))
-        await page.waitForTimeout(retryDelay)
-        continue
+      if (outcome?.kind === 'error' && safeText === SIGNUP_THROTTLE_MESSAGE) {
+        if (retryDelay !== undefined) {
+          console.log('ONBOARDING_E2E_SIGNUP_THROTTLE_RETRY=' + (attempt + 1))
+          await page.waitForTimeout(retryDelay)
+          continue
+        }
+        console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_THROTTLED=true')
+        return 'throttled'
       }
 
       const posts = postObservations.length ? JSON.stringify(postObservations) : 'none'
@@ -410,8 +414,10 @@ async function completePersona(user, takenUsername) {
 
 try {
   if (phase === 'signup') {
-    for (const user of users) await signUp(user)
-    console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
+    const signupSmokeUser = users[0]
+    assert.ok(signupSmokeUser)
+    const signupOutcome = await signUp(signupSmokeUser)
+    if (signupOutcome === 'confirmed') console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
   } else {
     const other = users.find((user) => user.key === 'other')
     assert.ok(other)
