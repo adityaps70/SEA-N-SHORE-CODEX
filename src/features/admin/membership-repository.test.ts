@@ -76,6 +76,17 @@ describe('admin membership repository', () => {
           granted_by_name: null,
         }]
       }
+      if (text.includes('from public.audit_events audit') && text.includes('feature_verification')) {
+        return [{
+          id: 'audit-1',
+          action: 'verification.approved',
+          target_id: 'verification-1',
+          metadata: { verificationType: 'recruiter' },
+          created_at: '2026-09-21T00:00:00.000Z',
+          actor_id: adminId,
+          actor_name: 'Platform Admin',
+        }]
+      }
       return []
     }
     const repository = createAdminMembershipRepository({
@@ -105,6 +116,14 @@ describe('admin membership repository', () => {
           capability: 'job.publish',
           source: 'legacy_migration',
           active: true,
+        }),
+      ],
+      verificationHistory: [
+        expect.objectContaining({
+          id: 'audit-1',
+          action: 'verification.approved',
+          verificationType: 'recruiter',
+          actor: { id: adminId, fullName: 'Platform Admin' },
         }),
       ],
     })
