@@ -8,11 +8,15 @@ import { assessPlatformText, automatedModerationDetails, moderationBlockMessage,
 import { moderationRepository } from '@/features/moderation/repository'
 import { prepareEventBannerUpload, verifyEventBannerReference } from './event-banner-media'
 import { validateEventBannerMetadata } from './event-banner-policy'
-import type { CalendarActionResult, CalendarCreateResult, CalendarEventInput, EventBannerUploadResult } from './calendar-types'
+import type { CalendarActionResult, CalendarCreateResult, CalendarEventCreateInput, CalendarEventInput, EventBannerUploadResult } from './calendar-types'
 import { calendarEventRepository } from './calendar-repository'
 import { calendarValidationMessage, parseCalendarEventInput } from './calendar-validation'
 
 const uuidSchema = z.string().uuid()
+const eventPublisherSchema = z.discriminatedUnion('publisherType', [
+  z.object({ publisherType: z.literal('personal'), companyId: z.null() }),
+  z.object({ publisherType: z.literal('organization'), companyId: uuidSchema }),
+])
 
 function assessEventContent(input: CalendarEventInput): AutomatedModerationAssessment {
   if (input.status !== 'published') {
@@ -87,16 +91,31 @@ export async function createEventBannerUploadAction(input: { mimeType: string; s
   }
 }
 
-export async function createEventAction(input: CalendarEventInput): Promise<CalendarCreateResult> {
+export async function createEventAction(input: CalendarEventCreateInput): Promise<CalendarCreateResult> {
+  const publisher = eventPublisherSchema.safeParse({
+    publisherType: input.publisherType,
+    companyId: input.companyId,
+  })
+  if (!publisher.success) return { ok: false, error: 'Choose a valid event publishing identity.' }
+
   const parsed = parseCalendarEventInput(input)
   if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error) }
   const moderation = assessEventContent(parsed.data)
   if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   try {
     const user = await requireAwsUser()
-    if (parsed.data.status === 'published') await requireCapability(user.id, 'event.publish')
+    if (parsed.data.status === 'published') {
+      if (publisher.data.publisherType === 'personal') {
+        await requireCapability(user.id, 'event.publish')
+      } else {
+        await requireCapability(user.id, 'event.publish', { companyId: publisher.data.companyId })
+      }
+    }
     await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
-    const eventId = await calendarEventRepository.createEvent(user.id, parsed.data)
+    const eventId = await calendarEventRepository.createEvent(user.id, {
+      ...parsed.data,
+      ...publisher.data,
+    })
     await flagAutomatedEventModeration(eventId, moderation)
     refreshEventPaths(eventId)
     return { ok: true, eventId }
