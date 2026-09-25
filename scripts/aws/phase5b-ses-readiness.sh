@@ -90,11 +90,16 @@ echo "LIVE_DNS_CAA_BEGIN"
 dig +short CAA "$SES_DOMAIN" | sort
 echo "LIVE_DNS_CAA_END"
 
-production_access="$(aws sesv2 get-account \
+aws sesv2 get-account \
   --region "$AWS_REGION" \
-  --query 'ProductionAccessEnabled' \
-  --output text)"
+  --output json > /tmp/phase5b-ses-account.json
+
+production_access="$(jq -r '.ProductionAccessEnabled // false' /tmp/phase5b-ses-account.json)"
+review_status="$(jq -r '.Details.ReviewDetails.Status // "UNKNOWN"' /tmp/phase5b-ses-account.json)"
+review_case_id="$(jq -r '.Details.ReviewDetails.CaseId // ""' /tmp/phase5b-ses-account.json)"
 echo "SES_PRODUCTION_ACCESS=$production_access"
+echo "SES_PRODUCTION_ACCESS_REVIEW_STATUS=$review_status"
+echo "SES_PRODUCTION_ACCESS_REVIEW_CASE_ID=$review_case_id"
 
 identity_status="NOT_CREATED"
 dkim_status="NOT_CREATED"
