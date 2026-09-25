@@ -157,7 +157,8 @@ test('signup smoke is quota-aware and bootstrap seeds all eight persona accounts
   assert.match(workflow, /--message-action SUPPRESS/)
   assert.match(workflow, /admin-confirm-sign-up/)
   assert.match(workflow, /ONBOARDING_E2E_BOOTSTRAP_USERS_VERIFIED=true/)
-  assert.match(workflow, /SeaNShore!\$\{RUN_ID\}/)
+  assert.match(workflow, /\$E2E_SEAFARER_PASSWORD/)
+  assert.match(workflow, /\$E2E_OTHER_PASSWORD/)
 })
 
 test('run-once performs a public sign-up smoke check, eight persona journeys and read-only persistence audit', () => {
