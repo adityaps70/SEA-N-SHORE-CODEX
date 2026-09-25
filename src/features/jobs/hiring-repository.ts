@@ -34,7 +34,8 @@ export type HiringDashboardMetrics = {
 }
 
 export type HiringJobInput = {
-  companyId: string
+  publisherType: 'personal' | 'organization'
+  companyId: string | null
   title: string
   domain: JobDomain
   department: string | null
@@ -79,7 +80,17 @@ export type HiringJobSummary = {
 
 export type HiringEditableJob = HiringJobUpdateInput & {
   id: string
-  companyId: string
+  companyId: string | null
+}
+
+export type HiringPersonalPublisher = {
+  profileId: string
+  name: string
+}
+
+export type ManagedHiringJobSummary = HiringJobSummary & {
+  companyId: string | null
+  publisherName: string
 }
 
 export type HiringApplicantCandidate = {
@@ -150,6 +161,14 @@ type HiringJobSummaryRow = QueryResultRow & {
   apply_until: string | null
   published_at: string | null
   applicant_count: string | number | null
+  company_id?: string | null
+  publisher_name?: string | null
+}
+
+type PersonalPublisherRow = QueryResultRow & {
+  profile_id: string
+  profile_name: string
+  recruiter_verified?: boolean | null
 }
 
 type EditableJobRow = QueryResultRow & {
@@ -549,23 +568,76 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
   const queryRows: HiringQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
   const transaction = input.transaction ?? defaultTransaction
 
-  async function getAuthorizedCompanyWithQuery(query: HiringQuery, userId: string, companyId?: string) {
-    const values: readonly unknown[] = companyId
-      ? [userId, [...HIRING_ROLES], companyId]
-      : [userId, [...HIRING_ROLES]]
-    const companyFilter = companyId ? 'and c.id = $3' : ''
+  async function listAuthorizedCompaniesWithQuery(query: HiringQuery, userId: string) {
     const rows = await query(
       `${AUTHORIZED_COMPANY_SELECT}
-       ${companyFilter}
+       order by cm.approved_at asc nulls last, c.name asc, c.id asc`,
+      [userId, [...HIRING_ROLES]],
+    ) as CompanyRow[]
+    return rows.flatMap((row) => {
+      const company = mapAuthorizedCompany(row)
+      return company ? [company] : []
+    })
+  }
+
+  async function getAuthorizedCompanyWithQuery(query: HiringQuery, userId: string, companyId?: string) {
+    if (!companyId) {
+      return (await listAuthorizedCompaniesWithQuery(query, userId))[0] ?? null
+    }
+    const rows = await query(
+      `${AUTHORIZED_COMPANY_SELECT}
+       and c.id = $3
        order by cm.approved_at asc nulls last, c.name asc
        limit 1`,
-      values,
+      [userId, [...HIRING_ROLES], companyId],
     ) as CompanyRow[]
     return mapAuthorizedCompany(rows[0])
   }
 
   async function getAuthorizedCompany(userId: string, companyId?: string) {
     return getAuthorizedCompanyWithQuery(queryRows, userId, companyId)
+  }
+
+  async function listAuthorizedCompanies(userId: string) {
+    return listAuthorizedCompaniesWithQuery(queryRows, userId)
+  }
+
+  async function getPersonalPublisher(userId: string): Promise<HiringPersonalPublisher | null> {
+    const rows = await queryRows(
+      `select p.id as profile_id, p.full_name as profile_name
+       from public.profiles p
+       where p.id = $1
+         and p.account_status = 'active'
+         and p.onboarding_completed_at is not null
+       limit 1`,
+      [userId],
+    ) as PersonalPublisherRow[]
+    const row = rows[0]
+    return row ? { profileId: row.profile_id, name: row.profile_name } : null
+  }
+
+  async function getPersonalRecruiterPublisherWithQuery(query: HiringQuery, userId: string) {
+    const rows = await query(
+      `select
+         p.id as profile_id,
+         p.full_name as profile_name,
+         exists (
+           select 1
+           from public.feature_verifications fv
+           where fv.profile_id = p.id
+             and fv.verification_type = 'recruiter'
+             and fv.status = 'approved'
+         ) as recruiter_verified
+       from public.profiles p
+       where p.id = $1
+         and p.account_status = 'active'
+         and p.onboarding_completed_at is not null
+       limit 1`,
+      [userId],
+    ) as PersonalPublisherRow[]
+    const row = rows[0]
+    if (!row || !row.recruiter_verified) return null
+    return { profileId: row.profile_id, name: row.profile_name }
   }
 
   async function getDashboardMetrics(userId: string, companyId: string): Promise<HiringDashboardMetrics> {
@@ -704,8 +776,22 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
 
   async function createJob(userId: string, job: HiringJobInput) {
     return transaction(async (txQuery) => {
-      const company = await getAuthorizedCompanyWithQuery(txQuery, userId, job.companyId)
-      if (!company) throw new Error('hiring_forbidden')
+      let publisherName: string
+      let publisherCompanyId: string | null
+
+      if (job.publisherType === 'organization') {
+        if (!job.companyId) throw new Error('hiring_forbidden')
+        const company = await getAuthorizedCompanyWithQuery(txQuery, userId, job.companyId)
+        if (!company) throw new Error('hiring_forbidden')
+        publisherName = company.name
+        publisherCompanyId = company.id
+      } else {
+        if (job.companyId !== null) throw new Error('hiring_forbidden')
+        const publisher = await getPersonalRecruiterPublisherWithQuery(txQuery, userId)
+        if (!publisher) throw new Error('hiring_forbidden')
+        publisherName = publisher.name
+        publisherCompanyId = null
+      }
 
       const rows = await txQuery(
         `insert into public.jobs (
@@ -720,7 +806,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
            $24, $25, case when $10::public.job_listing_status = 'published'::public.job_listing_status then now() else null end
          ) returning id`,
         [
-          job.title, company.name, company.id, userId, job.location, job.summary, job.description, job.requirements,
+          job.title, publisherName, publisherCompanyId, userId, job.location, job.summary, job.description, job.requirements,
           job.applyUntil, job.status, job.domain, job.department, job.rank, job.vesselTypes, job.experienceMinYears,
           job.experienceMaxYears, job.joiningFrom, job.joiningUntil, job.salaryMin, job.salaryMax, job.salaryCurrency,
           job.salaryPeriod, job.regions, job.urgent, job.easyApply,
@@ -751,15 +837,21 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
 
   async function requireAuthorizedJob(query: HiringQuery, userId: string, jobId: string) {
     const rows = await query(
-      `select j.id, j.company_id
+      `select j.id, j.company_id, j.created_by_user_id
        from public.jobs j
-       join public.company_members cm on cm.company_id = j.company_id
-       join public.companies c on c.id = j.company_id
+       left join public.company_members cm
+         on cm.company_id = j.company_id and cm.user_id = $2
+       left join public.companies c on c.id = j.company_id
        where j.id = $1
-         and cm.user_id = $2
-         and cm.approved_at is not null
-         and cm.role::text = any($3::text[])
-         and c.is_verified = true
+         and (
+           (j.company_id is null and j.created_by_user_id = $2)
+           or (
+             j.company_id is not null
+             and cm.approved_at is not null
+             and cm.role::text = any($3::text[])
+             and c.is_verified = true
+           )
+         )
        limit 1`,
       [jobId, userId, [...HIRING_ROLES]],
     )
@@ -954,6 +1046,8 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
 
   return {
     getAuthorizedCompany,
+    listAuthorizedCompanies,
+    getPersonalPublisher,
     getDashboardMetrics,
     listCompanyJobs,
     getEditableJob,
