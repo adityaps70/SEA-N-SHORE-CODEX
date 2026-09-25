@@ -6,7 +6,8 @@ const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
 const runId = process.env.GITHUB_RUN_ID
 const SIGNUP_THROTTLE_MESSAGE = 'Too many sign-up requests. Please wait a moment and try again.'
-const SIGNUP_THROTTLE_RETRY_DELAYS_MS = [5_000, 15_000, 30_000]
+const SIGNUP_THROTTLE_RETRY_DELAYS_MS = [15_000, 30_000, 60_000]
+const SIGNUP_INTER_USER_DELAY_MS = 15_000
 
 const personaSpecs = [
   {
@@ -214,7 +215,7 @@ async function signUp(user) {
           continue
         }
         console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_THROTTLED=true')
-        return 'throttled'
+        throw new Error('Public sign-up remained throttled after bounded retries.')
       }
 
       const posts = postObservations.length ? JSON.stringify(postObservations) : 'none'
@@ -414,10 +415,13 @@ async function completePersona(user, takenUsername) {
 
 try {
   if (phase === 'signup') {
-    const signupSmokeUser = users[0]
-    assert.ok(signupSmokeUser)
-    const signupOutcome = await signUp(signupSmokeUser)
-    if (signupOutcome === 'confirmed') console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
+    for (const [index, user] of users.entries()) {
+      if (index > 0) await new Promise((resolve) => setTimeout(resolve, SIGNUP_INTER_USER_DELAY_MS))
+      const signupOutcome = await signUp(user)
+      assert.equal(signupOutcome, 'confirmed')
+      console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_USER_VERIFIED=' + user.key)
+    }
+    console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
   } else {
     const other = users.find((user) => user.key === 'other')
     assert.ok(other)
