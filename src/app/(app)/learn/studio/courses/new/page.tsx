@@ -1,10 +1,14 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, BookOpen, ShieldCheck } from 'lucide-react'
+import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CourseForm } from '@/features/learning/components/course-form'
+import { buildCoursePublisherOptions } from '@/features/learning/publishers'
 import type { CourseDraftInput } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
+import { organizationRepository } from '@/features/organizations/repository'
+import { getOwnProfileFromAurora } from '@/features/profiles/repository'
 
 const initialCourse: CourseDraftInput = {
   slug: '',
@@ -29,11 +33,29 @@ const initialCourse: CourseDraftInput = {
 
 export default async function NewMentorCoursePage() {
   const user = await requireAwsUser()
-  const mentorState = await learningRepository.getMentorApplicationState(user.id)
+  const [mentorState, access, profile, organizations] = await Promise.all([
+    learningRepository.getMentorApplicationState(user.id),
+    getAccessContext(user.id),
+    getOwnProfileFromAurora(user.id),
+    organizationRepository.listUserOrganizations(user.id),
+  ])
 
-  if (mentorState.kind !== 'mentor' || mentorState.mentorStatus !== 'active') {
+  if (!profile) return redirect('/profile/edit')
+
+  const hasActiveMentor = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
+  const eligibleOrganizations = organizations.filter((organization) =>
+    organization.role === 'owner'
+    || organization.role === 'administrator'
+    || organization.role === 'lms_manager')
+  if (!hasActiveMentor && eligibleOrganizations.length === 0) {
     return redirect('/learn/teach')
   }
+
+  const publisherOptions = buildCoursePublisherOptions(
+    access,
+    { profileId: profile.id, name: profile.fullName },
+    eligibleOrganizations,
+  ).filter((option) => hasActiveMentor || option.kind === 'organization')
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
@@ -62,7 +84,7 @@ export default async function NewMentorCoursePage() {
       </section>
 
       <div className="mt-5">
-        <CourseForm initialValue={initialCourse} />
+        <CourseForm initialValue={initialCourse} publisherOptions={publisherOptions} />
       </div>
     </main>
   )
