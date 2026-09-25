@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getMentorApplicationState: vi.fn(),
   listForMentor: vi.fn(),
+  listUserOrganizations: vi.fn(),
   redirect: vi.fn(),
 }))
 
@@ -15,6 +16,9 @@ vi.mock('@/features/learning/repository', () => ({
 }))
 vi.mock('@/features/learning/assignment-grading-repository', () => ({
   assignmentGradingRepository: { listForMentor: mocks.listForMentor },
+}))
+vi.mock('@/features/organizations/repository', () => ({
+  organizationRepository: { listUserOrganizations: mocks.listUserOrganizations },
 }))
 vi.mock('@/features/learning/components/assignment-grading-control', () => ({
   AssignmentGradingControl: () => <div data-testid="inline-grading-control" />,
@@ -28,6 +32,7 @@ describe('/learn/studio/assignments', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'mentor-user-1' })
+    mocks.listUserOrganizations.mockResolvedValue([])
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
       applicationId: '11111111-1111-4111-8111-111111111111',
@@ -77,4 +82,22 @@ describe('/learn/studio/assignments', () => {
     expect(screen.queryByTestId('inline-grading-control')).not.toBeInTheDocument()
     expect(mocks.listForMentor).toHaveBeenCalledWith('mentor-user-1')
   })
+
+  it('shows assignment grading to an organization LMS manager without personal mentor access', async () => {
+    mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
+    mocks.listUserOrganizations.mockResolvedValue([{
+      id: 'company-1',
+      slug: 'sea-academy',
+      name: 'Sea Academy',
+      verified: true,
+      role: 'lms_manager',
+    }])
+
+    render(await MentorAssignmentsPage())
+
+    expect(screen.getByRole('heading', { name: 'Assignment grading' })).toBeInTheDocument()
+    expect(mocks.listForMentor).toHaveBeenCalledWith('mentor-user-1')
+    expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
 })
