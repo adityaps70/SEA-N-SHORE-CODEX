@@ -87,6 +87,9 @@ describe('learning course repository', () => {
           status: 'draft',
           admin_review_note: null,
           updated_at: new Date('2026-09-14T12:00:00.000Z'),
+          company_id: null,
+          publisher_name: 'Capt. Mentor',
+          publisher_slug: 'capt-mentor',
         }]
       },
     })
@@ -103,10 +106,15 @@ describe('learning course repository', () => {
       status: 'draft',
       adminReviewNote: null,
       updatedAt: '2026-09-14T12:00:00.000Z',
+      publisherType: 'personal',
+      companyId: null,
+      publisherName: 'Capt. Mentor',
+      publisherSlug: 'capt-mentor',
     }])
 
-    expect(seen[0]?.text).toContain('mentor.user_id = $1')
-    expect(seen[0]?.text).toContain("mentor.status = 'active'")
+    expect(seen[0]?.text).toContain('public.learning_mentors access_mentor')
+    expect(seen[0]?.text).toContain('access_mentor.user_id = $1')
+    expect(seen[0]?.text).toContain("access_mentor.status = 'active'")
     expect(seen[0]?.values).toEqual([mentorUserId])
   })
 
@@ -115,7 +123,7 @@ describe('learning course repository', () => {
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
       if (text.includes('for update')) {
-        return [{ id: courseId, status: 'draft', mentor_id: mentorId }]
+        return [{ id: courseId, status: 'draft', mentor_id: mentorId, company_id: null }]
       }
       if (text.includes('update public.learning_courses')) return [{ id: courseId }]
       return []
@@ -125,8 +133,9 @@ describe('learning course repository', () => {
     await expect(repository.updateCourse(mentorUserId, courseId, courseInput({ title: 'Updated SIRE 2.0 Readiness for Tanker Officers' }))).resolves.toBe(true)
 
     const lock = seen.find((entry) => entry.text.includes('for update'))
-    expect(lock?.text).toContain('mentor.user_id = $2')
-    expect(lock?.text).toContain("mentor.status = 'active'")
+    expect(lock?.text).toContain('public.learning_mentors access_mentor')
+    expect(lock?.text).toContain('access_mentor.user_id = $2')
+    expect(lock?.text).toContain("access_mentor.status = 'active'")
     expect(lock?.values).toEqual([courseId, mentorUserId])
 
     const update = seen.find((entry) => entry.text.includes('update public.learning_courses'))
@@ -138,7 +147,7 @@ describe('learning course repository', () => {
     const seen: string[] = []
     const query = async (text: string) => {
       seen.push(text)
-      if (text.includes('for update')) return [{ id: courseId, status: 'submitted', mentor_id: mentorId }]
+      if (text.includes('for update')) return [{ id: courseId, status: 'submitted', mentor_id: mentorId, company_id: null }]
       return []
     }
     const repository = createCourseRepository({ query, transaction: async (work) => work(query) })
