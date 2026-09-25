@@ -553,11 +553,43 @@ export function createCourseRepository(input: {
     return mentor
   }
 
-  async function createCourse(actorId: string, draft: CourseDraftInput) {
-    const mentor = await requireActiveMentor(actorId)
+  async function requireOrganizationLmsManager(
+    actorId: string,
+    companyId: string,
+    query: CourseQuery = queryRows,
+  ) {
+    const rows = await query(
+      `select role::text as role, approved_at
+       from public.company_members
+       where company_id = $1
+         and user_id = $2
+         and approved_at is not null
+         and role::text in ('owner', 'administrator', 'lms_manager')
+       limit 1`,
+      [companyId, actorId],
+    )
+    if (!rows[0]) throw new Error('course_forbidden')
+    return true
+  }
+
+  async function createCourse(actorId: string, draft: CourseDraftInput | CourseCreateInput) {
+    const publisherType = isCourseCreateInput(draft) ? draft.publisherType : 'personal'
+    const companyId = publisherType === 'organization' && isCourseCreateInput(draft) ? draft.companyId : null
+    let mentorId: string | null = null
+
+    if (publisherType === 'organization') {
+      if (!companyId) throw new Error('course_forbidden')
+      await requireOrganizationLmsManager(actorId, companyId)
+    } else {
+      const mentor = await requireActiveMentor(actorId)
+      mentorId = mentor.id
+    }
+
     const rows = await queryRows(
       `insert into public.learning_courses (
          mentor_id,
+         created_by_user_id,
+         company_id,
          slug,
          title,
          subtitle,
@@ -583,10 +615,10 @@ export function createCourseRepository(input: {
        values (
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
          $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-         now(), now()
+         $21, $22, now(), now()
        )
        returning id`,
-      [...courseValues(mentor.id, draft), 'draft'],
+      [mentorId, actorId, companyId, ...courseValues(draft), 'draft'],
     ) as ReturningIdRow[]
     const created = rows[0]
     if (!created) throw new Error('course_create_failed')
@@ -606,12 +638,14 @@ export function createCourseRepository(input: {
          course.access_type,
          course.status,
          course.admin_review_note,
-         course.updated_at
+         course.updated_at,
+         course.company_id,
+         case when course.company_id is null then creator.full_name else company.name end as publisher_name,
+         case when course.company_id is null then creator.slug else company.slug end as publisher_slug
        from public.learning_courses course
-       inner join public.learning_mentors mentor
-         on mentor.id = course.mentor_id
-       where mentor.user_id = $1
-         and mentor.status = 'active'
+       join public.profiles creator on creator.id = course.created_by_user_id
+       left join public.companies company on company.id = course.company_id
+       where ${courseManagerAccessSql('course', '$1')}
        order by course.updated_at desc, course.id desc`,
       [actorId],
     ) as OwnedCourseRow[]
@@ -628,6 +662,10 @@ export function createCourseRepository(input: {
       status: asCourseStatus(row.status),
       adminReviewNote: row.admin_review_note,
       updatedAt: isoDateTime(row.updated_at),
+      publisherType: row.company_id ? 'organization' : 'personal',
+      companyId: row.company_id ?? null,
+      publisherName: row.publisher_name,
+      publisherSlug: row.publisher_slug,
     }))
   }
 
@@ -655,13 +693,15 @@ export function createCourseRepository(input: {
          course.course_format,
          course.status,
          course.admin_review_note,
-         course.updated_at
+         course.updated_at,
+         course.company_id,
+         case when course.company_id is null then creator.full_name else company.name end as publisher_name,
+         case when course.company_id is null then creator.slug else company.slug end as publisher_slug
        from public.learning_courses course
-       inner join public.learning_mentors mentor
-         on mentor.id = course.mentor_id
-       where mentor.user_id = $1
-         and mentor.status = 'active'
-         and course.id = $2
+       join public.profiles creator on creator.id = course.created_by_user_id
+       left join public.companies company on company.id = course.company_id
+       where course.id = $2
+         and ${courseManagerAccessSql('course', '$1')}
        limit 1`,
       [actorId, courseId],
     ) as OwnedCourseDetailRow[]
@@ -691,19 +731,34 @@ export function createCourseRepository(input: {
       status: asCourseStatus(row.status),
       adminReviewNote: row.admin_review_note,
       updatedAt: isoDateTime(row.updated_at),
+      publisherType: row.company_id ? 'organization' : 'personal',
+      companyId: row.company_id ?? null,
+      publisherName: row.publisher_name,
+      publisherSlug: row.publisher_slug,
     }
+  }
+
+  async function getManagedCoursePublisher(actorId: string, courseId: string) {
+    const rows = await queryRows(
+      `select course.company_id
+       from public.learning_courses course
+       where course.id = $2
+         and ${courseManagerAccessSql('course', '$1')}
+       limit 1`,
+      [actorId, courseId],
+    ) as CoursePublisherScopeRow[]
+
+    const row = rows[0]
+    return row ? { companyId: row.company_id ?? null } : null
   }
 
   async function updateCourse(actorId: string, courseId: string, draft: CourseDraftInput) {
     return transaction(async (txQuery) => {
       const lockedRows = await txQuery(
-        `select course.id, course.status, course.mentor_id
+        `select course.id, course.status, course.mentor_id, course.company_id
          from public.learning_courses course
-         inner join public.learning_mentors mentor
-           on mentor.id = course.mentor_id
          where course.id = $1
-           and mentor.user_id = $2
-           and mentor.status = 'active'
+           and ${courseManagerAccessSql('course', '$2')}
          for update`,
         [courseId, actorId],
       ) as LockedCourseRow[]
@@ -713,29 +768,28 @@ export function createCourseRepository(input: {
 
       const rows = await txQuery(
         `update public.learning_courses
-         set slug = $3,
-             title = $4,
-             subtitle = $5,
-             description = $6,
-             category = $7,
-             level = $8,
-             language = $9,
-             thumbnail_path = $10,
-             trailer_path = $11,
-             learning_outcomes = $12,
-             requirements = $13,
-             target_audience = $14,
-             price_minor = $15,
-             discount_price_minor = $16,
-             currency = $17,
-             access_type = $18,
-             certificate_enabled = $19,
-             course_format = $20,
+         set slug = $2,
+             title = $3,
+             subtitle = $4,
+             description = $5,
+             category = $6,
+             level = $7,
+             language = $8,
+             thumbnail_path = $9,
+             trailer_path = $10,
+             learning_outcomes = $11,
+             requirements = $12,
+             target_audience = $13,
+             price_minor = $14,
+             discount_price_minor = $15,
+             currency = $16,
+             access_type = $17,
+             certificate_enabled = $18,
+             course_format = $19,
              updated_at = now()
          where id = $1
-           and mentor_id = $2
          returning id`,
-        [courseId, ...courseValues(current.mentor_id, draft)],
+        [courseId, ...courseValues(draft)],
       ) as ReturningIdRow[]
       if (!rows[0]) throw new Error('course_update_failed')
       return true
@@ -745,13 +799,10 @@ export function createCourseRepository(input: {
   async function submitCourse(actorId: string, courseId: string) {
     return transaction(async (txQuery) => {
       const lockedRows = await txQuery(
-        `select course.id, course.status, course.mentor_id
+        `select course.id, course.status, course.mentor_id, course.company_id
          from public.learning_courses course
-         inner join public.learning_mentors mentor
-           on mentor.id = course.mentor_id
          where course.id = $1
-           and mentor.user_id = $2
-           and mentor.status = 'active'
+           and ${courseManagerAccessSql('course', '$2')}
          for update`,
         [courseId, actorId],
       ) as LockedCourseRow[]
@@ -833,9 +884,8 @@ export function createCourseRepository(input: {
              approved_at = null,
              updated_at = now()
          where id = $1
-           and mentor_id = $2
          returning id`,
-        [courseId, current.mentor_id],
+        [courseId],
       ) as ReturningIdRow[]
       if (!rows[0]) throw new Error('course_submit_failed')
       return true
@@ -846,6 +896,7 @@ export function createCourseRepository(input: {
     createCourse,
     listOwnedCourses,
     getOwnedCourse,
+    getManagedCoursePublisher,
     updateCourse,
     submitCourse,
   }
