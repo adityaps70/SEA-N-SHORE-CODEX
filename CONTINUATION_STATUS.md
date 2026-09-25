@@ -1,6 +1,6 @@
 # Sea N Shore — Continuation Status
 
-Updated: 24 September 2026
+Updated: 25 September 2026
 
 ## Active project
 
@@ -115,7 +115,14 @@ Payment, verification and organization role are independent concepts.
   - content_manager
   - analyst
 - Existing Create Organization flow remains.
-- Claim Existing Organization is **still open**.
+- Claim Existing Organization is now implemented end-to-end:
+  - users search before creating duplicates
+  - users request Member / Recruiter / Administrator access
+  - duplicate membership/pending request protection
+  - member request status is visible
+  - admins review at `/admin/access`
+  - approval creates/updates individual membership
+  - decisions write audit history
 - Legacy users whose personal profile was originally an organization identity still need a safe conversion path.
 
 ### Paid-plan UX
@@ -172,24 +179,20 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Finish/verify green CI for the current head.
-2. Create/Claim Organization experience for joining an existing company.
-3. Safe conversion of legacy organization-type profiles to human account + organization ownership/admin.
-4. Independent Creator Pro recruiter job publishing and a reusable “Publish as” identity selector.
-5. Organization Event Manager and LMS Manager authoring contexts.
-6. New-user recruiter and event-host verification application flows; trainer can continue using the existing mentor/trainer review flow.
-7. Admin views for persona, plan, capabilities, verification and entitlement history.
-8. Paid-feature upgrade UI at the exact Post Job / Publish Event / Submit Course moments.
-9. Pricing decision, currency/tax behavior and payment-provider selection.
-10. Checkout/webhook/idempotency/invoice implementation after #9.
-11. Existing-user persona backfill where deterministic.
-12. Full staging migration, deploy and E2E only through guarded one-shot execution.
+1. Safe conversion of legacy organization-type profiles to human account + organization ownership/admin.
+2. Independent Creator Pro recruiter job publishing and a reusable “Publish as” identity selector.
+3. Organization Event Manager and LMS Manager authoring contexts.
+4. New-user recruiter and event-host verification application flows; trainer can continue using the existing mentor/trainer review flow.
+5. Admin views for persona, plan, capabilities, verification and entitlement history.
+6. Paid-feature upgrade UI at the exact Post Job / Publish Event / Submit Course moments.
+7. Pricing decision, currency/tax behavior and payment-provider selection.
+8. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+9. Existing-user persona backfill where deterministic.
+10. Full staging migration, deploy and E2E only through guarded one-shot execution.
 
 ## Exact next action
 
-First, check the latest AWS Infrastructure CI for the current feature-branch head and fix any failure before adding more behavior.
-
-Then continue with **Phase 2: Claim Existing Organization**, using TDD.
+Continue with **Phase 2: safe conversion of legacy organisation-type profiles to human account + organization ownership/admin**, using TDD. Current head before this documentation update passed full AWS Infrastructure CI and AWS Remote Verify.
 
 Do not apply the membership migration or deploy new schema-dependent application code until CI is green and the one-shot staging migration/deploy sequence is explicitly armed.
 
