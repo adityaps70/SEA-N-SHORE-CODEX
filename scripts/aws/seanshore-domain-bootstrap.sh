@@ -156,6 +156,11 @@ allowed={
 }
 validation_prefix='aws_route53_record.seanshore_edge_validation['
 ses_dkim_prefix='aws_route53_record.seanshore_ses_dkim['
+stale_ses_dkim_addresses={
+  'aws_route53_record.seanshore_ses_dkim["2wwo3k3osbixwfbu7wdffxojx2nrnhzj"]',
+  'aws_route53_record.seanshore_ses_dkim["m5dlbuzu6k7hean2miuvuwfv6a7775bf"]',
+  'aws_route53_record.seanshore_ses_dkim["oo6wrb42ubkjrfjceovwfs5ixicw5jzw"]',
+}
 with open(sys.argv[1]) as f: plan=json.load(f)
 changes=[r for r in plan.get('resource_changes',[]) if r.get('mode')!='data' and r.get('change',{}).get('actions')!=['no-op']]
 for r in changes:
@@ -168,13 +173,13 @@ for r in changes:
     actions = r['change']['actions']
     if actions == ['create']:
         continue
-    if r['address'].startswith(ses_dkim_prefix) and actions == ['delete']:
+    if r['address'] in stale_ses_dkim_addresses and actions == ['delete']:
         before = r.get('change', {}).get('before') or {}
         name = (before.get('name') or '').rstrip('.')
         record_type = before.get('type')
         records = before.get('records') or []
         if (
-            name.endswith('._domainkey.seanshore.in')
+            name.endswith('._domainkey.seaandshore.in')
             and record_type == 'CNAME'
             and len(records) == 1
             and records[0].rstrip('.').endswith('.dkim.amazonses.com')
