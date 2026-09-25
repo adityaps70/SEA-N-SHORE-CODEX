@@ -114,10 +114,18 @@ Payment, verification and organization role are independent concepts.
 - Phase 6 integrated CI passed: application verify, Docker, Terraform validations/guards and execution contract.
 
 ### LMS
-- Existing mentor approval remains the trainer trust source.
-- Submitting a course for review now checks `course.publish` server-side.
+- Existing mentor approval remains the trainer trust source for personal trainer publishing.
+- Personal Creator Pro and Organization Pro LMS publishing now share one explicit **Publish as** model.
+- Personal course publishing requires Trainer verification plus personal `course.publish`.
+- Organization course publishing supports approved Owner / Administrator / LMS Manager roles and organization-scoped `course.publish`.
+- Organization course drafts can be created without pretending the manager is a personal mentor.
+- Course publisher identity is stored and locked after creation; submit-for-review resolves the stored publisher server-side before checking entitlement.
+- Studio course creation/editing, curriculum, materials, media, assignment grading and analytics all use one centralized Mentor-or-LMS-Manager authorization rule.
+- Organization-published courses remain visible and usable through marketplace discovery, free enrollment, learner course access, progress, SCORM and certificate issuance.
+- Existing personal mentor drafts/courses and review/approval behavior remain compatible.
 - Existing active mentors receive trainer verification plus a narrow legacy course-publish grant in the migration.
-- Organization LMS-manager authoring is **not yet wired**.
+- Free or unverified identities stay visible with separate verification/PRO blockers and can still save drafts.
+- Phase 7 integrated CI passed: 350 test files / 1,672 tests, Docker, Terraform validations/guards, execution contract and Remote Verify.
 
 ### Organization model
 - Organization is removed from new-user onboarding.
@@ -203,20 +211,20 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Organization LMS Manager authoring/publishing context.
-2. New-user recruiter and event-host verification application flows.
-3. Admin views for persona, plan, capabilities, verification and entitlement history.
-4. Paid-feature upgrade UI at Submit Course; Post Job and Publish Event blockers are implemented.
-5. Pricing decision, currency/tax behavior and payment-provider selection.
-6. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
-7. Existing-user persona backfill where deterministic.
+1. New-user recruiter and event-host verification application flows.
+2. Admin views for persona, plan, capabilities, verification and entitlement history.
+3. Organization billing-management entry for authorized roles.
+4. Pricing decision, currency/tax behavior and payment-provider selection.
+5. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+6. Existing-user persona backfill where deterministic.
+7. Exhaustive plan × verification × organization-role authorization tests and launch regression.
 8. Full staging migration, deploy and E2E only through guarded one-shot execution.
 
 ## Exact next action
 
-Continue with **Phase 7: Organization LMS Manager authoring/publishing context**, using TDD and the same personal-vs-organization identity, verification, role and entitlement separation established for Jobs and Events.
+Continue with **Verification applications: independent Recruiter verification and Event Host verification**, using TDD. Reuse the existing verification schema/admin patterns, keep each verification independent, and do not grant paid publishing capability merely because verification is approved.
 
-Phase 5 Jobs is complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
+Jobs, Events and LMS publisher migrations are complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
 
 ## New-chat handoff prompt
 
