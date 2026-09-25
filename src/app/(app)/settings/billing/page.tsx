@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { Building2, CreditCard, ShieldCheck, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
+import { organizationRepository } from '@/features/organizations/repository'
 
 function planLabel(plan: string) {
   if (plan === 'creator_pro') return 'Creator Pro'
@@ -11,10 +13,15 @@ function planLabel(plan: string) {
 
 export default async function BillingSettingsPage() {
   const user = await requireAwsUser()
-  const access = await getAccessContext(user.id)
+  const [access, organizations] = await Promise.all([
+    getAccessContext(user.id),
+    organizationRepository.listUserOrganizations(user.id),
+  ])
   const organizationProCount = access.organizationMemberships.filter(
     (membership) => membership.plan === 'organization_pro',
   ).length
+  const managedBillingOrganizations = organizations.filter((organization) =>
+    canUseCapability(access, 'billing.manage', { companyId: organization.id }))
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:py-5">
@@ -51,6 +58,24 @@ export default async function BillingSettingsPage() {
           <p className="mt-2 text-sm leading-6 text-muted">
             Organization Pro belongs to the organization workspace; individual members receive access through their approved workspace role.
           </p>
+          {managedBillingOrganizations.length ? (
+            <div className="mt-4 space-y-2 border-t border-mist-100 pt-4">
+              {managedBillingOrganizations.map((organization) => (
+                <Link
+                  key={organization.id}
+                  href={`/settings/billing/organizations/${organization.id}`}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-mist-100 bg-mist-50/50 px-3 py-3 text-sm transition hover:border-ocean-300 hover:bg-ocean-50/40"
+                >
+                  <span className="min-w-0 truncate font-semibold text-navy-950">{organization.name}</span>
+                  <span className="shrink-0 text-xs font-bold text-ocean-700">Manage organization billing →</span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 border-t border-mist-100 pt-4 text-xs leading-5 text-muted">
+              No organization workspace is currently available for billing management under your role and plan.
+            </p>
+          )}
         </article>
       </section>
 
