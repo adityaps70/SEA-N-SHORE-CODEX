@@ -331,7 +331,16 @@ const APPLICANT_SELECT = `
     j.company_id,
     c.slug as company_slug,
     coalesce(c.is_verified, false) as company_verified,
-    coalesce(rcm.is_verified, false) as recruiter_verified,
+    case
+      when j.company_id is null then exists (
+        select 1
+        from public.feature_verifications fv
+        where fv.profile_id = j.created_by_user_id
+          and fv.verification_type = 'recruiter'
+          and fv.status = 'approved'
+      )
+      else coalesce(rcm.is_verified, false)
+    end as recruiter_verified,
     j.location as job_location,
     j.summary as job_summary,
     j.description as job_description,
@@ -1083,16 +1092,22 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
       `${APPLICANT_SELECT}
        from public.job_applications a
        join public.jobs j on j.id = a.job_id
-       join public.company_members cm on cm.company_id = j.company_id
+       left join public.company_members cm
+         on cm.company_id = j.company_id and cm.user_id = $1
        join public.profiles p on p.id = a.applicant_id
        left join public.maritime_profiles mp on mp.user_id = p.id
-       join public.companies c on c.id = j.company_id
+       left join public.companies c on c.id = j.company_id
        left join public.company_members rcm on rcm.company_id = j.company_id and rcm.user_id = j.created_by_user_id
-       where cm.user_id = $1
-         and j.id = $2
-         and cm.role::text = any($3::text[])
-         and cm.approved_at is not null
-         and c.is_verified = true
+       where j.id = $2
+         and (
+           (j.company_id is null and j.created_by_user_id = $1)
+           or (
+             j.company_id is not null
+             and cm.role::text = any($3::text[])
+             and cm.approved_at is not null
+             and c.is_verified = true
+           )
+         )
          ${statusFilter}
        order by a.applied_at desc, a.id desc`,
       values,
@@ -1126,16 +1141,22 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
        ), '[]'::json) as recruiter_notes
        from public.job_applications a
        join public.jobs j on j.id = a.job_id
-       join public.company_members cm on cm.company_id = j.company_id
+       left join public.company_members cm
+         on cm.company_id = j.company_id and cm.user_id = $1
        join public.profiles p on p.id = a.applicant_id
        left join public.maritime_profiles mp on mp.user_id = p.id
-       join public.companies c on c.id = j.company_id
+       left join public.companies c on c.id = j.company_id
        left join public.company_members rcm on rcm.company_id = j.company_id and rcm.user_id = j.created_by_user_id
-       where cm.user_id = $1
-         and a.id = $2
-         and cm.role::text = any($3::text[])
-         and cm.approved_at is not null
-         and c.is_verified = true
+       where a.id = $2
+         and (
+           (j.company_id is null and j.created_by_user_id = $1)
+           or (
+             j.company_id is not null
+             and cm.role::text = any($3::text[])
+             and cm.approved_at is not null
+             and c.is_verified = true
+           )
+         )
        limit 1`,
       [userId, applicationId, [...HIRING_ROLES]],
     ) as ApplicantRow[]
@@ -1166,16 +1187,22 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
 
   async function requireAuthorizedApplication(query: HiringQuery, userId: string, applicationId: string) {
     const rows = await query(
-      `select a.id, j.company_id
+      `select a.id, j.company_id, j.created_by_user_id
        from public.job_applications a
        join public.jobs j on j.id = a.job_id
-       join public.company_members cm on cm.company_id = j.company_id
-       join public.companies c on c.id = j.company_id
+       left join public.company_members cm
+         on cm.company_id = j.company_id and cm.user_id = $2
+       left join public.companies c on c.id = j.company_id
        where a.id = $1
-         and cm.user_id = $2
-         and cm.approved_at is not null
-         and cm.role::text = any($3::text[])
-         and c.is_verified = true
+         and (
+           (j.company_id is null and j.created_by_user_id = $2)
+           or (
+             j.company_id is not null
+             and cm.approved_at is not null
+             and cm.role::text = any($3::text[])
+             and c.is_verified = true
+           )
+         )
        limit 1`,
       [applicationId, userId, [...HIRING_ROLES]],
     )
