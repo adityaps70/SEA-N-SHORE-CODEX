@@ -119,6 +119,7 @@ terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   -target=aws_route53_record.seanshore_legacy_apex \
   -target=aws_route53_record.seanshore_legacy_www \
   -target=aws_route53_record.seanshore_edge_validation \
+  -target=aws_route53_record.seanshore_ses_dkim \
   -var-file="$WORK_DIR/variables.json" \
   -out="$WORK_DIR/domain.tfplan" > "$WORK_DIR/plan.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/domain.tfplan" > "$WORK_DIR/plan.json"
@@ -132,10 +133,15 @@ allowed={
   'aws_route53_record.seanshore_legacy_www',
 }
 validation_prefix='aws_route53_record.seanshore_edge_validation['
+ses_dkim_prefix='aws_route53_record.seanshore_ses_dkim['
 with open(sys.argv[1]) as f: plan=json.load(f)
 changes=[r for r in plan.get('resource_changes',[]) if r.get('mode')!='data' and r.get('change',{}).get('actions')!=['no-op']]
 for r in changes:
-    if r['address'] not in allowed and not r['address'].startswith(validation_prefix):
+    if (
+        r['address'] not in allowed
+        and not r['address'].startswith(validation_prefix)
+        and not r['address'].startswith(ses_dkim_prefix)
+    ):
         raise SystemExit(f"unexpected domain bootstrap change: {r['address']} {r['change']['actions']}")
     if r['change']['actions'] != ['create']:
         raise SystemExit(f"non-create domain bootstrap change refused: {r['address']} {r['change']['actions']}")
@@ -195,6 +201,18 @@ jq -e '
 ' "$WORK_DIR/records-after.json" >/dev/null
 echo "LEGACY_DNS_CONTINUITY_RECORDS_VERIFIED=true"
 echo "ACM_DNS_VALIDATION_RECORD_COUNT=$(jq '[.ResourceRecordSets[] | select(.Type=="CNAME" and (.Name|startswith("_")))] | length' "$WORK_DIR/records-after.json")"
+
+jq -e '
+  ([.ResourceRecordSets[]
+    | select(
+        .Type=="CNAME"
+        and (.Name|endswith("._domainkey.seaandshore.in."))
+        and (.ResourceRecords|length)==1
+        and (.ResourceRecords[0].Value|endswith(".dkim.amazonses.com"))
+      )
+  ] | length) == 3
+' "$WORK_DIR/records-after.json" >/dev/null
+echo "SES_DKIM_RECORDS_VERIFIED=true"
 
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$WORK_DIR/state-after.json")"
 echo "SEANSHORE_DOMAIN_BOOTSTRAP_APPLY_VERIFIED=true"

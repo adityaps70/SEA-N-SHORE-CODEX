@@ -59,3 +59,20 @@ resource "aws_route53_record" "seanshore_edge_validation" {
   ttl     = 300
   records = [each.value.record]
 }
+
+
+data "aws_sesv2_email_identity" "seanshore_transactional" {
+  email_identity = var.ses_domain
+}
+
+resource "aws_route53_record" "seanshore_ses_dkim" {
+  for_each = toset(
+    data.aws_sesv2_email_identity.seanshore_transactional.dkim_signing_attributes[0].tokens
+  )
+
+  zone_id = aws_route53_zone.seanshore.zone_id
+  name    = "${each.value}._domainkey.${var.ses_domain}"
+  type    = "CNAME"
+  ttl     = 300
+  records = ["${each.value}.dkim.amazonses.com"]
+}
