@@ -7,7 +7,7 @@ import {
   ADMIN_ORGANIZATION_GRANTABLE_CAPABILITIES,
   ADMIN_PERSONAL_GRANTABLE_CAPABILITIES,
   type AdminEntitlementSubjectType,
-} from '../membership-repository'
+} from '../membership-policy'
 import { grantAdminEntitlement, revokeAdminEntitlement } from '../membership-actions'
 
 type EntitlementHistoryItem = {
