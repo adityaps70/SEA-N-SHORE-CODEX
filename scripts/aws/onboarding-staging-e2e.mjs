@@ -6,6 +6,7 @@ const siteUrl = process.env.SITE_URL
 const phase = process.env.E2E_PHASE
 const runId = process.env.GITHUB_RUN_ID
 const SIGNUP_THROTTLE_MESSAGE = 'Too many sign-up requests. Please wait a moment and try again.'
+const SIGNUP_LIMIT_MESSAGE = 'Sign-up attempt limit reached. Please try again later.'
 const SIGNUP_THROTTLE_RETRY_DELAYS_MS = [15_000, 30_000, 60_000]
 const SIGNUP_INTER_USER_DELAY_MS = 15_000
 
@@ -208,6 +209,10 @@ async function signUp(user) {
 
       const safeText = outcome?.text?.trim() || 'no rendered auth status'
       const retryDelay = SIGNUP_THROTTLE_RETRY_DELAYS_MS[attempt]
+      if (outcome?.kind === 'error' && safeText === SIGNUP_LIMIT_MESSAGE) {
+        console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_LIMIT_EXCEEDED=true')
+        throw new Error('Cognito sign-up attempt limit is currently exceeded.')
+      }
       if (outcome?.kind === 'error' && safeText === SIGNUP_THROTTLE_MESSAGE) {
         if (retryDelay !== undefined) {
           console.log('ONBOARDING_E2E_SIGNUP_THROTTLE_RETRY=' + (attempt + 1))
