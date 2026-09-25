@@ -19,9 +19,10 @@ describe('organization LMS manager authorization coverage', () => {
     expect(code).toContain("from './course-access'")
   })
 
-  it('keeps learner SCORM launch independent from Studio manager authorization', () => {
+  it('keeps learner SCORM launch independent from Studio manager authorization while using published-course visibility', () => {
     const code = source('src/features/learning/scorm-repository.ts')
     expect(code).toContain('learning_enrollments')
-    expect(code).toContain("course.status = 'published'")
+    expect(code).toContain('publishedCourseVisibilitySql')
+    expect(code).toContain("from './course-publication'")
   })
 })
