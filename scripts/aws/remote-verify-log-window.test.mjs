@@ -44,6 +44,11 @@ test('CloudWatch runtime review excludes only the exact Next.js unauthenticated 
   assert.doesNotMatch(workflow, /grep -Ev ['"]Authentication required/)
 })
 
+test('CloudWatch runtime review counts the exact Cognito TooManyRequests safe message', () => {
+  assert.match(workflow, /EXPECTED_COGNITO_THROTTLE_COUNT/)
+  assert.match(workflow, /Too many Cognito requests\. Please try again later/)
+})
+
 test('CloudWatch runtime review reports safe Cognito issue reasons without treating them as strong runtime failures', () => {
   assert.match(workflow, /COGNITO_ISSUE_PATTERN/)
   assert.match(workflow, /COGNITO_ISSUE_COUNT/)
