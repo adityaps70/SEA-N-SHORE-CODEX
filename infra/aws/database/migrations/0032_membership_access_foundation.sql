@@ -105,6 +105,16 @@ alter type public.company_member_role add value if not exists 'content_manager';
 alter type public.company_member_role add value if not exists 'analyst';
 -- statement-breakpoint
 
+-- Events keep the responsible human host while optionally publishing under an organization workspace.
+alter table public.events
+  add column if not exists company_id uuid references public.companies(id) on delete set null;
+-- statement-breakpoint
+
+create index if not exists events_company_idx
+  on public.events (company_id, status, start_at desc)
+  where company_id is not null;
+-- statement-breakpoint
+
 create table if not exists public.legacy_organization_conversions (
   profile_id uuid primary key references public.profiles(id) on delete cascade,
   status text not null default 'pending',
