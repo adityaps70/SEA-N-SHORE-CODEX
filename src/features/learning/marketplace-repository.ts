@@ -59,8 +59,11 @@ export type MarketplaceCourseFilters = {
 
 const marketplaceSelect = `select
   course.id,
-  course.mentor_id,
-  application.applicant_name as mentor_name,
+  coalesce(course.mentor_id::text, course.created_by_user_id::text) as mentor_id,
+  case
+    when course.company_id is null then application.applicant_name
+    else company.name
+  end as mentor_name,
   course.slug,
   course.title,
   course.subtitle,
@@ -80,14 +83,26 @@ const marketplaceSelect = `select
   course.currency,
   course.published_at
 from public.learning_courses course
-inner join public.learning_mentors mentor
+left join public.learning_mentors mentor
   on mentor.id = course.mentor_id
-inner join public.learning_mentor_applications application
+left join public.learning_mentor_applications application
   on application.user_id = mentor.user_id
- and application.status = 'approved'`
+ and application.status = 'approved'
+left join public.companies company
+  on company.id = course.company_id`
 
 const marketplaceVisibility = `course.status = 'published'
-  and mentor.status = 'active'`
+  and (
+    (
+      course.company_id is null
+      and mentor.status = 'active'
+      and application.status = 'approved'
+    )
+    or (
+      course.company_id is not null
+      and company.is_verified = true
+    )
+  )`
 
 const marketplaceDiscoveryVisibility = `${marketplaceVisibility}
   and course.is_discoverable = true`
@@ -153,7 +168,12 @@ export function createMarketplaceRepository(input: { query?: MarketplaceQuery } 
       discoveryClauses.push(`(
         course.title ilike ${placeholder}
         or course.description ilike ${placeholder}
-        or application.applicant_name ilike ${placeholder}
+        or (
+          case
+            when course.company_id is null then application.applicant_name
+            else company.name
+          end
+        ) ilike ${placeholder}
       )`)
     }
 
