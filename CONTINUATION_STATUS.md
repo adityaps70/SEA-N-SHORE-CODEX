@@ -101,10 +101,17 @@ Payment, verification and organization role are independent concepts.
 - Phase 5 integrated verification passed: Docker build, Terraform validations/guards and full application suite (344 test files / 1,617 tests).
 
 ### Events
-- Draft creation remains available.
-- Publishing a new event, or updating an event to published state, checks `event.publish` server-side.
-- Existing event hosts receive narrow legacy verification/grants in the migration.
-- Organization event-manager publishing context is **not yet wired**.
+- Draft creation remains available even when an identity is not yet eligible to publish.
+- Added reusable personal/organization **Publish as** identities for Events.
+- Personal publishing requires Event Host verification plus personal `event.publish` entitlement.
+- Organization publishing supports approved Owner / Administrator / Event Manager roles and checks organization-scoped `event.publish`.
+- Events keep `host_user_id` as the responsible human manager and add nullable `company_id` for organization publishing, preserving all legacy events.
+- Organization event managers can manage hosted-event lists, drafts, edits, cancellations and attendee-facing event access without sharing an organization login.
+- Republish/edit authorization resolves the event's stored publisher server-side, so a client cannot switch entitlement scope.
+- Free or unverified publisher identities stay visible with separate upgrade/verification blockers and can still save drafts.
+- Public cards/details show the selected publisher; organization-hosted events show verified organization status.
+- Existing event hosts retain narrow legacy verification/grants in the migration.
+- Phase 6 integrated CI passed: application verify, Docker, Terraform validations/guards and execution contract.
 
 ### LMS
 - Existing mentor approval remains the trainer trust source.
@@ -196,19 +203,18 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Organization Event Manager publishing context and reusable event Publish-as flow.
-2. Organization LMS Manager authoring/publishing context.
-3. New-user recruiter and event-host verification application flows; trainer can continue using the existing mentor/trainer review flow.
-4. Admin views for persona, plan, capabilities, verification and entitlement history.
-5. Paid-feature upgrade UI at Publish Event and Submit Course; Post Job upgrade/verification blockers are now implemented.
-6. Pricing decision, currency/tax behavior and payment-provider selection.
-7. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
-8. Existing-user persona backfill where deterministic.
-9. Full staging migration, deploy and E2E only through guarded one-shot execution.
+1. Organization LMS Manager authoring/publishing context.
+2. New-user recruiter and event-host verification application flows.
+3. Admin views for persona, plan, capabilities, verification and entitlement history.
+4. Paid-feature upgrade UI at Submit Course; Post Job and Publish Event blockers are implemented.
+5. Pricing decision, currency/tax behavior and payment-provider selection.
+6. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+7. Existing-user persona backfill where deterministic.
+8. Full staging migration, deploy and E2E only through guarded one-shot execution.
 
 ## Exact next action
 
-Continue with **Phase 6: Organization Event Manager publishing context**, using TDD and the same identity/verification/entitlement separation established for Jobs. Then continue to the Organization LMS Manager authoring context.
+Continue with **Phase 7: Organization LMS Manager authoring/publishing context**, using TDD and the same personal-vs-organization identity, verification, role and entitlement separation established for Jobs and Events.
 
 Phase 5 Jobs is complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
 
