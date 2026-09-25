@@ -142,7 +142,25 @@ test('public signup retries only explicit Cognito throttling with bounded backof
   assert.match(browserScript, /retryDelay !== undefined/)
 })
 
-test('run-once performs disposable public sign-up browser journeys and read-only persistence audit', () => {
+test('signup smoke is quota-aware and bootstrap seeds all eight persona accounts', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.match(browserScript, /const signupSmokeUser = users\[0\]/)
+  assert.match(browserScript, /ONBOARDING_E2E_PUBLIC_SIGNUP_THROTTLED=true/)
+  assert.match(browserScript, /Too many sign-up requests/)
+  assert.doesNotMatch(browserScript, /for \(const user of users\) await signUp\(user\)/)
+
+  assert.match(workflow, /Ensure disposable onboarding users through staging bootstrap/)
+  assert.match(workflow, /admin-create-user/)
+  assert.match(workflow, /admin-set-user-password/)
+  assert.match(workflow, /--message-action SUPPRESS/)
+  assert.match(workflow, /admin-confirm-sign-up/)
+  assert.match(workflow, /ONBOARDING_E2E_BOOTSTRAP_USERS_VERIFIED=true/)
+  assert.match(workflow, /SeaNShore!\$\{RUN_ID\}/)
+})
+
+test('run-once performs a public sign-up smoke check, eight persona journeys and read-only persistence audit', () => {
   assert.equal(existsSync(browserScriptPath), true, `${browserScriptPath} must exist`)
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
