@@ -286,7 +286,7 @@ resource "aws_iam_role_policy" "github_deploy" {
           "ses:GetConfigurationSet"
         ]
         Resource = [
-          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seaandshore.in",
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in",
           "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
         ]
       },
@@ -294,7 +294,7 @@ resource "aws_iam_role_policy" "github_deploy" {
         Sid      = "Phase5bSesIdentityCreate"
         Effect   = "Allow"
         Action   = ["ses:CreateEmailIdentity"]
-        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seaandshore.in"
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in"
       },
       {
         Sid      = "Phase5bCognitoRead"
