@@ -303,6 +303,15 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/${var.phase5b_cognito_user_pool_id}"
       },
       {
+        Sid    = "ReviewCognitoSignupCapacity"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:GetProvisionedLimit",
+          "cloudwatch:GetMetricStatistics"
+        ]
+        Resource = "*"
+      },
+      {
         Sid    = "ManageStagingMediaCors"
         Effect = "Allow"
         Action = [
