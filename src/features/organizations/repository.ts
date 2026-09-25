@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import type { OrganizationAccessRole } from '@/features/access/policy'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import {
   COMPANY_ACCESS_REQUEST_ROLES,
@@ -78,6 +79,21 @@ type ExistingMembershipRow = QueryResultRow & {
   role: string
   approved_at: string | null
 }
+type UserOrganizationMembershipRow = QueryResultRow & {
+  company_id: string
+  company_slug: string
+  company_name: string
+  company_verified: boolean | null
+  member_role: string
+}
+
+export type UserOrganizationMembershipSummary = {
+  id: string
+  slug: string
+  name: string
+  verified: boolean
+  role: OrganizationAccessRole
+}
 type LockedApplicationRow = QueryResultRow & {
   id: string
   company_id: string
@@ -131,6 +147,21 @@ function companyAccessRequestType(value: string): CompanyAccessRequestType {
     return value as CompanyAccessRequestType
   }
   throw new Error('company_access_request_type_invalid')
+}
+
+function organizationAccessRole(value: string): OrganizationAccessRole {
+  if (
+    value === 'owner'
+    || value === 'administrator'
+    || value === 'recruiter'
+    || value === 'lms_manager'
+    || value === 'event_manager'
+    || value === 'content_manager'
+    || value === 'analyst'
+    || value === 'member'
+  ) return value
+
+  return 'member'
 }
 
 export function createOrganizationRepository(input: {
@@ -436,6 +467,31 @@ export function createOrganizationRepository(input: {
     }))
   }
 
+  async function listUserOrganizations(userId: string): Promise<UserOrganizationMembershipSummary[]> {
+    const rows = await query(
+      `select
+         c.id as company_id,
+         c.slug as company_slug,
+         c.name as company_name,
+         coalesce(c.is_verified, false) as company_verified,
+         cm.role::text as member_role
+       from public.company_members cm
+       join public.companies c on c.id = cm.company_id
+       where cm.user_id = $1
+         and cm.approved_at is not null
+       order by c.name asc, c.id asc`,
+      [userId],
+    ) as UserOrganizationMembershipRow[]
+
+    return rows.map((row) => ({
+      id: row.company_id,
+      slug: row.company_slug,
+      name: row.company_name,
+      verified: Boolean(row.company_verified),
+      role: organizationAccessRole(row.member_role),
+    }))
+  }
+
   async function searchCompanies(term: string): Promise<CompanySearchResult[]> {
     const normalized = term.trim()
     if (normalized.length < 2) return []
@@ -465,6 +521,7 @@ export function createOrganizationRepository(input: {
     resubmitOrganizationApplication,
     requestCompanyAccess,
     listUserAccessRequests,
+    listUserOrganizations,
     searchCompanies,
   }
 }
