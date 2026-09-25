@@ -5,6 +5,7 @@ import test from 'node:test'
 const workflowPath = '.github/workflows/aws-onboarding-e2e.yml'
 const actionPath = 'scripts/aws/onboarding-e2e-action.txt'
 const browserScriptPath = 'scripts/aws/onboarding-staging-e2e.mjs'
+const persistenceAuditPath = 'scripts/aws/onboarding-e2e-persistence-audit.sh'
 
 test('onboarding e2e is safe by default and branch-scoped with exact-head CI gating', () => {
   const action = readFileSync(actionPath, 'utf8').trim()
@@ -113,11 +114,12 @@ test('run-once keeps persona selection unambiguous and persistence audit syntax 
 
   assert.match(browserScript, /name:\s*user\.label/)
   assert.match(browserScript, /exact:\s*true/)
-  assert.match(workflow, /ONBOARDING_E2E_PERSISTENCE_SKIPPED=true/)
+  assert.match(workflow, /steps\.journeys\.outcome == 'success'/)
+  assert.match(workflow, /scripts\/aws\/onboarding-e2e-persistence-audit\.sh/)
   assert.doesNotMatch(workflow, /ONBOARDING_E2E_CLEANUP_VERIFIED=true/)
 })
 
-test('run-once performs disposable public sign-up browser journeys and guarded cleanup', () => {
+test('run-once performs disposable public sign-up browser journeys and read-only persistence audit', () => {
   assert.equal(existsSync(browserScriptPath), true, `${browserScriptPath} must exist`)
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
@@ -198,15 +200,19 @@ test('onboarding e2e stays focused on onboarding and profile identity behavior',
   assert.doesNotMatch(browserScript, /ONBOARDING_E2E_EVENTS_VERIFIED=true/)
 })
 
-test('signup diagnostics ignore the empty Next.js route announcer and cleanup audits only completed journeys', () => {
+test('signup diagnostics ignore the empty Next.js route announcer and audit only completed journeys', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const auditScript = readFileSync(persistenceAuditPath, 'utf8')
 
+  assert.equal(existsSync(persistenceAuditPath), true, `${persistenceAuditPath} must exist`)
   assert.match(browserScript, /locator\('p\[role="alert"\]'\)/)
   assert.match(browserScript, /locator\('p\[role="status"\]'\)/)
   assert.doesNotMatch(browserScript, /getByRole\('alert'\)/)
   assert.match(workflow, /id:\s*journeys/)
-  assert.match(workflow, /AUDIT_EXPECTED/)
-  assert.match(workflow, /steps\.journeys\.outcome/)
-  assert.match(workflow, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
+  assert.match(workflow, /steps\.journeys\.outcome == 'success'/)
+  assert.match(workflow, /scripts\/aws\/onboarding-e2e-persistence-audit\.sh/)
+  assert.match(auditScript, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
+  assert.doesNotMatch(auditScript, /delete\s+from/i)
+  assert.doesNotMatch(auditScript, /admin-delete-user/)
 })
