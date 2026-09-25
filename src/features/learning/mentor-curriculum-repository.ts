@@ -5,6 +5,7 @@ import {
   type DatabaseQueryClient,
 } from '@/lib/db/client'
 import { canMentorEditCourse, type CourseStatus } from './course-workflow'
+import { courseManagerAccessSql } from './course-access'
 
 export type MentorLessonType =
   | 'video'
@@ -115,7 +116,7 @@ type CurriculumRow = QueryResultRow & {
 
 type LockedCourseRow = QueryResultRow & {
   id: string
-  mentor_id: string
+  mentor_id: string | null
   status: string
 }
 
@@ -188,11 +189,8 @@ async function requireEditableOwnedCourse(
   const rows = await query(
     `select course.id, course.mentor_id, course.status
      from public.learning_courses course
-     inner join public.learning_mentors mentor
-       on mentor.id = course.mentor_id
      where course.id = $1
-       and mentor.user_id = $2
-       and mentor.status = 'active'
+       and ${courseManagerAccessSql('course', '$2')}
      for update`,
     [courseId, actorId],
   ) as LockedCourseRow[]
@@ -402,8 +400,6 @@ export function createMentorCurriculumRepository(input: {
          option.position as option_position,
          option.is_correct as option_is_correct
        from public.learning_courses course
-       inner join public.learning_mentors mentor
-         on mentor.id = course.mentor_id
        left join public.learning_course_sections section
          on section.course_id = course.id
        left join public.learning_lessons lesson
@@ -414,9 +410,8 @@ export function createMentorCurriculumRepository(input: {
          on question.quiz_id = quiz.id
        left join public.learning_quiz_options option
          on option.question_id = question.id
-       where mentor.user_id = $1
-         and mentor.status = 'active'
-         and course.id = $2
+       where course.id = $2
+         and ${courseManagerAccessSql('course', '$1')}
        order by
          section.position asc nulls last,
          section.id asc nulls last,
