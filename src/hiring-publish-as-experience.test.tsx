@@ -37,4 +37,35 @@ describe('hiring publish-as experience', () => {
     expect(page).toContain('publisherName')
     expect(page).not.toContain('listCompanyJobs')
   })
+
+  it('uses a unified hiring overview for personal and organization vacancies', () => {
+    const page = source('src/app/(app)/hiring/page.tsx')
+
+    expect(page).toContain('getManagedDashboardMetrics')
+    expect(page).toContain('listManagedJobs')
+    expect(page).toContain('buildHiringPublisherOptions')
+    expect(page).not.toContain('HiringAccessRequired')
+  })
+
+  it('loads edit and applicant pages through the managed publisher identity instead of the first company', () => {
+    const editPage = source('src/app/(app)/hiring/jobs/[jobId]/edit/page.tsx')
+    const applicantsPage = source('src/app/(app)/hiring/jobs/[jobId]/applicants/page.tsx')
+
+    expect(editPage).toContain('listManagedJobs')
+    expect(editPage).toContain('jobSummary.companyId')
+    expect(editPage).not.toContain('getAuthorizedCompany(user.id)')
+
+    expect(applicantsPage).toContain('listManagedJobs')
+    expect(applicantsPage).toContain('job.publisherName')
+    expect(applicantsPage).not.toContain('listCompanyJobs')
+  })
+
+  it('keeps Start Hiring visible for approved personal recruiters even without a company', () => {
+    const layout = source('src/app/(app)/layout.tsx')
+
+    expect(layout).toContain('getAccessContext')
+    expect(layout).toContain("verifications.includes('recruiter')")
+    expect(layout).toContain('canStartHiring')
+  })
+
 })
