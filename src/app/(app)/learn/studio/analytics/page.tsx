@@ -15,6 +15,7 @@ import {
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { mentorAnalyticsRepository } from '@/features/learning/mentor-analytics-repository'
 import { learningRepository } from '@/features/learning/repository'
+import { organizationRepository } from '@/features/organizations/repository'
 
 function statusLabel(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
@@ -22,8 +23,16 @@ function statusLabel(value: string) {
 
 export default async function MentorLearningAnalyticsPage() {
   const user = await requireAwsUser()
-  const mentorState = await learningRepository.getMentorApplicationState(user.id)
-  if (mentorState.kind !== 'mentor' || mentorState.mentorStatus !== 'active') return redirect('/learn/teach')
+  const [mentorState, organizations] = await Promise.all([
+    learningRepository.getMentorApplicationState(user.id),
+    organizationRepository.listUserOrganizations(user.id),
+  ])
+  const hasActiveMentor = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
+  const hasOrganizationLmsAccess = organizations.some((organization) =>
+    organization.role === 'owner'
+    || organization.role === 'administrator'
+    || organization.role === 'lms_manager')
+  if (!hasActiveMentor && !hasOrganizationLmsAccess) return redirect('/learn/teach')
 
   const analytics = await mentorAnalyticsRepository.getForMentor(user.id)
   const { summary } = analytics
