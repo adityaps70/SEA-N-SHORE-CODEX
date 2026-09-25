@@ -5,6 +5,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { AssignmentGradingControl } from '@/features/learning/components/assignment-grading-control'
 import { learningRepository } from '@/features/learning/repository'
+import { organizationRepository } from '@/features/organizations/repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 
 function dateLabel(value: string) {
@@ -13,8 +14,16 @@ function dateLabel(value: string) {
 
 export default async function MentorAssignmentReviewPage({ params }: { params: Promise<{ attemptId: string }> }) {
   const user = await requireAwsUser()
-  const mentorState = await learningRepository.getMentorApplicationState(user.id)
-  if (mentorState.kind !== 'mentor' || mentorState.mentorStatus !== 'active') return redirect('/learn/teach')
+  const [mentorState, organizations] = await Promise.all([
+    learningRepository.getMentorApplicationState(user.id),
+    organizationRepository.listUserOrganizations(user.id),
+  ])
+  const hasActiveMentor = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
+  const hasOrganizationLmsAccess = organizations.some((organization) =>
+    organization.role === 'owner'
+    || organization.role === 'administrator'
+    || organization.role === 'lms_manager')
+  if (!hasActiveMentor && !hasOrganizationLmsAccess) return redirect('/learn/teach')
 
   const { attemptId } = await params
   const review = await assignmentGradingRepository.getForMentor(user.id, attemptId)
