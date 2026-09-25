@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useRef, useState, useTransition, type ChangeEvent } from 'react'
 import { ChevronDown, ImageUp, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -11,17 +12,19 @@ import {
   CALENDAR_EVENT_TYPES,
   type CalendarEvent,
   type CalendarEventCategory,
+  type CalendarEventCreateInput,
   type CalendarEventFormat,
   type CalendarEventInput,
   type CalendarEventType,
   type CalendarSpeakerDetail,
 } from '../calendar-types'
+import type { EventPublisherOption } from '../publishers'
 import { EventDateTimeField } from './event-date-time-field'
 import { uploadEventBannerFile } from './upload-event-banner'
 
 type Props =
-  | { mode: 'create'; initial?: never; eventId?: never }
-  | { mode: 'edit'; initial: CalendarEvent; eventId: string }
+  | { mode: 'create'; publisherOptions: EventPublisherOption[]; initial?: never; eventId?: never }
+  | { mode: 'edit'; initial: CalendarEvent; eventId: string; publisherOptions?: never }
 
 const inputClass = 'min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 py-3 text-[15px] font-normal text-navy-950 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-teal-500'
 const selectClass = `${inputClass} appearance-none pr-10 font-semibold`
@@ -95,6 +98,13 @@ export function EventForm(props: Props) {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState(false)
   const initial = props.mode === 'edit' ? props.initial : undefined
+  const initialPublisher = props.mode === 'create'
+    ? props.publisherOptions.find((option) => option.canPublish) ?? props.publisherOptions[0] ?? null
+    : null
+  const [publisherKey, setPublisherKey] = useState(initialPublisher?.key ?? '')
+  const selectedPublisher = props.mode === 'create'
+    ? props.publisherOptions.find((option) => option.key === publisherKey) ?? null
+    : null
   const [format, setFormat] = useState<CalendarEventFormat>(initial?.format ?? 'online')
   const [bannerReference, setBannerReference] = useState(initial?.bannerStoragePath ?? initial?.bannerUrl ?? '')
   const [bannerPreview, setBannerPreview] = useState<string | null>(initial?.bannerUrl ?? null)
@@ -175,9 +185,31 @@ export function EventForm(props: Props) {
       setMessage('Please check the event date and time.')
       return
     }
+    if (props.mode === 'create') {
+      if (!selectedPublisher) {
+        setError(true)
+        setMessage('Choose who is publishing this event.')
+        return
+      }
+      if (input.status === 'published' && !selectedPublisher.canPublish) {
+        setError(true)
+        setMessage(
+          selectedPublisher.blocker === 'verification_required'
+            ? 'Verification is required before this identity can publish events. You can still save the event as a draft.'
+            : 'A qualifying Pro plan is required before this identity can publish events. You can still save the event as a draft.',
+        )
+        return
+      }
+    }
+
     startTransition(async () => {
       if (props.mode === 'create') {
-        const result = await createEventAction(input)
+        const publisher = selectedPublisher!
+        const result = await createEventAction({
+          ...input,
+          publisherType: publisher.kind,
+          companyId: publisher.kind === 'organization' ? publisher.id : null,
+        } satisfies CalendarEventCreateInput)
         if (!result.ok) {
           setError(true)
           setMessage(result.error)
@@ -214,6 +246,86 @@ export function EventForm(props: Props) {
 
   return (
     <form action={submit} className="space-y-6">
+      {props.mode === 'create' ? (
+        <section className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Publishing identity</p>
+          <h2 className="mt-1 text-xl font-bold text-navy-950">Publish as</h2>
+          <p className="mt-1.5 text-sm leading-6 text-slate-500">
+            Host personally or on behalf of an organization where you have event-management responsibility.
+          </p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {props.publisherOptions.map((option) => {
+              const selected = publisherKey === option.key
+              return (
+                <label
+                  key={option.key}
+                  className={`cursor-pointer rounded-2xl border p-4 transition ${
+                    selected
+                      ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-100'
+                      : 'border-mist-100 bg-white hover:border-teal-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="radio"
+                      name="publisherIdentity"
+                      value={option.key}
+                      checked={selected}
+                      onChange={() => setPublisherKey(option.key)}
+                      className="mt-1"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-navy-950">{option.name}</span>
+                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+                          {option.kind === 'personal' ? 'Personal' : 'Organization'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted">
+                        {option.kind === 'personal'
+                          ? 'Host under your professional Sea N Shore identity.'
+                          : `Host for this organization${option.role ? ` · ${option.role.replaceAll('_', ' ')}` : ''}.`}
+                      </p>
+
+                      {option.blocker === 'upgrade_required' ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">PRO required to publish</span>
+                          <Link href="/plans" className="text-xs font-bold text-teal-700 hover:underline">
+                            View plans
+                          </Link>
+                        </div>
+                      ) : null}
+
+                      {option.blocker === 'verification_required' ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">Verification required to publish</span>
+                          <span className="text-xs text-muted">
+                            {option.kind === 'personal'
+                              ? 'Event organizer verification must be approved.'
+                              : 'The organization must be verified.'}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      {!option.canPublish ? (
+                        <p className="mt-2 text-xs leading-5 text-muted">You can still choose this identity and save a draft.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+        </section>
+      ) : (
+        <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50 p-4">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Publishing identity</p>
+          <p className="mt-1 text-sm font-bold text-navy-950">{initial?.publisherName}</p>
+          <p className="mt-1 text-xs text-muted">The publishing identity is locked after event creation.</p>
+        </section>
+      )}
+
       <section className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-7">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Event basics</p>
         <h2 className="mt-1 text-xl font-bold text-navy-950">Tell people what the event is about</h2>
