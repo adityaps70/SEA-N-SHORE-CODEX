@@ -165,7 +165,10 @@ jobs:
           printf '%s\n' "$STDOUT_CONTENT"
           [[ -z "$STDERR_CONTENT" ]] || printf '%s\n' "$STDERR_CONTENT" >&2
           [[ "$(jq -r '.Status' /tmp/onboarding-e2e-stale-cleanup-result.json)" == Success ]]
-          grep -q '^ONBOARDING_E2E_STALE_CLEANUP_VERIFIED=true
+          grep -q '^ONBOARDING_E2E_STALE_CLEANUP_VERIFIED=true$' <<<"$STDOUT_CONTENT"
+
+      - name: Send read-only Cognito admin capability probe through SSM
+        if: steps.action.outputs.run_probe == 'true'
         id: command
         env:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
