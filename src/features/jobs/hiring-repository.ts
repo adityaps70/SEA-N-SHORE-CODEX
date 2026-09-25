@@ -874,44 +874,64 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     return rows[0] ? mapEditableJob(rows[0]) : null
   }
 
-  async function getEditableJob(userId: string, companyId: string, jobId: string): Promise<HiringEditableJob | null> {
+  async function getEditableJob(
+    userId: string,
+    companyId: string | null,
+    jobId: string,
+  ): Promise<HiringEditableJob | null> {
+    const fields = `
+      select
+        j.id,
+        j.company_id,
+        j.title,
+        j.status::text as status,
+        j.job_domain,
+        j.department,
+        j.rank,
+        j.vessel_types,
+        j.location,
+        j.sailing_regions,
+        j.summary,
+        j.description,
+        j.requirements,
+        j.experience_min_years,
+        j.experience_max_years,
+        j.joining_from,
+        j.joining_until,
+        j.salary_min,
+        j.salary_max,
+        j.salary_currency,
+        j.salary_period,
+        j.urgent,
+        j.easy_apply,
+        j.apply_until,
+        coalesce((
+          select array_agg(cr.certificate_name order by cr.certificate_name)
+          from public.job_certificate_requirements cr
+          where cr.job_id = j.id and cr.required = true
+        ), '{}'::text[]) as certificates,
+        coalesce((
+          select array_agg(vr.visa_name order by vr.visa_name)
+          from public.job_visa_requirements vr
+          where vr.job_id = j.id and vr.required = true
+        ), '{}'::text[]) as visas
+      from public.jobs j
+    `
+
+    if (companyId === null) {
+      const rows = await queryRows(
+        `${fields}
+         where j.created_by_user_id = $1
+           and j.id = $2
+           and j.company_id is null
+         limit 1`,
+        [userId, jobId],
+      ) as EditableJobRow[]
+      return rows[0] ? mapEditableJob(rows[0]) : null
+    }
+
     const rows = await queryRows(
-      `select
-         j.id,
-         j.company_id,
-         j.title,
-         j.status::text as status,
-         j.job_domain,
-         j.department,
-         j.rank,
-         j.vessel_types,
-         j.location,
-         j.sailing_regions,
-         j.summary,
-         j.description,
-         j.requirements,
-         j.experience_min_years,
-         j.experience_max_years,
-         j.joining_from,
-         j.joining_until,
-         j.salary_min,
-         j.salary_max,
-         j.salary_currency,
-         j.salary_period,
-         j.urgent,
-         j.easy_apply,
-         j.apply_until,
-         coalesce((
-           select array_agg(cr.certificate_name order by cr.certificate_name)
-           from public.job_certificate_requirements cr
-           where cr.job_id = j.id and cr.required = true
-         ), '{}'::text[]) as certificates,
-         coalesce((
-           select array_agg(vr.visa_name order by vr.visa_name)
-           from public.job_visa_requirements vr
-           where vr.job_id = j.id and vr.required = true
-         ), '{}'::text[]) as visas
-       from public.jobs j
+      `${fields}
        join public.company_members cm on cm.company_id = j.company_id
        join public.companies c on c.id = j.company_id
        where cm.user_id = $1
