@@ -44,6 +44,13 @@ test('CloudWatch runtime review excludes only the exact Next.js unauthenticated 
   assert.doesNotMatch(workflow, /grep -Ev ['"]Authentication required/)
 })
 
+test('CloudWatch runtime review reports safe Cognito issue reasons without treating them as strong runtime failures', () => {
+  assert.match(workflow, /COGNITO_ISSUE_PATTERN/)
+  assert.match(workflow, /COGNITO_ISSUE_COUNT/)
+  assert.match(workflow, /COGNITO_ISSUE_REASONS/)
+  assert.match(workflow, /\[cognito_issue\]/)
+})
+
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
   assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
   assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
