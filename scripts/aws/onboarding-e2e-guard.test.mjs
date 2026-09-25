@@ -76,13 +76,13 @@ test('run-once covers the new eight-persona onboarding model and excludes the re
   assert.doesNotMatch(browserScript, /Search organisation identities/)
 })
 
-test('persona selection uses exact accessible names so Seafarer does not collide with Seafarer Family', () => {
+test('persona selection uses a collision-resistant accessible-name pattern', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
-  assert.match(
-    browserScript,
-    /getByRole\('button',\s*\{\s*name:\s*user\.label,\s*exact:\s*true\s*\}\)/s,
-  )
+  assert.match(browserScript, /function personaButtonNamePattern\(user\)/)
+  assert.match(browserScript, /user\.key === 'seafarer'/)
+  assert.match(browserScript, /\^Seafarer\(\?=\[A-Z\]\)/)
+  assert.match(browserScript, /name:\s*personaButtonNamePattern\(user\)/)
   assert.doesNotMatch(browserScript, /name:\s*new RegExp\('\^' \+ escapeRegExp\(user\.label\)\)/)
 })
 
