@@ -722,6 +722,154 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     }))
   }
 
+  async function getManagedDashboardMetrics(userId: string): Promise<HiringDashboardMetrics> {
+    const rows = await queryRows(
+      `with authorised_jobs as (
+         select j.id
+         from public.jobs j
+         where
+           (j.company_id is null and j.created_by_user_id = $1)
+           or exists (
+             select 1
+             from public.company_members cm
+             join public.companies c on c.id = cm.company_id
+             where cm.company_id = j.company_id
+               and cm.user_id = $1
+               and cm.approved_at is not null
+               and cm.role::text = any($2::text[])
+               and c.is_verified = true
+           )
+       )
+       select
+         count(distinct j.id) filter (where j.status = 'published' and (j.apply_until is null or j.apply_until >= current_date)) as active_jobs,
+         count(a.id) as applicants,
+         count(a.id) filter (where a.status = 'shortlisted') as shortlisted,
+         count(a.id) filter (where a.status = 'interview') as interviews,
+         count(a.id) filter (where a.status = 'selected') as selected
+       from authorised_jobs aj
+       join public.jobs j on j.id = aj.id
+       left join public.job_applications a on a.job_id = j.id`,
+      [userId, [...HIRING_ROLES]],
+    )
+    const row = rows[0] ?? {}
+    return {
+      activeJobs: numberValue(row.active_jobs),
+      applicants: numberValue(row.applicants),
+      shortlisted: numberValue(row.shortlisted),
+      interviews: numberValue(row.interviews),
+      selected: numberValue(row.selected),
+    }
+  }
+
+  async function listManagedJobs(userId: string): Promise<ManagedHiringJobSummary[]> {
+    const rows = await queryRows(
+      `select
+         j.id,
+         j.title,
+         j.status::text as status,
+         j.job_domain,
+         j.rank,
+         j.vessel_types,
+         j.location,
+         j.urgent,
+         j.apply_until,
+         j.published_at,
+         j.company_id,
+         j.company_name as publisher_name,
+         count(a.id) as applicant_count
+       from public.jobs j
+       left join public.job_applications a on a.job_id = j.id
+       where
+         (j.company_id is null and j.created_by_user_id = $1)
+         or exists (
+           select 1
+           from public.company_members cm
+           join public.companies c on c.id = cm.company_id
+           where cm.company_id = j.company_id
+             and cm.user_id = $1
+             and cm.approved_at is not null
+             and cm.role::text = any($2::text[])
+             and c.is_verified = true
+         )
+       group by j.id
+       order by j.created_at desc, j.id desc`,
+      [userId, [...HIRING_ROLES]],
+    ) as HiringJobSummaryRow[]
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      status: row.status,
+      domain: jobDomain(row.job_domain),
+      rank: row.rank ?? null,
+      vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
+      location: row.location ?? null,
+      urgent: Boolean(row.urgent),
+      applyUntil: row.apply_until ?? null,
+      publishedAt: row.published_at ?? null,
+      applicantCount: numberValue(row.applicant_count),
+      companyId: row.company_id ?? null,
+      publisherName: row.publisher_name ?? 'Personal recruiter',
+    }))
+  }
+
+  async function getManagedEditableJob(userId: string, jobId: string): Promise<HiringEditableJob | null> {
+    const rows = await queryRows(
+      `select
+         j.id,
+         j.company_id,
+         j.title,
+         j.status::text as status,
+         j.job_domain,
+         j.department,
+         j.rank,
+         j.vessel_types,
+         j.location,
+         j.sailing_regions,
+         j.summary,
+         j.description,
+         j.requirements,
+         j.experience_min_years,
+         j.experience_max_years,
+         j.joining_from,
+         j.joining_until,
+         j.salary_min,
+         j.salary_max,
+         j.salary_currency,
+         j.salary_period,
+         j.urgent,
+         j.easy_apply,
+         j.apply_until,
+         coalesce((
+           select array_agg(cr.certificate_name order by cr.certificate_name)
+           from public.job_certificate_requirements cr
+           where cr.job_id = j.id and cr.required = true
+         ), '{}'::text[]) as certificates,
+         coalesce((
+           select array_agg(vr.visa_name order by vr.visa_name)
+           from public.job_visa_requirements vr
+           where vr.job_id = j.id and vr.required = true
+         ), '{}'::text[]) as visas
+       from public.jobs j
+       left join public.company_members cm
+         on cm.company_id = j.company_id and cm.user_id = $1
+       left join public.companies c on c.id = j.company_id
+       where j.id = $2
+         and (
+           (j.company_id is null and j.created_by_user_id = $1)
+           or (
+             j.company_id is not null
+             and cm.approved_at is not null
+             and cm.role::text = any($3::text[])
+             and c.is_verified = true
+           )
+         )
+       limit 1`,
+      [userId, jobId, [...HIRING_ROLES]],
+    ) as EditableJobRow[]
+    return rows[0] ? mapEditableJob(rows[0]) : null
+  }
+
   async function getEditableJob(userId: string, companyId: string, jobId: string): Promise<HiringEditableJob | null> {
     const rows = await queryRows(
       `select
@@ -1049,8 +1197,11 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     listAuthorizedCompanies,
     getPersonalPublisher,
     getDashboardMetrics,
+    getManagedDashboardMetrics,
     listCompanyJobs,
+    listManagedJobs,
     getEditableJob,
+    getManagedEditableJob,
     createJob,
     updateJob,
     listApplicants,
