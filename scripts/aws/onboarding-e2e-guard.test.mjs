@@ -135,8 +135,12 @@ test('public signup retries only explicit Cognito throttling with bounded backof
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
   assert.match(browserScript, /const SIGNUP_THROTTLE_MESSAGE = 'Too many sign-up requests\. Please wait a moment and try again\.'/)
+  assert.match(browserScript, /const SIGNUP_LIMIT_MESSAGE = 'Sign-up attempt limit reached\. Please try again later\.'/)
   assert.match(browserScript, /const SIGNUP_THROTTLE_RETRY_DELAYS_MS = \[15_000, 30_000, 60_000\]/)
   assert.match(browserScript, /outcome\?\.kind === 'error' && safeText === SIGNUP_THROTTLE_MESSAGE/)
+  assert.match(browserScript, /outcome\?\.kind === 'error' && safeText === SIGNUP_LIMIT_MESSAGE/)
+  assert.match(browserScript, /ONBOARDING_E2E_PUBLIC_SIGNUP_LIMIT_EXCEEDED=true/)
+  assert.match(browserScript, /Cognito sign-up attempt limit is currently exceeded/)
   assert.match(browserScript, /ONBOARDING_E2E_SIGNUP_THROTTLE_RETRY=/)
   assert.match(browserScript, /await page\.waitForTimeout\(retryDelay\)/)
   assert.match(browserScript, /retryDelay !== undefined/)
