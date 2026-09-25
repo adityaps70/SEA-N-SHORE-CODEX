@@ -130,17 +130,6 @@ function usernameInput(page) {
   return page.locator('input[name="slug"]')
 }
 
-function personaButtonNamePattern(user) {
-  if (user.key === 'seafarer') {
-    return /^Seafarer(?=[A-Z])/
-  }
-  return new RegExp('^' + escapeRegExp(user.label))
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\$&')
-}
-
 const browser = await chromium.launch()
 
 async function verifyAccessibility(page, label) {
@@ -361,7 +350,8 @@ async function completePersona(user, takenUsername) {
   await signIn(page, user)
 
   const personaButton = page.getByRole('button', {
-    name: personaButtonNamePattern(user),
+    name: user.label,
+    exact: true,
   })
   await personaButton.click()
   await expect(personaButton).toHaveAttribute('aria-pressed', 'true')
