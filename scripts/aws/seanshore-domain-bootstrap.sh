@@ -81,7 +81,7 @@ if [[ "$LIVE_ZONE_COUNT" == "1" ]]; then
       nameserver="${nameserver%.}"
       echo "REGISTRY_NAME_SERVER=$parent_ns|$nameserver"
       printf '%s\n' "$nameserver" >> "$REGISTRY_NS_FILE"
-    done < <(dig +short NS "$EXPECTED_DOMAIN" @"$parent_ns" | sort)
+    done < <(dig +norecurse +noall +authority NS "$EXPECTED_DOMAIN" @"$parent_ns" | awk '$4=="NS" {print $5}' | sort)
   done
   sort -u -o "$REGISTRY_NS_FILE" "$REGISTRY_NS_FILE"
   if cmp -s "$ROUTE53_NS_FILE" "$REGISTRY_NS_FILE"; then
