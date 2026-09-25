@@ -23,8 +23,8 @@ jobs:
     env:
       AWS_REGION: ap-south-1
       EXPECTED_ACCOUNT_ID: "310356785722"
-      SES_DOMAIN: seaandshore.in
-      SES_FROM_ADDRESS: no-reply@seaandshore.in
+      SES_DOMAIN: seanshore.in
+      SES_FROM_ADDRESS: no-reply@seanshore.in
       SES_FROM_DISPLAY_NAME: Sea N Shore
       SES_CONFIGURATION_SET: sea-n-shore-staging-transactional
       COGNITO_USER_POOL_NAME: sea-n-shore-staging-users
