@@ -4,6 +4,8 @@ import { z } from 'zod'
 import { Building2, ExternalLink, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { adminRepository } from '@/features/admin/repository'
+import { adminMembershipRepository } from '@/features/admin/membership-repository'
+import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
 import { OrganizationReviewActions } from '@/features/admin/components/organization-review-actions'
 
 function valueOrDash(value: string | null | undefined) {
@@ -32,6 +34,8 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
   const user = await requireAwsUser()
   const review = await adminRepository.getOrganizationApplicationReview(user.id, applicationId)
   if (!review) notFound()
+  const membership = await adminMembershipRepository.getOrganizationAccessOverview(user.id, review.company.id)
+  if (!membership) notFound()
 
   return (
     <main className="space-y-5">
@@ -110,6 +114,56 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
           ) : null}
         </div>
       </section>
+
+      <section className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Organization membership</p>
+          <h2 className="mt-1 text-xl font-bold text-navy-950">Plan & workspace access</h2>
+          <dl className="mt-5 space-y-4">
+            <Detail
+              label="Current plan"
+              value={membership.plan === 'organization_pro' ? 'Organization Pro' : 'Sea N Shore Member · Free'}
+            />
+            <Detail label="Organization verification" value={membership.verified ? 'Verified' : 'Not verified'} />
+            <Detail
+              label="Subscription status"
+              value={membership.subscription?.status?.replaceAll('_', ' ') ?? 'No paid subscription record'}
+            />
+            <Detail
+              label="Billing period ends"
+              value={membership.subscription?.currentPeriodEndsAt ? dateLabel(membership.subscription.currentPeriodEndsAt) : '—'}
+            />
+          </dl>
+        </article>
+
+        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Workspace team</p>
+          <h2 className="mt-1 text-xl font-bold text-navy-950">Authorized managers</h2>
+          <div className="mt-5 divide-y divide-mist-100">
+            {membership.managers.map((manager) => (
+              <div key={manager.profileId} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-navy-950">{manager.fullName}</p>
+                  <p className="mt-1 text-xs capitalize text-muted">{manager.role.replaceAll('_', ' ')} · Approved {dateLabel(manager.approvedAt)}</p>
+                </div>
+                {manager.slug ? (
+                  <Link href={`/people/${manager.slug}`} className="text-xs font-bold text-ocean-700 hover:underline">View profile →</Link>
+                ) : null}
+              </div>
+            ))}
+            {membership.managers.length === 0 ? <p className="py-4 text-sm text-muted">No approved manager roles are recorded.</p> : null}
+          </div>
+        </article>
+      </section>
+
+      <div>
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-red-700">Entitlement history & controls</p>
+        <AdminEntitlementControlPanel
+          subjectType="company"
+          subjectId={review.company.id}
+          entitlementHistory={membership.entitlementHistory}
+        />
+      </div>
 
       <OrganizationReviewActions applicationId={review.applicationId} status={review.status} />
     </main>
