@@ -81,6 +81,8 @@ describe('learner progress repository', () => {
     expect(seen[0]?.text).toContain("course.status = 'published'")
     expect(seen[0]?.text).toContain("mentor.status = 'active'")
     expect(seen[0]?.text).toContain("application.status = 'approved'")
+    expect(seen[0]?.text).toContain('public.companies company')
+    expect(seen[0]?.text).toContain('company.is_verified = true')
     expect(seen[0]?.text).toContain("enrollment.status in ('active', 'completed')")
     expect(seen[0]?.text).toContain('lesson.id = $3')
     expect(seen[0]?.text).toContain('for update of enrollment')
@@ -167,6 +169,8 @@ describe('learner progress repository', () => {
     expect(seen[0]?.text).toContain("course.status = 'published'")
     expect(seen[0]?.text).toContain("mentor.status = 'active'")
     expect(seen[0]?.text).toContain("application.status = 'approved'")
+    expect(seen[0]?.text).toContain('public.companies company')
+    expect(seen[0]?.text).toContain('company.is_verified = true')
     expect(seen[0]?.text).toContain("enrollment.status in ('active', 'completed')")
     expect(seen[0]?.text).toContain("lesson.lesson_type in ('video', 'audio')")
     expect(seen[0]?.text).toContain('for update of enrollment')
@@ -195,4 +199,29 @@ describe('learner progress repository', () => {
     expect(seen[0]).toContain("lesson.lesson_type in ('video', 'audio')")
     expect(seen[0]).not.toContain('insert into public.learning_progress')
   })
+
+  it('accepts learner progress against a verified organization-published course', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createLearnerProgressRepository({
+      transaction: async (work) => work(async (text: string, values?: readonly unknown[]) => {
+        seen.push({ text, values })
+        if (text.includes('for update of enrollment')) {
+          return [{ enrollment_id: enrollmentId, enrollment_status: 'active', course_id: courseId, lesson_id: lessonId }]
+        }
+        if (text.includes('insert into public.learning_progress')) return [{ completed_at: '2026-09-15T09:00:00.000Z' }]
+        if (text.includes('count(lesson.id)')) return [{ total_lessons: '2', completed_lessons: '1' }]
+        return []
+      }),
+    })
+
+    await expect(repository.completeLesson(learnerId, slug, lessonId)).resolves.toMatchObject({
+      enrollmentId,
+      lessonId,
+      enrollmentCompleted: false,
+    })
+    expect(seen[0]?.text).toContain('course.company_id')
+    expect(seen[0]?.text).toContain('public.companies company')
+    expect(seen[0]?.text).toContain('company.is_verified = true')
+  })
+
 })
