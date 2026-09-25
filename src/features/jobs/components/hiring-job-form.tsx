@@ -101,10 +101,10 @@ export function HiringJobForm(props: HiringJobFormProps) {
     }
 
     startTransition(async () => {
-      const result = props.mode === 'create' && selectedPublisher
+      const result = props.mode === 'create'
         ? await createHiringJob({
-            publisherType: selectedPublisher.kind,
-            companyId: selectedPublisher.kind === 'organization' ? selectedPublisher.id : null,
+            publisherType: selectedPublisher!.kind,
+            companyId: selectedPublisher!.kind === 'organization' ? selectedPublisher!.id : null,
             ...fields,
           } satisfies HiringJobInput)
         : await updateHiringJob(props.jobId, fields)
