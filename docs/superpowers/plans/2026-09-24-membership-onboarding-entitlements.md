@@ -2,7 +2,7 @@
 
 Date started: 2026-09-24
 Branch: `feat/aws-native-phase-0-1` only
-Status: IN PROGRESS — foundation and persona onboarding implemented in code; staging migration/deploy intentionally not applied yet
+Status: IN PROGRESS — membership/persona architecture, deterministic legacy backfill and code-level launch regressions implemented; staging migration/deploy/E2E intentionally not applied yet
 
 ## Non-negotiable delivery rules
 
@@ -121,7 +121,7 @@ Architecture:
 - [x] Build one server-side access service (`getAccessContext`, `can`, `requireCapability` or equivalent).
 - [x] Keep plan, verification and organization role as separate concepts.
 - [x] Add legacy/grandfather access path so existing approved creators are not suddenly locked out.
-- [ ] Unit-test all plan/verification/role combinations.
+- [x] Unit-test all plan/verification/role combinations.
 
 ## Phase 4 — Verification model
 
@@ -214,7 +214,9 @@ Current note: Admin membership visibility and entitlement controls are implement
 
 ## Phase 11 — Migration/backfill
 
-- [ ] Backfill persona for existing users from profile type/identity where deterministic.
+Current note: deterministic persona backfill is implemented and contract-tested. It only fills `persona is null` for completed legacy profiles when the mapping is unambiguous, never overwrites an explicit persona, and leaves ambiguous legacy identities untouched. The migration itself remains unapplied to staging while the action guard is `plan`.
+
+- [x] Backfill persona for existing users from profile type/identity where deterministic.
 - [x] Preserve old identity columns during compatibility period.
 - [x] Backfill legacy creator access for existing approved recruiters.
 - [x] Backfill legacy creator access for existing active mentors.
@@ -224,22 +226,24 @@ Current note: Admin membership visibility and entitlement controls are implement
 
 ## Phase 12 — Full regression / launch readiness
 
-- [ ] Onboarding E2E: all 8 personas.
-- [ ] Onboarding preserves inputs on failure.
-- [ ] Free member cannot bypass paid publishing server-side.
-- [ ] Creator Pro recruiter job flow.
-- [ ] Creator Pro trainer LMS flow.
-- [ ] Creator Pro event-host flow.
-- [ ] Organization Pro recruiter job flow.
-- [ ] Organization Pro LMS manager flow.
-- [ ] Organization Pro event manager flow.
-- [ ] Existing legacy recruiter regression.
-- [ ] Existing legacy mentor regression.
-- [ ] Existing organizations regression.
-- [ ] Jobs/applications regression.
-- [ ] Events/attendance regression.
-- [ ] LMS/enrollment/course review regression.
-- [ ] Admin/suspension regression.
+Current note: exact-head automated application regression is green at 359 test files / 1,719 tests, with Docker, Terraform validations, plan guards and the SSM execution contract also green. The guarded browser harness has been upgraded from the retired Professional/Organisation onboarding to all eight persona journeys and persona/intents persistence checks, but it remains at `plan` and has **not** been executed against staging.
+
+- [ ] Onboarding E2E: all 8 personas. *(Harness prepared; staging execution still pending explicit one-shot approval.)*
+- [x] Onboarding preserves inputs on failure.
+- [x] Free member cannot bypass paid publishing server-side.
+- [x] Creator Pro recruiter job flow.
+- [x] Creator Pro trainer LMS flow.
+- [x] Creator Pro event-host flow.
+- [x] Organization Pro recruiter job flow.
+- [x] Organization Pro LMS manager flow.
+- [x] Organization Pro event manager flow.
+- [x] Existing legacy recruiter regression.
+- [x] Existing legacy mentor regression.
+- [x] Existing organizations regression.
+- [x] Jobs/applications regression.
+- [x] Events/attendance regression.
+- [x] LMS/enrollment/course review regression.
+- [x] Admin/suspension regression.
 - [ ] Mobile onboarding UX.
 - [ ] Accessibility/keyboard/focus/error states.
 - [ ] Staging E2E only after its guard is explicitly armed for the one-shot run.
