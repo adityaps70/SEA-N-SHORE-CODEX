@@ -151,4 +151,67 @@ describe('independent recruiter hiring publisher', () => {
     expect(seen[0]?.text).toContain('j.created_by_user_id = $1')
     expect(seen[0]?.text).toContain('public.company_members')
   })
+
+  it('loads a personal vacancy for editing by its creator without requiring a company id', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createHiringRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          id: 'job-1',
+          company_id: null,
+          title: 'Marine Superintendent',
+          status: 'draft',
+          job_domain: 'shore',
+          department: 'Marine',
+          rank: null,
+          vessel_types: [],
+          location: 'Mumbai',
+          sailing_regions: ['India'],
+          summary: 'Independent recruiter opportunity.',
+          description: 'Hiring an experienced marine superintendent.',
+          requirements: null,
+          experience_min_years: '8',
+          experience_max_years: null,
+          joining_from: null,
+          joining_until: null,
+          salary_min: null,
+          salary_max: null,
+          salary_currency: null,
+          salary_period: null,
+          urgent: false,
+          easy_apply: true,
+          apply_until: null,
+          certificates: [],
+          visas: [],
+        }]
+      },
+    })
+
+    await expect(repository.getEditableJob('user-1', null, 'job-1')).resolves.toMatchObject({
+      id: 'job-1',
+      companyId: null,
+      title: 'Marine Superintendent',
+    })
+    expect(seen[0]?.text).toContain('j.company_id is null')
+    expect(seen[0]?.text).toContain('j.created_by_user_id = $1')
+  })
+
+  it('authorizes application management for a personal vacancy creator without company membership', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('select a.id') && text.includes('created_by_user_id')) {
+        return [{ id: 'application-1', company_id: null, created_by_user_id: 'user-1' }]
+      }
+      return []
+    }
+    const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.updateApplicationStatus('user-1', 'application-1', 'shortlisted', 'Strong fit')).resolves.toBeUndefined()
+    expect(seen[0]?.text).toContain('j.company_id is null')
+    expect(seen[0]?.text).toContain('j.created_by_user_id = $2')
+    expect(seen.some((entry) => entry.text.includes('insert into public.job_application_events'))).toBe(true)
+  })
+
 })
