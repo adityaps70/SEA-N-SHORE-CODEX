@@ -53,7 +53,7 @@ export function EventCard({ event, showStatus = false }: { event: CalendarEvent;
           <span className="flex items-center gap-2"><Users className="h-4 w-4 text-teal-700" />{event.attendeeCount}{event.capacity ? ` / ${event.capacity}` : ''} attending</span>
         </div>
         {event.topics.length ? <div className="flex flex-wrap gap-1.5">{event.topics.slice(0, 4).map((topic) => <span key={topic} className="rounded-lg bg-mist-50 px-2 py-1 text-xs text-navy-700">{topic}</span>)}</div> : null}
-        <p className="border-t border-mist-100 pt-3 text-xs text-muted">Hosted by <span className="font-semibold text-navy-800">{event.hostName}</span></p>
+        <p className="border-t border-mist-100 pt-3 text-xs text-muted">Hosted by <span className="font-semibold text-navy-800">{event.publisherName}</span></p>
         <div className="flex items-center justify-between border-t border-mist-100 pt-3 text-sm font-bold text-teal-700">
           <span>View event</span>
           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" aria-hidden="true" />
