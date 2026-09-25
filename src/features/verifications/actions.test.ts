@@ -91,6 +91,7 @@ describe('creator verification actions', () => {
     const result = await reviewCreatorVerificationApplication(verificationId, 'rejected', '   ')
 
     expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('Expected verification review validation to fail.')
     expect(result.error).toMatch(/review note/i)
     expect(mocks.requireAwsUser).not.toHaveBeenCalled()
     expect(mocks.reviewApplication).not.toHaveBeenCalled()
