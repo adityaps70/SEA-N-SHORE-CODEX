@@ -796,7 +796,7 @@ jobs:
           echo 'ONBOARDING_E2E_CLEANUP_VERIFIED=true'
           if [[ \"$AUDIT_EXPECTED\" == true ]]; then [[ \"$AUDIT_OK\" == true ]]; fi
           \"\"\"
-          print(json.dumps({\"executionTimeout\": [\"600\"], \"commands\": [\"runuser -u ssm-user -- bash -lc \" + shlex.quote(script)]}))
+          print(json.dumps({"executionTimeout": ["600"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
           PYTHON
           COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore onboarding E2E audit cleanup ${GITHUB_SHA}" --timeout-seconds 600 --parameters file:///tmp/onboarding-e2e-cleanup.json --query 'Command.CommandId' --output text)
           test -n "$COMMAND_ID"
