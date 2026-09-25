@@ -213,7 +213,13 @@ export async function submitCourseForReview(courseId: string): Promise<CourseAct
 
   try {
     const user = await requireAwsUser()
-    await requireCapability(user.id, 'course.publish')
+    const publisher = await courseRepository.getManagedCoursePublisher(user.id, parsedId.data)
+    if (!publisher) throw new Error('course_not_found')
+    if (publisher.companyId) {
+      await requireCapability(user.id, 'course.publish', { companyId: publisher.companyId })
+    } else {
+      await requireCapability(user.id, 'course.publish')
+    }
     await courseRepository.submitCourse(user.id, parsedId.data)
     refreshStudio()
     revalidatePath(`/learn/studio/courses/${parsedId.data}/edit`)
