@@ -89,13 +89,13 @@ Dynamic onboarding requirements:
 
 ## Phase 2 — Organization workspace model
 
-Current note: Create / Claim Organization is implemented and CI-verified; legacy organisation-profile conversion remains open.
+Current note: Create / Claim Organization and safe legacy organisation-profile conversion are implemented and CI-verified.
 
 - [x] Remove organization as a new-user onboarding identity.
 - [x] Keep existing `companies`, `company_members`, `organization_applications`, `company_access_requests`.
 - [x] Provide Create / Claim Organization after onboarding.
 - [x] Existing organization records remain intact.
-- [ ] Existing organisation-type users receive a safe migration path to a personal account + organization ownership/admin membership.
+- [x] Existing organisation-type users receive a safe migration path to a personal account + organization ownership/admin membership.
 - [x] Support organization roles: owner, admin, recruiter, LMS manager, event manager, content manager, analyst as required.
 - [x] Organization verification remains admin-controlled.
 - [x] Organization members never share one organization login.
