@@ -30,6 +30,9 @@ test('membership access foundation is additive and separates persona, plans, ver
   assert.match(normalized, /identity_root = 'organisation'/)
   assert.match(normalized, /jsonb_build_object/)
 
+  assert.match(normalized, /alter table public\.events add column if not exists company_id uuid references public\.companies\(id\) on delete set null/)
+  assert.match(normalized, /events_company_idx/)
+
   assert.match(normalized, /insert into public\.feature_verifications/)
   assert.match(normalized, /learning_mentors/)
   assert.match(normalized, /company_members/)
