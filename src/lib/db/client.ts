@@ -22,10 +22,16 @@ type PoolFactory = (config: PoolConfig) => DatabasePool
 export type DatabaseCredentials = Pick<DatabaseEnvironment, 'user' | 'password'>
 type CredentialProvider = () => Promise<DatabaseCredentials>
 
+type DatabaseQueryErrorContext = {
+  code: string | null
+  query: string
+}
+
 type CreateDatabaseClientOptions = {
   environment?: DatabaseEnvironment
   poolFactory?: PoolFactory
   credentialProvider?: CredentialProvider
+  onQueryError?: (context: DatabaseQueryErrorContext) => void
 }
 
 function poolConfig(environment: DatabaseEnvironment): PoolConfig {
@@ -47,8 +53,21 @@ function defaultPoolFactory(config: PoolConfig): DatabasePool {
   return new Pool(config) as unknown as DatabasePool
 }
 
+function databaseErrorCode(error: unknown) {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && typeof error.code === 'string'
+    ? error.code
+    : null
+}
+
 function isAuthenticationFailure(error: unknown) {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === '28P01'
+  return databaseErrorCode(error) === '28P01'
+}
+
+function normalizeQueryForLogging(text: string) {
+  return text.replace(/\s+/g, ' ').trim().slice(0, 2000)
 }
 
 export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) {
@@ -78,6 +97,18 @@ export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) 
     return true
   }
 
+  function reportQueryFailure(text: string, error: unknown) {
+    const context: DatabaseQueryErrorContext = {
+      code: databaseErrorCode(error),
+      query: normalizeQueryForLogging(text),
+    }
+    if (options.onQueryError) {
+      options.onQueryError(context)
+      return
+    }
+    console.error('[database_query_failed]', context)
+  }
+
   async function queryWithAuthRecovery<T extends QueryResultRow = QueryResultRow>(
     text: string,
     values: readonly unknown[],
@@ -85,8 +116,16 @@ export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) 
     try {
       return await getPool().query<T>(text, values)
     } catch (error) {
-      if (!isAuthenticationFailure(error) || !await refreshPoolAfterAuthenticationFailure()) throw error
-      return getPool().query<T>(text, values)
+      if (isAuthenticationFailure(error) && await refreshPoolAfterAuthenticationFailure()) {
+        try {
+          return await getPool().query<T>(text, values)
+        } catch (retryError) {
+          reportQueryFailure(text, retryError)
+          throw retryError
+        }
+      }
+      reportQueryFailure(text, error)
+      throw error
     }
   }
 
@@ -110,10 +149,23 @@ export function createDatabaseClient(options: CreateDatabaseClientOptions = {}) 
 
     async withTransaction<T>(fn: (client: DatabaseQueryClient) => Promise<T>): Promise<T> {
       const client = await connectWithAuthRecovery()
+      const diagnosticClient: DatabaseQueryClient = {
+        async query<R extends QueryResultRow = QueryResultRow>(
+          text: string,
+          values: readonly unknown[] = [],
+        ) {
+          try {
+            return await client.query<R>(text, values)
+          } catch (error) {
+            reportQueryFailure(text, error)
+            throw error
+          }
+        },
+      }
 
       try {
         await client.query('BEGIN')
-        const result = await fn(client)
+        const result = await fn(diagnosticClient)
         await client.query('COMMIT')
         return result
       } catch (error) {
