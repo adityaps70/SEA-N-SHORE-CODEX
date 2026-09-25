@@ -61,6 +61,8 @@ describe('learning certificate repository', () => {
     expect(eligible?.values).toEqual([enrollmentId])
     expect(eligible?.text).toContain("enrollment.status = 'completed'")
     expect(eligible?.text).toContain('course.certificate_enabled = true')
+    expect(eligible?.text).toContain('public.companies company')
+    expect(eligible?.text).toContain('company.name')
 
     const insert = seen.find((entry) => entry.text.includes('insert into public.learning_certificates'))
     expect(insert?.text).toContain('on conflict (enrollment_id) do update')
@@ -150,4 +152,34 @@ describe('learning certificate repository', () => {
       issuedAt: '2026-09-15T08:01:00.000Z',
     })
   })
+
+  it('issues an organization-course certificate using the organization name as publisher', async () => {
+    const query = async (text: string) => {
+      if (text.includes('from public.learning_enrollments enrollment') && text.includes('learner.full_name')) {
+        return [{
+          enrollment_id: enrollmentId,
+          course_id: courseId,
+          learner_id: learnerId,
+          learner_name: 'Aarav Mehta',
+          course_title: 'Bridge Resource Management',
+          mentor_name: 'Sea Academy',
+          completed_at: new Date('2026-09-15T08:00:00.000Z'),
+        }]
+      }
+      if (text.includes('insert into public.learning_certificates')) {
+        return [{
+          ...certificateRow(),
+          course_title: 'Bridge Resource Management',
+          mentor_name: 'Sea Academy',
+        }]
+      }
+      return []
+    }
+
+    await expect(issueCertificateForCompletedEnrollmentWithQuery(query, enrollmentId)).resolves.toMatchObject({
+      courseTitle: 'Bridge Resource Management',
+      mentorName: 'Sea Academy',
+    })
+  })
+
 })
