@@ -64,8 +64,6 @@ export type HiringJobInput = {
 
 export type HiringJobUpdateInput = Omit<HiringJobInput, 'publisherType' | 'companyId' | 'status'> & {
   status: HiringJobStatus
-  publisherType?: never
-  companyId?: never
 }
 
 export type HiringJobSummary = {
