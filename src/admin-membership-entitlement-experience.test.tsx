@@ -16,6 +16,7 @@ describe('admin membership and entitlement experience', () => {
     expect(page).toContain('Current plan')
     expect(page).toContain('Effective capabilities')
     expect(page).toContain('Professional verifications')
+    expect(page).toContain('Verification history')
     expect(page).toContain('Entitlement history')
     expect(page).toContain('AdminEntitlementControlPanel')
   })
