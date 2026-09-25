@@ -69,6 +69,16 @@ type VerificationRow = QueryResultRow & {
   review_note: string | null
 }
 
+type VerificationAuditRow = QueryResultRow & {
+  id: string
+  action: string
+  target_id: string
+  metadata: Record<string, unknown> | string | null
+  created_at: string | Date
+  actor_id: string | null
+  actor_name: string | null
+}
+
 type EntitlementRow = QueryResultRow & {
   id: string
   capability: string
@@ -235,7 +245,7 @@ export function createAdminMembershipRepository(input: {
   async function getUserAccessOverview(adminId: string, profileId: string) {
     await requireAdministrator(queryRows, adminId)
 
-    const [profiles, subscriptions, verificationRows, entitlementRows, access] = await Promise.all([
+    const [profiles, subscriptions, verificationRows, entitlementRows, verificationAuditRows, access] = await Promise.all([
       queryRows(
         `select
            profile.id as profile_id,
@@ -262,6 +272,26 @@ export function createAdminMembershipRepository(input: {
         [profileId],
       ) as Promise<VerificationRow[]>,
       queryRows(entitlementHistorySql('profile_id'), [profileId]) as Promise<EntitlementRow[]>,
+      queryRows(
+        `select
+           audit.id,
+           audit.action,
+           audit.target_id,
+           audit.metadata,
+           audit.created_at,
+           audit.actor_id,
+           actor.full_name as actor_name
+         from public.audit_events audit
+         join public.feature_verifications verification
+           on verification.id = audit.target_id
+         left join public.profiles actor on actor.id = audit.actor_id
+         where verification.profile_id = $1
+           and audit.target_type = 'feature_verification'
+           and audit.action like 'verification.%'
+         order by audit.created_at desc, audit.id desc
+         limit 100`,
+        [profileId],
+      ) as Promise<VerificationAuditRow[]>,
       loadAccessContext(profileId),
     ])
 
@@ -285,6 +315,34 @@ export function createAdminMembershipRepository(input: {
         reviewNote: row.review_note ?? null,
       })),
       entitlementHistory: entitlementRows.map(entitlement),
+      verificationHistory: verificationAuditRows.map((row) => {
+        let metadata: Record<string, unknown> = {}
+        if (row.metadata && typeof row.metadata === 'object') {
+          metadata = row.metadata
+        } else if (typeof row.metadata === 'string') {
+          try {
+            const parsed = JSON.parse(row.metadata)
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) metadata = parsed as Record<string, unknown>
+          } catch {
+            metadata = {}
+          }
+        }
+        const verificationTypeValue = typeof metadata.verificationType === 'string'
+          && VERIFICATION_TYPES.includes(metadata.verificationType as VerificationType)
+          ? metadata.verificationType as VerificationType
+          : null
+        return {
+          id: row.id,
+          action: row.action,
+          verificationId: row.target_id,
+          verificationType: verificationTypeValue,
+          metadata,
+          createdAt: iso(row.created_at)!,
+          actor: row.actor_id
+            ? { id: row.actor_id, fullName: row.actor_name ?? 'Unknown administrator' }
+            : null,
+        }
+      }),
     }
   }
 
