@@ -68,7 +68,7 @@ function refreshEventPaths(eventId?: string) {
 
 function safeError(error: unknown) {
   const code = error instanceof Error ? error.message : ''
-  if (code === 'event_forbidden') return 'Only the event host can make this change.'
+  if (code === 'event_forbidden') return 'Only an authorized event host or organization event manager can make this change.'
   if (code === 'event_not_found') return 'This event is no longer available.'
   if (code === 'event_host_cannot_attend') return 'Hosts are already part of their own event.'
   if (code === 'event_not_open') return 'Registration is not open for this event.'
@@ -134,7 +134,15 @@ export async function updateEventAction(eventId: string, input: CalendarEventInp
   if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   try {
     const user = await requireAwsUser()
-    if (parsed.data.status === 'published') await requireCapability(user.id, 'event.publish')
+    const publisher = await calendarEventRepository.getManagedEventPublisher(user.id, id.data)
+    if (!publisher) throw new Error('event_forbidden')
+    if (parsed.data.status === 'published') {
+      if (publisher.companyId) {
+        await requireCapability(user.id, 'event.publish', { companyId: publisher.companyId })
+      } else {
+        await requireCapability(user.id, 'event.publish')
+      }
+    }
     await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
     await calendarEventRepository.updateEvent(user.id, id.data, parsed.data)
     await flagAutomatedEventModeration(id.data, moderation)
