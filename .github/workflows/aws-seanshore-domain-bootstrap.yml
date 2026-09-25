@@ -6,6 +6,7 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - infra/aws/app/seanshore_domain.tf
+      - infra/aws/app/aws-native-variables.tf
       - scripts/aws/seanshore-domain-bootstrap.sh
       - scripts/aws/seanshore-domain-bootstrap-action.txt
       - scripts/aws/seanshore-domain-bootstrap.test.mjs
