@@ -115,6 +115,37 @@ create index if not exists events_company_idx
   where company_id is not null;
 -- statement-breakpoint
 
+-- Courses keep a responsible human creator while optionally publishing under an organization workspace.
+alter table public.learning_courses
+  add column if not exists created_by_user_id uuid references public.profiles(id) on delete restrict,
+  add column if not exists company_id uuid references public.companies(id) on delete set null;
+-- statement-breakpoint
+
+update public.learning_courses course
+set created_by_user_id = mentor.user_id
+from public.learning_mentors mentor
+where mentor.id = course.mentor_id
+  and course.created_by_user_id is null;
+-- statement-breakpoint
+
+alter table public.learning_courses
+  alter column created_by_user_id set not null,
+  alter column mentor_id drop not null;
+-- statement-breakpoint
+
+alter table public.learning_courses
+  drop constraint if exists learning_courses_publisher_shape_check,
+  add constraint learning_courses_publisher_shape_check check (
+    (company_id is null and mentor_id is not null)
+    or (company_id is not null)
+  );
+-- statement-breakpoint
+
+create index if not exists learning_courses_company_idx
+  on public.learning_courses (company_id, status, updated_at desc, id desc)
+  where company_id is not null;
+-- statement-breakpoint
+
 create table if not exists public.legacy_organization_conversions (
   profile_id uuid primary key references public.profiles(id) on delete cascade,
   status text not null default 'pending',
