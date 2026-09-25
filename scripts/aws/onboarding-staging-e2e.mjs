@@ -130,6 +130,13 @@ function usernameInput(page) {
   return page.locator('input[name="slug"]')
 }
 
+function personaButtonNamePattern(user) {
+  if (user.key === 'seafarer') {
+    return /^Seafarer(?=[A-Z])/
+  }
+  return new RegExp('^' + escapeRegExp(user.label))
+}
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\$&')
 }
@@ -354,7 +361,7 @@ async function completePersona(user, takenUsername) {
   await signIn(page, user)
 
   const personaButton = page.getByRole('button', {
-    name: new RegExp('^' + escapeRegExp(user.label)),
+    name: personaButtonNamePattern(user),
   })
   await personaButton.click()
   await expect(personaButton).toHaveAttribute('aria-pressed', 'true')
