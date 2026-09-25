@@ -62,7 +62,11 @@ export type HiringJobInput = {
   visas: string[]
 }
 
-export type HiringJobUpdateInput = Omit<HiringJobInput, 'companyId' | 'status'> & { status: HiringJobStatus }
+export type HiringJobUpdateInput = Omit<HiringJobInput, 'publisherType' | 'companyId' | 'status'> & {
+  status: HiringJobStatus
+  publisherType?: never
+  companyId?: never
+}
 
 export type HiringJobSummary = {
   id: string
@@ -173,7 +177,7 @@ type PersonalPublisherRow = QueryResultRow & {
 
 type EditableJobRow = QueryResultRow & {
   id: string
-  company_id: string
+  company_id: string | null
   title: string
   status: HiringJobStatus
   job_domain: string | null
