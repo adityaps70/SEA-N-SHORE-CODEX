@@ -44,6 +44,7 @@ test('probe mode remains read-only and runs on the staging bootstrap through SSM
 test('run-once covers the new eight-persona onboarding model and excludes the retired identity-root UI', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const auditScript = readFileSync(persistenceAuditPath, 'utf8')
 
   for (const key of ['seafarer', 'shore', 'recruiter', 'trainer', 'student', 'family', 'enthusiast', 'other']) {
     assert.match(workflow, new RegExp(`E2E_${key.toUpperCase()}_EMAIL`))
@@ -66,9 +67,9 @@ test('run-once covers the new eight-persona onboarding model and excludes the re
   assert.match(browserScript, /What are you here to do\?/)
   assert.match(browserScript, /aria-pressed/)
   assert.match(browserScript, /ONBOARDING_E2E_ALL_PERSONAS_VERIFIED=true/)
-  assert.match(workflow, /coalesce\(p\.persona,''\)/)
-  assert.match(workflow, /array_to_string\(p\.profile_intents,','\)/)
-  assert.match(workflow, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
+  assert.match(auditScript, /coalesce\(p\.persona,''\)/)
+  assert.match(auditScript, /array_to_string\(p\.profile_intents,','\)/)
+  assert.match(auditScript, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
 
   assert.doesNotMatch(browserScript, /Professional Build your individual maritime identity/)
   assert.doesNotMatch(browserScript, /Search professional identities/)
@@ -81,7 +82,7 @@ test('persona selection uses exact accessible labels without Seafarer collisions
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
   assert.doesNotMatch(browserScript, /function personaButtonNamePattern\(user\)/)
-  assert.match(browserScript, /getByRole\('button', \{\s*name:\s*user\.label,\s*exact:\s*true\s*\}\)/)
+  assert.match(browserScript, /getByRole\('button', \{\s*name:\s*user\.label,\s*exact:\s*true,?\s*\}\)/)
 })
 
 test('onboarding e2e audits persistence without destructive inline cleanup', () => {
