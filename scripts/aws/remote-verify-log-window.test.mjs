@@ -53,7 +53,7 @@ test('CloudWatch runtime review reports safe Cognito issue reasons without treat
   assert.match(workflow, /COGNITO_ISSUE_PATTERN/)
   assert.match(workflow, /COGNITO_ISSUE_COUNT/)
   assert.match(workflow, /COGNITO_ISSUE_REASONS/)
-  assert.match(workflow, /\[cognito_issue\]/)
+  assert.match(workflow, /COGNITO_ISSUE_PATTERN='\\\\\[cognito_issue\\\\\]'/)
 })
 
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
