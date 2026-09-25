@@ -174,6 +174,30 @@ export default async function AdminUserDetailPage({
             ))}
             {membership.verifications.length === 0 ? <p className="py-4 text-sm text-muted">No professional verification records.</p> : null}
           </div>
+          <div className="mt-5 border-t border-mist-100 pt-5">
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Verification history</p>
+            <div className="mt-3 divide-y divide-mist-100">
+              {membership.verificationHistory.map((event) => (
+                <div key={event.id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-bold text-navy-950">{event.action.replaceAll('.', ' ')}</p>
+                    {event.verificationType ? (
+                      <span className="rounded-full bg-ocean-50 px-2 py-0.5 text-[11px] font-semibold text-ocean-800">
+                        {event.verificationType.replaceAll('_', ' ')}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    {event.actor ? `By ${event.actor.fullName} · ` : ''}{dateLabel(event.createdAt)}
+                  </p>
+                </div>
+              ))}
+              {membership.verificationHistory.length === 0 ? (
+                <p className="py-3 text-sm text-muted">No verification audit events recorded for this user.</p>
+              ) : null}
+            </div>
+          </div>
+
           <Link href="/admin/verifications" className="mt-5 inline-flex text-sm font-bold text-ocean-700 hover:underline">Open verification queue →</Link>
         </article>
       </section>
