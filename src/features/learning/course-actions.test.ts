@@ -190,7 +190,7 @@ describe('learning course server actions', () => {
 
     await expect(createCourseDraft(validInput())).resolves.toEqual({
       ok: false,
-      error: 'Approved mentor access is required to manage courses.',
+      error: 'Approved mentor access is required to manage personal courses.',
     })
   })
 
