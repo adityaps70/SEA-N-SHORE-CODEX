@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   verifyEventBannerReference: vi.fn(),
   createEvent: vi.fn(),
   updateEvent: vi.fn(),
+  getManagedEventPublisher: vi.fn(),
   flagContentAutomatically: vi.fn(),
   revalidatePath: vi.fn(),
   requireCapability: vi.fn(async () => undefined),
@@ -25,6 +26,7 @@ vi.mock('./calendar-repository', () => ({
   calendarEventRepository: {
     createEvent: mocks.createEvent,
     updateEvent: mocks.updateEvent,
+    getManagedEventPublisher: mocks.getManagedEventPublisher,
     cancelEvent: vi.fn(),
     attendEvent: vi.fn(),
     withdrawAttendance: vi.fn(),
@@ -73,6 +75,7 @@ describe('calendar actions automated moderation', () => {
     mocks.verifyEventBannerReference.mockResolvedValue(undefined)
     mocks.createEvent.mockResolvedValue(eventId)
     mocks.updateEvent.mockResolvedValue(undefined)
+    mocks.getManagedEventPublisher.mockResolvedValue({ companyId: null })
     mocks.flagContentAutomatically.mockResolvedValue(undefined)
     mocks.requireCapability.mockResolvedValue(undefined)
   })
@@ -138,6 +141,23 @@ describe('calendar actions automated moderation', () => {
       reason: 'scam',
       details: expect.stringContaining('[AUTOMATED MODERATION]'),
     }))
+  })
+
+  it('uses the stored organization publisher scope when republishing an organization event', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+    mocks.getManagedEventPublisher.mockResolvedValueOnce({ companyId })
+
+    const { publisherType: _publisherType, companyId: _companyId, ...editable } = input()
+    void _publisherType
+    void _companyId
+
+    await expect(updateEventAction(eventId, editable)).resolves.toEqual({ ok: true })
+
+    expect(mocks.requireCapability).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'event.publish',
+      { companyId },
+    )
   })
 
   it('rechecks published event edits', async () => {
