@@ -216,7 +216,7 @@ export function createCognitoAuthActions(input: {
             return { error: 'Too many sign-up requests. Please wait a moment and try again.' }
           }
           if (error.code === 'LimitExceededException') {
-            return { error: 'Sign-up attempt limit reached. Please try again later.' }
+            return { error: 'Email confirmation is temporarily unavailable. Continue with mobile number below, or try email sign-up later.' }
           }
           if (error.code === 'InvalidPasswordException') {
             return { error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.' }
