@@ -189,7 +189,12 @@ export function HiringJobForm(props: HiringJobFormProps) {
                               Manage organization verification
                             </Link>
                           ) : (
-                            <span className="text-xs text-muted">Recruiter verification must be approved before publishing.</span>
+                            <>
+                              <span className="text-xs text-muted">Recruiter verification must be approved before publishing.</span>
+                              <Link href="/settings/verifications/recruiter" className="text-xs font-bold text-ocean-700 hover:underline">
+                                Apply for verification
+                              </Link>
+                            </>
                           )}
                         </div>
                       ) : null}
