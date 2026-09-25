@@ -63,6 +63,82 @@ alter table public.profiles
   );
 -- statement-breakpoint
 
+-- Deterministic existing-user persona backfill.
+-- Only completed legacy personal profiles with no explicit persona are touched.
+-- Ambiguous legacy identities remain null so the member can choose through progressive prompting.
+update public.profiles
+set persona = case
+  when profile_type::text = 'seafarer'
+    and coalesce(identity_root::text, 'professional') <> 'organisation'
+    then 'seafarer'
+  when profile_type::text = 'trainer'
+    and coalesce(identity_root::text, 'professional') <> 'organisation'
+    then 'trainer_instructor'
+  when profile_type::text = 'recruiter'
+    and coalesce(identity_root::text, 'professional') <> 'organisation'
+    then 'recruiter_hr'
+  when identity_root::text = 'professional'
+    and primary_identity in ('Maritime Recruiter', 'Crewing Recruiter', 'Maritime HR Professional')
+    then 'recruiter_hr'
+  when identity_root::text = 'professional'
+    and primary_identity in ('Maritime Trainer', 'Nautical Instructor', 'Engineering Instructor', 'Simulator Instructor', 'STCW Assessor', 'Maritime Academy Faculty')
+    then 'trainer_instructor'
+  when identity_root::text = 'professional'
+    and primary_identity_family in ('Sea-going · Deck', 'Sea-going · Engine', 'Sea-going · Electrical', 'Shipboard · Hotel & Medical')
+    then 'seafarer'
+  when identity_root::text = 'professional'
+    and primary_identity_family in (
+      'Ship Management & Operations',
+      'Commercial Shipping',
+      'Survey, Class & Assurance',
+      'Ports & Terminals',
+      'Legal, Insurance & Finance',
+      'Training, Research & Human Factors',
+      'Technology, Data & Logistics',
+      'Recruitment, Welfare & Public Sector'
+    )
+    then 'shore_professional'
+  else persona
+end,
+updated_at = now()
+where persona is null
+  and onboarding_completed_at is not null
+  and coalesce(identity_root::text, 'professional') <> 'organisation'
+  and (
+    profile_type::text in ('seafarer', 'trainer', 'recruiter')
+    or (
+      identity_root::text = 'professional'
+      and (
+        primary_identity in (
+          'Maritime Recruiter',
+          'Crewing Recruiter',
+          'Maritime HR Professional',
+          'Maritime Trainer',
+          'Nautical Instructor',
+          'Engineering Instructor',
+          'Simulator Instructor',
+          'STCW Assessor',
+          'Maritime Academy Faculty'
+        )
+        or primary_identity_family in (
+          'Sea-going · Deck',
+          'Sea-going · Engine',
+          'Sea-going · Electrical',
+          'Shipboard · Hotel & Medical',
+          'Ship Management & Operations',
+          'Commercial Shipping',
+          'Survey, Class & Assurance',
+          'Ports & Terminals',
+          'Legal, Insurance & Finance',
+          'Training, Research & Human Factors',
+          'Technology, Data & Logistics',
+          'Recruitment, Welfare & Public Sector'
+        )
+      )
+    )
+  );
+-- statement-breakpoint
+
 -- New persona onboarding is accepted alongside exact-identity and legacy-complete profiles.
 alter table public.profiles
   drop constraint if exists profiles_completed_identity_check,
