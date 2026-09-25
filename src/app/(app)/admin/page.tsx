@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import {
+  BadgeCheck,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
@@ -121,6 +122,24 @@ export default async function AdminPage() {
               Review access
             </Link>
           </div>
+        </article>
+
+        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
+              <BadgeCheck aria-hidden="true" className="size-5" />
+            </span>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Professional verification</p>
+              <h2 className="mt-2 text-xl font-bold text-navy-950">Recruiter & Event Host queue</h2>
+            </div>
+          </div>
+          <p className="mt-3 text-sm leading-6 text-muted">
+            Review professional evidence separately from subscriptions and paid publishing entitlements.
+          </p>
+          <Link href="/admin/verifications" className="mt-5 inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
+            Review verifications
+          </Link>
         </article>
       </section>
     </main>
