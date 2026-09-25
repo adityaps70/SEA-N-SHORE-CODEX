@@ -9,24 +9,24 @@ assert.match(runId ?? '', /^\d+$/, 'GITHUB_RUN_ID is required')
 
 const users = {
   author: {
-    email: process.env.E2E_PROFESSIONAL_EMAIL,
-    password: process.env.E2E_PROFESSIONAL_PASSWORD,
-    fullName: process.env.E2E_PROFESSIONAL_NAME,
+    email: process.env.E2E_SEAFARER_EMAIL,
+    password: process.env.E2E_SEAFARER_PASSWORD,
+    fullName: process.env.E2E_SEAFARER_NAME,
   },
   reposter: {
-    email: process.env.E2E_CUSTOM_EMAIL,
-    password: process.env.E2E_CUSTOM_PASSWORD,
-    fullName: process.env.E2E_CUSTOM_NAME,
+    email: process.env.E2E_SHORE_EMAIL,
+    password: process.env.E2E_SHORE_PASSWORD,
+    fullName: process.env.E2E_SHORE_NAME,
   },
   fallback: {
-    email: process.env.E2E_ORGANISATION_EMAIL,
-    password: process.env.E2E_ORGANISATION_PASSWORD,
-    fullName: process.env.E2E_ORGANISATION_NAME,
+    email: process.env.E2E_ENTHUSIAST_EMAIL,
+    password: process.env.E2E_ENTHUSIAST_PASSWORD,
+    fullName: process.env.E2E_ENTHUSIAST_NAME,
   },
 }
 
 for (const user of Object.values(users)) {
-  assert.match(user.email ?? '', /^sea-n-shore-e2e-[0-9]+-(professional|custom|organisation)@example\.com$/)
+  assert.match(user.email ?? '', /^sea-n-shore-e2e-[0-9]+-(seafarer|shore|enthusiast)@example\.com$/)
   assert.ok((user.password ?? '').length >= 12)
   assert.ok(user.fullName)
 }
