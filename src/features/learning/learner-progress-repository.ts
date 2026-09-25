@@ -241,14 +241,13 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
          from public.learning_enrollments enrollment
          inner join public.learning_courses course
            on course.id = enrollment.course_id
-          and course.status = 'published'
-         inner join public.learning_mentors mentor
+         left join public.learning_mentors mentor
            on mentor.id = course.mentor_id
-          and mentor.status = 'active'
-         inner join public.learning_mentor_applications application
+         left join public.learning_mentor_applications application
            on application.id = mentor.application_id
           and application.user_id = mentor.user_id
-          and application.status = 'approved'
+         left join public.companies company
+           on company.id = course.company_id
          inner join public.learning_course_sections section
            on section.course_id = course.id
          inner join public.learning_lessons lesson
