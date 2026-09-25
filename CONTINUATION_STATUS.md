@@ -123,7 +123,17 @@ Payment, verification and organization role are independent concepts.
   - admins review at `/admin/access`
   - approval creates/updates individual membership
   - decisions write audit history
-- Legacy users whose personal profile was originally an organization identity still need a safe conversion path.
+- Legacy organization-style accounts now have a safe one-time conversion path:
+  - legacy organization data is snapshotted before conversion
+  - the human user enters their real personal identity
+  - existing Owner/Admin workspace can be linked
+  - or a new unverified organization can be explicitly created from the old profile
+  - duplicate organization names are blocked and redirected to Claim Existing Organization
+  - old logo/description/location transfer to the organization workspace
+  - company branding is cleared from the converted personal profile
+  - the same user ID/login/history/messages/posts/connections remain
+  - conversion is audit logged
+  - pending legacy users receive a non-blocking in-app conversion reminder
 
 ### Paid-plan UX
 - Added `/plans` with Member FREE / Creator Pro / Organization Pro.
@@ -179,20 +189,19 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Safe conversion of legacy organization-type profiles to human account + organization ownership/admin.
-2. Independent Creator Pro recruiter job publishing and a reusable “Publish as” identity selector.
-3. Organization Event Manager and LMS Manager authoring contexts.
-4. New-user recruiter and event-host verification application flows; trainer can continue using the existing mentor/trainer review flow.
-5. Admin views for persona, plan, capabilities, verification and entitlement history.
-6. Paid-feature upgrade UI at the exact Post Job / Publish Event / Submit Course moments.
-7. Pricing decision, currency/tax behavior and payment-provider selection.
-8. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
-9. Existing-user persona backfill where deterministic.
-10. Full staging migration, deploy and E2E only through guarded one-shot execution.
+1. Independent Creator Pro recruiter job publishing and a reusable “Publish as” identity selector.
+2. Organization Event Manager and LMS Manager authoring contexts.
+3. New-user recruiter and event-host verification application flows; trainer can continue using the existing mentor/trainer review flow.
+4. Admin views for persona, plan, capabilities, verification and entitlement history.
+5. Paid-feature upgrade UI at the exact Post Job / Publish Event / Submit Course moments.
+6. Pricing decision, currency/tax behavior and payment-provider selection.
+7. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+8. Existing-user persona backfill where deterministic.
+9. Full staging migration, deploy and E2E only through guarded one-shot execution.
 
 ## Exact next action
 
-Continue with **Phase 2: safe conversion of legacy organisation-type profiles to human account + organization ownership/admin**, using TDD. Current head before this documentation update passed full AWS Infrastructure CI and AWS Remote Verify.
+Continue with **Phase 5: independent Creator Pro recruiter job publishing and a reusable Publish-as selector**, using TDD. The legacy conversion head passed full AWS Infrastructure CI and AWS Remote Verify.
 
 Do not apply the membership migration or deploy new schema-dependent application code until CI is green and the one-shot staging migration/deploy sequence is explicitly armed.
 
