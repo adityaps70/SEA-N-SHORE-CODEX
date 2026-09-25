@@ -134,11 +134,13 @@ Architecture:
 
 ## Phase 5 — Jobs migration
 
+Current note: personal Creator Pro and Organization Pro publishing now share one server-authorized Publish-as model; the integrated branch passed full application tests and Docker build.
+
 - [x] Free users can still discover and apply for jobs.
 - [x] Job publishing checks `job.publish` server-side.
-- [ ] Independent verified recruiter + Creator Pro can publish personally.
+- [x] Independent verified recruiter + Creator Pro can publish personally.
 - [x] Verified organization + Organization Pro + appropriate member role can publish for organization.
-- [ ] Add “Publish as” selector when user has more than one valid publishing identity.
+- [x] Add “Publish as” selector when user has more than one valid publishing identity.
 - [x] Existing verified organization recruiters keep working during migration.
 - [x] Existing jobs and applicant management remain intact.
 
@@ -165,7 +167,7 @@ Architecture:
 
 - [x] Add `/plans` with FREE / Creator Pro / Organization Pro.
 - [ ] Keep paid actions visible to Free users with clear PRO treatment rather than silently hiding them.
-- [ ] Add upgrade gate for Post Job.
+- [x] Add upgrade gate for Post Job.
 - [ ] Add upgrade gate for Create/Publish Event.
 - [ ] Add upgrade gate for Create/Publish Course.
 - [x] Explain verification requirement separately from payment requirement.
