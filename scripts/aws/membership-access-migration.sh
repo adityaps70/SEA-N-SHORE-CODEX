@@ -32,11 +32,11 @@ parts=[p.strip() for p in re.split(r'^\s*-- statement-breakpoint\s*$', sql, flag
 if len(parts) < 20:
     raise SystemExit(f'expected a substantial membership migration; found only {len(parts)} statements')
 allowed = re.compile(
-    r'^(alter\s+table\s+public\.profiles\b|'
+    r'^(alter\s+table\s+public\.(profiles|events|learning_courses|feature_verifications)\b|'
     r'alter\s+type\s+public\.company_member_role\b|'
     r'create\s+table\s+if\s+not\s+exists\s+public\.|'
     r'create\s+(unique\s+)?index\s+if\s+not\s+exists\s+[a-z0-9_]+\s+on\s+public\.|'
-    r'update\s+public\.profiles\b|'
+    r'update\s+public\.(profiles|learning_courses|feature_verifications)\b|'
     r'insert\s+into\s+public\.)',
     re.I | re.S,
 )
