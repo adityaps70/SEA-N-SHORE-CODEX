@@ -135,30 +135,28 @@ test('public signup retries only explicit Cognito throttling with bounded backof
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
   assert.match(browserScript, /const SIGNUP_THROTTLE_MESSAGE = 'Too many sign-up requests\. Please wait a moment and try again\.'/)
-  assert.match(browserScript, /const SIGNUP_THROTTLE_RETRY_DELAYS_MS = \[5_000, 15_000, 30_000\]/)
+  assert.match(browserScript, /const SIGNUP_THROTTLE_RETRY_DELAYS_MS = \[15_000, 30_000, 60_000\]/)
   assert.match(browserScript, /outcome\?\.kind === 'error' && safeText === SIGNUP_THROTTLE_MESSAGE/)
   assert.match(browserScript, /ONBOARDING_E2E_SIGNUP_THROTTLE_RETRY=/)
   assert.match(browserScript, /await page\.waitForTimeout\(retryDelay\)/)
   assert.match(browserScript, /retryDelay !== undefined/)
 })
 
-test('signup smoke is quota-aware and bootstrap seeds all eight persona accounts', () => {
+test('public signup is quota-aware and creates all eight persona accounts', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
-  assert.match(browserScript, /const signupSmokeUser = users\[0\]/)
+  assert.match(browserScript, /const SIGNUP_INTER_USER_DELAY_MS = 15_000/)
+  assert.match(browserScript, /for \(const \[index, user\] of users\.entries\(\)\)/)
+  assert.match(browserScript, /await signUp\(user\)/)
+  assert.match(browserScript, /ONBOARDING_E2E_PUBLIC_SIGNUP_USER_VERIFIED=/)
   assert.match(browserScript, /ONBOARDING_E2E_PUBLIC_SIGNUP_THROTTLED=true/)
-  assert.match(browserScript, /Too many sign-up requests/)
-  assert.doesNotMatch(browserScript, /for \(const user of users\) await signUp\(user\)/)
+  assert.match(browserScript, /Public sign-up remained throttled after bounded retries/)
 
-  assert.match(workflow, /Ensure disposable onboarding users through staging bootstrap/)
-  assert.match(workflow, /admin-create-user/)
-  assert.match(workflow, /admin-set-user-password/)
-  assert.match(workflow, /--message-action SUPPRESS/)
+  assert.match(workflow, /Verify public sign-up UI creates eight disposable users/)
   assert.match(workflow, /admin-confirm-sign-up/)
-  assert.match(workflow, /ONBOARDING_E2E_BOOTSTRAP_USERS_VERIFIED=true/)
-  assert.match(workflow, /\$E2E_SEAFARER_PASSWORD/)
-  assert.match(workflow, /\$E2E_OTHER_PASSWORD/)
+  assert.doesNotMatch(workflow, /admin-create-user/)
+  assert.doesNotMatch(workflow, /admin-set-user-password/)
 })
 
 test('run-once performs a public sign-up smoke check, eight persona journeys and read-only persistence audit', () => {
