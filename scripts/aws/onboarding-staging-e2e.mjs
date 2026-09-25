@@ -84,6 +84,17 @@ const personaSpecs = [
   },
 ]
 
+const personaMarkers = {
+  seafarer: 'ONBOARDING_E2E_PERSONA_SEAFARER_VERIFIED=true',
+  shore: 'ONBOARDING_E2E_PERSONA_SHORE_VERIFIED=true',
+  recruiter: 'ONBOARDING_E2E_PERSONA_RECRUITER_VERIFIED=true',
+  trainer: 'ONBOARDING_E2E_PERSONA_TRAINER_VERIFIED=true',
+  student: 'ONBOARDING_E2E_PERSONA_STUDENT_VERIFIED=true',
+  family: 'ONBOARDING_E2E_PERSONA_FAMILY_VERIFIED=true',
+  enthusiast: 'ONBOARDING_E2E_PERSONA_ENTHUSIAST_VERIFIED=true',
+  other: 'ONBOARDING_E2E_PERSONA_OTHER_VERIFIED=true',
+}
+
 const users = personaSpecs.map((spec) => {
   const prefix = 'E2E_' + spec.key.toUpperCase()
   return {
@@ -345,7 +356,7 @@ async function completePersona(user, takenUsername) {
     await verifyUsernameEditLifecycle(page, user, username, takenUsername)
   }
 
-  console.log('ONBOARDING_E2E_PERSONA_' + user.key.toUpperCase() + '_VERIFIED=true')
+  console.log(personaMarkers[user.key])
   await context.close()
   return username
 }
