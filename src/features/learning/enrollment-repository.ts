@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
+import { coursePublisherNameSql, publishedCourseVisibilitySql } from './course-publication'
 
 type EnrollmentQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -143,15 +144,15 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          now(),
          now()
        from public.learning_courses course
-       inner join public.learning_mentors mentor
+       left join public.learning_mentors mentor
          on mentor.id = course.mentor_id
-       inner join public.learning_mentor_applications application
+       left join public.learning_mentor_applications application
          on application.id = mentor.application_id
         and application.user_id = mentor.user_id
+       left join public.companies company
+         on company.id = course.company_id
        where course.id = $2
-         and course.status = 'published'
-         and mentor.status = 'active'
-         and application.status = 'approved'
+         and ${publishedCourseVisibilitySql()}
          and course.access_type = 'free'
          and course.price_minor = 0
        on conflict (course_id, learner_id) do nothing
@@ -205,7 +206,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          course.thumbnail_path,
          course.course_format,
          course.certificate_enabled,
-         application.applicant_name as mentor_name,
+         ${coursePublisherNameSql()} as mentor_name,
          certificate.id as certificate_id,
          certificate.verification_code as certificate_verification_code,
          count(distinct lesson.id)::bigint as total_lessons,
@@ -213,14 +214,13 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
        from public.learning_enrollments enrollment
        inner join public.learning_courses course
          on course.id = enrollment.course_id
-        and course.status = 'published'
-       inner join public.learning_mentors mentor
+       left join public.learning_mentors mentor
          on mentor.id = course.mentor_id
-        and mentor.status = 'active'
-       inner join public.learning_mentor_applications application
+       left join public.learning_mentor_applications application
          on application.id = mentor.application_id
         and application.user_id = mentor.user_id
-        and application.status = 'approved'
+       left join public.companies company
+         on company.id = course.company_id
        left join public.learning_course_sections section
          on section.course_id = course.id
        left join public.learning_lessons lesson
@@ -233,6 +233,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
         and certificate.learner_id = enrollment.learner_id
        where enrollment.learner_id = $1
          and enrollment.status in ('active', 'completed')
+         and ${publishedCourseVisibilitySql()}
        group by
          enrollment.id,
          enrollment.status,
@@ -248,7 +249,9 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          course.thumbnail_path,
          course.course_format,
          course.certificate_enabled,
+         course.company_id,
          application.applicant_name,
+         company.name,
          certificate.id,
          certificate.verification_code
        order by enrollment.updated_at desc, enrollment.id desc`,
