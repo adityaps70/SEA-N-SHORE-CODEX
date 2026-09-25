@@ -6,22 +6,26 @@ import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { requireUser } from '@/features/auth/queries'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { MessagingDock } from '@/features/messaging/components/messaging-dock'
+import { LegacyOrganizationConversionBanner } from '@/features/organizations/components/legacy-conversion-banner'
+import { legacyOrganizationConversionRepository } from '@/features/organizations/legacy-conversion-repository'
 import { getUnreadMessageCount } from '@/features/messaging/queries'
 import { getNotificationChrome } from '@/features/notifications/queries'
 import { MessagingRealtimeProvider } from '@/features/realtime/provider'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
-  const [notificationChrome, messagingUnreadCount, authorizedCompany, canAccessAdmin] = await Promise.all([
+  const [notificationChrome, messagingUnreadCount, authorizedCompany, canAccessAdmin, legacyConversion] = await Promise.all([
     getNotificationChrome(),
     getUnreadMessageCount(),
     hiringRepository.getAuthorizedCompany(user.id).catch(() => null),
     canAccessPlatformAdmin(user.id),
+    legacyOrganizationConversionRepository.getConversion(user.id).catch(() => null),
   ])
 
   return (
     <MessagingRealtimeProvider viewerProfileId={user.id}>
       <div className="min-h-screen bg-mist-50 pb-20 md:pb-0 md:pt-18">
+        {legacyConversion?.status === 'pending' ? <LegacyOrganizationConversionBanner /> : null}
         <AppHeader
           recentNotifications={notificationChrome.recent}
           unreadCount={notificationChrome.unreadCount}
