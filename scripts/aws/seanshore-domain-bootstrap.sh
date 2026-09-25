@@ -169,8 +169,18 @@ for r in changes:
     if actions == ['create']:
         continue
     if r['address'].startswith(ses_dkim_prefix) and actions == ['delete']:
-        print(f"SEANSHORE_DOMAIN_BOOTSTRAP_STALE_SES_DKIM_DELETE={r['address']}")
-        continue
+        before = r.get('change', {}).get('before') or {}
+        name = (before.get('name') or '').rstrip('.')
+        record_type = before.get('type')
+        records = before.get('records') or []
+        if (
+            name.endswith('._domainkey.seanshore.in')
+            and record_type == 'CNAME'
+            and len(records) == 1
+            and records[0].rstrip('.').endswith('.dkim.amazonses.com')
+        ):
+            print(f"SEANSHORE_DOMAIN_BOOTSTRAP_STALE_SES_DKIM_DELETE={r['address']}|{name}")
+            continue
     raise SystemExit(f"non-create domain bootstrap change refused: {r['address']} {actions}")
 print('SEANSHORE_DOMAIN_BOOTSTRAP_CHANGE_COUNT=' + str(len(changes)))
 for r in changes:
