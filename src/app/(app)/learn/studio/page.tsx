@@ -5,6 +5,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
+import { organizationRepository } from '@/features/organizations/repository'
 
 function statusLabel(status: MentorCourseSummary['status']) {
   if (status === 'draft') return 'Draft'
@@ -76,9 +77,17 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
 
 export default async function MentorStudioPage() {
   const user = await requireAwsUser()
-  const mentorState = await learningRepository.getMentorApplicationState(user.id)
+  const [mentorState, organizations] = await Promise.all([
+    learningRepository.getMentorApplicationState(user.id),
+    organizationRepository.listUserOrganizations(user.id),
+  ])
+  const hasActiveMentor = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
+  const hasOrganizationLmsAccess = organizations.some((organization) =>
+    organization.role === 'owner'
+    || organization.role === 'administrator'
+    || organization.role === 'lms_manager')
 
-  if (mentorState.kind !== 'mentor' || mentorState.mentorStatus !== 'active') {
+  if (!hasActiveMentor && !hasOrganizationLmsAccess) {
     return redirect('/learn/teach')
   }
 
@@ -123,11 +132,11 @@ export default async function MentorStudioPage() {
         <div className="grid gap-7 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
-              <Sparkles aria-hidden="true" className="size-4" /> Verified mentor workspace
+              <Sparkles aria-hidden="true" className="size-4" /> {hasActiveMentor ? 'Verified mentor workspace' : 'Organization LMS workspace'}
             </p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Mentor Studio</h1>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Learning Studio</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">
-              Turn real maritime experience into structured learning. Build practical courses, respond to quality feedback and review learner work from one workspace.
+              Build practical maritime courses, respond to quality feedback and manage learner work from one workspace—personally or for an organization you are authorized to represent.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
