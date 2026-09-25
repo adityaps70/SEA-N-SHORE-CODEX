@@ -158,20 +158,22 @@ Current note: Events now support personal Creator Pro and Organization Pro publi
 
 ## Phase 7 — LMS migration
 
+Current note: Personal Creator Pro trainers and Organization Pro LMS Managers now share one server-authorized publishing model. Organization courses remain compatible with marketplace discovery, enrollment, learner progress, SCORM and certificate issuance. Integrated CI passed with 350 test files / 1,672 tests.
+
 - [x] Free users can discover/enroll in permitted courses.
 - [x] Existing active mentor approval becomes trainer verification.
 - [x] Course publishing checks `course.publish` server-side.
-- [ ] Organization LMS manager path supported.
+- [x] Organization LMS manager path supported.
 - [x] Existing mentor drafts/courses remain manageable during migration.
 - [x] Existing review/approval workflow remains intact.
 
 ## Phase 8 — Paid-plan UX
 
 - [x] Add `/plans` with FREE / Creator Pro / Organization Pro.
-- [ ] Keep paid actions visible to Free users with clear PRO treatment rather than silently hiding them.
+- [x] Keep paid actions visible to Free users with clear PRO treatment rather than silently hiding them.
 - [x] Add upgrade gate for Post Job.
 - [x] Add upgrade gate for Create/Publish Event.
-- [ ] Add upgrade gate for Create/Publish Course.
+- [x] Add upgrade gate for Create/Publish Course.
 - [x] Explain verification requirement separately from payment requirement.
 - [x] Add plan status to account/settings.
 - [ ] Add organization billing-management entry for authorized roles.
