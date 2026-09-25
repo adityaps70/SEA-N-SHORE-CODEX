@@ -120,6 +120,70 @@ describe('Aurora database client', () => {
     expect(configs[1]?.password).toBe('rotated-secret-password')
   })
 
+  it('logs a safe SQL fingerprint without parameter values when a query fails', async () => {
+    const failure = Object.assign(new Error('operator does not exist: uuid = text'), { code: '42883' })
+    const pool = {
+      query: vi.fn(async () => { throw failure }),
+      connect: vi.fn(),
+    }
+    const poolFactory = vi.fn(() => pool)
+    const onQueryError = vi.fn()
+    const { createDatabaseClient } = await import('./client')
+    type ClientOptions = Parameters<typeof createDatabaseClient>[0]
+    const database = createDatabaseClient({
+      environment,
+      poolFactory,
+      onQueryError,
+    } as unknown as ClientOptions)
+
+    await expect(database.query(
+      'select id from public.profiles where id = $1 and full_name = $2',
+      ['11111111-1111-4111-8111-111111111111', 'Sensitive Name'],
+    )).rejects.toThrow('operator does not exist: uuid = text')
+
+    expect(onQueryError).toHaveBeenCalledWith({
+      code: '42883',
+      query: 'select id from public.profiles where id = $1 and full_name = $2',
+    })
+    expect(JSON.stringify(onQueryError.mock.calls)).not.toContain('Sensitive Name')
+    expect(JSON.stringify(onQueryError.mock.calls)).not.toContain('11111111-1111-4111-8111-111111111111')
+  })
+
+  it('logs safe query context for failed statements inside transactions', async () => {
+    const failure = Object.assign(new Error('operator does not exist: uuid = text'), { code: '42883' })
+    const release = vi.fn()
+    const transactionClient = {
+      query: vi.fn(async (text: string) => {
+        if (text === 'select id from public.profiles where id = $1') throw failure
+        return { rows: [] }
+      }),
+      release,
+    }
+    const pool = {
+      query: vi.fn(),
+      connect: vi.fn(async () => transactionClient),
+    }
+    const onQueryError = vi.fn()
+    const { createDatabaseClient } = await import('./client')
+    type ClientOptions = Parameters<typeof createDatabaseClient>[0]
+    const database = createDatabaseClient({
+      environment,
+      poolFactory: vi.fn(() => pool),
+      onQueryError,
+    } as unknown as ClientOptions)
+
+    await expect(database.withTransaction(async (client) => {
+      await client.query('select id from public.profiles where id = $1', ['secret-profile-id'])
+    })).rejects.toThrow('operator does not exist: uuid = text')
+
+    expect(onQueryError).toHaveBeenCalledWith({
+      code: '42883',
+      query: 'select id from public.profiles where id = $1',
+    })
+    expect(JSON.stringify(onQueryError.mock.calls)).not.toContain('secret-profile-id')
+    expect(release).toHaveBeenCalledTimes(1)
+  })
+
   it('commits successful transactions and releases the client', async () => {
     const fake = createFakePool()
     const poolFactory = vi.fn(() => fake.pool)
