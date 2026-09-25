@@ -19,6 +19,9 @@ type OwnedCourseRow = QueryResultRow & {
   status: string
   admin_review_note: string | null
   updated_at: string | Date
+  company_id: string | null
+  publisher_name: string
+  publisher_slug: string | null
 }
 type OwnedCourseDetailRow = QueryResultRow & {
   id: string
@@ -43,11 +46,18 @@ type OwnedCourseDetailRow = QueryResultRow & {
   status: string
   admin_review_note: string | null
   updated_at: string | Date
+  company_id: string | null
+  publisher_name: string
+  publisher_slug: string | null
 }
 type LockedCourseRow = QueryResultRow & {
   id: string
   status: string
-  mentor_id: string
+  mentor_id: string | null
+  company_id: string | null
+}
+type CoursePublisherScopeRow = QueryResultRow & {
+  company_id: string | null
 }
 type SubmissionReadinessRow = QueryResultRow & {
   section_id: string
@@ -177,6 +187,11 @@ export type CourseDraftInput = {
   courseFormat: 'recorded' | 'live_cohort' | 'hybrid'
 }
 
+export type CourseCreateInput = CourseDraftInput & (
+  | { publisherType: 'personal'; companyId: null }
+  | { publisherType: 'organization'; companyId: string }
+)
+
 export type MentorCourseSummary = {
   id: string
   slug: string
@@ -189,6 +204,10 @@ export type MentorCourseSummary = {
   status: CourseStatus
   adminReviewNote: string | null
   updatedAt: string
+  publisherType: 'personal' | 'organization'
+  companyId: string | null
+  publisherName: string
+  publisherSlug: string | null
 }
 
 export type MentorOwnedCourseDetail = CourseDraftInput & {
@@ -196,6 +215,10 @@ export type MentorOwnedCourseDetail = CourseDraftInput & {
   status: CourseStatus
   adminReviewNote: string | null
   updatedAt: string
+  publisherType: 'personal' | 'organization'
+  companyId: string | null
+  publisherName: string
+  publisherSlug: string | null
 }
 
 function runtimeTransaction<T>(work: (query: CourseQuery) => Promise<T>) {
@@ -221,9 +244,8 @@ function isoDateTime(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value
 }
 
-function courseValues(mentorId: string, input: CourseDraftInput) {
+function courseValues(input: CourseDraftInput) {
   return [
-    mentorId,
     input.slug,
     input.title,
     input.subtitle,
@@ -243,6 +265,33 @@ function courseValues(mentorId: string, input: CourseDraftInput) {
     input.certificateEnabled,
     input.courseFormat,
   ] as const
+}
+
+function isCourseCreateInput(input: CourseDraftInput | CourseCreateInput): input is CourseCreateInput {
+  return 'publisherType' in input
+}
+
+function courseManagerAccessSql(courseAlias: string, actorParam: string) {
+  return `(
+    exists (
+      select 1
+      from public.learning_mentors access_mentor
+      where access_mentor.id = ${courseAlias}.mentor_id
+        and access_mentor.user_id = ${actorParam}
+        and access_mentor.status = 'active'
+    )
+    or (
+      ${courseAlias}.company_id is not null
+      and exists (
+        select 1
+        from public.company_members access_cm
+        where access_cm.company_id = ${courseAlias}.company_id
+          and access_cm.user_id = ${actorParam}
+          and access_cm.approved_at is not null
+          and access_cm.role::text in ('owner', 'administrator', 'lms_manager')
+      )
+    )
+  )`
 }
 
 function buildSubmissionReadiness(rows: SubmissionReadinessRow[]) {
