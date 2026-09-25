@@ -53,6 +53,23 @@ else
   [[ "$LIVE_ZONE_COUNT" == "1" ]] || { echo "Tracked Route53 zone does not match live inventory." >&2; exit 1; }
 fi
 
+if [[ "$LIVE_ZONE_COUNT" == "1" ]]; then
+  LIVE_ZONE_ID="$(jq -r --arg name "$EXPECTED_DOMAIN." '[.HostedZones[] | select(.Name==$name and .Config.PrivateZone==false)][0].Id // empty' "$WORK_DIR/zones.json" | sed 's#^/hostedzone/##')"
+  [[ "$LIVE_ZONE_ID" == Z* ]]
+  echo "SEANSHORE_DOMAIN_LIVE_ZONE_ID=$LIVE_ZONE_ID"
+
+  aws route53 get-hosted-zone --id "$LIVE_ZONE_ID" --output json > "$WORK_DIR/live-zone.json"
+  jq -r '.DelegationSet.NameServers[] | "ROUTE53_NAME_SERVER=" + .' "$WORK_DIR/live-zone.json" | sort
+
+  echo "PUBLIC_NAME_SERVERS_BEGIN"
+  while IFS= read -r nameserver; do
+    [[ -n "$nameserver" ]] || continue
+    nameserver="${nameserver%.}"
+    echo "PUBLIC_NAME_SERVER=$nameserver"
+  done < <(dig +short NS "$EXPECTED_DOMAIN" | sort)
+  echo "PUBLIC_NAME_SERVERS_END"
+fi
+
 aws acm list-certificates \
   --region "$EDGE_REGION" \
   --includes keyTypes=RSA_1024,RSA_2048,RSA_3072,RSA_4096,EC_prime256v1,EC_secp384r1,EC_secp521r1 \
