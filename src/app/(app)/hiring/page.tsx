@@ -1,42 +1,23 @@
 import Link from 'next/link'
+import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
-
-function HiringAccessRequired() {
-  return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <section className="rounded-[2rem] border border-mist-100 bg-white p-8 text-center shadow-[var(--shadow-card)]">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Sea N Shore Hiring</p>
-        <h1 className="mt-3 text-3xl font-bold text-navy-950">Hiring access</h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
-          Hiring unlocks after your organization is verified and your owner, administrator or recruiter membership is approved by Sea N Shore.
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <Link href="/hiring/organization" className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900">
-            Verify your organization
-          </Link>
-          <Link href="/hiring/organization" className="inline-flex min-h-11 items-center rounded-xl border border-mist-100 bg-white px-5 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-mist-50">
-            Track verification
-          </Link>
-          <Link href="/jobs" className="inline-flex min-h-11 items-center rounded-xl px-5 py-2.5 text-sm font-bold text-muted transition hover:bg-mist-50 hover:text-navy-950">
-            Explore Jobs
-          </Link>
-        </div>
-      </section>
-    </main>
-  )
-}
+import { hiringRepository } from '@/features/jobs/hiring-repository'
+import { buildHiringPublisherOptions } from '@/features/jobs/publishers'
 
 export default async function HiringPage() {
   const user = await requireAwsUser()
-  const company = await hiringRepository.getAuthorizedCompany(user.id)
-  if (!company) return <HiringAccessRequired />
-
-  const [metrics, jobs] = await Promise.all([
-    hiringRepository.getDashboardMetrics(user.id, company.id),
-    hiringRepository.listCompanyJobs(user.id, company.id),
+  const [access, personal, companies, metrics, jobs] = await Promise.all([
+    getAccessContext(user.id),
+    hiringRepository.getPersonalPublisher(user.id),
+    hiringRepository.listAuthorizedCompanies(user.id),
+    hiringRepository.getManagedDashboardMetrics(user.id),
+    hiringRepository.listManagedJobs(user.id),
   ])
+
+  const publisherOptions = personal ? buildHiringPublisherOptions(access, personal, companies) : []
+  const readyPublishers = publisherOptions.filter((option) => option.canPublish)
+  const blockedPublishers = publisherOptions.filter((option) => !option.canPublish)
 
   const metricCards = [
     ['Active Jobs', metrics.activeJobs],
@@ -53,12 +34,18 @@ export default async function HiringPage() {
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200">Sea N Shore Hiring</p>
             <h1 className="mt-2 text-3xl font-bold sm:text-4xl">Hiring</h1>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white/75">
-              <span className="font-semibold text-white">{company.name}</span>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${company.verified ? 'bg-emerald-400/15 text-emerald-200' : 'bg-white/10 text-white/70'}`}>
-                {company.verified ? 'Verified company' : 'Verification pending'}
-              </span>
-              <span className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold capitalize">{company.role}</span>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75">
+              Publish personally as a verified independent recruiter or through an organization workspace you are authorized to represent.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold">
+              {readyPublishers.map((publisher) => (
+                <span key={publisher.key} className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-emerald-200">
+                  Ready · {publisher.name}
+                </span>
+              ))}
+              {readyPublishers.length === 0 ? (
+                <span className="rounded-full bg-amber-300/15 px-2.5 py-1 text-amber-100">Publishing setup required</span>
+              ) : null}
             </div>
           </div>
           <Link href="/hiring/jobs/new" className="inline-flex min-h-11 items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-mist-50">
@@ -66,6 +53,19 @@ export default async function HiringPage() {
           </Link>
         </div>
       </section>
+
+      {blockedPublishers.length ? (
+        <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5 sm:p-6">
+          <h2 className="font-bold text-amber-950">More publishing identities can be unlocked</h2>
+          <p className="mt-1 text-sm leading-6 text-amber-900">
+            Verification and paid plan access are checked separately. Open Post a job to see the exact requirement for each identity.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link href="/plans" className="rounded-xl bg-amber-900 px-4 py-2 text-sm font-bold text-white">Compare plans</Link>
+            <Link href="/hiring/organization" className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-950">Organization access</Link>
+          </div>
+        </section>
+      ) : null}
 
       <HiringSubnav active="overview" />
 
@@ -82,7 +82,7 @@ export default async function HiringPage() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-xl font-bold text-navy-950">Recent vacancies</h2>
-            <p className="mt-1 text-sm text-muted">Your latest sea and shore hiring activity.</p>
+            <p className="mt-1 text-sm text-muted">Your latest personal and organization hiring activity.</p>
           </div>
           <Link href="/hiring/jobs" className="text-sm font-bold text-navy-950 hover:underline">View all vacancies</Link>
         </div>
@@ -96,6 +96,7 @@ export default async function HiringPage() {
                   {job.urgent ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">Urgent</span> : null}
                   <span className="rounded-full bg-mist-50 px-2 py-0.5 text-xs font-semibold capitalize text-muted">{job.status}</span>
                 </div>
+                <p className="mt-1 text-sm font-semibold text-navy-900">Published as {job.publisherName}</p>
                 <p className="mt-1 text-sm text-muted">
                   {[job.rank, job.vesselTypes[0], job.location].filter(Boolean).join(' · ') || (job.domain === 'sea' ? 'Sea job' : 'Shore job')}
                 </p>
