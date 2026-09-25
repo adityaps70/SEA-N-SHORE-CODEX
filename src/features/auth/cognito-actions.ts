@@ -215,11 +215,14 @@ export function createCognitoAuthActions(input: {
           }
           return { message: 'Check your email to continue.' }
         }
-        if (isCognitoError(error) && retryableSignupErrorCodes.has(error.code)) {
-          return { error: 'Too many sign-up requests. Please wait a moment and try again.' }
-        }
-        if (isCognitoError(error) && error.code === 'InvalidPasswordException') {
-          return { error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.' }
+        if (isCognitoError(error)) {
+          reportCognitoIssue('signUp', error)
+          if (retryableSignupErrorCodes.has(error.code)) {
+            return { error: 'Too many sign-up requests. Please wait a moment and try again.' }
+          }
+          if (error.code === 'InvalidPasswordException') {
+            return { error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.' }
+          }
         }
         return { error: 'We could not create your account. Please try again.' }
       }
