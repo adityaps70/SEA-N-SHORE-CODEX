@@ -131,6 +131,17 @@ test('run-once keeps persona selection unambiguous and persistence audit syntax 
   assert.doesNotMatch(workflow, /ONBOARDING_E2E_CLEANUP_VERIFIED=true/)
 })
 
+test('public signup retries only explicit Cognito throttling with bounded backoff', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.match(browserScript, /const SIGNUP_THROTTLE_MESSAGE = 'Too many sign-up requests\. Please wait a moment and try again\.'/)
+  assert.match(browserScript, /const SIGNUP_THROTTLE_RETRY_DELAYS_MS = \[5_000, 15_000, 30_000\]/)
+  assert.match(browserScript, /outcome\?\.kind === 'error' && safeText === SIGNUP_THROTTLE_MESSAGE/)
+  assert.match(browserScript, /ONBOARDING_E2E_SIGNUP_THROTTLE_RETRY=/)
+  assert.match(browserScript, /await page\.waitForTimeout\(retryDelay\)/)
+  assert.match(browserScript, /retryDelay !== undefined/)
+})
+
 test('run-once performs disposable public sign-up browser journeys and read-only persistence audit', () => {
   assert.equal(existsSync(browserScriptPath), true, `${browserScriptPath} must exist`)
   const workflow = readFileSync(workflowPath, 'utf8')
