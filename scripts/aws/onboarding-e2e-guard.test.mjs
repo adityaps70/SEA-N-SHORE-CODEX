@@ -76,14 +76,11 @@ test('run-once covers the new eight-persona onboarding model and excludes the re
   assert.doesNotMatch(browserScript, /Search organisation identities/)
 })
 
-test('persona selection uses a collision-resistant accessible-name pattern', () => {
+test('persona selection uses exact accessible labels without Seafarer collisions', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
-  assert.match(browserScript, /function personaButtonNamePattern\(user\)/)
-  assert.match(browserScript, /user\.key === 'seafarer'/)
-  assert.match(browserScript, /\^Seafarer\(\?=\[A-Z\]\)/)
-  assert.match(browserScript, /name:\s*personaButtonNamePattern\(user\)/)
-  assert.doesNotMatch(browserScript, /name:\s*new RegExp\('\^' \+ escapeRegExp\(user\.label\)\)/)
+  assert.doesNotMatch(browserScript, /function personaButtonNamePattern\(user\)/)
+  assert.match(browserScript, /getByRole\('button', \{\s*name:\s*user\.label,\s*exact:\s*true\s*\}\)/)
 })
 
 test('cleanup command generator emits valid Python JSON syntax even after a failed journey', () => {
@@ -112,12 +109,13 @@ test('run-once keeps persona selection unambiguous and cleanup generator syntax 
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
-  assert.match(browserScript, /function personaButtonNamePattern\(user\)/)
-  assert.match(browserScript, /user\.key === 'seafarer'/)
-  assert.match(browserScript, /\(\?=\[A-Z\]\)/)
+  assert.match(browserScript, /name:\s*user\.label/)
+  assert.match(browserScript, /exact:\s*true/)
 
   assert.match(workflow, /print\(json\.dumps\(\{"executionTimeout": \["600"\]/)
   assert.doesNotMatch(workflow, /print\(json\.dumps\(\{\\"executionTimeout\\"/)
+  assert.ok(workflow.includes('\n          """\n          print(json.dumps({"executionTimeout": ["600"]'))
+  assert.ok(!workflow.includes('\n          \\\"\\\"\\\"\n          print(json.dumps({"executionTimeout": ["600"]'))
 })
 
 test('run-once performs disposable public sign-up browser journeys and guarded cleanup', () => {
