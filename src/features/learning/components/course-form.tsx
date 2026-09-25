@@ -1,15 +1,19 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { createCourseDraft, updateCourseDraft } from '../course-actions'
 import type { CourseDraftInput } from '../course-repository'
+import type { CoursePublisherOption } from '../publishers'
 import { LearningMediaUploadField } from './learning-media-upload-field'
 
 type Props = {
   initialValue: CourseDraftInput
   courseId?: string
+  publisherOptions?: CoursePublisherOption[]
+  publisherName?: string
 }
 
 type FormState = {
@@ -92,13 +96,18 @@ function rupeesToMinor(value: string) {
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0
 }
 
-export function CourseForm({ initialValue, courseId }: Props) {
+export function CourseForm({ initialValue, courseId, publisherOptions = [], publisherName }: Props) {
   const router = useRouter()
   const initial = useMemo(() => toFormState(initialValue), [initialValue])
   const [form, setForm] = useState<FormState>(initial)
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; copy: string } | null>(null)
   const [pending, startTransition] = useTransition()
   const isEditing = Boolean(courseId)
+  const initialPublisher = !isEditing
+    ? publisherOptions.find((option) => option.canPublish) ?? publisherOptions[0] ?? null
+    : null
+  const [publisherKey, setPublisherKey] = useState(initialPublisher?.key ?? '')
+  const selectedPublisher = publisherOptions.find((option) => option.key === publisherKey) ?? null
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }))
@@ -143,7 +152,19 @@ export function CourseForm({ initialValue, courseId }: Props) {
         return
       }
 
-      const result = await createCourseDraft(payload())
+      if (publisherOptions.length > 0 && !selectedPublisher) {
+        setMessage({ tone: 'error', copy: 'Choose who is publishing this course.' })
+        return
+      }
+
+      const draft = payload()
+      const result = selectedPublisher
+        ? await createCourseDraft({
+            ...draft,
+            publisherType: selectedPublisher.kind,
+            companyId: selectedPublisher.kind === 'organization' ? selectedPublisher.id : null,
+          })
+        : await createCourseDraft(draft)
       if (!result.ok) {
         setMessage({ tone: 'error', copy: result.error })
         return
@@ -154,6 +175,86 @@ export function CourseForm({ initialValue, courseId }: Props) {
 
   return (
     <form onSubmit={onSubmit} className="space-y-6">
+      {!isEditing && publisherOptions.length > 0 ? (
+        <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Publishing identity</p>
+          <h2 className="mt-1 text-xl font-bold text-navy-950">Publish as</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+            Build personally as an approved mentor or on behalf of an organization where you manage LMS content.
+          </p>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {publisherOptions.map((option) => {
+              const selected = publisherKey === option.key
+              return (
+                <label
+                  key={option.key}
+                  className={`cursor-pointer rounded-2xl border p-4 transition ${
+                    selected
+                      ? 'border-teal-500 bg-teal-50/60 ring-1 ring-teal-100'
+                      : 'border-mist-100 bg-white hover:border-teal-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="radio"
+                      name="publisherIdentity"
+                      value={option.key}
+                      checked={selected}
+                      onChange={() => setPublisherKey(option.key)}
+                      className="mt-1"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-navy-950">{option.name}</span>
+                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+                          {option.kind === 'personal' ? 'Personal' : 'Organization'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted">
+                        {option.kind === 'personal'
+                          ? 'Publish under your verified trainer identity.'
+                          : `Publish for this organization${option.role ? ` · ${option.role.replaceAll('_', ' ')}` : ''}.`}
+                      </p>
+
+                      {option.blocker === 'upgrade_required' ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">PRO required to publish</span>
+                          <Link href="/plans" className="text-xs font-bold text-teal-700 hover:underline">View plans</Link>
+                        </div>
+                      ) : null}
+
+                      {option.blocker === 'verification_required' ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">Verification required to publish</span>
+                          <span className="text-xs text-muted">
+                            {option.kind === 'personal'
+                              ? 'Trainer verification must be approved.'
+                              : 'The organization must be verified.'}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      {!option.canPublish ? (
+                        <p className="mt-2 text-xs leading-5 text-muted">You can still choose this identity and save a private draft.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {isEditing && publisherName ? (
+        <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50 p-4">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Publishing identity</p>
+          <p className="mt-1 text-sm font-bold text-navy-950">{publisherName}</p>
+          <p className="mt-1 text-xs text-muted">The publishing identity is locked after course creation.</p>
+        </section>
+      ) : null}
+
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Course identity</p>
         <h2 className="mt-1 text-xl font-bold text-navy-950">Build a practical maritime learning experience</h2>
