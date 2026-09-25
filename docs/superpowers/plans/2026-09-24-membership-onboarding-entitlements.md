@@ -125,9 +125,15 @@ Architecture:
 
 ## Phase 4 — Verification model
 
+Current note: Independent Recruiter and Event Host applications now use one evidence-based verification workflow with preserved form values, resubmission after rejection, administrator review/audit, and direct publishing-blocker links. Verification approval never grants a paid entitlement. Integrated CI passed with 353 test files / 1,688 tests.
+
 - [x] Recruiter verification integrates current verified-company/recruiter workflow.
+- [x] Independent recruiter can apply/resubmit for Recruiter verification.
+- [x] Independent event host can apply/resubmit for Event Host verification.
+- [x] Verification applications preserve entered values on validation/server failure.
+- [x] Verification approval is audited and does not grant plan entitlements.
 - [x] Trainer verification integrates current active mentor workflow.
-- [ ] Event organizer verification added without granting unrelated permissions.
+- [x] Event organizer verification added without granting unrelated permissions.
 - [x] Verification status supports pending / approved / rejected / suspended where applicable.
 - [x] One person can hold multiple verifications simultaneously.
 - [ ] Admin can inspect verification source/status/history.
