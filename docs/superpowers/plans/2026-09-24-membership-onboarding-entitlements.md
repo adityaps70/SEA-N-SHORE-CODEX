@@ -136,7 +136,7 @@ Current note: Independent Recruiter and Event Host applications now use one evid
 - [x] Event organizer verification added without granting unrelated permissions.
 - [x] Verification status supports pending / approved / rejected / suspended where applicable.
 - [x] One person can hold multiple verifications simultaneously.
-- [ ] Admin can inspect verification source/status/history.
+- [x] Admin can inspect verification source/status/history.
 
 ## Phase 5 — Jobs migration
 
@@ -200,13 +200,15 @@ Current note: pricing and payment provider are intentionally not invented. Billi
 
 ## Phase 10 — Admin
 
-- [ ] Admin user view shows persona and intents.
-- [ ] Admin user view shows plan/subscription.
-- [ ] Admin user view shows effective capabilities.
-- [ ] Admin user view shows recruiter/trainer/event-host verification.
-- [ ] Admin can grant/revoke safe manual/grandfathered entitlements with audit trail.
-- [ ] Admin organization view shows plan and authorized managers.
-- [ ] Suspension overrides paid access.
+Current note: Admin membership visibility and entitlement controls are implemented and CI-verified. User detail shows persona/intents, subscription state, effective capabilities, verification source/status/history and entitlement history. Organization review detail shows Organization Pro state, subscription, authorized managers and organization entitlement history. Manual/grandfathered grants are narrowly scoped and audited; suspension overrides personal plans, manual grants and organization capabilities. Integrated CI passed with 357 test files / 1,706 tests.
+
+- [x] Admin user view shows persona and intents.
+- [x] Admin user view shows plan/subscription.
+- [x] Admin user view shows effective capabilities.
+- [x] Admin user view shows recruiter/trainer/event-host verification.
+- [x] Admin can grant/revoke safe manual/grandfathered entitlements with audit trail.
+- [x] Admin organization view shows plan and authorized managers.
+- [x] Suspension overrides paid access.
 
 ## Phase 11 — Migration/backfill
 
