@@ -143,6 +143,7 @@ function OnboardingFields({
                 key={option.id}
                 type="button"
                 onClick={() => setPersona(option.id)}
+                aria-label={option.label}
                 aria-pressed={selected}
                 className={`group relative rounded-2xl border p-4 text-left transition-all duration-200 ${
                   selected
