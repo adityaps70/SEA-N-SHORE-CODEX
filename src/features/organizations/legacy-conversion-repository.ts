@@ -3,7 +3,7 @@ import { query as databaseQuery, withTransaction as databaseTransaction, type Da
 import { legacyProfileTypeForPersona, type Persona, type ProfileIntent } from '@/features/profiles/persona'
 
 export type LegacyOrganizationSnapshot = {
-  organizationName: string
+  name: string
   headline: string | null
   summary: string | null
   location: string | null
@@ -75,7 +75,7 @@ function snapshotText(value: unknown) {
 
 function mapSnapshot(value: Record<string, unknown>): LegacyOrganizationSnapshot {
   return {
-    organizationName: snapshotText(value.organizationName) ?? 'Legacy organization',
+    name: snapshotText(value.organizationName) ?? 'Legacy organization',
     headline: snapshotText(value.headline),
     summary: snapshotText(value.summary),
     location: snapshotText(value.location),
@@ -304,7 +304,7 @@ export function createLegacyOrganizationConversionRepository(input: {
           JSON.stringify({
             companyId,
             strategy: data.strategy,
-            legacyOrganizationName: snapshot.organizationName,
+            legacyOrganizationName: snapshot.name,
             persona: data.persona,
           }),
         ],
