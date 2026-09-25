@@ -82,11 +82,6 @@ const nonEnumeratingSignupErrorCodes = new Set([
   'UsernameExistsException',
 ])
 
-const retryableSignupErrorCodes = new Set([
-  'LimitExceededException',
-  'TooManyRequestsException',
-])
-
 const nonEnumeratingResetErrorCodes = new Set([
   'UserNotFoundException',
   'NotAuthorizedException',
@@ -217,8 +212,11 @@ export function createCognitoAuthActions(input: {
         }
         if (isCognitoError(error)) {
           reportCognitoIssue('signUp', error)
-          if (retryableSignupErrorCodes.has(error.code)) {
+          if (error.code === 'TooManyRequestsException') {
             return { error: 'Too many sign-up requests. Please wait a moment and try again.' }
+          }
+          if (error.code === 'LimitExceededException') {
+            return { error: 'Sign-up attempt limit reached. Please try again later.' }
           }
           if (error.code === 'InvalidPasswordException') {
             return { error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.' }
