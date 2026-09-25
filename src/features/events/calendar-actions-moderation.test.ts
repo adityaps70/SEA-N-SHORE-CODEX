@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CalendarEventInput } from './calendar-types'
+import type { CalendarEventCreateInput } from './calendar-types'
 
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
@@ -35,8 +35,10 @@ import { createEventAction, updateEventAction } from './calendar-actions'
 
 const eventId = '22222222-2222-4222-8222-222222222222'
 
-function input(overrides: Partial<CalendarEventInput> = {}): CalendarEventInput {
+function input(overrides: Partial<CalendarEventCreateInput> = {}): CalendarEventCreateInput {
   return {
+    publisherType: 'personal',
+    companyId: null,
     title: 'SIRE 2.0 Readiness',
     summary: 'Practical inspection-readiness session.',
     description: 'A professional training session for tanker officers.',
@@ -84,7 +86,7 @@ describe('calendar actions automated moderation', () => {
     expect(mocks.createEvent).not.toHaveBeenCalled()
   })
 
-  it('requires event publishing capability for published events but not private drafts', async () => {
+  it('requires personal event publishing capability for published events but not private drafts', async () => {
     await expect(createEventAction(input())).resolves.toEqual({ ok: true, eventId })
     expect(mocks.requireCapability).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
@@ -94,6 +96,25 @@ describe('calendar actions automated moderation', () => {
     mocks.requireCapability.mockClear()
     await expect(createEventAction(input({ status: 'draft' }))).resolves.toEqual({ ok: true, eventId })
     expect(mocks.requireCapability).not.toHaveBeenCalled()
+  })
+
+  it('requires organization-scoped event publishing capability when publishing for an organization', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+
+    await expect(createEventAction(input({
+      publisherType: 'organization',
+      companyId,
+    }))).resolves.toEqual({ ok: true, eventId })
+
+    expect(mocks.requireCapability).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      'event.publish',
+      { companyId },
+    )
+    expect(mocks.createEvent).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.objectContaining({ publisherType: 'organization', companyId }),
+    )
   })
 
   it('fails closed when published event access is missing', async () => {
@@ -120,9 +141,13 @@ describe('calendar actions automated moderation', () => {
   })
 
   it('rechecks published event edits', async () => {
-    await expect(updateEventAction(eventId, input({
+    const { publisherType: _publisherType, companyId: _companyId, ...editable } = input({
       summary: 'You are a useless idiot and should never work here.',
-    }))).resolves.toEqual({ ok: true })
+    })
+    void _publisherType
+    void _companyId
+
+    await expect(updateEventAction(eventId, editable)).resolves.toEqual({ ok: true })
 
     expect(mocks.updateEvent).toHaveBeenCalled()
     expect(mocks.flagContentAutomatically).toHaveBeenCalledWith(expect.objectContaining({
