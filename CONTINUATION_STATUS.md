@@ -235,16 +235,20 @@ No membership schema migration has been intentionally applied to staging yet.
 - Added exhaustive central-policy coverage for every personal plan × verification combination × capability.
 - Added exhaustive organization plan × role × verification-state × capability coverage.
 - Organization-scoped manual grants are regression-tested so they cannot escape the selected company/role scope.
-- Exact-head application verification passed at 359 test files / 1,719 tests.
+- Exact-head application verification passed at 359 test files / 1,721 tests.
 - Docker build, Terraform validations, Terraform plan guards and GitHub SSM execution-contract checks passed on the same implementation head.
 
 ### Guarded eight-persona onboarding E2E readiness
 - Replaced the obsolete Professional / Organisation staging browser journeys with all eight current persona journeys.
 - The harness now creates disposable Seafarer, Shore Professional, Recruiter / HR, Trainer / Instructor, Student / Cadet, Seafarer Family, Maritime Enthusiast and Other users.
 - It verifies intent selection, persona-specific fields, username protections, profile completion and database persistence for `persona` / `profile_intents` plus compatible legacy profile projections.
+- Representative persona journeys use a 390×844 mobile viewport and assert no horizontal overflow.
+- Every persona onboarding state runs an Axe scan that fails on serious/critical accessibility violations.
+- CI now also exercises keyboard activation of persona/intent buttons, selected `aria-pressed` state, username description linkage, error-summary focus and mobile-first responsive layout contracts.
 - Cleanup remains guarded and deletes only disposable E2E identities.
 - `scripts/aws/onboarding-e2e-action.txt` remains `plan`.
-- The workflow parses and completes successfully in plan mode, but the live eight-persona staging journey has **not** been executed.
+- Exact-head CI is green at 359 test files / 1,721 tests, including Docker, Terraform validations/guards, SSM execution contract and Remote Verify.
+- The onboarding workflow parses and completes successfully in plan mode, but the live eight-persona staging journey has **not** been executed.
 
 ## Tests added/updated
 
@@ -266,17 +270,18 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Mobile onboarding UX regression and broader keyboard/accessibility verification.
-2. Live all-eight-persona staging onboarding E2E, but only after the migration/deploy sequence is explicitly approved and armed one-shot.
+1. Live all-eight-persona staging onboarding E2E, only as part of the explicitly approved guarded migration → deploy → E2E one-shot sequence.
+2. Re-arm every execution guard to `plan` immediately after any approved one-shot staging execution.
 3. Pricing decision, currency/tax behavior and payment-provider selection.
 4. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
-5. Final guarded staging migration → deploy → E2E sequence, followed by re-arming every execution guard to `plan`.
 
 ## Exact next action
 
-Continue **Phase 12 launch readiness without deploying**: strengthen mobile onboarding and keyboard/accessibility regression coverage, then re-check all action guards remain `plan`.
+All remaining **non-deployment onboarding/membership implementation and regression work is complete** for the currently approved scope.
 
-The deterministic Phase 11 persona backfill and exhaustive Phase 3 authorization matrix are complete in code and exact-head CI. The eight-persona staging E2E harness is prepared but intentionally unexecuted. Jobs, Events, LMS, independent Recruiter/Event Host verification applications, admin membership controls and organization billing management remain complete in code and regression-tested. Pricing/provider-specific billing is still blocked on product decisions. Do not apply the membership migration, deploy new schema-dependent application code, or arm staging E2E until the one-shot staging sequence is explicitly approved.
+The next technical launch step requires explicit approval to run the guarded staging sequence: membership migration → schema-dependent application deploy → all-eight-persona browser E2E/persistence/mobile/accessibility verification → re-arm every action guard to `plan`. Until that approval is given, keep all execution guards at `plan` and do not apply or deploy the new membership schema.
+
+Billing remains separately blocked on product decisions for Creator Pro / Organization Pro pricing, currency/tax treatment and payment provider.
 
 ## New-chat handoff prompt
 
