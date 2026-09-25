@@ -18,3 +18,21 @@ test('Phase 5B readiness checks SES production access, identity, DKIM, DNS and C
   assert.match(script, /VerificationStatus/)
   assert.match(script, /DkimAttributes/)
 })
+
+
+test('Phase 5B discovery audits the SES domain DNS before migration', () => {
+  const script = fs.readFileSync(scriptUrl, 'utf8')
+
+  assert.match(script, /route53 list-hosted-zones-by-name/)
+  assert.match(script, /ROUTE53_SES_ZONE_COUNT=/)
+  assert.match(script, /ROUTE53_SES_ZONE_ID=/)
+  assert.match(script, /LIVE_DNS_A_BEGIN/)
+  assert.match(script, /LIVE_DNS_WWW_BEGIN/)
+  assert.match(script, /LIVE_DNS_MX_BEGIN/)
+  assert.match(script, /LIVE_DNS_TXT_BEGIN/)
+  assert.match(script, /LIVE_DNS_CAA_BEGIN/)
+  assert.match(script, /dig \+short A "\$SES_DOMAIN"/)
+  assert.match(script, /dig \+short MX "\$SES_DOMAIN"/)
+  assert.match(script, /dig \+short TXT "\$SES_DOMAIN"/)
+  assert.match(script, /dig \+short CAA "\$SES_DOMAIN"/)
+})
