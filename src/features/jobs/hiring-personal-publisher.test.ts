@@ -216,4 +216,31 @@ describe('independent recruiter hiring publisher', () => {
     expect(seen.some((entry) => entry.text.includes('insert into public.job_application_events'))).toBe(true)
   })
 
+
+  it('aggregates hiring metrics across personal and authorized organization jobs', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createHiringRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          active_jobs: '3',
+          applicants: '18',
+          shortlisted: '5',
+          interviews: '2',
+          selected: '1',
+        }]
+      },
+    })
+
+    await expect(repository.getManagedDashboardMetrics('user-1')).resolves.toEqual({
+      activeJobs: 3,
+      applicants: 18,
+      shortlisted: 5,
+      interviews: 2,
+      selected: 1,
+    })
+    expect(seen[0]?.text).toContain('j.created_by_user_id = $1')
+    expect(seen[0]?.text).toContain('public.company_members')
+  })
+
 })
