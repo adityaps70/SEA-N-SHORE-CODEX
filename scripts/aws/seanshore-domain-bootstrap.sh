@@ -165,11 +165,16 @@ for r in changes:
         and not r['address'].startswith(ses_dkim_prefix)
     ):
         raise SystemExit(f"unexpected domain bootstrap change: {r['address']} {r['change']['actions']}")
-    if r['change']['actions'] != ['create']:
-        raise SystemExit(f"non-create domain bootstrap change refused: {r['address']} {r['change']['actions']}")
+    actions = r['change']['actions']
+    if actions == ['create']:
+        continue
+    if r['address'].startswith(ses_dkim_prefix) and actions == ['delete']:
+        print(f"SEANSHORE_DOMAIN_BOOTSTRAP_STALE_SES_DKIM_DELETE={r['address']}")
+        continue
+    raise SystemExit(f"non-create domain bootstrap change refused: {r['address']} {actions}")
 print('SEANSHORE_DOMAIN_BOOTSTRAP_CHANGE_COUNT=' + str(len(changes)))
 for r in changes:
-    print(f"SEANSHORE_DOMAIN_BOOTSTRAP_CHANGE={r['address']}|create")
+    print(f"SEANSHORE_DOMAIN_BOOTSTRAP_CHANGE={r['address']}|{','.join(r['change']['actions'])}")
 PY
 
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
@@ -228,7 +233,7 @@ jq -e '
   ([.ResourceRecordSets[]
     | select(
         .Type=="CNAME"
-        and (.Name|endswith("._domainkey.seaandshore.in."))
+        and (.Name|endswith("._domainkey.seanshore.in."))
         and (.ResourceRecords|length)==1
         and (.ResourceRecords[0].Value|endswith(".dkim.amazonses.com"))
       )
