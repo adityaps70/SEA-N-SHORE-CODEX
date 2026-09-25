@@ -8,6 +8,8 @@ on:
     paths:
       - .github/workflows/aws-phase5b-ses.yml
       - scripts/aws/phase5b-action.txt
+      - scripts/aws/phase5b-ses-readiness.sh
+      - scripts/aws/phase5b-ses-readiness.test.mjs
 
 permissions:
   id-token: write
