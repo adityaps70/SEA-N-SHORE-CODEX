@@ -31,15 +31,18 @@ describe('admin membership and entitlement experience', () => {
     expect(page).toContain('AdminEntitlementControlPanel')
   })
 
-  it('keeps admin manual grants intentionally narrow', () => {
-    const repository = source('src/features/admin/membership-repository.ts')
+  it('keeps admin manual grants intentionally narrow in a client-safe policy module', () => {
+    const policy = source('src/features/admin/membership-policy.ts')
+    const panel = source('src/features/admin/components/admin-entitlement-control-panel.tsx')
 
-    expect(repository).toContain('ADMIN_PERSONAL_GRANTABLE_CAPABILITIES')
-    expect(repository).toContain("'job.publish'")
-    expect(repository).toContain("'event.publish'")
-    expect(repository).toContain("'course.publish'")
-    expect(repository).toContain('ADMIN_ORGANIZATION_GRANTABLE_CAPABILITIES')
-    expect(repository).not.toContain("'billing.manage',\n] as const")
+    expect(policy).toContain('ADMIN_PERSONAL_GRANTABLE_CAPABILITIES')
+    expect(policy).toContain("'job.publish'")
+    expect(policy).toContain("'event.publish'")
+    expect(policy).toContain("'course.publish'")
+    expect(policy).toContain('ADMIN_ORGANIZATION_GRANTABLE_CAPABILITIES')
+    expect(policy).not.toContain("'billing.manage',\n] as const")
+    expect(panel).toContain("from '../membership-policy'")
+    expect(panel).not.toContain("from '../membership-repository'")
   })
 
   it('provides explicit reason-based grant and revoke UI', () => {
