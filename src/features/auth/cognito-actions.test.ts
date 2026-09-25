@@ -183,7 +183,9 @@ describe('Cognito auth actions', () => {
           {},
           form({ fullName: 'New Mariner', email: 'new@example.com', password: 'LongEnoughPass1' }),
         ),
-      ).resolves.toEqual({ error: 'Too many sign-up attempts. Please try again shortly.' })
+      ).resolves.toEqual({
+        error: 'Too many sign-up requests. Please wait a moment and try again.',
+      })
 
       expect(onCognitoIssue).toHaveBeenCalledWith({
         operation: 'signUp',
