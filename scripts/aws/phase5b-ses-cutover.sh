@@ -3,11 +3,11 @@ set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-ap-south-1}"
 EXPECTED_ACCOUNT_ID="${EXPECTED_ACCOUNT_ID:-310356785722}"
-SES_DOMAIN="${SES_DOMAIN:-seaandshore.in}"
-SES_FROM_ADDRESS="${SES_FROM_ADDRESS:-no-reply@seaandshore.in}"
+SES_DOMAIN="${SES_DOMAIN:-seanshore.in}"
+SES_FROM_ADDRESS="${SES_FROM_ADDRESS:-no-reply@seanshore.in}"
 SES_FROM_DISPLAY_NAME="${SES_FROM_DISPLAY_NAME:-Sea N Shore}"
 SES_FROM="${SES_FROM_DISPLAY_NAME} <${SES_FROM_ADDRESS}>"
-APPROVED_SES_FROM="Sea N Shore <no-reply@seaandshore.in>"
+APPROVED_SES_FROM="Sea N Shore <no-reply@seanshore.in>"
 COGNITO_EMAIL_TARGET="EmailSendingAccount=DEVELOPER"
 SES_CONFIGURATION_SET="${SES_CONFIGURATION_SET:-sea-n-shore-staging-transactional}"
 SES_POLICY_NAME="${SES_POLICY_NAME:-sea-n-shore-staging-cognito-sender}"
@@ -180,7 +180,7 @@ request_production_access() {
   aws sesv2 put-account-details \
     --region "$AWS_REGION" \
     --mail-type TRANSACTIONAL \
-    --website-url "https://seaandshore.in" \
+    --website-url "https://seanshore.in" \
     --contact-language EN \
     --use-case-description "$use_case" \
     --production-access-enabled >/dev/null
