@@ -25,6 +25,10 @@ test('membership access foundation is additive and separates persona, plans, ver
   assert.match(normalized, /create table if not exists public\.feature_verifications/)
   assert.match(normalized, /recruiter.*trainer.*event_host/)
   assert.match(normalized, /create table if not exists public\.entitlement_grants/)
+  assert.match(normalized, /create table if not exists public\.legacy_organization_conversions/)
+  assert.match(normalized, /legacy_snapshot jsonb/)
+  assert.match(normalized, /identity_root = 'organisation'/)
+  assert.match(normalized, /jsonb_build_object/)
 
   assert.match(normalized, /insert into public\.feature_verifications/)
   assert.match(normalized, /learning_mentors/)
