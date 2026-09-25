@@ -4,6 +4,7 @@ import { resolveEventBannerReference } from './event-banner-media'
 import { isEventBannerStoragePath } from './event-banner-policy'
 import type {
   CalendarEvent,
+  CalendarEventCreateInput,
   CalendarEventFilters,
   CalendarEventFormat,
   CalendarEventInput,
@@ -16,6 +17,10 @@ type CalendarEventRow = QueryResultRow & {
   host_user_id: string
   host_name: string
   host_slug: string | null
+  company_id?: string | null
+  publisher_name?: string | null
+  publisher_slug?: string | null
+  publisher_verified?: boolean | null
   title: string
   summary: string
   description: string
@@ -48,6 +53,23 @@ type CalendarEventRow = QueryResultRow & {
   updated_at: string | Date
 }
 
+const EVENT_MANAGER_ACCESS_SQL = `
+  (
+    e.host_user_id = $1::uuid
+    or (
+      e.company_id is not null
+      and exists (
+        select 1
+        from public.company_members manager_cm
+        where manager_cm.company_id = e.company_id
+          and manager_cm.user_id = $1::uuid
+          and manager_cm.approved_at is not null
+          and manager_cm.role::text in ('owner', 'administrator', 'event_manager')
+      )
+    )
+  )
+`
+
 type EventLockRow = QueryResultRow & {
   id: string
   host_user_id: string
@@ -64,6 +86,19 @@ const EVENT_SELECT = `
     e.host_user_id,
     p.full_name as host_name,
     p.slug as host_slug,
+    e.company_id,
+    case when e.company_id is null then p.full_name else c.name end as publisher_name,
+    case when e.company_id is null then p.slug else c.slug end as publisher_slug,
+    case
+      when e.company_id is null then exists (
+        select 1
+        from public.feature_verifications publisher_fv
+        where publisher_fv.profile_id = e.host_user_id
+          and publisher_fv.verification_type = 'event_host'
+          and publisher_fv.status = 'approved'
+      )
+      else coalesce(c.is_verified, false)
+    end as publisher_verified,
     e.title,
     e.summary,
     e.description,
@@ -79,7 +114,7 @@ const EVENT_SELECT = `
     e.city,
     e.country,
     case
-      when e.host_user_id = $1::uuid
+      when ${EVENT_MANAGER_ACCESS_SQL}
         or exists (
           select 1 from public.event_attendees access_ea
           where access_ea.event_id = e.id and access_ea.user_id = $1::uuid
@@ -100,7 +135,7 @@ const EVENT_SELECT = `
       select 1 from public.event_attendees viewer_ea
       where viewer_ea.event_id = e.id and viewer_ea.user_id = $1::uuid
     ) as viewer_is_attending,
-    (e.host_user_id = $1::uuid) as viewer_is_host,
+    ${EVENT_MANAGER_ACCESS_SQL} as viewer_is_host,
     (
       e.status = 'published'
       and e.end_at > now()
@@ -120,6 +155,7 @@ const EVENT_SELECT = `
     e.updated_at
   from public.events e
   join public.profiles p on p.id = e.host_user_id
+  left join public.companies c on c.id = e.company_id
 `
 
 function iso(value: string | Date) {
@@ -154,6 +190,11 @@ function mapEvent(row: CalendarEventRow): CalendarEvent {
     hostUserId: row.host_user_id,
     hostName: row.host_name,
     hostSlug: row.host_slug,
+    publisherType: row.company_id ? 'organization' : 'personal',
+    companyId: row.company_id ?? null,
+    publisherName: row.publisher_name ?? row.host_name,
+    publisherSlug: row.publisher_slug ?? row.host_slug,
+    publisherVerified: Boolean(row.publisher_verified),
     title: row.title,
     summary: row.summary,
     description: row.description,
@@ -285,7 +326,7 @@ async function listMyPastEvents(userId: string) {
 
 async function listHostedEvents(userId: string) {
   return rowsForViewer(userId, `
-    where e.host_user_id = $1::uuid
+    where ${EVENT_MANAGER_ACCESS_SQL}
     order by case when e.end_at > now() then 0 else 1 end, e.start_at asc
     limit 200
   `, [])
@@ -314,25 +355,42 @@ async function listPastEvents(viewerId: string, filters: CalendarEventFilters | 
 async function getEvent(eventId: string, viewerId: string) {
   const rows = await rowsForViewer(viewerId, `
     where e.id = $2::uuid
-      and (e.status <> 'draft' or e.host_user_id = $1::uuid)
+      and (e.status <> 'draft' or ${EVENT_MANAGER_ACCESS_SQL})
     limit 1
   `, [eventId])
   return rows[0] ?? null
 }
 
-async function createEvent(hostUserId: string, input: CalendarEventInput) {
+async function createEvent(hostUserId: string, input: CalendarEventCreateInput) {
+  let companyId: string | null = null
+
+  if (input.publisherType === 'organization') {
+    const memberships = await query<{ role: string; approved_at: string | Date | null } & QueryResultRow>(`
+      select role::text as role, approved_at
+      from public.company_members
+      where company_id = $1::uuid
+        and user_id = $2::uuid
+        and approved_at is not null
+        and role::text in ('owner', 'administrator', 'event_manager')
+      limit 1
+    `, [input.companyId, hostUserId])
+
+    if (!memberships[0]) throw new Error('event_forbidden')
+    companyId = input.companyId
+  }
+
   const values = eventValues(input)
   const rows = await query<{ id: string } & QueryResultRow>(`
     insert into public.events (
-      host_user_id, title, summary, description, category, event_type, format, status, start_at, end_at, timezone,
+      host_user_id, company_id, title, summary, description, category, event_type, format, status, start_at, end_at, timezone,
       location_name, location_address, city, country, meeting_url, topics, agenda, speakers, speaker_details,
       capacity, banner_url, registration_mode, registration_closes_at
     ) values (
-      $1::uuid, $2::text, $3::text, $4::text, $5::text, $6::text, $7::text, $8::text, $9::timestamptz, $10::timestamptz, $11::text,
-      $12::text, $13::text, $14::text, $15::text, $16::text, $17::text[], $18::jsonb, $19::text[], $20::jsonb,
-      $21::integer, $22::text, $23::text, $24::timestamptz
+      $1::uuid, $2::uuid, $3::text, $4::text, $5::text, $6::text, $7::text, $8::text, $9::text, $10::timestamptz, $11::timestamptz, $12::text,
+      $13::text, $14::text, $15::text, $16::text, $17::text, $18::text[], $19::jsonb, $20::text[], $21::jsonb,
+      $22::integer, $23::text, $24::text, $25::timestamptz
     ) returning id
-  `, [hostUserId, ...values])
+  `, [hostUserId, companyId, ...values])
   const id = rows[0]?.id
   if (!id) throw new Error('event_create_failed')
   return id
@@ -341,25 +399,29 @@ async function createEvent(hostUserId: string, input: CalendarEventInput) {
 async function updateEvent(hostUserId: string, eventId: string, input: CalendarEventInput) {
   const values = eventValues(input)
   const rows = await query<{ id: string } & QueryResultRow>(`
-    update public.events set
+    update public.events e set
       title=$3::text, summary=$4::text, description=$5::text, category=$6::text, event_type=$7::text,
       format=$8::text, status=$9::text, start_at=$10::timestamptz, end_at=$11::timestamptz, timezone=$12::text,
       location_name=$13::text, location_address=$14::text, city=$15::text, country=$16::text, meeting_url=$17::text,
       topics=$18::text[], agenda=$19::jsonb, speakers=$20::text[], speaker_details=$21::jsonb,
       capacity=$22::integer, banner_url=$23::text, registration_mode=$24::text, registration_closes_at=$25::timestamptz,
       updated_at=now()
-    where id=$2::uuid and host_user_id=$1::uuid and status <> 'cancelled'
-    returning id
+    where e.id=$2::uuid
+      and e.status <> 'cancelled'
+      and ${EVENT_MANAGER_ACCESS_SQL}
+    returning e.id
   `, [hostUserId, eventId, ...values])
   if (!rows[0]) throw new Error('event_forbidden')
 }
 
 async function cancelEvent(hostUserId: string, eventId: string) {
   const rows = await query<{ id: string } & QueryResultRow>(`
-    update public.events
+    update public.events e
     set status='cancelled', updated_at=now()
-    where id=$2::uuid and host_user_id=$1::uuid and status <> 'cancelled'
-    returning id
+    where e.id=$2::uuid
+      and e.status <> 'cancelled'
+      and ${EVENT_MANAGER_ACCESS_SQL}
+    returning e.id
   `, [hostUserId, eventId])
   if (!rows[0]) throw new Error('event_forbidden')
 }
