@@ -67,6 +67,7 @@ test('seanshore.in AWS bootstrap has a guarded create-only release path', async 
 
   const workflow = await readFile(workflowUrl, 'utf8')
   assert.match(workflow, /name: AWS seanshore\.in Domain Bootstrap/)
+  assert.match(workflow, /infra\/aws\/app\/aws-native-variables\.tf/)
   assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
   assert.match(workflow, /Guard domain bootstrap against a moved branch/)
   assert.match(workflow, /environment:\s*staging/)
