@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, Clock3 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { learningRepository } from '@/features/learning/repository'
+import { organizationRepository } from '@/features/organizations/repository'
 
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -11,8 +12,16 @@ function dateLabel(value: string) {
 
 export default async function MentorAssignmentsPage() {
   const user = await requireAwsUser()
-  const mentorState = await learningRepository.getMentorApplicationState(user.id)
-  if (mentorState.kind !== 'mentor' || mentorState.mentorStatus !== 'active') return redirect('/learn/teach')
+  const [mentorState, organizations] = await Promise.all([
+    learningRepository.getMentorApplicationState(user.id),
+    organizationRepository.listUserOrganizations(user.id),
+  ])
+  const hasActiveMentor = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
+  const hasOrganizationLmsAccess = organizations.some((organization) =>
+    organization.role === 'owner'
+    || organization.role === 'administrator'
+    || organization.role === 'lms_manager')
+  if (!hasActiveMentor && !hasOrganizationLmsAccess) return redirect('/learn/teach')
 
   const attempts = await assignmentGradingRepository.listForMentor(user.id)
   const pending = attempts.filter((attempt) => attempt.status === 'submitted')
