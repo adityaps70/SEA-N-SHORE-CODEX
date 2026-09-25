@@ -35,13 +35,13 @@ variable "enable_google_identity_provider" {
 variable "ses_domain" {
   description = "SES domain identity used for transactional email."
   type        = string
-  default     = "seaandshore.in"
+  default     = "seanshore.in"
 }
 
 variable "ses_from_address" {
   description = "Approved transactional FROM address."
   type        = string
-  default     = "no-reply@seaandshore.in"
+  default     = "no-reply@seanshore.in"
 }
 
 variable "ses_from_display_name" {
