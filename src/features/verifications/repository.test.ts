@@ -180,7 +180,7 @@ describe('creator verification repository', () => {
 
       const update = seen.find((entry) => entry.text.includes('update public.feature_verifications'))
       expect(update?.values).toContain(decision)
-      expect(seen.some((entry) => entry.text.includes(`verification.${decision}`))).toBe(true)
+      expect(seen.some((entry) => entry.text.includes('insert into public.audit_events') && entry.values?.includes(`verification.${decision}`))).toBe(true)
       expect(seen.some((entry) => entry.text.includes('entitlement_grants'))).toBe(false)
     }
   })
