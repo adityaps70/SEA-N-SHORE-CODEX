@@ -1,13 +1,15 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createHiringJob, updateHiringJob } from '../hiring-actions'
 import type { HiringEditableJob, HiringJobInput, HiringJobUpdateInput } from '../hiring-repository'
+import type { HiringPublisherOption } from '../publishers'
 
 type HiringJobFormProps =
-  | { mode: 'create'; companyId: string; initial?: never; jobId?: never }
-  | { mode: 'edit'; jobId: string; initial: HiringEditableJob; companyId?: never }
+  | { mode: 'create'; publisherOptions: HiringPublisherOption[]; initial?: never; jobId?: never }
+  | { mode: 'edit'; jobId: string; initial: HiringEditableJob; publisherOptions?: never }
 
 const inputClass = 'min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-navy-300 focus:ring-2 focus:ring-navy-100'
 const labelClass = 'space-y-1.5 text-sm font-semibold text-navy-900'
@@ -75,15 +77,36 @@ export function HiringJobForm(props: HiringJobFormProps) {
   const [message, setMessage] = useState<string | null>(null)
   const [isError, setIsError] = useState(false)
   const initial = props.mode === 'edit' ? props.initial : undefined
+  const initialPublisher = props.mode === 'create'
+    ? props.publisherOptions.find((option) => option.canPublish) ?? props.publisherOptions[0] ?? null
+    : null
+  const [publisherKey, setPublisherKey] = useState(initialPublisher?.key ?? '')
+  const selectedPublisher = props.mode === 'create'
+    ? props.publisherOptions.find((option) => option.key === publisherKey) ?? null
+    : null
 
   function submit(formData: FormData) {
     setMessage(null)
     setIsError(false)
     const fields = buildInput(formData)
 
+    if (props.mode === 'create' && (!selectedPublisher || !selectedPublisher.canPublish)) {
+      setIsError(true)
+      setMessage(
+        selectedPublisher?.blocker === 'verification_required'
+          ? 'Verification is required before this identity can publish jobs.'
+          : 'A qualifying Pro plan is required before this identity can publish jobs.',
+      )
+      return
+    }
+
     startTransition(async () => {
-      const result = props.mode === 'create'
-        ? await createHiringJob({ companyId: props.companyId, ...fields } satisfies HiringJobInput)
+      const result = props.mode === 'create' && selectedPublisher
+        ? await createHiringJob({
+            publisherType: selectedPublisher.kind,
+            companyId: selectedPublisher.kind === 'organization' ? selectedPublisher.id : null,
+            ...fields,
+          } satisfies HiringJobInput)
         : await updateHiringJob(props.jobId, fields)
 
       if (!result.ok) {
@@ -103,6 +126,88 @@ export function HiringJobForm(props: HiringJobFormProps) {
 
   return (
     <form action={submit} className="space-y-5">
+      {props.mode === 'create' ? (
+        <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Publishing identity</p>
+            <h2 className="mt-1 text-xl font-bold text-navy-950">Publish as</h2>
+            <p className="mt-1 text-sm leading-6 text-muted">
+              Choose your verified personal recruiter identity or an organization workspace you manage.
+            </p>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {props.publisherOptions.map((option) => {
+              const selected = publisherKey === option.key
+              const blocked = !option.canPublish
+              return (
+                <label
+                  key={option.key}
+                  className={`rounded-2xl border p-4 transition ${
+                    selected
+                      ? 'border-ocean-500 bg-ocean-50 ring-1 ring-ocean-100'
+                      : 'border-mist-100 bg-white'
+                  } ${blocked ? 'opacity-80' : 'cursor-pointer hover:border-ocean-300'}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="radio"
+                      name="publisherIdentity"
+                      value={option.key}
+                      checked={selected}
+                      disabled={blocked}
+                      onChange={() => setPublisherKey(option.key)}
+                      className="mt-1"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-navy-950">{option.name}</span>
+                        <span className="rounded-full bg-mist-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+                          {option.kind === 'personal' ? 'Personal' : 'Organization'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted">
+                        {option.kind === 'personal'
+                          ? 'Independent recruiter publishing under your own verified professional identity.'
+                          : `Publishing for this organization${option.role ? ` · ${option.role}` : ''}.`}
+                      </p>
+
+                      {option.blocker === 'upgrade_required' ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">PRO required</span>
+                          <Link href="/plans" className="text-xs font-bold text-ocean-700 hover:underline">
+                            View plans
+                          </Link>
+                        </div>
+                      ) : null}
+
+                      {option.blocker === 'verification_required' ? (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">Verification required</span>
+                          {option.kind === 'organization' ? (
+                            <Link href="/hiring/organization" className="text-xs font-bold text-ocean-700 hover:underline">
+                              Manage organization verification
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-muted">Recruiter verification must be approved before publishing.</span>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+
+          {props.publisherOptions.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+              No publishing identity is available yet. Complete your profile, verification and plan setup first.
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <div className="mb-5">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Role</p>
