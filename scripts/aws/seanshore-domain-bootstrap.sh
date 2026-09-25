@@ -68,6 +68,28 @@ if [[ "$LIVE_ZONE_COUNT" == "1" ]]; then
     echo "PUBLIC_NAME_SERVER=$nameserver"
   done < <(dig +short NS "$EXPECTED_DOMAIN" | sort)
   echo "PUBLIC_NAME_SERVERS_END"
+
+  echo "REGISTRY_DELEGATION_BEGIN"
+  ROUTE53_NS_FILE="$WORK_DIR/route53-ns.txt"
+  REGISTRY_NS_FILE="$WORK_DIR/registry-ns.txt"
+  jq -r '.DelegationSet.NameServers[]' "$WORK_DIR/live-zone.json" | sed 's/\.$//' | sort -u > "$ROUTE53_NS_FILE"
+  : > "$REGISTRY_NS_FILE"
+  for parent_ns in ns1.registry.in ns2.registry.in ns3.registry.in ns4.registry.in; do
+    echo "REGISTRY_PARENT=$parent_ns"
+    while IFS= read -r nameserver; do
+      [[ -n "$nameserver" ]] || continue
+      nameserver="${nameserver%.}"
+      echo "REGISTRY_NAME_SERVER=$parent_ns|$nameserver"
+      printf '%s\n' "$nameserver" >> "$REGISTRY_NS_FILE"
+    done < <(dig +short NS "$EXPECTED_DOMAIN" @"$parent_ns" | sort)
+  done
+  sort -u -o "$REGISTRY_NS_FILE" "$REGISTRY_NS_FILE"
+  if cmp -s "$ROUTE53_NS_FILE" "$REGISTRY_NS_FILE"; then
+    echo "REGISTRY_DELEGATION_MATCHES_ROUTE53=true"
+  else
+    echo "REGISTRY_DELEGATION_MATCHES_ROUTE53=false"
+  fi
+  echo "REGISTRY_DELEGATION_END"
 fi
 
 aws acm list-certificates \
