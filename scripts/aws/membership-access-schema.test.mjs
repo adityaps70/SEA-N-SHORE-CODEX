@@ -77,7 +77,7 @@ test('existing-user persona backfill is deterministic, non-destructive and leave
   assert.match(normalized, /primary_identity in \('maritime recruiter', 'crewing recruiter', 'maritime hr professional'\).*then 'recruiter_hr'/)
   assert.match(normalized, /primary_identity in \('maritime trainer', 'nautical instructor', 'engineering instructor', 'simulator instructor', 'stcw assessor', 'maritime academy faculty'\).*then 'trainer_instructor'/)
   assert.match(normalized, /primary_identity_family in \('sea-going · deck', 'sea-going · engine', 'sea-going · electrical', 'shipboard · hotel & medical'\).*then 'seafarer'/)
-  assert.match(normalized, /primary_identity_family in \('ship management & operations', 'commercial shipping', 'survey, class & assurance', 'ports & terminals', 'legal, insurance & finance', 'training, research & human factors', 'technology, data & logistics', 'recruitment, welfare & public sector'\).*then 'shore_professional'/)
+  assert.match(normalized, /primary_identity_family in \(\s*'ship management & operations', 'commercial shipping', 'survey, class & assurance', 'ports & terminals', 'legal, insurance & finance', 'training, research & human factors', 'technology, data & logistics', 'recruitment, welfare & public sector'\s*\).*then 'shore_professional'/)
 
   assert.doesNotMatch(normalized, /primary_identity_family in \([^)]*professional capacities/)
   assert.doesNotMatch(normalized, /primary_identity_family in \([^)]*offshore & subsea/)
