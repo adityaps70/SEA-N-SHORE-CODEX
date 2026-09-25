@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   createCourse: vi.fn(),
   updateCourse: vi.fn(),
   submitCourse: vi.fn(),
+  getManagedCoursePublisher: vi.fn(),
   revalidatePath: vi.fn(),
   requireCapability: vi.fn(async () => undefined),
 }))
@@ -21,6 +22,7 @@ vi.mock('./course-repository', async (importOriginal) => {
       createCourse: mocks.createCourse,
       updateCourse: mocks.updateCourse,
       submitCourse: mocks.submitCourse,
+      getManagedCoursePublisher: mocks.getManagedCoursePublisher,
     },
   }
 })
@@ -60,6 +62,7 @@ describe('learning course server actions', () => {
     mocks.createCourse.mockResolvedValue({ courseId })
     mocks.updateCourse.mockResolvedValue(true)
     mocks.submitCourse.mockResolvedValue(true)
+    mocks.getManagedCoursePublisher.mockResolvedValue({ companyId: null })
     mocks.requireCapability.mockResolvedValue(undefined)
   })
 
@@ -124,10 +127,23 @@ describe('learning course server actions', () => {
     expect(mocks.submitCourse).not.toHaveBeenCalled()
   })
 
-  it('requires central course publishing capability when a draft is submitted for review', async () => {
+  it('requires central personal course publishing capability when a personal draft is submitted for review', async () => {
     await expect(submitCourseForReview(courseId)).resolves.toEqual({ ok: true })
 
     expect(mocks.requireCapability).toHaveBeenCalledWith('user-1', 'course.publish')
+  })
+
+  it('requires organization-scoped course publishing capability for an organization course', async () => {
+    const companyId = '44444444-4444-4444-8444-444444444444'
+    mocks.getManagedCoursePublisher.mockResolvedValueOnce({ companyId })
+
+    await expect(submitCourseForReview(courseId)).resolves.toEqual({ ok: true })
+
+    expect(mocks.requireCapability).toHaveBeenCalledWith(
+      'user-1',
+      'course.publish',
+      { companyId },
+    )
   })
 
   it('fails closed when course publishing entitlement or trainer verification is missing', async () => {
