@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
+import { courseManagerAccessSql } from './course-access'
 
 export type AssignmentGradingQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type AssignmentGradingTransaction = <T>(work: (query: AssignmentGradingQuery) => Promise<T>) => Promise<T>
@@ -187,10 +188,8 @@ export function createAssignmentGradingRepository(input: {
        inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
        inner join public.learning_course_sections section on section.id = lesson.section_id
        inner join public.learning_courses course on course.id = section.course_id
-       inner join public.learning_mentors mentor on mentor.id = course.mentor_id
        inner join public.profiles learner on learner.id = attempt.learner_id
-       where mentor.user_id = $1
-         and mentor.status = 'active'
+       where ${courseManagerAccessSql('course', '$1')}
        order by (attempt.status = 'submitted') desc, attempt.submitted_at asc, attempt.id asc`,
       [mentorUserId],
     ) as MentorAttemptRow[]
@@ -227,10 +226,8 @@ export function createAssignmentGradingRepository(input: {
        inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
        inner join public.learning_course_sections section on section.id = lesson.section_id
        inner join public.learning_courses course on course.id = section.course_id
-       inner join public.learning_mentors mentor on mentor.id = course.mentor_id
        inner join public.profiles learner on learner.id = attempt.learner_id
-       where mentor.user_id = $1
-         and mentor.status = 'active'
+       where ${courseManagerAccessSql('course', '$1')}
          and attempt.id = $2
        limit 1`,
       [mentorUserId, attemptId],
@@ -289,9 +286,7 @@ export function createAssignmentGradingRepository(input: {
          inner join public.learning_lessons lesson on lesson.id = attempt.lesson_id
          inner join public.learning_course_sections section on section.id = lesson.section_id
          inner join public.learning_courses course on course.id = section.course_id
-         inner join public.learning_mentors mentor on mentor.id = course.mentor_id
-         where mentor.user_id = $1
-           and mentor.status = 'active'
+           where ${courseManagerAccessSql('course', '$1')}
            and attempt.id = $2
          for update of attempt`,
         [mentorUserId, attemptId],
