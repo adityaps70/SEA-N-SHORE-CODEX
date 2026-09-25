@@ -106,10 +106,23 @@ export function createCognitoAuthActions(input: {
   cookieStore: CookieStore
   siteUrl: string
   allowInsecureHttpCookies?: boolean
+  onCognitoIssue?: (context: { operation: string; reason: string }) => void
 }) {
   const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl, {
     allowInsecureHttp: input.allowInsecureHttpCookies === true,
   })
+
+  function reportCognitoIssue(operation: string, error: CognitoApiError) {
+    const context = {
+      operation,
+      reason: error.code.replace(/Exception$/, ''),
+    }
+    if (input.onCognitoIssue) {
+      input.onCognitoIssue(context)
+      return
+    }
+    console.warn('[cognito_issue]', context)
+  }
 
   return {
     async signIn(
