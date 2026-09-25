@@ -71,20 +71,32 @@ async function uploadAvatar(page, user) {
   const alert = control.getByRole('alert').first()
 
   const input = form.locator('input[name="image"]')
+  const uploadResponsePromise = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && response.url().startsWith(siteUrl),
+    { timeout: 30_000 },
+  )
   await input.setInputFiles({
     name: 'avatar-' + runId + '.png',
     mimeType: 'image/png',
     buffer: avatarPng,
   })
 
-  await page.waitForTimeout(3_000)
+  const uploadResponse = await uploadResponsePromise
+  assert.ok(uploadResponse.ok(), 'Profile avatar upload request returned HTTP ' + uploadResponse.status())
+
+  const changeButton = page.getByRole('button', { name: 'Change profile photo' })
+  await expect.poll(async () => {
+    if ((await alert.count()) > 0 && await alert.isVisible().catch(() => false)) return 'error'
+    if (await changeButton.isVisible().catch(() => false)) return 'success'
+    return 'pending'
+  }, { timeout: 20_000 }).not.toBe('pending')
+
   if ((await alert.count()) > 0 && await alert.isVisible().catch(() => false)) {
     const message = (await alert.innerText()).trim()
     throw new Error('Profile avatar upload failed: ' + (message || 'Unknown upload error'))
   }
 
-  await page.reload({ waitUntil: 'domcontentloaded' })
-  await expect(page.getByRole('button', { name: 'Change profile photo' })).toBeVisible({ timeout: 20_000 })
+  await expect(changeButton).toBeVisible({ timeout: 20_000 })
   const avatar = page.getByRole('img', { name: user.fullName + "'s profile photo" }).first()
   await expect(avatar).toBeVisible({ timeout: 20_000 })
   const state = await avatar.evaluate((img) => ({
