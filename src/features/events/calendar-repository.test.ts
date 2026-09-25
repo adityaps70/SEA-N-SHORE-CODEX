@@ -15,6 +15,7 @@ import { calendarEventRepository } from './calendar-repository'
 const viewerId = '11111111-1111-4111-8111-111111111111'
 const eventId = '22222222-2222-4222-8222-222222222222'
 const hostId = '33333333-3333-4333-8333-333333333333'
+const companyId = '44444444-4444-4444-8444-444444444444'
 
 const row = {
   id: eventId,
@@ -121,4 +122,122 @@ describe('calendar event repository', () => {
     await expect(calendarEventRepository.withdrawAttendance(viewerId, eventId)).resolves.toBeUndefined()
     expect(String(db.query.mock.calls[0]?.[0])).toContain('delete from public.event_attendees')
   })
+
+  it('creates an organization event only through an approved event-management membership and stores company_id', async () => {
+    const input = {
+      publisherType: 'organization' as const,
+      companyId,
+      title: 'Event',
+      summary: 'Summary',
+      description: '',
+      category: 'community' as const,
+      eventType: 'community' as const,
+      format: 'online' as const,
+      status: 'draft' as const,
+      startAt: '2026-10-10T09:00:00.000Z',
+      endAt: '2026-10-10T10:00:00.000Z',
+      timezone: 'UTC',
+      locationName: null,
+      locationAddress: null,
+      city: null,
+      country: null,
+      meetingUrl: 'https://example.com',
+      topics: [],
+      agenda: [],
+      speakers: [],
+      speakerDetails: [],
+      capacity: null,
+      bannerUrl: null,
+      registrationMode: 'open' as const,
+      registrationClosesAt: null,
+    }
+
+    db.query
+      .mockResolvedValueOnce([{ role: 'event_manager', approved_at: '2026-09-25T00:00:00.000Z' }])
+      .mockResolvedValueOnce([{ id: eventId }])
+
+    await expect(calendarEventRepository.createEvent(viewerId, input)).resolves.toBe(eventId)
+
+    expect(String(db.query.mock.calls[0]?.[0])).toContain('public.company_members')
+    expect(String(db.query.mock.calls[0]?.[0])).toContain("role::text in ('owner', 'administrator', 'event_manager')")
+    expect(db.query.mock.calls[0]?.[1]).toEqual([companyId, viewerId])
+
+    const insertCall = db.query.mock.calls[1]
+    expect(String(insertCall?.[0])).toContain('company_id')
+    expect(insertCall?.[1]).toContain(companyId)
+    expect(insertCall?.[1]).toContain(viewerId)
+  })
+
+  it('rejects an organization draft when the actor is not an approved event manager', async () => {
+    db.query.mockResolvedValueOnce([])
+
+    await expect(calendarEventRepository.createEvent(viewerId, {
+      publisherType: 'organization',
+      companyId,
+      title: 'Event',
+      summary: 'Summary',
+      description: '',
+      category: 'community',
+      eventType: 'community',
+      format: 'online',
+      status: 'draft',
+      startAt: '2026-10-10T09:00:00.000Z',
+      endAt: '2026-10-10T10:00:00.000Z',
+      timezone: 'UTC',
+      locationName: null,
+      locationAddress: null,
+      city: null,
+      country: null,
+      meetingUrl: 'https://example.com',
+      topics: [],
+      agenda: [],
+      speakers: [],
+      speakerDetails: [],
+      capacity: null,
+      bannerUrl: null,
+      registrationMode: 'open',
+      registrationClosesAt: null,
+    })).rejects.toThrow('event_forbidden')
+  })
+
+  it('includes organization event managers in hosted event visibility and management authorization', async () => {
+    db.query.mockResolvedValue([])
+
+    await calendarEventRepository.listHostedEvents(viewerId)
+    expect(String(db.query.mock.calls[0]?.[0])).toContain('public.company_members')
+    expect(String(db.query.mock.calls[0]?.[0])).toContain('event_manager')
+
+    const input = {
+      title: 'Event',
+      summary: 'Summary',
+      description: '',
+      category: 'community' as const,
+      eventType: 'community' as const,
+      format: 'online' as const,
+      status: 'draft' as const,
+      startAt: '2026-10-10T09:00:00.000Z',
+      endAt: '2026-10-10T10:00:00.000Z',
+      timezone: 'UTC',
+      locationName: null,
+      locationAddress: null,
+      city: null,
+      country: null,
+      meetingUrl: 'https://example.com',
+      topics: [],
+      agenda: [],
+      speakers: [],
+      speakerDetails: [],
+      capacity: null,
+      bannerUrl: null,
+      registrationMode: 'open' as const,
+      registrationClosesAt: null,
+    }
+
+    db.query.mockReset()
+    db.query.mockResolvedValueOnce([{ id: eventId }])
+    await expect(calendarEventRepository.updateEvent(viewerId, eventId, input)).resolves.toBeUndefined()
+    expect(String(db.query.mock.calls[0]?.[0])).toContain('event_manager')
+    expect(String(db.query.mock.calls[0]?.[0])).toContain('e.company_id')
+  })
+
 })
