@@ -4,12 +4,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getMentorApplicationState: vi.fn(),
+  getAccessContext: vi.fn(),
+  getOwnProfileFromAurora: vi.fn(),
+  listUserOrganizations: vi.fn(),
   redirect: vi.fn(),
   capturedInitialValue: null as unknown,
 }))
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/access/server', () => ({ getAccessContext: mocks.getAccessContext }))
+vi.mock('@/features/profiles/repository', () => ({ getOwnProfileFromAurora: mocks.getOwnProfileFromAurora }))
+vi.mock('@/features/organizations/repository', () => ({
+  organizationRepository: { listUserOrganizations: mocks.listUserOrganizations },
+}))
 vi.mock('@/features/learning/repository', () => ({
   learningRepository: { getMentorApplicationState: mocks.getMentorApplicationState },
 }))
@@ -29,6 +37,15 @@ describe('/learn/studio/courses/new', () => {
     vi.clearAllMocks()
     mocks.capturedInitialValue = null
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'mentor@example.com' })
+    mocks.getAccessContext.mockResolvedValue({
+      personalPlan: 'creator_pro',
+      personalEntitlements: [],
+      verifications: ['trainer'],
+      organizationMemberships: [],
+      accountActive: true,
+    })
+    mocks.getOwnProfileFromAurora.mockResolvedValue({ id: 'user-1', fullName: 'Capt. Mentor' })
+    mocks.listUserOrganizations.mockResolvedValue([])
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
       applicationId: '11111111-1111-4111-8111-111111111111',
@@ -91,4 +108,35 @@ describe('/learn/studio/courses/new', () => {
     expect(mocks.redirect).toHaveBeenCalledWith('/learn/teach')
     expect(mocks.capturedInitialValue).toBeNull()
   })
+
+  it('renders the builder for an approved organization LMS manager without personal mentor access', async () => {
+    mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
+    mocks.listUserOrganizations.mockResolvedValue([{
+      id: 'company-1',
+      slug: 'sea-academy',
+      name: 'Sea Academy',
+      verified: true,
+      role: 'lms_manager',
+    }])
+    mocks.getAccessContext.mockResolvedValue({
+      personalPlan: 'free',
+      personalEntitlements: [],
+      verifications: [],
+      organizationMemberships: [{
+        companyId: 'company-1',
+        plan: 'organization_pro',
+        role: 'lms_manager',
+        verified: true,
+        entitlements: [],
+      }],
+      accountActive: true,
+    })
+
+    render(await NewMentorCoursePage())
+
+    expect(screen.getByRole('heading', { name: 'Create course' })).toBeInTheDocument()
+    expect(screen.getByTestId('course-form')).toBeInTheDocument()
+    expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
 })
