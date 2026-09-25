@@ -440,11 +440,7 @@ jobs:
           STDOUT_CONTENT=$(jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-cleanup-result.json)
           grep -q '^ONBOARDING_E2E_CLEANUP_VERIFIED=true$' <<<"$STDOUT_CONTENT"
           if [[ "$AUDIT_EXPECTED" == true ]]; then
-            grep -q '^ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true
-          else
-            grep -q '^ONBOARDING_E2E_PERSISTENCE_SKIPPED=true$' <<<"$STDOUT_CONTENT"
-          fi
- <<<"$STDOUT_CONTENT"
+            grep -q '^ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true$' <<<"$STDOUT_CONTENT"
           else
             grep -q '^ONBOARDING_E2E_PERSISTENCE_SKIPPED=true$' <<<"$STDOUT_CONTENT"
           fi
