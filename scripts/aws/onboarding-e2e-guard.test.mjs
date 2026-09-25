@@ -40,6 +40,42 @@ test('probe mode remains read-only and runs on the staging bootstrap through SSM
   assert.doesNotMatch(probeBlock, /delete from public\.profiles/i)
 })
 
+test('run-once covers the new eight-persona onboarding model and excludes the retired identity-root UI', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  for (const key of ['seafarer', 'shore', 'recruiter', 'trainer', 'student', 'family', 'enthusiast', 'other']) {
+    assert.match(workflow, new RegExp(`E2E_${key.toUpperCase()}_EMAIL`))
+    assert.match(browserScript, new RegExp(`ONBOARDING_E2E_PERSONA_${key.toUpperCase()}_VERIFIED=true`))
+  }
+
+  for (const label of [
+    'Seafarer',
+    'Shore Professional',
+    'Recruiter / HR',
+    'Trainer / Instructor',
+    'Student / Cadet',
+    'Seafarer Family',
+    'Maritime Enthusiast',
+    'Other',
+  ]) {
+    assert.ok(browserScript.includes(label), `Missing persona journey for ${label}`)
+  }
+
+  assert.match(browserScript, /What are you here to do\?/)
+  assert.match(browserScript, /aria-pressed/)
+  assert.match(browserScript, /ONBOARDING_E2E_ALL_PERSONAS_VERIFIED=true/)
+  assert.match(workflow, /coalesce\(p\.persona,''\)/)
+  assert.match(workflow, /array_to_string\(p\.profile_intents,','\)/)
+  assert.match(workflow, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
+
+  assert.doesNotMatch(browserScript, /Professional Build your individual maritime identity/)
+  assert.doesNotMatch(browserScript, /Search professional identities/)
+  assert.doesNotMatch(browserScript, /Custom maritime identity/)
+  assert.doesNotMatch(browserScript, /Organisation Represent a maritime organisation/)
+  assert.doesNotMatch(browserScript, /Search organisation identities/)
+})
+
 test('run-once performs disposable public sign-up browser journeys and guarded cleanup', () => {
   assert.equal(existsSync(browserScriptPath), true, `${browserScriptPath} must exist`)
   const workflow = readFileSync(workflowPath, 'utf8')
