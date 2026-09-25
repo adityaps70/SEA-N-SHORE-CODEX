@@ -30,6 +30,9 @@ const detailRow = {
   status: 'changes_requested',
   admin_review_note: 'Please make the inspection evidence outcome more specific.',
   updated_at: new Date('2026-09-14T12:00:00.000Z'),
+  company_id: null,
+  publisher_name: 'Capt. Mentor',
+  publisher_slug: 'capt-mentor',
 }
 
 const validSubmissionCurriculumRow = {
@@ -104,10 +107,15 @@ describe('learning course lifecycle repository', () => {
       status: 'changes_requested',
       adminReviewNote: 'Please make the inspection evidence outcome more specific.',
       updatedAt: '2026-09-14T12:00:00.000Z',
+      publisherType: 'personal',
+      companyId: null,
+      publisherName: 'Capt. Mentor',
+      publisherSlug: 'capt-mentor',
     })
 
-    expect(seen[0]?.text).toContain('mentor.user_id = $1')
-    expect(seen[0]?.text).toContain("mentor.status = 'active'")
+    expect(seen[0]?.text).toContain('public.learning_mentors access_mentor')
+    expect(seen[0]?.text).toContain('access_mentor.user_id = $1')
+    expect(seen[0]?.text).toContain("access_mentor.status = 'active'")
     expect(seen[0]?.text).toContain('course.id = $2')
     expect(seen[0]?.values).toEqual([mentorUserId, courseId])
   })
@@ -122,7 +130,7 @@ describe('learning course lifecycle repository', () => {
     let transactionCount = 0
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
-      if (text.includes('for update')) return [{ id: courseId, status: 'draft', mentor_id: mentorId }]
+      if (text.includes('for update')) return [{ id: courseId, status: 'draft', mentor_id: mentorId, company_id: null }]
       if (isSubmissionReadinessQuery(text)) return [validSubmissionCurriculumRow]
       if (text.includes('update public.learning_courses')) return [{ id: courseId }]
       return []
@@ -139,8 +147,9 @@ describe('learning course lifecycle repository', () => {
 
     expect(transactionCount).toBe(1)
     const lock = seen.find((entry) => entry.text.includes('for update'))
-    expect(lock?.text).toContain('mentor.user_id = $2')
-    expect(lock?.text).toContain("mentor.status = 'active'")
+    expect(lock?.text).toContain('public.learning_mentors access_mentor')
+    expect(lock?.text).toContain('access_mentor.user_id = $2')
+    expect(lock?.text).toContain("access_mentor.status = 'active'")
     expect(lock?.values).toEqual([courseId, mentorUserId])
 
     const readiness = seen.find((entry) => isSubmissionReadinessQuery(entry.text))
@@ -151,13 +160,12 @@ describe('learning course lifecycle repository', () => {
     expect(update?.text).toContain('reviewed_by = null')
     expect(update?.text).toContain('reviewed_at = null')
     expect(update?.text).toContain('admin_review_note = null')
-    expect(update?.values).toContain(courseId)
-    expect(update?.values).toContain(mentorId)
+    expect(update?.values).toEqual([courseId])
   })
 
   it('allows resubmission after an administrator requests changes when curriculum is valid', async () => {
     const query = async (text: string) => {
-      if (text.includes('for update')) return [{ id: courseId, status: 'changes_requested', mentor_id: mentorId }]
+      if (text.includes('for update')) return [{ id: courseId, status: 'changes_requested', mentor_id: mentorId, company_id: null }]
       if (isSubmissionReadinessQuery(text)) return [validSubmissionCurriculumRow]
       if (text.includes('update public.learning_courses')) return [{ id: courseId }]
       return []
@@ -171,7 +179,7 @@ describe('learning course lifecycle repository', () => {
     const seen: string[] = []
     const query = async (text: string) => {
       seen.push(text)
-      if (text.includes('for update')) return [{ id: courseId, status: 'approved', mentor_id: mentorId }]
+      if (text.includes('for update')) return [{ id: courseId, status: 'approved', mentor_id: mentorId, company_id: null }]
       return []
     }
     const repository = createCourseRepository({ query, transaction: async (work) => work(query) })
