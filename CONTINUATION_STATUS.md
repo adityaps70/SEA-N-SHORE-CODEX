@@ -169,6 +169,15 @@ Payment, verification and organization role are independent concepts.
   - conversion is audit logged
   - pending legacy users receive a non-blocking in-app conversion reminder
 
+### Admin membership visibility & entitlement controls
+- Admin user detail shows persona, profile intents, current plan/subscription, effective capabilities, Recruiter/Trainer/Event Host verification source/status, verification audit history and entitlement history.
+- Admin organization detail shows organization plan/subscription, verification state, authorized managers and organization entitlement history.
+- Manual personal grants are limited to narrow creator-publishing capabilities; organization grants are limited to approved workspace capabilities.
+- Admin/grandfather entitlement grant and revoke operations require reasons and write audit events.
+- Manual grants do not change subscription plan and still cannot bypass professional verification.
+- Suspension overrides Creator Pro, manual/grandfather grants and organization-scoped capabilities through the central access policy.
+- Phase 10 integrated CI passed: 357 test files / 1,706 tests, Docker, Terraform validations/guards, execution contract and Remote Verify.
+
 ### Paid-plan UX
 - Added `/plans` with Member FREE / Creator Pro / Organization Pro.
 - Added `/settings/billing`.
@@ -223,19 +232,18 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Admin views for persona, plan, capabilities, verification and entitlement history.
-2. Organization billing-management entry for authorized roles.
-3. Pricing decision, currency/tax behavior and payment-provider selection.
-4. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
-5. Existing-user persona backfill where deterministic.
-6. Exhaustive plan × verification × organization-role authorization tests and launch regression.
-7. Full staging migration, deploy and E2E only through guarded one-shot execution.
+1. Organization billing-management entry for authorized roles.
+2. Pricing decision, currency/tax behavior and payment-provider selection.
+3. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+4. Existing-user persona backfill where deterministic.
+5. Exhaustive plan × verification × organization-role authorization tests and launch regression.
+6. Full staging migration, deploy and E2E only through guarded one-shot execution.
 
 ## Exact next action
 
-Continue with **Phase 10 Admin visibility and entitlement controls**, using TDD. Extend the existing admin user/organization views to show persona + intents, subscription plan/status, effective capabilities, recruiter/trainer/event-host verification source/status, entitlement grant history, organization plan/managers, and ensure suspension overrides paid access. Manual/grandfather entitlement grant/revoke operations must be audited and narrowly scoped.
+Continue with **Phase 8: organization billing-management entry for authorized roles**, using TDD. Add a safe Organization Billing surface that is visible only to members with `billing.manage` for that organization, shows the current provider-neutral organization plan/subscription state, and does not invent pricing, checkout or provider behavior.
 
-Jobs, Events, LMS and independent Recruiter/Event Host verification applications are complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
+Jobs, Events, LMS, independent Recruiter/Event Host verification applications and Phase 10 admin membership controls are complete in code and CI. Do not apply the membership migration or deploy new schema-dependent application code until the one-shot staging migration/deploy sequence is explicitly armed.
 
 ## New-chat handoff prompt
 
