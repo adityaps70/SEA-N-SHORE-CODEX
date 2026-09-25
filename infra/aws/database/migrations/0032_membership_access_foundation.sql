@@ -105,6 +105,56 @@ alter type public.company_member_role add value if not exists 'content_manager';
 alter type public.company_member_role add value if not exists 'analyst';
 -- statement-breakpoint
 
+create table if not exists public.legacy_organization_conversions (
+  profile_id uuid primary key references public.profiles(id) on delete cascade,
+  status text not null default 'pending',
+  strategy text,
+  company_id uuid references public.companies(id) on delete set null,
+  legacy_snapshot jsonb not null,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint legacy_organization_conversions_status_check check (
+    status in ('pending', 'completed')
+  ),
+  constraint legacy_organization_conversions_strategy_check check (
+    strategy is null or strategy in ('existing', 'create')
+  )
+);
+-- statement-breakpoint
+
+insert into public.legacy_organization_conversions (
+  profile_id,
+  status,
+  legacy_snapshot,
+  created_at,
+  updated_at
+)
+select
+  p.id,
+  'pending',
+  jsonb_build_object(
+    'organizationName', p.full_name,
+    'headline', p.headline,
+    'summary', p.summary,
+    'location', p.location,
+    'avatarPath', p.avatar_path,
+    'primaryIdentity', p.primary_identity,
+    'primaryIdentityFamily', p.primary_identity_family,
+    'secondaryIdentities', p.secondary_identities
+  ),
+  now(),
+  now()
+from public.profiles p
+where p.identity_root = 'organisation'
+  and p.onboarding_completed_at is not null
+on conflict (profile_id) do nothing;
+-- statement-breakpoint
+
+create index if not exists legacy_organization_conversions_status_idx
+  on public.legacy_organization_conversions (status, updated_at asc, profile_id asc);
+-- statement-breakpoint
+
 create table if not exists public.plan_entitlements (
   plan_code text not null,
   capability text not null,
