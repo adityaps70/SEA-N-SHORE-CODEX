@@ -10,6 +10,7 @@ export type CalendarEventCategory = typeof CALENDAR_EVENT_CATEGORIES[number]
 export type CalendarEventType = typeof CALENDAR_EVENT_TYPES[number]
 export type CalendarRegistrationMode = typeof CALENDAR_REGISTRATION_MODES[number]
 export type EditableCalendarEventStatus = Exclude<CalendarEventStatus, 'cancelled'>
+export type CalendarEventPublisherType = 'personal' | 'organization'
 
 export type CalendarSpeakerDetail = {
   name: string
@@ -51,11 +52,21 @@ export type CalendarEventInput = {
   registrationClosesAt: string | null
 }
 
+export type CalendarEventCreateInput = CalendarEventInput & (
+  | { publisherType: 'personal'; companyId: null }
+  | { publisherType: 'organization'; companyId: string }
+)
+
 export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
   id: string
   hostUserId: string
   hostName: string
   hostSlug: string | null
+  publisherType: CalendarEventPublisherType
+  companyId: string | null
+  publisherName: string
+  publisherSlug: string | null
+  publisherVerified: boolean
   status: CalendarEventStatus
   bannerStoragePath: string | null
   attendeeCount: number
