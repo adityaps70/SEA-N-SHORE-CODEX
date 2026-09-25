@@ -53,7 +53,7 @@ describe('EnrollFreeControl', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enroll free' }))
 
     expect(await screen.findByText('This course is not currently available for free enrollment.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Enroll free' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Enroll free' })).toBeInTheDocument()
     expect(screen.queryByText('You are enrolled in this course.')).not.toBeInTheDocument()
   })
 })
