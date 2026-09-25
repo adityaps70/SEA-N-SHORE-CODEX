@@ -62,3 +62,26 @@ test('new onboarding compatibility keeps legacy identity fields during migration
   assert.doesNotMatch(normalized, /drop column if exists identity_root/)
   assert.doesNotMatch(normalized, /drop column if exists primary_identity/)
 })
+
+
+test('existing-user persona backfill is deterministic, non-destructive and leaves ambiguous identities alone', () => {
+  const normalized = readFileSync(migrationPath, 'utf8').replace(/\s+/g, ' ').toLowerCase()
+
+  assert.match(normalized, /deterministic existing-user persona backfill/)
+  assert.match(normalized, /update public\.profiles set persona = case/)
+  assert.match(normalized, /where persona is null/)
+  assert.match(normalized, /onboarding_completed_at is not null/)
+  assert.match(normalized, /profile_type::text = 'seafarer'.*then 'seafarer'/)
+  assert.match(normalized, /profile_type::text = 'trainer'.*then 'trainer_instructor'/)
+  assert.match(normalized, /profile_type::text = 'recruiter'.*then 'recruiter_hr'/)
+  assert.match(normalized, /primary_identity in \('maritime recruiter', 'crewing recruiter', 'maritime hr professional'\).*then 'recruiter_hr'/)
+  assert.match(normalized, /primary_identity in \('maritime trainer', 'nautical instructor', 'engineering instructor', 'simulator instructor', 'stcw assessor', 'maritime academy faculty'\).*then 'trainer_instructor'/)
+  assert.match(normalized, /primary_identity_family in \('sea-going · deck', 'sea-going · engine', 'sea-going · electrical', 'shipboard · hotel & medical'\).*then 'seafarer'/)
+  assert.match(normalized, /primary_identity_family in \('ship management & operations', 'commercial shipping', 'survey, class & assurance', 'ports & terminals', 'legal, insurance & finance', 'training, research & human factors', 'technology, data & logistics', 'recruitment, welfare & public sector'\).*then 'shore_professional'/)
+
+  assert.doesNotMatch(normalized, /primary_identity_family in \([^)]*professional capacities/)
+  assert.doesNotMatch(normalized, /primary_identity_family in \([^)]*offshore & subsea/)
+  assert.doesNotMatch(normalized, /profile_type::text = 'mentor'.*then 'trainer_instructor'/)
+  assert.doesNotMatch(normalized, /profile_type::text = 'company'.*then/)
+  assert.doesNotMatch(normalized, /profile_type::text = 'service_provider'.*then/)
+})
