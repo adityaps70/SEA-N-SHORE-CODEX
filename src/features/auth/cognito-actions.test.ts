@@ -141,7 +141,7 @@ describe('Cognito auth actions', () => {
 
   it.each([
     ['TooManyRequestsException', 'Too many sign-up requests. Please wait a moment and try again.'],
-    ['LimitExceededException', 'Sign-up attempt limit reached. Please try again later.'],
+    ['LimitExceededException', 'Email confirmation is temporarily unavailable. Continue with mobile number below, or try email sign-up later.'],
   ])(
     'shows the correct safe sign-up limit message for %s',
     async (code, expectedError) => {
@@ -173,7 +173,7 @@ describe('Cognito auth actions', () => {
 
   it.each([
     ['TooManyRequestsException', 'Too many sign-up requests. Please wait a moment and try again.'],
-    ['LimitExceededException', 'Sign-up attempt limit reached. Please try again later.'],
+    ['LimitExceededException', 'Email confirmation is temporarily unavailable. Continue with mobile number below, or try email sign-up later.'],
   ])(
     'maps signup limits safely and reports only the normalized reason for %s',
     async (code, expectedError) => {
