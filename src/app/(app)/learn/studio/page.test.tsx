@@ -98,7 +98,7 @@ describe('/learn/studio', () => {
   it('shows an approved mentor their Studio, course portfolio and learner-review entry point', async () => {
     render(await MentorStudioPage())
 
-    expect(screen.getByRole('heading', { name: 'Mentor Studio' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Learning Studio' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /create course/i })).toHaveAttribute('href', '/learn/studio/courses/new')
     expect(screen.getByRole('link', { name: /review assignments/i })).toHaveAttribute('href', '/learn/studio/assignments')
     expect(screen.getByRole('link', { name: /analytics/i })).toHaveAttribute('href', '/learn/studio/analytics')
