@@ -108,10 +108,12 @@ describe('independent recruiter hiring publisher', () => {
     }
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
 
+    const { publisherType: _publisherType, companyId: _companyId, ...editable } = personalJob()
+    void _publisherType
+    void _companyId
+
     await expect(repository.updateJob('user-1', 'job-1', {
-      ...personalJob(),
-      publisherType: undefined as never,
-      companyId: undefined as never,
+      ...editable,
       title: 'Senior Marine Superintendent',
     })).resolves.toBeUndefined()
 
