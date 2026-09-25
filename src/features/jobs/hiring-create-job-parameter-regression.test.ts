@@ -12,6 +12,7 @@ const companyRow = {
 }
 
 const input: HiringJobInput = {
+  publisherType: 'organization',
   companyId: 'company-1',
   title: 'Chief Officer',
   domain: 'sea',
