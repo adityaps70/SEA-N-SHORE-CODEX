@@ -12,6 +12,13 @@ test('feed avatar staging proof preserves the primary failure and uses cleanup-s
   assert.match(source, /if \(cleanupErrors\.length\) throw new Error/)
 })
 
+test('feed avatar upload waits for the server action instead of racing a fixed reload', () => {
+  assert.match(source, /waitForResponse/)
+  assert.match(source, /request\(\)\.method\(\) === 'POST'/)
+  assert.doesNotMatch(source, /waitForTimeout\(3_000\)/)
+  assert.doesNotMatch(source, /page\.reload\(\{ waitUntil: 'domcontentloaded' \}\)\s*\n\s*await expect\(page\.getByRole\('button', \{ name: 'Change profile photo' \}\)\)/)
+})
+
 test('feed avatar staging proof uses current eight-persona onboarding identities', () => {
   assert.match(source, /E2E_SEAFARER_EMAIL/)
   assert.match(source, /E2E_SHORE_EMAIL/)
