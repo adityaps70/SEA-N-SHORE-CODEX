@@ -31,7 +31,7 @@ export function ProfilePassportOverview({
   profile: PublicProfile
   showReadiness?: boolean
 }) {
-  const isMaritime = profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional'
+  const isMaritime = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
   const readiness = getProfileReadiness(profile)
   const availability = profileAvailabilityLabel(profile.availability)
 
@@ -42,11 +42,11 @@ export function ProfilePassportOverview({
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.18em] text-white/70">
               <Anchor aria-hidden="true" className="size-4" />
-              Sea N Shore professional identity
+              Sea N Shore profile
             </div>
             <h2 className="mt-2 text-2xl font-semibold tracking-[-.025em]">Maritime Passport</h2>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-white/75">
-              A recruiter-ready view of your role, sea-service exposure, specialist experience and career status.
+              A structured view of your maritime identity, experience and professional focus.
             </p>
           </div>
           {availability ? (
