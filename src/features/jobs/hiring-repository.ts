@@ -205,6 +205,9 @@ type EditableJobRow = QueryResultRow & {
 type CredentialRow = { name: string; expires_at: string | null; verified: boolean }
 type EventRow = { id: string | number; status: JobApplicationStatus; note: string | null; created_at: string }
 type RecruiterNoteRow = { id: string; recruiter_id: string; note: string; created_at: string }
+type ApplicationPublisherScopeRow = QueryResultRow & {
+  company_id: string | null
+}
 
 type ApplicantRow = QueryResultRow & {
   application_id: string
@@ -1183,9 +1186,13 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     }
   }
 
-  async function requireAuthorizedApplication(query: HiringQuery, userId: string, applicationId: string) {
+  async function getApplicationPublisherScopeWithQuery(
+    query: HiringQuery,
+    userId: string,
+    applicationId: string,
+  ) {
     const rows = await query(
-      `select a.id, j.company_id, j.created_by_user_id
+      `select j.company_id
        from public.job_applications a
        join public.jobs j on j.id = a.job_id
        left join public.company_members cm
@@ -1203,9 +1210,19 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
          )
        limit 1`,
       [applicationId, userId, [...HIRING_ROLES]],
-    )
-    if (!rows[0]) throw new Error('hiring_forbidden')
-    return rows[0]
+    ) as ApplicationPublisherScopeRow[]
+    const row = rows[0]
+    return row ? { companyId: row.company_id ?? null } : null
+  }
+
+  async function getApplicationPublisherScope(userId: string, applicationId: string) {
+    return getApplicationPublisherScopeWithQuery(queryRows, userId, applicationId)
+  }
+
+  async function requireAuthorizedApplication(query: HiringQuery, userId: string, applicationId: string) {
+    const scope = await getApplicationPublisherScopeWithQuery(query, userId, applicationId)
+    if (!scope) throw new Error('hiring_forbidden')
+    return scope
   }
 
   async function updateApplicationStatus(
@@ -1255,6 +1272,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     updateJob,
     listApplicants,
     getApplicationReview,
+    getApplicationPublisherScope,
     updateApplicationStatus,
     saveRecruiterNote,
   }
