@@ -21,7 +21,7 @@ test('membership launch sequence is manual-only and requires exact explicit appr
   assert.match(workflow, /I_APPROVE_MEMBERSHIP_STAGING_ONE_SHOT/)
   assert.match(workflow, /environment:\s*staging/)
   assert.match(workflow, /contents:\s*write/)
-  assert.match(workflow, /actions:\s*read/)
+  assert.match(workflow, /actions:\s*write/)
   assert.match(workflow, /concurrency:/)
   assert.match(workflow, /sea-n-shore-membership-launch-sequence/)
 })
