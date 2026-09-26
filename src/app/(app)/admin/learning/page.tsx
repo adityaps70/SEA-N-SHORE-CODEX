@@ -132,7 +132,7 @@ export default async function LearningAdminPage({
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight">Learning review</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/72">
-              Review maritime professionals before they can teach. Approval activates mentor access; every course will still require a separate Sea N Shore quality review before publication.
+              Review maritime professionals before they can teach. Approval grants Trainer verification; every course will still require a separate Sea N Shore quality review before publication.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -158,7 +158,7 @@ export default async function LearningAdminPage({
           aria-current="page"
           className="rounded-full bg-navy-950 px-4 py-2 text-sm font-bold text-white"
         >
-          Mentor approvals
+          Trainer verifications
         </Link>
         <Link
           href="/admin/learning/courses"
@@ -174,7 +174,7 @@ export default async function LearningAdminPage({
         </Link>
       </nav>
 
-      <nav aria-label="Mentor application status" className="flex flex-wrap gap-2">
+      <nav aria-label="Trainer application status" className="flex flex-wrap gap-2">
         {statusFilters.map((filter) => (
           <Link
             key={filter.value}
@@ -190,7 +190,7 @@ export default async function LearningAdminPage({
       <section className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Mentor applications</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Trainer applications</p>
             <h2 className="mt-1 text-xl font-bold text-navy-950">{statusLabel(status)}</h2>
           </div>
           <p className="text-sm font-semibold text-muted">{applications.length} {applications.length === 1 ? 'application' : 'applications'}</p>
@@ -201,8 +201,8 @@ export default async function LearningAdminPage({
         )) : (
           <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center">
             <UserRoundCheck aria-hidden="true" className="mx-auto size-7 text-teal-700" />
-            <p className="mt-3 font-bold text-navy-950">No mentor applications in this queue.</p>
-            <p className="mt-1 text-sm text-muted">Choose another status to review mentor application history.</p>
+            <p className="mt-3 font-bold text-navy-950">No trainer applications in this queue.</p>
+            <p className="mt-1 text-sm text-muted">Choose another status to review trainer application history.</p>
           </div>
         )}
       </section>
