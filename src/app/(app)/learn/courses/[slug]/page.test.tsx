@@ -96,7 +96,7 @@ describe('/learn/courses/[slug]', () => {
     expect(screen.getByText(freeCourse.subtitle!)).toBeInTheDocument()
     expect(screen.getByText(freeCourse.description)).toBeInTheDocument()
     expect(screen.getByText('Capt. Maya Singh')).toBeInTheDocument()
-    expect(screen.getByText('Verified mentor')).toBeInTheDocument()
+    expect(screen.getByText('Verified trainer')).toBeInTheDocument()
     expect(screen.getByText('SIRE 2.0')).toBeInTheDocument()
     expect(screen.getByText('Advanced')).toBeInTheDocument()
     expect(screen.getByText('English')).toBeInTheDocument()
