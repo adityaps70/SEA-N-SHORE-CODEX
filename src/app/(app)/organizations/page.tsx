@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Building2, CheckCircle2, Clock3, ShieldAlert } from 'lucide-react'
+import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { OrganizationAccessPanel } from '@/features/organizations/components/organization-access-panel'
@@ -62,7 +63,7 @@ export default async function OrganizationsPage() {
                     <Link href="/hiring" className="rounded-lg border border-mist-100 bg-white px-3 py-2 text-xs font-bold text-navy-950">Jobs</Link>
                     <Link href="/events/hosting" className="rounded-lg border border-mist-100 bg-white px-3 py-2 text-xs font-bold text-navy-950">Events</Link>
                     <Link href="/learn/studio" className="rounded-lg border border-mist-100 bg-white px-3 py-2 text-xs font-bold text-navy-950">LMS</Link>
-                    {accessMembership?.entitlements.includes('billing.manage') || accessMembership?.role === 'owner' || accessMembership?.role === 'administrator' ? (
+                    {canUseCapability(access, 'billing.manage', { companyId: organization.id }) ? (
                       <Link href={`/settings/billing/organizations/${organization.id}`} className="rounded-lg border border-mist-100 bg-white px-3 py-2 text-xs font-bold text-navy-950">Billing</Link>
                     ) : null}
                   </div>
