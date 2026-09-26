@@ -73,6 +73,33 @@ describe('FeedProfileCard', () => {
     expect(profilePhoto.parentElement).toHaveClass('size-[74px]', '-mt-[37px]')
   })
 
+  it('shows persona identity and hides seafarer-only details for a family member', () => {
+    render(
+      <FeedProfileCard
+        profile={{
+          ...completeProfile,
+          profileType: 'maritime_professional',
+          persona: 'seafarer_family',
+          headline: null,
+          rank: null,
+          currentCompany: null,
+          currentVessel: 'Should not render',
+          sailingExperienceYears: 12,
+          shoreCareerPreference: true,
+          availability: 'Available now',
+          communityRelationship: 'Spouse',
+        }}
+        portfolioCompletion={completePortfolio}
+      />,
+    )
+
+    expect(screen.getByText('Seafarer Family')).toBeInTheDocument()
+    expect(screen.getByText('Spouse')).toBeInTheDocument()
+    expect(screen.queryByText('Sea service')).not.toBeInTheDocument()
+    expect(screen.queryByText('Vessel')).not.toBeInTheDocument()
+    expect(screen.queryByText('Open to shore')).not.toBeInTheDocument()
+  })
+
   it('falls back to initials when no profile photo exists', () => {
     render(<FeedProfileCard profile={{ ...completeProfile, avatarUrl: null, coverUrl: null }} portfolioCompletion={completePortfolio} />)
 
