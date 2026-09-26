@@ -12,6 +12,24 @@ on:
       - scripts/aws/feed-avatar-staging-e2e.mjs
       - .github/workflows/aws-onboarding-e2e.yml
   workflow_dispatch:
+    inputs:
+      requested_action:
+        description: "Plan, read-only probe or run the one-shot onboarding E2E"
+        required: true
+        type: choice
+        options:
+          - plan
+          - probe
+          - run-once
+        default: plan
+      expected_sha:
+        description: "Exact feature-branch SHA approved for E2E"
+        required: false
+        type: string
+      confirmation:
+        description: "Required only for run-once"
+        required: false
+        type: string
 
 permissions:
   id-token: write
@@ -39,10 +57,19 @@ jobs:
 
       - name: Resolve onboarding E2E action
         id: action
+        env:
+          REQUESTED_ACTION: ${{ inputs.requested_action }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         shell: bash
         run: |
           set -euo pipefail
-          ACTION="$(tr -d '[:space:]' < scripts/aws/onboarding-e2e-action.txt)"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            ACTION="${REQUESTED_ACTION:-plan}"
+          else
+            ACTION="$(tr -d '[:space:]' < scripts/aws/onboarding-e2e-action.txt)"
+          fi
+
           echo "ONBOARDING_E2E_ACTION=$ACTION" >> "$GITHUB_ENV"
           case "$ACTION" in
             plan)
@@ -54,6 +81,11 @@ jobs:
               echo "run_e2e=false" >> "$GITHUB_OUTPUT"
               ;;
             run-once)
+              if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+                [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "expected_sha must be an exact commit SHA." >&2; exit 1; }
+                [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]] || { echo "expected_sha does not match GITHUB_SHA." >&2; exit 1; }
+                [[ "$CONFIRMATION" == "I_APPROVE_MEMBERSHIP_STAGING_ONE_SHOT" ]] || { echo "Explicit launch confirmation is required." >&2; exit 1; }
+              fi
               echo "run_probe=false" >> "$GITHUB_OUTPUT"
               echo "run_e2e=true" >> "$GITHUB_OUTPUT"
               ;;
@@ -86,7 +118,7 @@ jobs:
           exit 1
 
       - name: Guard execution against a moved branch
-        if: github.event_name == 'push' && (steps.action.outputs.run_probe == 'true' || steps.action.outputs.run_e2e == 'true')
+        if: steps.action.outputs.run_probe == 'true' || steps.action.outputs.run_e2e == 'true'
         shell: bash
         run: |
           set -euo pipefail
