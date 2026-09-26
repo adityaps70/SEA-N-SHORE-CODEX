@@ -100,10 +100,10 @@ export default function PlansPage() {
             <FeatureList items={organizationFeatures} />
           </div>
           <Link
-            href="/hiring/organization"
+            href="/organizations"
             className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-mist-50"
           >
-            Create or verify organization
+            Create or manage organization
           </Link>
         </article>
       </section>
