@@ -85,7 +85,7 @@ describe('/admin/learning/analytics', () => {
 
     expect(mocks.getPlatformAnalytics).toHaveBeenCalledWith('admin-1')
     expect(screen.getByRole('heading', { name: 'Learning analytics' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Mentor approvals' })).toHaveAttribute('href', '/admin/learning')
+    expect(screen.getByRole('link', { name: 'Trainer verifications' })).toHaveAttribute('href', '/admin/learning')
     expect(screen.getByRole('link', { name: 'Course review' })).toHaveAttribute('href', '/admin/learning/courses')
     expect(screen.getByRole('link', { name: 'Analytics' })).toHaveAttribute('href', '/admin/learning/analytics')
     expect(screen.getByRole('link', { name: 'Analytics' })).toHaveAttribute('aria-current', 'page')
@@ -126,7 +126,7 @@ describe('/admin/learning/analytics', () => {
     render(await AdminLearningAnalyticsPage())
 
     expect(screen.getByText('No learning activity to report yet.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Review mentor applications' })).toHaveAttribute('href', '/admin/learning')
+    expect(screen.getByRole('link', { name: 'Review trainer applications' })).toHaveAttribute('href', '/admin/learning')
     expect(screen.queryByText(/learner email/i)).not.toBeInTheDocument()
   })
 })
