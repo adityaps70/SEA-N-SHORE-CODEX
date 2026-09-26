@@ -17,6 +17,7 @@ test('membership experience is reflected across profile, creator, activities, or
   const settingsVerifications = read('src/app/(app)/settings/verifications/page.tsx')
   const learnPage = read('src/app/(app)/learn/page.tsx')
   const hiringOrganization = read('src/app/(app)/hiring/organization/page.tsx')
+  const organizationsPage = read('src/app/(app)/organizations/page.tsx')
   const organizationWorkspace = read('src/app/(app)/organizations/[slug]/page.tsx')
   const organizationBranding = read('src/features/organizations/components/organization-branding-form.tsx')
 
@@ -40,6 +41,8 @@ test('membership experience is reflected across profile, creator, activities, or
   assert.match(learnPage, /Verified trainer/)
 
   assert.match(hiringOrganization, /redirect\('\/organizations'\)/)
+  assert.match(organizationsPage, /Organization search results/)
+  assert.match(organizationsPage, /href={'\/organizations\/' \+ organization\.slug}/)
   assert.match(organizationWorkspace, /unoptimized/)
   assert.match(organizationBranding, /unoptimized/)
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/page.tsx')))
