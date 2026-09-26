@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useActionState } from 'react'
 import { ImageUp } from 'lucide-react'
 import { FormErrorSummary } from '@/components/ui/form-error-summary'
@@ -37,7 +38,13 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
             Organization logo
             <span className="mt-1 flex min-h-28 items-center gap-4 rounded-2xl border border-dashed border-mist-200 bg-mist-50 p-4">
               {workspace.logoPath ? (
-                <img src={'/api/company-logo/' + workspace.id} alt="" className="size-16 rounded-xl bg-white object-contain" />
+                <Image
+                  src={'/api/company-logo/' + workspace.id}
+                  alt=""
+                  width={64}
+                  height={64}
+                  className="size-16 rounded-xl bg-white object-contain"
+                />
               ) : (
                 <span className="grid size-16 place-items-center rounded-xl bg-white text-ocean-700"><ImageUp aria-hidden="true" className="size-6" /></span>
               )}
