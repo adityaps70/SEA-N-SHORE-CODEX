@@ -13,6 +13,10 @@ const roleLabels: Record<CompanyAccessRequestRole, string> = {
   member: 'Member / employee',
   recruiter: 'Recruiter / HR',
   administrator: 'Organization administrator',
+  lms_manager: 'LMS Manager',
+  event_manager: 'Event Manager',
+  content_manager: 'Content Manager',
+  analyst: 'Analyst',
 }
 
 function requestStatusLabel(status: CompanyAccessRequestSummary['status']) {
@@ -64,7 +68,11 @@ export function OrganizationAccessPanel({
         id: result.requestId,
         status: 'pending',
         requestedRole: role,
-        requestType: role === 'member' ? 'join_company' : 'recruiter_access',
+        requestType: role === 'member'
+          ? 'join_company'
+          : role === 'recruiter' || role === 'administrator'
+            ? 'recruiter_access'
+            : 'role_access',
         message: message.trim() || null,
         requestedAt: new Date().toISOString(),
         reviewedAt: null,
