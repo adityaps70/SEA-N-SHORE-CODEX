@@ -323,7 +323,7 @@ jobs:
               CONFIRMED)
                 ;;
               *)
-                echo \"Unexpected Cognito UserStatus for disposable user $EMAIL: ${USER_STATUS:-missing}\" >&2
+                echo \"Unexpected Cognito UserStatus for disposable user $EMAIL: $USER_STATUS\" >&2
                 exit 1
                 ;;
             esac
