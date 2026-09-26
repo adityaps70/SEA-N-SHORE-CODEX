@@ -44,7 +44,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
       <PremiumPageHero
         eyebrow="Maritime events"
         title="Learn, meet and move the maritime industry forward."
-        description="Discover webinars, masterclasses, conferences, meetups and professional sessions hosted by maritime professionals."
+        description="Discover webinars, masterclasses, conferences, meetups and professional sessions hosted by verified members and maritime organizations."
       >
         <div className="mt-6 flex flex-wrap gap-2">
           <Link href="/events" className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-navy-950">Discover</Link>
