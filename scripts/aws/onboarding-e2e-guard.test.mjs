@@ -153,6 +153,15 @@ test('public signup retries only explicit Cognito throttling with bounded backof
   assert.match(browserScript, /retryDelay !== undefined/)
 })
 
+test('public signup defers explicit confirmation-delivery quota failures to the admin confirmation proof', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.match(browserScript, /const SIGNUP_DELIVERY_LIMIT_MESSAGE = 'Email confirmation is temporarily unavailable\\. Continue with mobile number below, or try email sign-up later\\.'/)
+  assert.match(browserScript, /outcome\\?\\.kind === 'error' && safeText === SIGNUP_DELIVERY_LIMIT_MESSAGE/)
+  assert.match(browserScript, /ONBOARDING_E2E_PUBLIC_SIGNUP_DELIVERY_DEFERRED=/)
+  assert.match(browserScript, /return 'delivery-deferred'/)
+})
+
 test('public signup is quota-aware and creates all eight persona accounts', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
