@@ -45,7 +45,7 @@ export default function CommunityPage() {
     <ProductSurface
       eyebrow="Professional Communities"
       title="Professional maritime communities, not another noisy group chat."
-      description="Focused spaces where seafarers, shore professionals, mentors and maritime specialists can discuss real work, share lessons and build professional reputation."
+      description="Focused spaces where seafarers, shore professionals, trainers, students and the wider maritime community can discuss real work, share lessons and build trusted relationships."
       note="Community membership, discussions, moderation and reputation will reuse the same Sea N Shore professional identity, keeping expertise visible across the platform."
       items={items}
     />
