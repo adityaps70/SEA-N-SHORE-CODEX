@@ -39,7 +39,7 @@ function imageForm() {
 }
 
 function expectProfileMediaRevalidation() {
-  expect(mockedRevalidatePath).toHaveBeenCalledWith('/profile')
+  expect(mockedRevalidatePath).not.toHaveBeenCalledWith('/profile')
   expect(mockedRevalidatePath).toHaveBeenCalledWith('/people/[slug]', 'page')
   expect(mockedRevalidatePath).toHaveBeenCalledWith('/home')
   expect(mockedRevalidatePath).toHaveBeenCalledWith('/network')
@@ -51,7 +51,7 @@ describe('profile media actions', () => {
   it.each([
     ['avatar', uploadAvatarAction],
     ['cover', uploadCoverAction],
-  ] as const)('persists %s upload and invalidates every place that can display profile media', async (kind, action) => {
+  ] as const)('persists %s upload, preserves action success on the current profile route, and invalidates other media surfaces', async (kind, action) => {
     await expect(action({}, imageForm())).resolves.toEqual({ success: true })
 
     expect(mockedRequireAwsUser).toHaveBeenCalledTimes(1)
@@ -66,7 +66,7 @@ describe('profile media actions', () => {
   it.each([
     ['avatar', removeAvatarAction],
     ['cover', removeCoverAction],
-  ] as const)('returns success after removing %s and invalidates every place that can display profile media', async (kind, action) => {
+  ] as const)('returns success after removing %s, preserves current-route client state, and invalidates other media surfaces', async (kind, action) => {
     await expect(action(new FormData())).resolves.toEqual({ success: true })
 
     expect(mockedRemove).toHaveBeenCalledWith(profileId, kind)
