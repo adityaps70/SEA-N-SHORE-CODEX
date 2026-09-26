@@ -586,7 +586,7 @@ function QuizEditor({
         <div>
           <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.15em] text-sky-700"><FileQuestion className="size-4" aria-hidden="true" /> Assessment editor</p>
           <h4 className="mt-1 font-bold text-navy-950">{material.title}</h4>
-          <p className="mt-1 text-xs leading-5 text-muted">Correct answers stay in mentor/admin authoring data and are never returned in the learner quiz read model.</p>
+          <p className="mt-1 text-xs leading-5 text-muted">Correct answers stay in trainer/admin authoring data and are never returned in the learner quiz read model.</p>
         </div>
         <button type="button" onClick={onCancel} className="rounded-lg p-2 text-muted hover:bg-white" aria-label={`Close quiz editor ${material.title}`}><X className="size-4" aria-hidden="true" /></button>
       </div>
