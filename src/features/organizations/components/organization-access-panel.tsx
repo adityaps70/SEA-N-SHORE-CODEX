@@ -28,12 +28,16 @@ function requestStatusLabel(status: CompanyAccessRequestSummary['status']) {
 
 export function OrganizationAccessPanel({
   initialRequests,
+  initialTerm = '',
+  initialOrganizations = [],
 }: {
   initialRequests: CompanyAccessRequestSummary[]
+  initialTerm?: string
+  initialOrganizations?: CompanySearchResult[]
 }) {
   const [isPending, startTransition] = useTransition()
-  const [term, setTerm] = useState('')
-  const [results, setResults] = useState<CompanySearchResult[]>([])
+  const [term, setTerm] = useState(initialTerm)
+  const [results, setResults] = useState<CompanySearchResult[]>(initialOrganizations)
   const [selected, setSelected] = useState<CompanySearchResult | null>(null)
   const [role, setRole] = useState<CompanyAccessRequestRole>('member')
   const [message, setMessage] = useState('')
