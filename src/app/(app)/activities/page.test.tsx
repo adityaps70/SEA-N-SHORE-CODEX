@@ -10,10 +10,26 @@ const mocks = vi.hoisted(() => ({
   getMyActivityPosts: vi.fn(),
   getMyCommentActivity: vi.fn(),
   getMyRecentlyDeletedPosts: vi.fn(),
+  requireAwsUser: vi.fn(),
+  listMyEvents: vi.fn(),
+  listHostedEvents: vi.fn(),
+  listLearnerEnrollments: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
   redirect: vi.fn((path: string) => { throw new Error(`NEXT_REDIRECT:${path}`) }),
+}))
+vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/events/calendar-repository', () => ({
+  calendarEventRepository: {
+    listMyEvents: mocks.listMyEvents,
+    listHostedEvents: mocks.listHostedEvents,
+  },
+}))
+vi.mock('@/features/learning/enrollment-repository', () => ({
+  enrollmentRepository: {
+    listLearnerEnrollments: mocks.listLearnerEnrollments,
+  },
 }))
 vi.mock('@/features/profiles/queries', () => ({ getOwnProfile: mocks.getOwnProfile }))
 vi.mock('@/features/profiles/profile-portfolio-queries', () => ({ getOwnProfilePortfolio: mocks.getOwnProfilePortfolio }))
@@ -54,6 +70,10 @@ const deletedPost = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.requireAwsUser.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' })
+  mocks.listMyEvents.mockResolvedValue([])
+  mocks.listHostedEvents.mockResolvedValue([])
+  mocks.listLearnerEnrollments.mockResolvedValue([])
   mocks.getOwnProfile.mockResolvedValue({
     id: '11111111-1111-4111-8111-111111111111',
     fullName: 'Member',
