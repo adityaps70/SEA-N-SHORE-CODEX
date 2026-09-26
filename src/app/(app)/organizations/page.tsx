@@ -6,15 +6,17 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { OrganizationAccessPanel } from '@/features/organizations/components/organization-access-panel'
 import { OrganizationApplicationForm } from '@/features/organizations/components/organization-application-form'
 import { organizationRepository } from '@/features/organizations/repository'
+import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
 
 const roleLabel = (role: string) => role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
 export default async function OrganizationsPage() {
   const user = await requireAwsUser()
-  const [state, requests, memberships, access] = await Promise.all([
+  const [state, requests, memberships, followedOrganizations, access] = await Promise.all([
     organizationRepository.getUserOrganizationState(user.id),
     organizationRepository.listUserAccessRequests(user.id),
     organizationRepository.listUserOrganizations(user.id),
+    organizationWorkspaceRepository.listFollowedOrganizations(user.id),
     getAccessContext(user.id),
   ])
 
@@ -74,6 +76,38 @@ export default async function OrganizationsPage() {
           </div>
         ) : (
           <p className="mt-4 text-sm leading-6 text-muted">You are not linked to an approved organization workspace yet. Search for an existing organization below before creating a new one.</p>
+        )}
+      </section>
+
+      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+        <div className="flex items-center gap-3">
+          <span className="grid size-11 place-items-center rounded-xl bg-teal-50 text-teal-800"><Building2 className="size-5" aria-hidden="true" /></span>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Following</p>
+            <h2 className="mt-1 text-xl font-bold text-navy-950">Organizations you follow</h2>
+          </div>
+        </div>
+
+        {followedOrganizations.length ? (
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {followedOrganizations.map((organization) => (
+              <Link
+                key={organization.id}
+                href={'/organizations/' + organization.slug}
+                className="rounded-2xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-bold text-navy-950">{organization.name}</h3>
+                  {organization.verified ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">Verified</span> : null}
+                </div>
+                <p className="mt-1 text-sm text-muted">{organization.companyType ?? 'Maritime organization'}</p>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm leading-6 text-muted">
+            You are not following any organizations yet. Find organizations through Search or the organization finder below.
+          </p>
         )}
       </section>
 
