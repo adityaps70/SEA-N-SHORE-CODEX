@@ -1,6 +1,7 @@
 name: AWS Infrastructure CI
 
 on:
+  workflow_dispatch:
   push:
     paths:
       - Dockerfile
