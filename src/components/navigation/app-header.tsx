@@ -1,6 +1,7 @@
 import {
   BookOpenCheck,
   BriefcaseBusiness,
+  SquarePlus,
   CalendarDays,
   History,
   House,
@@ -38,13 +39,11 @@ export function AppHeader({
   recentNotifications,
   unreadCount,
   messagingUnreadCount = 0,
-  canStartHiring = false,
   canAccessAdmin = false,
 }: {
   recentNotifications: NetworkNotification[]
   unreadCount: number
   messagingUnreadCount?: number
-  canStartHiring?: boolean
   canAccessAdmin?: boolean
 }) {
   return (
@@ -85,18 +84,16 @@ export function AppHeader({
               className="min-h-10 w-64 rounded-lg bg-mist-50 py-2 pl-9 pr-3 text-sm text-ink placeholder:text-muted 2xl:w-[22rem]"
             />
           </form>
-          {canStartHiring ? (
-            <ActiveNavLink
-              href="/hiring"
-              aria-label="Start Hiring"
-              title="Start Hiring"
-              className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-ocean-700 px-3 text-sm font-semibold text-white transition hover:bg-ocean-800"
-              activeClassName="bg-ocean-800 text-white"
-            >
-              <BriefcaseBusiness aria-hidden="true" className="size-4 shrink-0" />
-              <span className="whitespace-nowrap">Start Hiring</span>
-            </ActiveNavLink>
-          ) : null}
+          <ActiveNavLink
+            href="/creator"
+            aria-label="Create"
+            title="Create jobs, events or courses"
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-ocean-700 px-3 text-sm font-semibold text-white transition hover:bg-ocean-800"
+            activeClassName="bg-ocean-800 text-white"
+          >
+            <SquarePlus aria-hidden="true" className="size-4 shrink-0" />
+            <span className="whitespace-nowrap">Create</span>
+          </ActiveNavLink>
           <NotificationBell recent={recentNotifications} unreadCount={unreadCount} />
           {canAccessAdmin ? (
             <ActiveNavLink
