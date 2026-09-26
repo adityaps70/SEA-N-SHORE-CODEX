@@ -10,6 +10,7 @@ test('membership experience is reflected across profile, creator, activities, or
   const profilePage = read('src/app/(app)/profile/page.tsx')
   const profileEditPage = read('src/app/(app)/profile/edit/page.tsx')
   const profileRepository = read('src/features/profiles/repository.ts')
+  const profileMembershipCard = read('src/features/profiles/components/profile-membership-card.tsx')
   const appHeader = read('src/components/navigation/app-header.tsx')
   const mobileHeader = read('src/components/navigation/mobile-app-header.tsx')
   const activities = read('src/app/(app)/activities/page.tsx')
@@ -21,6 +22,10 @@ test('membership experience is reflected across profile, creator, activities, or
   assert.match(profileRepository, /p\.profile_intents/)
   assert.match(profilePage, /ProfileMembershipCard/)
   assert.match(profileEditPage, /ProfilePreferencesForm/)
+  assert.match(profileMembershipCard, /specialization/)
+  assert.match(profileMembershipCard, /institutionName/)
+  assert.match(profileMembershipCard, /communityRelationship/)
+  assert.match(profileMembershipCard, /\/organizations\//)
 
   assert.match(appHeader, /href="\/creator"/)
   assert.match(mobileHeader, /href="\/creator"/)
@@ -34,5 +39,9 @@ test('membership experience is reflected across profile, creator, activities, or
 
   assert.match(hiringOrganization, /redirect\('\/organizations'\)/)
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/page.tsx')))
+  assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/page.tsx')))
+  assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/team/page.tsx')))
+  assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/branding/page.tsx')))
+  assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/analytics/page.tsx')))
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/creator/page.tsx')))
 })
