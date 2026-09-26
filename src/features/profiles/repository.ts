@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { mapPublicProfile } from './mappers'
+import { PERSONAS, PROFILE_INTENTS, type Persona, type ProfileIntent } from './persona'
 import {
   PROFILE_TYPES,
   type ContactVisibility,
@@ -20,6 +21,11 @@ type ProfileRow = QueryResultRow & {
   primary_identity?: string | null
   primary_identity_family?: string | null
   secondary_identities?: string[] | null
+  persona?: string | null
+  profile_intents?: string[] | null
+  community_relationship?: string | null
+  institution_name?: string | null
+  specialization?: string | null
   full_name: string
   avatar_path: string | null
   cover_path?: string | null
@@ -69,6 +75,11 @@ const PROFILE_SELECT = `
     p.primary_identity,
     p.primary_identity_family,
     p.secondary_identities,
+    p.persona,
+    p.profile_intents,
+    p.community_relationship,
+    p.institution_name,
+    p.specialization,
     p.full_name,
     p.avatar_path,
     p.cover_path,
@@ -114,6 +125,14 @@ function isIdentityRoot(value: unknown): value is IdentityRoot {
   return value === 'professional' || value === 'organisation'
 }
 
+function isPersona(value: unknown): value is Persona {
+  return PERSONAS.includes(value as Persona)
+}
+
+function isProfileIntent(value: unknown): value is ProfileIntent {
+  return PROFILE_INTENTS.includes(value as ProfileIntent)
+}
+
 function isContactVisibility(value: unknown): value is ContactVisibility {
   return value === 'private' || value === 'members' || value === 'public'
 }
@@ -129,6 +148,13 @@ function normalizePublicRow(row: ProfileRow): PublicProfileRow | null {
     primary_identity: row.primary_identity ?? null,
     primary_identity_family: row.primary_identity_family ?? null,
     secondary_identities: Array.isArray(row.secondary_identities) ? row.secondary_identities : [],
+    persona: row.persona == null || isPersona(row.persona) ? row.persona : null,
+    profile_intents: Array.isArray(row.profile_intents)
+      ? row.profile_intents.filter(isProfileIntent)
+      : [],
+    community_relationship: row.community_relationship ?? null,
+    institution_name: row.institution_name ?? null,
+    specialization: row.specialization ?? null,
     full_name: row.full_name,
     avatar_path: row.avatar_path,
     cover_path: row.cover_path ?? null,
@@ -297,6 +323,11 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
            p.summary,
            p.primary_identity,
            p.primary_identity_family,
+           p.persona,
+           array_to_string(p.profile_intents, ' '),
+           p.community_relationship,
+           p.institution_name,
+           p.specialization,
            array_to_string(p.secondary_identities, ' '),
            mp.rank,
            mp.current_company,
