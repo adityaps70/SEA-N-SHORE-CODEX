@@ -101,3 +101,19 @@ test('Phase 5B GitHub runner is branch-scoped, staging OIDC, action-file driven,
   assert.match(workflow, /AWS Infrastructure CI/)
   assert.match(workflow, /phase5b-ses-cutover\.sh/)
 })
+
+
+test('Phase 5B rollback restores Cognito default delivery from live state without stale capture files', () => {
+  const script = fs.readFileSync(scriptUrl, 'utf8')
+  const start = script.indexOf('rollback_cognito()')
+  const end = script.indexOf('\n}\n\ndiscover()', start)
+  assert.ok(start >= 0 && end > start)
+  const rollback = script.slice(start, end)
+
+  assert.match(script, /EmailSendingAccount: "COGNITO_DEFAULT"/)
+  assert.match(rollback, /capture_user_pool "\$pool_id"/)
+  assert.match(rollback, /write_default_email_configuration "\$pool_id"/)
+  assert.match(rollback, /build_update_request "\$BEFORE_POOL_FILE" \/tmp\/phase5b-email-default\.json/)
+  assert.doesNotMatch(rollback, /PHASE5B_ROLLBACK_CAPTURE_MISSING/)
+  assert.doesNotMatch(rollback, /\[\[ -f "\$BEFORE_POOL_FILE"/)
+})
