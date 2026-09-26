@@ -26,6 +26,11 @@ type MemberRow = QueryResultRow & {
   approved_at: string | Date
 }
 
+type FollowStateRow = QueryResultRow & {
+  follower_count: string | number | null
+  following: boolean | null
+}
+
 type MetricsRow = QueryResultRow & {
   published_jobs: string | number | null
   applications: string | number | null
@@ -239,6 +244,41 @@ export function createOrganizationWorkspaceRepository(input: {
     return true
   }
 
+  async function getFollowState(companyId: string, viewerId: string) {
+    const rows = await queryRows(
+      `select
+         (select count(*) from public.organization_follows where company_id = $1) as follower_count,
+         exists (
+           select 1
+           from public.organization_follows
+           where company_id = $1 and follower_id = $2
+         ) as following`,
+      [companyId, viewerId],
+    ) as FollowStateRow[]
+    const row = rows[0]
+    return {
+      followerCount: number(row?.follower_count),
+      following: Boolean(row?.following),
+    }
+  }
+
+  async function followOrganization(followerId: string, companyId: string) {
+    await queryRows(
+      `insert into public.organization_follows (company_id, follower_id)
+       values ($1, $2)
+       on conflict do nothing`,
+      [companyId, followerId],
+    )
+  }
+
+  async function unfollowOrganization(followerId: string, companyId: string) {
+    await queryRows(
+      `delete from public.organization_follows
+       where company_id = $1 and follower_id = $2`,
+      [companyId, followerId],
+    )
+  }
+
   async function getMetrics(companyId: string): Promise<OrganizationWorkspaceMetrics> {
     const rows = await queryRows(
       `select
@@ -274,6 +314,9 @@ export function createOrganizationWorkspaceRepository(input: {
     updateMemberRole,
     updateBranding,
     updateLogoPath,
+    getFollowState,
+    followOrganization,
+    unfollowOrganization,
     getMetrics,
   }
 }
