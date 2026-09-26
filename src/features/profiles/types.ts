@@ -1,3 +1,5 @@
+import type { Persona, ProfileIntent } from './persona'
+
 export const PROFILE_TYPES = [
   'seafarer',
   'maritime_professional',
@@ -20,6 +22,11 @@ export type PublicProfile = {
   primaryIdentity?: string | null
   primaryIdentityFamily?: string | null
   secondaryIdentities?: string[]
+  persona?: Persona | null
+  profileIntents: ProfileIntent[]
+  communityRelationship?: string | null
+  institutionName?: string | null
+  specialization?: string | null
   fullName: string
   avatarPath: string | null
   avatarUrl?: string | null
@@ -53,6 +60,11 @@ export type PublicProfileRow = {
   primary_identity?: string | null
   primary_identity_family?: string | null
   secondary_identities?: string[] | null
+  persona?: Persona | null
+  profile_intents?: ProfileIntent[] | null
+  community_relationship?: string | null
+  institution_name?: string | null
+  specialization?: string | null
   full_name: string
   avatar_path: string | null
   cover_path?: string | null
