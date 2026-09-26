@@ -82,7 +82,7 @@ export default async function TeachPage() {
       <StatusCard
         eyebrow="Profile required"
         title="Complete your Sea N Shore profile before applying"
-        copy="Your trainer verification application is connected to your verified Sea N Shore identity. Complete your professional profile first so your maritime rank, experience and vessel background can be carried into the application safely."
+        copy="Your trainer verification application is connected to your verified Sea N Shore identity. Complete your Sea N Shore profile first so your maritime rank, experience and vessel background can be carried into the application safely."
         icon={ShieldAlert}
       />
     )
@@ -90,7 +90,7 @@ export default async function TeachPage() {
     content = (
       <StatusCard
         eyebrow="Access review"
-        title="Mentor access is temporarily suspended"
+        title="Trainer verification is temporarily suspended"
         copy="Learning Studio remains locked while your trainer verification is under review. Existing learning records remain protected; contact the Sea N Shore team if you need clarification about the review."
         icon={ShieldAlert}
       />
@@ -127,7 +127,7 @@ export default async function TeachPage() {
       <StatusCard
         eyebrow="Approval processing"
         title="Your trainer verification is being finalized"
-        copy="Your application has been approved and Sea N Shore is finalizing your mentor workspace. Learning Studio will unlock only after the approved mentor record is active."
+        copy="Your application has been approved and Sea N Shore is finalizing your verified trainer record. Learning Studio will unlock only after the approved mentor record is active."
         icon={Sparkles}
       />
     )
