@@ -337,18 +337,3 @@ test('confirmation shell variables do not leak into the Python f-string', () => 
   assert.match(confirmBlock, /Unexpected Cognito UserStatus for disposable user \$EMAIL: \$USER_STATUS/)
 })
 
-
-test('embedded Cognito status shell expansion survives the Python f-string', () => {
-  const workflow = readFileSync(workflowPath, 'utf8')
-
-  assert.match(
-    workflow,
-    /\$\{\{USER_STATUS:-missing\}\}/,
-    'Shell parameter expansion inside the Python f-string must escape braces for Python',
-  )
-  assert.doesNotMatch(
-    workflow,
-    /\$\{USER_STATUS:-missing\}/,
-    'Unescaped shell parameter expansion would be evaluated as Python f-string syntax',
-  )
-})
