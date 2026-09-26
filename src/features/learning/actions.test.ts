@@ -41,7 +41,7 @@ function validInput(overrides: Partial<MentorApplicationInput> = {}): MentorAppl
   }
 }
 
-describe('learning mentor application server actions', () => {
+describe('learning trainer verification application server actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'captain@example.com' })
@@ -95,12 +95,12 @@ describe('learning mentor application server actions', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/teach')
   })
 
-  it('returns safe copy when a mentor application already exists', async () => {
+  it('returns safe copy when a trainer verification application already exists', async () => {
     mocks.submitMentorApplication.mockRejectedValueOnce(new Error('mentor_application_already_exists'))
 
     await expect(submitMentorApplication(validInput())).resolves.toEqual({
       ok: false,
-      error: 'You already have a mentor application. Open Teach on Sea N Shore to view its status.',
+      error: 'You already have a trainer verification application. Open Teach on Sea N Shore to view its status.',
     })
   })
 })
