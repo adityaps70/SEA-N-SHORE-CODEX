@@ -9,6 +9,26 @@ vi.mock('next/navigation', () => ({
   }),
 }))
 
+vi.mock('@/features/auth/aws-queries', () => ({
+  requireAwsUser: vi.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111' })),
+}))
+
+vi.mock('@/features/access/server', () => ({
+  getAccessContext: vi.fn(async () => ({
+    personalPlan: 'free',
+    personalEntitlements: ['job.apply', 'event.attend', 'course.enroll'],
+    verifications: [],
+    organizationMemberships: [],
+    accountActive: true,
+  })),
+}))
+
+vi.mock('@/features/organizations/repository', () => ({
+  organizationRepository: {
+    listUserOrganizations: vi.fn(async () => []),
+  },
+}))
+
 vi.mock('@/features/profiles/queries', () => ({
   getOwnProfile: vi.fn(async () => ({
     id: '11111111-1111-4111-8111-111111111111',
@@ -63,6 +83,9 @@ vi.mock('@/features/profiles/components/profile-header', () => ({
     </div>
   ),
 }))
+vi.mock('@/features/profiles/components/profile-membership-card', () => ({
+  ProfileMembershipCard: () => <section><h2>Your profile, access & goals</h2></section>,
+}))
 vi.mock('@/features/profiles/components/profile-about', () => ({
   ProfileAbout: () => <section><h2>About</h2></section>,
 }))
@@ -88,6 +111,7 @@ describe('My Profile page', () => {
 
     expect(screen.getByText('Profile header')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /view public profile/i })).toHaveAttribute('href', '/people/captain-example')
+    expect(screen.getByRole('heading', { name: 'Your profile, access & goals' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Maritime Experience' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Experience' })).toBeInTheDocument()
