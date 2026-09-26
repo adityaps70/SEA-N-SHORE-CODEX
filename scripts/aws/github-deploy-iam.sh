@@ -47,6 +47,12 @@ aws iam get-role-policy \
   --query PolicyDocument \
   --output json > "$CURRENT"
 
+COGNITO_POOL_ARN="$(jq -r '[.Statement[] | select(.Sid == "Phase5bCognitoRead")][0].Resource // empty' "$CURRENT")"
+[[ "$COGNITO_POOL_ARN" =~ ^arn:aws:cognito-idp:${AWS_REGION}:${EXPECTED_ACCOUNT}:userpool/[A-Za-z0-9_-]+$ ]] || {
+  echo "Unexpected or missing Phase5b Cognito pool ARN: $COGNITO_POOL_ARN" >&2
+  exit 1
+}
+
 PASS_ROLE_RESOURCES="$(jq -nc \
   --arg execution "$ECS_EXECUTION_ROLE_ARN" \
   --arg task "$ECS_TASK_ROLE_ARN" \
@@ -57,9 +63,10 @@ PASS_ROLE_RESOURCES="$(jq -nc \
 jq --arg resource "$MEDIA_BUCKET_ARN" \
   --argjson passRoles "$PASS_ROLE_RESOURCES" \
   --arg sesIdentity "$SES_IDENTITY_ARN" \
-  --arg sesConfigurationSet "$SES_CONFIGURATION_SET_ARN" '
+  --arg sesConfigurationSet "$SES_CONFIGURATION_SET_ARN" \
+  --arg cognitoPool "$COGNITO_POOL_ARN" '
   .Statement = (
-    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate")]
+    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bCognitoRead")]
     + [{
       Sid: "ManageStagingMediaCors",
       Effect: "Allow",
@@ -76,6 +83,11 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
       Action: ["cognito-idp:GetProvisionedLimit", "cloudwatch:GetMetricStatistics"],
       Resource: "*"
     }, {
+      Sid: "Phase5bCognitoRead",
+      Effect: "Allow",
+      Action: ["cognito-idp:DescribeUserPool", "cognito-idp:UpdateUserPool"],
+      Resource: $cognitoPool
+    }, {
       Sid: "Phase5bSesResourceRead",
       Effect: "Allow",
       Action: ["ses:GetEmailIdentity", "ses:GetConfigurationSet"],
@@ -89,7 +101,7 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   )
 ' "$CURRENT" > "$DESIRED"
 
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate"))' "$CURRENT" > "$CURRENT_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bCognitoRead"))' "$CURRENT" > "$CURRENT_UNMANAGED"
 
 verify_cors_statement() {
   local file="$1"
@@ -124,6 +136,17 @@ verify_cognito_signup_capacity_statement() {
   ' "$file" >/dev/null
 }
 
+verify_phase5b_cognito_pool_statement() {
+  local file="$1"
+  jq -e --arg resource "$COGNITO_POOL_ARN" '
+    [.Statement[] | select(.Sid == "Phase5bCognitoRead")] as $matches
+    | ($matches | length) == 1
+    and $matches[0].Effect == "Allow"
+    and (($matches[0].Action | sort) == (["cognito-idp:DescribeUserPool", "cognito-idp:UpdateUserPool"] | sort))
+    and $matches[0].Resource == $resource
+  ' "$file" >/dev/null
+}
+
 verify_phase5b_ses_resource_read_statement() {
   local file="$1"
   jq -e --arg identity "$SES_IDENTITY_ARN" --arg configurationSet "$SES_CONFIGURATION_SET_ARN" '
@@ -150,6 +173,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
   verify_cors_statement "$CURRENT"
   verify_pass_role_statement "$CURRENT"
   verify_cognito_signup_capacity_statement "$CURRENT"
+  verify_phase5b_cognito_pool_statement "$CURRENT"
   verify_phase5b_ses_resource_read_statement "$CURRENT"
   verify_phase5b_ses_identity_create_statement "$CURRENT"
   echo "GITHUB_DEPLOY_IAM_ALREADY_RECONCILED"
@@ -160,7 +184,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
 fi
 
 if [[ "$ACTION" == "plan" ]]; then
-  echo "GITHUB_DEPLOY_IAM_PLAN change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bSesResourceRead,Phase5bSesIdentityCreate resource=${MEDIA_BUCKET_ARN}"
+  echo "GITHUB_DEPLOY_IAM_PLAN change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate resource=${MEDIA_BUCKET_ARN} cognito_pool=${COGNITO_POOL_ARN}"
   echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
   exit 0
 fi
@@ -182,9 +206,10 @@ aws iam get-role-policy \
 verify_cors_statement "$VERIFIED" || { echo "Media CORS IAM verification failed." >&2; exit 1; }
 verify_pass_role_statement "$VERIFIED" || { echo "ECS worker PassRole IAM verification failed." >&2; exit 1; }
 verify_cognito_signup_capacity_statement "$VERIFIED" || { echo "Cognito signup capacity read IAM verification failed." >&2; exit 1; }
+verify_phase5b_cognito_pool_statement "$VERIFIED" || { echo "Phase 5B Cognito pool IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_resource_read_statement "$VERIFIED" || { echo "Phase 5B SES read IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_identity_create_statement "$VERIFIED" || { echo "Phase 5B SES identity-create IAM verification failed." >&2; exit 1; }
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bCognitoRead"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
 cmp -s "$CURRENT_UNMANAGED" "$VERIFIED_UNMANAGED" || { echo "Unexpected unmanaged IAM policy drift detected." >&2; exit 1; }
 
 echo "GITHUB_DEPLOY_IAM_APPLY_COMPLETE resource=${MEDIA_BUCKET_ARN}"
