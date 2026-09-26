@@ -13,6 +13,23 @@ on:
       - scripts/aws/membership-access-schema.test.mjs
       - .github/workflows/aws-membership-access-migration.yml
   workflow_dispatch:
+    inputs:
+      requested_action:
+        description: "Plan only or execute the one-shot membership migration"
+        required: true
+        type: choice
+        options:
+          - plan
+          - migrate-once
+        default: plan
+      expected_sha:
+        description: "Exact feature-branch SHA approved for execution"
+        required: false
+        type: string
+      confirmation:
+        description: "Required only for migrate-once"
+        required: false
+        type: string
 
 permissions:
   id-token: write
@@ -44,14 +61,24 @@ jobs:
 
       - name: Validate migration action
         id: action
+        env:
+          REQUESTED_ACTION: ${{ inputs.requested_action }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         shell: bash
         run: |
           set -euo pipefail
-          ACTION="$(tr -d '[:space:]' < scripts/aws/membership-access-migration-action.txt)"
-          case "$ACTION" in plan|migrate-once) ;; *) echo "Unsupported membership access migration action: $ACTION" >&2; exit 1 ;; esac
-          if [[ "$ACTION" == "migrate-once" && "$GITHUB_EVENT_NAME" != "push" ]]; then
-            echo "migrate-once is allowed only from an exact branch push." >&2
-            exit 1
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            ACTION="${REQUESTED_ACTION:-plan}"
+            case "$ACTION" in plan|migrate-once) ;; *) echo "Unsupported membership access migration action: $ACTION" >&2; exit 1 ;; esac
+            if [[ "$ACTION" == "migrate-once" ]]; then
+              [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "expected_sha must be an exact commit SHA." >&2; exit 1; }
+              [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]] || { echo "expected_sha does not match GITHUB_SHA." >&2; exit 1; }
+              [[ "$CONFIRMATION" == "I_APPROVE_MEMBERSHIP_STAGING_ONE_SHOT" ]] || { echo "Explicit launch confirmation is required." >&2; exit 1; }
+            fi
+          else
+            ACTION="$(tr -d '[:space:]' < scripts/aws/membership-access-migration-action.txt)"
+            case "$ACTION" in plan|migrate-once) ;; *) echo "Unsupported membership access migration action: $ACTION" >&2; exit 1 ;; esac
           fi
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
 
