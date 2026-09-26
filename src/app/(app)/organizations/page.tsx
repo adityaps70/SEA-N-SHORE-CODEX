@@ -87,6 +87,40 @@ export default async function OrganizationsPage({
         )}
       </section>
 
+      {query ? (
+        <section className="rounded-[1.5rem] border border-ocean-100 bg-ocean-50/30 p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700">Organization search results</p>
+              <h2 className="mt-1 text-xl font-bold text-navy-950">Results for “{query}”</h2>
+            </div>
+            <Link href="/organizations" className="text-sm font-bold text-ocean-700 hover:underline">Clear search</Link>
+          </div>
+
+          {searchResults.length ? (
+            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {searchResults.map((organization) => (
+                <Link
+                  key={organization.id}
+                  href={'/organizations/' + organization.slug}
+                  className="rounded-2xl border border-mist-100 bg-white p-4 transition hover:border-ocean-300"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold text-navy-950">{organization.name}</h3>
+                    {organization.verified ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">Verified</span> : null}
+                  </div>
+                  <p className="mt-1 text-sm text-muted">{organization.companyType ?? 'Maritime organization'}</p>
+                  {organization.website ? <p className="mt-2 truncate text-xs font-semibold text-ocean-700">{organization.website}</p> : null}
+                  <p className="mt-3 text-xs font-bold text-navy-950">Open organization →</p>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-2xl border border-dashed border-mist-200 bg-white p-6 text-sm text-muted">No matching organizations found.</p>
+          )}
+        </section>
+      ) : null}
+
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <div className="flex items-center gap-3">
           <span className="grid size-11 place-items-center rounded-xl bg-teal-50 text-teal-800"><Building2 className="size-5" aria-hidden="true" /></span>
@@ -140,7 +174,6 @@ export default async function OrganizationsPage({
       <OrganizationAccessPanel
         initialRequests={requests}
         initialTerm={query}
-        initialOrganizations={searchResults}
       />
 
       {editable ? (
