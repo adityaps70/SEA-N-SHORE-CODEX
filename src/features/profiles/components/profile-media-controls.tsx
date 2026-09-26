@@ -25,15 +25,21 @@ export function ProfileMediaControls({
   const removeAction = kind === 'avatar' ? removeAvatarAction : removeCoverAction
   const [state, formAction, uploading] = useActionState(uploadAction, initialState)
   const [removeError, setRemoveError] = useState('')
+  const [imagePresent, setImagePresent] = useState(hasImage)
   const [removing, startRemoving] = useTransition()
   const inputRef = useRef<HTMLInputElement>(null)
   const label = kind === 'avatar' ? 'profile photo' : 'cover photo'
 
   useEffect(() => {
+    setImagePresent(hasImage)
+  }, [hasImage])
+
+  useEffect(() => {
     if (!state.success) return
+    setImagePresent(true)
     if (inputRef.current) inputRef.current.value = ''
     router.refresh()
-  }, [router, state.success])
+  }, [router, state])
 
   function removeImage() {
     if (removing) return
@@ -44,6 +50,7 @@ export function ProfileMediaControls({
         setRemoveError(result.error ?? `Unable to remove ${label}.`)
         return
       }
+      setImagePresent(false)
       router.refresh()
     })
   }
@@ -69,7 +76,7 @@ export function ProfileMediaControls({
           type="button"
           disabled={busy}
           onClick={() => inputRef.current?.click()}
-          aria-label={`${hasImage ? 'Change' : 'Add'} ${label}`}
+          aria-label={`${imagePresent ? 'Change' : 'Add'} ${label}`}
           className={kind === 'avatar'
             ? 'inline-flex size-10 items-center justify-center rounded-full border-2 border-white bg-navy-950 text-white shadow-md hover:bg-ocean-700 disabled:opacity-60'
             : 'inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/70 bg-white/95 px-3 text-sm font-semibold text-navy-950 shadow-sm hover:bg-white disabled:opacity-60'}
@@ -79,7 +86,7 @@ export function ProfileMediaControls({
         </button>
       </form>
 
-      {hasImage ? (
+      {imagePresent ? (
         <button
           type="button"
           disabled={busy}
