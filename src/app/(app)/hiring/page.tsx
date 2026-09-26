@@ -62,7 +62,7 @@ export default async function HiringPage() {
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link href="/plans" className="rounded-xl bg-amber-900 px-4 py-2 text-sm font-bold text-white">Compare plans</Link>
-            <Link href="/hiring/organization" className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-950">Organization access</Link>
+            <Link href="/organizations" className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-950">Organizations</Link>
           </div>
         </section>
       ) : null}
