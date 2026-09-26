@@ -226,6 +226,19 @@ alter table public.company_access_requests
   );
 -- statement-breakpoint
 
+-- Free members can follow organization workspaces without becoming organization members.
+create table if not exists public.organization_follows (
+  company_id uuid not null references public.companies(id) on delete cascade,
+  follower_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (company_id, follower_id)
+);
+-- statement-breakpoint
+
+create index if not exists organization_follows_follower_idx
+  on public.organization_follows (follower_id, created_at desc, company_id);
+-- statement-breakpoint
+
 -- Events keep the responsible human host while optionally publishing under an organization workspace.
 alter table public.events
   add column if not exists company_id uuid references public.companies(id) on delete set null;
