@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { requireCapability } from '@/features/access/server'
+import { requireCapability, userCan } from '@/features/access/server'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
 import { prepareEventBannerUpload, verifyEventBannerReference } from './event-banner-media'
@@ -173,6 +173,9 @@ export async function attendEventAction(eventId: string): Promise<CalendarAction
   if (!id.success) return { ok: false, error: 'Invalid event.' }
   try {
     const user = await requireAwsUser()
+    if (!await userCan(user.id, 'event.attend')) {
+      return { ok: false, error: 'Your account cannot attend events right now.' }
+    }
     await calendarEventRepository.attendEvent(user.id, id.data)
     refreshEventPaths(id.data)
     return { ok: true }
