@@ -252,9 +252,9 @@ function expectedOrganizationCapability(
   capability: Capability,
 ) {
   if (!verified) return false
-  if (plan !== 'organization_pro') return false
 
-  return ORGANIZATION_ROLE_CAPABILITIES[role].includes(capability)
+  const planAllows = plan === 'organization_pro' || FREE_CAPABILITIES.has(capability)
+  return planAllows && ORGANIZATION_ROLE_CAPABILITIES[role].includes(capability)
 }
 
 describe('central paid capability matrix', () => {
