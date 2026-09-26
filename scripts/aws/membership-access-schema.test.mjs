@@ -40,6 +40,9 @@ test('membership access foundation is additive and separates persona, plans, ver
   assert.match(normalized, /alter column mentor_id drop not null/)
   assert.match(normalized, /learning_courses_publisher_shape_check/)
   assert.match(normalized, /learning_courses_company_idx/)
+  assert.match(normalized, /company_access_requests_type_check.*role_access/)
+  assert.match(normalized, /company_access_requests_role_check.*lms_manager.*event_manager.*content_manager.*analyst/)
+  assert.match(normalized, /company_access_requests_type_role_check.*role_access/)
 
   assert.match(normalized, /insert into public\.feature_verifications/)
   assert.match(normalized, /learning_mentors/)
