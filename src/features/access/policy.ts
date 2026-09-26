@@ -50,8 +50,11 @@ export type AccessContext = {
 
 const PERSONAL_VERIFICATION_REQUIREMENTS: Partial<Record<Capability, VerificationType>> = {
   'job.publish': 'recruiter',
+  'job.manage_applicants': 'recruiter',
   'event.publish': 'event_host',
+  'event.manage_attendees': 'event_host',
   'course.publish': 'trainer',
+  'course.manage_students': 'trainer',
 }
 
 const ROLE_CAPABILITIES: Record<OrganizationAccessRole, readonly Capability[]> = {
