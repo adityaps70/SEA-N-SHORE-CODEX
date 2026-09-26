@@ -54,6 +54,7 @@ describe('calculateProfileCompletion', () => {
       rank: null,
       currentCompany: null,
       sailingExperienceYears: null,
+      communityRelationship: 'Spouse',
     }))).toBe(100)
 
     expect(calculateProfileCompletion(profile({
