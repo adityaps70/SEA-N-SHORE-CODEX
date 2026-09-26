@@ -55,7 +55,7 @@ describe('/admin/learning', () => {
     mocks.listMentorApplications.mockResolvedValue([application])
   })
 
-  it('opens on the actionable pending mentor queue and shows maritime evidence', async () => {
+  it('opens on the actionable pending trainer queue and shows maritime evidence', async () => {
     render(await LearningAdminPage({ searchParams: Promise.resolve({}) }))
 
     expect(mocks.listMentorApplications).toHaveBeenCalledWith('admin-1', 'pending')
@@ -89,11 +89,11 @@ describe('/admin/learning', () => {
     expect(mocks.listMentorApplications).toHaveBeenCalledWith('admin-1', 'pending')
   })
 
-  it('shows a useful empty state when the selected mentor queue has no applications', async () => {
+  it('shows a useful empty state when the selected trainer queue has no applications', async () => {
     mocks.listMentorApplications.mockResolvedValueOnce([])
 
     render(await LearningAdminPage({ searchParams: Promise.resolve({ status: 'rejected' }) }))
 
-    expect(screen.getByText('No mentor applications in this queue.')).toBeInTheDocument()
+    expect(screen.getByText('No trainer applications in this queue.')).toBeInTheDocument()
   })
 })
