@@ -181,6 +181,51 @@ alter type public.company_member_role add value if not exists 'content_manager';
 alter type public.company_member_role add value if not exists 'analyst';
 -- statement-breakpoint
 
+-- Existing organization access requests support every non-owner workspace role.
+alter table public.company_access_requests
+  drop constraint if exists company_access_requests_type_check,
+  add constraint company_access_requests_type_check check (
+    request_type in ('join_company', 'recruiter_access', 'role_access')
+  );
+-- statement-breakpoint
+
+alter table public.company_access_requests
+  drop constraint if exists company_access_requests_role_check,
+  add constraint company_access_requests_role_check check (
+    requested_role::text in (
+      'member',
+      'recruiter',
+      'administrator',
+      'lms_manager',
+      'event_manager',
+      'content_manager',
+      'analyst'
+    )
+  );
+-- statement-breakpoint
+
+alter table public.company_access_requests
+  drop constraint if exists company_access_requests_type_role_check,
+  add constraint company_access_requests_type_role_check check (
+    (request_type = 'join_company' and requested_role::text = 'member')
+    or (
+      request_type = 'recruiter_access'
+      and requested_role::text in ('recruiter', 'administrator')
+    )
+    or (
+      request_type = 'role_access'
+      and requested_role::text in (
+        'recruiter',
+        'administrator',
+        'lms_manager',
+        'event_manager',
+        'content_manager',
+        'analyst'
+      )
+    )
+  );
+-- statement-breakpoint
+
 -- Events keep the responsible human host while optionally publishing under an organization workspace.
 alter table public.events
   add column if not exists company_id uuid references public.companies(id) on delete set null;
