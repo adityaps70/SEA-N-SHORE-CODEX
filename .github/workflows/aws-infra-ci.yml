@@ -54,6 +54,10 @@ jobs:
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
       - name: Verify onboarding e2e guard contract
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
+      - name: Verify membership launch sequence contract
+        run: node --test scripts/aws/membership-launch-sequence.test.mjs
+      - name: Verify membership launch child workflow contract
+        run: node --test scripts/aws/membership-launch-child-workflows.test.mjs
       - name: Verify organization hiring e2e guard contract
         run: node --test scripts/aws/organization-hiring-e2e-guard.test.mjs
       - name: Verify learning assignment review e2e guard contract
