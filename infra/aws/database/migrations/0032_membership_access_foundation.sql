@@ -370,6 +370,9 @@ values
   ('creator_pro', 'job.publish'),
   ('creator_pro', 'event.publish'),
   ('creator_pro', 'course.publish'),
+  ('creator_pro', 'job.manage_applicants'),
+  ('creator_pro', 'event.manage_attendees'),
+  ('creator_pro', 'course.manage_students'),
   ('organization_pro', 'job.apply'),
   ('organization_pro', 'event.attend'),
   ('organization_pro', 'course.enroll'),
@@ -607,10 +610,13 @@ on conflict do nothing;
 insert into public.entitlement_grants (profile_id, capability, source, reason)
 select
   lm.user_id,
-  'course.publish',
+  entitlement.capability,
   'legacy_migration',
-  'Preserve existing active mentor course-authoring access during paid-plan migration.'
+  'Preserve existing active trainer course-authoring and learner-management access during paid-plan migration.'
 from public.learning_mentors lm
+cross join (
+  values ('course.publish'::text), ('course.manage_students'::text)
+) as entitlement(capability)
 where lm.status = 'active'
 on conflict do nothing;
 -- statement-breakpoint
@@ -618,8 +624,11 @@ on conflict do nothing;
 insert into public.entitlement_grants (profile_id, capability, source, reason)
 select distinct
   e.host_user_id,
-  'event.publish',
+  entitlement.capability,
   'legacy_migration',
-  'Preserve existing event-host publishing access during paid-plan migration.'
+  'Preserve existing event-host publishing and attendee-management access during paid-plan migration.'
 from public.events e
+cross join (
+  values ('event.publish'::text), ('event.manage_attendees'::text)
+) as entitlement(capability)
 on conflict do nothing;
