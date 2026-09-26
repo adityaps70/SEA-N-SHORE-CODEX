@@ -27,6 +27,10 @@ function readStatus(value: string | string[] | undefined): AdminCompanyAccessSta
 function roleLabel(role: string) {
   if (role === 'administrator') return 'Organization administrator'
   if (role === 'recruiter') return 'Recruiter / HR'
+  if (role === 'lms_manager') return 'LMS Manager'
+  if (role === 'event_manager') return 'Event Manager'
+  if (role === 'content_manager') return 'Content Manager'
+  if (role === 'analyst') return 'Analyst'
   return 'Member / employee'
 }
 
