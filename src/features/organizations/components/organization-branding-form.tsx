@@ -43,6 +43,7 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
                   alt=""
                   width={64}
                   height={64}
+                  unoptimized
                   className="size-16 rounded-xl bg-white object-contain"
                 />
               ) : (
