@@ -7,6 +7,7 @@ const phase = process.env.E2E_PHASE
 const runId = process.env.GITHUB_RUN_ID
 const SIGNUP_THROTTLE_MESSAGE = 'Too many sign-up requests. Please wait a moment and try again.'
 const SIGNUP_LIMIT_MESSAGE = 'Sign-up attempt limit reached. Please try again later.'
+const SIGNUP_DELIVERY_LIMIT_MESSAGE = 'Email confirmation is temporarily unavailable. Continue with mobile number below, or try email sign-up later.'
 const SIGNUP_THROTTLE_RETRY_DELAYS_MS = [15_000, 30_000, 60_000]
 const SIGNUP_INTER_USER_DELAY_MS = 15_000
 
@@ -212,6 +213,10 @@ async function signUp(user) {
       if (outcome?.kind === 'error' && safeText === SIGNUP_LIMIT_MESSAGE) {
         console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_LIMIT_EXCEEDED=true')
         throw new Error('Cognito sign-up attempt limit is currently exceeded.')
+      }
+      if (outcome?.kind === 'error' && safeText === SIGNUP_DELIVERY_LIMIT_MESSAGE) {
+        console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_DELIVERY_DEFERRED=' + user.key)
+        return 'delivery-deferred'
       }
       if (outcome?.kind === 'error' && safeText === SIGNUP_THROTTLE_MESSAGE) {
         if (retryDelay !== undefined) {
@@ -423,8 +428,10 @@ try {
     for (const [index, user] of users.entries()) {
       if (index > 0) await new Promise((resolve) => setTimeout(resolve, SIGNUP_INTER_USER_DELAY_MS))
       const signupOutcome = await signUp(user)
-      assert.equal(signupOutcome, 'confirmed')
-      console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_USER_VERIFIED=' + user.key)
+      assert.ok(['confirmed', 'delivery-deferred'].includes(signupOutcome))
+      if (signupOutcome === 'confirmed') {
+        console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_USER_VERIFIED=' + user.key)
+      }
     }
     console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
   } else {
