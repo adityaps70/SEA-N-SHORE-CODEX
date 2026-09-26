@@ -407,7 +407,9 @@ export function createOrganizationRepository(input: {
 
       const requestType: CompanyAccessRequestType = requestedRole === 'member'
         ? 'join_company'
-        : 'recruiter_access'
+        : requestedRole === 'recruiter' || requestedRole === 'administrator'
+          ? 'recruiter_access'
+          : 'role_access'
 
       const rows = await txQuery(
         `insert into public.company_access_requests (
