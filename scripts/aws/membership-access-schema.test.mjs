@@ -21,6 +21,9 @@ test('membership access foundation is additive and separates persona, plans, ver
   assert.match(normalized, /job\.publish/)
   assert.match(normalized, /event\.publish/)
   assert.match(normalized, /course\.publish/)
+  assert.match(normalized, /\('creator_pro', 'job\.manage_applicants'\)/)
+  assert.match(normalized, /\('creator_pro', 'event\.manage_attendees'\)/)
+  assert.match(normalized, /\('creator_pro', 'course\.manage_students'\)/)
 
   assert.match(normalized, /create table if not exists public\.feature_verifications/)
   assert.match(normalized, /application_payload jsonb/)
