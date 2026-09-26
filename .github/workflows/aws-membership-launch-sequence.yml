@@ -1,0 +1,119 @@
+name: AWS Membership Launch Sequence
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Preflight only or execute the full one-shot staging sequence"
+        required: true
+        type: choice
+        options:
+          - preflight
+          - execute
+        default: preflight
+      expected_sha:
+        description: "Exact feat/aws-native-phase-0-1 commit SHA approved for this sequence"
+        required: true
+        type: string
+      confirmation:
+        description: "For execute: I_APPROVE_MEMBERSHIP_STAGING_ONE_SHOT"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sea-n-shore-membership-launch-sequence
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    outputs:
+      approved_sha: ${{ steps.validate.outputs.approved_sha }}
+    steps:
+      - name: Checkout exact dispatch ref
+        uses: actions/checkout@v4
+
+      - name: Validate immutable launch SHA
+        id: validate
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "expected_sha must be an exact 40-character commit SHA." >&2
+            exit 1
+          }
+          [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]] || {
+            echo "The workflow dispatch ref does not match expected_sha." >&2
+            exit 1
+          }
+          echo "approved_sha=$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Verify launch sequence contract
+        shell: bash
+        run: |
+          node --test scripts/aws/membership-launch-sequence.test.mjs
+          node --test scripts/aws/membership-launch-child-workflows.test.mjs
+
+      - name: Run exact-head launch preflight
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/aws/membership-launch-sequence.mjs preflight "${{ inputs.expected_sha }}"
+
+  execute:
+    needs: preflight
+    if: inputs.mode == 'execute'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 120
+    steps:
+      - name: Checkout approved launch head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.approved_sha }}
+
+      - name: Validate explicit launch approval
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CONFIRMATION" == "I_APPROVE_MEMBERSHIP_STAGING_ONE_SHOT" ]] || {
+            echo "Explicit launch approval phrase is required." >&2
+            exit 1
+          }
+
+      - name: Execute migration, deploy and onboarding E2E in strict order
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/aws/membership-launch-sequence.mjs             execute             "${{ needs.preflight.outputs.approved_sha }}"             "${{ inputs.confirmation }}"
+
+  rearm:
+    needs:
+      - preflight
+      - execute
+    if: always() && inputs.mode == 'execute'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout launch helper
+        uses: actions/checkout@v4
+
+      - name: Rearm every execution guard to plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/aws/membership-launch-sequence.mjs rearm
+
+      - name: Confirm guard files are plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(tr -d '[:space:]' < scripts/aws/membership-access-migration-action.txt)" == "plan" ]]
+          [[ "$(tr -d '[:space:]' < scripts/aws/staging-deploy-action.txt)" == "plan" ]]
+          [[ "$(tr -d '[:space:]' < scripts/aws/onboarding-e2e-action.txt)" == "plan" ]]
