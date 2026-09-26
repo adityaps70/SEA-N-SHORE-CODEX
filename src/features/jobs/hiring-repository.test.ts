@@ -331,7 +331,7 @@ describe('jobs hiring repository', () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
-      if (text.includes('select a.id')) return [{ id: 'application-1', company_id: 'company-1' }]
+      if (text.includes('select j.company_id')) return [{ company_id: 'company-1' }]
       return []
     }
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
@@ -347,7 +347,7 @@ describe('jobs hiring repository', () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
-      if (text.includes('select a.id')) return [{ id: 'application-1', company_id: 'company-1' }]
+      if (text.includes('select j.company_id')) return [{ company_id: 'company-1' }]
       return []
     }
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
