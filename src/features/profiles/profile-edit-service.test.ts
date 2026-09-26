@@ -102,14 +102,14 @@ describe('completed profile edit service', () => {
     expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
   })
 
-  it('removes stale maritime details when the stored profile type is non-maritime', async () => {
+  it('preserves legacy maritime details when a non-seafarer profile is edited', async () => {
     const repository = repositoryDouble()
     const service = createProfileEditService({ withTransaction: withRepository(repository) })
     const data = input('mentor')
 
     await service.updateProfile(actorId, data)
 
-    expect(vi.mocked(repository.deleteMaritimeProfile)).toHaveBeenCalledWith(actorId)
+    expect(vi.mocked(repository.deleteMaritimeProfile)).not.toHaveBeenCalled()
     expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
   })
 
