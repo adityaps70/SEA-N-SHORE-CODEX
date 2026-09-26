@@ -60,14 +60,14 @@ export default async function NewMentorCoursePage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
-        <ArrowLeft aria-hidden="true" className="size-4" /> Mentor Studio
+        <ArrowLeft aria-hidden="true" className="size-4" /> Learning Studio
       </Link>
 
       <section className="mt-5 overflow-hidden rounded-[1.75rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
-              <BookOpen aria-hidden="true" className="size-4" /> Mentor course builder
+              <BookOpen aria-hidden="true" className="size-4" /> Course builder
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Create course</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">
