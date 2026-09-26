@@ -32,6 +32,11 @@ function learnHref(query: string) {
   return `${verticalPaths.courses}?${params.toString()}`
 }
 
+function organizationHref(query: string) {
+  const params = new URLSearchParams()
+  params.set('q', query)
+  return verticalPaths.organizations + '?' + params.toString()
+}
 function SectionHeading({
   icon: Icon,
   title,
@@ -95,7 +100,7 @@ export default async function GlobalSearchPage({
         <div className="mt-5 rounded-[1.5rem] border border-dashed border-mist-200 bg-white px-6 py-12 text-center">
           <Search aria-hidden="true" className="mx-auto size-7 text-muted" />
           <p className="mt-3 font-semibold text-navy-950">Start with a name, rank, role, skill, course or event topic.</p>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">Your search stays with you as you continue into People, Jobs, Courses or Events.</p>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">Your search stays with you as you continue into People, Organizations, Jobs, Courses or Events.</p>
         </div>
       </section>
     )
@@ -141,7 +146,7 @@ export default async function GlobalSearchPage({
 
         <section aria-labelledby="global-organizations-heading" className="border-t border-mist-100 pt-7">
           <div id="global-organizations-heading">
-            <SectionHeading icon={Building2} title="Organizations" count={organizations.length} href={verticalPaths.organizations} />
+            <SectionHeading icon={Building2} title="Organizations" count={organizations.length} href={organizationHref(query)} />
           </div>
           {organizationResults.length ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
