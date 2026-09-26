@@ -36,7 +36,7 @@ describe('MentorApplicationForm', () => {
 
   afterEach(() => cleanup())
 
-  it('prefills maritime profile data and keeps the mentor-specific fields editable', () => {
+  it('prefills maritime profile data and keeps the trainer-specific fields editable', () => {
     render(<MentorApplicationForm initialValue={initial} />)
 
     expect(screen.getByLabelText('Name')).toHaveValue('Capt. Maya Singh')
@@ -54,7 +54,7 @@ describe('MentorApplicationForm', () => {
 
     fireEvent.change(screen.getByLabelText('Vessel types'), { target: { value: ' Oil Tanker, oil tanker, LNG Carrier ' } })
     fireEvent.change(screen.getByLabelText('Proposed course topics'), { target: { value: ' SIRE 2.0 readiness, Human Factors ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Submit mentor application' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit trainer verification application' }))
 
     await waitFor(() => expect(mocks.submitMentorApplication).toHaveBeenCalledTimes(1))
     expect(mocks.submitMentorApplication).toHaveBeenCalledWith(expect.objectContaining({
@@ -76,7 +76,7 @@ describe('MentorApplicationForm', () => {
 
     expect(screen.getByText('Please clarify your LNG/LPG teaching experience.')).toBeInTheDocument()
     expect(screen.getByText('Update application')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Resubmit mentor application' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Resubmit trainer verification application' }))
 
     await waitFor(() => expect(mocks.resubmitMentorApplication).toHaveBeenCalledTimes(1))
     expect(mocks.resubmitMentorApplication).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', initial)
@@ -84,12 +84,12 @@ describe('MentorApplicationForm', () => {
   })
 
   it('surfaces a safe action error without clearing the member input', async () => {
-    mocks.submitMentorApplication.mockResolvedValueOnce({ ok: false, error: 'We could not save the mentor application. Please try again.' })
+    mocks.submitMentorApplication.mockResolvedValueOnce({ ok: false, error: 'We could not save the trainer verification application. Please try again.' })
     render(<MentorApplicationForm initialValue={initial} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Submit mentor application' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Submit trainer verification application' }))
 
-    expect(await screen.findByText('We could not save the mentor application. Please try again.')).toBeInTheDocument()
+    expect(await screen.findByText('We could not save the trainer verification application. Please try again.')).toBeInTheDocument()
     expect(screen.getByLabelText('Specialization')).toHaveValue(initial.specialization)
   })
 })
