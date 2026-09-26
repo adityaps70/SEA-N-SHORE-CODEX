@@ -244,6 +244,30 @@ export function createOrganizationWorkspaceRepository(input: {
     return true
   }
 
+  async function listFollowedOrganizations(followerId: string): Promise<OrganizationWorkspace[]> {
+    const rows = await queryRows(
+      `select
+         company.id,
+         company.slug,
+         company.name,
+         company.logo_path,
+         company.company_type,
+         company.website,
+         company.description,
+         company.fleet_summary,
+         company.vessel_types,
+         company.office_locations,
+         coalesce(company.is_verified, false) as is_verified
+       from public.companies company
+       join public.organization_follows follow
+         on follow.company_id = company.id
+       where follow.follower_id = $1
+       order by follow.created_at desc, company.name asc, company.id asc`,
+      [followerId],
+    ) as WorkspaceRow[]
+    return rows.map(mapWorkspace)
+  }
+
   async function getFollowState(companyId: string, viewerId: string) {
     const rows = await queryRows(
       `select
@@ -314,6 +338,7 @@ export function createOrganizationWorkspaceRepository(input: {
     updateMemberRole,
     updateBranding,
     updateLogoPath,
+    listFollowedOrganizations,
     getFollowState,
     followOrganization,
     unfollowOrganization,
