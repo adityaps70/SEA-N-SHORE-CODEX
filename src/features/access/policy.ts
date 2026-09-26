@@ -60,7 +60,7 @@ const ROLE_CAPABILITIES: Record<OrganizationAccessRole, readonly Capability[]> =
   recruiter: ['job.publish', 'job.manage_applicants'],
   lms_manager: ['course.publish', 'course.manage_students'],
   event_manager: ['event.publish', 'event.manage_attendees'],
-  content_manager: [],
+  content_manager: ['organization.branding'],
   analyst: ['analytics.view'],
   member: [],
 }
