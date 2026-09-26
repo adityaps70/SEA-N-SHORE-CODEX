@@ -12,11 +12,14 @@ test('feed avatar staging proof preserves the primary failure and uses cleanup-s
   assert.match(source, /if \(cleanupErrors\.length\) throw new Error/)
 })
 
-test('feed avatar upload waits for the server action instead of racing a fixed reload', () => {
+test('feed avatar upload uses the real hydrated profile-photo chooser and waits for its server action', () => {
+  assert.match(source, /waitForEvent\('filechooser'\)/)
+  assert.match(source, /await addButton\.click\(\)/)
+  assert.match(source, /await fileChooser\.setFiles/)
   assert.match(source, /waitForResponse/)
   assert.match(source, /request\(\)\.method\(\) === 'POST'/)
+  assert.doesNotMatch(source, /input\.setInputFiles/)
   assert.doesNotMatch(source, /waitForTimeout\(3_000\)/)
-  assert.doesNotMatch(source, /page\.reload\(\{ waitUntil: 'domcontentloaded' \}\)\s*\n\s*await expect\(page\.getByRole\('button', \{ name: 'Change profile photo' \}\)\)/)
 })
 
 test('feed avatar staging proof uses current eight-persona onboarding identities', () => {
