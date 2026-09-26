@@ -24,6 +24,7 @@ vi.mock('@/features/notifications/components/notification-bell', () => ({
 vi.mock('@/features/auth/actions', () => ({ signOut: vi.fn() }))
 vi.mock('@/features/auth/aws-queries', () => ({
   requireAwsUser: vi.fn().mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' }),
+  getAwsVerifiedUser: vi.fn().mockResolvedValue(null),
 }))
 vi.mock('@/features/events/calendar-repository', () => ({
   calendarEventRepository: {
