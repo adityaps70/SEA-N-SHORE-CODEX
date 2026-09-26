@@ -142,9 +142,9 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
 
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <div className="mb-5">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Employer identity</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Organization identity</p>
           <h2 className="mt-1 text-xl font-bold text-navy-950">Tell us about your organization</h2>
-          <p className="mt-1 text-sm leading-6 text-muted">Sea N Shore reviews every employer before Hiring access is activated.</p>
+          <p className="mt-1 text-sm leading-6 text-muted">Sea N Shore reviews every organization before verified workspace capabilities can be activated.</p>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -236,7 +236,7 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
       <section className="flex flex-col gap-3 rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
           <p className="font-bold text-navy-950">Platform review required</p>
-          <p className="mt-1 text-sm text-muted">Posting jobs remains locked until Sea N Shore approves the organization.</p>
+          <p className="mt-1 text-sm text-muted">Organization publishing remains subject to Sea N Shore verification, the workspace plan and the member’s authorized role.</p>
         </div>
         <button
           type="submit"
