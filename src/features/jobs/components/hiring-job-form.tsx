@@ -185,7 +185,7 @@ export function HiringJobForm(props: HiringJobFormProps) {
                         <div className="mt-3 flex flex-wrap items-center gap-2">
                           <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">Verification required</span>
                           {option.kind === 'organization' ? (
-                            <Link href="/hiring/organization" className="text-xs font-bold text-ocean-700 hover:underline">
+                            <Link href="/organizations" className="text-xs font-bold text-ocean-700 hover:underline">
                               Manage organization verification
                             </Link>
                           ) : (
