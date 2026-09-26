@@ -16,6 +16,9 @@ vi.mock('@/features/profiles/queries', () => ({
 vi.mock('@/features/profiles/components/profile-edit-form', () => ({
   ProfileEditForm: ({ profile }: { profile: { fullName: string } }) => <div>Edit form for {profile.fullName}</div>,
 }))
+vi.mock('@/features/profiles/components/profile-preferences-form', () => ({
+  ProfilePreferencesForm: ({ profile }: { profile: { fullName: string } }) => <div>Preferences for {profile.fullName}</div>,
+}))
 
 const mockedGetOwnProfile = vi.mocked(getOwnProfile)
 
@@ -50,6 +53,7 @@ describe('Edit Profile page', () => {
     render(await EditProfilePage())
 
     expect(screen.getByRole('heading', { name: /edit profile/i })).toBeInTheDocument()
+    expect(screen.getByText('Preferences for Captain Example')).toBeInTheDocument()
     expect(screen.getByText('Edit form for Captain Example')).toBeInTheDocument()
   })
 
