@@ -11,16 +11,19 @@ const guards = {
     path: 'scripts/aws/membership-access-migration-action.txt',
     armed: 'migrate-once',
     workflow: 'AWS Membership Access Migration',
+    workflowFile: 'aws-membership-access-migration.yml',
   },
   deploy: {
     path: 'scripts/aws/staging-deploy-action.txt',
     armed: 'deploy-once',
     workflow: 'AWS Staging Deploy',
+    workflowFile: 'aws-staging-deploy.yml',
   },
   e2e: {
     path: 'scripts/aws/onboarding-e2e-action.txt',
     armed: 'run-once',
     workflow: 'AWS Onboarding E2E',
+    workflowFile: 'aws-onboarding-e2e.yml',
   },
 }
 
@@ -77,14 +80,19 @@ async function assertBranchHead(expectedSha) {
   return live
 }
 
-async function waitForWorkflowRun(name, sha, timeoutMs = 30 * 60 * 1000) {
+async function waitForWorkflowRun(name, sha, timeoutMs = 30 * 60 * 1000, options = {}) {
   assertSha(sha, 'workflow head_sha')
   const started = Date.now()
+  const notBefore = Number(options.notBefore || 0)
+  const requiredEvent = options.event || null
+
   while (Date.now() - started < timeoutMs) {
     const data = await api(`/repos/${repo}/actions/runs?head_sha=${sha}&per_page=100`)
     const runs = Array.isArray(data?.workflow_runs) ? data.workflow_runs : []
     const run = runs
       .filter((candidate) => candidate?.name === name)
+      .filter((candidate) => !requiredEvent || candidate?.event === requiredEvent)
+      .filter((candidate) => !notBefore || new Date(candidate?.created_at || 0).getTime() >= notBefore)
       .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())[0]
 
     if (run?.status === 'completed') {
@@ -159,55 +167,48 @@ async function assertAllGuardsPlan() {
   }
 }
 
-async function armGuard(expectedHead, key) {
+async function dispatchWorkflow(key, expectedSha) {
   const guard = guards[key]
-  if (!guard) throw new Error(`Unknown guard ${key}`)
-  const current = await getRemoteFile(guard.path)
-  if (current !== 'plan') throw new Error(`${guard.path} must be plan before arming; found ${current}`)
-  return commitFiles(expectedHead, [{ path: guard.path, content: guard.armed }], `chore: arm ${key} staging action once`)
-}
+  if (!guard) throw new Error(`Unknown workflow stage ${key}`)
 
-async function rearmGuard(expectedHead, key) {
-  const guard = guards[key]
-  if (!guard) throw new Error(`Unknown guard ${key}`)
-  const current = await getRemoteFile(guard.path)
-  if (current === 'plan') return expectedHead
-  if (current !== guard.armed) throw new Error(`Refusing to reset unexpected value in ${guard.path}: ${current}`)
-  return commitFiles(expectedHead, [{ path: guard.path, content: 'plan' }], `chore: rearm ${key} staging guard to plan`)
-}
+  await assertBranchHead(expectedSha)
+  const dispatchedAt = Date.now() - 5_000
 
-async function rearmAllGuards() {
-  const armed = []
-  for (const [key, guard] of Object.entries(guards)) {
-    const value = await getRemoteFile(guard.path)
-    if (value === guard.armed) armed.push({ key, guard })
-    else if (value !== 'plan') throw new Error(`Unexpected guard value in ${guard.path}: ${value}`)
-  }
+  const inputs = key === 'migration'
+    ? {
+        requested_action: 'migrate-once',
+        expected_sha: expectedSha,
+        confirmation: approvalPhrase,
+      }
+    : key === 'deploy'
+      ? {
+          deploy_to_ecs: 'true',
+          expected_sha: expectedSha,
+          confirmation: approvalPhrase,
+        }
+      : {
+          requested_action: 'run-once',
+          expected_sha: expectedSha,
+          confirmation: approvalPhrase,
+        }
 
-  if (armed.length === 0) {
-    await assertAllGuardsPlan()
-    return getBranchHead()
-  }
+  await api(`/repos/${repo}/actions/workflows/${guard.workflowFile}/dispatches`, {
+    method: 'POST',
+    body: JSON.stringify({
+      ref: branch,
+      inputs,
+    }),
+  })
 
-  const live = await getBranchHead()
-  const next = await commitFiles(
-    live,
-    armed.map(({ guard }) => ({ path: guard.path, content: 'plan' })),
-    'chore: rearm membership staging guards to plan',
+  const run = await waitForWorkflowRun(
+    guard.workflow,
+    expectedSha,
+    45 * 60 * 1000,
+    { event: 'workflow_dispatch', notBefore: dispatchedAt },
   )
-  await assertAllGuardsPlan()
-  return next
-}
 
-async function runStage(head, key) {
-  const guard = guards[key]
-  const armedHead = await armGuard(head, key)
-  await waitForInfrastructureCi(armedHead)
-  await waitForWorkflowRun(guard.workflow, armedHead)
-  const rearmedHead = await rearmGuard(armedHead, key)
-  await waitForInfrastructureCi(rearmedHead)
-  await waitForWorkflowRun(guard.workflow, rearmedHead)
-  return rearmedHead
+  await assertBranchHead(expectedSha)
+  return run
 }
 
 async function preflight(expectedSha) {
@@ -222,13 +223,13 @@ async function execute(expectedSha, confirmation) {
   if (confirmation !== approvalPhrase) throw new Error('Explicit launch approval phrase is required')
   await preflight(expectedSha)
 
-  let head = expectedSha
-  head = await runStage(head, 'migration')
-  head = await runStage(head, 'deploy')
-  head = await runStage(head, 'e2e')
+  await dispatchWorkflow('migration', expectedSha)
+  await dispatchWorkflow('deploy', expectedSha)
+  await dispatchWorkflow('e2e', expectedSha)
 
+  await assertBranchHead(expectedSha)
   await assertAllGuardsPlan()
-  return head
+  return expectedSha
 }
 
 const [mode, expectedSha = '', confirmation = ''] = process.argv.slice(2)
@@ -250,6 +251,7 @@ export {
   approvalPhrase,
   assertAllGuardsPlan,
   commitFiles,
+  dispatchWorkflow,
   execute,
   preflight,
   rearmAllGuards,
