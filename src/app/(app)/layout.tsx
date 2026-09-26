@@ -3,9 +3,7 @@ import { AppHeader } from '@/components/navigation/app-header'
 import { MobileAppHeader } from '@/components/navigation/mobile-app-header'
 import { MobileNav } from '@/components/navigation/mobile-nav'
 import { canAccessPlatformAdmin } from '@/features/admin/access'
-import { getAccessContext } from '@/features/access/server'
 import { requireUser } from '@/features/auth/queries'
-import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { MessagingDock } from '@/features/messaging/components/messaging-dock'
 import { LegacyOrganizationConversionBanner } from '@/features/organizations/components/legacy-conversion-banner'
 import { legacyOrganizationConversionRepository } from '@/features/organizations/legacy-conversion-repository'
@@ -15,16 +13,12 @@ import { MessagingRealtimeProvider } from '@/features/realtime/provider'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
-  const [notificationChrome, messagingUnreadCount, authorizedCompany, access, canAccessAdmin, legacyConversion] = await Promise.all([
+  const [notificationChrome, messagingUnreadCount, canAccessAdmin, legacyConversion] = await Promise.all([
     getNotificationChrome(),
     getUnreadMessageCount(),
-    hiringRepository.getAuthorizedCompany(user.id).catch(() => null),
-    getAccessContext(user.id).catch(() => null),
     canAccessPlatformAdmin(user.id),
     legacyOrganizationConversionRepository.getConversion(user.id).catch(() => null),
   ])
-
-  const canStartHiring = Boolean(authorizedCompany) || Boolean(access?.verifications.includes('recruiter'))
 
   return (
     <MessagingRealtimeProvider viewerProfileId={user.id}>
@@ -34,13 +28,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           recentNotifications={notificationChrome.recent}
           unreadCount={notificationChrome.unreadCount}
           messagingUnreadCount={messagingUnreadCount}
-          canStartHiring={canStartHiring}
           canAccessAdmin={canAccessAdmin}
         />
         <MobileAppHeader
           unreadCount={notificationChrome.unreadCount}
           messagingUnreadCount={messagingUnreadCount}
-          canStartHiring={canStartHiring}
           canAccessAdmin={canAccessAdmin}
         />
         <main id="main-content" className="mx-auto w-full max-w-7xl px-4 py-6">
