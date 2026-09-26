@@ -46,7 +46,7 @@ export default function SettingsPage() {
               <BadgeCheck aria-hidden="true" className="size-4 text-ocean-700" />
               <p className="font-semibold text-navy-950">Professional verifications</p>
             </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Apply for or review Recruiter and Event Host verification.</p>
+            <p className="mt-1 text-sm leading-5 text-muted">Apply for or review Recruiter, Trainer and Event Host verification.</p>
           </Link>
           <Link
             href="/organizations"
