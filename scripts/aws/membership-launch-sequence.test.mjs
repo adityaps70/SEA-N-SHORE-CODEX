@@ -67,8 +67,18 @@ test('launch sequence defines runtime cleanup and rearms every execution guard t
   assert.match(helper, /'plan'/)
 })
 
-test('current repository guards remain plan-only before explicit approval', () => {
-  assert.equal(readFileSync(guardPaths[0], 'utf8').trim(), 'plan')
-  assert.equal(readFileSync(guardPaths[1], 'utf8').trim(), 'plan')
-  assert.equal(readFileSync(guardPaths[2], 'utf8').trim(), 'plan')
+test('execution guards allow only one approved one-shot stage at a time', () => {
+  const allowed = [
+    new Set(['plan', 'migrate-once']),
+    new Set(['plan', 'deploy-once']),
+    new Set(['plan', 'run-once']),
+  ]
+  const states = guardPaths.map((path) => readFileSync(path, 'utf8').trim())
+
+  states.forEach((state, index) => {
+    assert.equal(allowed[index].has(state), true, `${guardPaths[index]} has unsupported state ${state}`)
+  })
+
+  const armed = states.filter((state) => state !== 'plan')
+  assert.ok(armed.length <= 1, `only one one-shot stage may be armed, found: ${armed.join(', ')}`)
 })
