@@ -15,15 +15,17 @@ describe('global search quality contract', () => {
     expect(header).toContain('Search Sea N Shore')
   })
 
-  it('searches People, Jobs, Courses and Events from one query', () => {
+  it('searches People, Organizations, Jobs, Courses and Events from one query', () => {
     const page = source('src/app/(app)/search/page.tsx')
 
     expect(page).toContain('getNetworkHub')
     expect(page).toContain('getJobsDiscovery')
     expect(page).toContain('marketplaceRepository.listPublishedCourses')
     expect(page).toContain('calendarEventRepository.listDiscoverEvents')
+    expect(page).toContain('organizationRepository.searchCompanies')
     expect(page).toContain('Promise.all')
     expect(page).toContain('People')
+    expect(page).toContain('Organizations')
     expect(page).toContain('Jobs')
     expect(page).toContain('Courses')
     expect(page).toContain('Events')
@@ -38,5 +40,6 @@ describe('global search quality contract', () => {
     expect(page).toContain("'/jobs'")
     expect(page).toContain("'/learn'")
     expect(page).toContain("'/events'")
+    expect(page).toContain("'/organizations'")
   })
 })
