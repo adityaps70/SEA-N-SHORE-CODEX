@@ -41,5 +41,7 @@ describe('global search quality contract', () => {
     expect(page).toContain("'/learn'")
     expect(page).toContain("'/events'")
     expect(page).toContain("'/organizations'")
+    expect(page).toContain('organizationHref(query)')
+    expect(page).toContain("params.set('q', query)")
   })
 })
