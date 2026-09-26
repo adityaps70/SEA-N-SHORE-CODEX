@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { BadgeCheck, CreditCard, LockKeyhole, ShieldCheck } from 'lucide-react'
+import { BadgeCheck, Building2, CreditCard, LockKeyhole, ShieldCheck, SquarePlus } from 'lucide-react'
 import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
 import { DeleteAccountPanel } from '@/features/account-deletion/components/delete-account-panel'
 
@@ -47,6 +47,26 @@ export default function SettingsPage() {
               <p className="font-semibold text-navy-950">Professional verifications</p>
             </div>
             <p className="mt-1 text-sm leading-5 text-muted">Apply for or review Recruiter and Event Host verification.</p>
+          </Link>
+          <Link
+            href="/organizations"
+            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+          >
+            <div className="flex items-center gap-2">
+              <Building2 aria-hidden="true" className="size-4 text-ocean-700" />
+              <p className="font-semibold text-navy-950">Organizations</p>
+            </div>
+            <p className="mt-1 text-sm leading-5 text-muted">Create, claim or manage organization workspaces and roles.</p>
+          </Link>
+          <Link
+            href="/creator"
+            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+          >
+            <div className="flex items-center gap-2">
+              <SquarePlus aria-hidden="true" className="size-4 text-ocean-700" />
+              <p className="font-semibold text-navy-950">Creator access</p>
+            </div>
+            <p className="mt-1 text-sm leading-5 text-muted">See publishing readiness for Jobs, Events and LMS in one place.</p>
           </Link>
           <Link
             href="/privacy"
