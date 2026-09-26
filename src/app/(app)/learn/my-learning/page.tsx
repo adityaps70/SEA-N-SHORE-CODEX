@@ -59,7 +59,7 @@ function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment })
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-navy-950">{enrollment.mentorName}</p>
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-teal-800">
-              <BadgeCheck aria-hidden="true" className="size-3.5" /> Verified mentor
+              <BadgeCheck aria-hidden="true" className="size-3.5" /> Verified trainer
             </p>
           </div>
         </div>
