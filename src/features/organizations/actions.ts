@@ -62,6 +62,7 @@ function mutationError(error: unknown) {
 }
 
 function refreshOrganizationHiring() {
+  revalidatePath('/organizations')
   revalidatePath('/hiring')
   revalidatePath('/hiring/organization')
 }
