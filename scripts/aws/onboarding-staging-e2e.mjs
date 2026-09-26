@@ -310,7 +310,7 @@ async function verifyUsernameEditLifecycle(page, user, initialUsername, takenUse
   if (await about.count()) {
     await about.fill('Disposable onboarding E2E profile used to verify username protections.')
   }
-  const rank = page.getByLabel('Rank')
+  const rank = page.getByLabel('Rank', { exact: true })
   if (await rank.count()) await rank.fill('Chief Engineer')
 
   const editUsername = usernameInput(page)
