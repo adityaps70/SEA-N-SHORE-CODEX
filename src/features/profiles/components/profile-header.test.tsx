@@ -99,11 +99,11 @@ describe('ProfileHeader', () => {
     fireEvent.click(edit)
     expect(screen.getByRole('textbox', { name: 'Full name' })).toHaveValue('Member A')
     expect(screen.getByRole('textbox', { name: 'Headline' })).toHaveValue('Chief Officer | Tankers')
-    expect(screen.getByRole('textbox', { name: 'Current company' })).toHaveValue('Example Shipping')
+    expect(screen.getByRole('textbox', { name: 'Current organization' })).toHaveValue('Example Shipping')
     expect(screen.getByRole('button', { name: 'Change profile photo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Change cover photo' })).toBeInTheDocument()
   })
-  it('offers a company-name field to Shipowner and other organisation identities', () => {
+  it('does not edit legacy organization accounts through a personal profile header', () => {
     render(
       <ProfileHeader
         profile={{
@@ -119,7 +119,8 @@ describe('ProfileHeader', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
-    expect(screen.getByRole('textbox', { name: 'Company name' })).toHaveValue('Oceanic Shipping')
+    expect(screen.queryByRole('textbox', { name: 'Company name' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Current organization' })).not.toBeInTheDocument()
   })
 
 })
