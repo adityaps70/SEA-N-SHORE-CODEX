@@ -10,13 +10,21 @@ import { organizationWorkspaceRepository } from '@/features/organizations/worksp
 
 const roleLabel = (role: string) => role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
-export default async function OrganizationsPage() {
+export default async function OrganizationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string | string[] }>
+}) {
+  const params = await searchParams
+  const rawQuery = Array.isArray(params.q) ? params.q[0] : params.q
+  const query = rawQuery?.trim().slice(0, 100) ?? ''
   const user = await requireAwsUser()
-  const [state, requests, memberships, followedOrganizations, access] = await Promise.all([
+  const [state, requests, memberships, followedOrganizations, searchResults, access] = await Promise.all([
     organizationRepository.getUserOrganizationState(user.id),
     organizationRepository.listUserAccessRequests(user.id),
     organizationRepository.listUserOrganizations(user.id),
     organizationWorkspaceRepository.listFollowedOrganizations(user.id),
+    query ? organizationRepository.searchCompanies(query) : Promise.resolve([]),
     getAccessContext(user.id),
   ])
 
@@ -129,7 +137,11 @@ export default async function OrganizationsPage() {
         </section>
       ) : null}
 
-      <OrganizationAccessPanel initialRequests={requests} />
+      <OrganizationAccessPanel
+        initialRequests={requests}
+        initialTerm={query}
+        initialOrganizations={searchResults}
+      />
 
       {editable ? (
         <section className="space-y-4">
