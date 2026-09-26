@@ -26,11 +26,11 @@ describe('MentorReviewControls', () => {
   it('approves with an optional blank reviewer note', async () => {
     render(<MentorReviewControls applicationId={applicationId} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve mentor' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve trainer' }))
 
     await waitFor(() => expect(mocks.reviewMentorApplication).toHaveBeenCalledTimes(1))
     expect(mocks.reviewMentorApplication).toHaveBeenCalledWith(applicationId, 'approved', null)
-    expect(await screen.findByText('Mentor approved. The verified mentor workspace is now active.')).toBeInTheDocument()
+    expect(await screen.findByText('Trainer verification approved. The verified trainer workspace is now active.')).toBeInTheDocument()
   })
 
   it.each(['Request changes', 'Reject application'] as const)('requires a reviewer note before %s', async (buttonName) => {
@@ -63,7 +63,7 @@ describe('MentorReviewControls', () => {
   it('shows a safe server error without clearing the reviewer note', async () => {
     mocks.reviewMentorApplication.mockResolvedValueOnce({
       ok: false,
-      error: 'This mentor application cannot move to that review state.',
+      error: 'This trainer verification application cannot move to that review state.',
     })
     render(<MentorReviewControls applicationId={applicationId} />)
 
@@ -72,7 +72,7 @@ describe('MentorReviewControls', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Reject application' }))
 
-    expect(await screen.findByText('This mentor application cannot move to that review state.')).toBeInTheDocument()
+    expect(await screen.findByText('This trainer verification application cannot move to that review state.')).toBeInTheDocument()
     expect(screen.getByLabelText('Reviewer note')).toHaveValue('Credential evidence needs another review.')
   })
 })
