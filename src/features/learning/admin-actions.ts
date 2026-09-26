@@ -61,10 +61,10 @@ export type CourseReviewActionResult =
 
 function reviewError(error: unknown) {
   const code = error instanceof Error ? error.message : ''
-  if (code === 'admin_forbidden') return 'You are not authorized to review mentor applications.'
-  if (code === 'mentor_application_transition_forbidden') return 'This mentor application cannot move to that review state.'
-  if (code === 'mentor_application_not_found') return 'This mentor application could not be found.'
-  return 'The mentor application review could not be saved. Please try again.'
+  if (code === 'admin_forbidden') return 'You are not authorized to review trainer verification applications.'
+  if (code === 'mentor_application_transition_forbidden') return 'This trainer verification application cannot move to that review state.'
+  if (code === 'mentor_application_not_found') return 'This trainer verification application could not be found.'
+  return 'The trainer verification application review could not be saved. Please try again.'
 }
 
 function courseReviewError(error: unknown) {
@@ -100,7 +100,7 @@ export async function reviewMentorApplication(
 ): Promise<MentorReviewActionResult> {
   const parsed = mentorReviewSchema.safeParse({ applicationId, decision, reviewerNote })
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid mentor review request.' }
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid trainer verification review request.' }
   }
 
   const user = await requireAwsUser()
