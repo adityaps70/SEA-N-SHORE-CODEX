@@ -324,3 +324,15 @@ test('workflow structure keeps step ids unique and admin confirmation assertion 
     'Admin confirmation marker assertion must be a complete quoted grep expression',
   )
 })
+
+
+test('confirmation shell variables do not leak into the Python f-string', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const start = workflow.indexOf('- name: Confirm disposable sign-ups through staging bootstrap')
+  const end = workflow.indexOf('- name: Wait for disposable sign-up confirmation')
+  assert.ok(start >= 0 && end > start)
+  const confirmBlock = workflow.slice(start, end)
+
+  assert.doesNotMatch(confirmBlock, /\$\{USER_STATUS:-missing\}/)
+  assert.match(confirmBlock, /Unexpected Cognito UserStatus for disposable user \$EMAIL: \$USER_STATUS/)
+})
