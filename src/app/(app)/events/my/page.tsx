@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { EventCard } from '@/features/events/components/event-card'
 import { EventNav } from '@/features/events/components/event-nav'
+
+export const metadata: Metadata = { title: 'My events' }
 
 export default async function MyEventsPage() {
   const user = await requireAwsUser()

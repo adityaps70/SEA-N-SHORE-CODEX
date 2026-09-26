@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Download, ExternalLink, GraduationCap } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -5,6 +6,8 @@ import {
   enrollmentRepository,
   type LearnerCourseEnrollment,
 } from '@/features/learning/enrollment-repository'
+
+export const metadata: Metadata = { title: 'My learning' }
 
 function levelLabel(level: LearnerCourseEnrollment['level']) {
   if (level === 'all_levels') return 'All levels'

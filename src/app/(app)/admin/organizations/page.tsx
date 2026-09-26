@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Building2, Clock3 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { ADMIN_ORGANIZATION_STATUSES, adminRepository, type AdminOrganizationStatus } from '@/features/admin/repository'
+
+export const metadata: Metadata = { title: 'Organizations · Admin' }
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 

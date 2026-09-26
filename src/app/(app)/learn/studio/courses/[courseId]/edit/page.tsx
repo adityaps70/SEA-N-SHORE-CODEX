@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { AlertTriangle, ArrowLeft, FilePenLine } from 'lucide-react'
@@ -7,6 +8,8 @@ import { CourseSubmitControl } from '@/features/learning/components/course-submi
 import { MentorCurriculumEditor } from '@/features/learning/components/mentor-curriculum-editor'
 import { courseRepository, type CourseDraftInput } from '@/features/learning/course-repository'
 import { mentorMaterialRepository } from '@/features/learning/mentor-material-repository'
+
+export const metadata: Metadata = { title: 'Edit course' }
 
 export default async function EditMentorCoursePage({
   params,

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Search } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
@@ -8,6 +9,8 @@ import { NetworkTabs } from '@/features/network/components/network-tabs'
 import { getNetworkHub } from '@/features/network/queries'
 import { parseNetworkTab } from '@/features/network/schemas'
 import type { NetworkFollowView, NetworkProfile } from '@/features/network/types'
+
+export const metadata: Metadata = { title: 'My Network' }
 
 const emptyCopy = {
   discover: {

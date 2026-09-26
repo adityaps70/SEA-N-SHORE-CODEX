@@ -1,9 +1,12 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { buildHiringPublisherOptions } from '@/features/jobs/publishers'
+
+export const metadata: Metadata = { title: 'Hiring' }
 
 export default async function HiringPage() {
   const user = await requireAwsUser()

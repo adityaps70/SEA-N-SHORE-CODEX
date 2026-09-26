@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BadgeCheck, BookOpen, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, Crown, ShieldAlert } from 'lucide-react'
 import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+
+export const metadata: Metadata = { title: 'Create' }
 
 type CreatorCapability = {
   title: string

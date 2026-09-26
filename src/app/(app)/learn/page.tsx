@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Image from 'next/image'
 import Link from 'next/link'
 import {
@@ -16,6 +17,8 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
+
+export const metadata: Metadata = { title: 'Learn' }
 
 const categories = [
   'Deck',

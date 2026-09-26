@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BellRing, BriefcaseBusiness, Search, ShieldCheck } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
@@ -6,6 +7,8 @@ import { JobsDiscoveryControls } from '@/features/jobs/components/jobs-discovery
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { JOB_DISCOVERY_MODES } from '@/features/jobs/catalog'
 import { getJobsDiscovery } from '@/features/jobs/queries'
+
+export const metadata: Metadata = { title: 'Jobs' }
 
 type RawParams = Record<string, string | string[] | undefined>
 

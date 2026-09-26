@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { Wordmark } from '@/components/brand/wordmark'
 import { Card } from '@/components/ui/card'
 import { OnboardingForm } from '@/features/profiles/components/onboarding-form'
 import { getOwnOnboardingProfile } from '@/features/profiles/queries'
+
+export const metadata: Metadata = { title: 'Set up your profile' }
 
 export default async function OnboardingPage() {
   const profile = await getOwnOnboardingProfile()

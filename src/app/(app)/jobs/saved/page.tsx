@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import { Bookmark } from 'lucide-react'
 import { JobCard } from '@/features/jobs/components/job-card'
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { getSavedJobs } from '@/features/jobs/queries'
+
+export const metadata: Metadata = { title: 'Saved jobs' }
 
 export default async function SavedJobsPage() {
   const jobs = await getSavedJobs()

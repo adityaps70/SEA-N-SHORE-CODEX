@@ -1,6 +1,9 @@
+import type { Metadata } from 'next'
 import { BellRing } from 'lucide-react'
 import { NotificationList } from '@/features/notifications/components/notification-list'
 import { getNotifications } from '@/features/notifications/queries'
+
+export const metadata: Metadata = { title: 'Notifications' }
 
 export default async function NotificationsPage() {
   const notifications = await getNotifications(50)

@@ -1,9 +1,12 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { ArrowLeftRight } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { legacyOrganizationConversionRepository } from '@/features/organizations/legacy-conversion-repository'
 import { LegacyOrganizationConversionForm } from '@/features/organizations/components/legacy-organization-conversion-form'
+
+export const metadata: Metadata = { title: 'Organization conversion' }
 
 export default async function OrganizationConversionPage() {
   const user = await requireAwsUser()

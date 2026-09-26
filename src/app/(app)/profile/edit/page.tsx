@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { ProfileEditForm } from '@/features/profiles/components/profile-edit-form'
 import { ProfilePreferencesForm } from '@/features/profiles/components/profile-preferences-form'
 import { getOwnProfile } from '@/features/profiles/queries'
+
+export const metadata: Metadata = { title: 'Edit profile' }
 
 export default async function EditProfilePage() {
   const profile = await getOwnProfile()

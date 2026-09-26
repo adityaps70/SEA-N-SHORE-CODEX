@@ -1,6 +1,9 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getPostById } from '@/features/feed/queries'
 import { PostCard } from '@/features/feed/components/post-card'
+
+export const metadata: Metadata = { title: 'Post' }
 
 export default async function PostPage({
   params,

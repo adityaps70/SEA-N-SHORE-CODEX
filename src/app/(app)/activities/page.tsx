@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { BookOpenCheck, BriefcaseBusiness, CalendarDays, MapPin, MessageSquareText, PenSquare, Trash2 } from 'lucide-react'
@@ -18,6 +19,8 @@ import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-k
 import { getPeopleYouMayKnow } from '@/features/network/queries'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
+
+export const metadata: Metadata = { title: 'My Activities' }
 
 function EmptyPosts({ mode }: { mode: 'posts' | 'comments' }) {
   return (

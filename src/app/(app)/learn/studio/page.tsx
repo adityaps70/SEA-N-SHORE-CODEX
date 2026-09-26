@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, FilePenLine, Plus, Sparkles } from 'lucide-react'
@@ -6,6 +7,8 @@ import { assignmentGradingRepository } from '@/features/learning/assignment-grad
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
+
+export const metadata: Metadata = { title: 'Learning Studio' }
 
 function statusLabel(status: MentorCourseSummary['status']) {
   if (status === 'draft') return 'Draft'

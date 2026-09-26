@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import {
   BadgeCheck,
@@ -14,6 +15,8 @@ import {
 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { adminRepository } from '@/features/admin/repository'
+
+export const metadata: Metadata = { title: 'Admin' }
 
 export default async function AdminPage() {
   const user = await requireAwsUser()

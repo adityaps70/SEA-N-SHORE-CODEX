@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -14,6 +15,8 @@ import { ProfilePassportToolbar } from '@/features/profiles/components/profile-p
 import { organizationRepository } from '@/features/organizations/repository'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
+
+export const metadata: Metadata = { title: 'My profile' }
 
 export default async function OwnProfilePage() {
   const user = await requireAwsUser()

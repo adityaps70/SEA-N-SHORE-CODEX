@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BadgeCheck, Building2, CreditCard, LockKeyhole, ShieldCheck, SquarePlus } from 'lucide-react'
 import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
 import { DeleteAccountPanel } from '@/features/account-deletion/components/delete-account-panel'
+
+export const metadata: Metadata = { title: 'Settings' }
 
 export default function SettingsPage() {
   return (

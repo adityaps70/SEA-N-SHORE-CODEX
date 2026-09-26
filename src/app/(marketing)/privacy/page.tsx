@@ -1,3 +1,7 @@
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = { title: 'Privacy' }
+
 export default function PrivacyPage() {
   return (
     <section className="mx-auto max-w-3xl rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">

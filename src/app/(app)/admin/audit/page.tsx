@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Activity, FileClock } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -5,6 +6,8 @@ import {
   adminRepository,
   type AdminAuditTargetType,
 } from '@/features/admin/repository'
+
+export const metadata: Metadata = { title: 'Audit log · Admin' }
 
 function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value

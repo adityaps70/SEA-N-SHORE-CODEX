@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { resolvePostSignInDestination, type PostSignInDestination } from '@/features/auth/post-sign-in'
 import { getOnboardingProfileFromAurora } from '@/features/profiles/onboarding-repository'
+
+export const metadata: Metadata = { title: 'Signing you in' }
 
 export const dynamic = 'force-dynamic'
 

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import {
   Award,
@@ -13,6 +14,8 @@ import {
 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { adminLearningAnalyticsRepository } from '@/features/learning/admin-analytics-repository'
+
+export const metadata: Metadata = { title: 'Learning analytics · Admin' }
 
 function statusLabel(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())

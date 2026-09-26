@@ -1,3 +1,5 @@
+import type { Metadata } from 'next'
+import { cache } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
@@ -58,9 +60,18 @@ function EvidenceList({ items }: { items: string[] }) {
   )
 }
 
+const loadPublishedCourse = cache((slug: string) => marketplaceRepository.getPublishedCourseBySlug(slug))
+
+export async function generateMetadata({ params }: PublishedCoursePageProps): Promise<Metadata> {
+  const { slug } = await params
+  const course = await loadPublishedCourse(slug)
+  if (!course) return { title: 'Course not found' }
+  return { title: course.title, description: course.subtitle ?? undefined }
+}
+
 export default async function PublishedCoursePage({ params }: PublishedCoursePageProps) {
   const { slug } = await params
-  const course = await marketplaceRepository.getPublishedCourseBySlug(slug)
+  const course = await loadPublishedCourse(slug)
 
   if (!course) return notFound()
 

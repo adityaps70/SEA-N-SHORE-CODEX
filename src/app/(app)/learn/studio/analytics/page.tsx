@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import {
@@ -16,6 +17,8 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { mentorAnalyticsRepository } from '@/features/learning/mentor-analytics-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
+
+export const metadata: Metadata = { title: 'Learning Studio analytics' }
 
 function statusLabel(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())

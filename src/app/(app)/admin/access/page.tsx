@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Building2, CheckCircle2, Clock3, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -7,6 +8,8 @@ import {
   type AdminCompanyAccessStatus,
 } from '@/features/admin/repository'
 import { CompanyAccessReviewActions } from '@/features/admin/components/company-access-review-actions'
+
+export const metadata: Metadata = { title: 'Access requests · Admin' }
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BarChart3, BookOpen, BriefcaseBusiness, CalendarDays, Crown, UsersRound } from 'lucide-react'
@@ -5,6 +6,8 @@ import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
+
+export const metadata: Metadata = { title: 'Organization analytics' }
 
 export default async function OrganizationAnalyticsPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params

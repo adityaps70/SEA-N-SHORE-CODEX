@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { EventForm } from '@/features/events/components/event-form'
 import { EventNav } from '@/features/events/components/event-nav'
+
+export const metadata: Metadata = { title: 'Edit event' }
 
 export default async function EditEventPage({ params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireAwsUser()

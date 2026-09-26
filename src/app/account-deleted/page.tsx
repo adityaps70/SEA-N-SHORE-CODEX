@@ -1,6 +1,9 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { CheckCircle2 } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
+
+export const metadata: Metadata = { title: 'Account deleted' }
 
 export default function AccountDeletedPage() {
   return (

@@ -1,5 +1,7 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 import { CalendarDays, CalendarPlus, Download, MapPin, Monitor, Users } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
@@ -35,10 +37,19 @@ function googleCalendarUrl(input: { title: string; summary: string; startAt: str
   return `https://calendar.google.com/calendar/render?${params.toString()}`
 }
 
+const loadEvent = cache((eventId: string, userId: string) => calendarEventRepository.getEvent(eventId, userId))
+
+export async function generateMetadata({ params }: { params: Promise<{ eventId: string }> }): Promise<Metadata> {
+  const user = await requireAwsUser()
+  const { eventId } = await params
+  const event = await loadEvent(eventId, user.id)
+  return { title: event ? event.title : 'Event not found' }
+}
+
 export default async function EventDetailPage({ params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireAwsUser()
   const { eventId } = await params
-  const event = await calendarEventRepository.getEvent(eventId, user.id)
+  const event = await loadEvent(eventId, user.id)
   if (!event) notFound()
 
   const place = [event.locationName, event.locationAddress, event.city, event.country].filter(Boolean).join(', ')

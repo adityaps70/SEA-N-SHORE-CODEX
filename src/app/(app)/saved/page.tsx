@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Bookmark } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { PostCard } from '@/features/feed/components/post-card'
 import { getSavedPosts } from '@/features/feed/queries'
+
+export const metadata: Metadata = { title: 'Saved posts' }
 
 export default async function SavedPostsPage() {
   const posts = await getSavedPosts()

@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { HiringJobForm } from '@/features/jobs/components/hiring-job-form'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
+
+export const metadata: Metadata = { title: 'Edit job' }
 
 export default async function EditHiringJobPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params

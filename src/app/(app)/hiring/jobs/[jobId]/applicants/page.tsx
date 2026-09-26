@@ -1,9 +1,12 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { JOB_APPLICATION_STATUSES, JOB_APPLICATION_STATUS_LABELS, type JobApplicationStatus } from '@/features/jobs/types'
+
+export const metadata: Metadata = { title: 'Applicants' }
 
 const FILTERS: Array<{ value: JobApplicationStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All' },

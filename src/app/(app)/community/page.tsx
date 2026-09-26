@@ -1,5 +1,8 @@
+import type { Metadata } from 'next'
 import { BadgeQuestionMark, BookOpenCheck, MessagesSquare, Radio, ShieldCheck, UsersRound } from 'lucide-react'
 import { ProductSurface } from '@/components/product/product-surface'
+
+export const metadata: Metadata = { title: 'Community' }
 
 const items = [
   {

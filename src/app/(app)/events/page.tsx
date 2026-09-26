@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ChevronDown, Search } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
@@ -12,6 +13,8 @@ import {
   type CalendarEventType,
 } from '@/features/events/calendar-types'
 import { EventCard } from '@/features/events/components/event-card'
+
+export const metadata: Metadata = { title: 'Events' }
 
 function titleCase(value: string) { return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) }
 function categoryValue(value?: string): CalendarEventCategory | undefined { return CALENDAR_EVENT_CATEGORIES.find((item) => item === value) }

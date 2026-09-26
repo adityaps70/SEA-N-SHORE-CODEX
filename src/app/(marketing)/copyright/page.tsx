@@ -1,5 +1,8 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Flag, Scale, ShieldCheck } from 'lucide-react'
+
+export const metadata: Metadata = { title: 'Copyright & IP' }
 
 export default function CopyrightPage() {
   return (

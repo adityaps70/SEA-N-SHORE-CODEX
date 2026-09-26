@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
@@ -7,6 +8,8 @@ import { AdminUserControlPanel } from '@/features/admin/components/admin-user-co
 import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { adminRepository, type AdminUserStatus } from '@/features/admin/repository'
+
+export const metadata: Metadata = { title: 'User account · Admin' }
 
 function statusLabel(status: AdminUserStatus) {
   if (status === 'deletion_requested') return 'Deleted'

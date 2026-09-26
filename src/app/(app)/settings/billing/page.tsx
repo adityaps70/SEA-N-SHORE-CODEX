@@ -1,9 +1,12 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Building2, CreditCard, ShieldCheck, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { organizationRepository } from '@/features/organizations/repository'
+
+export const metadata: Metadata = { title: 'Membership & billing · Settings' }
 
 function planLabel(plan: string) {
   if (plan === 'creator_pro') return 'Creator Pro'

@@ -1,5 +1,7 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 import { ArrowLeft, BadgeCheck, BriefcaseBusiness, CalendarClock, CheckCircle2, MapPin, Ship, Sparkles, TriangleAlert, WalletCards } from 'lucide-react'
 import { ApplyJobButton } from '@/features/jobs/components/apply-job-button'
 import { ReportJobButton } from '@/features/jobs/components/report-job-button'
@@ -16,9 +18,18 @@ function formatSalary(value: number | null, currency: string | null) {
   return new Intl.NumberFormat('en', { style: 'currency', currency: currency ?? 'USD', maximumFractionDigits: 0 }).format(value)
 }
 
+const loadJobDetail = cache((id: string) => getJobDetailState(id))
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const { job } = await loadJobDetail(id)
+  if (!job) return { title: 'Job not found' }
+  return { title: `${job.title} at ${job.companyName}`, description: job.summary ?? undefined }
+}
+
 export default async function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const { job, alreadyApplied, isSaved, match, profileReady } = await getJobDetailState(id)
+  const { job, alreadyApplied, isSaved, match, profileReady } = await loadJobDetail(id)
   if (!job) notFound()
 
   const salaryMin = formatSalary(job.salaryMin, job.salaryCurrency)

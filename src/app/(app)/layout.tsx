@@ -9,16 +9,19 @@ import { LegacyOrganizationConversionBanner } from '@/features/organizations/com
 import { legacyOrganizationConversionRepository } from '@/features/organizations/legacy-conversion-repository'
 import { getUnreadMessageCount } from '@/features/messaging/queries'
 import { getNotificationChrome } from '@/features/notifications/queries'
+import { getOwnProfile } from '@/features/profiles/queries'
 import { MessagingRealtimeProvider } from '@/features/realtime/provider'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
-  const [notificationChrome, messagingUnreadCount, canAccessAdmin, legacyConversion] = await Promise.all([
+  const [notificationChrome, messagingUnreadCount, canAccessAdmin, legacyConversion, profile] = await Promise.all([
     getNotificationChrome(),
     getUnreadMessageCount(),
     canAccessPlatformAdmin(user.id),
     legacyOrganizationConversionRepository.getConversion(user.id).catch(() => null),
+    getOwnProfile().catch(() => null),
   ])
+  const viewer = { name: profile?.fullName ?? user.email ?? 'Member', avatarUrl: profile?.avatarUrl ?? null }
 
   return (
     <MessagingRealtimeProvider viewerProfileId={user.id}>
@@ -29,18 +32,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           unreadCount={notificationChrome.unreadCount}
           messagingUnreadCount={messagingUnreadCount}
           canAccessAdmin={canAccessAdmin}
+          viewer={viewer}
         />
         <MobileAppHeader
           unreadCount={notificationChrome.unreadCount}
           messagingUnreadCount={messagingUnreadCount}
-          canAccessAdmin={canAccessAdmin}
+          viewer={viewer}
         />
         <main id="main-content" className="mx-auto w-full max-w-7xl px-4 py-6">
           {children}
         </main>
         <AppFooter />
         <MessagingDock viewerId={user.id} initialUnreadCount={messagingUnreadCount} />
-        <MobileNav />
+        <MobileNav canAccessAdmin={canAccessAdmin} />
       </div>
     </MessagingRealtimeProvider>
   )

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Building2, CheckCircle2, Clock3, ShieldAlert } from 'lucide-react'
 import { canUseCapability } from '@/features/access/policy'
@@ -7,6 +8,8 @@ import { OrganizationAccessPanel } from '@/features/organizations/components/org
 import { OrganizationApplicationForm } from '@/features/organizations/components/organization-application-form'
 import { organizationRepository } from '@/features/organizations/repository'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
+
+export const metadata: Metadata = { title: 'Organizations' }
 
 const roleLabel = (role: string) => role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 

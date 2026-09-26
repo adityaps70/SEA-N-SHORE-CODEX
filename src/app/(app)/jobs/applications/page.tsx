@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { CheckCircle2, Circle, ClipboardCheck, MapPin } from 'lucide-react'
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { getMyJobApplications } from '@/features/jobs/queries'
 import { JOB_APPLICATION_STATUS_LABELS, type JobApplicationStatus } from '@/features/jobs/types'
+
+export const metadata: Metadata = { title: 'My applications' }
 
 const statusOrder: JobApplicationStatus[] = ['applied', 'under_review', 'shortlisted', 'interview', 'selected']
 

@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { updateProfileProfessionalSection, type ProfileInlineActionState } from '../profile-inline-actions'
 import { normalizeProfileAvailability, profileAvailabilityLabel } from '../profile-availability'
 import type { PublicProfile } from '../types'
+import { formatYears } from '@/lib/format'
 
 type Detail = { label: string; value: string; icon: typeof Ship }
 
@@ -39,7 +40,7 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
     profile.rank ? { label: 'Rank', value: profile.rank, icon: Gauge } : null,
     profile.currentVessel ? { label: 'Current vessel', value: profile.currentVessel, icon: Ship } : null,
     profile.sailingExperienceYears !== null
-      ? { label: 'Sailing experience', value: `${profile.sailingExperienceYears} years`, icon: Waves }
+      ? { label: 'Sailing experience', value: formatYears(profile.sailingExperienceYears), icon: Waves }
       : null,
     profile.vesselTypes.length
       ? { label: 'Vessel types', value: profile.vesselTypes.join(' · '), icon: BriefcaseBusiness }

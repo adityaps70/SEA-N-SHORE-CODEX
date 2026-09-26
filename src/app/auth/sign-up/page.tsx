@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from "next/link";
 import { Wordmark } from "@/components/brand/wordmark";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,8 @@ import { AuthForm } from "@/features/auth/components/auth-form";
 import { AuthMethodLinks } from "@/features/auth/components/auth-method-links";
 import { confirmSignUp, resendConfirmationCode, signUp } from "@/features/auth/actions";
 import { getCognitoEnvironment } from "@/lib/env";
+
+export const metadata: Metadata = { title: 'Create your account' }
 
 export default async function SignUpPage({
   searchParams,

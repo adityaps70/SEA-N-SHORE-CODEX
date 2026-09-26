@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -8,6 +9,9 @@ import { RecruiterNoteForm } from '@/features/jobs/components/recruiter-note-for
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { JOB_APPLICATION_STATUS_LABELS } from '@/features/jobs/types'
 import { createMediaReadUrl } from '@/lib/aws/storage'
+import { formatYears } from '@/lib/format'
+
+export const metadata: Metadata = { title: 'Applicant' }
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
@@ -81,7 +85,7 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
 
             <dl className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Rank</dt><dd className="mt-1 font-semibold text-navy-950">{candidate.rank ?? 'Not listed'}</dd></div>
-              <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Sea experience</dt><dd className="mt-1 font-semibold text-navy-950">{candidate.sailingExperienceYears === null ? 'Not listed' : `${candidate.sailingExperienceYears} years`}</dd></div>
+              <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Sea experience</dt><dd className="mt-1 font-semibold text-navy-950">{formatYears(candidate.sailingExperienceYears)}</dd></div>
               <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Availability</dt><dd className="mt-1 font-semibold text-navy-950">{candidate.availability ?? 'Not listed'}</dd></div>
               <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Location</dt><dd className="mt-1 font-semibold text-navy-950">{candidate.location ?? 'Not listed'}</dd></div>
             </dl>

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { PostCard } from '@/features/feed/components/post-card'
@@ -14,6 +15,16 @@ import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { getProfilePortfolioById } from '@/features/profiles/profile-portfolio-queries'
 import { getPublicProfileBySlug } from '@/features/profiles/queries'
 import { MessagingRealtimeProvider } from '@/features/realtime/provider'
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params
+  const profile = await getPublicProfileBySlug(slug)
+  if (!profile) return { title: 'Member not found' }
+  return {
+    title: profile.headline ? `${profile.fullName} · ${profile.headline}` : profile.fullName,
+    description: profile.summary ?? undefined,
+  }
+}
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params

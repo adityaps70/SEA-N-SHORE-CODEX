@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import Link from "next/link";
 import { Wordmark } from "@/components/brand/wordmark";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { requestPasswordReset } from "@/features/auth/actions";
+
+export const metadata: Metadata = { title: 'Forgot password' }
 
 export default function ForgotPasswordPage() {
   return (

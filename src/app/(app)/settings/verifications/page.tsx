@@ -1,9 +1,12 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { CalendarDays, CheckCircle2, Clock3, GraduationCap, ShieldAlert, UserSearch } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { learningRepository, type MentorApplicationState } from '@/features/learning/repository'
 import { creatorVerificationRepository } from '@/features/verifications/repository'
 import type { CreatorVerificationState } from '@/features/verifications/application'
+
+export const metadata: Metadata = { title: 'Verifications · Settings' }
 
 function statusDetails(state: CreatorVerificationState | null) {
   if (!state) return { label: 'Not applied', tone: 'bg-mist-50 text-muted' }

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BookOpenCheck, ExternalLink, GraduationCap, ShieldCheck, UserRoundCheck } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -7,6 +8,9 @@ import {
 } from '@/features/learning/admin-repository'
 import type { MentorApplicationStatus } from '@/features/learning/mentor-application'
 import { MentorReviewControls } from '@/features/learning/components/mentor-review-controls'
+import { formatYears } from '@/lib/format'
+
+export const metadata: Metadata = { title: 'Learning review · Admin' }
 
 const statusFilters: Array<{ value: MentorApplicationStatus; label: string }> = [
   { value: 'pending', label: 'Pending review' },
@@ -44,7 +48,7 @@ function ApplicationCard({ application }: { application: MentorApplicationReview
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-semibold text-muted">
             <span>{application.currentLastRank}</span>
             <span aria-hidden="true">•</span>
-            <span>{application.yearsExperience} years</span>
+            <span>{formatYears(application.yearsExperience)}</span>
             {application.vesselTypes.length ? (
               <>
                 <span aria-hidden="true">•</span>

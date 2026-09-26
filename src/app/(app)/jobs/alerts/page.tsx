@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import { BellRing } from 'lucide-react'
 import { DeleteJobAlertButton, JobAlertForm } from '@/features/jobs/components/job-alert-form'
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { getJobAlerts } from '@/features/jobs/queries'
+
+export const metadata: Metadata = { title: 'Job alerts' }
 
 type RawParams = Record<string, string | string[] | undefined>
 

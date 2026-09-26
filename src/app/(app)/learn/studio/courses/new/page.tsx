@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, BookOpen, ShieldCheck } from 'lucide-react'
@@ -9,6 +10,8 @@ import type { CourseDraftInput } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 import { getOwnProfileFromAurora } from '@/features/profiles/repository'
+
+export const metadata: Metadata = { title: 'Create a course' }
 
 const initialCourse: CourseDraftInput = {
   slug: '',

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
@@ -7,6 +8,8 @@ import { adminRepository } from '@/features/admin/repository'
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
 import { OrganizationReviewActions } from '@/features/admin/components/organization-review-actions'
+
+export const metadata: Metadata = { title: 'Organization application · Admin' }
 
 function valueOrDash(value: string | null | undefined) {
   return value?.trim() || '—'

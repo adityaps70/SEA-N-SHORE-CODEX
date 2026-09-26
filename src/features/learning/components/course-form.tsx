@@ -64,9 +64,9 @@ function toFormState(value: CourseDraftInput): FormState {
     language: value.language,
     thumbnailPath: value.thumbnailPath,
     trailerPath: value.trailerPath,
-    learningOutcomes: value.learningOutcomes.join(', '),
-    requirements: value.requirements.join(', '),
-    targetAudience: value.targetAudience.join(', '),
+    learningOutcomes: value.learningOutcomes.join('\n'),
+    requirements: value.requirements.join('\n'),
+    targetAudience: value.targetAudience.join('\n'),
     accessType: value.accessType,
     price: String(value.priceMinor / 100),
     discountPrice: value.discountPriceMinor === null ? '' : String(value.discountPriceMinor / 100),
@@ -76,9 +76,11 @@ function toFormState(value: CourseDraftInput): FormState {
   }
 }
 
+// One item per line. Outcomes such as "Navigate the CVIQ, Core and Rotational
+// questions" legitimately contain commas, so commas never act as separators.
 function normalizedList(value: string) {
   const seen = new Set<string>()
-  return value.split(',').flatMap((part) => {
+  return value.split(/\r?\n/).flatMap((part) => {
     const normalized = part.trim()
     const key = normalized.toLocaleLowerCase('en')
     if (!normalized || seen.has(key)) return []
@@ -339,15 +341,15 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <label className="text-sm font-semibold text-navy-950">Learning outcomes
             <textarea aria-label="Learning outcomes" className={`${inputClassName()} min-h-28 resize-y`} value={form.learningOutcomes} onChange={(event) => update('learningOutcomes', event.target.value)} />
-            <span className="mt-1.5 block text-xs font-normal text-muted">Separate outcomes with commas.</span>
+            <span className="mt-1.5 block text-xs font-normal text-muted">One outcome per line, e.g. “Prepare the pre-inspection questionnaire and vessel document pack”.</span>
           </label>
           <label className="text-sm font-semibold text-navy-950">Requirements
             <textarea aria-label="Requirements" className={`${inputClassName()} min-h-28 resize-y`} value={form.requirements} onChange={(event) => update('requirements', event.target.value)} />
-            <span className="mt-1.5 block text-xs font-normal text-muted">Separate requirements with commas.</span>
+            <span className="mt-1.5 block text-xs font-normal text-muted">One requirement per line.</span>
           </label>
           <label className="text-sm font-semibold text-navy-950">Target audience
             <textarea aria-label="Target audience" className={`${inputClassName()} min-h-28 resize-y`} value={form.targetAudience} onChange={(event) => update('targetAudience', event.target.value)} />
-            <span className="mt-1.5 block text-xs font-normal text-muted">Separate audience groups with commas.</span>
+            <span className="mt-1.5 block text-xs font-normal text-muted">One audience group per line, e.g. “Deck officers and engineers on oil, chemical and gas tankers”.</span>
           </label>
         </div>
       </section>

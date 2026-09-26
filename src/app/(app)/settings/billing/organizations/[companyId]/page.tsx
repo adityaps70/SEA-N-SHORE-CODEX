@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
@@ -5,6 +6,8 @@ import { Building2, CalendarClock, CreditCard, ShieldCheck } from 'lucide-react'
 import { CapabilityRequiredError, requireCapability } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { billingRepository } from '@/features/billing/repository'
+
+export const metadata: Metadata = { title: 'Organization billing · Settings' }
 
 function dateLabel(value: string | null) {
   if (!value) return 'Not recorded'

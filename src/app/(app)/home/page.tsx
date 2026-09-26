@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { getFeedPage } from '@/features/feed/queries'
 import { parseFeedCategory } from '@/features/feed/schemas'
@@ -7,6 +8,8 @@ import { PostComposer } from '@/features/feed/components/post-composer'
 import { getPeopleYouMayKnow } from '@/features/network/queries'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
+
+export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage({
   searchParams,

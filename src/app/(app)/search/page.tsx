@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BadgeCheck, BookOpen, BriefcaseBusiness, Building2, CalendarDays, Search, UsersRound } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
@@ -10,6 +11,8 @@ import { marketplaceRepository } from '@/features/learning/marketplace-repositor
 import { getNetworkHub } from '@/features/network/queries'
 import { organizationRepository } from '@/features/organizations/repository'
 import { NetworkProfileCard } from '@/features/network/components/network-profile-card'
+
+export const metadata: Metadata = { title: 'Search' }
 
 const verticalPaths = {
   people: '/network',

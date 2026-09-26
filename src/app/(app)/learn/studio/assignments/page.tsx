@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock3 } from 'lucide-react'
@@ -5,6 +6,8 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
+
+export const metadata: Metadata = { title: 'Assignments' }
 
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))

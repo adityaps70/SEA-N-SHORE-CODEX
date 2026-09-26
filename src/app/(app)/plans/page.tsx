@@ -1,5 +1,8 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Building2, Check, Crown, UserRound } from 'lucide-react'
+
+export const metadata: Metadata = { title: 'Plans' }
 
 const freeFeatures = [
   'Profile',

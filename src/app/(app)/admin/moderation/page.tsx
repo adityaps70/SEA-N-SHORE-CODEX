@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Flag, ShieldAlert } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -11,6 +12,8 @@ import {
   type ModerationTargetType,
   type ModerationReportReason,
 } from '@/features/moderation/types'
+
+export const metadata: Metadata = { title: 'Moderation · Admin' }
 
 function firstValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value

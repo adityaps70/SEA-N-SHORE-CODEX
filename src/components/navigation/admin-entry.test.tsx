@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/components/brand/wordmark', () => ({
@@ -20,12 +20,12 @@ vi.mock('./active-nav-link', () => ({
 }))
 
 import { AppHeader } from './app-header'
-import { MobileAppHeader } from './mobile-app-header'
+import { MobileNav } from './mobile-nav'
 
 afterEach(() => cleanup())
 
 describe('authorized admin navigation entry', () => {
-  it('shows the desktop Admin entry only to administrators', () => {
+  it('shows the desktop Admin entry inside the account menu only to administrators', () => {
     const { rerender } = render(
       <AppHeader
         recentNotifications={[]}
@@ -35,7 +35,8 @@ describe('authorized admin navigation entry', () => {
       />,
     )
 
-    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    expect(screen.queryByRole('menuitem', { name: /Admin/ })).not.toBeInTheDocument()
 
     rerender(
       <AppHeader
@@ -46,28 +47,30 @@ describe('authorized admin navigation entry', () => {
       />,
     )
 
-    expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin')
+    expect(screen.getByRole('menuitem', { name: /Admin/ })).toHaveAttribute('href', '/admin')
   })
 
-  it('shows the mobile Admin entry only to administrators', () => {
-    const { rerender } = render(
-      <MobileAppHeader
-        unreadCount={0}
-        messagingUnreadCount={0}
-        canAccessAdmin={false}
-      />,
-    )
+  it('shows the mobile Admin entry inside the More menu only to administrators', () => {
+    const { rerender } = render(<MobileNav canAccessAdmin={false} />)
 
-    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    expect(screen.queryByRole('menuitem', { name: /Admin/ })).not.toBeInTheDocument()
 
-    rerender(
-      <MobileAppHeader
+    rerender(<MobileNav canAccessAdmin />)
+
+    expect(screen.getByRole('menuitem', { name: /Admin/ })).toHaveAttribute('href', '/admin')
+  })
+
+  it('never lists Admin as a primary destination', () => {
+    render(
+      <AppHeader
+        recentNotifications={[]}
         unreadCount={0}
         messagingUnreadCount={0}
         canAccessAdmin
       />,
     )
 
-    expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin')
+    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
   })
 })

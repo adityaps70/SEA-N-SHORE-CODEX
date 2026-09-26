@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
 import { profileAvailabilityLabel } from './profile-availability'
 import type { ProfilePortfolio } from './profile-portfolio-types'
 import type { PublicProfile } from './types'
+import { formatYears } from '@/lib/format'
 
 const PAGE_WIDTH = 595.28
 const PAGE_HEIGHT = 841.89
@@ -174,7 +175,7 @@ export async function buildProfileCvPdf({
 
   const snapshot: string[] = []
   if (profile.rank) snapshot.push(`Rank: ${profile.rank}`)
-  if (profile.sailingExperienceYears != null) snapshot.push(`Sea service: ${profile.sailingExperienceYears} years`)
+  if (profile.sailingExperienceYears != null) snapshot.push(`Sea service: ${formatYears(profile.sailingExperienceYears)}`)
   if (profile.currentVessel) snapshot.push(`Current vessel: ${profile.currentVessel}`)
   if (profile.vesselTypes.length) snapshot.push(`Vessel types: ${profile.vesselTypes.join(', ')}`)
   if (profile.tradingAreas.length) snapshot.push(`Trading areas: ${profile.tradingAreas.join(', ')}`)

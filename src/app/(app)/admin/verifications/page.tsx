@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
@@ -7,6 +8,9 @@ import {
 } from '@/features/verifications/application'
 import { creatorVerificationRepository } from '@/features/verifications/repository'
 import { CreatorVerificationReviewActions } from '@/features/verifications/components/creator-verification-review-actions'
+import { formatYears } from '@/lib/format'
+
+export const metadata: Metadata = { title: 'Verifications · Admin' }
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
@@ -123,7 +127,7 @@ export default async function AdminCreatorVerificationsPage({
                     </div>
                     <div>
                       <dt className="text-xs font-bold uppercase tracking-wide text-muted">Experience</dt>
-                      <dd className="mt-1 font-semibold text-navy-950">{application.application.experienceYears} years</dd>
+                      <dd className="mt-1 font-semibold text-navy-950">{formatYears(application.application.experienceYears)}</dd>
                     </div>
                     <div className="sm:col-span-2">
                       <dt className="text-xs font-bold uppercase tracking-wide text-muted">Organization</dt>

@@ -58,8 +58,8 @@ describe('CourseForm', () => {
     expect(screen.getByLabelText('Category')).toHaveValue('SIRE 2.0')
     expect(screen.getByLabelText('Level')).toHaveValue('advanced')
     expect(screen.getByLabelText('Course format')).toHaveValue('recorded')
-    expect(screen.getByLabelText('Learning outcomes')).toHaveValue('Understand SIRE 2.0 expectations, Prepare practical onboard evidence')
-    expect(screen.getByLabelText('Target audience')).toHaveValue('Deck Officers, Marine Superintendents')
+    expect(screen.getByLabelText('Learning outcomes')).toHaveValue('Understand SIRE 2.0 expectations\nPrepare practical onboard evidence')
+    expect(screen.getByLabelText('Target audience')).toHaveValue('Deck Officers\nMarine Superintendents')
     expect(screen.getByRole('button', { name: 'Create draft course' })).toBeInTheDocument()
   })
 
@@ -67,16 +67,16 @@ describe('CourseForm', () => {
     render(<CourseForm initialValue={initial} />)
 
     fireEvent.change(screen.getByLabelText('Learning outcomes'), {
-      target: { value: ' Understand SIRE 2.0 expectations, understand sire 2.0 expectations, Lead an effective inspection briefing ' },
+      target: { value: ' Understand SIRE 2.0 expectations\nunderstand sire 2.0 expectations\n\n Lead an effective inspection briefing, including the CVIQ walk-through ' },
     })
     fireEvent.change(screen.getByLabelText('Requirements'), {
-      target: { value: ' Tanker experience, tanker experience, Officer certificate ' },
+      target: { value: ' Tanker experience\ntanker experience\nOfficer certificate ' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Create draft course' }))
 
     await waitFor(() => expect(mocks.createCourseDraft).toHaveBeenCalledTimes(1))
     expect(mocks.createCourseDraft).toHaveBeenCalledWith(expect.objectContaining({
-      learningOutcomes: ['Understand SIRE 2.0 expectations', 'Lead an effective inspection briefing'],
+      learningOutcomes: ['Understand SIRE 2.0 expectations', 'Lead an effective inspection briefing, including the CVIQ walk-through'],
       requirements: ['Tanker experience', 'Officer certificate'],
       accessType: 'free',
       priceMinor: 0,

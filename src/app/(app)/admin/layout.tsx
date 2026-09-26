@@ -1,7 +1,19 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ShieldCheck } from 'lucide-react'
+import { ActiveNavLink } from '@/components/navigation/active-nav-link'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
+
+const sections = [
+  { href: '/admin', label: 'Overview' },
+  { href: '/admin/moderation', label: 'Moderation' },
+  { href: '/admin/users', label: 'Users' },
+  { href: '/admin/organizations', label: 'Organizations' },
+  { href: '/admin/verifications', label: 'Verifications' },
+  { href: '/admin/access', label: 'Access requests' },
+  { href: '/admin/learning', label: 'Learning' },
+  { href: '/admin/deleted-content', label: 'Deleted content' },
+  { href: '/admin/audit', label: 'Audit' },
+] as const
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   try {
@@ -23,14 +35,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/70">Manage platform trust, content reports, maritime organizations, learning approvals and controlled access from one operations workspace.</p>
           </div>
           <nav aria-label="Admin navigation" className="flex flex-wrap gap-2 text-sm font-bold">
-            <Link href="/admin" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Overview</Link>
-            <Link href="/admin/moderation" className="rounded-xl bg-white px-4 py-2.5 text-navy-950 transition hover:bg-mist-50">Moderation</Link>
-            <Link href="/admin/deleted-content" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Deleted content</Link>
-            <Link href="/admin/users" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Users</Link>
-            <Link href="/admin/audit" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Audit</Link>
-            <Link href="/admin/organizations" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Organizations</Link>
-            <Link href="/admin/verifications" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Verifications</Link>
-            <Link href="/admin/learning" className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15">Learning</Link>
+            {sections.map((section) => (
+              <ActiveNavLink
+                key={section.href}
+                href={section.href}
+                exact={section.href === '/admin'}
+                className="rounded-xl bg-white/10 px-4 py-2.5 transition hover:bg-white/15"
+                activeClassName="bg-white text-navy-950 hover:bg-mist-50"
+              >
+                {section.label}
+              </ActiveNavLink>
+            ))}
           </nav>
         </div>
       </header>

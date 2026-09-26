@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -6,6 +7,8 @@ import { EventNav } from '@/features/events/components/event-nav'
 import { buildEventPublisherOptions } from '@/features/events/publishers'
 import { organizationRepository } from '@/features/organizations/repository'
 import { getOwnProfileFromAurora } from '@/features/profiles/repository'
+
+export const metadata: Metadata = { title: 'Create an event' }
 
 export default async function CreateEventPage() {
   const user = await requireAwsUser()

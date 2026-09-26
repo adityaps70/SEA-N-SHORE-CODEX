@@ -11,6 +11,7 @@ import {
 import { getProfileReadiness } from '../profile-readiness'
 import { profileAvailabilityLabel } from '../profile-availability'
 import type { PublicProfile } from '../types'
+import { formatYears } from '@/lib/format'
 
 function Metric({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Ship }) {
   return (
@@ -72,7 +73,7 @@ export function ProfilePassportOverview({
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {profile.rank ? <Metric label="Rank" value={profile.rank} icon={Gauge} /> : null}
               {profile.sailingExperienceYears != null ? (
-                <Metric label="Sea service" value={`${profile.sailingExperienceYears} years`} icon={Compass} />
+                <Metric label="Sea service" value={formatYears(profile.sailingExperienceYears)} icon={Compass} />
               ) : null}
               {profile.currentVessel ? <Metric label="Current vessel" value={profile.currentVessel} icon={Ship} /> : null}
               {profile.currentCompany ? <Metric label="Company" value={profile.currentCompany} icon={BriefcaseBusiness} /> : null}

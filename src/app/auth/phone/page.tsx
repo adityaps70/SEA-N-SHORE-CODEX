@@ -1,6 +1,9 @@
+import type { Metadata } from 'next'
 import { Wordmark } from "@/components/brand/wordmark";
 import { confirmPhoneOtp, requestPhoneOtp } from "@/features/auth/actions";
 import { PhoneAuthForm } from "@/features/auth/components/phone-auth-form";
+
+export const metadata: Metadata = { title: 'Sign in with phone' }
 
 export default async function PhoneAuthPage({
   searchParams,

@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MessageShell } from '@/features/messaging/components/message-shell'
 import { getConversationInbox, getConversationThread, getUnreadMessageCount } from '@/features/messaging/queries'
 import { createProductionMessagingService } from '@/features/messaging/service'
+
+export const metadata: Metadata = { title: 'Messages' }
 
 const messagingService = createProductionMessagingService()
 

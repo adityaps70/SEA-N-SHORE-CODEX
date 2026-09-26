@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Crown, UsersRound } from 'lucide-react'
@@ -6,6 +7,8 @@ import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { OrganizationTeamPanel } from '@/features/organizations/components/organization-team-panel'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
+
+export const metadata: Metadata = { title: 'Organization team' }
 
 export default async function OrganizationTeamPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params

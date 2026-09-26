@@ -1,6 +1,9 @@
+import type { Metadata } from 'next'
 import { Wordmark } from "@/components/brand/wordmark";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { updatePassword } from "@/features/auth/actions";
+
+export const metadata: Metadata = { title: 'Update password' }
 
 export default async function UpdatePasswordPage({
   searchParams,

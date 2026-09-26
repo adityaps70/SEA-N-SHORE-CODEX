@@ -1,9 +1,12 @@
+import type { Metadata } from 'next'
 import Link from "next/link";
 import { Wordmark } from "@/components/brand/wordmark";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { AuthMethodLinks } from "@/features/auth/components/auth-method-links";
 import { signIn } from "@/features/auth/actions";
 import { getCognitoEnvironment } from "@/lib/env";
+
+export const metadata: Metadata = { title: 'Sign in' }
 
 export default function SignInPage() {
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;

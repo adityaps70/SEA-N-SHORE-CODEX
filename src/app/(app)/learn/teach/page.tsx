@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, Clock3, ShieldAlert, Sparkles } from 'lucide-react'
@@ -6,6 +7,8 @@ import { MentorApplicationForm } from '@/features/learning/components/mentor-app
 import type { MentorApplicationInput } from '@/features/learning/mentor-application'
 import { learningRepository } from '@/features/learning/repository'
 import { getAwsOwnProfile } from '@/features/profiles/aws-queries'
+
+export const metadata: Metadata = { title: 'Teach on Sea N Shore' }
 
 function SectionShell({ children }: { children: React.ReactNode }) {
   return (

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import {
   Archive,
@@ -15,6 +16,8 @@ import {
 } from '@/features/learning/admin-repository'
 import { CourseReviewControls } from '@/features/learning/components/course-review-controls'
 import type { CourseStatus } from '@/features/learning/course-workflow'
+
+export const metadata: Metadata = { title: 'Course review · Admin' }
 
 const statusFilters: Array<{ value: CourseStatus; label: string }> = [
   { value: 'submitted', label: 'Submitted' },

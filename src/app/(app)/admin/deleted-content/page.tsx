@@ -1,8 +1,11 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Clock3, FileClock, ShieldCheck } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { DeletedPostRecoveryPanel } from '@/features/admin/components/deleted-post-recovery-panel'
 import { adminRepository } from '@/features/admin/repository'
+
+export const metadata: Metadata = { title: 'Deleted content · Admin' }
 
 function dateLabel(value: string) {
   const date = new Date(value)

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CheckCircle2, Clock3, ShieldAlert } from 'lucide-react'
@@ -6,6 +7,8 @@ import { getOwnProfileFromAurora } from '@/features/profiles/repository'
 import { CreatorVerificationForm } from '@/features/verifications/components/creator-verification-form'
 import type { CreatorVerificationType } from '@/features/verifications/application'
 import { creatorVerificationRepository } from '@/features/verifications/repository'
+
+export const metadata: Metadata = { title: 'Verification · Settings' }
 
 function verificationTypeFromSlug(value: string): CreatorVerificationType | null {
   if (value === 'recruiter') return 'recruiter'

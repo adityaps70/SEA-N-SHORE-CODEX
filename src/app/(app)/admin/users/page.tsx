@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Search, ShieldAlert, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -7,6 +8,8 @@ import {
   type AdminUserStatus,
   type AdminUserStatusFilter,
 } from '@/features/admin/repository'
+
+export const metadata: Metadata = { title: 'Users · Admin' }
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 

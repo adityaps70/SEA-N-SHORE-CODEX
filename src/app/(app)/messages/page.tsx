@@ -1,7 +1,10 @@
+import type { Metadata } from 'next'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MessageShell } from '@/features/messaging/components/message-shell'
 import { getConversationInbox } from '@/features/messaging/queries'
 import { getNetworkHub } from '@/features/network/queries'
+
+export const metadata: Metadata = { title: 'Messages' }
 
 export default async function MessagesPage() {
   const [viewer, inbox, connections] = await Promise.all([
