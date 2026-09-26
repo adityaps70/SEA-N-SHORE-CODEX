@@ -180,7 +180,7 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Publishing identity</p>
           <h2 className="mt-1 text-xl font-bold text-navy-950">Publish as</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-            Build personally as an approved mentor or on behalf of an organization where you manage LMS content.
+            Build personally as a verified trainer or on behalf of an organization where you manage LMS content.
           </p>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
