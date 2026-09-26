@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { userCan } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { enrollmentRepository } from './enrollment-repository'
 
@@ -29,6 +30,9 @@ export async function enrollInFreeCourse(courseId: string): Promise<EnrollmentAc
 
   try {
     const user = await requireAwsUser()
+    if (!await userCan(user.id, 'course.enroll')) {
+      return { ok: false, error: 'Your account cannot enroll in courses right now.' }
+    }
     const result = await enrollmentRepository.enrollFreeCourse(user.id, parsedId.data)
     revalidatePath('/learn')
     revalidatePath('/learn/my-learning')
