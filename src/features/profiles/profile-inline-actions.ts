@@ -5,6 +5,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
 import { getAwsOwnProfile } from './aws-queries'
+import { personaUsesProfessionalCompany } from './persona'
 import {
   updateProfileAboutSectionWithAurora,
   updateProfileIdentitySectionWithAurora,
@@ -102,7 +103,7 @@ export async function updateProfileIdentitySection(
     await updateProfileIdentitySectionWithAurora(
       user.id,
       parsed.data,
-      true,
+      profile.persona ? personaUsesProfessionalCompany(profile.persona) : true,
     )
     await flagProfileModeration(user.id, moderation)
   } catch (error) {
@@ -151,8 +152,9 @@ export async function updateProfileProfessionalSection(
   const user = await requireAwsUser()
   const profile = await getAwsOwnProfile()
   if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
-  if (profile.profileType !== 'seafarer' && profile.profileType !== 'maritime_professional') {
-    return nextFailure(previousState, { error: 'Maritime experience is not available for this profile type.' })
+  const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
+  if (!isSeafarer) {
+    return nextFailure(previousState, { error: 'Maritime experience is available only for Seafarer profiles.' })
   }
 
   const parsed = profileProfessionalSectionSchema.safeParse({
