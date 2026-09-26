@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
+  userCan: vi.fn(),
   isMemberReady: vi.fn(),
   getPublishedJob: vi.fn(),
   isAcceptingApplications: vi.fn(),
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/access/server', () => ({ userCan: mocks.userCan }))
 vi.mock('./application-media', () => ({
   createPendingJobApplicationCvUpload: mocks.createPendingJobApplicationCvUpload,
   verifyPendingJobApplicationCv: mocks.verifyPendingJobApplicationCv,
@@ -49,6 +51,7 @@ describe('applyToJob', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'viewer-1', cognitoSub: 'sub-1', email: null })
+    mocks.userCan.mockResolvedValue(true)
     mocks.isMemberReady.mockResolvedValue(true)
     mocks.getPublishedJob.mockResolvedValue(job)
     mocks.isAcceptingApplications.mockResolvedValue(true)
@@ -75,7 +78,7 @@ describe('applyToJob', () => {
 
     await expect(applyToJob(jobId)).resolves.toEqual({
       ok: false,
-      error: 'Complete your professional profile before applying.',
+      error: 'Complete your Sea N Shore profile before applying.',
     })
     expect(mocks.getPublishedJob).not.toHaveBeenCalled()
     expect(mocks.createApplication).not.toHaveBeenCalled()
