@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   createJob: vi.fn(),
   updateJob: vi.fn(),
+  getManagedEditableJob: vi.fn(),
+  getApplicationPublisherScope: vi.fn(),
   updateApplicationStatus: vi.fn(),
   saveRecruiterNote: vi.fn(),
   revalidatePath: vi.fn(),
@@ -25,6 +27,8 @@ vi.mock('./hiring-repository', async (importOriginal) => {
     hiringRepository: {
       createJob: mocks.createJob,
       updateJob: mocks.updateJob,
+      getManagedEditableJob: mocks.getManagedEditableJob,
+      getApplicationPublisherScope: mocks.getApplicationPublisherScope,
       updateApplicationStatus: mocks.updateApplicationStatus,
       saveRecruiterNote: mocks.saveRecruiterNote,
     },
@@ -88,6 +92,8 @@ describe('hiring server actions', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'recruiter-1', cognitoSub: 'sub-1', email: null })
     mocks.createJob.mockResolvedValue(jobId)
     mocks.updateJob.mockResolvedValue(undefined)
+    mocks.getManagedEditableJob.mockResolvedValue({ id: jobId, companyId })
+    mocks.getApplicationPublisherScope.mockResolvedValue({ companyId })
     mocks.updateApplicationStatus.mockResolvedValue(undefined)
     mocks.saveRecruiterNote.mockResolvedValue(undefined)
   })
@@ -168,6 +174,21 @@ describe('hiring server actions', () => {
     expect(mocks.updateJob).toHaveBeenCalledWith('recruiter-1', jobId, expect.objectContaining({ title: 'Senior Chief Officer' }))
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/hiring/jobs/${jobId}/edit`)
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/jobs/${jobId}`)
+  })
+
+  it('requires the central publishing capability when updating a published organization job', async () => {
+    await expect(updateHiringJob(jobId, updateInput({ status: 'published' }))).resolves.toEqual({ ok: true })
+    expect(mocks.requireCapability).toHaveBeenCalledWith('recruiter-1', 'job.publish', { companyId })
+  })
+
+  it('requires the central applicant-management capability before changing candidate state', async () => {
+    await expect(updateHiringApplicationStatus(applicationId, 'shortlisted', null)).resolves.toEqual({ ok: true })
+    expect(mocks.requireCapability).toHaveBeenCalledWith('recruiter-1', 'job.manage_applicants', { companyId })
+  })
+
+  it('requires the central applicant-management capability before saving recruiter notes', async () => {
+    await expect(saveHiringRecruiterNote(applicationId, 'Call after 1600 UTC.')).resolves.toEqual({ ok: true })
+    expect(mocks.requireCapability).toHaveBeenCalledWith('recruiter-1', 'job.manage_applicants', { companyId })
   })
 
   it('rejects unsupported application statuses before repository mutation', async () => {
