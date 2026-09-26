@@ -132,7 +132,7 @@ export default async function MentorStudioPage() {
         <div className="grid gap-7 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
-              <Sparkles aria-hidden="true" className="size-4" /> {hasActiveMentor ? 'Verified mentor workspace' : 'Organization LMS workspace'}
+              <Sparkles aria-hidden="true" className="size-4" /> {hasActiveMentor ? 'Verified trainer workspace' : 'Organization LMS workspace'}
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Learning Studio</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">
@@ -167,7 +167,7 @@ export default async function MentorStudioPage() {
             <h2 className="mt-1 text-lg font-bold text-navy-950">
               {pendingLearnerReviews} learner submission{pendingLearnerReviews === 1 ? '' : 's'} need{pendingLearnerReviews === 1 ? 's' : ''} your review
             </h2>
-            <p className="mt-1 text-sm leading-6 text-muted">Learner progression remains locked until an assignment receives a passing mentor grade.</p>
+            <p className="mt-1 text-sm leading-6 text-muted">Learner progression remains locked until an assignment receives a passing trainer grade.</p>
           </div>
           <Link
             href="/learn/studio/assignments"
@@ -181,7 +181,7 @@ export default async function MentorStudioPage() {
       <section className="mt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Your teaching portfolio</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Your learning portfolio</p>
             <h2 className="mt-1 text-2xl font-bold text-navy-950">Courses</h2>
           </div>
           {courses.length ? (
