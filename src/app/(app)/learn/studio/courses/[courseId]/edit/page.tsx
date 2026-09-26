@@ -49,17 +49,17 @@ export default async function EditMentorCoursePage({
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
-        <ArrowLeft aria-hidden="true" className="size-4" /> Mentor Studio
+        <ArrowLeft aria-hidden="true" className="size-4" /> Learning Studio
       </Link>
 
       <section className="mt-5 rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">
         <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-700">
-          <FilePenLine aria-hidden="true" className="size-4" /> Private mentor draft
+          <FilePenLine aria-hidden="true" className="size-4" /> Private course draft
         </p>
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-navy-950 sm:text-4xl">Edit course</h1>
         <p className="mt-2 text-lg font-semibold text-navy-900">{course.title}</p>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-          Refine the course foundation and curriculum before submitting it for Sea N Shore review. Learners cannot access this course while it remains editable in Mentor Studio.
+          Refine the course foundation and curriculum before submitting it for Sea N Shore review. Learners cannot access this course while it remains editable in Learning Studio.
         </p>
       </section>
 
