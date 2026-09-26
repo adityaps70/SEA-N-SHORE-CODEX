@@ -29,9 +29,10 @@ describe('feed avatar staging E2E harness contract', () => {
 
 describe('profile media live state contract', () => {
   it('reflects successful upload and removal immediately while refreshing server media', () => {
-    expect(controlsSource).toContain('useState(hasImage)')
-    expect(controlsSource).toContain('setImagePresent(true)')
-    expect(controlsSource).toContain('setImagePresent(false)')
+    expect(controlsSource).toContain('const [removed, setRemoved] = useState(false)')
+    expect(controlsSource).toContain('const imagePresent = removed ? false : state.success ? true : hasImage')
+    expect(controlsSource).toContain('setRemoved(true)')
+    expect(controlsSource).toContain('setRemoved(false)')
     expect(controlsSource).toContain("[router, state]")
     expect(controlsSource).toContain("imagePresent ? 'Change' : 'Add'")
     expect(controlsSource).toContain('{imagePresent ? (')
