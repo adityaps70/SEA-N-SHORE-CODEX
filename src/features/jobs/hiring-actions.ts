@@ -181,6 +181,13 @@ export async function updateHiringJob(jobId: string, input: HiringJobUpdateInput
 
   try {
     const user = await requireAwsUser()
+    const job = await hiringRepository.getManagedEditableJob(user.id, parsedJobId.data)
+    if (!job) throw new Error('hiring_forbidden')
+    if (job.companyId) {
+      await requireCapability(user.id, 'job.publish', { companyId: job.companyId })
+    } else {
+      await requireCapability(user.id, 'job.publish')
+    }
     await hiringRepository.updateJob(user.id, parsedJobId.data, parsed.data)
     await flagAutomatedJobModeration(parsedJobId.data, moderation)
     refreshJobMutation(parsedJobId.data)
@@ -206,6 +213,13 @@ export async function updateHiringApplicationStatus(
 
   try {
     const user = await requireAwsUser()
+    const publisher = await hiringRepository.getApplicationPublisherScope(user.id, parsedApplicationId.data)
+    if (!publisher) throw new Error('hiring_forbidden')
+    if (publisher.companyId) {
+      await requireCapability(user.id, 'job.manage_applicants', { companyId: publisher.companyId })
+    } else {
+      await requireCapability(user.id, 'job.manage_applicants')
+    }
     await hiringRepository.updateApplicationStatus(user.id, parsedApplicationId.data, parsedStatus.data, parsedNote.data || null)
     revalidatePath('/hiring')
     revalidatePath(`/hiring/applicants/${parsedApplicationId.data}`)
@@ -226,6 +240,13 @@ export async function saveHiringRecruiterNote(applicationId: string, note: strin
 
   try {
     const user = await requireAwsUser()
+    const publisher = await hiringRepository.getApplicationPublisherScope(user.id, parsedApplicationId.data)
+    if (!publisher) throw new Error('hiring_forbidden')
+    if (publisher.companyId) {
+      await requireCapability(user.id, 'job.manage_applicants', { companyId: publisher.companyId })
+    } else {
+      await requireCapability(user.id, 'job.manage_applicants')
+    }
     await hiringRepository.saveRecruiterNote(user.id, parsedApplicationId.data, parsedNote.data)
     revalidatePath(`/hiring/applicants/${parsedApplicationId.data}`)
     return { ok: true }
