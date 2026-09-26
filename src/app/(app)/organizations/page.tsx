@@ -60,6 +60,7 @@ export default async function OrganizationsPage() {
                     Plan: {accessMembership?.plan === 'organization_pro' ? 'Organization Pro' : 'Free / legacy access'}
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
+                    <Link href={'/organizations/' + organization.slug} className="rounded-lg bg-navy-950 px-3 py-2 text-xs font-bold text-white">Open workspace</Link>
                     <Link href="/hiring" className="rounded-lg border border-mist-100 bg-white px-3 py-2 text-xs font-bold text-navy-950">Jobs</Link>
                     <Link href="/events/hosting" className="rounded-lg border border-mist-100 bg-white px-3 py-2 text-xs font-bold text-navy-950">Events</Link>
                     <Link href="/learn/studio" className="rounded-lg border border-mist-100 bg-white px-3 py-2 text-xs font-bold text-navy-950">LMS</Link>
