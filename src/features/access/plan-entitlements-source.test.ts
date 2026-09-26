@@ -14,5 +14,5 @@ test('runtime plan entitlements come from the database rather than duplicated pl
   assert.doesNotMatch(policy, /ORGANIZATION_PLAN_CAPABILITIES/)
   assert.match(repository, /from public\.plan_entitlements/)
   assert.match(repository, /planEntitlementsByCode/)
-  assert.match(repository, /personalEntitlements: uniqueCapabilities/)
+  assert.match(repository, /const personalEntitlements = uniqueCapabilities/)
 })
