@@ -82,7 +82,9 @@ describe('My Activities and jobs integration contract', () => {
 
     const primary = screen.getByRole('navigation', { name: 'Primary' })
     const links = within(primary).getAllByRole('link')
-    expect(links).toHaveLength(8)
+    // Six destinations stay visible; My Activities, Saved and Community live in the More menu.
+    expect(links).toHaveLength(6)
+    expect(within(primary).getByRole('button', { name: 'More' })).toHaveClass('flex-col')
 
     for (const link of links) {
       expect(link).toHaveClass('flex-col')

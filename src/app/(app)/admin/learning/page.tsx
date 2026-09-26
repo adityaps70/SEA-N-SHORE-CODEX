@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { BookOpenCheck, ExternalLink, GraduationCap, ShieldCheck, UserRoundCheck } from 'lucide-react'
+import { AdminPageHeader } from '@/features/admin/components/admin-ui'
+import { ExternalLink } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   learningAdminRepository,
@@ -37,7 +38,7 @@ function Chip({ children }: { children: React.ReactNode }) {
 
 function ApplicationCard({ application }: { application: MentorApplicationReviewItem }) {
   return (
-    <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+    <article className="rounded-xl border border-mist-100 bg-white p-5">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -127,84 +128,44 @@ export default async function LearningAdminPage({
   const applications = await learningAdminRepository.listMentorApplications(user.id, status)
 
   return (
-    <main className="space-y-6">
-      <section className="overflow-hidden rounded-[1.6rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-7">
-        <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
-          <div>
-            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
-              <GraduationCap aria-hidden="true" className="size-4" /> Sea N Shore Learning
-            </p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight">Learning review</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/72">
-              Review maritime professionals before they can teach. Approval grants Trainer verification; every course will still require a separate Sea N Shore quality review before publication.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              <ShieldCheck aria-hidden="true" className="size-4 text-teal-200" />
-              <p className="mt-2 text-xs font-bold text-white">Verified access</p>
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              <UserRoundCheck aria-hidden="true" className="size-4 text-teal-200" />
-              <p className="mt-2 text-xs font-bold text-white">Human review</p>
-            </div>
-            <div className="hidden rounded-2xl border border-white/10 bg-white/5 px-4 py-3 sm:block">
-              <BookOpenCheck aria-hidden="true" className="size-4 text-teal-200" />
-              <p className="mt-2 text-xs font-bold text-white">Course gate</p>
-            </div>
-          </div>
-        </div>
-      </section>
+    <main className="space-y-4">
+      <AdminPageHeader
+        title="Learning review"
+        meta={`${applications.length} ${applications.length === 1 ? 'application' : 'applications'} · ${statusLabel(status).toLowerCase()}`}
+        description="Approve maritime professionals before they can teach. Every course still gets its own quality review before it is published."
+      />
 
-      <nav aria-label="Learning administration" className="flex flex-wrap gap-2">
-        <Link
-          href="/admin/learning"
-          aria-current="page"
-          className="rounded-full bg-navy-950 px-4 py-2 text-sm font-bold text-white"
-        >
+      <nav aria-label="Learning administration" className="flex gap-1 border-b border-mist-100 text-sm font-semibold">
+        <Link href="/admin/learning" aria-current="page" className="-mb-px border-b-2 border-ocean-700 px-3 py-2 text-ocean-800">
           Trainer verifications
         </Link>
-        <Link
-          href="/admin/learning/courses"
-          className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
-        >
+        <Link href="/admin/learning/courses" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:text-navy-950">
           Course review
         </Link>
-        <Link
-          href="/admin/learning/analytics"
-          className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
-        >
+        <Link href="/admin/learning/analytics" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:text-navy-950">
           Analytics
         </Link>
       </nav>
 
-      <nav aria-label="Trainer application status" className="flex flex-wrap gap-2">
+      <nav aria-label="Trainer application status" className="flex flex-wrap gap-1.5">
         {statusFilters.map((filter) => (
           <Link
             key={filter.value}
             href={`/admin/learning?status=${filter.value}`}
             aria-current={status === filter.value ? 'page' : undefined}
-            className={`rounded-full px-4 py-2 text-sm font-bold transition ${status === filter.value ? 'bg-navy-950 text-white' : 'border border-mist-100 bg-white text-muted hover:text-navy-950'}`}
+            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-semibold transition ${status === filter.value ? 'border-navy-950 bg-navy-950 text-white' : 'border-mist-100 bg-white text-navy-900 hover:bg-mist-50'}`}
           >
             {filter.label}
           </Link>
         ))}
       </nav>
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Trainer applications</p>
-            <h2 className="mt-1 text-xl font-bold text-navy-950">{statusLabel(status)}</h2>
-          </div>
-          <p className="text-sm font-semibold text-muted">{applications.length} {applications.length === 1 ? 'application' : 'applications'}</p>
-        </div>
+      <section className="space-y-3">
 
         {applications.length ? applications.map((application) => (
           <ApplicationCard key={application.applicationId} application={application} />
         )) : (
-          <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center">
-            <UserRoundCheck aria-hidden="true" className="mx-auto size-7 text-teal-700" />
+          <div className="rounded-xl border border-dashed border-mist-200 bg-white p-8 text-center">
             <p className="mt-3 font-bold text-navy-950">No trainer applications in this queue.</p>
             <p className="mt-1 text-sm text-muted">Choose another status to review trainer application history.</p>
           </div>

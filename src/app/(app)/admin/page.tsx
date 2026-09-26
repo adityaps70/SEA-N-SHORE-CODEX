@@ -1,150 +1,117 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import {
-  BadgeCheck,
-  BriefcaseBusiness,
-  Building2,
-  CalendarDays,
-  CheckCircle2,
-  Clock3,
-  FileWarning,
-  KeyRound,
-  MessageSquareWarning,
-  ShieldAlert,
-  UserCog,
-} from 'lucide-react'
+import { ArrowRight, CheckCircle2 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { auditActionLabel, auditTargetHref, auditTargetLabel } from '@/features/admin/audit-format'
+import { AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { adminRepository } from '@/features/admin/repository'
 
 export const metadata: Metadata = { title: 'Admin' }
 
+type AttentionItem = { label: string; count: number; href: string; urgent?: boolean }
+
 export default async function AdminPage() {
   const user = await requireAwsUser()
-  const metrics = await adminRepository.getAdminDashboardMetrics(user.id)
+  const [metrics, recentEvents] = await Promise.all([
+    adminRepository.getAdminDashboardMetrics(user.id),
+    adminRepository.listAuditEvents(user.id, { targetType: 'all', limit: 8 }).catch(() => []),
+  ])
 
-  const operationsCards = [
-    { label: 'Open reports', value: metrics.openReports, icon: MessageSquareWarning, href: '/admin/moderation?status=open&type=all' },
-    { label: 'Priority reports', value: metrics.highPriorityReports, icon: ShieldAlert, href: '/admin/moderation?status=open&type=all' },
-    { label: 'Under review', value: metrics.reviewingReports, icon: FileWarning, href: '/admin/moderation?status=reviewing&type=all' },
-    { label: 'Reports · 24h', value: metrics.reportsLast24h, icon: Clock3, href: '/admin/moderation?status=open&type=all' },
-  ] as const
+  const attention: AttentionItem[] = [
+    { label: 'Priority reports', count: metrics.highPriorityReports, href: '/admin/moderation?status=open&type=all', urgent: true },
+    { label: 'Open reports', count: metrics.openReports, href: '/admin/moderation?status=open&type=all' },
+    { label: 'Under review', count: metrics.reviewingReports, href: '/admin/moderation?status=reviewing&type=all' },
+    { label: 'Pending organizations', count: metrics.pendingOrganizations, href: '/admin/organizations' },
+    { label: 'Organizations asked for changes', count: metrics.changesRequested, href: '/admin/organizations?status=changes_requested' },
+    { label: 'Pending access requests', count: metrics.pendingAccessRequests, href: '/admin/access' },
+  ]
+  const waiting = attention.filter((item) => item.count > 0)
 
-  const platformCards = [
-    { label: 'Active posts', value: metrics.activePosts, icon: MessageSquareWarning },
-    { label: 'Published jobs', value: metrics.publishedJobs, icon: BriefcaseBusiness },
-    { label: 'Published events', value: metrics.publishedEvents, icon: CalendarDays },
-    { label: 'Pending organizations', value: metrics.pendingOrganizations, icon: Building2 },
-    { label: 'Pending access requests', value: metrics.pendingAccessRequests, icon: KeyRound },
-  ] as const
+  const stats = [
+    { label: 'Active posts', value: metrics.activePosts },
+    { label: 'Published jobs', value: metrics.publishedJobs },
+    { label: 'Published events', value: metrics.publishedEvents },
+    { label: 'Approved organizations', value: metrics.approvedOrganizations },
+    { label: 'Suspended organizations', value: metrics.suspendedOrganizations },
+    { label: 'Reports in last 24h', value: metrics.reportsLast24h },
+  ]
 
   return (
     <main className="space-y-6">
-      <section>
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">Trust & safety</p>
-            <h2 className="mt-1 text-2xl font-bold text-navy-950">Platform operations</h2>
-          </div>
-          <Link href="/admin/moderation" className="text-sm font-bold text-ocean-700 hover:underline">Open moderation queue →</Link>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {operationsCards.map(({ label, value, icon: Icon, href }) => (
-            <Link key={label} href={href} className="rounded-[1.35rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-ocean-200">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-muted">{label}</p>
-                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-red-50 text-red-700"><Icon aria-hidden="true" className="size-4" /></span>
-              </div>
-              <p className="mt-3 text-3xl font-bold tracking-tight text-navy-950">{value}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
+      <AdminPageHeader
+        title="Overview"
+        meta={waiting.length ? `${waiting.reduce((sum, item) => sum + item.count, 0)} items need attention` : 'All queues clear'}
+        actions={(
+          <>
+            <Link href="/admin/verifications" className="inline-flex min-h-9 items-center rounded-lg border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">Creator verifications</Link>
+            <Link href="/admin/users" className="inline-flex min-h-9 items-center rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">Manage users</Link>
+          </>
+        )}
+      />
 
-      <section>
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Site health</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          {platformCards.map(({ label, value, icon: Icon }) => (
-            <article key={label} className="rounded-[1.35rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-muted">{label}</p>
-                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-mist-50 text-navy-950"><Icon aria-hidden="true" className="size-4" /></span>
-              </div>
-              <p className="mt-3 text-3xl font-bold tracking-tight text-navy-950">{value}</p>
-            </article>
-          ))}
+      <AdminPanel>
+        <div className="border-b border-mist-100 px-5 py-3">
+          <h3 className="text-sm font-bold text-navy-950">Needs your attention</h3>
         </div>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-[1.25fr_1fr_1fr]">
-        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 lg:col-span-3">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex gap-3">
-              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
-                <UserCog aria-hidden="true" className="size-5" />
-              </span>
-              <div>
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">User administration</p>
-                <h2 className="mt-1 text-xl font-bold text-navy-950">Search, suspend, restore or permanently delete user accounts</h2>
-                <p className="mt-1 text-sm leading-6 text-muted">Every account action requires a reason and is retained in the administrator audit history.</p>
-              </div>
-            </div>
-            <Link href="/admin/users" className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">
-              Manage users
-            </Link>
-          </div>
-        </article>
-        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">Content moderation</p>
-          <h2 className="mt-2 text-xl font-bold text-navy-950">One queue for posts, comments, jobs and events</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">
-            Reports are grouped by content item, prioritized by serious reasons, and every moderator decision is recorded in the platform audit trail.
+        {waiting.length ? (
+          <ul className="divide-y divide-mist-100">
+            {waiting.map((item) => (
+              <li key={item.label}>
+                <Link href={item.href} className="flex items-center gap-3 px-5 py-3 text-sm transition hover:bg-mist-50">
+                  <span className={`min-w-8 rounded-md px-2 py-0.5 text-center text-sm font-bold ${item.urgent ? 'bg-red-600 text-white' : 'bg-mist-100 text-navy-950'}`}>
+                    {item.count}
+                  </span>
+                  <span className="flex-1 font-semibold text-navy-950">{item.label}</span>
+                  <ArrowRight aria-hidden="true" className="size-4 text-muted" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="flex items-center gap-2 px-5 py-4 text-sm font-semibold text-emerald-800">
+            <CheckCircle2 aria-hidden="true" className="size-4" /> No reports, applications or access requests are waiting.
           </p>
-          <Link href="/admin/moderation" className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900">
-            Review reports
-          </Link>
-        </article>
+        )}
+      </AdminPanel>
 
-        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Organization verification</p>
-          <h2 className="mt-2 text-xl font-bold text-navy-950">{metrics.pendingOrganizations} waiting for review</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">{metrics.changesRequested} need changes · {metrics.suspendedOrganizations} suspended · {metrics.approvedOrganizations} approved.</p>
-          <Link href="/admin/organizations" className="mt-5 inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
-            Organization queue
-          </Link>
-        </article>
-
-        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Access control</p>
-          <h2 className="mt-2 text-xl font-bold text-navy-950">Membership queue</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">{metrics.pendingAccessRequests} request{metrics.pendingAccessRequests === 1 ? '' : 's'} currently wait for controlled organization access review.</p>
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
-              <CheckCircle2 aria-hidden="true" className="size-4" /> Administrator-only
-            </div>
-            <Link href="/admin/access" className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
-              Review access
-            </Link>
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-mist-100 bg-mist-100 sm:grid-cols-3 xl:grid-cols-6">
+        {stats.map((stat) => (
+          <div key={stat.label} className="bg-white px-4 py-3">
+            <dt className="text-xs font-semibold text-muted">{stat.label}</dt>
+            <dd className="mt-1 text-2xl font-bold tracking-tight text-navy-950">{stat.value}</dd>
           </div>
-        </article>
+        ))}
+      </dl>
 
-        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <div className="flex items-start gap-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
-              <BadgeCheck aria-hidden="true" className="size-5" />
-            </span>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Professional verification</p>
-              <h2 className="mt-2 text-xl font-bold text-navy-950">Recruiter & Event Host queue</h2>
-            </div>
-          </div>
-          <p className="mt-3 text-sm leading-6 text-muted">
-            Review professional evidence separately from subscriptions and paid publishing entitlements.
-          </p>
-          <Link href="/admin/verifications" className="mt-5 inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
-            Review verifications
-          </Link>
-        </article>
-      </section>
+      <AdminPanel>
+        <div className="flex items-center justify-between border-b border-mist-100 px-5 py-3">
+          <h3 className="text-sm font-bold text-navy-950">Recent administrator activity</h3>
+          <Link href="/admin/audit" className="text-sm font-semibold text-ocean-700 hover:underline">Full audit log</Link>
+        </div>
+        {recentEvents.length ? (
+          <ul className="divide-y divide-mist-100 text-sm">
+            {recentEvents.map((event) => {
+              const href = auditTargetHref(event.targetType, event.targetId)
+              return (
+                <li key={event.id} className="grid gap-1 px-5 py-2.5 sm:grid-cols-[9rem_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                  <time dateTime={event.createdAt} className="text-xs text-muted">{formatAdminDate(event.createdAt, true)}</time>
+                  <p className="min-w-0 truncate text-navy-950">
+                    <span className="font-semibold">{event.actor.fullName}</span>
+                    <span className="text-muted"> — {auditActionLabel(event.action)}</span>
+                  </p>
+                  {href ? (
+                    <Link href={href} className="text-xs font-semibold text-ocean-700 hover:underline">
+                      View {auditTargetLabel(event.targetType).toLowerCase()}
+                    </Link>
+                  ) : <span />}
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <p className="px-5 py-4 text-sm text-muted">No administrator activity has been recorded yet.</p>
+        )}
+      </AdminPanel>
     </main>
   )
 }

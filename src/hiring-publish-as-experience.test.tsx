@@ -65,7 +65,8 @@ describe('hiring publish-as experience', () => {
     const mobileHeader = source('src/components/navigation/mobile-app-header.tsx')
     const layout = source('src/app/(app)/layout.tsx')
 
-    expect(desktopHeader).toContain('href="/creator"')
+    // The desktop Create control is a menu whose last entry opens the central /creator workspace.
+    expect(desktopHeader).toMatch(/href: '\/creator'/)
     expect(desktopHeader).toContain('Create')
     expect(mobileHeader).toContain('href="/creator"')
     expect(mobileHeader).toContain('Create')

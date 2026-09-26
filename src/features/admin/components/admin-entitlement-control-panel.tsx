@@ -9,6 +9,7 @@ import {
   type AdminEntitlementSubjectType,
 } from '../membership-policy'
 import { grantAdminEntitlement, revokeAdminEntitlement } from '../membership-actions'
+import { capabilityLabel } from '@/features/access/capability-labels'
 
 type EntitlementHistoryItem = {
   id: string
@@ -22,7 +23,7 @@ type EntitlementHistoryItem = {
 }
 
 function label(capability: Capability) {
-  return capability.replaceAll('.', ' · ').replaceAll('_', ' ')
+  return capabilityLabel(capability)
 }
 
 export function AdminEntitlementControlPanel({
@@ -82,12 +83,11 @@ export function AdminEntitlementControlPanel({
   }
 
   return (
-    <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+    <section className="rounded-xl border border-mist-100 bg-white p-5">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-red-700">Manual entitlement control</p>
-        <h2 className="mt-1 text-xl font-bold text-navy-950">Grant or revoke narrow migration/support access</h2>
-        <p className="mt-2 text-sm leading-6 text-muted">
-          Manual grants do not change the subscription plan and cannot bypass required professional verification or account suspension.
+        <h2 className="text-lg font-bold text-navy-950">Manual access overrides</h2>
+        <p className="mt-1 text-sm leading-6 text-muted">
+          Give or remove one specific ability, for example during a migration or support case. Overrides don’t change the member’s plan and can’t bypass verification or a suspension.
         </p>
       </div>
 

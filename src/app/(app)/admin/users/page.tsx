@@ -1,13 +1,24 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Search, ShieldAlert, UserRound } from 'lucide-react'
+import { Search, ShieldCheck } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import {
+  AdminChip,
+  AdminEmptyState,
+  AdminFilterBar,
+  AdminPageHeader,
+  AdminPanel,
+  formatAdminDate,
+  looksLikeTestAccount,
+  type AdminChipTone,
+} from '@/features/admin/components/admin-ui'
 import {
   ADMIN_USER_STATUSES,
   adminRepository,
   type AdminUserStatus,
   type AdminUserStatusFilter,
 } from '@/features/admin/repository'
+import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Users · Admin' }
 
@@ -26,6 +37,13 @@ const filterLabels: Record<AdminUserStatusFilter, string> = {
   deletion_requested: 'Deletion records',
 }
 
+const statusTone: Record<AdminUserStatus, AdminChipTone> = {
+  active: 'success',
+  restricted: 'warning',
+  suspended: 'danger',
+  deletion_requested: 'neutral',
+}
+
 function readSingle(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] ?? '' : value ?? ''
 }
@@ -37,11 +55,9 @@ function readStatus(value: string | string[] | undefined): AdminUserStatusFilter
     : 'all'
 }
 
-function statusClass(status: AdminUserStatus) {
-  if (status === 'active') return 'bg-emerald-50 text-emerald-800'
-  if (status === 'suspended') return 'bg-red-50 text-red-800'
-  if (status === 'restricted') return 'bg-amber-50 text-amber-800'
-  return 'bg-mist-100 text-muted'
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?'
 }
 
 export default async function AdminUsersPage({ searchParams }: { searchParams: SearchParams }) {
@@ -56,28 +72,29 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
   })
 
   const viewingDeletionRecords = status === 'deletion_requested'
+  const testAccounts = viewingDeletionRecords ? 0 : users.filter(looksLikeTestAccount).length
+
+  const filterOptions = (['all', ...ADMIN_USER_STATUSES] as AdminUserStatusFilter[]).map((item) => {
+    const href = new URLSearchParams()
+    if (query) href.set('q', query)
+    if (item !== 'all') href.set('status', item)
+    const search = href.toString()
+    return { href: `/admin/users${search ? `?${search}` : ''}`, label: filterLabels[item], active: item === status }
+  })
 
   return (
-    <main className="space-y-5">
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700">User safety</p>
-            <h2 className="mt-1 text-2xl font-bold text-navy-950">
-              {viewingDeletionRecords ? 'Deleted account records' : 'User accounts'}
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              {viewingDeletionRecords
-                ? 'These are not active or manageable users. They are anonymized tombstones retained only so moderation history and integrity records remain traceable.'
-                : 'Search members, review account status and moderation history, then suspend, restore or permanently delete accounts where appropriate.'}
-            </p>
-          </div>
-          <div className="rounded-xl bg-mist-50 px-3 py-2 text-sm font-semibold text-muted">
-            {users.length} result{users.length === 1 ? '' : 's'}
-          </div>
-        </div>
+    <main className="space-y-4">
+      <AdminPageHeader
+        title={viewingDeletionRecords ? 'Deleted account records' : 'User accounts'}
+        meta={`${pluralize(users.length, 'result')}${testAccounts ? ` · ${testAccounts} look like test accounts` : ''}`}
+        description={viewingDeletionRecords
+          ? 'These are not active or manageable users. They are anonymized tombstones retained only so moderation history and integrity records remain traceable.'
+          : undefined}
+      />
 
-        <form method="get" action="/admin/users" className="mt-5 flex flex-col gap-2 sm:flex-row">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <AdminFilterBar label="User status filters" options={filterOptions} />
+        <form method="get" action="/admin/users" className="flex gap-2 lg:w-96">
           <label className="relative flex-1">
             <span className="sr-only">Search users</span>
             <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
@@ -86,84 +103,80 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
               name="q"
               defaultValue={query}
               maxLength={120}
-              placeholder="Search name, username, headline or email"
-              className="min-h-11 w-full rounded-xl border border-mist-100 bg-white py-2 pl-10 pr-3 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100"
+              placeholder="Name, username, headline or email"
+              className="min-h-9 w-full rounded-lg border border-mist-100 bg-white py-1.5 pl-9 pr-3 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100"
             />
           </label>
           {status !== 'all' ? <input type="hidden" name="status" value={status} /> : null}
-          <button type="submit" className="min-h-11 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white hover:bg-navy-900">
-            Search users
+          <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">
+            Search
           </button>
         </form>
+      </div>
 
-        <nav aria-label="User status filters" className="mt-4 flex flex-wrap gap-2">
-          {(['all', ...ADMIN_USER_STATUSES] as AdminUserStatusFilter[]).map((item) => {
-            const href = new URLSearchParams()
-            if (query) href.set('q', query)
-            if (item !== 'all') href.set('status', item)
-            const search = href.toString()
-            return (
-              <Link
-                key={item}
-                href={`/admin/users${search ? `?${search}` : ''}`}
-                className={`rounded-full px-3.5 py-2 text-sm font-bold transition ${
-                  item === status ? 'bg-navy-950 text-white' : 'bg-mist-50 text-navy-900 hover:bg-mist-100'
-                }`}
-              >
-                {filterLabels[item]}
-              </Link>
-            )
-          })}
-        </nav>
-      </section>
-
-      <section className="overflow-hidden rounded-[1.5rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
-        <div className="divide-y divide-mist-100">
-          {users.map((user) => (
-            <article key={user.id} className="grid gap-4 p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-6">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-mist-50 text-navy-950">
-                    {user.isAdministrator
-                      ? <ShieldAlert aria-hidden="true" className="size-4" />
-                      : <UserRound aria-hidden="true" className="size-4" />}
-                  </span>
-                  <h3 className="truncate text-lg font-bold text-navy-950">{user.fullName}</h3>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusClass(user.status)}`}>
-                    {statusLabels[user.status]}
-                  </span>
-                  {user.isAdministrator ? (
-                    <span className="rounded-full bg-ocean-50 px-2.5 py-1 text-xs font-bold text-ocean-800">Administrator</span>
-                  ) : null}
-                </div>
-                <p className="mt-2 truncate text-sm text-muted">
-                  {user.status === 'deletion_requested'
-                    ? 'Personal account data removed · audit tombstone only'
-                    : (
-                      <>
-                        {user.email ?? 'No email retained'}
-                        {user.slug ? ` · @${user.slug}` : ''}
-                        {user.headline ? ` · ${user.headline}` : ''}
-                      </>
-                    )}
-                </p>
-              </div>
-              <Link
-                href={`/admin/users/${user.id}`}
-                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-navy-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-navy-900"
-              >
-                {user.status === 'deletion_requested' ? 'View deletion record' : 'Manage user'}
-              </Link>
-            </article>
-          ))}
-          {users.length === 0 ? (
-            <div className="p-10 text-center">
-              <p className="font-bold text-navy-950">No users match this view.</p>
-              <p className="mt-1 text-sm text-muted">Try a different search term or account-status filter.</p>
-            </div>
-          ) : null}
-        </div>
-      </section>
+      <AdminPanel>
+        {users.length === 0 ? (
+          <AdminEmptyState title="No users match this view." description="Try a different search term or account-status filter." />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[46rem] text-left text-sm">
+              <thead className="border-b border-mist-100 bg-mist-50/70 text-xs font-semibold uppercase tracking-wide text-muted">
+                <tr>
+                  <th scope="col" className="px-4 py-2.5">Member</th>
+                  <th scope="col" className="px-4 py-2.5">Email</th>
+                  <th scope="col" className="px-4 py-2.5">Status</th>
+                  <th scope="col" className="px-4 py-2.5">Joined</th>
+                  <th scope="col" className="px-4 py-2.5">Last updated</th>
+                  <th scope="col" className="px-4 py-2.5"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-mist-100">
+                {users.map((user) => {
+                  const deleted = user.status === 'deletion_requested'
+                  const isTest = !deleted && looksLikeTestAccount(user)
+                  return (
+                    <tr key={user.id} className="align-middle transition hover:bg-mist-50/60">
+                      <td className="px-4 py-2.5">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-mist-100 text-[11px] font-bold text-navy-950">
+                            {initials(user.fullName)}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="flex flex-wrap items-center gap-1.5 font-semibold text-navy-950">
+                              <span className="truncate">{user.fullName}</span>
+                              {user.isAdministrator ? (
+                                <span title="Administrator" className="inline-flex items-center gap-1 text-xs font-semibold text-ocean-700">
+                                  <ShieldCheck aria-hidden="true" className="size-3.5" /> Admin
+                                </span>
+                              ) : null}
+                              {isTest ? <AdminChip tone="warning">Test account</AdminChip> : null}
+                            </p>
+                            <p className="truncate text-xs text-muted">
+                              {deleted ? 'Personal account data removed · audit tombstone only' : [user.slug ? `@${user.slug}` : null, user.headline].filter(Boolean).join(' · ') || '—'}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="max-w-[16rem] truncate px-4 py-2.5 text-navy-900">{user.email ?? (deleted ? '—' : 'No email retained')}</td>
+                      <td className="px-4 py-2.5"><AdminChip tone={statusTone[user.status]}>{statusLabels[user.status]}</AdminChip></td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatAdminDate(user.createdAt)}</td>
+                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatAdminDate(user.updatedAt)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <Link
+                          href={`/admin/users/${user.id}`}
+                          className="inline-flex min-h-8 items-center rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
+                        >
+                          {deleted ? 'View deletion record' : 'Manage user'}
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </AdminPanel>
     </main>
   )
 }

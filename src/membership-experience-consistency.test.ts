@@ -30,7 +30,7 @@ test('membership experience is reflected across profile, creator, activities, or
   assert.match(profileMembershipCard, /communityRelationship/)
   assert.match(profileMembershipCard, /\/organizations\//)
 
-  assert.match(appHeader, /href="\/creator"/)
+  assert.match(appHeader, /href: '\/creator'/)
   assert.match(mobileHeader, /href="\/creator"/)
   assert.match(activities, /tab === 'events'/)
   assert.match(activities, /tab === 'learning'/)

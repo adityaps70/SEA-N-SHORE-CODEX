@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
+import { AdminFilterBar, AdminPageHeader } from '@/features/admin/components/admin-ui'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   CREATOR_VERIFICATION_STATUSES,
@@ -50,61 +50,37 @@ export default async function AdminCreatorVerificationsPage({
   const applications = await creatorVerificationRepository.listAdminApplications(user.id, status, type)
 
   return (
-    <main className="space-y-5">
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Professional trust</p>
-        <h1 className="mt-1 text-2xl font-bold text-navy-950">Creator verification applications</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-          Review Recruiter and Event Host evidence independently. Approval verifies professional trust only; it does not activate Creator Pro or grant a paid publishing entitlement.
-        </p>
+    <main className="space-y-4">
+      <AdminPageHeader
+        title="Creator verification applications"
+        meta={`${applications.length} in this view`}
+        description="Recruiter and Event Host evidence is reviewed on its own. Approval confirms professional trust only; it does not activate Creator Pro or a paid plan."
+      />
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {CREATOR_VERIFICATION_STATUSES.map((item) => (
-            <Link
-              key={item}
-              href={`/admin/verifications?status=${item}${type ? `&type=${type}` : ''}`}
-              className={`rounded-full px-3 py-2 text-sm font-bold ${
-                item === status ? 'bg-navy-950 text-white' : 'bg-mist-50 text-navy-900'
-              }`}
-            >
-              {statusLabel(item)}
-            </Link>
-          ))}
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Link
-            href={`/admin/verifications?status=${status}`}
-            className={`rounded-full border px-3 py-2 text-xs font-bold ${
-              !type ? 'border-teal-500 bg-teal-50 text-teal-900' : 'border-mist-100 text-muted'
-            }`}
-          >
-            All types
-          </Link>
-          <Link
-            href={`/admin/verifications?status=${status}&type=recruiter`}
-            className={`rounded-full border px-3 py-2 text-xs font-bold ${
-              type === 'recruiter' ? 'border-teal-500 bg-teal-50 text-teal-900' : 'border-mist-100 text-muted'
-            }`}
-          >
-            Recruiter
-          </Link>
-          <Link
-            href={`/admin/verifications?status=${status}&type=event_host`}
-            className={`rounded-full border px-3 py-2 text-xs font-bold ${
-              type === 'event_host' ? 'border-teal-500 bg-teal-50 text-teal-900' : 'border-mist-100 text-muted'
-            }`}
-          >
-            Event Host
-          </Link>
-        </div>
-      </section>
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <AdminFilterBar
+          label="Verification status"
+          options={CREATOR_VERIFICATION_STATUSES.map((item) => ({
+            href: `/admin/verifications?status=${item}${type ? `&type=${type}` : ''}`,
+            label: statusLabel(item),
+            active: item === status,
+          }))}
+        />
+        <AdminFilterBar
+          label="Verification type"
+          options={[
+            { href: `/admin/verifications?status=${status}`, label: 'All types', active: !type },
+            { href: `/admin/verifications?status=${status}&type=recruiter`, label: 'Recruiter', active: type === 'recruiter' },
+            { href: `/admin/verifications?status=${status}&type=event_host`, label: 'Event Host', active: type === 'event_host' },
+          ]}
+        />
+      </div>
 
       <section className="grid gap-4">
         {applications.map((application) => (
           <article
             key={application.id}
-            className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6"
+            className="rounded-xl border border-mist-100 bg-white p-5"
           >
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div>

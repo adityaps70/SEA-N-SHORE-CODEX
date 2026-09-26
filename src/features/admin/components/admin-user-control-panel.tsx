@@ -126,7 +126,7 @@ export function AdminUserControlPanel({
   return (
     <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.15em] text-red-700">Account control</p>
+        <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted">Account control</p>
         <h2 className="mt-1 text-xl font-bold text-navy-950">
           {suspended ? 'Suspended account — choose what happens next' : 'Account actions'}
         </h2>

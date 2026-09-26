@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Flag, ShieldAlert } from 'lucide-react'
+import { AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel } from '@/features/admin/components/admin-ui'
+import { pluralize } from '@/lib/format'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { ModerationActionPanel } from '@/features/admin/components/moderation-action-panel'
 import { adminRepository } from '@/features/admin/repository'
@@ -73,48 +74,31 @@ export default async function AdminModerationPage({
   ]
 
   return (
-    <main className="space-y-5">
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-red-700">
-              <ShieldAlert aria-hidden="true" className="size-4" />
-              Trust & safety
-            </p>
-            <h2 className="mt-2 text-2xl font-bold text-navy-950">Moderation & reports</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-              Review member reports across profiles, posts, comments, jobs and events. Reports for the same target are grouped into one case so repeated complaints raise the case priority instead of creating duplicate work.
-            </p>
-          </div>
-          <div className="rounded-2xl bg-mist-50 px-4 py-3 text-sm font-semibold text-navy-950">
-            {cases.length} case{cases.length === 1 ? '' : 's'} in this view
-          </div>
-        </div>
+    <main className="space-y-4">
+      <AdminPageHeader
+        title="Moderation & reports"
+        meta={pluralize(cases.length, 'case') + ' in this view'}
+        description="Reports about the same post, comment, job, event or profile are grouped into one case; repeated reports raise its priority."
+      />
 
-        <div className="mt-5 flex flex-wrap gap-2">
-          {statusFilters.map((filter) => (
-            <Link
-              key={filter.value}
-              href={`/admin/moderation?status=${filter.value}&type=${targetType}`}
-              className={`rounded-full px-3.5 py-2 text-xs font-bold transition ${status === filter.value ? 'bg-navy-950 text-white' : 'bg-mist-50 text-muted hover:bg-mist-100 hover:text-navy-950'}`}
-            >
-              {filter.label}
-            </Link>
-          ))}
-        </div>
-
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-mist-100 pt-3">
-          {typeFilters.map((filter) => (
-            <Link
-              key={filter.value}
-              href={`/admin/moderation?status=${status}&type=${filter.value}`}
-              className={`rounded-xl px-3 py-2 text-xs font-bold transition ${targetType === filter.value ? 'bg-ocean-700 text-white' : 'border border-mist-100 bg-white text-muted hover:bg-mist-50 hover:text-navy-950'}`}
-            >
-              {filter.label}
-            </Link>
-          ))}
-        </div>
-      </section>
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+        <AdminFilterBar
+          label="Report status"
+          options={statusFilters.map((filter) => ({
+            href: `/admin/moderation?status=${filter.value}&type=${targetType}`,
+            label: filter.label,
+            active: status === filter.value,
+          }))}
+        />
+        <AdminFilterBar
+          label="Content type"
+          options={typeFilters.map((filter) => ({
+            href: `/admin/moderation?status=${status}&type=${filter.value}`,
+            label: filter.label,
+            active: targetType === filter.value,
+          }))}
+        />
+      </div>
 
       <section className="space-y-4">
         {cases.map((item) => {
@@ -140,7 +124,7 @@ export default async function AdminModerationPage({
           ].includes(reason))
 
           return (
-            <article key={`${item.targetType}-${item.targetId}`} className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+            <article key={`${item.targetType}-${item.targetId}`} className="rounded-xl border border-mist-100 bg-white p-5">
               <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -215,11 +199,9 @@ export default async function AdminModerationPage({
         })}
 
         {cases.length === 0 ? (
-          <section className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-10 text-center">
-            <Flag aria-hidden="true" className="mx-auto size-7 text-muted" />
-            <h3 className="mt-3 text-lg font-bold text-navy-950">No moderation cases in this view</h3>
-            <p className="mt-2 text-sm text-muted">Change the status or content filter to review another queue.</p>
-          </section>
+          <AdminPanel>
+            <AdminEmptyState title="No moderation cases in this view" description="Change the status or content filter to review another queue." />
+          </AdminPanel>
         ) : null}
       </section>
     </main>

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
-import { Building2, CheckCircle2, Clock3, UserRound } from 'lucide-react'
+import { AdminFilterBar, AdminPageHeader } from '@/features/admin/components/admin-ui'
+import { Building2, CheckCircle2, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   ADMIN_COMPANY_ACCESS_STATUSES,
@@ -44,41 +44,27 @@ export default async function AdminOrganizationAccessPage({ searchParams }: { se
   const requests = await adminRepository.listCompanyAccessRequests(user.id, status)
 
   return (
-    <main className="space-y-5">
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Organization access</p>
-            <h1 className="mt-1 text-2xl font-bold text-navy-950">Membership & role requests</h1>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Review requests to join an existing organization. Approval creates the individual membership; no shared company login is created.
-            </p>
-          </div>
-          <div className="inline-flex items-center gap-2 rounded-xl bg-mist-50 px-3 py-2 text-sm font-semibold text-muted">
-            <Clock3 aria-hidden="true" className="size-4" /> {requests.length} in this view
-          </div>
-        </div>
+    <main className="space-y-4">
+      <AdminPageHeader
+        title="Membership & role requests"
+        meta={`${requests.length} in this view`}
+        description="Requests to join an existing organization. Approval creates an individual membership; no shared company login is created."
+      />
 
-        <nav aria-label="Organization access request filters" className="mt-5 flex flex-wrap gap-2">
-          {ADMIN_COMPANY_ACCESS_STATUSES.map((item) => (
-            <Link
-              key={item}
-              href={`/admin/access?status=${item}`}
-              className={`rounded-full px-3.5 py-2 text-sm font-bold transition ${
-                item === status ? 'bg-navy-950 text-white' : 'bg-mist-50 text-navy-900 hover:bg-mist-100'
-              }`}
-            >
-              {labels[item]}
-            </Link>
-          ))}
-        </nav>
-      </section>
+      <AdminFilterBar
+        label="Organization access request filters"
+        options={ADMIN_COMPANY_ACCESS_STATUSES.map((item) => ({
+          href: `/admin/access?status=${item}`,
+          label: labels[item],
+          active: item === status,
+        }))}
+      />
 
       <section className="grid gap-4">
         {requests.map((request) => (
           <article
             key={request.id}
-            className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6"
+            className="rounded-xl border border-mist-100 bg-white p-5"
           >
             <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
               <div>

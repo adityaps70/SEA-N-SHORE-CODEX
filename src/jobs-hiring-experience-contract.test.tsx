@@ -122,7 +122,8 @@ describe('premium hiring workspace contract', () => {
     const repository = source('src/features/jobs/hiring-repository.ts')
 
     expect(layout).not.toContain('canStartHiring')
-    expect(desktopHeader).toContain('href="/creator"')
+    // The desktop Create control is a menu whose last entry opens the central /creator workspace.
+    expect(desktopHeader).toMatch(/href: '\/creator'/)
     expect(desktopHeader).toContain('Create')
     expect(mobileHeader).toContain('href="/creator"')
     expect(mobileHeader).toContain('Create')

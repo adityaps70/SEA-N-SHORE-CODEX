@@ -160,7 +160,7 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
       </section>
 
       <div>
-        <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-red-700">Entitlement history & controls</p>
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-muted">Entitlement history & controls</p>
         <AdminEntitlementControlPanel
           subjectType="company"
           subjectId={review.company.id}
