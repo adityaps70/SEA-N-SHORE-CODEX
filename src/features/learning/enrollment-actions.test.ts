@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
+  userCan: vi.fn(),
   enrollFreeCourse: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/access/server', () => ({ userCan: mocks.userCan }))
 vi.mock('./enrollment-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('./enrollment-repository')>()
   return {
@@ -27,6 +29,7 @@ describe('learning enrollment server action', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
+    mocks.userCan.mockResolvedValue(true)
     mocks.enrollFreeCourse.mockResolvedValue({
       enrollmentId,
       status: 'active',
