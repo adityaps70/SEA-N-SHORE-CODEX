@@ -252,7 +252,6 @@ function expectedOrganizationCapability(
   capability: Capability,
 ) {
   if (!verified) return false
-  if (FREE_CAPABILITIES.has(capability)) return true
   if (plan !== 'organization_pro') return false
 
   return ORGANIZATION_ROLE_CAPABILITIES[role].includes(capability)
