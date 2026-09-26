@@ -48,42 +48,6 @@ export type AccessContext = {
   accountActive: boolean
 }
 
-const FREE_CAPABILITIES: readonly Capability[] = [
-  'job.apply',
-  'event.attend',
-  'course.enroll',
-]
-
-const PERSONAL_PLAN_CAPABILITIES: Record<PlanCode, readonly Capability[]> = {
-  free: FREE_CAPABILITIES,
-  creator_pro: [
-    ...FREE_CAPABILITIES,
-    'job.publish',
-    'event.publish',
-    'course.publish',
-  ],
-  organization_pro: FREE_CAPABILITIES,
-}
-
-const ORGANIZATION_PLAN_CAPABILITIES: Record<PlanCode, readonly Capability[]> = {
-  free: FREE_CAPABILITIES,
-  creator_pro: FREE_CAPABILITIES,
-  organization_pro: [
-    ...FREE_CAPABILITIES,
-    'job.publish',
-    'event.publish',
-    'course.publish',
-    'job.manage_applicants',
-    'event.manage_attendees',
-    'course.manage_students',
-    'organization.manage',
-    'organization.team',
-    'organization.branding',
-    'analytics.view',
-    'billing.manage',
-  ],
-}
-
 const PERSONAL_VERIFICATION_REQUIREMENTS: Partial<Record<Capability, VerificationType>> = {
   'job.publish': 'recruiter',
   'event.publish': 'event_host',
@@ -91,8 +55,8 @@ const PERSONAL_VERIFICATION_REQUIREMENTS: Partial<Record<Capability, Verificatio
 }
 
 const ROLE_CAPABILITIES: Record<OrganizationAccessRole, readonly Capability[]> = {
-  owner: ORGANIZATION_PLAN_CAPABILITIES.organization_pro,
-  administrator: ORGANIZATION_PLAN_CAPABILITIES.organization_pro,
+  owner: CAPABILITIES,
+  administrator: CAPABILITIES,
   recruiter: ['job.publish', 'job.manage_applicants'],
   lms_manager: ['course.publish', 'course.manage_students'],
   event_manager: ['event.publish', 'event.manage_attendees'],
@@ -106,10 +70,7 @@ function uniqueCapabilities(values: readonly Capability[]) {
 }
 
 function personalCapabilities(access: AccessContext) {
-  const candidates = uniqueCapabilities([
-    ...PERSONAL_PLAN_CAPABILITIES[access.personalPlan],
-    ...access.personalEntitlements,
-  ])
+  const candidates = uniqueCapabilities(access.personalEntitlements)
 
   return candidates.filter((capability) => {
     const verification = PERSONAL_VERIFICATION_REQUIREMENTS[capability]
@@ -124,14 +85,11 @@ function organizationCapabilities(
   const membership = access.organizationMemberships.find((entry) => entry.companyId === companyId)
   if (!membership || !membership.verified) return []
 
-  const planCapabilities = ORGANIZATION_PLAN_CAPABILITIES[membership.plan]
   const roleCapabilities = ROLE_CAPABILITIES[membership.role]
 
-  return uniqueCapabilities([
-    ...FREE_CAPABILITIES,
-    ...membership.entitlements.filter((capability) => roleCapabilities.includes(capability)),
-    ...planCapabilities.filter((capability) => roleCapabilities.includes(capability)),
-  ])
+  return uniqueCapabilities(
+    membership.entitlements.filter((capability) => roleCapabilities.includes(capability)),
+  )
 }
 
 export function effectiveCapabilities(access: AccessContext): Capability[] {
