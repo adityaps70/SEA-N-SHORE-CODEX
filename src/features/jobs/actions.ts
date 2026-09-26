@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { userCan } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   createPendingJobApplicationCvUpload,
@@ -74,8 +75,11 @@ export async function prepareJobApplicationCvUpload(
   }
 
   const user = await requireAwsUser()
+  if (!await userCan(user.id, 'job.apply')) {
+    return { ok: false, error: 'Your account cannot apply for jobs right now.' }
+  }
   if (!await jobsRepository.isMemberReady(user.id)) {
-    return { ok: false, error: 'Complete your professional profile before applying.' }
+    return { ok: false, error: 'Complete your Sea N Shore profile before applying.' }
   }
   const job = await jobsRepository.getPublishedJob(parsedJobId.data)
   if (!job || !await jobsRepository.isAcceptingApplications(parsedJobId.data)) {
@@ -104,8 +108,11 @@ export async function applyToJob(
   if (!parsed.success) return { ok: false, error: 'Invalid job.' }
 
   const user = await requireAwsUser()
+  if (!await userCan(user.id, 'job.apply')) {
+    return { ok: false, error: 'Your account cannot apply for jobs right now.' }
+  }
   if (!await jobsRepository.isMemberReady(user.id)) {
-    return { ok: false, error: 'Complete your professional profile before applying.' }
+    return { ok: false, error: 'Complete your Sea N Shore profile before applying.' }
   }
 
   const job = await jobsRepository.getPublishedJob(parsed.data)
