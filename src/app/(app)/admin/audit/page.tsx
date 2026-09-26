@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { auditActionLabel, auditDetails, auditTargetHref, auditTargetLabel } from '@/features/admin/audit-format'
+import { auditDetails, auditTargetHref, auditTargetLabel, auditVerb } from '@/features/admin/audit-format'
 import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import {
   adminRepository,
@@ -101,7 +101,7 @@ export default async function AdminAuditPage({
                       <td className="px-4 py-2.5">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <AdminChip>{auditTargetLabel(event.targetType)}</AdminChip>
-                          <span className="font-semibold text-navy-950">{auditActionLabel(event.action)}</span>
+                          <span className="font-semibold text-navy-950" title={event.action}>{auditVerb(event.action)}</span>
                         </div>
                       </td>
                       <td className="max-w-[22rem] px-4 py-2.5 text-navy-900">

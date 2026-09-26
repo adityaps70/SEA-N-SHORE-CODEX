@@ -20,19 +20,19 @@ export function MobileAppHeader({
 }) {
   return (
     <header className="border-b border-mist-100 bg-white md:hidden">
-      <div className="flex min-h-14 items-center justify-between gap-3 px-4">
-        <Wordmark compact />
-        <div className="flex items-center gap-0.5">
+      <div className="flex min-h-14 items-center justify-between gap-2 px-3 sm:px-4">
+        <div className="min-w-0 max-w-[40%] shrink [&_img]:h-9 sm:max-w-none sm:[&_img]:h-11"><Wordmark compact /></div>
+        <div className="flex shrink-0 items-center gap-0.5">
           <Link href="/search" aria-label="Search" className={iconLinkClass}>
             <Search aria-hidden="true" className="size-5" />
           </Link>
           <Link
             href="/creator"
             aria-label="Create"
-            className="mx-1 inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-ocean-700 px-2.5 text-xs font-bold text-white transition hover:bg-ocean-800"
+            className="mx-0.5 inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg bg-ocean-700 px-2 text-xs font-bold text-white transition hover:bg-ocean-800"
           >
             <SquarePlus aria-hidden="true" className="size-4 shrink-0" />
-            <span className="whitespace-nowrap">Create</span>
+            <span className="hidden whitespace-nowrap min-[420px]:inline">Create</span>
           </Link>
           <Link href="/messages" aria-label="Messages" className={iconLinkClass}>
             <MessageCircleMore aria-hidden="true" className="size-5" />

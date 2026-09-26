@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { auditActionLabel, auditDetails, auditTargetHref, auditTargetLabel } from './audit-format'
+import { auditActionLabel, auditDetails, auditSummary, auditTargetHref, auditTargetLabel, auditVerb } from './audit-format'
 
 describe('audit formatting', () => {
   it('turns dotted action keys into sentence-case labels', () => {
     expect(auditActionLabel('account.permanently_deleted')).toBe('Account · Permanently deleted')
     expect(auditActionLabel('organization.approved')).toBe('Organization · Approved')
+  })
+
+  it('extracts the verb and builds a one-line summary without repeating the target', () => {
+    expect(auditVerb('account.permanently_deleted')).toBe('Permanently deleted')
+    expect(auditVerb('restored')).toBe('Restored')
+    expect(auditSummary('user_account', 'account.suspended')).toBe('Account suspended')
+    expect(auditSummary('organization_application', 'organization.approved')).toBe('Organization approved')
   })
 
   it('names and links every target type, including user accounts', () => {

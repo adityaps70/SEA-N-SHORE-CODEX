@@ -96,7 +96,7 @@ export function AdminUserControlPanel({
 
   if (isAdministrator) {
     return (
-      <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-5 sm:p-6">
+      <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
         <div className="flex gap-3">
           <ShieldAlert aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-800" />
           <div>
@@ -112,7 +112,7 @@ export function AdminUserControlPanel({
 
   if (deleted) {
     return (
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <section className="rounded-xl border border-mist-100 bg-white p-5">
         <h2 className="text-lg font-bold text-navy-950">Account controls</h2>
         <p className="mt-2 text-sm leading-6 text-muted">
           This account has already been permanently deleted. Its sign-in identity has been removed and it cannot be restored from the admin console.
@@ -124,7 +124,7 @@ export function AdminUserControlPanel({
   const suspended = status === 'suspended'
 
   return (
-    <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+    <section className="rounded-xl border border-mist-100 bg-white p-5">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted">Account control</p>
         <h2 className="mt-1 text-xl font-bold text-navy-950">

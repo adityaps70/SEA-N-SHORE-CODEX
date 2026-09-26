@@ -10,6 +10,17 @@ export function auditActionLabel(action: string) {
   return action.split('.').map(sentenceCase).filter(Boolean).join(' · ')
 }
 
+/** The verb part only: "account.permanently_deleted" → "Permanently deleted". */
+export function auditVerb(action: string) {
+  const parts = action.split('.').filter(Boolean)
+  return sentenceCase((parts.length > 1 ? parts.slice(1) : parts).join(' '))
+}
+
+/** One readable phrase: ("user_account", "account.suspended") → "Account suspended". */
+export function auditSummary(targetType: string, action: string) {
+  return `${auditTargetLabel(targetType)} ${auditVerb(action).toLowerCase()}`
+}
+
 const TARGET_LABELS: Record<string, string> = {
   organization_application: 'Organization',
   user_account: 'Account',

@@ -119,14 +119,20 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
           <AdminEmptyState title="No users match this view." description="Try a different search term or account-status filter." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[46rem] text-left text-sm">
+            <table className="w-full min-w-[44rem] table-fixed text-left text-sm">
+              <colgroup>
+                <col className="w-[38%]" />
+                <col className="w-[24%]" />
+                <col className="w-[11%]" />
+                <col className="w-[12%]" />
+                <col className="w-[15%]" />
+              </colgroup>
               <thead className="border-b border-mist-100 bg-mist-50/70 text-xs font-semibold uppercase tracking-wide text-muted">
                 <tr>
                   <th scope="col" className="px-4 py-2.5">Member</th>
                   <th scope="col" className="px-4 py-2.5">Email</th>
                   <th scope="col" className="px-4 py-2.5">Status</th>
                   <th scope="col" className="px-4 py-2.5">Joined</th>
-                  <th scope="col" className="px-4 py-2.5">Last updated</th>
                   <th scope="col" className="px-4 py-2.5"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
@@ -143,7 +149,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                           </span>
                           <div className="min-w-0">
                             <p className="flex flex-wrap items-center gap-1.5 font-semibold text-navy-950">
-                              <span className="truncate">{user.fullName}</span>
+                              <Link href={`/admin/users/${user.id}`} className="truncate hover:text-ocean-700 hover:underline">{user.fullName}</Link>
                               {user.isAdministrator ? (
                                 <span title="Administrator" className="inline-flex items-center gap-1 text-xs font-semibold text-ocean-700">
                                   <ShieldCheck aria-hidden="true" className="size-3.5" /> Admin
@@ -157,14 +163,13 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                           </div>
                         </div>
                       </td>
-                      <td className="max-w-[16rem] truncate px-4 py-2.5 text-navy-900">{user.email ?? (deleted ? '—' : 'No email retained')}</td>
+                      <td className="truncate px-4 py-2.5 text-navy-900" title={user.email ?? undefined}>{user.email ?? (deleted ? '—' : 'No email retained')}</td>
                       <td className="px-4 py-2.5"><AdminChip tone={statusTone[user.status]}>{statusLabels[user.status]}</AdminChip></td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatAdminDate(user.createdAt)}</td>
-                      <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatAdminDate(user.updatedAt)}</td>
                       <td className="px-4 py-2.5 text-right">
                         <Link
                           href={`/admin/users/${user.id}`}
-                          className="inline-flex min-h-8 items-center rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
+                          className="inline-flex min-h-8 items-center whitespace-nowrap rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
                         >
                           {deleted ? 'View deletion record' : 'Manage user'}
                         </Link>

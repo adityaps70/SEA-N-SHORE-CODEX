@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, CheckCircle2 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { auditActionLabel, auditTargetHref, auditTargetLabel } from '@/features/admin/audit-format'
+import { auditSummary, auditTargetHref, auditTargetLabel } from '@/features/admin/audit-format'
 import { AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
 import { adminRepository } from '@/features/admin/repository'
 
@@ -97,7 +97,7 @@ export default async function AdminPage() {
                   <time dateTime={event.createdAt} className="text-xs text-muted">{formatAdminDate(event.createdAt, true)}</time>
                   <p className="min-w-0 truncate text-navy-950">
                     <span className="font-semibold">{event.actor.fullName}</span>
-                    <span className="text-muted"> — {auditActionLabel(event.action)}</span>
+                    <span className="text-muted"> — {auditSummary(event.targetType, event.action)}</span>
                   </p>
                   {href ? (
                     <Link href={href} className="text-xs font-semibold text-ocean-700 hover:underline">

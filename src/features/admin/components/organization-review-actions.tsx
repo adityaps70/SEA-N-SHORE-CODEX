@@ -49,7 +49,7 @@ export function OrganizationReviewActions({
 
   if (decisions.length === 0) {
     return (
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <section className="rounded-xl border border-mist-100 bg-white p-5">
         <h2 className="text-lg font-bold text-navy-950">Review decision</h2>
         <p className="mt-2 text-sm leading-6 text-muted">This application is not currently waiting for an administrator decision.</p>
       </section>
@@ -57,7 +57,7 @@ export function OrganizationReviewActions({
   }
 
   return (
-    <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+    <section className="rounded-xl border border-mist-100 bg-white p-5">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Decision</p>
         <h2 className="mt-1 text-xl font-bold text-navy-950">Organization review</h2>
