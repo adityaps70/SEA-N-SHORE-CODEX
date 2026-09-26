@@ -11,9 +11,11 @@ import {
   ShieldCheck,
   Sparkles,
 } from 'lucide-react'
+import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
 import { learningRepository } from '@/features/learning/repository'
+import { organizationRepository } from '@/features/organizations/repository'
 
 const categories = [
   'Deck',
@@ -114,7 +116,7 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-200">Sea N Shore Learning</p>
-            <p className="mt-1 text-sm font-medium text-white/85">Practical maritime learning from verified professionals</p>
+            <p className="mt-1 text-sm font-medium text-white/85">Practical maritime learning from verified trainers and organizations</p>
           </div>
         </div>
       </div>
@@ -147,7 +149,7 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
           <div className="min-w-0">
             <p className="truncate text-sm font-bold text-navy-950">{course.mentorName}</p>
             <p className="mt-0.5 inline-flex items-center gap-1 text-xs font-bold text-teal-800">
-              <BadgeCheck aria-hidden="true" className="size-3.5" /> Verified mentor
+              <BadgeCheck aria-hidden="true" className="size-3.5" /> Verified trainer
             </p>
           </div>
         </div>
@@ -175,11 +177,19 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   const category = normalizeParam(params.category)
   const search = normalizeParam(params.search)
   const user = await requireAwsUser()
-  const [courses, mentorState] = await Promise.all([
+  const [courses, mentorState, access, organizations] = await Promise.all([
     marketplaceRepository.listPublishedCourses({ category, search }),
     learningRepository.getMentorApplicationState(user.id),
+    getAccessContext(user.id),
+    organizationRepository.listUserOrganizations(user.id),
   ])
-  const isActiveMentor = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
+  const isActiveTrainer = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
+  const hasOrganizationLmsAccess = organizations.some((organization) =>
+    organization.role === 'owner'
+    || organization.role === 'administrator'
+    || organization.role === 'lms_manager')
+  const hasLearningStudio = isActiveTrainer || hasOrganizationLmsAccess
+  const hasCreatorPro = access.personalPlan === 'creator_pro'
   const hasFilters = Boolean(category || search)
 
   return (
@@ -198,7 +208,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
             </p>
             <div className="mt-5 flex flex-wrap gap-2 text-xs font-bold text-white/80">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                <ShieldCheck aria-hidden="true" className="size-3.5 text-teal-200" /> Verified mentors
+                <ShieldCheck aria-hidden="true" className="size-3.5 text-teal-200" /> Verified trainers
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
                 <CheckCircle2 aria-hidden="true" className="size-3.5 text-teal-200" /> Reviewed before publishing
@@ -210,26 +220,26 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
           </div>
 
           <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-5">
-            {isActiveMentor ? (
+            {hasLearningStudio ? (
               <>
-                <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-200">Mentor workspace</p>
-                <p className="mt-2 text-lg font-bold">Build and manage your courses</p>
+                <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-200">Creator workspace</p>
+                <p className="mt-2 text-lg font-bold">Build and manage maritime learning</p>
                 <p className="mt-2 text-sm leading-6 text-white/68">
-                  Open Mentor Studio to create courses, organize curriculum and submit learning experiences for Sea N Shore review.
+                  Learning Studio supports verified trainers and authorized organization LMS managers. Personal publishing also requires Creator Pro; organization publishing follows Organization Pro and workspace role rules.
                 </p>
                 <Link href="/learn/studio" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
-                  Mentor Studio <ArrowRight aria-hidden="true" className="size-4" />
+                  Learning Studio <ArrowRight aria-hidden="true" className="size-4" />
                 </Link>
               </>
             ) : (
               <>
                 <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-200">Teach what you know</p>
-                <p className="mt-2 text-lg font-bold">Experienced maritime professional?</p>
+                <p className="mt-2 text-lg font-bold">Become a verified trainer</p>
                 <p className="mt-2 text-sm leading-6 text-white/68">
-                  Apply to become a Sea N Shore mentor. Approved mentors can build structured courses and submit them for quality review.
+                  Trainer verification establishes professional trust. {hasCreatorPro ? 'Your Creator Pro plan is ready for personal course publishing after verification.' : 'Creator Pro is a separate requirement for personal course publishing after verification.'}
                 </p>
                 <Link href="/learn/teach" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
-                  Teach on Sea N Shore <ArrowRight aria-hidden="true" className="size-4" />
+                  Trainer verification <ArrowRight aria-hidden="true" className="size-4" />
                 </Link>
               </>
             )}
