@@ -37,7 +37,7 @@ export function CourseReviewControls({
       }
 
       const message = decision === 'changes_requested'
-        ? 'Changes requested. The mentor can revise and resubmit the course.'
+        ? 'Changes requested. The trainer or organization manager can revise and resubmit the course.'
         : decision === 'approved'
           ? 'Course approved and published. It is now visible in Learn.'
           : decision === 'published'
@@ -67,7 +67,7 @@ export function CourseReviewControls({
             rows={3}
             disabled={isPending}
             className="mt-3 w-full resize-y rounded-xl border border-mist-200 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/15 disabled:opacity-60"
-            placeholder="Add evidence-based feedback for the mentor"
+            placeholder="Add evidence-based feedback for the course creator"
           />
         </>
       ) : null}
