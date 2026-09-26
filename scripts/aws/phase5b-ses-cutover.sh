@@ -310,6 +310,18 @@ write_developer_email_configuration() {
     }' > /tmp/phase5b-email-developer.json
 }
 
+write_default_email_configuration() {
+  local pool_id="$1"
+  jq -n \
+    --arg poolId "$pool_id" \
+    '{
+      UserPoolId: $poolId,
+      EmailConfiguration: {
+        EmailSendingAccount: "COGNITO_DEFAULT"
+      }
+    }' > /tmp/phase5b-email-default.json
+}
+
 verify_cutover() {
   local pool_id="$1"
   local expected_arn
@@ -352,23 +364,24 @@ cutover() {
 
 rollback_cognito() {
   local pool_id="$1"
-  [[ -f "$BEFORE_POOL_FILE" && -f "$BEFORE_EMAIL_FILE" ]] || {
-    echo "PHASE5B_ROLLBACK_CAPTURE_MISSING" >&2
-    exit 1
-  }
 
-  captured_pool_id="$(jq -r '.Id' "$BEFORE_POOL_FILE")"
-  captured_email_pool_id="$(jq -r '.UserPoolId' "$BEFORE_EMAIL_FILE")"
-  if [[ "$captured_pool_id" != "$pool_id" || "$captured_email_pool_id" != "$pool_id" ]]; then
-    echo "PHASE5B_ROLLBACK_POOL_MISMATCH" >&2
-    exit 1
-  fi
+  # Roll back from the live pool state so this remains safe and repeatable
+  # even when the original cutover runner's /tmp capture is gone.
+  capture_user_pool "$pool_id"
+  write_default_email_configuration "$pool_id"
+  build_update_request "$BEFORE_POOL_FILE" /tmp/phase5b-email-default.json
 
-  build_update_request "$BEFORE_POOL_FILE" "$BEFORE_EMAIL_FILE"
   aws cognito-idp update-user-pool \
     --region "$AWS_REGION" \
     --cli-input-json "file://${UPDATE_REQUEST_FILE}" >/dev/null
 
+  aws cognito-idp describe-user-pool \
+    --region "$AWS_REGION" \
+    --user-pool-id "$pool_id" \
+    --query 'UserPool.EmailConfiguration' \
+    --output json > /tmp/phase5b-email-live.json
+
+  jq -e '.EmailSendingAccount == "COGNITO_DEFAULT"' /tmp/phase5b-email-live.json >/dev/null
   echo "PHASE5B_COGNITO_ROLLBACK_OK"
 }
 
