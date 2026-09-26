@@ -58,11 +58,11 @@ describe('/learn/studio/courses/new', () => {
     })
   })
 
-  it('renders an active mentor a safe Phase 1 course draft form', async () => {
+  it('renders an active verified trainer a safe Phase 1 course draft form', async () => {
     render(await NewMentorCoursePage())
 
     expect(screen.getByRole('heading', { name: 'Create course' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /mentor studio/i })).toHaveAttribute('href', '/learn/studio')
+    expect(screen.getByRole('link', { name: /learning studio/i })).toHaveAttribute('href', '/learn/studio')
     expect(screen.getByTestId('course-form')).toBeInTheDocument()
     expect(mocks.capturedInitialValue).toEqual({
       slug: '',
@@ -100,7 +100,7 @@ describe('/learn/studio/courses/new', () => {
       mentorId: 'mentor-1',
       mentorStatus: 'suspended',
     },
-  ])('redirects users without active mentor access before rendering the builder', async (state) => {
+  ])('redirects users without active trainer or organization access before rendering the builder', async (state) => {
     mocks.getMentorApplicationState.mockResolvedValue(state)
 
     await NewMentorCoursePage()
@@ -109,7 +109,7 @@ describe('/learn/studio/courses/new', () => {
     expect(mocks.capturedInitialValue).toBeNull()
   })
 
-  it('renders the builder for an approved organization LMS manager without personal mentor access', async () => {
+  it('renders the builder for an approved organization LMS manager without personal trainer access', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
     mocks.listUserOrganizations.mockResolvedValue([{
       id: 'company-1',
