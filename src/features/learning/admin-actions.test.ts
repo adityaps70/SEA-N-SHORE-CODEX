@@ -82,7 +82,7 @@ describe('learning mentor review server action', () => {
 
     await expect(reviewMentorApplication(applicationId, 'approved', null)).resolves.toEqual({
       ok: false,
-      error: 'You are not authorized to review mentor applications.',
+      error: 'You are not authorized to review trainer verification applications.',
     })
   })
 })
