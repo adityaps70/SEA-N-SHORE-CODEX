@@ -1,26 +1,29 @@
 'use client'
 
-import { Ellipsis, MessageCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, CornerDownRight, Ellipsis, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
-import { useActionState, useEffect, useMemo, useState, useTransition } from 'react'
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
+import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import * as feedActions from '../actions'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import type { CommentActionState } from '../actions'
 import {
   EMPTY_REACTION_SUMMARY,
-  POST_REACTIONS,
-  POST_REACTION_META,
-  reactionCount,
   type FeedComment,
   type PostReactionType,
   type ReactionSummary,
 } from '../types'
+import { EmojiPicker, insertEmojiAt } from './emoji-picker'
 import { MentionInput, type SelectedMention } from './mention-input'
 import { MentionText } from './mention-text'
 import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
+import { ReactionSummaryTrigger } from './reaction-summary'
 
 const initialState: CommentActionState = {}
+
+/** Threads with more replies than this start collapsed behind "View N replies". */
+export const REPLY_PREVIEW_LIMIT = 2
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
@@ -36,20 +39,6 @@ function relativeTime(timestamp: string) {
 
 function commentSummary(comment: FeedComment): ReactionSummary {
   return comment.reactionSummary ?? { ...EMPTY_REACTION_SUMMARY }
-}
-
-function CommentReactionSummary({ summary, onOpen }: { summary: ReactionSummary; onOpen(): void }) {
-  const total = reactionCount(summary)
-  if (!total) return null
-  const activeReactions = POST_REACTIONS.filter((reaction) => summary[reaction] > 0)
-  return (
-    <button type="button" onClick={onOpen} aria-label={`View ${total} comment reactions`} className="ml-auto inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-[11px] text-muted transition hover:bg-mist-50 hover:text-ocean-700">
-      <span aria-hidden="true" className="inline-flex items-center gap-0.5">
-        {activeReactions.map((reaction) => <span key={reaction}>{POST_REACTION_META[reaction].emoji}</span>)}
-      </span>
-      <span>{total}</span>
-    </button>
-  )
 }
 
 function CommentReplySummary({ count }: { count: number }) {
@@ -71,14 +60,31 @@ function firstActionError(state: CommentActionState) {
   return Object.values(state.fieldErrors ?? {}).flatMap((errors) => errors ?? [])[0] ?? 'We could not update this comment.'
 }
 
-function ReplyComposer({ postId, parentCommentId, onCreated, onDone }: {
+/** Inserts an emoji at the caret of a controlled textarea and restores focus after it. */
+function useEmojiInsertion(value: string, setValue: (value: string) => void) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const insert = useCallback((emoji: string) => {
+    const textarea = textareaRef.current
+    const next = insertEmojiAt(value, emoji, textarea?.selectionStart, textarea?.selectionEnd)
+    setValue(next.value)
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+      textareaRef.current?.setSelectionRange(next.caret, next.caret)
+    })
+  }, [setValue, value])
+  return { textareaRef, insert }
+}
+
+function ReplyComposer({ postId, target, onCreated, onDone }: {
   postId: string
-  parentCommentId: string
+  target: FeedComment
   onCreated(comment: FeedComment): void
   onDone(): void
 }) {
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
+  const { textareaRef, insert } = useEmojiInsertion(body, setBody)
+  const inputId = `reply-${target.id}`
   const [state, formAction, pending] = useActionState(async (previousState: CommentActionState, formData: FormData) => {
     const nextState = await feedActions.addComment(previousState, formData)
     if (nextState.ok && nextState.comment) {
@@ -91,28 +97,58 @@ function ReplyComposer({ postId, parentCommentId, onCreated, onDone }: {
   }, initialState)
 
   useEffect(() => {
-    document.getElementById(`reply-${parentCommentId}`)?.focus()
-  }, [parentCommentId])
+    document.getElementById(inputId)?.focus()
+  }, [inputId])
 
   return (
-    <form action={formAction} className="mt-2 flex items-end gap-2">
+    <form action={formAction} className="mt-2" aria-label={`Reply to ${target.author.fullName}`}>
       <input type="hidden" name="postId" value={postId} />
-      <input type="hidden" name="parentCommentId" value={parentCommentId} />
-      <div className="min-w-0 flex-1">
-        <label htmlFor={`reply-${parentCommentId}`} className="sr-only">Write a reply</label>
-        <MentionInput id={`reply-${parentCommentId}`} name="body" rows={1} value={body} onChange={setBody} mentions={mentions} onMentionsChange={setMentions} placeholder="Write a reply…" className="min-h-10 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500" />
-        {state.fieldErrors?.body ? <p className="mt-1 text-xs text-red-700">{state.fieldErrors.body[0]}</p> : null}
+      <input type="hidden" name="parentCommentId" value={target.id} />
+      <p className="mb-1 flex items-center gap-1 px-1 text-xs text-muted">
+        <CornerDownRight aria-hidden="true" className="size-3.5" />
+        Replying to <span className="font-semibold text-navy-900">{target.author.fullName}</span>
+      </p>
+      <div className="flex items-end gap-1.5">
+        <div className="min-w-0 flex-1">
+          <label htmlFor={inputId} className="sr-only">Write a reply to {target.author.fullName}</label>
+          <MentionInput id={inputId} name="body" rows={1} value={body} onChange={setBody} mentions={mentions} onMentionsChange={setMentions} textareaRef={textareaRef} maxLength={2000} placeholder="Write a reply…" className="min-h-10 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500" />
+        </div>
+        <EmojiPicker onSelect={insert} label="Add emoji to reply" align="right" size="sm" />
+        <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60">{pending ? 'Replying…' : 'Reply'}</button>
       </div>
-      <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60">{pending ? 'Replying…' : 'Reply'}</button>
-      {state.error ? <p role="alert" className="text-xs text-red-700">{state.error}</p> : null}
+      {state.fieldErrors?.body ? <p className="mt-1 px-1 text-xs text-red-700">{state.fieldErrors.body[0]}</p> : null}
+      {state.error ? <p role="alert" className="mt-1 px-1 text-xs text-red-700">{state.error}</p> : null}
     </form>
   )
 }
 
-function CommentItem({ postId, comment, rootCommentId, readOnly, isReply = false, replyCount = 0, onChanged, onDeleted, onCreatedReply }: {
+function CommentOwnerMenu({ canEdit, pending, onEdit, onDelete }: {
+  canEdit: boolean
+  pending: boolean
+  onEdit(): void
+  onDelete(): void
+}) {
+  const [open, setOpen] = useState(false)
+  const close = useCallback(() => setOpen(false), [])
+  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close)
+  return (
+    <div ref={rootRef} className="absolute right-1.5 top-1.5">
+      <button type="button" aria-label="Comment actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="grid size-7 place-items-center rounded-full text-muted transition hover:bg-white hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"><Ellipsis className="size-4" aria-hidden="true" /></button>
+      {open ? (
+        <div className="absolute right-0 z-20 mt-1 min-w-24 overflow-hidden rounded-xl border border-mist-100 bg-white py-1 shadow-lg">
+          {canEdit ? <button type="button" onClick={() => { setOpen(false); onEdit() }} className="block w-full px-3 py-2 text-left text-xs font-semibold text-navy-950 hover:bg-mist-50">Edit</button> : null}
+          <button type="button" onClick={() => { setOpen(false); onDelete() }} disabled={pending} className="block w-full px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">Delete</button>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isReply = false, replyCount = 0, onChanged, onDeleted, onCreatedReply }: {
   postId: string
+  postAuthorId?: string
   comment: FeedComment
-  rootCommentId: string
+  rootComment: FeedComment
   readOnly: boolean
   isReply?: boolean
   replyCount?: number
@@ -124,15 +160,19 @@ function CommentItem({ postId, comment, rootCommentId, readOnly, isReply = false
   const [summary, setSummary] = useState<ReactionSummary>(() => commentSummary(comment))
   const [replying, setReplying] = useState(false)
   const [reactionsOpen, setReactionsOpen] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editBody, setEditBody] = useState(comment.body)
   const [editMentions, setEditMentions] = useState<SelectedMention[]>(() => selectedMentions(comment))
   const [error, setError] = useState('')
   const [reactionPending, startReactionTransition] = useTransition()
   const [managementPending, startManagementTransition] = useTransition()
+  const { textareaRef: editTextareaRef, insert: insertEditEmoji } = useEmojiInsertion(editBody, setEditBody)
   const updatedAt = comment.updatedAt ?? comment.createdAt
   const edited = !comment.deleted && Number.isFinite(Date.parse(updatedAt)) && Date.parse(updatedAt) > Date.parse(comment.createdAt)
+  const replyTarget = isReply
+    ? comment.replyTo ?? { commentId: rootComment.id, authorName: rootComment.author.fullName, authorSlug: rootComment.author.slug }
+    : null
+  const isPostAuthor = Boolean(postAuthorId) && comment.author.id === postAuthorId
 
   function changeReaction(next: PostReactionType | null) {
     if (readOnly || reactionPending) return
@@ -155,7 +195,6 @@ function CommentItem({ postId, comment, rootCommentId, readOnly, isReply = false
   }
 
   function beginEdit() {
-    setMenuOpen(false)
     setReplying(false)
     setEditBody(comment.body)
     setEditMentions(selectedMentions(comment))
@@ -187,7 +226,6 @@ function CommentItem({ postId, comment, rootCommentId, readOnly, isReply = false
 
   function removeComment() {
     if (managementPending) return
-    setMenuOpen(false)
     setError('')
     startManagementTransition(async () => {
       const result = await feedActions.deleteComment(comment.id)
@@ -208,46 +246,72 @@ function CommentItem({ postId, comment, rootCommentId, readOnly, isReply = false
     )
   }
 
+  const avatarSize = isReply ? 'size-8 rounded-lg text-[11px]' : 'size-9 rounded-xl text-xs'
+
   return (
-    <div id={`comment-${comment.id}`} className={`relative flex gap-2.5 ${isReply ? 'ml-8 pl-5' : ''}`} data-testid={isReply ? `reply-thread-${comment.id}` : 'visible-top-level-comment'}>
-      {isReply ? <><span aria-hidden="true" className="absolute bottom-1/2 left-0 top-[-0.75rem] w-px bg-mist-100" /><span aria-hidden="true" className="absolute left-0 top-2 h-4 w-4 rounded-bl-xl border-b border-l border-mist-100" /></> : null}
-      <div className="relative z-[1] grid size-9 shrink-0 place-items-center overflow-hidden rounded-xl bg-mist-100 text-xs font-semibold text-navy-950">
+    <div
+      id={`comment-${comment.id}`}
+      className="relative flex gap-2.5"
+      data-testid={isReply ? `reply-thread-${comment.id}` : 'visible-top-level-comment'}
+      data-comment-level={isReply ? 'reply' : 'parent'}
+    >
+      <div className={`relative z-[1] grid shrink-0 place-items-center overflow-hidden bg-mist-100 font-semibold text-navy-950 ${avatarSize}`}>
         {comment.author.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={comment.author.avatarUrl} alt={`${comment.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
         ) : initials(comment.author.fullName)}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="relative rounded-2xl bg-mist-50 px-3 py-2.5">
+        <div className={`relative rounded-2xl px-3 py-2.5 ${isReply ? 'bg-mist-50/70 ring-1 ring-mist-100' : 'bg-mist-50'}`}>
           <div className="flex flex-wrap items-baseline gap-x-2 pr-7">
             <Link href={`/people/${comment.author.slug}`} className="text-sm font-semibold text-navy-950 hover:text-ocean-700">{comment.author.fullName}</Link>
-            <span className="text-xs text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
+            {isPostAuthor ? <span className="rounded-full bg-ocean-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ocean-800">Author</span> : null}
+            <span className="min-w-0 truncate text-xs text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
             <div className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted"><time dateTime={comment.createdAt}>{relativeTime(comment.createdAt)}</time>{edited ? <span>Edited</span> : null}</div>
           </div>
+          {replyTarget ? (
+            <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-muted" data-testid={`reply-target-${comment.id}`}>
+              <CornerDownRight aria-hidden="true" className="size-3.5 shrink-0" />
+              <span className="truncate">
+                Replying to{' '}
+                {replyTarget.authorSlug ? (
+                  <Link href={`/people/${replyTarget.authorSlug}`} className="font-semibold text-navy-900 hover:text-ocean-700">{replyTarget.authorName}</Link>
+                ) : <span className="font-semibold text-navy-900">{replyTarget.authorName}</span>}
+              </span>
+            </p>
+          ) : null}
           {!readOnly && comment.viewerOwns ? (
-            <div className="absolute right-1.5 top-1.5">
-              <button type="button" aria-label="Comment actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((value) => !value)} className="grid size-7 place-items-center rounded-full text-muted transition hover:bg-white hover:text-navy-950"><Ellipsis className="size-4" aria-hidden="true" /></button>
-              {menuOpen ? (
-                <div className="absolute right-0 z-20 mt-1 min-w-24 overflow-hidden rounded-xl border border-mist-100 bg-white py-1 shadow-lg">
-                  {comment.canEdit ? <button type="button" onClick={beginEdit} className="block w-full px-3 py-2 text-left text-xs font-semibold text-navy-950 hover:bg-mist-50">Edit</button> : null}
-                  <button type="button" onClick={removeComment} disabled={managementPending} className="block w-full px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">Delete</button>
-                </div>
-              ) : null}
-            </div>
+            <CommentOwnerMenu canEdit={Boolean(comment.canEdit)} pending={managementPending} onEdit={beginEdit} onDelete={removeComment} />
           ) : null}
           {editing ? (
             <form className="mt-2" onSubmit={(event) => { event.preventDefault(); submitEdit(new FormData(event.currentTarget)) }}>
               <input type="hidden" name="commentId" value={comment.id} />
               <label htmlFor={`edit-comment-${comment.id}`} className="sr-only">Edit comment</label>
-              <MentionInput id={`edit-comment-${comment.id}`} name="body" rows={2} value={editBody} onChange={setEditBody} mentions={editMentions} onMentionsChange={setEditMentions} placeholder="Edit comment…" className="min-h-16 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500" />
-              <div className="mt-2 flex items-center justify-end gap-2"><button type="button" onClick={cancelEdit} disabled={managementPending} className="min-h-8 rounded-lg px-3 text-xs font-semibold text-navy-900 hover:bg-white disabled:opacity-60">Cancel</button><button type="submit" disabled={managementPending} className="min-h-8 rounded-lg bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60">{managementPending ? 'Saving…' : 'Save'}</button></div>
+              <MentionInput id={`edit-comment-${comment.id}`} name="body" rows={2} value={editBody} onChange={setEditBody} mentions={editMentions} onMentionsChange={setEditMentions} textareaRef={editTextareaRef} maxLength={2000} placeholder="Edit comment…" className="min-h-16 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500" />
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <div className="mr-auto"><EmojiPicker onSelect={insertEditEmoji} label="Add emoji to comment" size="sm" /></div>
+                <button type="button" onClick={cancelEdit} disabled={managementPending} className="min-h-8 rounded-lg px-3 text-xs font-semibold text-navy-900 hover:bg-white disabled:opacity-60">Cancel</button>
+                <button type="submit" disabled={managementPending} className="min-h-8 rounded-lg bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60">{managementPending ? 'Saving…' : 'Save'}</button>
+              </div>
             </form>
-          ) : <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink"><MentionText body={comment.body} mentions={comment.mentions} /></p>}
+          ) : <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink [overflow-wrap:anywhere]"><MentionText body={comment.body} mentions={comment.mentions} /></p>}
         </div>
         {!editing ? (
-          <div className="mt-0.5 flex min-h-8 items-center gap-1.5 px-1">
+          <div className="mt-0.5 flex min-h-8 flex-wrap items-center gap-1.5 px-1">
             {!readOnly ? <ReactionPicker value={reaction} disabled={reactionPending} onChange={changeReaction} compact /> : null}
-            {!readOnly ? <button type="button" onClick={() => setReplying((value) => !value)} className="min-h-8 rounded-lg px-2 text-xs font-semibold text-navy-900 hover:bg-mist-50">Reply</button> : null}
+            <ReactionSummaryTrigger variant="comment" summary={summary} onOpen={() => setReactionsOpen(true)} />
+            {!readOnly ? (
+              <button
+                type="button"
+                onClick={() => setReplying((value) => !value)}
+                aria-expanded={replying}
+                aria-label="Reply"
+                title={`Reply to ${comment.author.fullName}`}
+                className="min-h-8 rounded-lg px-2 text-xs font-semibold text-navy-900 hover:bg-mist-50"
+              >
+                Reply
+              </button>
+            ) : null}
             {!readOnly && !comment.viewerOwns ? (
               <ReportContentButton
                 targetType="comment"
@@ -258,28 +322,65 @@ function CommentItem({ postId, comment, rootCommentId, readOnly, isReply = false
               />
             ) : null}
             <CommentReplySummary count={replyCount} />
-            <CommentReactionSummary summary={summary} onOpen={() => setReactionsOpen(true)} />
           </div>
         ) : null}
         {error ? <p role="alert" className="px-1 text-xs text-red-700">{error}</p> : null}
-        {replying && !readOnly && !editing ? <ReplyComposer postId={postId} parentCommentId={rootCommentId} onCreated={onCreatedReply} onDone={() => setReplying(false)} /> : null}
+        {replying && !readOnly && !editing ? <ReplyComposer postId={postId} target={comment} onCreated={onCreatedReply} onDone={() => setReplying(false)} /> : null}
         <ReactionDetailsModal open={reactionsOpen} targetType="comment" targetId={comment.id} summary={summary} onClose={() => setReactionsOpen(false)} />
       </div>
     </div>
   )
 }
 
-export function CommentThread({ postId, comments, readOnly = false, composerOpen = false }: {
+function ReplyThread({ root, replies, expanded, onToggle, children }: {
+  root: FeedComment
+  replies: FeedComment[]
+  expanded: boolean
+  onToggle(): void
+  children: ReactNode
+}) {
+  const listId = `replies-${root.id}`
+  const collapsible = replies.length >= REPLY_PREVIEW_LIMIT
+  const rootName = root.deleted ? 'this comment' : root.author.fullName
+  return (
+    <div className="ml-[1.0625rem] border-l-2 border-mist-100 pl-3 sm:pl-4" data-testid={`reply-group-${root.id}`}>
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-controls={listId}
+          className="-ml-1 mb-1 inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-xs font-semibold text-ocean-700 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+        >
+          {expanded ? <ChevronUp aria-hidden="true" className="size-4" /> : <ChevronDown aria-hidden="true" className="size-4" />}
+          {expanded ? 'Hide replies' : `View ${replies.length} ${replies.length === 1 ? 'reply' : 'replies'}`}
+        </button>
+      ) : null}
+      {expanded || !collapsible ? (
+        <div id={listId} role="group" aria-label={`Replies to ${rootName}`} className="space-y-2">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function CommentThread({ postId, postAuthorId, comments, readOnly = false, composerOpen = false, expandReplies = false }: {
   postId: string
+  postAuthorId?: string
   comments: FeedComment[]
   readOnly?: boolean
   composerOpen?: boolean
+  /** Start every reply thread expanded (used on the single-post page). */
+  expandReplies?: boolean
 }) {
   const [canonicalComments, setCanonicalComments] = useState(comments)
   const [threadComments, setThreadComments] = useState(comments)
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
   const [visibleRootCount, setVisibleRootCount] = useState(1)
+  const [expandedRoots, setExpandedRoots] = useState<Record<string, boolean>>({})
+  const { textareaRef, insert } = useEmojiInsertion(body, setBody)
 
   if (canonicalComments !== comments) {
     setCanonicalComments(comments)
@@ -292,6 +393,12 @@ export function CommentThread({ postId, comments, readOnly = false, composerOpen
       if (exists) return current.map((comment) => comment.id === nextComment.id ? nextComment : comment)
       return [...current, nextComment]
     })
+  }
+
+  function addReply(reply: FeedComment) {
+    upsertComment(reply)
+    const rootId = reply.parentCommentId
+    if (rootId) setExpandedRoots((current) => ({ ...current, [rootId]: true }))
   }
 
   function reconcileDelete(commentId: string, nextComment: FeedComment | null) {
@@ -312,7 +419,7 @@ export function CommentThread({ postId, comments, readOnly = false, composerOpen
     const rootComments = threadComments.filter((comment) => !comment.parentCommentId).slice().reverse()
     const map = new Map<string, FeedComment[]>()
     for (const comment of threadComments) {
-      if (!comment.parentCommentId) continue
+      if (!comment.parentCommentId || comment.deleted) continue
       const current = map.get(comment.parentCommentId) ?? []
       current.push(comment)
       map.set(comment.parentCommentId, current)
@@ -327,16 +434,33 @@ export function CommentThread({ postId, comments, readOnly = false, composerOpen
   const visibleRoots = roots.slice(0, visibleRootCount)
   const remaining = Math.max(0, roots.length - visibleRoots.length)
 
+  function isExpanded(rootId: string, replyCount: number) {
+    return expandedRoots[rootId] ?? (expandReplies || replyCount <= REPLY_PREVIEW_LIMIT)
+  }
+
+  // Nothing to show (for example the loaded comments were all removed): no empty bordered band.
+  if (!visibleRoots.length && !(composerOpen && !readOnly) && !state.error) return null
+
   return (
     <div id={`comments-${postId}`} className="border-t border-mist-100 px-4 py-4 sm:px-5">
       {visibleRoots.length ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {visibleRoots.map((comment) => {
             const replies = repliesByRoot.get(comment.id) ?? []
+            const expanded = isExpanded(comment.id, replies.length)
             return (
-              <div key={comment.id} className="space-y-2">
-                <CommentItem postId={postId} comment={comment} rootCommentId={comment.id} readOnly={readOnly} replyCount={replies.length} onChanged={upsertComment} onDeleted={reconcileDelete} onCreatedReply={upsertComment} />
-                {replies.map((reply) => <CommentItem key={reply.id} postId={postId} comment={reply} rootCommentId={comment.id} readOnly={readOnly} isReply onChanged={upsertComment} onDeleted={reconcileDelete} onCreatedReply={upsertComment} />)}
+              <div key={comment.id} className="space-y-2" data-testid={`comment-group-${comment.id}`}>
+                <CommentItem postId={postId} postAuthorId={postAuthorId} comment={comment} rootComment={comment} readOnly={readOnly} replyCount={replies.length} onChanged={upsertComment} onDeleted={reconcileDelete} onCreatedReply={addReply} />
+                {replies.length ? (
+                  <ReplyThread
+                    root={comment}
+                    replies={replies}
+                    expanded={expanded}
+                    onToggle={() => setExpandedRoots((current) => ({ ...current, [comment.id]: !expanded }))}
+                  >
+                    {replies.map((reply) => <CommentItem key={reply.id} postId={postId} postAuthorId={postAuthorId} comment={reply} rootComment={comment} readOnly={readOnly} isReply onChanged={upsertComment} onDeleted={reconcileDelete} onCreatedReply={addReply} />)}
+                  </ReplyThread>
+                ) : null}
               </div>
             )
           })}
@@ -345,13 +469,14 @@ export function CommentThread({ postId, comments, readOnly = false, composerOpen
       ) : composerOpen && !readOnly ? <p className="text-sm text-muted">Start the professional discussion.</p> : null}
 
       {composerOpen && !readOnly ? (
-        <form action={formAction} className="mt-3 flex items-end gap-2">
+        <form action={formAction} className="mt-3 flex items-end gap-1.5">
           <input type="hidden" name="postId" value={postId} />
           <div className="min-w-0 flex-1">
             <label htmlFor={`comment-${postId}`} className="sr-only">Add a comment</label>
-            <MentionInput id={`comment-${postId}`} name="body" rows={1} value={body} onChange={setBody} mentions={mentions} onMentionsChange={setMentions} placeholder="Add a professional comment…" className="min-h-11 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500" />
+            <MentionInput id={`comment-${postId}`} name="body" rows={1} value={body} onChange={setBody} mentions={mentions} onMentionsChange={setMentions} textareaRef={textareaRef} maxLength={2000} placeholder="Write a comment…" className="min-h-11 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500" />
             {state.fieldErrors?.body ? <p className="mt-1 text-xs text-red-700">{state.fieldErrors.body[0]}</p> : null}
           </div>
+          <EmojiPicker onSelect={insert} label="Add emoji to comment" align="right" />
           <button type="submit" disabled={pending} className="min-h-11 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60">{pending ? 'Adding…' : 'Comment'}</button>
         </form>
       ) : null}

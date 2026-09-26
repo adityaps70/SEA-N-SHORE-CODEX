@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, FilePenLine, Plus, Sparkles } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, Eye, FilePenLine, Plus, Sparkles } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
@@ -49,7 +49,7 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
       </div>
 
       {course.adminReviewNote ? (
-        <div className="mt-4 rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-sm leading-6 text-amber-950">
+        <div className="mt-4 break-words rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-sm leading-6 text-amber-950">
           <span className="font-bold">Reviewer feedback:</span> {course.adminReviewNote}
         </div>
       ) : null}
@@ -68,10 +68,19 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
             <FilePenLine aria-hidden="true" className="size-4" /> Edit course
           </Link>
         ) : (
-          <span className="inline-flex items-center gap-2 text-sm font-semibold text-muted">
-            {course.status === 'submitted' ? <Clock3 aria-hidden="true" className="size-4" /> : <CheckCircle2 aria-hidden="true" className="size-4" />}
-            {course.status === 'submitted' ? 'Sea N Shore review in progress' : statusLabel(course.status)}
-          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 text-sm font-semibold text-muted">
+              {course.status === 'submitted' ? <Clock3 aria-hidden="true" className="size-4" /> : <CheckCircle2 aria-hidden="true" className="size-4" />}
+              {course.status === 'submitted' ? 'Sea N Shore review in progress' : statusLabel(course.status)}
+            </span>
+            <Link
+              href={`/learn/studio/courses/${course.id}/edit`}
+              aria-label={`View ${course.title}`}
+              className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 py-2 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+            >
+              <Eye aria-hidden="true" className="size-4" /> {course.status === 'submitted' ? 'View or withdraw' : 'View course'}
+            </Link>
+          </div>
         )}
       </div>
     </article>
@@ -104,7 +113,7 @@ export default async function MentorStudioPage() {
   const pendingLearnerReviews = assignmentAttempts.filter((attempt) => attempt.status === 'submitted').length
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-7xl py-6 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/learn/teach" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
           <ArrowLeft aria-hidden="true" className="size-4" /> Trainer verification
@@ -187,11 +196,6 @@ export default async function MentorStudioPage() {
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Your learning portfolio</p>
             <h2 className="mt-1 text-2xl font-bold text-navy-950">Courses</h2>
           </div>
-          {courses.length ? (
-            <Link href="/learn/studio/courses" className="inline-flex items-center gap-2 text-sm font-bold text-teal-800 hover:text-teal-700">
-              Manage all courses <ArrowRight aria-hidden="true" className="size-4" />
-            </Link>
-          ) : null}
         </div>
 
         {courses.length ? (
@@ -216,6 +220,6 @@ export default async function MentorStudioPage() {
           </div>
         )}
       </section>
-    </main>
+    </div>
   )
 }

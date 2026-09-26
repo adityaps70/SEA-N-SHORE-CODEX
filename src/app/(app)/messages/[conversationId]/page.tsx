@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MessageShell } from '@/features/messaging/components/message-shell'
 import { getConversationInbox, getConversationThread, getUnreadMessageCount } from '@/features/messaging/queries'
+import { getConversationPeer } from '@/features/messaging/recipient-queries'
 import { createProductionMessagingService } from '@/features/messaging/service'
 
 export const metadata: Metadata = { title: 'Messages' }
@@ -44,12 +45,15 @@ export default async function MessageConversationPage({
     getUnreadMessageCount(),
   ])
   const peer = inbox.find((item) => item.conversationId === conversationId)
+  // A conversation just started from New Message may sit beyond the first
+  // inbox page; look the other participant up directly so the header is right.
+  const fallbackPeer = peer ? null : await getConversationPeer(viewer.id, conversationId).catch(() => null)
   const activeConversation = {
     conversationId,
-    otherProfileId: peer?.otherProfileId ?? '',
-    otherName: peer?.otherName ?? 'Sea N Shore member',
-    otherHeadline: peer?.otherHeadline ?? null,
-    otherAvatarUrl: peer?.otherAvatarUrl ?? null,
+    otherProfileId: peer?.otherProfileId ?? fallbackPeer?.otherProfileId ?? '',
+    otherName: peer?.otherName ?? fallbackPeer?.otherName ?? 'Sea N Shore member',
+    otherHeadline: peer?.otherHeadline ?? fallbackPeer?.otherHeadline ?? null,
+    otherAvatarUrl: peer?.otherAvatarUrl ?? fallbackPeer?.otherAvatarUrl ?? null,
     otherLastReadMessageId: peer?.otherLastReadMessageId ?? null,
     otherLastReadAt: peer?.otherLastReadAt ?? null,
     messages: thread.messages,

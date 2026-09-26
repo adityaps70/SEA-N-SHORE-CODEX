@@ -5,10 +5,13 @@ import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { adminRepository, type AdminCompanyAccessDecision, type AdminOrganizationDecision } from './repository'
 import { MODERATION_TARGET_TYPES, type ModerationAction } from '@/features/moderation/types'
+import { accessRequestErrorMessage } from '@/features/organizations/access-request-messages'
+import { COMPANY_ACCESS_REQUEST_ROLES, type CompanyAccessRequestRole } from '@/features/organizations/types'
 
 const accessReviewSchema = z.object({
   requestId: z.string().uuid(),
   decision: z.enum(['approved', 'rejected']),
+  grantedRole: z.enum(COMPANY_ACCESS_REQUEST_ROLES).nullable(),
   reviewerNote: z.preprocess(
     (value) => {
       if (typeof value !== 'string') return null
@@ -22,7 +25,7 @@ const accessReviewSchema = z.object({
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['reviewerNote'],
-      message: 'Add a reviewer note when rejecting an organization access request.',
+      message: 'Add a note explaining the decision. The requester and the organization will see it.',
     })
   }
 })
@@ -74,12 +77,18 @@ const moderationSchema = z.object({
 
 export type AdminModerationActionResult = { ok: true } | { ok: false; error: string }
 
+/**
+ * Sea N Shore fallback decision on an organization access request. The
+ * repository re-checks, inside the transaction, that the caller is a platform
+ * administrator and that the fallback rules allow a platform decision.
+ */
 export async function reviewCompanyAccessRequest(
   requestId: string,
   decision: AdminCompanyAccessDecision,
   reviewerNote: string | null,
+  grantedRole: CompanyAccessRequestRole | null = null,
 ): Promise<AdminReviewActionResult> {
-  const parsed = accessReviewSchema.safeParse({ requestId, decision, reviewerNote })
+  const parsed = accessReviewSchema.safeParse({ requestId, decision, reviewerNote, grantedRole })
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid organization access review request.' }
   }
@@ -91,25 +100,22 @@ export async function reviewCompanyAccessRequest(
       parsed.data.requestId,
       parsed.data.decision,
       parsed.data.reviewerNote,
+      parsed.data.decision === 'approved' ? parsed.data.grantedRole : null,
     )
   } catch (error) {
     const code = error instanceof Error ? error.message : ''
     if (code === 'admin_forbidden') {
       return { ok: false, error: 'You do not have permission to review organization access requests.' }
     }
-    if (code === 'company_access_request_not_found') {
-      return { ok: false, error: 'This organization access request could not be found.' }
-    }
     if (code === 'company_access_request_review_forbidden') {
       return { ok: false, error: 'This organization access request has already been reviewed.' }
     }
-    return { ok: false, error: 'The organization access review could not be saved. Please try again.' }
+    return { ok: false, error: accessRequestErrorMessage(code) }
   }
 
   revalidatePath('/admin')
   revalidatePath('/admin/access')
-  revalidatePath('/hiring')
-  revalidatePath('/hiring/organization')
+  revalidatePath('/organizations')
   return { ok: true }
 }
 

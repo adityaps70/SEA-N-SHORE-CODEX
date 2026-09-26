@@ -181,10 +181,11 @@ describe('jobs repository', () => {
       sizeBytes: 2048,
     }
 
-    await repository.createApplication('job-1', 'viewer-1', cv)
+    await repository.createApplication('job-1', 'viewer-1', cv, 'Available from 1 November.')
 
     expect(seen[0]?.text).toContain('cv_storage_path')
     expect(seen[0]?.text).toContain('cv_file_name')
+    expect(seen[0]?.text).toContain('cover_note')
     expect(seen[0]?.text).toContain('job_application_events')
     expect(seen[0]?.values).toEqual([
       'job-1',
@@ -193,7 +194,71 @@ describe('jobs repository', () => {
       cv.fileName,
       cv.mimeType,
       cv.sizeBytes,
+      'Available from 1 November.',
     ])
+  })
+
+  it('hides deleted jobs from discovery, detail, saved jobs and applying', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [] } })
+
+    await repository.listPublishedJobs(10)
+    await repository.searchJobs(parseJobSearchParams({}), 10, 0)
+    await repository.getPublishedJob('job-1')
+    await repository.isAcceptingApplications('job-1')
+    await repository.listSavedJobs('viewer-1')
+
+    for (const entry of seen) expect(entry.text).toContain('j.deleted_at is null')
+  })
+
+  it('shows the current organization name, logo and office location on job listings', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          id: 'job-1', title: 'Chief Officer', company_name: 'Oceanic Shipping', company_id: 'company-1',
+          company_slug: 'oceanic', company_logo_path: 'companies/company-1/logo.png', company_location: 'Dubai',
+          company_type: 'Ship manager', company_verified: true, recruiter_verified: false, location: 'Worldwide',
+          summary: 'Opening', description: 'Lead', requirements: null, apply_until: null,
+          created_at: new Date('2026-09-10T00:00:00.000Z'), published_at: new Date('2026-09-10T00:00:00.000Z'),
+          job_domain: 'sea', department: null, rank: null, vessel_types: [], experience_min_years: null,
+          experience_max_years: null, joining_from: null, joining_until: null, salary_min: null, salary_max: null,
+          salary_currency: null, salary_period: null, sailing_regions: [], urgent: false, easy_apply: true,
+          certificate_requirements: [], visa_requirements: [],
+        }]
+      },
+    })
+
+    const job = await repository.getPublishedJob('job-1')
+    expect(seen[0]?.text).toContain('coalesce(c.name, j.company_name) as company_name')
+    expect(seen[0]?.text).toContain('c.office_locations[1] as company_location')
+    expect(job).toMatchObject({
+      companyName: 'Oceanic Shipping',
+      companySlug: 'oceanic',
+      companyLogoPath: 'companies/company-1/logo.png',
+      companyLocation: 'Dubai',
+      companyType: 'Ship manager',
+      createdAt: '2026-09-10T00:00:00.000Z',
+    })
+  })
+
+  it('tells applicants whether the job behind each application is open, closed or removed', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [
+          { id: 'a-1', status: 'applied', applied_at: new Date('2026-09-10T00:00:00.000Z'), updated_at: '2026-09-10T00:00:00.000Z', job_id: 'job-1', title: 'Master', company_name: 'Oceanic', location: null, job_state: 'removed', cover_note: null, events: [] },
+          { id: 'a-2', status: 'rejected', applied_at: '2026-09-09T00:00:00.000Z', updated_at: '2026-09-09T00:00:00.000Z', job_id: 'job-2', title: 'Bosun', company_name: 'Oceanic', location: null, job_state: 'open', cover_note: 'Hello', events: [] },
+        ]
+      },
+    })
+
+    const applications = await repository.listApplications('viewer-1')
+    expect(seen[0]?.text).toContain("when j.deleted_at is not null then 'removed'")
+    expect(applications[0]).toMatchObject({ appliedAt: '2026-09-10T00:00:00.000Z', job: { state: 'removed' } })
+    expect(applications[1]).toMatchObject({ coverNote: 'Hello', job: { state: 'open' } })
   })
 
   it('keeps saves, alerts and reports scoped to the signed-in member', async () => {

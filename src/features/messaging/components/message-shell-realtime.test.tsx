@@ -63,6 +63,10 @@ vi.mock('./message-composer', () => ({
   MessageComposer: () => null,
 }))
 
+vi.mock('./new-message-button', () => ({
+  NewMessageButton: () => null,
+}))
+
 vi.mock('./message-thread', () => ({
   MessageThread: ({ messages, peerReadCursor, otherTyping }: {
     messages: MessagingMessageDto[]

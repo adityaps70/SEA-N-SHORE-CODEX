@@ -11,6 +11,17 @@ vi.mock('../actions', () => ({
   completeActivation: actionMocks.completeActivation,
 }))
 
+const sideMocks = vi.hoisted(() => ({
+  checkUsernameAvailability: vi.fn(async (username: string) => ({ username, available: true, current: false })),
+}))
+vi.mock('../username-actions', () => ({ checkUsernameAvailability: sideMocks.checkUsernameAvailability }))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('../profile-document-actions', () => ({
+  prepareDgProfileUpload: vi.fn(),
+  confirmDgProfileUpload: vi.fn(),
+  removeDgProfileUpload: vi.fn(),
+}))
+
 import { OnboardingForm } from './onboarding-form'
 
 beforeEach(() => {
@@ -202,5 +213,91 @@ describe('OnboardingForm persona activation', () => {
     expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('Chief Engineer')
     expect(screen.getByLabelText('Current / last organisation')).toHaveValue('Oceanic Shipping')
     await waitFor(() => expect(document.activeElement).toBe(alert))
+  })
+})
+
+describe('OnboardingForm username and DG profile', () => {
+  const profileId = '11111111-1111-4111-8111-111111111111'
+
+  it('prefills a ready-to-use generated username and tells the member it can change later', async () => {
+    render(<OnboardingForm initialFullName="Prakhar Pathak" suggestedUsername="prakhar.pathak" profileId={profileId} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+
+    const username = screen.getByRole('textbox', { name: /Username/i })
+    expect(username).toHaveValue('prakhar.pathak')
+    expect(username).not.toHaveAttribute('placeholder', 'capt.saurabh')
+    expect(screen.getByText(/Keep it or change it now or later from your profile/)).toBeInTheDocument()
+    expect(await screen.findByText('Username is available.')).toBeInTheDocument()
+  })
+
+  it('offers the generated handle instead of an error when the typed username cannot be used', async () => {
+    render(<OnboardingForm initialFullName="Saurabh Sharma" suggestedUsername="saurabh.sharma" profileId={profileId} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    const username = screen.getByRole('textbox', { name: /Username/i })
+
+    fireEvent.change(username, { target: { value: 'capt..saurabh' } })
+
+    expect(screen.getByText(/we'll use @saurabh\.sharma and you can change it later/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Use @saurabh.sharma' }))
+    expect(username).toHaveValue('saurabh.sharma')
+  })
+
+  it('submits the generated suggestion with the form so the server knows it was not hand-picked', async () => {
+    render(<OnboardingForm initialFullName="Prakhar Pathak" suggestedUsername="prakhar.pathak" profileId={profileId} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    const form = screen.getByRole('button', { name: 'Complete profile' }).closest('form')!
+    fireEvent.submit(form)
+
+    await waitFor(() => expect(actionMocks.completeActivation).toHaveBeenCalled())
+    const submitted = (actionMocks.completeActivation.mock.calls[0] as unknown[])[1] as FormData
+    expect(submitted.get('usernameSuggestion')).toBe('prakhar.pathak')
+    expect(submitted.get('slug')).toBe('prakhar.pathak')
+  })
+
+  it('offers the optional, private DG profile upload to seafarers and explains who can see it', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" suggestedUsername="asha.singh" profileId={profileId} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+
+    expect(screen.getByRole('heading', { name: /DG Shipping profile/ })).toBeInTheDocument()
+    expect(screen.getByText(/DG Shipping e-governance portal/)).toBeInTheDocument()
+    expect(screen.getByText(/only you, Sea N Shore admins, and employers whose jobs you apply to/)).toBeInTheDocument()
+    expect(screen.getByText(/skip this and add it later/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add DG profile PDF' })).toBeInTheDocument()
+  })
+
+  it('lets a seafarer finish without a DG profile and never sends a file with the form', async () => {
+    const { container } = render(<OnboardingForm initialFullName="Asha Singh" suggestedUsername="asha.singh" profileId={profileId} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    expect(container.querySelector('input[type="file"][name]')).toBeNull()
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Complete profile' }).closest('form')!)
+
+    await waitFor(() => expect(actionMocks.completeActivation).toHaveBeenCalled())
+    const submitted = (actionMocks.completeActivation.mock.calls[0] as unknown[])[1] as FormData
+    expect([...submitted.values()].some((value) => typeof value !== 'string')).toBe(false)
+  })
+
+  it.each(['Shore Professional', 'Recruiter / HR', 'Seafarer Family', 'Student / Cadet'])(
+    'does not show the DG profile upload for %s',
+    (persona) => {
+      render(<OnboardingForm initialFullName="Asha Singh" suggestedUsername="asha.singh" profileId={profileId} />)
+      fireEvent.click(screen.getByRole('button', { name: persona }))
+      expect(screen.queryByRole('heading', { name: /DG Shipping profile/ })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Add DG profile PDF' })).not.toBeInTheDocument()
+    },
+  )
+
+  it('shows an existing DG profile as on file when the seafarer returns to onboarding', () => {
+    render(
+      <OnboardingForm
+        initialFullName="Asha Singh"
+        suggestedUsername="asha.singh"
+        profileId={profileId}
+        initialDgProfile={{ kind: 'dg_profile', fileName: 'dg.pdf', sizeBytes: 4096, uploadedAt: '2026-09-20T00:00:00.000Z' }}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    expect(screen.getByText('DG profile on file')).toBeInTheDocument()
+    expect(screen.getByText('dg.pdf')).toBeInTheDocument()
   })
 })

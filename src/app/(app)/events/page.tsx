@@ -13,6 +13,7 @@ import {
   type CalendarEventType,
 } from '@/features/events/calendar-types'
 import { EventCard } from '@/features/events/components/event-card'
+import { eventFormatLabel } from '@/features/events/event-labels'
 
 export const metadata: Metadata = { title: 'Events' }
 
@@ -37,13 +38,14 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
     format: formatValue(params.format),
     location: params.location ?? '',
   }
+  const hasFilters = Boolean(filters.search || filters.category || filters.eventType || filters.format || filters.location)
   const [upcoming, archive] = await Promise.all([
     calendarEventRepository.listDiscoverEvents(user.id, filters),
     calendarEventRepository.listPastEvents(user.id, filters),
   ])
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-7xl space-y-6 py-2 sm:px-6 sm:py-6 lg:px-8">
       <PremiumPageHero
         eyebrow="Maritime events"
         title="Learn, meet and move the maritime industry forward."
@@ -64,15 +66,15 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
           <input name="q" defaultValue={params.q ?? ''} placeholder="Search title, topic, host focus…" className="min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 pl-11 pr-4 text-sm font-normal text-navy-950 outline-none transition placeholder:text-slate-400 focus:border-teal-500" />
         </label>
         <label className="relative"><span className="sr-only">Category</span><select name="category" defaultValue={params.category ?? ''} className={filterSelectClass}><option value="">All categories</option>{CALENDAR_EVENT_CATEGORIES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
-        <label className="relative"><span className="sr-only">Event type</span><select name="eventType" defaultValue={params.eventType ?? ''} className={filterSelectClass}><option value="">All event types</option>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
-        <label className="relative"><span className="sr-only">Format</span><select name="format" defaultValue={params.format ?? ''} className={filterSelectClass}><option value="">Any format</option>{CALENDAR_EVENT_FORMATS.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
+        <label className="relative"><span className="sr-only">Event type</span><select name="eventType" defaultValue={params.eventType ?? ''} className={filterSelectClass}><option value="">All types</option>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
+        <label className="relative"><span className="sr-only">Format</span><select name="format" defaultValue={params.format ?? ''} className={filterSelectClass}><option value="">Any format</option>{CALENDAR_EVENT_FORMATS.map((value) => <option key={value} value={value}>{eventFormatLabel(value)}</option>)}</select><FilterChevron /></label>
         <label><span className="sr-only">Location</span><input name="location" defaultValue={params.location ?? ''} placeholder="City, country or venue" className="min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 text-sm font-normal text-navy-950 outline-none transition placeholder:text-slate-400 focus:border-teal-500" /></label>
         <button className="min-h-12 rounded-2xl bg-teal-600 px-6 text-sm font-bold text-white transition hover:bg-teal-700">Search</button>
       </form>
 
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Discover</p><h2 className="text-2xl font-bold text-navy-950">Upcoming events</h2></div><span className="text-sm text-muted">{upcoming.length} found</span></div>
-        {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">No matching upcoming events</h3><p className="mt-1 text-sm text-muted">Adjust the filters or host the maritime session your community needs.</p><div className="mt-4 flex justify-center gap-2"><Link href="/events" className="rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-800">Clear filters</Link><Link href="/events/create" className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white">Create event</Link></div></div>}
+        {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">{hasFilters ? 'No matching upcoming events' : 'No upcoming events yet'}</h3><p className="mt-1 text-sm text-muted">{hasFilters ? 'Try other filters, or host the session your community needs.' : 'Be the first to host a webinar, masterclass or meetup for the community.'}</p><div className="mt-4 flex justify-center gap-2">{hasFilters ? <Link href="/events" className="rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-800">Clear filters</Link> : null}<Link href="/events/create" className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white">Create event</Link></div></div>}
       </section>
 
       <section className="space-y-4 border-t border-mist-100 pt-6">

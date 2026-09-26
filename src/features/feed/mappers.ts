@@ -1,6 +1,7 @@
 import type {
   FeedAuthor,
   FeedComment,
+  FeedCommentReplyTarget,
   FeedMention,
   FeedPost,
   FeedPostType,
@@ -31,12 +32,19 @@ type MentionRow = {
   full_name: string
 }
 
+type ReplyTargetRow = {
+  comment_id: string
+  author_name: string | null
+  author_slug: string | null
+}
+
 type ReactionCountsRow = Partial<Record<PostReactionType, number>> & { count?: number }
 
 export type FeedCommentRow = {
   id: string
   post_id?: string
   parent_comment_id?: string | null
+  reply_to?: ReplyTargetRow | null
   body: string
   created_at: string
   updated_at?: string
@@ -85,6 +93,7 @@ export type FeedPostRow = {
   post_comment_count?: Array<{ count: number }> | { count: number } | null
   post_mentions?: MentionRow[] | null
   post_comments?: FeedCommentRow[] | null
+  viewer_follows_author?: boolean | null
 }
 
 export type FeedViewerState = {
@@ -164,6 +173,11 @@ function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, 
   }
 }
 
+function mapReplyTarget(row: ReplyTargetRow | null | undefined): FeedCommentReplyTarget | null {
+  if (!row?.comment_id || !row.author_name) return null
+  return { commentId: row.comment_id, authorName: row.author_name, authorSlug: row.author_slug ?? null }
+}
+
 function mapComment(row: FeedCommentRow, signedUrls: Map<string, string>): FeedComment {
   const reactionSummary = mapReactionSummary(row.reaction_summary)
   return {
@@ -176,6 +190,7 @@ function mapComment(row: FeedCommentRow, signedUrls: Map<string, string>): FeedC
     deleted: Boolean(row.deleted_at),
     author: mapAuthor(row.profiles, signedUrls),
     parentCommentId: row.parent_comment_id ?? null,
+    replyTo: mapReplyTarget(row.reply_to),
     reactionSummary,
     reactionCount: reactionCount(reactionSummary),
     viewerReaction: row.viewer_reaction ?? null,
@@ -267,6 +282,7 @@ export function mapFeedPost(
     commentCount: countRelation(row.post_comment_count) || comments.length,
     viewerSaved: viewer.savedPostIds.has(row.id),
     viewerOwns: Boolean(viewerProfileId) && author.id === viewerProfileId,
+    viewerFollowsAuthor: Boolean(viewerProfileId) && author.id !== viewerProfileId && Boolean(row.viewer_follows_author),
     mentions: mapMentions(row.post_mentions),
     comments,
   }

@@ -150,7 +150,8 @@ describe('learning course review server action', () => {
   it.each([
     ['admin_forbidden', 'You are not authorized to review learning courses.'],
     ['course_not_found', 'This learning course could not be found.'],
-    ['course_transition_forbidden', 'This course cannot move to that review state.'],
+    ['course_transition_forbidden', 'This course has already moved on from that review step. Reload the page to see its current status.'],
+    ['course_withdrawn', 'The trainer withdrew this course from review to make more changes. It will come back to the Submitted queue when they resubmit.'],
     ['course_review_note_required', 'A reviewer note is required when requesting course changes.'],
   ])('maps %s to safe course-review copy', async (code, message) => {
     mocks.reviewCourse.mockRejectedValueOnce(new Error(code))

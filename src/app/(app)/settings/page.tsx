@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { BadgeCheck, Building2, CreditCard, LockKeyhole, ShieldCheck, SquarePlus } from 'lucide-react'
+import { BadgeCheck, Building2, CreditCard, LockKeyhole, Mail, ShieldCheck, SquarePlus } from 'lucide-react'
 import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
 import { DeleteAccountPanel } from '@/features/account-deletion/components/delete-account-panel'
 
@@ -72,6 +72,16 @@ export default function SettingsPage() {
             <p className="mt-1 text-sm leading-5 text-muted">See publishing readiness for Jobs, Events and LMS in one place.</p>
           </Link>
           <Link
+            href="/newsletter"
+            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+          >
+            <div className="flex items-center gap-2">
+              <Mail aria-hidden="true" className="size-4 text-ocean-700" />
+              <p className="font-semibold text-navy-950">Newsletter</p>
+            </div>
+            <p className="mt-1 text-sm leading-5 text-muted">Subscribe, choose topics or unsubscribe from Sea N Shore emails.</p>
+          </Link>
+          <Link
             href="/privacy"
             className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
           >
@@ -88,8 +98,11 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <DataExportPanel />
-      <DeleteAccountPanel />
+      <div id="your-data" className="grid scroll-mt-24 gap-5">
+        <h2 className="sr-only">Your data and privacy controls</h2>
+        <DataExportPanel />
+        <DeleteAccountPanel />
+      </div>
     </section>
   )
 }

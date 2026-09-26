@@ -527,9 +527,36 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     return Number(rows[0]?.count ?? 0)
   }
 
+  async function listDirectConversationsWithPeers(viewerProfileId: string, peerProfileIds: readonly string[]) {
+    if (!peerProfileIds.length) return new Map<string, { conversationId: string; lastMessageAt: string | null }>()
+    const rows = await queryRows(
+      `select c.id as conversation_id,
+              case when c.direct_user_low_id = $1 then c.direct_user_high_id else c.direct_user_low_id end as peer_profile_id,
+              c.last_message_at
+       from public.conversations c
+       join public.conversation_participants cp
+         on cp.conversation_id = c.id
+        and cp.profile_id = $1
+       where (c.direct_user_low_id = $1 and c.direct_user_high_id = any($2::uuid[]))
+          or (c.direct_user_high_id = $1 and c.direct_user_low_id = any($2::uuid[]))`,
+      [viewerProfileId, [...peerProfileIds]],
+    ) as Array<QueryResultRow & {
+      conversation_id: string
+      peer_profile_id: string
+      last_message_at: string | Date | null
+    }>
+    return new Map(rows.map((row) => [row.peer_profile_id, {
+      conversationId: row.conversation_id,
+      lastMessageAt: row.last_message_at instanceof Date
+        ? row.last_message_at.toISOString()
+        : row.last_message_at ?? null,
+    }]))
+  }
+
   return {
     findDirectConversationByPair,
     insertDirectConversation,
+    listDirectConversationsWithPeers,
     isParticipant,
     findOtherParticipantId,
     listParticipantIds,

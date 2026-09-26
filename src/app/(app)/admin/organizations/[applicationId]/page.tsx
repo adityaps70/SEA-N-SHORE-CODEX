@@ -8,6 +8,12 @@ import { adminRepository } from '@/features/admin/repository'
 import { adminMembershipRepository } from '@/features/admin/membership-repository'
 import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
 import { OrganizationReviewActions } from '@/features/admin/components/organization-review-actions'
+import {
+  isWellbeingType,
+  organizationTypeHasField,
+  organizationVerificationChecks,
+  wellbeingServiceLabel,
+} from '@/features/organizations/organization-types'
 
 export const metadata: Metadata = { title: 'Organization application · Admin' }
 
@@ -39,6 +45,9 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
   if (!review) notFound()
   const membership = await adminMembershipRepository.getOrganizationAccessOverview(user.id, review.company.id)
   if (!membership) notFound()
+  const typeCode = review.company.typeCode
+  const details = review.company.details
+  const has = (field: Parameters<typeof organizationTypeHasField>[1]) => organizationTypeHasField(typeCode, field)
 
   return (
     <main className="space-y-5">
@@ -67,13 +76,30 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
           <dl className="mt-6 grid gap-5 sm:grid-cols-2">
             <Detail label="Organization type" value={valueOrDash(review.company.type)} />
             <Detail label="Website" value={valueOrDash(review.company.website)} />
-            <Detail label="Official company email" value={review.officialEmail} />
+            <Detail label="Official work email" value={review.officialEmail} />
             <Detail label="Registration / reference" value={valueOrDash(review.registrationReference)} />
-            <Detail label="Fleet summary" value={valueOrDash(review.company.fleetSummary)} />
-            <Detail label="Vessel types" value={review.company.vesselTypes.length ? review.company.vesselTypes.join(', ') : '—'} />
+            {has('recruitmentLicence') ? <Detail label="Recruitment licence (RPSL / MLC)" value={valueOrDash(details.recruitmentLicence)} /> : null}
+            {has('fleetSize') ? <Detail label="Number of vessels" value={typeof details.fleetSize === 'number' ? String(details.fleetSize) : '—'} /> : null}
+            {has('fleetSummary') || review.company.fleetSummary ? <Detail label="Fleet summary" value={valueOrDash(review.company.fleetSummary)} /> : null}
+            {has('vesselTypes') || review.company.vesselTypes.length ? <Detail label="Vessel types" value={review.company.vesselTypes.length ? review.company.vesselTypes.join(', ') : '—'} /> : null}
+            {isWellbeingType(typeCode) ? (
+              <>
+                <Detail label="Services offered" value={details.servicesOffered?.length ? details.servicesOffered.map(wellbeingServiceLabel).join(', ') : '—'} />
+                <Detail label="Languages" value={details.languages?.length ? details.languages.join(', ') : '—'} />
+                <Detail label="24/7 helpline" value={typeof details.helpline24x7 === 'boolean' ? (details.helpline24x7 ? 'Yes' : 'No') : '—'} />
+              </>
+            ) : null}
+            {has('accreditation') ? <Detail label="Accreditation" value={valueOrDash(details.accreditation)} /> : null}
             <Detail label="Office locations" value={review.company.officeLocations.length ? review.company.officeLocations.join(', ') : '—'} />
             <Detail label="Last updated" value={dateLabel(review.updatedAt)} />
           </dl>
+
+          <div className="mt-6 rounded-xl border border-ocean-100 bg-ocean-50/50 p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.13em] text-ocean-800">Checks for this type</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-navy-950">
+              {organizationVerificationChecks(typeCode).map((check) => <li key={check}>{check}</li>)}
+            </ul>
+          </div>
 
           <div className="mt-6 border-t border-mist-100 pt-5">
             <p className="text-xs font-bold uppercase tracking-[0.13em] text-muted">Description</p>

@@ -65,3 +65,63 @@ describe('organization follows', () => {
     expect(seen[1]).toContain('delete from public.organization_follows')
   })
 })
+
+describe('organization workspace details', () => {
+  it('maps the stored type code, label and type details for the organization page', async () => {
+    const repository = createOrganizationWorkspaceRepository({
+      query: async () => [{
+        id: 'company-1',
+        slug: 'harbour-minds',
+        name: 'Harbour Minds',
+        logo_path: null,
+        company_type: 'Mental-health & wellbeing provider',
+        organization_type: 'mental_health_provider',
+        organization_details: { servicesOffered: ['counselling'], helpline24x7: true },
+        website: null,
+        description: null,
+        fleet_summary: null,
+        vessel_types: [],
+        office_locations: [],
+        is_verified: false,
+      }],
+    })
+    await expect(repository.getBySlug('harbour-minds')).resolves.toMatchObject({
+      companyType: 'Mental-health & wellbeing provider',
+      organizationType: 'mental_health_provider',
+      details: { servicesOffered: ['counselling'], helpline24x7: true },
+    })
+  })
+
+  it('maps older organizations without a type code from their free-text label', async () => {
+    const repository = createOrganizationWorkspaceRepository({
+      query: async () => [{
+        id: 'company-1', slug: 'oceanic', name: 'Oceanic', logo_path: null, company_type: 'Crewing Company',
+        website: null, description: null, fleet_summary: null, vessel_types: [], office_locations: [], is_verified: true,
+      }],
+    })
+    await expect(repository.getBySlug('oceanic')).resolves.toMatchObject({ companyType: 'Crewing Company', organizationType: 'manning_agency', details: {} })
+  })
+
+  it('merges only the wellbeing keys into stored details when branding is saved', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createOrganizationWorkspaceRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{ id: 'company-1' }]
+      },
+    })
+    await repository.updateBranding('company-1', {
+      website: null,
+      description: 'Support for seafarers',
+      fleetSummary: null,
+      vesselTypes: [],
+      officeLocations: ['Manila'],
+      supportDetails: { servicesOffered: ['peer_support'], languages: ['English'], helpline24x7: null },
+    })
+    expect(seen[0]?.text).toContain('jsonb_strip_nulls(organization_details || $7::jsonb)')
+    expect(JSON.parse(String(seen[0]?.values?.[6]))).toEqual({ servicesOffered: ['peer_support'], languages: ['English'], helpline24x7: null })
+
+    await repository.updateBranding('company-1', { website: null, description: null, fleetSummary: null, vesselTypes: [], officeLocations: [] })
+    expect(seen[1]?.values?.[6]).toBeNull()
+  })
+})

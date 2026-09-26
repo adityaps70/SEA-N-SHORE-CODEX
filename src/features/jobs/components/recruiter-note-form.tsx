@@ -1,11 +1,20 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useId, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { saveHiringRecruiterNote } from '../hiring-actions'
 
-export function RecruiterNoteForm({ applicationId }: { applicationId: string }) {
+export function RecruiterNoteForm({
+  applicationId,
+  audience = 'organization',
+}: {
+  applicationId: string
+  /** Personal-recruiter jobs have no team, so the note is private to the poster. */
+  audience?: 'organization' | 'personal'
+}) {
   const router = useRouter()
+  const noteId = useId()
+  const [saved, setSaved] = useState(false)
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -18,6 +27,7 @@ export function RecruiterNoteForm({ applicationId }: { applicationId: string }) 
     }
 
     setError(null)
+    setSaved(false)
     startTransition(async () => {
       const result = await saveHiringRecruiterNote(applicationId, value)
       if (!result.ok) {
@@ -25,15 +35,18 @@ export function RecruiterNoteForm({ applicationId }: { applicationId: string }) 
         return
       }
       setNote('')
+      setSaved(true)
       router.refresh()
     })
   }
 
   return (
     <div>
-      <label className="block">
+      <label htmlFor={noteId} className="block">
         <span className="text-sm font-bold text-navy-950">Add private note</span>
+      </label>
         <textarea
+          id={noteId}
           value={note}
           onChange={(event) => setNote(event.target.value)}
           maxLength={4000}
@@ -41,9 +54,10 @@ export function RecruiterNoteForm({ applicationId }: { applicationId: string }) 
           placeholder="Visible only inside the Hiring workspace. Capture screening context, follow-ups or interview preparation."
           className="mt-2 w-full rounded-xl border border-mist-200 bg-white px-3 py-2.5 text-sm text-navy-950 outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
         />
-      </label>
       <div className="mt-3 flex items-center justify-between gap-3">
-        <p className="text-xs text-muted">Private to authorised company hiring members.</p>
+        <p className="text-xs text-muted">
+          {audience === 'personal' ? 'Private to you. The applicant never sees these notes.' : 'Private to this organization’s hiring team. The applicant never sees these notes.'}
+        </p>
         <button
           type="button"
           disabled={pending}
@@ -53,7 +67,8 @@ export function RecruiterNoteForm({ applicationId }: { applicationId: string }) 
           {pending ? 'Saving…' : 'Save note'}
         </button>
       </div>
-      {error ? <p className="mt-3 text-sm font-semibold text-rose-700">{error}</p> : null}
+      {error ? <p role="alert" className="mt-3 text-sm font-semibold text-rose-700">{error}</p> : null}
+      {saved ? <p role="status" className="mt-3 text-sm font-semibold text-emerald-800">Note saved.</p> : null}
     </div>
   )
 }

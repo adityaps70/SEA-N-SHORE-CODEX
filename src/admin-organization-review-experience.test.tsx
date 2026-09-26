@@ -52,7 +52,7 @@ describe('platform admin organization review experience', () => {
     const controls = source('src/features/admin/components/organization-review-actions.tsx')
 
     expect(page).toContain('getOrganizationApplicationReview')
-    expect(page).toContain('Official company email')
+    expect(page).toContain('Official work email')
     expect(page).toContain('Registration / reference')
     expect(page).toContain('Applicant relationship')
     expect(page).toContain('Fleet summary')

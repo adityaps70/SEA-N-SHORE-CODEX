@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -29,6 +29,7 @@ const actions = vi.hoisted(() => ({
   markConversationReadAction: vi.fn(async () => ({ ok: true, unreadCount: 0 })),
   createMessageAttachmentUploadAction: vi.fn(),
   discardMessageAttachmentAction: vi.fn(),
+  startDirectConversationAction: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -341,5 +342,99 @@ describe('MessagingDock', () => {
       incomingId,
     ))
     await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0))
+  })
+
+  it('starts a new conversation from the dock and opens it in place', async () => {
+    const user = userEvent.setup()
+    const newPeerId = '77777777-7777-4777-8777-777777777777'
+    const newConversationId = '88888888-8888-4888-8888-888888888888'
+    actions.startDirectConversationAction.mockResolvedValueOnce({ ok: true, conversationId: newConversationId })
+    const baseFetch = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/messages/recipients')) {
+        return new Response(JSON.stringify({
+          query: '',
+          connectionCount: 2,
+          recipients: [{
+            profileId: newPeerId,
+            name: 'Chief Engineer Ravi Kumar',
+            subtitle: 'Chief Engineer',
+            slug: 'ravi-kumar',
+            avatarUrl: null,
+            conversationId: null,
+            status: 'available',
+            unavailableReason: null,
+          }],
+        }), { status: 200 })
+      }
+      if (url === `/api/messages/${newConversationId}`) {
+        return new Response(JSON.stringify({ messages: [], nextCursor: null }), { status: 200 })
+      }
+      return baseFetch(input, init)
+    })
+
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={0} newMessageDebounceMs={0} />)
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'New message' }))
+    await user.click(await screen.findByRole('option', { name: /Chief Engineer Ravi Kumar/ }))
+
+    await waitFor(() => expect(actions.startDirectConversationAction).toHaveBeenCalledWith(newPeerId))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    const dock = screen.getByRole('region', { name: 'Messaging dock' })
+    expect(within(dock).getByText('Chief Engineer Ravi Kumar')).toBeInTheDocument()
+    expect(within(dock).getByRole('link', { name: 'Open full conversation' }))
+      .toHaveAttribute('href', `/messages/${newConversationId}`)
+    expect(within(dock).getByRole('textbox', { name: 'Write a message' })).toBeInTheDocument()
+  })
+
+  it('opens a photo in an overlay over the dock instead of a new browser page', async () => {
+    const user = userEvent.setup()
+    const photoId = '99999999-9999-4999-8999-999999999999'
+    const baseFetch = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === `/api/messages/${CONVERSATION_ID}`) {
+        return new Response(JSON.stringify({
+          messages: [{
+            id: photoId,
+            conversationId: CONVERSATION_ID,
+            senderProfileId: OTHER_ID,
+            clientMessageId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+            body: 'Deck photo',
+            createdAt: '2026-09-21T05:00:00.000Z',
+            editedAt: null,
+            deletedAt: null,
+            replyTo: null,
+            attachment: {
+              name: 'deck.jpg',
+              mimeType: 'image/jpeg',
+              size: 2048,
+              kind: 'image',
+              url: `/api/messages/attachments/${photoId}`,
+            },
+            reactions: [],
+          }],
+          nextCursor: null,
+        }), { status: 200 })
+      }
+      return baseFetch(input, init)
+    })
+
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+    const thumbnail = await screen.findByRole('button', { name: 'Open photo deck.jpg' })
+    expect(thumbnail.closest('a')).toBeNull()
+
+    await user.click(thumbnail)
+    const viewer = screen.getByRole('dialog', { name: /deck\.jpg/ })
+    expect(within(viewer).getByRole('img', { name: 'deck.jpg' })).toHaveAttribute('src', `/api/messages/attachments/${photoId}`)
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(thumbnail).toHaveFocus()
+    // Still in the same compact conversation.
+    expect(screen.getByText('Deck photo')).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'Write a message' })).toBeInTheDocument()
   })
 })

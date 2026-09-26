@@ -4,14 +4,13 @@ import { createCognitoSessionManager } from './cognito-session'
 import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 
+// About, Help, Accessibility, Privacy, Terms and Copyright are public so signed-out visitors (and
+// newsletter consent links) can read them.
 const PROTECTED_PREFIXES = [
-  '/about',
-  '/accessibility',
   '/activities',
   '/admin',
   '/community',
   '/events',
-  '/help',
   '/hiring',
   '/home',
   '/jobs',
@@ -21,11 +20,9 @@ const PROTECTED_PREFIXES = [
   '/notifications',
   '/onboarding',
   '/posts',
-  '/privacy',
   '/profile',
   '/saved',
   '/search',
-  '/terms',
 ] as const
 
 export function isCognitoProtectedRoute(pathname: string) {

@@ -84,18 +84,25 @@ describe('organization application server actions', () => {
     expect(mocks.submitOrganizationApplication).not.toHaveBeenCalled()
   })
 
-  it('submits normalized organization data with the authenticated user', async () => {
+  it('submits normalized organization data with the authenticated user, mapping an older free-text type', async () => {
     await expect(submitOrganizationApplication(validInput())).resolves.toEqual({ ok: true, applicationId })
 
     expect(mocks.submitOrganizationApplication).toHaveBeenCalledWith('user-1', {
       organizationName: 'Oceanic Shipping Pvt Ltd',
-      organizationType: 'Ship Management Company',
+      organizationType: 'ship_manager',
+      organizationTypeOther: null,
       website: 'https://oceanic.example.com',
       officialEmail: 'hiring@oceanic.example.com',
       officeLocation: 'Mumbai, India',
       description: 'Ship management and crewing company serving international vessel owners.',
+      fleetSize: null,
       fleetSummary: '12 managed tankers and bulk carriers.',
       vesselTypes: ['Oil Tanker', 'Bulk Carrier'],
+      recruitmentLicence: null,
+      servicesOffered: [],
+      languages: [],
+      helpline24x7: null,
+      accreditation: null,
       applicantRole: 'Managing Director',
       registrationReference: 'CIN-12345',
       supportingNotes: 'Please verify our company profile for maritime hiring.',
@@ -194,13 +201,13 @@ describe('organization application server actions', () => {
     mocks.requestCompanyAccess.mockRejectedValueOnce(new Error('organization_access_request_exists'))
     await expect(requestOrganizationAccess(companyId, 'recruiter', null)).resolves.toEqual({
       ok: false,
-      error: 'You already have a pending access request for this organization and role.',
+      error: 'You already have a request waiting for this organization and role. You can follow it under "Your requests".',
     })
 
     mocks.requestCompanyAccess.mockRejectedValueOnce(new Error('organization_membership_exists'))
     await expect(requestOrganizationAccess(companyId, 'member', null)).resolves.toEqual({
       ok: false,
-      error: 'You already belong to this organization.',
+      error: 'You are already linked to this organization. Open it from "Your organizations".',
     })
   })
 

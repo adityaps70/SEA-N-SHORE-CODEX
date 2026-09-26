@@ -6,6 +6,7 @@ import {
   GraduationCap,
   KeyRound,
   LayoutDashboard,
+  Mail,
   ShieldAlert,
   ShieldCheck,
   Trash2,
@@ -30,6 +31,7 @@ const sections: Section[] = [
   { href: '/admin/verifications', label: 'Verifications', icon: BadgeCheck },
   { href: '/admin/access', label: 'Access requests', icon: KeyRound, count: (m) => m.pendingAccessRequests },
   { href: '/admin/learning', label: 'Learning', icon: GraduationCap },
+  { href: '/admin/newsletter', label: 'Newsletter', icon: Mail },
   { href: '/admin/deleted-content', label: 'Deleted content', icon: Trash2 },
   { href: '/admin/audit', label: 'Audit log', icon: Activity },
 ]

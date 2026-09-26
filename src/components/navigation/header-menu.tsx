@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCallback, useId, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 
@@ -37,6 +37,10 @@ function itemIsActive(pathname: string | null, href: string) {
   return pathname === path || pathname.startsWith(`${path}/`)
 }
 
+function menuItems(menu: HTMLElement | null) {
+  return Array.from(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
+}
+
 export function HeaderMenu({
   label,
   trigger,
@@ -50,20 +54,62 @@ export function HeaderMenu({
 }: HeaderMenuProps) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
+  // Which item receives focus when the menu opens from the keyboard.
+  const pendingFocusRef = useRef<'first' | 'last' | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const close = useCallback(() => setOpen(false), [])
-  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close)
+  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close, { triggerRef })
   const menuId = useId()
   const containsActive = items.some((item) => itemIsActive(pathname, item.href))
+
+  useEffect(() => {
+    const pendingFocus = pendingFocusRef.current
+    if (!open || !pendingFocus) return
+    pendingFocusRef.current = null
+    const entries = menuItems(menuRef.current)
+    entries[pendingFocus === 'first' ? 0 : entries.length - 1]?.focus()
+  }, [open])
+
+  function onTriggerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const target = event.key === 'ArrowDown' ? 'first' : 'last'
+      if (open) {
+        const entries = menuItems(menuRef.current)
+        entries[target === 'first' ? 0 : entries.length - 1]?.focus()
+        return
+      }
+      pendingFocusRef.current = target
+      setOpen(true)
+    }
+  }
+
+  function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    const entries = menuItems(menuRef.current)
+    if (!entries.length) return
+    const index = entries.indexOf(document.activeElement as HTMLElement)
+    let next: number | null = null
+    if (event.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % entries.length
+    if (event.key === 'ArrowUp') next = index < 0 ? entries.length - 1 : (index - 1 + entries.length) % entries.length
+    if (event.key === 'Home') next = 0
+    if (event.key === 'End') next = entries.length - 1
+    if (next === null) return
+    event.preventDefault()
+    entries[next]?.focus()
+  }
 
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((current) => !current)}
+        onKeyDown={onTriggerKeyDown}
         className={`${triggerClassName} ${containsActive ? activeTriggerClassName : ''}`.trim()}
       >
         {trigger}
@@ -71,9 +117,11 @@ export function HeaderMenu({
       </button>
       {open ? (
         <div
+          ref={menuRef}
           id={menuId}
           role="menu"
           aria-label={label}
+          onKeyDown={onMenuKeyDown}
           className={`absolute z-50 w-64 rounded-xl border border-mist-100 bg-white p-1.5 shadow-[var(--shadow-card)] ${direction === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} ${align === 'right' ? 'right-0' : 'left-0'}`}
         >
           {items.map((item) => {

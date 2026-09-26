@@ -16,9 +16,9 @@ export default async function NotificationsPage() {
             <BellRing aria-hidden="true" className="size-5" />
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Your network</p>
+            <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Activity</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em] text-navy-950">Notifications</h1>
-            <p className="mt-2 text-sm leading-6 text-muted">Connection requests, accepted relationships, and new followers from across the maritime community.</p>
+            <p className="mt-2 text-sm leading-6 text-muted">Reactions and comments on your posts, connection requests and new followers.</p>
           </div>
         </div>
       </div>

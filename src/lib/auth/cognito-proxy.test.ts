@@ -59,13 +59,10 @@ describe('Cognito protected route proxy', () => {
   })
 
   it.each([
-    '/about',
-    '/accessibility',
     '/activities',
     '/admin',
     '/community',
     '/events',
-    '/help',
     '/hiring',
     '/home',
     '/jobs',
@@ -74,11 +71,9 @@ describe('Cognito protected route proxy', () => {
     '/network',
     '/notifications',
     '/posts/abc',
-    '/privacy',
     '/profile',
     '/saved',
     '/search',
-    '/terms',
     '/onboarding',
   ])('%s is protected', async (path) => {
     const getVerifiedPrincipal = vi.fn(async () => null)
@@ -89,5 +84,16 @@ describe('Cognito protected route proxy', () => {
 
     await handler(request(path))
     expect(getVerifiedPrincipal).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['/about', '/accessibility', '/help', '/privacy', '/terms', '/copyright', '/newsletter'])('%s is public', async (path) => {
+    const getVerifiedPrincipal = vi.fn(async () => null)
+    const handler = createCognitoProxyHandler({
+      getVerifiedPrincipal,
+      refreshSession: vi.fn(async () => false),
+    })
+
+    await handler(request(path))
+    expect(getVerifiedPrincipal).not.toHaveBeenCalled()
   })
 })

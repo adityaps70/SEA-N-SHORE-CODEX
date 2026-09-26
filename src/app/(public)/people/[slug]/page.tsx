@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { RailFooter } from '@/components/navigation/rail-footer'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { PostCard } from '@/features/feed/components/post-card'
 import { getPublicPostsByAuthor } from '@/features/feed/queries'
@@ -11,7 +12,11 @@ import { MaritimeProfileCard } from '@/features/profiles/components/maritime-pro
 import { ProfileAbout } from '@/features/profiles/components/profile-about'
 import { ProfileCareerTimeline } from '@/features/profiles/components/profile-career-timeline'
 import { ProfileCredentialWallet } from '@/features/profiles/components/profile-credential-wallet'
+import { ProfileDgDocumentViewerCard } from '@/features/profiles/components/profile-dg-document-card'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
+import { ProfileNetworkStats } from '@/features/profiles/components/profile-network-stats'
+import { getViewableDgProfileDocument } from '@/features/profiles/profile-document-service'
+import { getProfileNetworkSummary } from '@/features/profiles/profile-network-stats'
 import { getProfilePortfolioById } from '@/features/profiles/profile-portfolio-queries'
 import { getPublicProfileBySlug } from '@/features/profiles/queries'
 import { MessagingRealtimeProvider } from '@/features/realtime/provider'
@@ -34,11 +39,15 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   ])
   if (!profile) notFound()
 
-  const [relationship, portfolio, recommendations, posts] = await Promise.all([
-    viewer && viewer.id !== profile.id ? getRelationshipState(profile.id) : null,
+  const viewingSomeoneElse = Boolean(viewer && viewer.id !== profile.id)
+  const [relationship, portfolio, recommendations, posts, networkSummary, dgProfile] = await Promise.all([
+    viewer && viewingSomeoneElse ? getRelationshipState(profile.id) : null,
     getProfilePortfolioById(profile.id),
     viewer ? getPeopleYouMayKnow(3) : Promise.resolve([]),
     getPublicPostsByAuthor(profile.id),
+    // Counts are for signed-in members only; signed-out visitors see none.
+    viewer ? getProfileNetworkSummary(viewer.id, profile.id).catch(() => null) : null,
+    viewer && viewingSomeoneElse ? getViewableDgProfileDocument(viewer.id, profile.id).catch(() => null) : null,
   ])
   const relationshipKey = relationship
     ? `${relationship.following ? 1 : 0}:${relationship.connection.kind}:${relationship.connection.connectionId ?? ''}`
@@ -55,6 +64,9 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
               <ReportContentButton targetType="profile" targetId={profile.id} label="Report profile" />
             </div>
           ) : undefined}
+          stats={networkSummary ? (
+            <ProfileNetworkStats summary={networkSummary} slug={profile.slug} fullName={profile.fullName} />
+          ) : undefined}
         />
 
         <ProfileAbout profile={profile} />
@@ -62,6 +74,14 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
 
         <ProfileCareerTimeline experiences={portfolio.experiences} />
         <ProfileCredentialWallet credentials={portfolio.credentials} />
+        {dgProfile && dgProfile.reason !== 'owner' ? (
+          <ProfileDgDocumentViewerCard
+            profileId={profile.id}
+            fullName={profile.fullName}
+            document={dgProfile}
+            reason={dgProfile.reason}
+          />
+        ) : null}
 
         <section aria-labelledby="profile-posts-heading" className="grid gap-4">
           <div className="flex items-end justify-between gap-4 px-1">
@@ -90,6 +110,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       {viewer ? (
         <aside className="min-w-0 lg:sticky lg:top-24 lg:self-start">
           <PeopleYouMayKnow profiles={recommendations} />
+          <RailFooter visibleFrom="lg" />
         </aside>
       ) : null}
     </main>

@@ -5,6 +5,7 @@ import type {
   JobAlert,
   JobApplication,
   JobApplicationEvent,
+  JobApplicationJobState,
   JobApplicationStatus,
   JobCandidateProfile,
   JobListing,
@@ -21,6 +22,8 @@ type JobRow = QueryResultRow & {
   company_id: string | null
   company_slug: string | null
   company_logo_path: string | null
+  company_location?: string | null
+  company_type?: string | null
   company_verified: boolean | null
   recruiter_verified: boolean | null
   location: string | null
@@ -59,12 +62,14 @@ type ApplicationEventRow = {
 type ApplicationRow = QueryResultRow & {
   id: string
   status: JobApplicationStatus
-  applied_at: string
-  updated_at: string
+  applied_at: string | Date
+  updated_at: string | Date
+  cover_note?: string | null
   job_id: string
   title: string
   company_name: string
   location: string | null
+  job_state?: string | null
   events: ApplicationEventRow[] | null
 }
 
@@ -125,6 +130,8 @@ function mapJob(row: JobRow): JobListing {
     companyId: row.company_id ?? null,
     companySlug: row.company_slug ?? null,
     companyLogoPath: row.company_logo_path ?? null,
+    companyLocation: row.company_location ?? null,
+    companyType: row.company_type ?? null,
     companyVerified: Boolean(row.company_verified),
     recruiterVerified: Boolean(row.recruiter_verified),
     location: row.location,
@@ -163,18 +170,24 @@ function mapEvent(row: ApplicationEventRow): JobApplicationEvent {
   }
 }
 
+function applicationJobState(value: string | null | undefined): JobApplicationJobState {
+  return value === 'open' || value === 'removed' ? value : 'closed'
+}
+
 function mapApplication(row: ApplicationRow): JobApplication {
   return {
     id: row.id,
     status: row.status,
-    appliedAt: row.applied_at,
-    updatedAt: row.updated_at,
+    appliedAt: timestampValue(row.applied_at),
+    updatedAt: timestampValue(row.updated_at),
+    coverNote: row.cover_note ?? null,
     events: Array.isArray(row.events) ? row.events.map(mapEvent) : [],
     job: {
       id: row.job_id,
       title: row.title,
       companyName: row.company_name,
       location: row.location,
+      state: applicationJobState(row.job_state),
     },
   }
 }
@@ -182,12 +195,23 @@ function mapApplication(row: ApplicationRow): JobApplication {
 const JOB_COLUMNS = `
     j.id,
     j.title,
-    j.company_name,
+    coalesce(c.name, j.company_name) as company_name,
     j.company_id,
     c.slug as company_slug,
     c.logo_path as company_logo_path,
+    c.office_locations[1] as company_location,
+    c.company_type,
     coalesce(c.is_verified, false) as company_verified,
-    coalesce(cm.is_verified, false) as recruiter_verified,
+    case
+      when j.company_id is null then exists (
+        select 1
+        from public.feature_verifications fv
+        where fv.profile_id = j.created_by_user_id
+          and fv.verification_type = 'recruiter'
+          and fv.status = 'approved'
+      )
+      else coalesce(cm.is_verified, false)
+    end as recruiter_verified,
     j.location,
     j.summary,
     j.description,
@@ -231,6 +255,14 @@ const JOB_FROM = `
 
 const JOB_SELECT = `select ${JOB_COLUMNS} ${JOB_FROM}` as const
 
+/**
+ * Discovery shows every live job that has not been deleted. Jobs past their apply-by date stay
+ * discoverable (the card and detail page say applications are closed); isAcceptingApplications
+ * decides whether someone can still apply.
+ */
+const OPEN_JOB_WHERE = `j.status = 'published'
+         and j.deleted_at is null` as const
+
 function normalizeLower(values: readonly string[]) {
   return values.map((value) => value.toLocaleLowerCase())
 }
@@ -241,7 +273,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
   async function listPublishedJobs(limit: number): Promise<JobListing[]> {
     const rows = await queryRows(
       `${JOB_SELECT}
-       where j.status = 'published'
+       where ${OPEN_JOB_WHERE}
        order by j.created_at desc, j.id desc
        limit $1`,
       [limit],
@@ -251,9 +283,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
 
   async function searchJobs(filters: JobSearchFilters, limit = 60, offset = 0): Promise<JobListing[]> {
     const values: unknown[] = []
-    const where = [
-      "j.status = 'published'",
-    ]
+    const where: string[] = [OPEN_JOB_WHERE]
     const bind = (value: unknown) => {
       values.push(value)
       return `$${values.length}`
@@ -331,6 +361,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       `${JOB_SELECT}
        where j.id = $1
          and j.status = 'published'
+         and j.deleted_at is null
        limit 1`,
       [jobId],
     ) as JobRow[]
@@ -344,6 +375,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
          from public.jobs j
          where j.id = $1
            and j.status = 'published'
+           and j.deleted_at is null
            and (j.apply_until is null or j.apply_until >= current_date)
        ) as accepting`,
       [jobId],
@@ -421,10 +453,16 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
          a.status::text as status,
          a.applied_at,
          a.updated_at,
+         a.cover_note,
          j.id as job_id,
          j.title,
          j.company_name,
          j.location,
+         case
+           when j.deleted_at is not null then 'removed'
+           when j.status = 'published' and (j.apply_until is null or j.apply_until >= current_date) then 'open'
+           else 'closed'
+         end as job_state,
          coalesce((
            select json_agg(json_build_object(
              'id', e.id::text,
@@ -474,6 +512,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     jobId: string,
     applicantId: string,
     cv: JobApplicationCvReference | null,
+    coverNote: string | null = null,
   ): Promise<void> {
     await queryRows(
       `with inserted as (
@@ -484,9 +523,10 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
            cv_storage_path,
            cv_file_name,
            cv_mime_type,
-           cv_size_bytes
+           cv_size_bytes,
+           cover_note
          )
-         values ($1, $2, 'applied', $3, $4, $5, $6)
+         values ($1, $2, 'applied', $3, $4, $5, $6, $7)
          returning id, status, applicant_id, applied_at
        )
        insert into public.job_application_events (application_id, status, actor_id, created_at)
@@ -498,6 +538,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
         cv?.fileName ?? null,
         cv?.mimeType ?? null,
         cv?.sizeBytes ?? null,
+        coverNote,
       ],
     )
   }
@@ -557,6 +598,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
        ${JOB_FROM}
        join public.job_saves s on s.job_id = j.id and s.user_id = $1
        where j.status = 'published'
+         and j.deleted_at is null
        order by s.saved_at desc, j.id desc
        limit $2`,
       [userId, Math.min(Math.max(Math.trunc(limit), 1), 100)],

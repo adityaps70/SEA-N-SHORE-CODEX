@@ -9,6 +9,7 @@ type Props = {
   defaultValue?: string
   required?: boolean
   helper?: string
+  error?: string
 }
 
 const weekdays = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
@@ -42,7 +43,7 @@ function monthLabel(value: Date) {
   return new Intl.DateTimeFormat('en-GB', { month: 'long', year: 'numeric' }).format(value)
 }
 
-export function EventDateTimeField({ label, name, defaultValue = '', required = false, helper }: Props) {
+export function EventDateTimeField({ label, name, defaultValue = '', required = false, helper, error }: Props) {
   const initial = useMemo(() => parts(defaultValue), [defaultValue])
   const [date, setDate] = useState(initial.date)
   const [time, setTime] = useState(initial.time)
@@ -53,6 +54,7 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
   })
   const rootRef = useRef<HTMLDivElement>(null)
   const value = date && time ? `${date}T${time}` : ''
+  const errorId = `${name}-error`
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
@@ -92,7 +94,7 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
   }
 
   return (
-    <div ref={rootRef} className="space-y-2">
+    <div ref={rootRef} id={`event-field-${name}`} className="space-y-2">
       <div className="flex items-center justify-between gap-3">
         <label className="text-sm font-semibold text-navy-900" htmlFor={`${name}-time`}>{label}{required ? <span className="ml-1 text-teal-700">*</span> : null}</label>
         {!required && value ? <button type="button" onClick={clearValue} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-navy-700"><X className="size-3.5" aria-hidden="true" />Clear</button> : null}
@@ -104,7 +106,9 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
             type="button"
             onClick={() => setOpen((current) => !current)}
             aria-expanded={open}
-            className={`flex min-h-12 w-full items-center gap-3 rounded-2xl border bg-mist-50 px-4 text-left text-[15px] font-normal outline-none transition ${open ? 'border-teal-500' : 'border-mist-100 hover:border-mist-200'}`}
+            aria-label={`${label} date: ${readableDate(date)}`}
+            aria-describedby={error ? errorId : undefined}
+            className={`flex min-h-12 w-full items-center gap-3 rounded-2xl border bg-mist-50 px-4 text-left text-[15px] font-normal outline-none transition ${open ? 'border-teal-500' : error ? 'border-rose-300' : 'border-mist-100 hover:border-mist-200'}`}
           >
             <CalendarDays className="size-4.5 shrink-0 text-teal-700" aria-hidden="true" />
             <span className={date ? 'text-navy-950' : 'text-slate-400'}>{readableDate(date)}</span>
@@ -146,11 +150,14 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
             value={time}
             required={required}
             onChange={(event) => setTime(event.target.value)}
-            className="min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 py-2 pl-10 pr-3 text-[15px] font-normal text-navy-950 outline-none transition focus:border-teal-500"
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
+            className={`min-h-12 w-full rounded-2xl border bg-mist-50 py-2 pl-10 pr-3 text-[15px] font-normal text-navy-950 outline-none transition focus:border-teal-500 ${error ? 'border-rose-300' : 'border-mist-100'}`}
           />
         </div>
       </div>
-      {helper ? <p className="text-xs font-normal leading-5 text-slate-400">{helper}</p> : null}
+      {helper ? <p className="text-xs font-normal leading-5 text-muted">{helper}</p> : null}
+      {error ? <p id={errorId} className="text-xs font-semibold leading-5 text-rose-700">{error}</p> : null}
     </div>
   )
 }

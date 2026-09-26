@@ -89,6 +89,24 @@ describe('messaging server actions', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/messages')
   })
 
+  it('refuses a conversation with yourself on the server before calling the service', async () => {
+    await expect(startDirectConversationAction(VIEWER_ID)).resolves.toEqual({
+      ok: false,
+      error: 'You cannot message yourself.',
+    })
+    expect(mocks.startDirectConversation).not.toHaveBeenCalled()
+  })
+
+  it('asks the member to sign in again when there is no session', async () => {
+    mocks.requireAwsUser.mockRejectedValueOnce(new Error('Authentication required.'))
+
+    await expect(startDirectConversationAction(TARGET_ID)).resolves.toEqual({
+      ok: false,
+      error: 'Please sign in again to start a conversation.',
+    })
+    expect(mocks.startDirectConversation).not.toHaveBeenCalled()
+  })
+
   it('validates and normalizes a send before returning the canonical message for optimistic reconciliation', async () => {
     await expect(sendMessageAction({
       conversationId: CONVERSATION_ID,

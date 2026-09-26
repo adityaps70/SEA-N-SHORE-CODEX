@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { resolveEventBannerReference } from './event-banner-media'
+import { isPaymentCurrency } from '@/features/payments/currency'
 import { isEventBannerStoragePath } from './event-banner-policy'
 import type {
   CalendarEvent,
@@ -44,8 +45,12 @@ type CalendarEventRow = QueryResultRow & {
   banner_url: string | null
   registration_mode: CalendarEvent['registrationMode']
   registration_closes_at: string | Date | null
+  is_paid?: boolean | null
+  price_minor?: string | number | null
+  currency?: string | null
   attendee_count: string | number
   viewer_is_attending: boolean
+  viewer_has_paid?: boolean | null
   viewer_is_host: boolean
   registration_open: boolean
   is_past: boolean
@@ -53,7 +58,8 @@ type CalendarEventRow = QueryResultRow & {
   updated_at: string | Date
 }
 
-const EVENT_MANAGER_ACCESS_SQL = `
+/** SQL predicate: viewer $1 hosts event `e` or manages events for its organisation. */
+export const EVENT_MANAGER_ACCESS_SQL = `
   (
     e.host_user_id = $1::uuid
     or (
@@ -82,6 +88,7 @@ type EventLockRow = QueryResultRow & {
   capacity: number | null
   registration_mode: CalendarEvent['registrationMode']
   registration_closes_at: string | Date | null
+  is_paid?: boolean | null
 }
 
 const EVENT_SELECT = `
@@ -134,11 +141,18 @@ const EVENT_SELECT = `
     e.banner_url,
     e.registration_mode,
     e.registration_closes_at,
+    e.is_paid,
+    e.price_minor,
+    e.currency,
     (select count(*)::bigint from public.event_attendees count_ea where count_ea.event_id = e.id) as attendee_count,
     exists (
       select 1 from public.event_attendees viewer_ea
       where viewer_ea.event_id = e.id and viewer_ea.user_id = $1::uuid
     ) as viewer_is_attending,
+    exists (
+      select 1 from public.event_attendees paid_ea
+      where paid_ea.event_id = e.id and paid_ea.user_id = $1::uuid and paid_ea.payment_order_id is not null
+    ) as viewer_has_paid,
     ${EVENT_MANAGER_ACCESS_SQL} as viewer_is_host,
     (
       e.status = 'published'
@@ -223,8 +237,12 @@ function mapEvent(row: CalendarEventRow): CalendarEvent {
     bannerStoragePath: row.banner_url && isEventBannerStoragePath(row.banner_url) ? row.banner_url : null,
     registrationMode: row.registration_mode,
     registrationClosesAt: nullableIso(row.registration_closes_at),
+    pricing: row.is_paid ? 'paid' : 'free',
+    priceMinor: row.is_paid && row.price_minor !== null && row.price_minor !== undefined ? Number(row.price_minor) : null,
+    currency: row.is_paid && isPaymentCurrency(row.currency) ? row.currency : null,
     attendeeCount: Number(row.attendee_count ?? 0),
     viewerIsAttending: row.viewer_is_attending,
+    viewerHasPaid: Boolean(row.viewer_has_paid),
     viewerIsHost: row.viewer_is_host,
     registrationOpen: row.registration_open,
     isPast: row.is_past,
@@ -258,6 +276,9 @@ function eventValues(input: CalendarEventInput) {
     input.bannerUrl,
     input.registrationMode,
     input.registrationClosesAt,
+    input.pricing === 'paid',
+    input.pricing === 'paid' ? input.priceMinor : null,
+    input.pricing === 'paid' ? input.currency : null,
   ] as const
 }
 
@@ -401,11 +422,11 @@ async function createEvent(hostUserId: string, input: CalendarEventCreateInput) 
     insert into public.events (
       host_user_id, company_id, title, summary, description, category, event_type, format, status, start_at, end_at, timezone,
       location_name, location_address, city, country, meeting_url, topics, agenda, speakers, speaker_details,
-      capacity, banner_url, registration_mode, registration_closes_at
+      capacity, banner_url, registration_mode, registration_closes_at, is_paid, price_minor, currency
     ) values (
       $1::uuid, $2::uuid, $3::text, $4::text, $5::text, $6::text, $7::text, $8::text, $9::text, $10::timestamptz, $11::timestamptz, $12::text,
       $13::text, $14::text, $15::text, $16::text, $17::text, $18::text[], $19::jsonb, $20::text[], $21::jsonb,
-      $22::integer, $23::text, $24::text, $25::timestamptz
+      $22::integer, $23::text, $24::text, $25::timestamptz, $26::boolean, $27::bigint, $28::text
     ) returning id
   `, [hostUserId, companyId, ...values])
   const id = rows[0]?.id
@@ -422,6 +443,7 @@ async function updateEvent(hostUserId: string, eventId: string, input: CalendarE
       location_name=$13::text, location_address=$14::text, city=$15::text, country=$16::text, meeting_url=$17::text,
       topics=$18::text[], agenda=$19::jsonb, speakers=$20::text[], speaker_details=$21::jsonb,
       capacity=$22::integer, banner_url=$23::text, registration_mode=$24::text, registration_closes_at=$25::timestamptz,
+      is_paid=$26::boolean, price_minor=$27::bigint, currency=$28::text,
       updated_at=now()
     where e.id=$2::uuid
       and e.status <> 'cancelled'
@@ -454,7 +476,7 @@ async function countAttendees(client: DatabaseQueryClient, eventId: string) {
 async function attendEvent(userId: string, eventId: string) {
   return withTransaction(async (client) => {
     const result = await client.query<EventLockRow>(`
-      select id, host_user_id, status, end_at, capacity, registration_mode, registration_closes_at
+      select id, host_user_id, status, end_at, capacity, registration_mode, registration_closes_at, is_paid
       from public.events
       where id=$1::uuid
       for update
@@ -462,6 +484,7 @@ async function attendEvent(userId: string, eventId: string) {
     const event = result.rows[0]
     if (!event) throw new Error('event_not_found')
     if (event.host_user_id === userId) throw new Error('event_host_cannot_attend')
+    if (event.is_paid) throw new Error('event_requires_payment')
     if (event.status !== 'published' || new Date(event.end_at).getTime() <= Date.now()) throw new Error('event_not_open')
     if (event.registration_mode !== 'open') throw new Error('event_not_open')
     if (event.registration_closes_at && new Date(event.registration_closes_at).getTime() <= Date.now()) throw new Error('event_not_open')
@@ -484,7 +507,17 @@ async function attendEvent(userId: string, eventId: string) {
 }
 
 async function withdrawAttendance(userId: string, eventId: string) {
-  await query('delete from public.event_attendees where event_id=$1::uuid and user_id=$2::uuid', [eventId, userId])
+  const removed = await query<QueryResultRow>(
+    'delete from public.event_attendees where event_id=$1::uuid and user_id=$2::uuid and payment_order_id is null returning event_id',
+    [eventId, userId],
+  )
+  if (removed[0]) return
+  // Paid seats are cancelled through the organiser and the Sea N Shore team so the refund is handled.
+  const paid = await query<QueryResultRow>(
+    'select 1 from public.event_attendees where event_id=$1::uuid and user_id=$2::uuid and payment_order_id is not null',
+    [eventId, userId],
+  )
+  if (paid[0]) throw new Error('event_paid_registration')
 }
 
 export const calendarEventRepository = {

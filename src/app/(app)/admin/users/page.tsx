@@ -65,28 +65,49 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
   const query = readSingle(params.q).trim().slice(0, 120)
   const status = readStatus(params.status)
   const admin = await requireAwsUser()
-  const users = await adminRepository.searchUsers(admin.id, {
+  const hideTestAccounts = readSingle(params.test) === 'hide'
+  const results = await adminRepository.searchUsers(admin.id, {
     query,
     status,
     limit: 100,
   })
 
   const viewingDeletionRecords = status === 'deletion_requested'
-  const testAccounts = viewingDeletionRecords ? 0 : users.filter(looksLikeTestAccount).length
+  const testAccounts = viewingDeletionRecords ? 0 : results.filter(looksLikeTestAccount).length
+  const users = hideTestAccounts && !viewingDeletionRecords ? results.filter((user) => !looksLikeTestAccount(user)) : results
 
-  const filterOptions = (['all', ...ADMIN_USER_STATUSES] as AdminUserStatusFilter[]).map((item) => {
-    const href = new URLSearchParams()
-    if (query) href.set('q', query)
-    if (item !== 'all') href.set('status', item)
-    const search = href.toString()
-    return { href: `/admin/users${search ? `?${search}` : ''}`, label: filterLabels[item], active: item === status }
-  })
+  function usersHref(next: { status?: AdminUserStatusFilter; hideTest?: boolean }) {
+    const search = new URLSearchParams()
+    if (query) search.set('q', query)
+    const nextStatus = next.status ?? status
+    if (nextStatus !== 'all') search.set('status', nextStatus)
+    if (next.hideTest ?? hideTestAccounts) search.set('test', 'hide')
+    const value = search.toString()
+    return `/admin/users${value ? `?${value}` : ''}`
+  }
+
+  const filterOptions = (['all', ...ADMIN_USER_STATUSES] as AdminUserStatusFilter[]).map((item) => ({
+    href: usersHref({ status: item }),
+    label: filterLabels[item],
+    active: item === status,
+  }))
 
   return (
     <main className="space-y-4">
       <AdminPageHeader
         title={viewingDeletionRecords ? 'Deleted account records' : 'User accounts'}
-        meta={`${pluralize(users.length, 'result')}${testAccounts ? ` · ${testAccounts} look like test accounts` : ''}`}
+        meta={(
+          <>
+            {hideTestAccounts && testAccounts
+              ? `${pluralize(users.length, 'result')} · ${pluralize(testAccounts, 'test account')} hidden · `
+              : `${pluralize(users.length, 'result')}${testAccounts ? ` · ${testAccounts} look like test accounts · ` : ''}`}
+            {testAccounts ? (
+              <Link href={usersHref({ hideTest: !hideTestAccounts })} className="font-semibold text-ocean-700 hover:underline">
+                {hideTestAccounts ? 'Show them' : 'Hide them'}
+              </Link>
+            ) : null}
+          </>
+        )}
         description={viewingDeletionRecords
           ? 'These are not active or manageable users. They are anonymized tombstones retained only so moderation history and integrity records remain traceable.'
           : undefined}
@@ -108,6 +129,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
             />
           </label>
           {status !== 'all' ? <input type="hidden" name="status" value={status} /> : null}
+          {hideTestAccounts ? <input type="hidden" name="test" value="hide" /> : null}
           <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">
             Search
           </button>

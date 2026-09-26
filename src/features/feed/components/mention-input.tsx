@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { searchMentionCandidates, type MentionCandidate } from '../mention-actions'
 
 export type SelectedMention = { profileId: string; label: string }
@@ -15,6 +15,9 @@ export function MentionInput({
   placeholder,
   rows = 3,
   className = '',
+  textareaRef: externalTextareaRef,
+  maxLength,
+  describedBy,
 }: {
   id: string
   name: string
@@ -25,8 +28,13 @@ export function MentionInput({
   placeholder: string
   rows?: number
   className?: string
+  /** Lets the parent read the caret, e.g. to insert an emoji where the member is typing. */
+  textareaRef?: RefObject<HTMLTextAreaElement | null>
+  maxLength?: number
+  describedBy?: string
 }) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const internalTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const textareaRef = externalTextareaRef ?? internalTextareaRef
   const [candidates, setCandidates] = useState<MentionCandidate[]>([])
   const [activeIndex, setActiveIndex] = useState(0)
   const [queryState, setQueryState] = useState<{ query: string; start: number; end: number } | null>(null)
@@ -119,6 +127,8 @@ export function MentionInput({
         placeholder={placeholder}
         aria-autocomplete="list"
         aria-controls={`${id}-mentions`}
+        aria-describedby={describedBy}
+        maxLength={maxLength}
         className={className}
       />
       {mentions.map((mention) => <input key={mention.profileId} type="hidden" name="mentionProfileId" value={mention.profileId} />)}

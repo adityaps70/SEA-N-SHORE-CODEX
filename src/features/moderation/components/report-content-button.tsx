@@ -16,15 +16,23 @@ export function ReportContentButton({
   label = 'Report',
   iconOnly = false,
   className = '',
+  defaultOpen = false,
+  hideTrigger = false,
+  onClose,
 }: {
   targetType: ModerationTargetType
   targetId: string
   label?: string
   iconOnly?: boolean
   className?: string
+  /** Open the report form on mount, e.g. when launched from an overflow menu item. */
+  defaultOpen?: boolean
+  /** Render only the report form, without its own trigger button. */
+  hideTrigger?: boolean
+  onClose?(): void
 }) {
   const reasons = useMemo(() => allowedReportReasons(targetType), [targetType])
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [reason, setReason] = useState<ModerationReportReason>(reasons[0] ?? 'other')
   const [details, setDetails] = useState('')
   const [status, setStatus] = useState('')
@@ -34,11 +42,12 @@ export function ReportContentButton({
     if (pending) return
     setOpen(false)
     setStatus('')
+    onClose?.()
   }
 
   return (
     <>
-      <button
+      {hideTrigger ? null : <button
         type="button"
         aria-label={iconOnly ? label : undefined}
         onClick={() => {
@@ -53,7 +62,7 @@ export function ReportContentButton({
       >
         <Flag aria-hidden="true" className="size-4" />
         {iconOnly ? null : label}
-      </button>
+      </button>}
 
       {open ? (
         <div className="fixed inset-0 z-[150] grid place-items-center bg-navy-950/45 p-4 backdrop-blur-[2px]">

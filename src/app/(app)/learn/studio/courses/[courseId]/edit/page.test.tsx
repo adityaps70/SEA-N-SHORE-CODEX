@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => ({
   capturedSubmitCourseId: null as string | null,
   capturedCurriculumCourseId: null as string | null,
   capturedCurriculum: null as unknown,
+  capturedFormReadOnly: null as boolean | null,
+  capturedCurriculumReadOnly: null as boolean | null,
+  capturedRevision: null as number | null,
+  capturedResubmission: null as boolean | null,
 }))
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }))
@@ -22,25 +26,37 @@ vi.mock('@/features/learning/course-repository', () => ({
 vi.mock('@/features/learning/mentor-material-repository', () => ({
   mentorMaterialRepository: { getCurriculum: mocks.getCurriculum },
 }))
+vi.mock('@/features/learning/components/course-edit-session', () => ({
+  CourseEditSession: ({ children, initialDetailsRevision }: { children: React.ReactNode; initialDetailsRevision?: number }) => {
+    mocks.capturedRevision = initialDetailsRevision ?? null
+    return <div data-testid="course-edit-session">{children}</div>
+  },
+}))
 vi.mock('@/features/learning/components/course-form', () => ({
-  CourseForm: ({ initialValue, courseId }: { initialValue: unknown; courseId?: string }) => {
+  CourseForm: ({ initialValue, courseId, readOnly }: { initialValue: unknown; courseId?: string; readOnly?: boolean }) => {
     mocks.capturedInitialValue = initialValue
     mocks.capturedCourseId = courseId ?? null
+    mocks.capturedFormReadOnly = Boolean(readOnly)
     return <div data-testid="course-form">Course form</div>
   },
 }))
 vi.mock('@/features/learning/components/mentor-curriculum-editor', () => ({
-  MentorCurriculumEditor: ({ courseId, curriculum }: { courseId: string; curriculum: unknown }) => {
+  MentorCurriculumEditor: ({ courseId, curriculum, readOnly }: { courseId: string; curriculum: unknown; readOnly?: boolean }) => {
     mocks.capturedCurriculumCourseId = courseId
     mocks.capturedCurriculum = curriculum
+    mocks.capturedCurriculumReadOnly = Boolean(readOnly)
     return <div data-testid="mentor-curriculum-editor">Curriculum editor</div>
   },
 }))
 vi.mock('@/features/learning/components/course-submit-control', () => ({
-  CourseSubmitControl: ({ courseId }: { courseId: string }) => {
+  CourseSubmitControl: ({ courseId, resubmission }: { courseId: string; resubmission?: boolean }) => {
     mocks.capturedSubmitCourseId = courseId
+    mocks.capturedResubmission = Boolean(resubmission)
     return <div data-testid="course-submit-control">Submit control</div>
   },
+}))
+vi.mock('@/features/learning/components/course-withdraw-control', () => ({
+  CourseWithdrawControl: ({ courseId }: { courseId: string }) => <div data-testid="course-withdraw-control">withdraw:{courseId}</div>,
 }))
 
 import EditMentorCoursePage from './page'
@@ -72,6 +88,10 @@ const draftCourse = {
   status: 'draft',
   adminReviewNote: null,
   updatedAt: '2026-09-14T15:00:00.000Z',
+  detailsRevision: 4,
+  lastReview: null,
+  submittedAt: null,
+  publisherName: 'Capt. Mentor',
 } as const
 
 const curriculum = {
@@ -94,6 +114,10 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     mocks.capturedSubmitCourseId = null
     mocks.capturedCurriculumCourseId = null
     mocks.capturedCurriculum = null
+    mocks.capturedFormReadOnly = null
+    mocks.capturedCurriculumReadOnly = null
+    mocks.capturedRevision = null
+    mocks.capturedResubmission = null
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'mentor@example.com' })
     mocks.getOwnedCourse.mockResolvedValue(draftCourse)
     mocks.getCurriculum.mockResolvedValue(curriculum)
@@ -124,6 +148,10 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     }))
     expect(mocks.redirect).not.toHaveBeenCalled()
     expect(mocks.notFound).not.toHaveBeenCalled()
+    expect(mocks.capturedFormReadOnly).toBe(false)
+    expect(mocks.capturedCurriculumReadOnly).toBe(false)
+    expect(mocks.capturedRevision).toBe(4)
+    expect(mocks.capturedResubmission).toBe(false)
   })
 
   it('shows administrator feedback when a course is returned for changes', async () => {
@@ -131,12 +159,20 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
       ...draftCourse,
       status: 'changes_requested',
       adminReviewNote: 'Please make the learning outcomes more measurable and role-specific.',
+      lastReview: {
+        decision: 'changes_requested',
+        note: 'Please make the learning outcomes more measurable and role-specific.',
+        reviewedAt: '2026-09-20T06:30:00.000Z',
+      },
     })
     mocks.getCurriculum.mockResolvedValue({ ...curriculum, status: 'changes_requested' })
 
     render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
 
+    expect(screen.getByText('Changes requested by Sea N Shore review')).toBeInTheDocument()
     expect(screen.getByText('Please make the learning outcomes more measurable and role-specific.')).toBeInTheDocument()
+    expect(mocks.capturedResubmission).toBe(true)
+    expect(mocks.capturedFormReadOnly).toBe(false)
     expect(screen.getByTestId('course-form')).toBeInTheDocument()
     expect(screen.getByTestId('mentor-curriculum-editor')).toBeInTheDocument()
     expect(screen.getByTestId('course-submit-control')).toBeInTheDocument()
@@ -171,14 +207,41 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     expect(mocks.capturedSubmitCourseId).toBeNull()
   })
 
-  it.each(['submitted', 'approved', 'published', 'archived'])('returns a non-editable %s course to Learning Studio before reading curriculum', async (status) => {
+  it('shows an in-review course read-only with the reviewer’s earlier note and a way to withdraw it', async () => {
+    mocks.getOwnedCourse.mockResolvedValue({
+      ...draftCourse,
+      status: 'submitted',
+      submittedAt: '2026-09-27T09:02:00.000Z',
+      lastReview: { decision: 'changes_requested', note: 'Add a vetting checklist.', reviewedAt: '2026-09-20T06:30:00.000Z' },
+    })
+
+    render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
+
+    expect(mocks.redirect).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'View course' })).toBeInTheDocument()
+    expect(screen.getByText(/^In review · submitted/)).toBeInTheDocument()
+    expect(screen.getByText(/editing is locked while sea n shore reviews this course/i)).toBeInTheDocument()
+    expect(screen.getByText('Add a vetting checklist.')).toBeInTheDocument()
+    expect(screen.getByTestId('course-withdraw-control')).toHaveTextContent(courseId)
+    expect(mocks.capturedFormReadOnly).toBe(true)
+    expect(mocks.capturedCurriculumReadOnly).toBe(true)
+    expect(screen.queryByTestId('course-submit-control')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['published', /Published · read-only/],
+    ['approved', /Published · read-only/],
+    ['archived', /Archived · read-only/],
+  ])('shows a %s course read-only instead of silently redirecting', async (status, banner) => {
     mocks.getOwnedCourse.mockResolvedValue({ ...draftCourse, status })
 
-    await EditMentorCoursePage({ params: Promise.resolve({ courseId }) })
+    render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
 
-    expect(mocks.redirect).toHaveBeenCalledWith('/learn/studio')
-    expect(mocks.getCurriculum).not.toHaveBeenCalled()
-    expect(mocks.capturedInitialValue).toBeNull()
-    expect(mocks.capturedSubmitCourseId).toBeNull()
+    expect(mocks.redirect).not.toHaveBeenCalled()
+    expect(screen.getByText(banner)).toBeInTheDocument()
+    expect(mocks.capturedFormReadOnly).toBe(true)
+    expect(mocks.capturedCurriculumReadOnly).toBe(true)
+    expect(screen.queryByTestId('course-submit-control')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('course-withdraw-control')).not.toBeInTheDocument()
   })
 })

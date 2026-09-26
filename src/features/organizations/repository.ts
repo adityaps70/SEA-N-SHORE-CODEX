@@ -15,6 +15,14 @@ import {
   type OrganizationApplicationStatus,
   type UserOrganizationState,
 } from './types'
+import { displayOrganizationType, resolveOrganizationType } from './organization-types'
+import {
+  organizationDetailsFromInput,
+  organizationTypeStoredLabel,
+  parseOrganizationDetails,
+  type ParsedOrganizationApplicationInput,
+} from './schemas'
+import { decidedVia, isoTimestamp } from './access-request-repository'
 
 export type { OrganizationApplicationInput } from './types'
 
@@ -39,6 +47,8 @@ type OrganizationApplicationDetailRow = QueryResultRow & {
   application_id: string
   organization_name: string
   organization_type: string | null
+  organization_type_code: string | null
+  organization_details: unknown
   website: string | null
   official_email: string
   office_locations: string[] | null
@@ -55,6 +65,7 @@ type CompanySearchRow = QueryResultRow & {
   slug: string
   name: string
   company_type: string | null
+  organization_type: string | null
   is_verified: boolean | null
   website: string | null
 }
@@ -65,11 +76,15 @@ type CompanyAccessRequestRow = QueryResultRow & {
   request_id: string
   status: string
   requested_role: string
+  granted_role: string | null
   request_type: string
   message: string | null
-  requested_at: string
-  reviewed_at: string | null
+  requested_at: string | Date
+  reviewed_at: string | Date | null
   reviewer_note: string | null
+  decided_via: string | null
+  escalated_at: string | Date | null
+  escalation_note: string | null
   company_id: string
   company_slug: string
   company_name: string
@@ -223,6 +238,8 @@ export function createOrganizationRepository(input: {
          oa.id as application_id,
          c.name as organization_name,
          c.company_type as organization_type,
+         c.organization_type as organization_type_code,
+         c.organization_details,
          c.website,
          oa.official_email,
          c.office_locations,
@@ -242,40 +259,52 @@ export function createOrganizationRepository(input: {
     const row = rows[0]
     if (!row) return null
 
+    const type = resolveOrganizationType(row.organization_type_code, row.organization_type)
+    const details = parseOrganizationDetails(row.organization_details)
     return {
       organizationName: row.organization_name,
-      organizationType: row.organization_type ?? '',
+      organizationType: type.code,
+      organizationTypeOther: type.otherLabel,
       website: row.website ?? null,
       officialEmail: row.official_email,
       officeLocation: Array.isArray(row.office_locations) ? row.office_locations[0] ?? '' : '',
       description: row.description ?? '',
+      fleetSize: details.fleetSize ?? null,
       fleetSummary: row.fleet_summary ?? null,
       vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
+      recruitmentLicence: details.recruitmentLicence ?? null,
+      servicesOffered: details.servicesOffered ?? [],
+      languages: details.languages ?? [],
+      helpline24x7: details.helpline24x7 ?? null,
+      accreditation: details.accreditation ?? null,
       applicantRole: row.applicant_role,
       registrationReference: row.registration_reference ?? null,
       supportingNotes: row.supporting_notes ?? null,
     }
   }
 
-  async function submitOrganizationApplication(userId: string, data: OrganizationApplicationInput) {
+  async function submitOrganizationApplication(userId: string, data: ParsedOrganizationApplicationInput) {
     return transaction(async (txQuery) => {
       const slug = organizationSlug(data.organizationName, userId)
       const companyRows = await txQuery(
         `insert into public.companies (
            slug, name, company_type, website, description, fleet_summary,
-           vessel_types, office_locations, created_by, created_at, updated_at
-         ) values ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, now(), now())
+           vessel_types, office_locations, created_by, created_at, updated_at,
+           organization_type, organization_details
+         ) values ($1, $2, $3, $4, $5, $6, $7::text[], $8::text[], $9, now(), now(), $10, $11::jsonb)
          returning id, slug`,
         [
           slug,
           data.organizationName,
-          data.organizationType,
+          organizationTypeStoredLabel(data),
           data.website,
           data.description,
           data.fleetSummary,
           data.vesselTypes,
           [data.officeLocation],
           userId,
+          data.organizationType,
+          JSON.stringify(organizationDetailsFromInput(data)),
         ],
       ) as ReturningCompanyRow[]
       const company = companyRows[0]
@@ -313,7 +342,7 @@ export function createOrganizationRepository(input: {
   async function resubmitOrganizationApplication(
     userId: string,
     applicationId: string,
-    data: OrganizationApplicationInput,
+    data: ParsedOrganizationApplicationInput,
   ) {
     return transaction(async (txQuery) => {
       const lockedRows = await txQuery(
@@ -338,17 +367,21 @@ export function createOrganizationRepository(input: {
              fleet_summary = $6,
              vessel_types = $7::text[],
              office_locations = $8::text[],
+             organization_type = $9,
+             organization_details = $10::jsonb,
              updated_at = now()
          where id = $1`,
         [
           application.company_id,
           data.organizationName,
-          data.organizationType,
+          organizationTypeStoredLabel(data),
           data.website,
           data.description,
           data.fleetSummary,
           data.vesselTypes,
           [data.officeLocation],
+          data.organizationType,
+          JSON.stringify(organizationDetailsFromInput(data)),
         ],
       )
 
@@ -434,11 +467,15 @@ export function createOrganizationRepository(input: {
          car.id as request_id,
          car.status,
          car.requested_role::text as requested_role,
+         car.granted_role::text as granted_role,
          car.request_type,
          car.message,
          car.requested_at,
          car.reviewed_at,
          car.reviewer_note,
+         car.decided_via,
+         car.escalated_at,
+         car.escalation_note,
          c.id as company_id,
          c.slug as company_slug,
          c.name as company_name,
@@ -455,11 +492,15 @@ export function createOrganizationRepository(input: {
       id: row.request_id,
       status: companyAccessRequestStatus(row.status),
       requestedRole: companyAccessRequestRole(row.requested_role),
+      grantedRole: row.granted_role ? companyAccessRequestRole(row.granted_role) : null,
       requestType: companyAccessRequestType(row.request_type),
       message: row.message ?? null,
-      requestedAt: row.requested_at,
-      reviewedAt: row.reviewed_at ?? null,
+      requestedAt: isoTimestamp(row.requested_at),
+      reviewedAt: isoTimestamp(row.reviewed_at),
       reviewerNote: row.reviewer_note ?? null,
+      decidedVia: decidedVia(row.decided_via),
+      escalatedAt: isoTimestamp(row.escalated_at),
+      escalationNote: row.escalation_note ?? null,
       company: {
         id: row.company_id,
         slug: row.company_slug,
@@ -498,7 +539,7 @@ export function createOrganizationRepository(input: {
     const normalized = term.trim()
     if (normalized.length < 2) return []
     const rows = await query(
-      `select id, slug, name, company_type, coalesce(is_verified, false) as is_verified, website
+      `select id, slug, name, company_type, organization_type, coalesce(is_verified, false) as is_verified, website
        from public.companies
        where name ilike $1 or coalesce(website, '') ilike $1
        order by is_verified desc, name asc, id asc
@@ -510,7 +551,7 @@ export function createOrganizationRepository(input: {
       id: row.id,
       slug: row.slug,
       name: row.name,
-      companyType: row.company_type ?? null,
+      companyType: row.company_type || row.organization_type ? displayOrganizationType(row.organization_type, row.company_type) : null,
       verified: Boolean(row.is_verified),
       website: row.website ?? null,
     }))

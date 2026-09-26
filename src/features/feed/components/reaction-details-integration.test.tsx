@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: mocks.refresh }),
+  usePathname: () => '/home',
 }))
 
 vi.mock('../actions', () => ({

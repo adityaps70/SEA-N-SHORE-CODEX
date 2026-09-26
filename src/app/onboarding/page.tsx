@@ -3,12 +3,12 @@ import { redirect } from 'next/navigation'
 import { Wordmark } from '@/components/brand/wordmark'
 import { Card } from '@/components/ui/card'
 import { OnboardingForm } from '@/features/profiles/components/onboarding-form'
-import { getOwnOnboardingProfile } from '@/features/profiles/queries'
+import { getOwnOnboardingSetup } from '@/features/profiles/queries'
 
 export const metadata: Metadata = { title: 'Set up your profile' }
 
 export default async function OnboardingPage() {
-  const profile = await getOwnOnboardingProfile()
+  const profile = await getOwnOnboardingSetup()
 
   if (profile.onboardingCompletedAt) redirect('/home')
 
@@ -47,7 +47,12 @@ export default async function OnboardingPage() {
               Step 1 of 2
             </span>
           </div>
-          <OnboardingForm initialFullName={profile.fullName} />
+          <OnboardingForm
+            initialFullName={profile.fullName}
+            suggestedUsername={profile.suggestedUsername}
+            profileId={profile.profileId}
+            initialDgProfile={profile.dgProfile}
+          />
         </Card>
 
         <p className="px-2 py-6 text-center text-xs leading-5 text-muted">

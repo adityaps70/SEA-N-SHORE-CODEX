@@ -97,7 +97,7 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
               alt={`${course.title} course cover`}
               className="object-cover transition duration-300 group-hover:scale-[1.02]"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-navy-950 via-navy-950/55 to-navy-950/20" />
+            <div className="absolute inset-0 bg-gradient-to-b from-navy-950/45 via-transparent to-transparent" />
           </>
         ) : (
           <>
@@ -114,10 +114,12 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
               {pricingLabel(course)}
             </span>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-200">Sea N Shore Learning</p>
-            <p className="mt-1 text-sm font-medium text-white/85">Practical maritime learning from verified trainers and organizations</p>
-          </div>
+          {thumbnailPath ? null : (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-teal-200">Sea N Shore Learning</p>
+              <p className="mt-1 text-sm font-medium text-white/85">Practical maritime learning from verified trainers and organizations</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -241,7 +243,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
           {hasFilters ? <Link href="/learn" className="px-2 py-2 text-center text-sm font-bold text-teal-800 hover:text-teal-700">Clear filters</Link> : null}
         </form>
 
-        <div className="mt-4 flex gap-2 overflow-x-auto pb-1" aria-label="Course categories">
+        <div className="mt-4 flex flex-wrap gap-2" aria-label="Course categories">
           <Link href={allCoursesHref(search)} aria-current={category ? undefined : 'page'} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold transition ${category ? 'border-mist-200 bg-white text-muted hover:border-teal-300 hover:text-teal-800' : 'border-navy-950 bg-navy-950 text-white'}`}>
             All courses
           </Link>

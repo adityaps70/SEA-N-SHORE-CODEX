@@ -1,59 +1,71 @@
 'use client'
 
-import { MessageSquarePlus, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import type { NetworkProfile } from '@/features/network/types'
-import { StartConversationButton } from './start-conversation-button'
+import { MessageSquarePlus } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { useCallback, useEffect, useState, useTransition } from 'react'
+import { NewMessageDialog, type NewMessageSelection } from './new-message-dialog'
 
-export function NewMessageButton({ candidates }: { candidates: NetworkProfile[] }) {
+/**
+ * "New Message" on the full messages page. It opens a searchable picker of
+ * accepted connections ("Choose a connection"); choosing someone reuses the
+ * existing conversation or creates one through startDirectConversationAction,
+ * then opens it.
+ */
+export function NewMessageButton({
+  activeConversationId = null,
+  debounceMs,
+}: {
+  /** Conversation already open on the page; choosing it again just closes the picker. */
+  activeConversationId?: string | null
+  debounceMs?: number
+} = {}) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [recipientId, setRecipientId] = useState('')
-  const recipient = useMemo(
-    () => candidates.find((candidate) => candidate.id === recipientId) ?? null,
-    [candidates, recipientId],
-  )
+  const [targetPath, setTargetPath] = useState<string | null>(null)
+  const [navigating, startNavigation] = useTransition()
+
+  const close = useCallback(() => {
+    setOpen(false)
+    setTargetPath(null)
+  }, [])
+
+  const openConversation = useCallback(({ conversationId }: NewMessageSelection) => {
+    if (conversationId === activeConversationId) {
+      close()
+      return
+    }
+    const path = `/messages/${conversationId}`
+    setTargetPath(path)
+    startNavigation(() => {
+      router.push(path)
+    })
+  }, [activeConversationId, close, router])
+
+  useEffect(() => {
+    if (!targetPath || navigating) return
+    // Navigation finished (or was superseded): close the picker.
+    const timer = setTimeout(close, 0)
+    return () => clearTimeout(timer)
+  }, [close, navigating, targetPath])
 
   return (
-    <div className="relative">
+    <>
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-navy-900"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
         aria-expanded={open}
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
       >
         <MessageSquarePlus aria-hidden="true" className="size-4" /> New Message
       </button>
-
-      {open ? (
-        <div className="absolute right-0 z-30 mt-2 w-[min(24rem,calc(100vw-2rem))] rounded-2xl border border-mist-100 bg-white p-4 shadow-xl">
-          <div className="flex items-start justify-between gap-3">
-            <div><p className="text-sm font-bold text-navy-950">Choose a connection</p><p className="mt-1 text-xs leading-5 text-muted">Start a conversation with one of your accepted maritime connections.</p></div>
-            <button type="button" onClick={() => setOpen(false)} aria-label="Close recipient picker" className="grid size-8 place-items-center rounded-full hover:bg-mist-50"><X aria-hidden="true" className="size-4" /></button>
-          </div>
-
-          {candidates.length ? (
-            <>
-              <label className="mt-4 block text-xs font-bold text-navy-950">Recipient
-                <select value={recipientId} onChange={(event) => setRecipientId(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink">
-                  <option value="">Select a connection</option>
-                  {candidates.map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>{candidate.fullName}{candidate.rank ? ` · ${candidate.rank}` : candidate.currentCompany ? ` · ${candidate.currentCompany}` : ''}</option>
-                  ))}
-                </select>
-              </label>
-              {recipient ? (
-                <div className="mt-3 rounded-xl bg-mist-50 p-3">
-                  <p className="text-sm font-bold text-navy-950">{recipient.fullName}</p>
-                  <p className="mt-0.5 text-xs text-muted">{[recipient.rank, recipient.currentCompany].filter(Boolean).join(' · ') || recipient.headline || `@${recipient.slug}`}</p>
-                  <StartConversationButton targetProfileId={recipient.id} className="mt-3" />
-                </div>
-              ) : null}
-            </>
-          ) : (
-            <p className="mt-4 rounded-xl bg-mist-50 p-3 text-sm leading-6 text-muted">Connect with maritime professionals first, then you can start a private conversation here.</p>
-          )}
-        </div>
-      ) : null}
-    </div>
+      <NewMessageDialog
+        open={open}
+        onClose={close}
+        onConversationReady={openConversation}
+        openingConversation={Boolean(targetPath)}
+        debounceMs={debounceMs}
+      />
+    </>
   )
 }

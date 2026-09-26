@@ -1,6 +1,10 @@
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { createMediaReadUrl } from '@/lib/aws/storage'
-import { isImageMessageAttachmentMime, isVideoMessageAttachmentMime } from './media-policy'
+import {
+  isImageMessageAttachmentMime,
+  isVideoMessageAttachmentMime,
+  messageAttachmentRoute,
+} from './media-policy'
 import { messagingRepository, type MessagingRepository } from './repository'
 import { messageAfterRequestSchema, messagePageRequestSchema } from './schemas'
 import type { MessagingMessageRow } from './types'
@@ -137,12 +141,15 @@ export function messagingMessageDto(
   }
 }
 
-export async function hydratedMessagingMessageDto(
-  row: MessagingMessageRow,
-  createReadUrl: (key: string) => Promise<string> = createMediaReadUrl,
-) {
-  const attachmentUrl = row.attachment_storage_path
-    ? await createReadUrl(row.attachment_storage_path)
+/**
+ * Attachments are never exposed through a raw storage URL. The DTO points at
+ * the same-origin attachment route, which re-checks that the viewer is a
+ * participant of the conversation on every request and then redirects to a
+ * five-minute signed URL.
+ */
+export async function hydratedMessagingMessageDto(row: MessagingMessageRow) {
+  const attachmentUrl = row.attachment_storage_path && !row.deleted_at
+    ? messageAttachmentRoute(row.id)
     : null
   return messagingMessageDto(row, attachmentUrl)
 }
@@ -206,7 +213,7 @@ export function createMessagingQueries(input: {
         : null
 
       return {
-        messages: await Promise.all([...rows].reverse().map((row) => hydratedMessagingMessageDto(row, input.createReadUrl))),
+        messages: await Promise.all([...rows].reverse().map((row) => hydratedMessagingMessageDto(row))),
         nextCursor,
       }
     },
@@ -230,7 +237,7 @@ export function createMessagingQueries(input: {
         : null
 
       return {
-        messages: await Promise.all(rows.map((row) => hydratedMessagingMessageDto(row, input.createReadUrl))),
+        messages: await Promise.all(rows.map((row) => hydratedMessagingMessageDto(row))),
         nextCursor,
       }
     },

@@ -1,130 +1,200 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Link2, Repeat2, Share2 } from 'lucide-react'
+import { ExternalLink, Link2, MessageSquareQuote, Repeat2, Send, Share2 } from 'lucide-react'
 import { repostPost } from '../actions'
+import { FeedDialog } from './feed-dialog'
+import { RepostDialog, type RepostSourcePreview } from './repost-dialog'
+import { SendPostDialog } from './send-post-dialog'
+import {
+  copyToClipboard,
+  externalShareTargets,
+  nativeShareAvailable,
+  postPermalink,
+  shareWithDevice,
+  type FeedNotice,
+} from './share-utils'
+import { useFeedMenu } from './use-feed-menu'
 
-type OptionalNativeShare = {
-  share?: (data?: ShareData) => Promise<void>
+const SHARE_TEXT = 'View this maritime discussion on Sea N Shore.'
+
+const itemClass = 'flex w-full items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50'
+
+function ExternalShareDialog({ url, onClose, onCopy }: { url: string; onClose(): void; onCopy(): void }) {
+  return (
+    <FeedDialog title="Share outside Sea N Shore" description="Choose where to share this post, or copy the link." onClose={onClose} closeLabel="Close share options" size="sm">
+      <ul className="grid grid-cols-2 gap-2">
+        {externalShareTargets(url, SHARE_TEXT).map((target) => (
+          <li key={target.id}>
+            <a
+              href={target.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={onClose}
+              className="flex min-h-11 items-center justify-between gap-2 rounded-xl border border-mist-100 px-3 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50"
+            >
+              {target.label}
+              <ExternalLink aria-hidden="true" className="size-3.5 text-muted" />
+            </a>
+          </li>
+        ))}
+      </ul>
+      <button type="button" onClick={onCopy} className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900">
+        <Link2 aria-hidden="true" className="size-4" /> Copy link
+      </button>
+    </FeedDialog>
+  )
 }
 
-function nativeShare() {
-  if (typeof navigator === 'undefined') return undefined
-  return (navigator as unknown as OptionalNativeShare).share
-}
-
+/**
+ * Repost / share control for a feed post: repost, repost with thoughts, send in a
+ * message, share with the device share sheet (or share links as a fallback) and copy link.
+ */
 export function SharePostButton({
   postId,
+  repostPostId,
+  authorName = 'this member',
+  source,
   iconOnly = false,
   allowRepost = true,
+  allowSend = true,
+  menuAlign = 'center',
+  onNotice,
 }: {
+  /** The post the link points at. */
   postId: string
+  /** The original post a repost should point at (defaults to postId). */
+  repostPostId?: string
+  authorName?: string
+  source?: RepostSourcePreview
   iconOnly?: boolean
   allowRepost?: boolean
+  allowSend?: boolean
+  /** Where the menu opens relative to the button; use 'start' near the card's left edge. */
+  menuAlign?: 'center' | 'start'
+  /** Shows results in the post card. Without it the button shows its own status line. */
+  onNotice?(notice: FeedNotice): void
 }) {
-  const [open, setOpen] = useState(false)
-  const [message, setMessage] = useState('')
+  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, rootRef: menuRootRef, triggerRef: menuTriggerRef, menuRef, onMenuKeyDown } = useFeedMenu()
+  const [dialog, setDialog] = useState<'repost' | 'send' | 'external' | null>(null)
+  const [ownNotice, setOwnNotice] = useState<FeedNotice | null>(null)
   const [pending, startTransition] = useTransition()
+  const repostTarget = repostPostId ?? postId
 
-  function postUrl() {
-    return new URL(`/posts/${postId}`, window.location.origin).toString()
+  function notify(notice: FeedNotice) {
+    if (onNotice) onNotice(notice)
+    else setOwnNotice(notice)
+  }
+
+  function openDialog(next: 'repost' | 'send' | 'external') {
+    closeMenu()
+    setDialog(next)
   }
 
   function repost() {
     if (!allowRepost || pending) return
-    setMessage('')
     startTransition(async () => {
-      const result = await repostPost(postId)
-      setOpen(false)
-      setMessage(result.ok ? 'Reposted to your feed' : result.error)
+      const result = await repostPost(repostTarget)
+      closeMenu()
+      notify(result.ok
+        ? { text: 'Reposted to your feed.', tone: 'success', href: `/posts/${result.postId}`, hrefLabel: 'View repost' }
+        : { text: result.error, tone: 'error' })
     })
   }
 
   async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(postUrl())
-      setMessage('Link copied')
-      setOpen(false)
-    } catch {
-      setMessage('Could not copy link')
-    }
+    closeMenu()
+    setDialog(null)
+    const copied = await copyToClipboard(postPermalink(postId))
+    notify(copied
+      ? { text: 'Link copied. Paste it anywhere to share this post.', tone: 'success' }
+      : { text: `We could not copy automatically. Copy this link instead: ${postPermalink(postId)}`, tone: 'error' })
   }
 
   async function shareExternally() {
-    try {
-      const share = nativeShare()
-      if (!share) {
-        await copyLink()
-        return
-      }
-      await share.call(navigator, {
-        title: 'Sea N Shore maritime post',
-        text: 'View this maritime discussion on Sea N Shore.',
-        url: postUrl(),
-      })
-      setMessage('Shared')
-      setOpen(false)
-    } catch {
-      setMessage('Share cancelled')
+    if (!nativeShareAvailable()) {
+      openDialog('external')
+      return
     }
+    closeMenu()
+    const outcome = await shareWithDevice({ title: `${authorName} on Sea N Shore`, text: SHARE_TEXT, url: postPermalink(postId) })
+    if (outcome === 'unavailable') setDialog('external')
   }
 
   return (
-    <div className="relative">
+    <div ref={menuRootRef} className="relative">
       <button
+        ref={menuTriggerRef}
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={toggleMenu}
         aria-label={iconOnly ? 'Share' : undefined}
-        aria-expanded={open}
+        title="Repost or share"
+        aria-expanded={menuOpen}
         aria-haspopup="menu"
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50"
+        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
       >
-        <Share2 aria-hidden="true" className="size-5" />
+        {allowRepost ? <Repeat2 aria-hidden="true" className="size-5" /> : <Share2 aria-hidden="true" className="size-5" />}
         {iconOnly ? null : 'Share'}
       </button>
 
-      {open ? (
+      {menuOpen ? (
         <div
+          ref={menuRef}
           role="menu"
           aria-label="Share post"
-          className="absolute bottom-full right-0 z-50 mb-2 w-52 overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl"
+          onKeyDown={onMenuKeyDown}
+          className={`absolute bottom-full z-50 mb-2 w-[min(17.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl ${menuAlign === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2'}`}
         >
           {allowRepost ? (
-            <button
-              type="button"
-              role="menuitem"
-              disabled={pending}
-              onClick={repost}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-50"
-            >
-              <Repeat2 aria-hidden="true" className="size-4" />
-              {pending ? 'Reposting…' : 'Repost to feed'}
+            <>
+              <button type="button" role="menuitem" disabled={pending} onClick={repost} className={itemClass}>
+                <Repeat2 aria-hidden="true" className="size-4" />
+                {pending ? 'Reposting…' : 'Repost to feed'}
+              </button>
+              <button type="button" role="menuitem" disabled={pending} onClick={() => openDialog('repost')} className={itemClass}>
+                <MessageSquareQuote aria-hidden="true" className="size-4" />
+                Repost with your thoughts
+              </button>
+            </>
+          ) : null}
+          {allowSend ? (
+            <button type="button" role="menuitem" onClick={() => openDialog('send')} className={itemClass}>
+              <Send aria-hidden="true" className="size-4" />
+              Send in a message
             </button>
           ) : null}
-          {nativeShare() ? (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={shareExternally}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50"
-            >
-              <Share2 aria-hidden="true" className="size-4" />
-              Share externally
-            </button>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={copyLink}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50"
-          >
+          <button type="button" role="menuitem" onClick={() => { void shareExternally() }} className={itemClass}>
+            <Share2 aria-hidden="true" className="size-4" />
+            Share outside Sea N Shore
+          </button>
+          <button type="button" role="menuitem" onClick={() => { void copyLink() }} className={itemClass}>
             <Link2 aria-hidden="true" className="size-4" />
             Copy link
           </button>
         </div>
       ) : null}
 
-      <span className="sr-only" aria-live="polite">{message}</span>
+      {!onNotice && ownNotice ? (
+        <p role={ownNotice.tone === 'error' ? 'alert' : 'status'} className={`mt-1 text-xs font-semibold ${ownNotice.tone === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>
+          {ownNotice.text}
+        </p>
+      ) : null}
+
+      {dialog === 'repost' ? (
+        <RepostDialog
+          postId={repostTarget}
+          source={source ?? { authorName, body: '' }}
+          onClose={() => setDialog(null)}
+          onNotice={notify}
+          returnFocusRef={menuTriggerRef}
+        />
+      ) : null}
+      {dialog === 'send' ? (
+        <SendPostDialog postId={postId} authorName={authorName} onClose={() => setDialog(null)} onNotice={notify} returnFocusRef={menuTriggerRef} />
+      ) : null}
+      {dialog === 'external' ? (
+        <ExternalShareDialog url={postPermalink(postId)} onClose={() => setDialog(null)} onCopy={() => { void copyLink() }} />
+      ) : null}
     </div>
   )
 }

@@ -1,6 +1,9 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import type { OrganizationAccessRole } from '@/features/access/policy'
+import { displayOrganizationType, resolveOrganizationType, type OrganizationTypeCode } from './organization-types'
+import { parseOrganizationDetails } from './schemas'
+import type { OrganizationDetails } from './types'
 
 type WorkspaceQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -10,6 +13,8 @@ type WorkspaceRow = QueryResultRow & {
   name: string
   logo_path: string | null
   company_type: string | null
+  organization_type?: string | null
+  organization_details?: unknown
   website: string | null
   description: string | null
   fleet_summary: string | null
@@ -45,7 +50,10 @@ export type OrganizationWorkspace = {
   slug: string
   name: string
   logoPath: string | null
+  /** Display label for the organization type. */
   companyType: string | null
+  organizationType: OrganizationTypeCode
+  details: OrganizationDetails
   website: string | null
   description: string | null
   fleetSummary: string | null
@@ -77,6 +85,12 @@ export type OrganizationBrandingInput = {
   fleetSummary: string | null
   vesselTypes: string[]
   officeLocations: string[]
+  /** Wellbeing details to merge into organization_details; omitted for other types. */
+  supportDetails?: {
+    servicesOffered: string[]
+    languages: string[]
+    helpline24x7: boolean | null
+  }
 }
 
 function role(value: string): OrganizationAccessRole {
@@ -108,7 +122,11 @@ function mapWorkspace(row: WorkspaceRow): OrganizationWorkspace {
     slug: row.slug,
     name: row.name,
     logoPath: row.logo_path ?? null,
-    companyType: row.company_type ?? null,
+    companyType: row.company_type || row.organization_type
+      ? displayOrganizationType(row.organization_type, row.company_type)
+      : null,
+    organizationType: resolveOrganizationType(row.organization_type, row.company_type).code,
+    details: parseOrganizationDetails(row.organization_details),
     website: row.website ?? null,
     description: row.description ?? null,
     fleetSummary: row.fleet_summary ?? null,
@@ -125,7 +143,8 @@ export function createOrganizationWorkspaceRepository(input: {
 
   async function getBySlug(slug: string): Promise<OrganizationWorkspace | null> {
     const rows = await queryRows(
-      `select id, slug, name, logo_path, company_type, website, description, fleet_summary,
+      `select id, slug, name, logo_path, company_type, organization_type, organization_details,
+              website, description, fleet_summary,
               vessel_types, office_locations, coalesce(is_verified, false) as is_verified
        from public.companies
        where slug = $1
@@ -137,7 +156,8 @@ export function createOrganizationWorkspaceRepository(input: {
 
   async function getById(companyId: string): Promise<OrganizationWorkspace | null> {
     const rows = await queryRows(
-      `select id, slug, name, logo_path, company_type, website, description, fleet_summary,
+      `select id, slug, name, logo_path, company_type, organization_type, organization_details,
+              website, description, fleet_summary,
               vessel_types, office_locations, coalesce(is_verified, false) as is_verified
        from public.companies
        where id = $1
@@ -219,6 +239,15 @@ export function createOrganizationWorkspaceRepository(input: {
   }
 
   async function updateBranding(companyId: string, input: OrganizationBrandingInput) {
+    // Only the wellbeing keys are replaced; other stored details (accreditation,
+    // licences, fleet size) stay as verified.
+    const supportDetails = input.supportDetails
+      ? JSON.stringify({
+          servicesOffered: input.supportDetails.servicesOffered,
+          languages: input.supportDetails.languages,
+          helpline24x7: input.supportDetails.helpline24x7,
+        })
+      : null
     const rows = await queryRows(
       `update public.companies
        set website = $2,
@@ -226,10 +255,14 @@ export function createOrganizationWorkspaceRepository(input: {
            fleet_summary = $4,
            vessel_types = $5::text[],
            office_locations = $6::text[],
+           organization_details = case
+             when $7::jsonb is null then organization_details
+             else jsonb_strip_nulls(organization_details || $7::jsonb)
+           end,
            updated_at = now()
        where id = $1
        returning id`,
-      [companyId, input.website, input.description, input.fleetSummary, input.vesselTypes, input.officeLocations],
+      [companyId, input.website, input.description, input.fleetSummary, input.vesselTypes, input.officeLocations, supportDetails],
     )
     if (!rows[0]) throw new Error('organization_not_found')
     return true
@@ -252,6 +285,8 @@ export function createOrganizationWorkspaceRepository(input: {
          company.name,
          company.logo_path,
          company.company_type,
+         company.organization_type,
+         company.organization_details,
          company.website,
          company.description,
          company.fleet_summary,

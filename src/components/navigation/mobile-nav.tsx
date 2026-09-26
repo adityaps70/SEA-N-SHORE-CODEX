@@ -5,11 +5,9 @@ import {
   Ellipsis,
   History,
   House,
-  MessageCircleMore,
   MessagesSquare,
   Settings,
   ShieldCheck,
-  UserRound,
   UsersRound,
   Bookmark,
 } from 'lucide-react'
@@ -28,13 +26,13 @@ const navClass = 'flex min-h-16 min-w-0 flex-col items-center justify-center gap
 const activeNavClass = 'border-ocean-600 bg-ocean-50 text-ocean-700'
 
 export function MobileNav({ canAccessAdmin = false }: { canAccessAdmin?: boolean }) {
+  // Messages and Profile are not repeated here: the mobile top header already
+  // shows both as always-visible icons.
   const moreItems: HeaderMenuItem[] = [
     { href: '/events', label: 'Events', icon: <CalendarDays className="size-4" /> },
-    { href: '/messages', label: 'Messages', icon: <MessageCircleMore className="size-4" /> },
     { href: '/activities', label: 'My Activities', icon: <History className="size-4" /> },
     { href: '/saved', label: 'Saved posts', icon: <Bookmark className="size-4" /> },
     { href: '/community', label: 'Community', badge: 'Preview', icon: <MessagesSquare className="size-4" /> },
-    { href: '/profile', label: 'Profile', icon: <UserRound className="size-4" /> },
     ...(canAccessAdmin ? [{ href: '/admin', label: 'Admin', icon: <ShieldCheck className="size-4" /> }] : []),
     { href: '/settings', label: 'Settings', icon: <Settings className="size-4" /> },
   ]

@@ -72,7 +72,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
     return (
       <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-14 text-center">
         <p className="font-semibold text-navy-950">No notifications yet.</p>
-        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Connection requests, accepted connections, and new followers will appear here as your professional network grows.</p>
+        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Reactions, comments, connection requests and new followers will show up here.</p>
       </div>
     )
   }

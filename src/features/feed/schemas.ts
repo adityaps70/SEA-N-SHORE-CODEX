@@ -135,6 +135,32 @@ export const deleteCommentInputSchema = z.object({
   commentId: z.string().uuid(),
 })
 
+export const REPOST_COMMENTARY_MAX = 3000
+
+export const repostInputSchema = z.object({
+  postId: z.string().uuid(),
+  body: z.preprocess(
+    (value) => typeof value === 'string' ? value : '',
+    z.string().trim().max(REPOST_COMMENTARY_MAX, `Keep your thoughts to ${REPOST_COMMENTARY_MAX.toLocaleString('en')} characters or fewer.`),
+  ),
+  mentionProfileIds: mentionIdsSchema,
+})
+
+export const SHARE_MESSAGE_NOTE_MAX = 1000
+
+export const sendPostInputSchema = z.object({
+  postId: z.string().uuid(),
+  recipientProfileId: z.string().uuid(),
+  note: z.preprocess(
+    (value) => typeof value === 'string' ? value : '',
+    z.string().trim().max(SHARE_MESSAGE_NOTE_MAX, `Keep your note to ${SHARE_MESSAGE_NOTE_MAX.toLocaleString('en')} characters or fewer.`),
+  ),
+})
+
+export const shareRecipientSearchSchema = z.object({
+  query: z.preprocess((value) => typeof value === 'string' ? value : '', z.string().trim().max(80)),
+})
+
 export const feedCursorSchema = z.object({
   createdAt: z.string().datetime({ offset: true }),
   id: z.string().uuid(),

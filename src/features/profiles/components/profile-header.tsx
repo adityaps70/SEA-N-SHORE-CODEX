@@ -42,10 +42,16 @@ export function ProfileHeader({
   editHref,
   mediaControls,
   avatarControls,
+  stats,
+  badges,
   contactVisibility = 'members',
 }: {
   profile: PublicProfile
   actions?: ReactNode
+  /** Network counts (connections, followers, following), rendered by the page. */
+  stats?: ReactNode
+  /** Small owner-only status badges, such as "DG profile on file". */
+  badges?: ReactNode
   editHref?: string
   mediaControls?: ReactNode
   avatarControls?: ReactNode
@@ -168,6 +174,9 @@ export function ProfileHeader({
               ) : null}
             </div>
           ) : null}
+
+          {!editing && badges ? <div className="mt-3 flex flex-wrap gap-2">{badges}</div> : null}
+          {!editing && stats ? stats : null}
         </div>
 
         {actions ? (
@@ -188,7 +197,10 @@ export function ProfileHeader({
                 Username
                 <div className={`${inputClass} flex items-center bg-mist-50 text-muted`}>@{profile.slug}</div>
                 <input type="hidden" name="slug" value={profile.slug} />
-                <p className="mt-1 text-xs font-normal text-muted">Use Edit profile for the two limited username changes.</p>
+                <p className="mt-1 text-xs font-normal text-muted">
+                  <a href="/profile/edit#identity" className="font-semibold text-ocean-700 underline-offset-2 hover:underline">Change your username</a>
+                  {' '}with live availability checks in Edit profile.
+                </p>
                 <FieldError state={state} name="slug" />
               </div>
               <label className={labelClass}>

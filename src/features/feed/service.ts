@@ -23,6 +23,11 @@ type PollPostInput = Omit<StandardPostInput, 'id' | 'media'> & {
   pollOptions: string[]
 }
 
+type RepostInput = {
+  body?: string
+  mentionProfileIds?: string[]
+}
+
 type ReactionDetailsRequest = {
   targetType: ReactionTargetType
   targetId: string
@@ -236,14 +241,34 @@ export function createFeedService(input: {
     })
   }
 
-  async function repostPost(actorId: string, sourcePostId: string) {
+  async function repostPost(actorId: string, sourcePostId: string, repost: RepostInput = {}) {
     return input.withTransaction(async (repository, social) => {
       const source = await assertInteractablePost(repository, actorId, sourcePostId)
       if (source.postType === 'repost') serviceError('feed_repost_source_unavailable')
       const id = createId()
-      await repository.insertRepost({ id, authorId: actorId, sourcePostId })
+      const commentary = repost.body?.trim() ?? ''
+      await repository.insertRepost(commentary
+        ? { id, authorId: actorId, sourcePostId, body: commentary }
+        : { id, authorId: actorId, sourcePostId })
+      if (commentary && repost.mentionProfileIds?.length) {
+        const mentions = await repository.insertPostMentions(actorId, id, repost.mentionProfileIds)
+        await notifyPostMentions(social, actorId, id, mentions)
+      }
       await enqueueFeedInvalidation(social, 'feed.post_reposted', actorId, id)
       return id
+    })
+  }
+
+  async function setHidden(actorId: string, postId: string, hidden: boolean) {
+    return input.withTransaction(async (repository) => {
+      if (hidden) {
+        const post = await assertInteractablePost(repository, actorId, postId)
+        if (post.authorId === actorId) serviceError('feed_hide_own_post')
+      } else {
+        await assertMemberReady(repository, actorId)
+      }
+      await repository.setHidden(actorId, postId, hidden)
+      return true
     })
   }
 
@@ -356,6 +381,8 @@ export function createFeedService(input: {
       const post = await assertInteractablePost(repository, actorId, postId)
       let normalizedParentId: string | null = null
       let replyRecipientId: string | null = null
+      let replyToCommentId: string | null = null
+      let directReplyRecipientId: string | null = null
       if (parentCommentId) {
         const parent = await repository.getCommentForInteraction(actorId, parentCommentId)
         if (!parent || parent.postId !== postId) serviceError('feed_comment_parent_unavailable')
@@ -365,8 +392,15 @@ export function createFeedService(input: {
           : await repository.getCommentForInteraction(actorId, parent.rootParentId)
         if (!root || root.postId !== postId) serviceError('feed_comment_parent_unavailable')
         replyRecipientId = root.authorId
+        if (parent.id !== root.id) {
+          // A reply to a reply stays in the same thread but remembers who it answers.
+          replyToCommentId = parent.id
+          directReplyRecipientId = parent.authorId
+        }
       }
-      const commentId = await repository.addComment(actorId, postId, body.trim(), normalizedParentId)
+      const commentId = replyToCommentId
+        ? await repository.addComment(actorId, postId, body.trim(), normalizedParentId, replyToCommentId)
+        : await repository.addComment(actorId, postId, body.trim(), normalizedParentId)
       const mentions = mentionProfileIds.length
         ? await repository.insertCommentMentions(actorId, commentId, mentionProfileIds)
         : []
@@ -389,7 +423,33 @@ export function createFeedService(input: {
           occurredAt: occurredAt(),
           payload: { eventType: 'comment.replied', actorId, targetId: replyRecipientId, postId, commentId, parentCommentId: normalizedParentId },
         })
-      } else if (social && !normalizedParentId && post.authorId !== actorId) {
+      }
+      if (
+        social
+        && normalizedParentId
+        && directReplyRecipientId
+        && directReplyRecipientId !== actorId
+        && directReplyRecipientId !== replyRecipientId
+      ) {
+        await social.upsertNotification({
+          recipientId: directReplyRecipientId,
+          actorId,
+          type: 'comment_reply',
+          postId,
+          commentId,
+          dedupeKey: `comment-reply:${commentId}`,
+        })
+        await social.enqueue({
+          id: randomUUID(),
+          aggregateType: 'comment',
+          aggregateId: commentId,
+          eventType: 'comment.replied',
+          schemaVersion: 1,
+          occurredAt: occurredAt(),
+          payload: { eventType: 'comment.replied', actorId, targetId: directReplyRecipientId, postId, commentId, parentCommentId: normalizedParentId },
+        })
+      }
+      if (social && !normalizedParentId && post.authorId !== actorId) {
         await social.upsertNotification({
           recipientId: post.authorId,
           actorId,
@@ -501,6 +561,7 @@ export function createFeedService(input: {
     setPostReaction,
     setLiked,
     setSaved,
+    setHidden,
     addComment,
     updateComment,
     deleteComment,
@@ -526,6 +587,7 @@ export const loadReactionDetailsWithAurora = productionService.getReactionDetail
 export const setPostReactionWithAurora = productionService.setPostReaction
 export const setPostLikedWithAurora = productionService.setLiked
 export const setPostSavedWithAurora = productionService.setSaved
+export const setPostHiddenWithAurora = productionService.setHidden
 export const addPostCommentWithAurora = productionService.addComment
 export const updateCommentWithAurora = productionService.updateComment
 export const deleteCommentWithAurora = productionService.deleteComment

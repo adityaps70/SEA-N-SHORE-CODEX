@@ -137,7 +137,11 @@ const FEED_ROW_SELECT = `
       join public.profiles mentioned on mentioned.id = mention.mentioned_profile_id
       where mention.post_id = p.id
     ), '[]'::json) as post_mentions,
-    json_build_object('count', (select count(*)::int from public.post_comments comment_count where comment_count.post_id = p.id and comment_count.deleted_at is null)) as post_comment_count
+    json_build_object('count', (select count(*)::int from public.post_comments comment_count where comment_count.post_id = p.id and comment_count.deleted_at is null)) as post_comment_count,
+    exists (
+      select 1 from public.follows viewer_follow
+      where viewer_follow.follower_id = $1 and viewer_follow.following_id = p.author_id
+    ) as viewer_follows_author
   from public.posts p
   join public.profiles author on author.id = p.author_id
   left join public.maritime_profiles maritime on maritime.user_id = author.id
@@ -195,6 +199,17 @@ function visibilitySql() {
   `
 }
 
+/** Posts the viewer hid stay out of their feed, including reposts of a hidden original. */
+function hiddenPostsSql() {
+  return `
+    not exists (
+      select 1 from public.post_hides hidden
+      where hidden.user_id = $1
+        and (hidden.post_id = p.id or hidden.post_id = p.repost_of_post_id)
+    )
+  `
+}
+
 function parseReactionCursor(cursor: string | undefined) {
   if (!cursor) return null
   const separator = cursor.lastIndexOf('|')
@@ -224,7 +239,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
 
   async function listFeedRows(lookup: FeedRowsLookup): Promise<FeedPostRow[]> {
     const values: unknown[] = [lookup.viewerProfileId]
-    const clauses = ['p.deleted_at is null', visibilitySql()]
+    const clauses = ['p.deleted_at is null', visibilitySql(), hiddenPostsSql()]
     if (lookup.category) {
       values.push(lookup.category)
       clauses.push(`p.category = $${values.length}`)
@@ -458,6 +473,11 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return await queryRows(
       `select
          c.id, c.post_id, c.parent_comment_id,
+         case when reply_target.id is null then null else json_build_object(
+           'comment_id', reply_target.id,
+           'author_name', reply_target_author.full_name,
+           'author_slug', reply_target_author.slug
+         ) end as reply_to,
          case when c.deleted_at is null then c.body else '' end as body,
          c.created_at, c.updated_at, c.deleted_at,
          json_build_object(
@@ -485,6 +505,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
        from public.post_comments c
        join public.profiles author on author.id = c.author_id
        left join public.maritime_profiles maritime on maritime.user_id = author.id
+       left join public.post_comments reply_target on reply_target.id = c.reply_to_comment_id
+       left join public.profiles reply_target_author on reply_target_author.id = reply_target.author_id
        where c.post_id = any($1::uuid[])
          and (
            c.deleted_at is null
@@ -681,18 +703,31 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     await queryRows(`insert into public.post_poll_options (post_id, label, position) values ($1, $2, $3)`, [postId, label, position])
   }
 
-  async function insertRepost(input: { id: string; authorId: string; sourcePostId: string }) {
-    const rows = await queryRows(
-      `insert into public.posts (id, author_id, category, body, post_type, repost_of_post_id)
-       select $1, $2, source.category, '', 'repost', source.id
-       from public.posts source
-       where source.id = $3
-         and source.deleted_at is null
-         and source.post_type <> 'repost'
-       on conflict (author_id, repost_of_post_id) where post_type = 'repost' and deleted_at is null do nothing
-       returning id`,
-      [input.id, input.authorId, input.sourcePostId],
-    ) as IdRow[]
+  async function insertRepost(input: { id: string; authorId: string; sourcePostId: string; body?: string }) {
+    const commentary = input.body?.trim() ?? ''
+    const rows = commentary
+      ? await queryRows(
+        `insert into public.posts (id, author_id, category, body, post_type, repost_of_post_id)
+         select $1, $2, source.category, $4, 'repost', source.id
+         from public.posts source
+         where source.id = $3
+           and source.deleted_at is null
+           and source.post_type <> 'repost'
+         on conflict (author_id, repost_of_post_id) where post_type = 'repost' and deleted_at is null do nothing
+         returning id`,
+        [input.id, input.authorId, input.sourcePostId, commentary],
+      ) as IdRow[]
+      : await queryRows(
+        `insert into public.posts (id, author_id, category, body, post_type, repost_of_post_id)
+         select $1, $2, source.category, '', 'repost', source.id
+         from public.posts source
+         where source.id = $3
+           and source.deleted_at is null
+           and source.post_type <> 'repost'
+         on conflict (author_id, repost_of_post_id) where post_type = 'repost' and deleted_at is null do nothing
+         returning id`,
+        [input.id, input.authorId, input.sourcePostId],
+      ) as IdRow[]
     if (!rows[0]?.id) throw new Error('feed_repost_duplicate')
   }
 
@@ -733,6 +768,17 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     }
   }
 
+  async function setHidden(viewerProfileId: string, postId: string, hidden: boolean) {
+    if (hidden) {
+      await queryRows(
+        `insert into public.post_hides (user_id, post_id) values ($1, $2) on conflict (user_id, post_id) do nothing`,
+        [viewerProfileId, postId],
+      )
+    } else {
+      await queryRows(`delete from public.post_hides where user_id = $1 and post_id = $2`, [viewerProfileId, postId])
+    }
+  }
+
   async function setSaved(viewerProfileId: string, postId: string, saved: boolean) {
     if (saved) {
       await queryRows(`insert into public.saved_posts (post_id, user_id) values ($1, $2) on conflict (post_id, user_id) do nothing`, [postId, viewerProfileId])
@@ -741,11 +787,22 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     }
   }
 
-  async function addComment(viewerProfileId: string, postId: string, body: string, parentCommentId: string | null = null) {
-    const rows = await queryRows(
-      `insert into public.post_comments (post_id, author_id, body, parent_comment_id) values ($1, $2, $3, $4) returning id`,
-      [postId, viewerProfileId, body, parentCommentId],
-    ) as IdRow[]
+  async function addComment(
+    viewerProfileId: string,
+    postId: string,
+    body: string,
+    parentCommentId: string | null = null,
+    replyToCommentId: string | null = null,
+  ) {
+    const rows = replyToCommentId
+      ? await queryRows(
+        `insert into public.post_comments (post_id, author_id, body, parent_comment_id, reply_to_comment_id) values ($1, $2, $3, $4, $5) returning id`,
+        [postId, viewerProfileId, body, parentCommentId, replyToCommentId],
+      ) as IdRow[]
+      : await queryRows(
+        `insert into public.post_comments (post_id, author_id, body, parent_comment_id) values ($1, $2, $3, $4) returning id`,
+        [postId, viewerProfileId, body, parentCommentId],
+      ) as IdRow[]
     const id = rows[0]?.id
     if (!id) throw new Error('feed_comment_create_failed')
     return id
@@ -852,6 +909,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     setLiked,
     setCommentReaction,
     setSaved,
+    setHidden,
     addComment,
     insertPostMentions,
     insertCommentMentions,

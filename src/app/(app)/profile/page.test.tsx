@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import OwnProfilePage from './page'
 
 vi.mock('next/navigation', () => ({
@@ -76,12 +76,34 @@ vi.mock('@/features/network/components/people-you-may-know', () => ({
 }))
 
 vi.mock('@/features/profiles/components/profile-header', () => ({
-  ProfileHeader: ({ actions }: { actions?: React.ReactNode }) => (
+  ProfileHeader: ({ actions, stats, badges }: { actions?: React.ReactNode; stats?: React.ReactNode; badges?: React.ReactNode }) => (
     <div>
       <div>Profile header</div>
+      {badges}
+      {stats}
       {actions}
     </div>
   ),
+}))
+
+const ownProfileMocks = vi.hoisted(() => ({
+  summary: { counts: { connections: 12, followers: 30, following: 7 }, isOwner: true, canViewLists: true } as unknown,
+  dgProfile: null as null | { kind: 'dg_profile'; fileName: string; sizeBytes: number; uploadedAt: string },
+}))
+
+vi.mock('@/features/profiles/profile-network-stats', () => ({
+  getProfileNetworkSummary: vi.fn(async () => ownProfileMocks.summary),
+}))
+vi.mock('@/features/profiles/profile-document-service', () => ({
+  getOwnDgProfileDocument: vi.fn(async () => ownProfileMocks.dgProfile),
+}))
+vi.mock('@/features/profiles/components/profile-dg-document-card', () => ({
+  ProfileDgDocumentCard: ({ document }: { document: { fileName: string } | null }) => (
+    <section><h2>DG Shipping profile</h2>{document ? <p>{document.fileName}</p> : <p>No DG profile yet</p>}</section>
+  ),
+}))
+vi.mock('@/features/profiles/components/dg-profile-upload', () => ({
+  DgProfileOnFileBadge: () => <span>DG profile on file</span>,
 }))
 vi.mock('@/features/profiles/components/profile-membership-card', () => ({
   ProfileMembershipCard: () => <section><h2>Your profile, access & goals</h2></section>,
@@ -106,6 +128,8 @@ vi.mock('@/features/profiles/components/profile-passport-toolbar', () => ({
 }))
 
 describe('My Profile page', () => {
+  afterEach(() => cleanup())
+
   it('keeps the essential editable profile sections and adds a reusable People you may know rail', async () => {
     render(await OwnProfilePage())
 
@@ -123,6 +147,30 @@ describe('My Profile page', () => {
     expect(screen.queryByText('My Maritime Passport')).not.toBeInTheDocument()
     expect(screen.queryByText('Sea N Shore professional identity')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Posts & activity' })).not.toBeInTheDocument()
+  })
+
+  it('shows the owner network counts linking to their own network lists', async () => {
+    ownProfileMocks.dgProfile = null
+    render(await OwnProfilePage())
+
+    expect(screen.getByRole('link', { name: /12\s*Connections/ })).toHaveAttribute('href', '/network?tab=connections')
+    expect(screen.getByRole('link', { name: /30\s*Followers/ })).toHaveAttribute('href', '/network?tab=following&view=followers')
+    expect(screen.getByRole('link', { name: /7\s*Following/ })).toHaveAttribute('href', '/network?tab=following&view=following')
+    expect(screen.getByText(/Your connections can see who is in these lists/)).toBeInTheDocument()
+  })
+
+  it('offers the private DG profile section to seafarers and shows the on-file badge once uploaded', async () => {
+    ownProfileMocks.dgProfile = null
+    const { unmount } = render(await OwnProfilePage())
+    expect(screen.getByRole('heading', { name: 'DG Shipping profile' })).toBeInTheDocument()
+    expect(screen.getByText('No DG profile yet')).toBeInTheDocument()
+    expect(screen.queryByText('DG profile on file')).not.toBeInTheDocument()
+    unmount()
+
+    ownProfileMocks.dgProfile = { kind: 'dg_profile', fileName: 'dg-profile.pdf', sizeBytes: 2048, uploadedAt: '2026-09-20T00:00:00.000Z' }
+    render(await OwnProfilePage())
+    expect(screen.getByText('DG profile on file')).toBeInTheDocument()
+    expect(screen.getByText('dg-profile.pdf')).toBeInTheDocument()
   })
 
   it('uses a desktop content-plus-rail layout and does not load feed activity', () => {

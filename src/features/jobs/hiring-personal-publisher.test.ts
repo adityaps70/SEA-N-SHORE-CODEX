@@ -104,18 +104,20 @@ describe('independent recruiter hiring publisher', () => {
       if (text.includes('select j.id, j.company_id') && text.includes('created_by_user_id')) {
         return [{ id: 'job-1', company_id: null, created_by_user_id: 'user-1' }]
       }
+      if (text.includes('update public.jobs')) return [{ id: 'job-1' }]
       return []
     }
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
 
-    const { publisherType: _publisherType, companyId: _companyId, ...editable } = personalJob()
+    const { publisherType: _publisherType, companyId: _companyId, status: _status, ...editable } = personalJob()
     void _publisherType
     void _companyId
+    void _status
 
     await expect(repository.updateJob('user-1', 'job-1', {
       ...editable,
       title: 'Senior Marine Superintendent',
-    })).resolves.toBeUndefined()
+    }, { expectedStatus: 'published', nextStatus: 'published' })).resolves.toBeUndefined()
 
     expect(seen[0]?.text).toContain('j.company_id is null')
     expect(seen[0]?.text).toContain('j.created_by_user_id = $2')
@@ -206,6 +208,7 @@ describe('independent recruiter hiring publisher', () => {
       if (text.includes('select j.company_id') && text.includes('created_by_user_id')) {
         return [{ company_id: null }]
       }
+      if (text.includes('update public.job_applications')) return [{ id: 'application-1' }]
       return []
     }
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })

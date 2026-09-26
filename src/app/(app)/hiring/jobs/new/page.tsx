@@ -18,21 +18,21 @@ export default async function NewHiringJobPage() {
 
   if (!personal) {
     return (
-      <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-5xl py-8 sm:px-6 lg:px-8">
         <section className="rounded-[2rem] border border-mist-100 bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <h1 className="text-3xl font-bold text-navy-950">Complete your profile first</h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
             Sea N Shore needs an active personal profile before a job can be published.
           </p>
         </section>
-      </main>
+      </div>
     )
   }
 
   const publisherOptions = buildHiringPublisherOptions(access, personal, companies)
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-5xl space-y-6 py-8 sm:px-6 lg:px-8">
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Sea N Shore Hiring</p>
         <h1 className="mt-2 text-3xl font-bold text-navy-950">Post a maritime job</h1>
@@ -42,6 +42,6 @@ export default async function NewHiringJobPage() {
       </div>
       <HiringSubnav active="jobs" />
       <HiringJobForm mode="create" publisherOptions={publisherOptions} />
-    </main>
+    </div>
   )
 }

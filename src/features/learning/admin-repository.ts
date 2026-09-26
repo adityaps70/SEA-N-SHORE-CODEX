@@ -2,6 +2,11 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { canTransitionCourseStatus, type CourseStatus } from './course-workflow'
 import {
+  diffCourseSnapshots,
+  isCourseReviewSnapshot,
+  type CourseReviewChange,
+} from './course-review-snapshot'
+import {
   canTransitionMentorApplicationStatus,
   type MentorApplicationStatus,
 } from './mentor-application'
@@ -73,11 +78,25 @@ export type CourseReviewSection = {
   lessons: CourseReviewLesson[]
 }
 
+export type CourseReviewHistory = {
+  /** 1 for a first submission, 2+ for resubmissions. */
+  submissionNumber: number
+  submittedAt: string | null
+  previousReview: null | {
+    decision: 'changes_requested' | 'approved'
+    note: string | null
+    reviewedAt: string | null
+  }
+  /** What changed since the previously reviewed submission; null when there is nothing to compare with. */
+  changesSinceLastReview: CourseReviewChange[] | null
+}
+
 export type CourseReviewItem = {
   courseId: string
-  mentorId: string
-  mentorUserId: string
+  mentorId: string | null
+  mentorUserId: string | null
   mentorName: string
+  publisherType: 'personal' | 'organization'
   slug: string
   title: string
   subtitle: string | null
@@ -98,6 +117,7 @@ export type CourseReviewItem = {
   adminReviewNote: string | null
   updatedAt: string
   curriculum: CourseReviewSection[]
+  review: CourseReviewHistory
 }
 
 type AdminAuthorizationRow = QueryResultRow & { allowed?: boolean }
@@ -108,8 +128,17 @@ type LockedMentorApplicationRow = QueryResultRow & {
 }
 type LockedCourseReviewRow = QueryResultRow & {
   id: string
-  mentor_id: string
+  mentor_id: string | null
   status: string
+}
+type CourseSubmissionHistoryRow = QueryResultRow & {
+  id: string
+  course_id: string
+  submitted_at: string | Date
+  outcome: string
+  reviewer_note: string | null
+  reviewed_at: string | Date | null
+  snapshot: unknown
 }
 type ReturningIdRow = QueryResultRow & { id: string }
 type MentorApplicationReviewRow = QueryResultRow & {
@@ -132,9 +161,10 @@ type MentorApplicationReviewRow = QueryResultRow & {
 }
 type CourseReviewRow = QueryResultRow & {
   course_id: string
-  mentor_id: string
-  mentor_user_id: string
+  mentor_id: string | null
+  mentor_user_id: string | null
   mentor_name: string
+  company_id?: string | null
   slug: string
   title: string
   subtitle: string | null
@@ -209,6 +239,46 @@ function courseStatus(value: string): CourseStatus {
 
 function isoDateTime(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value
+}
+
+function nullableIso(value: string | Date | null | undefined) {
+  if (value === null || value === undefined) return null
+  return isoDateTime(value)
+}
+
+function parseSnapshot(value: unknown) {
+  const parsed = typeof value === 'string' ? (() => {
+    try {
+      return JSON.parse(value) as unknown
+    } catch {
+      return null
+    }
+  })() : value
+  return isCourseReviewSnapshot(parsed) ? parsed : null
+}
+
+/** Builds review history for one course from its submissions, newest first. */
+export function buildCourseReviewHistory(rows: CourseSubmissionHistoryRow[]): CourseReviewHistory {
+  const current = rows[0]
+  if (!current) {
+    return { submissionNumber: 0, submittedAt: null, previousReview: null, changesSinceLastReview: null }
+  }
+  const currentIsOpen = current.outcome === 'pending'
+  const earlier = currentIsOpen ? rows.slice(1) : rows
+  const previous = earlier.find((row) => row.outcome === 'changes_requested' || row.outcome === 'approved') ?? null
+  const currentSnapshot = parseSnapshot(current.snapshot)
+  const previousSnapshot = previous && previous !== current ? parseSnapshot(previous.snapshot) : null
+
+  return {
+    submissionNumber: rows.filter((row) => row.outcome !== 'withdrawn').length,
+    submittedAt: nullableIso(current.submitted_at),
+    previousReview: previous && (previous.outcome === 'changes_requested' || previous.outcome === 'approved')
+      ? { decision: previous.outcome, note: previous.reviewer_note, reviewedAt: nullableIso(previous.reviewed_at) }
+      : null,
+    changesSinceLastReview: currentIsOpen && currentSnapshot && previousSnapshot
+      ? diffCourseSnapshots(previousSnapshot, currentSnapshot)
+      : null,
+  }
 }
 
 export function createLearningAdminRepository(input: {
@@ -414,14 +484,41 @@ export function createLearningAdminRepository(input: {
     return byCourse
   }
 
+  async function loadReviewHistory(courseIds: string[]) {
+    const byCourse = new Map<string, CourseSubmissionHistoryRow[]>()
+    if (!courseIds.length) return byCourse
+    const rows = await queryRows(
+      `select id, course_id, submitted_at, outcome, reviewer_note, reviewed_at, snapshot
+       from (
+         select
+           submission.*,
+           row_number() over (partition by submission.course_id order by submission.submitted_at desc, submission.id desc) as history_rank
+         from public.learning_course_submissions submission
+         where submission.course_id = any($1::uuid[])
+       ) ranked
+       where ranked.history_rank <= 20
+       order by course_id, submitted_at desc, id desc`,
+      [courseIds],
+    ) as CourseSubmissionHistoryRow[]
+    for (const row of rows) {
+      const list = byCourse.get(row.course_id) ?? []
+      list.push(row)
+      byCourse.set(row.course_id, list)
+    }
+    return byCourse
+  }
+
   async function listCoursesForReview(adminId: string, status: CourseStatus): Promise<CourseReviewItem[]> {
     await requirePlatformAdministrator(queryRows, adminId)
+    // Organization courses have no trainer record, so trainer tables are left joined:
+    // an inner join here hid every organization submission from the review queue.
     const rows = await queryRows(
       `select
          course.id as course_id,
          mentor.id as mentor_id,
          mentor.user_id as mentor_user_id,
-         application.applicant_name as mentor_name,
+         coalesce(company.name, application.applicant_name, creator.full_name) as mentor_name,
+         course.company_id,
          course.slug,
          course.title,
          course.subtitle,
@@ -442,22 +539,31 @@ export function createLearningAdminRepository(input: {
          course.admin_review_note,
          course.updated_at
        from public.learning_courses course
-       inner join public.learning_mentors mentor
+       left join public.learning_mentors mentor
          on mentor.id = course.mentor_id
-       inner join public.learning_mentor_applications application
+       left join public.learning_mentor_applications application
          on application.id = mentor.application_id
+       left join public.companies company
+         on company.id = course.company_id
+       left join public.profiles creator
+         on creator.id = course.created_by_user_id
        where course.status = $1
        order by course.updated_at asc, course.id asc`,
       [status],
     ) as CourseReviewRow[]
 
-    const curriculumByCourse = await loadCourseCurriculum(rows.map((row) => row.course_id))
+    const courseIds = rows.map((row) => row.course_id)
+    const [curriculumByCourse, historyByCourse] = await Promise.all([
+      loadCourseCurriculum(courseIds),
+      loadReviewHistory(courseIds),
+    ])
 
     return rows.map((row) => ({
       courseId: row.course_id,
-      mentorId: row.mentor_id,
-      mentorUserId: row.mentor_user_id,
+      mentorId: row.mentor_id ?? null,
+      mentorUserId: row.mentor_user_id ?? null,
       mentorName: row.mentor_name,
+      publisherType: row.company_id ? 'organization' as const : 'personal' as const,
       slug: row.slug,
       title: row.title,
       subtitle: row.subtitle,
@@ -478,6 +584,7 @@ export function createLearningAdminRepository(input: {
       adminReviewNote: row.admin_review_note,
       updatedAt: isoDateTime(row.updated_at),
       curriculum: curriculumByCourse.get(row.course_id) ?? [],
+      review: buildCourseReviewHistory(historyByCourse.get(row.course_id) ?? []),
     }))
   }
 
@@ -592,6 +699,10 @@ export function createLearningAdminRepository(input: {
 
       const current = courseStatus(course.status)
       if (!canTransitionCourseStatus({ actor: 'administrator', current, next: decision })) {
+        // The trainer took it back to make more changes while the reviewer had it open.
+        if (current === 'draft' && (decision === 'approved' || decision === 'changes_requested')) {
+          throw new Error('course_withdrawn')
+        }
         throw new Error('course_transition_forbidden')
       }
       if (decision === 'changes_requested' && !reviewerNote?.trim()) {
@@ -629,6 +740,22 @@ export function createLearningAdminRepository(input: {
         [courseId, persistedStatus, adminId, reviewerNote],
       ) as ReturningIdRow[]
       if (!courseRows[0]) throw new Error('course_not_found')
+
+      if (decision === 'approved' || decision === 'changes_requested') {
+        // Record the decision on the open submission so the trainer keeps the note
+        // after resubmitting and the next reviewer can see what changed since.
+        await txQuery(
+          `update public.learning_course_submissions
+           set outcome = $2,
+               reviewer_id = $3,
+               reviewer_note = $4,
+               reviewed_at = now(),
+               updated_at = now()
+           where course_id = $1
+             and outcome = 'pending'`,
+          [courseId, decision, adminId, reviewerNote],
+        )
+      }
 
       await txQuery(
         `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)

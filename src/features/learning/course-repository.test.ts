@@ -130,7 +130,10 @@ describe('learning course repository', () => {
     }
     const repository = createCourseRepository({ query, transaction: async (work) => work(query) })
 
-    await expect(repository.updateCourse(mentorUserId, courseId, courseInput({ title: 'Updated SIRE 2.0 Readiness for Tanker Officers' }))).resolves.toBe(true)
+    await expect(repository.updateCourse(mentorUserId, courseId, courseInput({ title: 'Updated SIRE 2.0 Readiness for Tanker Officers' }))).resolves.toEqual({
+      revision: 2,
+      updatedAt: expect.any(String),
+    })
 
     const lock = seen.find((entry) => entry.text.includes('for update'))
     expect(lock?.text).toContain('public.learning_mentors access_mentor')
@@ -141,6 +144,7 @@ describe('learning course repository', () => {
     const update = seen.find((entry) => entry.text.includes('update public.learning_courses'))
     expect(update?.values).toContain('Updated SIRE 2.0 Readiness for Tanker Officers')
     expect(update?.text).not.toContain("status = 'draft'")
+    expect(update?.text).toContain('details_revision = details_revision + 1')
   })
 
   it('rejects mentor edits after the course has been submitted for review', async () => {

@@ -1,12 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { createOrganizationRepository, type OrganizationApplicationInput } from './repository'
+import { organizationApplicationSchema } from './schemas'
 
 const actorId = '11111111-1111-4111-8111-111111111111'
 
-function applicationInput(overrides: Partial<OrganizationApplicationInput> = {}): OrganizationApplicationInput {
+function applicationInput(overrides: Partial<OrganizationApplicationInput> = {}) {
+  return organizationApplicationSchema.parse(rawApplicationInput(overrides))
+}
+
+function rawApplicationInput(overrides: Partial<OrganizationApplicationInput> = {}): OrganizationApplicationInput {
   return {
     organizationName: 'Oceanic Shipping Pvt Ltd',
-    organizationType: 'Ship Management Company',
+    organizationType: 'ship_manager',
+    fleetSize: 12,
     website: 'https://oceanic.example.com',
     officialEmail: 'hiring@oceanic.example.com',
     officeLocation: 'Mumbai, India',
@@ -50,6 +56,10 @@ describe('organization approval repository', () => {
 
     expect(companyInsert?.values).toContain(actorId)
     expect(companyInsert?.values).toContain('Oceanic Shipping Pvt Ltd')
+    // Display label in company_type, canonical code and type details in the new columns.
+    expect(companyInsert?.values).toContain('Ship manager')
+    expect(companyInsert?.values).toContain('ship_manager')
+    expect(companyInsert?.values).toContain(JSON.stringify({ fleetSize: 12 }))
     expect(memberInsert?.text).toContain('approved_at')
     expect(memberInsert?.values).toEqual(['company-1', actorId, 'owner', null])
     expect(applicationInsert?.values).toContain('pending')
@@ -115,7 +125,16 @@ describe('organization approval repository', () => {
       },
     })
 
-    await expect(repository.getOrganizationApplication(actorId, 'application-1')).resolves.toEqual(applicationInput())
+    // A legacy free-text type is mapped to its type code so the form can pre-select it.
+    await expect(repository.getOrganizationApplication(actorId, 'application-1')).resolves.toEqual({
+      ...rawApplicationInput({ fleetSize: null }),
+      organizationTypeOther: null,
+      recruitmentLicence: null,
+      servicesOffered: [],
+      languages: [],
+      helpline24x7: null,
+      accreditation: null,
+    })
     expect(seen[0]?.text).toContain('oa.submitted_by = $1')
     expect(seen[0]?.text).toContain('oa.id = $2')
     expect(seen[0]?.values).toEqual([actorId, 'application-1'])
@@ -250,9 +269,13 @@ describe('organization approval repository', () => {
         requested_role: 'administrator',
         request_type: 'recruiter_access',
         message: 'I am the company director.',
-        requested_at: '2026-09-24T10:00:00.000Z',
+        requested_at: new Date('2026-09-24T10:00:00.000Z'),
         reviewed_at: null,
         reviewer_note: null,
+        granted_role: null,
+        decided_via: null,
+        escalated_at: null,
+        escalation_note: null,
         company_id: '33333333-3333-4333-8333-333333333333',
         company_slug: 'oceanic',
         company_name: 'Oceanic Shipping',
@@ -264,11 +287,15 @@ describe('organization approval repository', () => {
       id: 'request-1',
       status: 'pending',
       requestedRole: 'administrator',
+      grantedRole: null,
       requestType: 'recruiter_access',
       message: 'I am the company director.',
       requestedAt: '2026-09-24T10:00:00.000Z',
       reviewedAt: null,
       reviewerNote: null,
+      decidedVia: null,
+      escalatedAt: null,
+      escalationNote: null,
       company: {
         id: '33333333-3333-4333-8333-333333333333',
         slug: 'oceanic',

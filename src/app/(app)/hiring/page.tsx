@@ -3,7 +3,9 @@ import Link from 'next/link'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
-import { hiringRepository } from '@/features/jobs/hiring-repository'
+import { JobCompanyLogo } from '@/features/jobs/components/job-company-identity'
+import { hiringRepository, managedJobLifecycle } from '@/features/jobs/hiring-repository'
+import { jobStatusPresentation, todayIsoDate } from '@/features/jobs/job-lifecycle'
 import { buildHiringPublisherOptions } from '@/features/jobs/publishers'
 
 export const metadata: Metadata = { title: 'Hiring' }
@@ -22,16 +24,17 @@ export default async function HiringPage() {
   const readyPublishers = publisherOptions.filter((option) => option.canPublish)
   const blockedPublishers = publisherOptions.filter((option) => !option.canPublish)
 
+  const today = todayIsoDate()
   const metricCards = [
     ['Active Jobs', metrics.activeJobs],
     ['Applicants', metrics.applicants],
     ['Shortlisted', metrics.shortlisted],
     ['Interviews', metrics.interviews],
-    ['Selected', metrics.selected],
+    ['Hired', metrics.selected],
   ] as const
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl space-y-6 py-8 sm:px-6 lg:px-8">
       <section className="overflow-hidden rounded-[2rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -91,27 +94,39 @@ export default async function HiringPage() {
         </div>
 
         <div className="mt-5 divide-y divide-mist-100">
-          {jobs.slice(0, 4).map((job) => (
-            <article key={job.id} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-bold text-navy-950">{job.title}</h3>
-                  {job.urgent ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">Urgent</span> : null}
-                  <span className="rounded-full bg-mist-50 px-2 py-0.5 text-xs font-semibold capitalize text-muted">{job.status}</span>
+          {jobs.slice(0, 4).map((job) => {
+            const presentation = jobStatusPresentation(managedJobLifecycle(job), today)
+            return (
+              <article key={job.id} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <JobCompanyLogo name={job.publisherName} companyId={job.companyId} logoPath={job.companyLogoPath} size="sm" />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link href={`/hiring/jobs/${job.id}/edit`} className="font-bold text-navy-950 hover:underline">{job.title}</Link>
+                      {job.urgent ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">Urgent</span> : null}
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${presentation.badgeClassName}`}>{presentation.label}</span>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-navy-900">
+                      Published as{' '}
+                      {job.companyId && job.companySlug ? (
+                        <Link href={`/organizations/${job.companySlug}`} className="hover:underline">{job.publisherName}</Link>
+                      ) : job.publisherName}
+                    </p>
+                    <p className="mt-1 text-sm text-muted">
+                      {[job.rank, job.vesselTypes[0], job.location].filter(Boolean).join(' · ') || (job.domain === 'sea' ? 'Sea job' : 'Shore job')}
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-1 text-sm font-semibold text-navy-900">Published as {job.publisherName}</p>
-                <p className="mt-1 text-sm text-muted">
-                  {[job.rank, job.vesselTypes[0], job.location].filter(Boolean).join(' · ') || (job.domain === 'sea' ? 'Sea job' : 'Shore job')}
-                </p>
-              </div>
-              <Link href={`/hiring/jobs/${job.id}/applicants`} className="text-sm font-bold text-navy-950 hover:underline">
-                {job.applicantCount} applicant{job.applicantCount === 1 ? '' : 's'}
-              </Link>
-            </article>
-          ))}
+                <Link href={`/hiring/jobs/${job.id}/applicants`} className="shrink-0 text-sm font-bold text-navy-950 hover:underline">
+                  {job.applicantCount} applicant{job.applicantCount === 1 ? '' : 's'}
+                  {job.newApplicantCount ? <span className="ml-2 rounded-full bg-ocean-50 px-2 py-0.5 text-xs font-bold text-ocean-800">{job.newApplicantCount} new</span> : null}
+                </Link>
+              </article>
+            )
+          })}
           {jobs.length === 0 ? <p className="py-6 text-sm text-muted">No vacancies yet. Post your first maritime role to start building a candidate pipeline.</p> : null}
         </div>
       </section>
-    </main>
+    </div>
   )
 }

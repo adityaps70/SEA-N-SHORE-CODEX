@@ -190,8 +190,12 @@ describe('messaging queries', () => {
       mimeType: 'image/png',
       size: 68,
       kind: 'image',
-      url: `https://media.example.test/messages/${OTHER_ID}/${CONVERSATION_ID}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png`,
+      // Private attachments are served through the participant-checked route, never a raw storage URL.
+      url: `/api/messages/attachments/${NEWER_MESSAGE_ID}`,
     })
+    expect(context.createReadUrl).not.toHaveBeenCalledWith(
+      `messages/${OTHER_ID}/${CONVERSATION_ID}/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png`,
+    )
   })
 
   it('validates the thread request before resolving authenticated identity', async () => {

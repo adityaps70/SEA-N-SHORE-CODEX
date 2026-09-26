@@ -128,7 +128,7 @@ export default async function LearningAdminPage({
   const applications = await learningAdminRepository.listMentorApplications(user.id, status)
 
   return (
-    <main className="space-y-4">
+    <div className="space-y-4">
       <AdminPageHeader
         title="Learning review"
         meta={`${applications.length} ${applications.length === 1 ? 'application' : 'applications'} · ${statusLabel(status).toLowerCase()}`}
@@ -171,6 +171,6 @@ export default async function LearningAdminPage({
           </div>
         )}
       </section>
-    </main>
+    </div>
   )
 }

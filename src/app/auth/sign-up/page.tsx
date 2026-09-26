@@ -6,13 +6,14 @@ import { AuthForm } from "@/features/auth/components/auth-form";
 import { AuthMethodLinks } from "@/features/auth/components/auth-method-links";
 import { confirmSignUp, resendConfirmationCode, signUp } from "@/features/auth/actions";
 import { getCognitoEnvironment } from "@/lib/env";
+import { OAuthErrorNotice } from "@/components/feedback/oauth-error-notice";
 
 export const metadata: Metadata = { title: 'Create your account' }
 
 export default async function SignUpPage({
   searchParams,
 }: {
-  searchParams: Promise<{ confirm?: string; email?: string; resent?: string; resendError?: string }>;
+  searchParams: Promise<{ confirm?: string; email?: string; resent?: string; resendError?: string; oauthError?: string }>;
 }) {
   const params = await searchParams;
   const confirming = params.confirm === "1";
@@ -45,6 +46,7 @@ export default async function SignUpPage({
           </>
         ) : (
           <>
+            <OAuthErrorNotice code={params.oauthError} />
             <AuthForm mode="sign-up" action={signUp} />
             <AuthMethodLinks intent="sign-up" googleEnabled={googleEnabled} />
           </>

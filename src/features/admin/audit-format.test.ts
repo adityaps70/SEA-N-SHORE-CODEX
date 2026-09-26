@@ -19,6 +19,7 @@ describe('audit formatting', () => {
     expect(auditTargetLabel('organization_application')).toBe('Organization')
     expect(auditTargetHref('user_account', 'abc')).toBe('/admin/users/abc')
     expect(auditTargetHref('post', 'p1')).toBe('/posts/p1')
+    expect(auditTargetLabel('company_access_request')).toBe('Access request')
     expect(auditTargetHref('unknown', 'x')).toBeNull()
   })
 

@@ -1,15 +1,22 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { createHiringJob, updateHiringJob } from '../hiring-actions'
+import { createHiringJob, updateHiringJob, type HiringJobSaveIntent } from '../hiring-actions'
 import type { HiringEditableJob, HiringJobInput, HiringJobUpdateInput } from '../hiring-repository'
 import type { HiringPublisherOption } from '../publishers'
 
 type HiringJobFormProps =
-  | { mode: 'create'; publisherOptions: HiringPublisherOption[]; initial?: never; jobId?: never }
-  | { mode: 'edit'; jobId: string; initial: HiringEditableJob; publisherOptions?: never }
+  | { mode: 'create'; publisherOptions: HiringPublisherOption[]; initial?: never; jobId?: never; publishLabel?: never }
+  | {
+      mode: 'edit'
+      jobId: string
+      initial: HiringEditableJob
+      publisherOptions?: never
+      /** "Save and publish" for drafts, "Save and republish" for archived jobs, null when not allowed. */
+      publishLabel?: string | null
+    }
 
 const inputClass = 'min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-navy-950 outline-none transition placeholder:text-muted focus:border-navy-300 focus:ring-2 focus:ring-navy-100'
 const labelClass = 'space-y-1.5 text-sm font-semibold text-navy-900'
@@ -37,7 +44,6 @@ function csv(formData: FormData, key: string) {
 function buildInput(formData: FormData): HiringJobUpdateInput {
   const domainValue = text(formData, 'domain')
   const salaryPeriodValue = text(formData, 'salaryPeriod')
-  const statusValue = text(formData, 'status')
 
   return {
     title: text(formData, 'title'),
@@ -61,7 +67,6 @@ function buildInput(formData: FormData): HiringJobUpdateInput {
     urgent: formData.get('urgent') === 'on',
     easyApply: formData.get('easyApply') === 'on',
     applyUntil: nullableText(formData, 'applyUntil'),
-    status: statusValue === 'published' ? 'published' : statusValue === 'closed' ? 'closed' : 'draft',
     certificates: csv(formData, 'certificates'),
     visas: csv(formData, 'visas'),
   }
@@ -81,6 +86,8 @@ export function HiringJobForm(props: HiringJobFormProps) {
     ? props.publisherOptions.find((option) => option.canPublish) ?? props.publisherOptions[0] ?? null
     : null
   const [publisherKey, setPublisherKey] = useState(initialPublisher?.key ?? '')
+  const intentRef = useRef<HiringJobSaveIntent>('save')
+  const [pendingIntent, setPendingIntent] = useState<HiringJobSaveIntent>('save')
   const selectedPublisher = props.mode === 'create'
     ? props.publisherOptions.find((option) => option.key === publisherKey) ?? null
     : null
@@ -89,6 +96,9 @@ export function HiringJobForm(props: HiringJobFormProps) {
     setMessage(null)
     setIsError(false)
     const fields = buildInput(formData)
+    const submitted = formData.get('intent')
+    const intent: HiringJobSaveIntent = submitted === 'publish' || submitted === 'save' ? submitted : intentRef.current
+    setPendingIntent(intent)
 
     if (props.mode === 'create' && (!selectedPublisher || !selectedPublisher.canPublish)) {
       setIsError(true)
@@ -106,8 +116,9 @@ export function HiringJobForm(props: HiringJobFormProps) {
             publisherType: selectedPublisher!.kind,
             companyId: selectedPublisher!.kind === 'organization' ? selectedPublisher!.id : null,
             ...fields,
+            status: intent === 'publish' ? 'published' : 'draft',
           } satisfies HiringJobInput)
-        : await updateHiringJob(props.jobId, fields)
+        : await updateHiringJob(props.jobId, fields, intent)
 
       if (!result.ok) {
         setIsError(true)
@@ -115,14 +126,22 @@ export function HiringJobForm(props: HiringJobFormProps) {
         return
       }
 
-      setMessage(props.mode === 'create' ? 'Job saved successfully.' : 'Changes saved successfully.')
       if (props.mode === 'create') {
-        router.push('/hiring/jobs')
+        setMessage(intent === 'publish' ? 'Job published.' : 'Draft saved.')
+        router.push(`/hiring/jobs?notice=${intent === 'publish' ? 'published' : 'draft'}`)
       } else {
+        setMessage(intent === 'publish' ? 'Changes saved and the job is live.' : 'Changes saved.')
         router.refresh()
       }
     })
   }
+
+  const primaryButtonClass = 'min-h-11 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+  const secondaryButtonClass = 'min-h-11 rounded-xl border border-mist-200 bg-white px-5 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60'
+  const publishLabel = props.mode === 'create' ? 'Publish job' : props.publishLabel ?? null
+  const saveLabel = props.mode === 'create'
+    ? 'Save as draft'
+    : initial?.status === 'draft' ? 'Save draft' : 'Save changes'
 
   return (
     <form action={submit} className="space-y-5">
@@ -328,6 +347,7 @@ export function HiringJobForm(props: HiringJobFormProps) {
           <label className={labelClass}>
             Apply until
             <input className={inputClass} type="date" name="applyUntil" defaultValue={initial?.applyUntil ?? ''} />
+            <span className="block text-xs font-normal text-muted">Leave empty to keep applications open.</span>
           </label>
           <div className="hidden lg:block" />
 
@@ -368,28 +388,42 @@ export function HiringJobForm(props: HiringJobFormProps) {
                 <input type="checkbox" name="easyApply" defaultChecked={initial?.easyApply ?? true} />
                 Easy Apply
               </label>
-              <label className="flex items-center gap-2 text-sm font-semibold text-navy-900">
-                Status
-                <select className={`${inputClass} min-h-10 w-auto`} name="status" defaultValue={initial?.status ?? 'draft'}>
-                  <option value="draft">Draft</option>
-                  <option value="published">Published</option>
-                  {props.mode === 'edit' ? <option value="closed">Archived</option> : null}
-                </select>
-              </label>
             </div>
+            <p className="mt-3 text-xs leading-5 text-muted">
+              {props.mode === 'create'
+                ? 'Save a draft to finish later, or publish now to start receiving applications.'
+                : 'Archive, republish or delete this job from the job actions above.'}
+            </p>
           </div>
 
-          <button
-            type="submit"
-            disabled={isPending}
-            className="min-h-11 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isPending ? 'Saving…' : props.mode === 'create' ? 'Create job' : 'Save changes'}
-          </button>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="submit"
+              name="intent"
+              value="save"
+              disabled={isPending}
+              onClick={() => { intentRef.current = 'save' }}
+              className={publishLabel ? secondaryButtonClass : primaryButtonClass}
+            >
+              {isPending && pendingIntent === 'save' ? 'Saving…' : saveLabel}
+            </button>
+            {publishLabel ? (
+              <button
+                type="submit"
+                name="intent"
+                value="publish"
+                disabled={isPending}
+                onClick={() => { intentRef.current = 'publish' }}
+                className={primaryButtonClass}
+              >
+                {isPending && pendingIntent === 'publish' ? 'Publishing…' : publishLabel}
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {message ? (
-          <p role="status" className={`mt-4 rounded-xl px-3 py-2 text-sm ${isError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
+          <p role={isError ? 'alert' : 'status'} className={`mt-4 rounded-xl px-3 py-2 text-sm ${isError ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
             {message}
           </p>
         ) : null}

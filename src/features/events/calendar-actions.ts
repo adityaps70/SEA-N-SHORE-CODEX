@@ -10,7 +10,8 @@ import { prepareEventBannerUpload, verifyEventBannerReference } from './event-ba
 import { validateEventBannerMetadata } from './event-banner-policy'
 import type { CalendarActionResult, CalendarCreateResult, CalendarEventCreateInput, CalendarEventInput, EventBannerUploadResult } from './calendar-types'
 import { calendarEventRepository } from './calendar-repository'
-import { calendarValidationMessage, parseCalendarEventInput } from './calendar-validation'
+import { calendarFieldErrors, calendarValidationMessage, parseCalendarEventInput } from './calendar-validation'
+import { eventPaymentRepository } from '@/features/payments/event-payment-repository'
 
 const uuidSchema = z.string().uuid()
 const eventPublisherSchema = z.discriminatedUnion('publisherType', [
@@ -73,6 +74,9 @@ function safeError(error: unknown) {
   if (code === 'event_host_cannot_attend') return 'Hosts are already part of their own event.'
   if (code === 'event_not_open') return 'Registration is not open for this event.'
   if (code === 'event_full') return 'This event has reached its attendee capacity.'
+  if (code === 'event_requires_payment') return 'This is a paid event. Use Pay and register to buy a ticket.'
+  if (code === 'event_paid_registration') return "Paid registrations can't be withdrawn here. Contact the organiser — refunds are handled by the Sea N Shore team."
+  if (code === 'event_has_paid_registrations') return 'People have already paid for this event, so it cannot be switched to Free. Keep it paid, or contact the Sea N Shore team to arrange refunds first.'
   if (code.startsWith('event_banner_')) return 'Please upload the banner image again.'
   if (code === 'capability_required') return 'Creator Pro or Organization Pro with verified event publishing access is required to publish events.'
   return 'Something went wrong. Please try again.'
@@ -99,7 +103,7 @@ export async function createEventAction(input: CalendarEventCreateInput): Promis
   if (!publisher.success) return { ok: false, error: 'Choose a valid event publishing identity.' }
 
   const parsed = parseCalendarEventInput(input)
-  if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error) }
+  if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error), fieldErrors: calendarFieldErrors(parsed.error) }
   const moderation = assessEventContent(parsed.data)
   if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   try {
@@ -129,7 +133,7 @@ export async function updateEventAction(eventId: string, input: CalendarEventInp
   const id = uuidSchema.safeParse(eventId)
   const parsed = parseCalendarEventInput(input)
   if (!id.success) return { ok: false, error: 'Invalid event.' }
-  if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error) }
+  if (!parsed.success) return { ok: false, error: calendarValidationMessage(parsed.error), fieldErrors: calendarFieldErrors(parsed.error) }
   const moderation = assessEventContent(parsed.data)
   if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   try {
@@ -144,6 +148,9 @@ export async function updateEventAction(eventId: string, input: CalendarEventInp
       }
     }
     await verifyEventBannerReference(user.id, parsed.data.bannerUrl)
+    if (parsed.data.pricing === 'free' && await eventPaymentRepository.countPaidOrdersForEvent(id.data) > 0) {
+      throw new Error('event_has_paid_registrations')
+    }
     await calendarEventRepository.updateEvent(user.id, id.data, parsed.data)
     await flagAutomatedEventModeration(id.data, moderation)
     refreshEventPaths(id.data)

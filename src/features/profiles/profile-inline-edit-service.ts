@@ -7,7 +7,11 @@ import type {
 } from './profile-inline-schemas'
 
 type ReturningIdRow = QueryResultRow & { id: string }
-type LockedProfileRow = QueryResultRow & { slug: string | null; username_change_count: number }
+type LockedProfileRow = QueryResultRow & {
+  slug: string | null
+  username_change_count: number
+  username_auto_generated?: boolean | null
+}
 
 type TransactionRunner = <T>(fn: (client: DatabaseQueryClient) => Promise<T>) => Promise<T>
 
@@ -27,7 +31,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
   ) {
     return input.withTransaction(async (client) => {
       const locked = await client.query<LockedProfileRow>(
-        `select slug, username_change_count
+        `select slug, username_change_count, username_auto_generated
          from public.profiles
          where id = $1
            and account_status = 'active'
@@ -37,14 +41,20 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
       )
       const current = locked.rows[0]
       if (!current) unavailable()
-      if ((current.slug ?? '') !== data.slug && Number(current.username_change_count ?? 0) >= 2) {
+      if (
+        (current.slug ?? '') !== data.slug
+        && current.username_auto_generated !== true
+        && Number(current.username_change_count ?? 0) >= 2
+      ) {
         usernameLimit()
       }
 
       const result = await client.query<ReturningIdRow>(
         `update public.profiles
          set full_name = $2,
-             username_change_count = username_change_count + case when slug is distinct from $3 then 1 else 0 end,
+             username_change_count = username_change_count
+               + case when slug is distinct from $3 and not username_auto_generated then 1 else 0 end,
+             username_auto_generated = username_auto_generated and slug is not distinct from $3,
              slug = $3,
              location = $4,
              headline = $5,

@@ -5,6 +5,7 @@ import { PostCard } from './post-card'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => '/home',
 }))
 
 vi.mock('../actions', () => ({

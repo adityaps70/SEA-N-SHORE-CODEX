@@ -26,10 +26,29 @@ import { isWithinMessageEditWindow } from '../edit-policy'
 import { publishMessagingUnreadCount } from '../unread-client'
 import type { MessagingMessageDto } from '../queries'
 import { isMessageSeen, type MessagingReadCursor } from '../thread-realtime'
+import { messageAttachmentRoute } from '../media-policy'
+import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import type { OptimisticMessagingMessage } from './message-composer'
 import { MessageEmojiPicker } from './message-emoji-picker'
+import { LinkifiedText } from './linkified-text'
 
 export type MessageThreadItem = MessagingMessageDto | OptimisticMessagingMessage
+
+/** Photos in a thread, in order, for the in-app viewer (prev/next across the conversation). */
+export function lightboxImagesFromMessages(messages: readonly MessageThreadItem[]): LightboxImage[] {
+  return messages.flatMap((message) => {
+    const attachment = message.attachment
+    if (message.deletedAt || attachment?.kind !== 'image' || !attachment.url) return []
+    const canonical = !('deliveryState' in message)
+    return [{
+      id: message.id,
+      src: attachment.url,
+      alt: attachment.name,
+      name: attachment.name,
+      downloadUrl: canonical ? messageAttachmentRoute(message.id, { download: true }) : null,
+    }]
+  })
+}
 
 function initials(name: string | null) {
   if (!name) return 'SN'
@@ -72,21 +91,36 @@ function groupedReactions(message: MessageThreadItem, viewerId: string) {
   return [...groups.entries()].map(([emoji, value]) => ({ emoji, ...value }))
 }
 
-function AttachmentCard({ message, mine }: { message: MessageThreadItem; mine: boolean }) {
+function AttachmentCard({
+  message,
+  mine,
+  onOpenImage,
+}: {
+  message: MessageThreadItem
+  mine: boolean
+  onOpenImage: (messageId: string) => void
+}) {
   const attachment = message.attachment
   if (!attachment) return null
 
   if (attachment.kind === 'image') {
     return attachment.url ? (
-      <a href={attachment.url} target="_blank" rel="noreferrer" className="mb-2 block overflow-hidden rounded-xl">
-        {/* eslint-disable-next-line @next/next/no-img-element -- signed S3 attachment URL */}
+      <button
+        type="button"
+        onClick={() => onOpenImage(message.id)}
+        aria-label={`Open photo ${attachment.name}`}
+        aria-haspopup="dialog"
+        data-testid={`message-photo-${message.id}`}
+        className="mb-2 block w-full cursor-zoom-in overflow-hidden rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- authorised attachment route or local preview */}
         <img
           src={attachment.url}
           alt={attachment.name}
           loading="lazy"
           className="max-h-[26rem] w-full min-w-48 object-cover"
         />
-      </a>
+      </button>
     ) : (
       <div className="mb-2 flex min-w-48 items-center gap-2 rounded-xl bg-black/10 px-3 py-3 text-xs">
         <FileText aria-hidden="true" className="size-4" />
@@ -109,11 +143,10 @@ function AttachmentCard({ message, mine }: { message: MessageThreadItem; mine: b
     )
   }
 
+  const canonical = !('deliveryState' in message)
   return (
     <a
-      href={attachment.url || undefined}
-      target="_blank"
-      rel="noreferrer"
+      href={(canonical ? messageAttachmentRoute(message.id, { download: true }) : attachment.url) || undefined}
       download={attachment.name}
       className={`mb-2 flex min-w-56 items-center gap-3 rounded-xl border px-3 py-3 transition ${
         mine
@@ -188,6 +221,10 @@ export function MessageThread({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editBody, setEditBody] = useState('')
   const [editWindowNow, setEditWindowNow] = useState(() => Date.now())
+  const [lightboxImageId, setLightboxImageId] = useState<string | null>(null)
+  const lightboxOpenRef = useRef(false)
+  const lightboxImages = useMemo(() => lightboxImagesFromMessages(messages), [messages])
+  const closeLightbox = useCallback(() => setLightboxImageId(null), [])
   const latestReceived = useMemo(
     () => [...messages].reverse().find((message) => message.senderProfileId !== viewerId && !message.deletedAt),
     [messages, viewerId],
@@ -223,6 +260,13 @@ export function MessageThread({
     : 'empty'
 
   useEffect(() => {
+    lightboxOpenRef.current = lightboxImageId !== null
+  }, [lightboxImageId])
+
+  useEffect(() => {
+    // Keep the reader's place while a photo is open; the viewer returns them
+    // to exactly where they were.
+    if (lightboxOpenRef.current) return
     bottomRef.current?.scrollIntoView?.({
       block: 'end',
       behavior: 'auto',
@@ -463,7 +507,7 @@ export function MessageThread({
                           : 'rounded-bl-md border border-mist-100 bg-white text-navy-950'
                       }`}>
                         <ReplyPreview message={message} mine={mine} />
-                        <AttachmentCard message={message} mine={mine} />
+                        <AttachmentCard message={message} mine={mine} onOpenImage={setLightboxImageId} />
                         {isEditing ? (
                           <div className="min-w-[15rem]">
                             <textarea
@@ -496,7 +540,7 @@ export function MessageThread({
                             </div>
                           </div>
                         ) : message.body ? (
-                          <p className="whitespace-pre-wrap break-words">{message.body}</p>
+                          <p className="whitespace-pre-wrap break-words"><LinkifiedText text={message.body} /></p>
                         ) : null}
                       </div>
 
@@ -635,6 +679,12 @@ export function MessageThread({
         )}
         <div ref={bottomRef} aria-hidden="true" className="h-px" />
       </div>
+      <ImageLightbox
+        images={lightboxImages}
+        activeId={lightboxImageId}
+        onActiveIdChange={setLightboxImageId}
+        onClose={closeLightbox}
+      />
     </section>
   )
 }

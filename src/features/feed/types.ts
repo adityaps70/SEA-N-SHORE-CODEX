@@ -101,6 +101,12 @@ export type FeedMention = {
   fullName: string
 }
 
+export type FeedCommentReplyTarget = {
+  commentId: string
+  authorName: string
+  authorSlug: string | null
+}
+
 export type FeedComment = {
   id: string
   body: string
@@ -112,6 +118,8 @@ export type FeedComment = {
   deleted?: boolean
   author: FeedAuthor
   parentCommentId?: string | null
+  /** The specific comment this reply answers when it is not the top-level comment. */
+  replyTo?: FeedCommentReplyTarget | null
   reactionSummary?: ReactionSummary
   reactionCount?: number
   viewerReaction?: PostReactionType | null
@@ -154,6 +162,8 @@ export type FeedPost = {
   commentCount: number
   viewerSaved: boolean
   viewerOwns?: boolean
+  /** True when the signed-in viewer follows this post's author. */
+  viewerFollowsAuthor?: boolean
   mentions?: FeedMention[]
   comments: FeedComment[]
 }

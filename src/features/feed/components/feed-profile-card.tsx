@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card'
 import { PERSONA_LABELS } from '@/features/profiles/persona'
 import type { OwnProfile } from '@/features/profiles/types'
 import { calculateProfileCompletion, type ProfilePortfolioCompletion } from '../profile-completion'
+import { formatYears } from '@/lib/format'
 
 function initials(name: string) {
   return name
@@ -104,7 +105,7 @@ export function FeedProfileCard({
           {profile.sailingExperienceYears !== null ? (
             <div className="flex items-center justify-between gap-3">
               <dt className="flex items-center gap-2 text-muted"><Waves aria-hidden="true" className="size-4" />Sea service</dt>
-              <dd className="font-semibold text-navy-950">{profile.sailingExperienceYears} years</dd>
+              <dd className="font-semibold text-navy-950">{formatYears(profile.sailingExperienceYears)}</dd>
             </div>
           ) : null}
           {profile.availability ? (

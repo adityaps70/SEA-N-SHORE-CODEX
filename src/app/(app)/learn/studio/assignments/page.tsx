@@ -31,7 +31,7 @@ export default async function MentorAssignmentsPage() {
   const graded = attempts.filter((attempt) => attempt.status === 'graded')
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl py-6 sm:px-6 lg:px-8">
       <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-navy-950">
         <ArrowLeft className="size-4" aria-hidden="true" /> Learning Studio
       </Link>
@@ -114,6 +114,6 @@ export default async function MentorAssignmentsPage() {
           </div>
         </section>
       ) : null}
-    </main>
+    </div>
   )
 }

@@ -8,6 +8,15 @@ const mocks = vi.hoisted(() => ({
   getPeopleYouMayKnow: vi.fn(),
   getRelationshipState: vi.fn(),
   getPublicPostsByAuthor: vi.fn(),
+  getProfileNetworkSummary: vi.fn(),
+  getViewableDgProfileDocument: vi.fn(),
+}))
+
+vi.mock('@/features/profiles/profile-network-stats', () => ({
+  getProfileNetworkSummary: mocks.getProfileNetworkSummary,
+}))
+vi.mock('@/features/profiles/profile-document-service', () => ({
+  getViewableDgProfileDocument: mocks.getViewableDgProfileDocument,
 }))
 
 vi.mock('next/navigation', () => ({
@@ -92,9 +101,10 @@ vi.mock('@/features/network/components/people-you-may-know', () => ({
 }))
 
 vi.mock('@/features/profiles/components/profile-header', () => ({
-  ProfileHeader: ({ actions }: { actions?: React.ReactNode }) => (
+  ProfileHeader: ({ actions, stats }: { actions?: React.ReactNode; stats?: React.ReactNode }) => (
     <header>
       <div>Profile header</div>
+      {stats}
       {actions}
     </header>
   ),
@@ -135,6 +145,12 @@ beforeEach(() => {
     id: 'post-1',
     body: 'Public maritime update',
   }])
+  mocks.getProfileNetworkSummary.mockResolvedValue({
+    counts: { connections: 42, followers: 1, following: 5 },
+    isOwner: false,
+    canViewLists: false,
+  })
+  mocks.getViewableDgProfileDocument.mockResolvedValue(null)
 })
 
 afterEach(() => cleanup())
@@ -218,5 +234,63 @@ describe('Public Profile page', () => {
     expect(source).toContain('<PostCard')
     expect(source).not.toContain('ProfilePassportOverview')
     expect(source).not.toContain('ProfilePostsSection')
+  })
+
+  it('shows network counts to a signed-in member but keeps the lists for connections only', async () => {
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+
+    const stats = screen.getByTestId('profile-network-stats')
+    expect(stats).toHaveTextContent('42Connections')
+    expect(stats).toHaveTextContent('1Follower')
+    expect(stats).toHaveTextContent('5Following')
+    expect(screen.queryByRole('link', { name: /Connections/ })).not.toBeInTheDocument()
+    expect(screen.getByText("Only Captain's connections can see who is in these lists.")).toBeInTheDocument()
+    expect(mocks.getProfileNetworkSummary).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222')
+  })
+
+  it('links the counts to the member lists for an accepted connection', async () => {
+    mocks.getProfileNetworkSummary.mockResolvedValueOnce({
+      counts: { connections: 42, followers: 10, following: 5 },
+      isOwner: false,
+      canViewLists: true,
+    })
+
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+
+    expect(screen.getByRole('link', { name: /42\s*Connections/ })).toHaveAttribute('href', '/people/captain-public/network?view=connections')
+    expect(screen.getByRole('link', { name: /10\s*Followers/ })).toHaveAttribute('href', '/people/captain-public/network?view=followers')
+    expect(screen.getByRole('link', { name: /5\s*Following/ })).toHaveAttribute('href', '/people/captain-public/network?view=following')
+    expect(screen.getByText('You can see these lists because you are connected.')).toBeInTheDocument()
+  })
+
+  it('shows no network numbers to signed-out visitors', async () => {
+    mocks.getVerifiedUser.mockResolvedValueOnce(null)
+
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+
+    expect(screen.queryByTestId('profile-network-stats')).not.toBeInTheDocument()
+    expect(mocks.getProfileNetworkSummary).not.toHaveBeenCalled()
+    expect(mocks.getViewableDgProfileDocument).not.toHaveBeenCalled()
+  })
+
+  it('shows the private DG profile only to viewers the service authorises, with the reason', async () => {
+    mocks.getViewableDgProfileDocument.mockResolvedValueOnce({
+      kind: 'dg_profile',
+      fileName: 'DG profile.pdf',
+      sizeBytes: 2048,
+      uploadedAt: '2026-09-20T00:00:00.000Z',
+      reason: 'employer',
+    })
+
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+
+    expect(screen.getByRole('heading', { name: 'DG Shipping profile' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Open DG profile/ })).toHaveAttribute('href', '/api/profile/documents/dg-profile/22222222-2222-4222-8222-222222222222')
+    expect(screen.getByText(/because Captain applied to a job you manage/)).toBeInTheDocument()
+  })
+
+  it('shows no DG profile section to other members', async () => {
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+    expect(screen.queryByRole('heading', { name: 'DG Shipping profile' })).not.toBeInTheDocument()
   })
 })

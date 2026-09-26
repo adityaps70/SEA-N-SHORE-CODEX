@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { userFacingError } from '@/lib/errors/user-messages'
 import { getNotificationChrome, getNotifications } from './queries'
 import {
   markAllNotificationsReadInAurora,
@@ -26,7 +27,7 @@ export async function loadNotificationChrome(): Promise<NotificationChromeResult
   try {
     return { ok: true, chrome: await getNotificationChrome() }
   } catch {
-    return { ok: false, error: 'We could not refresh your notifications.' }
+    return { ok: false, error: 'We could not refresh your notifications. They will update again shortly.' }
   }
 }
 
@@ -42,13 +43,12 @@ export async function markNotificationRead(id: string): Promise<NotificationActi
   const parsed = notificationIdSchema.safeParse(id)
   if (!parsed.success) return { ok: false, error: 'Invalid notification.' }
 
-  const user = await requireAwsUser()
-
   try {
+    const user = await requireAwsUser()
     const updated = await markNotificationReadInAurora(user.id, parsed.data)
-    if (!updated) return { ok: false, error: 'We could not update this notification.' }
-  } catch {
-    return { ok: false, error: 'We could not update this notification.' }
+    if (!updated) return { ok: false, error: 'This notification is no longer available. Refresh the page to see your latest notifications.' }
+  } catch (error) {
+    return { ok: false, error: userFacingError(error, 'We could not update this notification. Please try again.') }
   }
 
   revalidateNotificationSurfaces()
@@ -56,12 +56,11 @@ export async function markNotificationRead(id: string): Promise<NotificationActi
 }
 
 export async function markAllNotificationsRead(): Promise<NotificationActionResult> {
-  const user = await requireAwsUser()
-
   try {
+    const user = await requireAwsUser()
     await markAllNotificationsReadInAurora(user.id)
-  } catch {
-    return { ok: false, error: 'We could not mark your notifications as read.' }
+  } catch (error) {
+    return { ok: false, error: userFacingError(error, 'We could not mark your notifications as read. Please try again.') }
   }
 
   revalidateNotificationSurfaces()

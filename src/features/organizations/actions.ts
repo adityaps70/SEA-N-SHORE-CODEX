@@ -104,10 +104,10 @@ export async function requestOrganizationAccess(
   } catch (error) {
     const code = error instanceof Error ? error.message : ''
     if (code === 'organization_access_request_exists') {
-      return { ok: false, error: 'You already have a pending access request for this organization and role.' }
+      return { ok: false, error: 'You already have a request waiting for this organization and role. You can follow it under "Your requests".' }
     }
     if (code === 'organization_membership_exists') {
-      return { ok: false, error: 'You already belong to this organization.' }
+      return { ok: false, error: 'You are already linked to this organization. Open it from "Your organizations".' }
     }
     if (code === 'organization_company_not_found') {
       return { ok: false, error: 'This organization could not be found. Search again and choose an existing organization.' }

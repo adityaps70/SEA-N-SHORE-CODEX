@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { checkUsernameAvailability } from '../username-actions'
-import { normalizeUsername, usernameSchema } from '../username'
+import { normalizeUsername, USERNAME_MAX_LENGTH, USERNAME_RULES_HINT, usernameSchema } from '../username'
 
 type UsernameStatus = 'idle' | 'checking' | 'available' | 'current' | 'taken' | 'invalid' | 'error'
 
@@ -20,6 +20,13 @@ type UsernameFieldProps = {
   changesRemaining?: number
   locked?: boolean
   onReadyChange?: (ready: boolean) => void
+  /** Always-visible guidance under the field (for example, that it can be changed later). */
+  helpText?: string
+  /**
+   * Onboarding only: the generated handle used if the typed one cannot be
+   * used, so a first-time member is never blocked by a username.
+   */
+  fallbackUsername?: string
 }
 
 export function UsernameField({
@@ -29,6 +36,8 @@ export function UsernameField({
   changesRemaining,
   locked = false,
   onReadyChange,
+  helpText,
+  fallbackUsername,
 }: UsernameFieldProps) {
   const normalizedInitial = normalizeUsername(initialValue)
   const normalizedCurrent = currentUsername ? normalizeUsername(currentUsername) : ''
@@ -113,37 +122,56 @@ export function UsernameField({
 
   const invalid = status === 'taken' || status === 'invalid' || status === 'error'
   const positive = status === 'available' || status === 'current'
+  const normalizedFallback = fallbackUsername ? normalizeUsername(fallbackUsername) : ''
+  const offerFallback = Boolean(normalizedFallback && normalizedFallback !== value && (invalid || status === 'idle'))
 
   return (
-    <label className="grid gap-2 text-sm font-medium text-navy-900">
-      Username
-      <div className="relative">
-        <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-muted">@</span>
-        <input
-          name="slug"
-          value={value}
-          onChange={(event) => {
+    <div className="grid gap-2 text-sm font-medium text-navy-900">
+      <label className="grid gap-2">
+        Username
+        <div className="relative">
+          <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-muted">@</span>
+          <input
+            name="slug"
+            value={value}
+            onChange={(event) => {
+              setServerErrorActive(false)
+              setRemoteState(null)
+              setValue(normalizeUsername(event.target.value))
+            }}
+            readOnly={locked}
+            maxLength={USERNAME_MAX_LENGTH}
+            autoComplete="off"
+            spellCheck={false}
+            aria-invalid={invalid}
+            aria-describedby="username-description"
+            className="min-h-12 w-full rounded-xl border border-mist-100 bg-white py-2 pl-8 pr-4 text-base text-ink shadow-sm placeholder:text-muted focus:border-ocean-700 read-only:bg-mist-50 read-only:text-muted"
+            placeholder={normalizedFallback || 'firstname.lastname'}
+            required
+          />
+        </div>
+        <span id="username-description" className={invalid && !offerFallback ? 'text-red-700' : positive ? 'text-emerald-700' : invalid ? 'text-amber-800' : 'text-muted'}>
+          {message || USERNAME_RULES_HINT}
+          {offerFallback ? ` If you continue, we'll use @${normalizedFallback} and you can change it later.` : ''}
+        </span>
+      </label>
+      {offerFallback ? (
+        <button
+          type="button"
+          onClick={() => {
             setServerErrorActive(false)
             setRemoteState(null)
-            setValue(normalizeUsername(event.target.value))
+            setValue(normalizedFallback)
           }}
-          readOnly={locked}
-          maxLength={30}
-          autoComplete="off"
-          spellCheck={false}
-          aria-invalid={invalid}
-          aria-describedby="username-description"
-          className="min-h-12 w-full rounded-xl border border-mist-100 bg-white py-2 pl-8 pr-4 text-base text-ink shadow-sm placeholder:text-muted focus:border-ocean-700 read-only:bg-mist-50 read-only:text-muted"
-          placeholder="capt.saurabh"
-          required
-        />
-      </div>
-      <span id="username-description" className={invalid ? 'text-red-700' : positive ? 'text-emerald-700' : 'text-muted'}>
-        {message || '3–30 characters. Use letters, numbers, dots, underscores, or hyphens.'}
-      </span>
+          className="w-fit rounded-lg text-sm font-semibold text-ocean-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500"
+        >
+          Use @{normalizedFallback}
+        </button>
+      ) : null}
+      {helpText ? <span className="text-xs font-normal text-muted">{helpText}</span> : null}
       {changesRemaining !== undefined ? (
         <span className="text-xs font-normal text-muted">Username changes remaining: {changesRemaining} of 2.</span>
       ) : null}
-    </label>
+    </div>
   )
 }

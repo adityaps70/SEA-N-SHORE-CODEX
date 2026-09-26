@@ -1,19 +1,28 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import { createCourseDraft, updateCourseDraft } from '../course-actions'
 import type { CourseDraftInput } from '../course-repository'
 import type { CoursePublisherOption } from '../publishers'
 import { LearningMediaUploadField } from './learning-media-upload-field'
+import {
+  SaveStatus,
+  useCourseEditSession,
+  useUnsavedChanges,
+  type SaveOutcome,
+  type SaveStatusState,
+} from './course-edit-session'
 
 type Props = {
   initialValue: CourseDraftInput
   courseId?: string
   publisherOptions?: CoursePublisherOption[]
   publisherName?: string
+  /** Course is in review, published or archived: show the details without letting them change. */
+  readOnly?: boolean
 }
 
 type FormState = {
@@ -90,7 +99,7 @@ function normalizedList(value: string) {
 }
 
 function inputClassName() {
-  return 'mt-2 min-h-12 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm text-navy-950 outline-none transition placeholder:text-muted/60 focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
+  return 'mt-2 min-h-12 w-full rounded-xl border border-mist-200 bg-white px-3.5 py-2.5 text-sm font-normal text-navy-950 outline-none transition placeholder:text-muted/60 focus:border-teal-500 focus:ring-2 focus:ring-teal-100'
 }
 
 function rupeesToMinor(value: string) {
@@ -98,13 +107,58 @@ function rupeesToMinor(value: string) {
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0
 }
 
-export function CourseForm({ initialValue, courseId, publisherOptions = [], publisherName }: Props) {
+function payloadOf(form: FormState): CourseDraftInput {
+  const isFree = form.accessType === 'free'
+  return {
+    slug: form.slug,
+    title: form.title,
+    subtitle: form.subtitle.trim() || null,
+    description: form.description,
+    category: form.category,
+    level: form.level,
+    language: form.language,
+    thumbnailPath: form.thumbnailPath,
+    trailerPath: form.trailerPath,
+    learningOutcomes: normalizedList(form.learningOutcomes),
+    requirements: normalizedList(form.requirements),
+    targetAudience: normalizedList(form.targetAudience),
+    accessType: form.accessType,
+    priceMinor: isFree ? 0 : rupeesToMinor(form.price),
+    discountPriceMinor: isFree || !form.discountPrice.trim() ? null : rupeesToMinor(form.discountPrice),
+    currency: form.currency,
+    certificateEnabled: form.certificateEnabled,
+    courseFormat: form.courseFormat,
+  }
+}
+
+/** Compares what would be saved, so whitespace-only or re-ordered-back edits don't count as changes. */
+function fingerprint(form: FormState) {
+  const payload = payloadOf(form)
+  return JSON.stringify({
+    ...payload,
+    slug: payload.slug.trim().toLowerCase(),
+    title: payload.title.trim(),
+    description: payload.description.trim(),
+    language: payload.language.trim(),
+    currency: payload.currency.trim().toUpperCase(),
+  })
+}
+
+export function CourseForm({ initialValue, courseId, publisherOptions = [], publisherName, readOnly = false }: Props) {
   const router = useRouter()
+  const session = useCourseEditSession()
   const initial = useMemo(() => toFormState(initialValue), [initialValue])
   const [form, setForm] = useState<FormState>(initial)
+  const [baseline, setBaseline] = useState(() => fingerprint(initial))
+  const lastSavedRef = useRef(baseline)
+  const inFlightRef = useRef<Promise<SaveOutcome> | null>(null)
+  const [saveState, setSaveState] = useState<SaveStatusState>({ kind: 'idle' })
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; copy: string } | null>(null)
-  const [pending, startTransition] = useTransition()
+  const [creating, startTransition] = useTransition()
   const isEditing = Boolean(courseId)
+  const saving = saveState.kind === 'saving'
+  const pending = creating || saving
+  const dirty = !readOnly && fingerprint(form) !== baseline
   const initialPublisher = !isEditing
     ? publisherOptions.find((option) => option.canPublish) ?? publisherOptions[0] ?? null
     : null
@@ -115,51 +169,65 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
     setForm((current) => ({ ...current, [key]: value }))
   }
 
-  function payload(): CourseDraftInput {
-    const isFree = form.accessType === 'free'
-    return {
-      slug: form.slug,
-      title: form.title,
-      subtitle: form.subtitle.trim() || null,
-      description: form.description,
-      category: form.category,
-      level: form.level,
-      language: form.language,
-      thumbnailPath: form.thumbnailPath,
-      trailerPath: form.trailerPath,
-      learningOutcomes: normalizedList(form.learningOutcomes),
-      requirements: normalizedList(form.requirements),
-      targetAudience: normalizedList(form.targetAudience),
-      accessType: form.accessType,
-      priceMinor: isFree ? 0 : rupeesToMinor(form.price),
-      discountPriceMinor: isFree || !form.discountPrice.trim() ? null : rupeesToMinor(form.discountPrice),
-      currency: form.currency,
-      certificateEnabled: form.certificateEnabled,
-      courseFormat: form.courseFormat,
+  async function saveDetails(): Promise<SaveOutcome> {
+    // A save is already running (e.g. Save, then Submit straight away): wait for it
+    // so the next save uses the revision it produced instead of a stale one.
+    const running = inFlightRef.current
+    if (running) {
+      const prior = await running
+      if (!prior.ok || fingerprint(form) === lastSavedRef.current) return prior
+    }
+    const run = persistDetails()
+    inFlightRef.current = run
+    try {
+      return await run
+    } finally {
+      if (inFlightRef.current === run) inFlightRef.current = null
     }
   }
 
+  async function persistDetails(): Promise<SaveOutcome> {
+    if (!courseId) return { ok: false, error: 'Create the draft course first.' }
+    const submitted = payloadOf(form)
+    const submittedFingerprint = fingerprint(form)
+    setMessage(null)
+    setSaveState({ kind: 'saving' })
+    const result = await updateCourseDraft(courseId, submitted, session.getDetailsRevision())
+    if (!result.ok) {
+      // The reason is shown in the save bar, next to "Not saved", where the trainer is looking.
+      setSaveState({ kind: 'error', message: result.error })
+      return { ok: false, error: result.error }
+    }
+    session.setDetailsRevision(result.revision)
+    const savedState = toFormState(result.course)
+    // Show exactly what was stored (trimmed, de-duplicated), unless the trainer kept typing while it saved.
+    setForm((current) => (fingerprint(current) === submittedFingerprint ? savedState : current))
+    lastSavedRef.current = fingerprint(savedState)
+    setBaseline(lastSavedRef.current)
+    setSaveState({ kind: 'saved', at: result.savedAt })
+    return { ok: true }
+  }
+
+  useUnsavedChanges('course-details', isEditing && dirty, 'Course details', saveDetails)
+  useUnsavedChanges('new-course', !isEditing && dirty, 'New course details')
+
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (readOnly) return
     setMessage(null)
 
-    startTransition(async () => {
-      if (courseId) {
-        const result = await updateCourseDraft(courseId, payload())
-        if (!result.ok) {
-          setMessage({ tone: 'error', copy: result.error })
-          return
-        }
-        setMessage({ tone: 'success', copy: 'Course changes saved.' })
-        return
-      }
+    if (courseId) {
+      void saveDetails()
+      return
+    }
 
+    startTransition(async () => {
       if (publisherOptions.length > 0 && !selectedPublisher) {
         setMessage({ tone: 'error', copy: 'Choose who is publishing this course.' })
         return
       }
 
-      const draft = payload()
+      const draft = payloadOf(form)
       const result = selectedPublisher
         ? await createCourseDraft({
             ...draft,
@@ -171,12 +239,15 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
         setMessage({ tone: 'error', copy: result.error })
         return
       }
+      // The draft now exists, so leaving for its editor loses nothing.
+      setBaseline(fingerprint(form))
       router.push(`/learn/studio/courses/${result.courseId}/edit`)
     })
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-6">
+    <form onSubmit={onSubmit} className="space-y-6" aria-label={isEditing ? 'Course details' : 'New course details'}>
+      <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-6 border-0 p-0">
       {!isEditing && publisherOptions.length > 0 ? (
         <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Publishing identity</p>
@@ -387,21 +458,38 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
           Certificate eligible after completion
         </label>
       </section>
+      </fieldset>
 
       {message ? (
-        <div role="status" className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${message.tone === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-rose-200 bg-rose-50 text-rose-900'}`}>
-          {message.tone === 'success' ? <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0" /> : <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />}
+        <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+          <AlertCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <span>{message.copy}</span>
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={pending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60">
-          {pending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
-          {pending ? 'Saving…' : isEditing ? 'Save course changes' : 'Create draft course'}
-        </button>
-        <p className="text-xs leading-5 text-muted">Drafts stay private until you submit them for Sea N Shore review.</p>
-      </div>
+      {readOnly ? null : isEditing ? (
+        <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-[var(--shadow-card)] backdrop-blur md:bottom-4">
+          <button type="submit" disabled={saving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60">
+            {saving ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
+            {saving ? 'Saving…' : 'Save course changes'}
+          </button>
+          <SaveStatus state={saveState} dirty={dirty} />
+          {saveState.kind === 'error' ? (
+            <p role="alert" className="flex w-full items-start gap-2 text-sm leading-6 text-rose-900">
+              <AlertCircle aria-hidden="true" className="mt-1 size-4 shrink-0 text-rose-700" />
+              <span>{saveState.message}</span>
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" disabled={pending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60">
+            {pending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
+            {pending ? 'Saving…' : 'Create draft course'}
+          </button>
+          <p className="text-xs leading-5 text-muted">Drafts stay private until you submit them for Sea N Shore review.</p>
+        </div>
+      )}
     </form>
   )
 }

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { ArrowLeft, BookOpen, ShieldCheck } from 'lucide-react'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { CourseEditSession } from '@/features/learning/components/course-edit-session'
 import { CourseForm } from '@/features/learning/components/course-form'
 import { buildCoursePublisherOptions } from '@/features/learning/publishers'
 import type { CourseDraftInput } from '@/features/learning/course-repository'
@@ -61,7 +62,7 @@ export default async function NewMentorCoursePage() {
   ).filter((option) => hasActiveMentor || option.kind === 'organization')
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl py-6 sm:px-6 lg:px-8">
       <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
         <ArrowLeft aria-hidden="true" className="size-4" /> Learning Studio
       </Link>
@@ -87,8 +88,10 @@ export default async function NewMentorCoursePage() {
       </section>
 
       <div className="mt-5">
-        <CourseForm initialValue={initialCourse} publisherOptions={publisherOptions} />
+        <CourseEditSession>
+          <CourseForm initialValue={initialCourse} publisherOptions={publisherOptions} />
+        </CourseEditSession>
       </div>
-    </main>
+    </div>
   )
 }

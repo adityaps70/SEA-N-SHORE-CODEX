@@ -2,7 +2,6 @@
 
 import { MessageCircleMore } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import type { NetworkProfile } from '@/features/network/types'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
 import {
@@ -245,13 +244,11 @@ export function MessageShell({
   viewerId,
   inbox,
   activeConversation,
-  newMessageCandidates = [],
   authoritativeUnreadCount,
 }: {
   viewerId: string
   inbox: MessagingInboxItem[]
   activeConversation: MessagingActiveConversation | null
-  newMessageCandidates?: NetworkProfile[]
   authoritativeUnreadCount?: number
 }) {
   const { subscribe } = useMessagingRealtime()
@@ -345,7 +342,7 @@ export function MessageShell({
             <MessageCircleMore aria-hidden="true" className="size-4 text-ocean-700" />
             {displayedInbox.length} {displayedInbox.length === 1 ? 'conversation' : 'conversations'}
           </span>
-          <NewMessageButton candidates={newMessageCandidates} />
+          <NewMessageButton activeConversationId={activeConversation?.conversationId ?? null} />
         </div>
       </header>
 

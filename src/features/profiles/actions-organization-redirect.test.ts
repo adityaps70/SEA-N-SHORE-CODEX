@@ -20,6 +20,11 @@ vi.mock('./onboarding-service', () => ({
 }))
 vi.mock('./profile-edit-service', () => ({ updateProfileWithAurora: vi.fn(async () => true) }))
 vi.mock('./aws-queries', () => ({ getAwsOwnProfile: vi.fn(async () => null) }))
+vi.mock('./username-availability', () => ({
+  checkUsernameAvailabilityFromAurora: vi.fn(async (_profileId: string, username: string) => ({ username, available: true, current: false })),
+  suggestAvailableUsernameFromAurora: vi.fn(async () => 'asha.singh'),
+}))
+vi.mock('./profile-document-service', () => ({ removeDgProfileDocumentForProfile: vi.fn(async () => false) }))
 
 function activationForm(persona: 'seafarer' | 'recruiter_hr' = 'seafarer') {
   const form = new FormData()

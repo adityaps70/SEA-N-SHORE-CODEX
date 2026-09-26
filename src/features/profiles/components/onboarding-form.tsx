@@ -23,6 +23,8 @@ import {
   type Persona,
   type ProfileIntent,
 } from '../persona'
+import { DG_PROFILE_EXPLANATION, DG_PROFILE_VISIBILITY, type ProfileDocumentSummary } from '../profile-document-policy'
+import { DgProfileUpload } from './dg-profile-upload'
 import { UsernameField } from './username-field'
 
 function firstError(state: ProfileActionState, field: string) {
@@ -99,16 +101,25 @@ const personaOptions = [
 
 const intentOptions = PROFILE_INTENTS.map((id) => ({ id, label: PROFILE_INTENT_LABELS[id] }))
 
+type OnboardingFormProps = {
+  initialFullName: string
+  /** A rule-valid, available handle generated from the member's name or email. */
+  suggestedUsername?: string
+  profileId?: string
+  initialDgProfile?: ProfileDocumentSummary | null
+}
+
 function OnboardingFields({
   initialFullName,
+  suggestedUsername = '',
+  profileId,
+  initialDgProfile = null,
   state,
-}: {
-  initialFullName: string
-  state: ProfileActionState
-}) {
+}: OnboardingFormProps & { state: ProfileActionState }) {
   const values = state.values
   const [persona, setPersona] = useState<Persona | undefined>(values?.persona)
   const [intents, setIntents] = useState<ProfileIntent[]>(readIntents(values?.profileIntents))
+  const [dgProfile, setDgProfile] = useState<ProfileDocumentSummary | null>(initialDgProfile)
 
   const personaError = firstError(state, 'persona')
   const intentError = firstError(state, 'profileIntents')
@@ -213,7 +224,8 @@ function OnboardingFields({
             We only ask for details relevant to {PERSONA_LABELS[persona].toLowerCase()}. You can add more profile depth later.
           </p>
 
-          <div className="grid gap-5 sm:grid-cols-2">
+          {/* items-start: the username field grows with its status text; neighbours must not stretch to match. */}
+          <div className="grid gap-5 sm:grid-cols-2 sm:items-start">
             <Field
               label="Full name"
               name="fullName"
@@ -223,8 +235,12 @@ function OnboardingFields({
               required
             />
             <UsernameField
-              initialValue={values?.slug}
+              initialValue={values?.slug ?? suggestedUsername}
               serverError={firstError(state, 'slug')}
+              fallbackUsername={suggestedUsername}
+              helpText={suggestedUsername
+                ? 'We created this for you. Keep it or change it now or later from your profile.'
+                : 'You can change your username later from your profile.'}
             />
             <Field
               label="Location"
@@ -337,6 +353,24 @@ function OnboardingFields({
             ) : null}
           </div>
 
+          {persona === 'seafarer' && profileId ? (
+            <section aria-labelledby="dg-profile-heading" className="rounded-2xl border border-mist-100 bg-mist-50 p-4 sm:p-5">
+              <h3 id="dg-profile-heading" className="text-sm font-semibold text-navy-950">
+                DG Shipping profile <span className="font-normal text-muted">(optional)</span>
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-muted">{DG_PROFILE_EXPLANATION} {DG_PROFILE_VISIBILITY}</p>
+              <p className="mt-1 text-xs text-muted">You can skip this and add it later from your profile.</p>
+              <div className="mt-3">
+                <DgProfileUpload
+                  profileId={profileId}
+                  initialDocument={dgProfile}
+                  onDocumentChange={setDgProfile}
+                  variant="onboarding"
+                />
+              </div>
+            </section>
+          ) : null}
+
           <label htmlFor="contactVisibility" className="grid gap-2 text-sm font-medium text-navy-900 sm:max-w-sm">
             Who can see my contact details?
             <select
@@ -357,6 +391,7 @@ function OnboardingFields({
       ) : null}
 
       <input type="hidden" name="persona" value={persona ?? ''} />
+      <input type="hidden" name="usernameSuggestion" value={suggestedUsername} />
       <input type="hidden" name="profileIntents" value={JSON.stringify(intents)} />
     </>
   )
@@ -390,6 +425,7 @@ function captureSubmittedActivationValues(formData: FormData): ProfileActionStat
     profileIntents: text('profileIntents'),
     fullName: text('fullName'),
     slug: text('slug'),
+    usernameSuggestion: text('usernameSuggestion'),
     location: text('location'),
     rank: text('rank'),
     currentCompany: text('currentCompany'),
@@ -418,7 +454,7 @@ async function completeActivationSafely(previousState: ProfileActionState, formD
   }
 }
 
-export function OnboardingForm({ initialFullName }: { initialFullName: string }) {
+export function OnboardingForm({ initialFullName, suggestedUsername, profileId, initialDgProfile }: OnboardingFormProps) {
   const [state, formAction, pending] = useActionState(completeActivationSafely, { revision: 0 })
   const formRef = useRef<HTMLFormElement>(null)
 
@@ -437,6 +473,9 @@ export function OnboardingForm({ initialFullName }: { initialFullName: string })
 
       <OnboardingFields
         initialFullName={initialFullName}
+        suggestedUsername={suggestedUsername}
+        profileId={profileId}
+        initialDgProfile={initialDgProfile}
         state={state}
       />
 
