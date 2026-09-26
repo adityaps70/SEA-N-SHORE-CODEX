@@ -59,7 +59,7 @@ describe('CourseReviewControls', () => {
       'changes_requested',
       'Make the learning outcomes measurable and role-specific.',
     )
-    expect(await screen.findByText('Changes requested. The mentor can revise and resubmit the course.')).toBeInTheDocument()
+    expect(await screen.findByText('Changes requested. The trainer or organization manager can revise and resubmit the course.')).toBeInTheDocument()
   })
 
   it('shows only publish for an approved course', async () => {
