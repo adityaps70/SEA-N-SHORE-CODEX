@@ -31,8 +31,8 @@ type HeaderMenuProps = {
 }
 
 function itemIsActive(pathname: string | null, href: string) {
-  if (!pathname) return false
-  const path = href.split(/[?#]/)[0]
+  if (!pathname || href.includes('#')) return false
+  const path = href.split('?')[0]
   if (!path || path === '/') return false
   return pathname === path || pathname.startsWith(`${path}/`)
 }
