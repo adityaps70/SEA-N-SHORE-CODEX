@@ -1,3 +1,4 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { BarChart3, BookOpen, BriefcaseBusiness, Building2, CalendarDays, Globe2, MapPin, Palette, ShieldCheck, UsersRound } from 'lucide-react'
@@ -27,7 +28,13 @@ export default async function OrganizationWorkspacePage({ params }: { params: Pr
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
           <div className="grid size-20 shrink-0 place-items-center overflow-hidden rounded-2xl bg-navy-950 text-white">
             {workspace.logoPath
-              ? <img src={'/api/company-logo/' + workspace.id} alt="" className="size-full object-contain bg-white" />
+              ? <Image
+                  src={'/api/company-logo/' + workspace.id}
+                  alt=""
+                  width={80}
+                  height={80}
+                  className="size-full bg-white object-contain"
+                />
               : <Building2 aria-hidden="true" className="size-8" />}
           </div>
           <div className="min-w-0 flex-1">
