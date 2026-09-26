@@ -23,7 +23,7 @@ export type PublicProfile = {
   primaryIdentityFamily?: string | null
   secondaryIdentities?: string[]
   persona?: Persona | null
-  profileIntents: ProfileIntent[]
+  profileIntents?: ProfileIntent[]
   communityRelationship?: string | null
   institutionName?: string | null
   specialization?: string | null
