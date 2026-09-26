@@ -6,6 +6,7 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - infra/aws/database/migrations/0032_membership_access_foundation.sql
+      - infra/aws/database/migrations/0033_membership_experience_completion.sql
       - scripts/aws/membership-access-migration.sh
       - scripts/aws/membership-access-migration-action.txt
       - scripts/aws/membership-access-migration.test.mjs
