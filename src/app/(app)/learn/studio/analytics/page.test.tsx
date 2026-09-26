@@ -89,11 +89,11 @@ describe('/learn/studio/analytics', () => {
     })
   })
 
-  it('shows an active mentor aggregate learning outcomes and course performance', async () => {
+  it('shows an active trainer aggregate learning outcomes and course performance', async () => {
     render(await MentorLearningAnalyticsPage())
 
     expect(screen.getByRole('heading', { name: 'Learning analytics' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /mentor studio/i })).toHaveAttribute('href', '/learn/studio')
+    expect(screen.getByRole('link', { name: /learning studio/i })).toHaveAttribute('href', '/learn/studio')
     expect(screen.getByText('Enrollments')).toBeInTheDocument()
     expect(screen.getByText('10')).toBeInTheDocument()
     expect(screen.getByText('Completion rate')).toBeInTheDocument()
@@ -110,7 +110,7 @@ describe('/learn/studio/analytics', () => {
     expect(mocks.redirect).not.toHaveBeenCalled()
   })
 
-  it('shows a course-creation empty state when an active mentor has no courses', async () => {
+  it('shows a course-creation empty state when an active trainer has no courses', async () => {
     mocks.getForMentor.mockResolvedValue({
       summary: {
         courseCount: 0,
@@ -146,7 +146,7 @@ describe('/learn/studio/analytics', () => {
       mentorId: 'mentor-1',
       mentorStatus: 'suspended',
     },
-  ])('routes users without active mentor access back to Teach on Sea N Shore', async (state) => {
+  ])('routes users without active trainer access back to Teach on Sea N Shore', async (state) => {
     mocks.getMentorApplicationState.mockResolvedValue(state)
 
     await MentorLearningAnalyticsPage()
@@ -155,7 +155,7 @@ describe('/learn/studio/analytics', () => {
     expect(mocks.getForMentor).not.toHaveBeenCalled()
   })
 
-  it('shows analytics to an approved organization LMS manager without personal mentor access', async () => {
+  it('shows analytics to an approved organization LMS manager without personal trainer access', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
     mocks.listUserOrganizations.mockResolvedValue([{
       id: 'company-1',
