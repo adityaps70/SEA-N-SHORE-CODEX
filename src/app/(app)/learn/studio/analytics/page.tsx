@@ -52,13 +52,13 @@ export default async function MentorLearningAnalyticsPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
       <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-navy-950">
-        <ArrowLeft className="size-4" aria-hidden="true" /> Mentor Studio
+        <ArrowLeft className="size-4" aria-hidden="true" /> Learning Studio
       </Link>
 
       <section className="mt-5 overflow-hidden rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200">Mentor outcomes</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200">Trainer & organization outcomes</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Learning analytics</h1>
             <p className="mt-3 text-sm leading-6 text-white/70">
               See aggregate learner progress across the courses you own. These outcomes stay privacy-safe and never expose learner-level profile data.
@@ -163,7 +163,7 @@ export default async function MentorLearningAnalyticsPage() {
           <div className="mt-5 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-7 text-center sm:p-10">
             <BookOpenCheck className="mx-auto size-7 text-teal-800" aria-hidden="true" />
             <h3 className="mt-3 text-lg font-bold text-navy-950">Publish your first course to start measuring learner outcomes</h3>
-            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Build a course in Mentor Studio and this workspace will start summarizing enrollment, progress, completion and assessment outcomes automatically.</p>
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Build a course in Learning Studio and this workspace will start summarizing enrollment, progress, completion and assessment outcomes automatically.</p>
             <Link
               href="/learn/studio/courses/new"
               className="mt-5 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
