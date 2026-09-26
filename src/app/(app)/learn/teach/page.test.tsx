@@ -92,7 +92,7 @@ describe('/learn/teach', () => {
     })
   })
 
-  it('prefills a first mentor application from the signed-in maritime profile', async () => {
+  it('prefills a first trainer verification application from the signed-in maritime profile', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
 
     render(await TeachPage())
@@ -132,7 +132,7 @@ describe('/learn/teach', () => {
     expect(screen.getByTestId('mentor-form')).toHaveTextContent(note)
   })
 
-  it('redirects an approved active mentor straight to Mentor Studio', async () => {
+  it('redirects an approved active trainer straight to Mentor Studio', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor', applicationId, status: 'approved', submittedAt: '2026-09-14T12:00:00.000Z', updatedAt: '2026-09-14T14:00:00.000Z', adminReviewNote: 'Approved after credential review.', mentorId: 'mentor-1', mentorStatus: 'active',
     })
@@ -142,14 +142,14 @@ describe('/learn/teach', () => {
     expect(mocks.redirect).toHaveBeenCalledWith('/learn/studio')
   })
 
-  it('keeps Mentor Studio locked when a mentor is suspended', async () => {
+  it('keeps Learning Studio locked when trainer verification is suspended', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor', applicationId, status: 'approved', submittedAt: '2026-09-14T12:00:00.000Z', updatedAt: '2026-09-14T14:00:00.000Z', adminReviewNote: 'Account review in progress.', mentorId: 'mentor-1', mentorStatus: 'suspended',
     })
 
     render(await TeachPage())
 
-    expect(screen.getByText('Mentor access is temporarily suspended')).toBeInTheDocument()
+    expect(screen.getByText('Trainer verification is temporarily suspended')).toBeInTheDocument()
     expect(screen.queryByTestId('mentor-form')).not.toBeInTheDocument()
     expect(mocks.redirect).not.toHaveBeenCalled()
   })
