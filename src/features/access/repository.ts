@@ -26,6 +26,11 @@ type CapabilityRow = QueryResultRow & {
   capability: string
 }
 
+type PlanEntitlementRow = QueryResultRow & {
+  plan_code: string
+  capability: string
+}
+
 type VerificationRow = QueryResultRow & {
   verification_type: string
 }
@@ -44,6 +49,10 @@ function planCode(value: string | null | undefined, fallback: PlanCode = 'free')
 
 function capability(value: string): Capability | null {
   return CAPABILITIES.includes(value as Capability) ? value as Capability : null
+}
+
+function uniqueCapabilities(values: readonly Capability[]) {
+  return [...new Set(values)]
 }
 
 function verification(value: string): VerificationType | null {
@@ -69,7 +78,7 @@ export function createAccessRepository(input: { query?: AccessQuery } = {}) {
   const queryRows: AccessQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
 
   async function getAccessContext(profileId: string): Promise<AccessContext> {
-    const [profiles, plans, grants, verifications, organizations] = await Promise.all([
+    const [profiles, plans, grants, verifications, planEntitlementRows, organizations] = await Promise.all([
       queryRows(
         `select account_status::text as account_status
          from public.profiles
@@ -108,6 +117,11 @@ export function createAccessRepository(input: { query?: AccessQuery } = {}) {
         [profileId],
       ) as Promise<VerificationRow[]>,
       queryRows(
+        `select plan_code, capability
+         from public.plan_entitlements
+         order by plan_code asc, capability asc`,
+      ) as Promise<PlanEntitlementRow[]>,
+      queryRows(
         `select
            c.id as company_id,
            coalesce(c.is_verified, false) as company_verified,
@@ -143,25 +157,49 @@ export function createAccessRepository(input: { query?: AccessQuery } = {}) {
     ])
 
     const profile = profiles[0]
-    const personalEntitlements = grants
+    const planEntitlementsByCode = new Map<PlanCode, Capability[]>()
+    for (const row of planEntitlementRows) {
+      const plan = planCode(row.plan_code)
+      const resolvedCapability = capability(row.capability)
+      if (!resolvedCapability) continue
+      const current = planEntitlementsByCode.get(plan) ?? []
+      current.push(resolvedCapability)
+      planEntitlementsByCode.set(plan, current)
+    }
+
+    const personalGrantEntitlements = grants
       .map((row) => capability(row.capability))
       .filter((entry): entry is Capability => entry !== null)
     const approvedVerifications = verifications
       .map((row) => verification(row.verification_type))
       .filter((entry): entry is VerificationType => entry !== null)
 
-    const organizationMemberships: OrganizationAccessMembership[] = organizations.map((row) => ({
-      companyId: row.company_id,
-      plan: planCode(row.plan_code),
-      role: organizationRole(row.role),
-      verified: Boolean(row.company_verified),
-      entitlements: (row.entitlements ?? [])
+    const personalPlan = planCode(plans[0]?.plan_code)
+    const personalEntitlements = uniqueCapabilities([
+      ...(planEntitlementsByCode.get(personalPlan) ?? []),
+      ...personalGrantEntitlements,
+    ])
+
+    const organizationMemberships: OrganizationAccessMembership[] = organizations.map((row) => {
+      const plan = planCode(row.plan_code)
+      const grantEntitlements = (row.entitlements ?? [])
         .map((entry) => capability(entry))
-        .filter((entry): entry is Capability => entry !== null),
-    }))
+        .filter((entry): entry is Capability => entry !== null)
+
+      return {
+        companyId: row.company_id,
+        plan,
+        role: organizationRole(row.role),
+        verified: Boolean(row.company_verified),
+        entitlements: uniqueCapabilities([
+          ...(planEntitlementsByCode.get(plan) ?? []),
+          ...grantEntitlements,
+        ]),
+      }
+    })
 
     return {
-      personalPlan: planCode(plans[0]?.plan_code),
+      personalPlan,
       personalEntitlements,
       verifications: approvedVerifications,
       organizationMemberships,
