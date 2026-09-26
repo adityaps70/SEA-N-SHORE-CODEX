@@ -97,7 +97,7 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
                     {attempt.scorePoints !== null ? <p className="mt-3 text-sm font-bold text-navy-950">Score {attempt.scorePoints}/{review.maxPoints} · {attempt.percentage}%</p> : null}
                     {attempt.feedback ? (
                       <div className="mt-3 rounded-xl border border-teal-100 bg-white p-3 text-sm leading-6 text-muted">
-                        <span className="font-bold text-navy-950">Mentor feedback:</span> {attempt.feedback}
+                        <span className="font-bold text-navy-950">Trainer feedback:</span> {attempt.feedback}
                       </div>
                     ) : null}
                   </article>
@@ -110,7 +110,7 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
         <aside className="rounded-[1.4rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 lg:sticky lg:top-24">
           {review.status === 'submitted' ? (
             <>
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Mentor grading</p>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Trainer grading</p>
               <h2 className="mt-1 text-xl font-bold text-navy-950">Review this attempt</h2>
               <p className="mt-2 text-sm leading-6 text-muted">Passing threshold: {review.passingPercentage}% of {review.maxPoints} points.</p>
               <div className="mt-5">
