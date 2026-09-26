@@ -85,6 +85,13 @@ test('persona selection uses exact accessible labels without Seafarer collisions
   assert.match(browserScript, /getByRole\('button', \{\s*name:\s*user\.label,\s*exact:\s*true,?\s*\}\)/)
 })
 
+test('profile edit rank locator is exact so onboarding and profile labels cannot collide', () => {
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+
+  assert.match(browserScript, /getByLabel\('Rank', \{ exact: true \}\)/)
+  assert.doesNotMatch(browserScript, /getByLabel\('Rank'\)(?!,)/)
+})
+
 test('onboarding e2e audits persistence without destructive inline cleanup', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
 
