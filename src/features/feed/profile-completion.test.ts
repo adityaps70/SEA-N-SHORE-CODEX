@@ -47,6 +47,43 @@ describe('calculateProfileCompletion', () => {
     }), completePortfolio)).toBe(60)
   })
 
+  it('does not impose seafarer completion requirements on Family or Enthusiast personas', () => {
+    expect(calculateProfileCompletion(profile({
+      profileType: 'maritime_professional',
+      persona: 'seafarer_family',
+      rank: null,
+      currentCompany: null,
+      sailingExperienceYears: null,
+    }))).toBe(100)
+
+    expect(calculateProfileCompletion(profile({
+      profileType: 'maritime_professional',
+      persona: 'maritime_enthusiast',
+      rank: null,
+      currentCompany: null,
+      sailingExperienceYears: null,
+    }))).toBe(100)
+  })
+
+  it('uses persona-specific profile details instead of legacy maritime type for completion', () => {
+    expect(calculateProfileCompletion(profile({
+      profileType: 'maritime_professional',
+      persona: 'student_cadet',
+      institutionName: 'Indian Maritime University',
+      rank: null,
+      currentCompany: null,
+      sailingExperienceYears: null,
+    }))).toBe(100)
+
+    expect(calculateProfileCompletion(profile({
+      profileType: 'trainer',
+      persona: 'trainer_instructor',
+      specialization: null,
+      rank: null,
+      sailingExperienceYears: null,
+    }))).toBeLessThan(100)
+  })
+
   it('uses only generic fields for non-maritime profile types', () => {
     expect(calculateProfileCompletion(profile({
       profileType: 'mentor',
