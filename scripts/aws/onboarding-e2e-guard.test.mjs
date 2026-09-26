@@ -112,6 +112,15 @@ test('persona persistence audit still runs after an unrelated avatar proof failu
   assert.doesNotMatch(auditBlock, /steps\.feed_avatar\.outcome/)
 })
 
+test('persistence evidence wait still executes after an unrelated avatar proof failure', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const start = workflow.indexOf('- name: Wait and surface persistence evidence')
+  assert.ok(start >= 0)
+  const waitBlock = workflow.slice(start, workflow.indexOf('\n      - name:', start + 10) === -1 ? workflow.length : workflow.indexOf('\n      - name:', start + 10))
+  assert.match(waitBlock, /if:\s*always\(\)\s*&&\s*steps\.audit\.outputs\.command_id != ''/)
+  assert.match(waitBlock, /ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true/)
+})
+
 test('run-once includes mobile viewport and serious accessibility regression checks', () => {
   const browserScript = readFileSync(browserScriptPath, 'utf8')
 
