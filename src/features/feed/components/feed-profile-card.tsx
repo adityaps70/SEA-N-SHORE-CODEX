@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { Anchor, BriefcaseBusiness, Clock3, Ship, Waves } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { PERSONA_LABELS } from '@/features/profiles/persona'
 import type { OwnProfile } from '@/features/profiles/types'
 import { calculateProfileCompletion, type ProfilePortfolioCompletion } from '../profile-completion'
 
@@ -14,6 +15,20 @@ function initials(name: string) {
     .join('')
 }
 
+function profileDescriptor(profile: OwnProfile) {
+  if (profile.persona === 'seafarer_family') return profile.communityRelationship ?? PERSONA_LABELS.seafarer_family
+  if (profile.persona === 'student_cadet') return profile.institutionName ?? PERSONA_LABELS.student_cadet
+  if (profile.persona === 'trainer_instructor') return profile.specialization ?? profile.currentCompany ?? PERSONA_LABELS.trainer_instructor
+  if (profile.persona === 'shore_professional' || profile.persona === 'recruiter_hr') {
+    return profile.currentCompany ?? PERSONA_LABELS[profile.persona]
+  }
+  if (profile.persona === 'seafarer') {
+    return [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || PERSONA_LABELS.seafarer
+  }
+  if (profile.persona) return PERSONA_LABELS[profile.persona]
+  return [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || null
+}
+
 export function FeedProfileCard({
   profile,
   portfolioCompletion,
@@ -24,6 +39,8 @@ export function FeedProfileCard({
   compact?: boolean
 }) {
   const completion = calculateProfileCompletion(profile, portfolioCompletion)
+  const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
+  const descriptor = profileDescriptor(profile)
   const profileAction = completion < 100
     ? { href: '/profile/edit', label: 'Complete profile' }
     : { href: '/profile', label: 'View profile' }
@@ -41,7 +58,7 @@ export function FeedProfileCard({
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold text-navy-950">{profile.fullName}</p>
-            <p className="truncate text-sm text-muted">{profile.headline ?? profile.rank ?? 'Maritime professional'}</p>
+            <p className="truncate text-sm text-muted">{profile.headline ?? descriptor ?? 'Sea N Shore member'}</p>
           </div>
           <Link href={profileAction.href} className="shrink-0 text-sm font-semibold text-ocean-700 hover:text-navy-950">
             {profileAction.label}
@@ -68,14 +85,20 @@ export function FeedProfileCard({
         </div>
         <p className="mt-2 text-base font-semibold text-navy-950">{profile.fullName}</p>
         {profile.headline ? <p className="mt-1 line-clamp-2 text-xs leading-4 text-muted">{profile.headline}</p> : null}
-        {profile.rank || profile.currentCompany ? (
+        {profile.persona ? (
+          <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.1em] text-teal-700">
+            {PERSONA_LABELS[profile.persona]}
+          </p>
+        ) : null}
+        {descriptor ? (
           <p className="mt-1.5 flex items-center justify-center gap-1.5 text-xs font-medium text-ocean-700">
-            <Anchor aria-hidden="true" className="size-3.5" />
-            {[profile.rank, profile.currentCompany].filter(Boolean).join(' · ')}
+            {isSeafarer ? <Anchor aria-hidden="true" className="size-3.5" /> : <BriefcaseBusiness aria-hidden="true" className="size-3.5" />}
+            {descriptor}
           </p>
         ) : null}
       </div>
 
+      {isSeafarer ? (
       <div className="border-t border-mist-100 px-4 py-3">
         <dl className="space-y-2 text-sm">
           {profile.sailingExperienceYears !== null ? (
@@ -104,6 +127,7 @@ export function FeedProfileCard({
           ) : null}
         </dl>
       </div>
+      ) : null}
 
       <div className="border-t border-mist-100 px-4 py-3">
         <div className="flex items-center justify-between text-xs">
