@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useState } from 'react'
 import { FormErrorSummary } from '@/components/ui/form-error-summary'
 import { updateProfilePreferences, type ProfileActionState } from '../actions'
 import {
@@ -40,10 +40,9 @@ export function ProfilePreferencesForm({ profile }: { profile: OwnProfile }) {
           : 'shore_professional'
   )
   const stateIntents = parseStateIntents(state.values?.profileIntents)
-  const initialIntents = useMemo(
-    () => stateIntents ?? (profile.profileIntents.length ? profile.profileIntents : ['community']),
-    [profile.profileIntents, stateIntents],
-  )
+  const persistedIntents = profile.profileIntents ?? []
+  const initialIntents: ProfileIntent[] = stateIntents
+    ?? (persistedIntents.length ? persistedIntents : ['community'])
   const [persona, setPersona] = useState<Persona>(initialPersona)
   const [intents, setIntents] = useState<ProfileIntent[]>(initialIntents)
 
