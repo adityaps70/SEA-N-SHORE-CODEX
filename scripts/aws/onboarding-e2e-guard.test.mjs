@@ -164,6 +164,29 @@ test('public signup defers explicit confirmation-delivery quota failures to the 
   assert.doesNotMatch(browserScript, /assert\.equal\(signupOutcome, 'confirmed'\)/)
 })
 
+test('admin confirmation proves deferred signups exist and surfaces Cognito failures', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const confirmStart = workflow.indexOf('- name: Confirm disposable sign-ups through staging bootstrap')
+  const confirmEnd = workflow.indexOf('- name: Wait for disposable sign-up confirmation')
+  assert.ok(confirmStart >= 0 && confirmEnd > confirmStart)
+  const confirmBlock = workflow.slice(confirmStart, confirmEnd)
+
+  assert.match(confirmBlock, /admin-get-user/)
+  assert.match(confirmBlock, /UserNotFoundException/)
+  assert.match(confirmBlock, /UserStatus/)
+  assert.match(confirmBlock, /UNCONFIRMED/)
+  assert.match(confirmBlock, /CONFIRMED/)
+  assert.match(confirmBlock, /admin-confirm-sign-up/)
+  assert.match(confirmBlock, /ONBOARDING_E2E_ADMIN_CONFIRM_VERIFIED=true/)
+
+  const waitStart = confirmEnd
+  const waitEnd = workflow.indexOf('- name: Run staging sign-in and onboarding browser journeys')
+  assert.ok(waitEnd > waitStart)
+  const waitBlock = workflow.slice(waitStart, waitEnd)
+  assert.match(waitBlock, /StandardErrorContent/)
+  assert.match(waitBlock, /ONBOARDING E2E ADMIN CONFIRM STDERR/)
+})
+
 test('public signup is quota-aware and creates all eight persona accounts', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')
