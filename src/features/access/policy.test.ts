@@ -14,7 +14,11 @@ import {
 
 const TEST_PLAN_ENTITLEMENTS: Record<PlanCode, Capability[]> = {
   free: ['job.apply', 'event.attend', 'course.enroll'],
-  creator_pro: ['job.apply', 'event.attend', 'course.enroll', 'job.publish', 'event.publish', 'course.publish'],
+  creator_pro: [
+    'job.apply', 'event.attend', 'course.enroll',
+    'job.publish', 'event.publish', 'course.publish',
+    'job.manage_applicants', 'event.manage_attendees', 'course.manage_students',
+  ],
   organization_pro: [
     'job.apply', 'event.attend', 'course.enroll',
     'job.publish', 'event.publish', 'course.publish',
@@ -188,8 +192,11 @@ const FREE_CAPABILITIES = new Set<Capability>([
 
 const PERSONAL_PUBLISH_REQUIREMENTS: Partial<Record<Capability, VerificationType>> = {
   'job.publish': 'recruiter',
+  'job.manage_applicants': 'recruiter',
   'event.publish': 'event_host',
+  'event.manage_attendees': 'event_host',
   'course.publish': 'trainer',
+  'course.manage_students': 'trainer',
 }
 
 const ORGANIZATION_ROLES: OrganizationAccessRole[] = [
