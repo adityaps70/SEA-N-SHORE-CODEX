@@ -8,7 +8,9 @@ import type { ProfileMediaKind } from './profile-media-repository'
 export type ProfileMediaActionState = { error?: string; success?: boolean }
 
 function revalidateProfileMedia() {
-  revalidatePath('/profile')
+  // Keep the current /profile action state intact long enough for the client
+  // to observe success/error. ProfileMediaControls refreshes /profile after
+  // success; these invalidations keep every other media surface fresh.
   revalidatePath('/people/[slug]', 'page')
   revalidatePath('/home')
   revalidatePath('/network')
