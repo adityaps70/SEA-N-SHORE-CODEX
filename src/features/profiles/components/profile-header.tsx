@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { useActionState, useState } from 'react'
 import { Anchor, MapPin, Pencil, Ship, TimerReset } from 'lucide-react'
 import { updateProfileIdentitySection, type ProfileInlineActionState } from '../profile-inline-actions'
+import { PERSONA_LABELS, personaUsesProfessionalCompany } from '../persona'
 import { profileAvailabilityLabel } from '../profile-availability'
 import type { ContactVisibility, PublicProfile } from '../types'
 
@@ -63,10 +64,13 @@ export function ProfileHeader({
   }
 
   const [state, formAction, pending] = useActionState(submitIdentity, initialState)
-  const identityLabel = profile.primaryIdentity ?? profileTypeLabels[profile.profileType]
+  const identityLabel = profile.persona ? PERSONA_LABELS[profile.persona] : profile.primaryIdentity ?? profileTypeLabels[profile.profileType]
   const secondaryIdentities = profile.secondaryIdentities ?? []
   const availabilityLabel = profileAvailabilityLabel(profile.availability)
-  const companyFieldLabel = profile.identityRoot === 'organisation' ? 'Company name' : 'Current company'
+  const showCompanyField = profile.persona
+    ? personaUsesProfessionalCompany(profile.persona)
+    : profile.identityRoot !== 'organisation'
+  const companyFieldLabel = 'Current organization'
   const inputClass = 'mt-1 min-h-10 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500'
   const labelClass = 'block text-sm font-semibold text-navy-950'
 
@@ -197,11 +201,13 @@ export function ProfileHeader({
                 <input name="headline" required maxLength={160} defaultValue={profile.headline ?? ''} className={inputClass} />
                 <FieldError state={state} name="headline" />
               </label>
-              <label className={labelClass}>
-                {companyFieldLabel}
-                <input name="currentCompany" maxLength={160} defaultValue={profile.currentCompany ?? ''} className={inputClass} />
-                <FieldError state={state} name="currentCompany" />
-              </label>
+              {showCompanyField ? (
+                <label className={labelClass}>
+                  {companyFieldLabel}
+                  <input name="currentCompany" maxLength={160} defaultValue={profile.currentCompany ?? ''} className={inputClass} />
+                  <FieldError state={state} name="currentCompany" />
+                </label>
+              ) : null}
               <label className={labelClass}>
                 Contact visibility
                 <select name="contactVisibility" defaultValue={contactVisibility} className={inputClass}>
