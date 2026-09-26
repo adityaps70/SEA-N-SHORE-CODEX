@@ -7,7 +7,7 @@ type HiringSubnavProps = {
 const items = [
   { id: 'overview', label: 'Overview', href: '/hiring' },
   { id: 'jobs', label: 'Jobs', href: '/hiring/jobs' },
-  { id: 'company', label: 'Company', href: '/hiring/company' },
+  { id: 'company', label: 'Organizations', href: '/organizations' },
 ] as const
 
 export function HiringSubnav({ active }: HiringSubnavProps) {
