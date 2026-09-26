@@ -5,6 +5,7 @@ import { BarChart3, BookOpen, BriefcaseBusiness, Building2, CalendarDays, Globe2
 import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { OrganizationFollowButton } from '@/features/organizations/components/organization-follow-button'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
 
 export default async function OrganizationWorkspacePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -13,7 +14,10 @@ export default async function OrganizationWorkspacePage({ params }: { params: Pr
   const workspace = await organizationWorkspaceRepository.getBySlug(slug)
   if (!workspace) notFound()
 
-  const access = await getAccessContext(user.id)
+  const [access, followState] = await Promise.all([
+    getAccessContext(user.id),
+    organizationWorkspaceRepository.getFollowState(workspace.id, user.id),
+  ])
   const membership = access.organizationMemberships.find((entry) => entry.companyId === workspace.id)
   const canTeam = canUseCapability(access, 'organization.team', { companyId: workspace.id })
   const canBrand = canUseCapability(access, 'organization.branding', { companyId: workspace.id })
@@ -38,17 +42,26 @@ export default async function OrganizationWorkspacePage({ params }: { params: Pr
               : <Building2 aria-hidden="true" className="size-8" />}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-3xl font-bold text-navy-950 sm:text-4xl">{workspace.name}</h1>
-              {workspace.verified ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">
-                  <ShieldCheck aria-hidden="true" className="size-3.5" /> Verified organization
-                </span>
-              ) : (
-                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">Verification pending</span>
-              )}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-3xl font-bold text-navy-950 sm:text-4xl">{workspace.name}</h1>
+                  {workspace.verified ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">
+                      <ShieldCheck aria-hidden="true" className="size-3.5" /> Verified organization
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">Verification pending</span>
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-muted">{workspace.companyType ?? 'Maritime organization'}</p>
+              </div>
+              <OrganizationFollowButton
+                companyId={workspace.id}
+                initialFollowing={followState.following}
+                initialFollowerCount={followState.followerCount}
+              />
             </div>
-            <p className="mt-2 text-sm text-muted">{workspace.companyType ?? 'Maritime organization'}</p>
             {workspace.description ? <p className="mt-4 max-w-3xl text-sm leading-7 text-navy-900">{workspace.description}</p> : null}
             <div className="mt-4 flex flex-wrap gap-3 text-sm text-muted">
               {workspace.website ? <a href={workspace.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-semibold text-ocean-700 hover:underline"><Globe2 className="size-4" aria-hidden="true" /> Website</a> : null}
