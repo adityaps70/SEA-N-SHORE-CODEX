@@ -8,7 +8,7 @@ export const ORGANIZATION_APPLICATION_STATUSES = [
 
 export type OrganizationApplicationStatus = (typeof ORGANIZATION_APPLICATION_STATUSES)[number]
 
-export const COMPANY_ACCESS_REQUEST_TYPES = ['join_company', 'recruiter_access'] as const
+export const COMPANY_ACCESS_REQUEST_TYPES = ['join_company', 'recruiter_access', 'role_access'] as const
 export type CompanyAccessRequestType = (typeof COMPANY_ACCESS_REQUEST_TYPES)[number]
 
 export const COMPANY_ACCESS_REQUEST_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const
@@ -16,7 +16,15 @@ export type CompanyAccessRequestStatus = (typeof COMPANY_ACCESS_REQUEST_STATUSES
 
 
 
-export const COMPANY_ACCESS_REQUEST_ROLES = ['member', 'recruiter', 'administrator'] as const
+export const COMPANY_ACCESS_REQUEST_ROLES = [
+  'member',
+  'recruiter',
+  'administrator',
+  'lms_manager',
+  'event_manager',
+  'content_manager',
+  'analyst',
+] as const
 export type CompanyAccessRequestRole = (typeof COMPANY_ACCESS_REQUEST_ROLES)[number]
 
 export type CompanyAccessRequestSummary = {
