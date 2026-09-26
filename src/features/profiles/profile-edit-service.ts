@@ -40,12 +40,10 @@ export function createProfileEditService(input: { withTransaction: ProfileEditTr
         serviceError('profile_edit_unavailable')
       }
 
-      if (data.profileType === 'seafarer' || data.profileType === 'maritime_professional') {
+      if (data.profileType === 'seafarer') {
         await repository.upsertMaritimeProfile(actorId, data)
-      } else if (supportsCurrentCompany) {
+      } else if (supportsCurrentCompany && data.currentCompany !== undefined) {
         await repository.upsertActivationMaritimeProfile(actorId, data.currentCompany)
-      } else {
-        await repository.deleteMaritimeProfile(actorId)
       }
 
       await repository.replaceSkills(actorId, data.skills)
