@@ -17,6 +17,37 @@ describe('organization follows', () => {
     })
   })
 
+  it('lists organizations the member follows', async () => {
+    const repository = createOrganizationWorkspaceRepository({
+      query: async (text, values) => {
+        expect(text).toContain('join public.organization_follows')
+        expect(values).toEqual(['user-1'])
+        return [{
+          id: 'company-1',
+          slug: 'oceanic',
+          name: 'Oceanic Shipping',
+          logo_path: null,
+          company_type: 'Ship Manager',
+          website: 'https://oceanic.example.com',
+          description: 'Ship management company',
+          fleet_summary: null,
+          vessel_types: ['Oil Tanker'],
+          office_locations: ['Mumbai'],
+          is_verified: true,
+        }]
+      },
+    })
+
+    await expect(repository.listFollowedOrganizations('user-1')).resolves.toEqual([
+      expect.objectContaining({
+        id: 'company-1',
+        slug: 'oceanic',
+        name: 'Oceanic Shipping',
+        verified: true,
+      }),
+    ])
+  })
+
   it('follows and unfollows an organization idempotently', async () => {
     const seen: string[] = []
     const repository = createOrganizationWorkspaceRepository({
