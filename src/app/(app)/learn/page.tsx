@@ -251,7 +251,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
         <form action="/learn" method="get" className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search aria-hidden="true" className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <input aria-label="Search maritime courses" type="search" name="search" defaultValue={search ?? ''} placeholder="Search courses, skills or mentors" className="w-full rounded-xl border border-mist-200 bg-mist-50/60 py-3 pl-10 pr-4 text-sm font-semibold text-navy-950 outline-none transition placeholder:font-normal placeholder:text-muted focus:border-teal-400 focus:bg-white" />
+            <input aria-label="Search maritime courses" type="search" name="search" defaultValue={search ?? ''} placeholder="Search courses, skills, trainers or organizations" className="w-full rounded-xl border border-mist-200 bg-mist-50/60 py-3 pl-10 pr-4 text-sm font-semibold text-navy-950 outline-none transition placeholder:font-normal placeholder:text-muted focus:border-teal-400 focus:bg-white" />
           </div>
           {category ? <input type="hidden" name="category" value={category} /> : null}
           <button type="submit" className="rounded-xl bg-navy-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-navy-900">Search courses</button>
