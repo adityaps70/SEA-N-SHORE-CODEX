@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Camera, Trash2 } from 'lucide-react'
-import { useActionState, useEffect, useRef, useState, useTransition } from 'react'
+import { useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import {
   removeAvatarAction,
   removeCoverAction,
@@ -12,6 +12,9 @@ import {
 } from '../profile-media-actions'
 
 const initialState: ProfileMediaActionState = {}
+const subscribeToHydration = () => () => {}
+const getHydratedSnapshot = () => true
+const getServerHydratedSnapshot = () => false
 
 export function ProfileMediaControls({
   kind,
@@ -29,6 +32,7 @@ export function ProfileMediaControls({
   const [removing, startRemoving] = useTransition()
   const inputRef = useRef<HTMLInputElement>(null)
   const label = kind === 'avatar' ? 'profile photo' : 'cover photo'
+  const hydrated = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerHydratedSnapshot)
 
   const imagePresent = removed ? false : state.success ? true : hasImage
 
@@ -74,7 +78,7 @@ export function ProfileMediaControls({
         />
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !hydrated}
           onClick={() => inputRef.current?.click()}
           aria-label={`${imagePresent ? 'Change' : 'Add'} ${label}`}
           className={kind === 'avatar'
@@ -89,7 +93,7 @@ export function ProfileMediaControls({
       {imagePresent ? (
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !hydrated}
           onClick={removeImage}
           aria-label={`Remove ${label}`}
           className={kind === 'avatar'
