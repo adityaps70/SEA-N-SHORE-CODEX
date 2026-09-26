@@ -206,9 +206,9 @@ function CourseCard({ course }: { course: CourseReviewItem }) {
           </div>
 
           <section className="mt-5 rounded-2xl border border-mist-100 bg-mist-50/70 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Verified mentor</p>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Verified trainer</p>
             <p className="mt-2 text-sm font-bold text-navy-950">{course.mentorName}</p>
-            <p className="mt-1 text-xs font-semibold text-muted">Mentor ID {course.mentorId}</p>
+            <p className="mt-1 text-xs font-semibold text-muted">Trainer record ID {course.mentorId}</p>
           </section>
 
           <div className="mt-5 grid gap-5 lg:grid-cols-3">
@@ -279,7 +279,7 @@ export default async function LearningCoursesAdminPage({
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
               <UserRoundCheck aria-hidden="true" className="size-4 text-teal-200" />
-              <p className="mt-2 text-xs font-bold text-white">Verified mentors</p>
+              <p className="mt-2 text-xs font-bold text-white">Verified trainers</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
               <BookOpenCheck aria-hidden="true" className="size-4 text-teal-200" />
@@ -294,7 +294,7 @@ export default async function LearningCoursesAdminPage({
           href="/admin/learning"
           className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
         >
-          Mentor approvals
+          Trainer verifications
         </Link>
         <Link
           href="/admin/learning/courses"
