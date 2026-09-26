@@ -5,7 +5,11 @@ import type { UserOrganizationMembershipSummary } from '@/features/organizations
 
 const TEST_PLAN_ENTITLEMENTS: Record<PlanCode, Capability[]> = {
   free: ['job.apply', 'event.attend', 'course.enroll'],
-  creator_pro: ['job.apply', 'event.attend', 'course.enroll', 'job.publish', 'event.publish', 'course.publish'],
+  creator_pro: [
+    'job.apply', 'event.attend', 'course.enroll',
+    'job.publish', 'event.publish', 'course.publish',
+    'job.manage_applicants', 'event.manage_attendees', 'course.manage_students',
+  ],
   organization_pro: [
     'job.apply', 'event.attend', 'course.enroll',
     'job.publish', 'event.publish', 'course.publish',
