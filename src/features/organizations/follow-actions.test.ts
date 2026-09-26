@@ -33,12 +33,12 @@ describe('organization follow actions', () => {
       organizationMemberships: [],
       accountActive: true,
     })
-    mocks.getById.mockResolvedValue({ id: 'company-1', slug: 'oceanic' })
+    mocks.getById.mockResolvedValue({ id: '33333333-3333-4333-8333-333333333333', slug: 'oceanic' })
   })
 
   it('allows an active free member to follow an organization', async () => {
-    await expect(followOrganizationAction('company-1')).resolves.toEqual({ ok: true })
-    expect(mocks.followOrganization).toHaveBeenCalledWith('user-1', 'company-1')
+    await expect(followOrganizationAction('33333333-3333-4333-8333-333333333333')).resolves.toEqual({ ok: true })
+    expect(mocks.followOrganization).toHaveBeenCalledWith('user-1', '33333333-3333-4333-8333-333333333333')
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/organizations/oceanic')
   })
 
@@ -51,7 +51,7 @@ describe('organization follow actions', () => {
       accountActive: false,
     })
 
-    await expect(unfollowOrganizationAction('company-1')).resolves.toEqual({
+    await expect(unfollowOrganizationAction('33333333-3333-4333-8333-333333333333')).resolves.toEqual({
       ok: false,
       error: 'Your account cannot update organization follows right now.',
     })
