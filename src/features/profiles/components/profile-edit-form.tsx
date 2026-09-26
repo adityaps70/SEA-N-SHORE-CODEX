@@ -18,8 +18,7 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
   const [state, formAction, pending] = useActionState(updateProfile, initialState)
   const [usernameReady, setUsernameReady] = useState(true)
   const values = state.values
-  const isMaritime = profile.profileType === 'seafarer' || profile.profileType === 'maritime_professional'
-  const companyFieldLabel = profile.identityRoot === 'organisation' ? 'Company name' : 'Current company'
+  const isMaritime = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
   const usernameChangesRemaining = Math.max(0, 2 - (profile.usernameChangeCount ?? 0))
 
   function textValue(name: keyof OnboardingFormValues, fallback = '') {
@@ -66,11 +65,6 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
               Headline
               <input name="headline" required maxLength={160} defaultValue={textValue('headline', profile.headline ?? '')} className={inputClass} />
               <FieldError state={state} name="headline" />
-            </label>
-            <label className={labelClass}>
-              {companyFieldLabel}
-              <input name="currentCompany" maxLength={160} defaultValue={textValue('currentCompany', profile.currentCompany ?? '')} className={inputClass} />
-              <FieldError state={state} name="currentCompany" />
             </label>
           </div>
         </section>
