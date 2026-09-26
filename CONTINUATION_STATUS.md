@@ -247,8 +247,19 @@ No membership schema migration has been intentionally applied to staging yet.
 - CI now also exercises keyboard activation of persona/intent buttons, selected `aria-pressed` state, username description linkage, error-summary focus and mobile-first responsive layout contracts.
 - Cleanup remains guarded and deletes only disposable E2E identities.
 - `scripts/aws/onboarding-e2e-action.txt` remains `plan`.
-- Exact-head CI is green at 359 test files / 1,721 tests, including Docker, Terraform validations/guards, SSM execution contract and Remote Verify.
+- Exact-head CI is green at 366 test files / 1,750 tests, including Docker, Terraform validations/guards, SSM execution contract and Remote Verify.
 - The onboarding workflow parses and completes successfully in plan mode, but the live eight-persona staging journey has **not** been executed.
+
+### Strict one-shot staging launch orchestration
+- Added `.github/workflows/aws-membership-launch-sequence.yml` as a **manual-only** launch workflow; it has no push trigger.
+- Execution requires the exact current `feat/aws-native-phase-0-1` SHA plus the explicit confirmation phrase `I_APPROVE_MEMBERSHIP_STAGING_ONE_SHOT`.
+- The sequence dispatches migration → staging deploy → onboarding E2E **strictly in that order on the same immutable SHA**.
+- Each child workflow independently rechecks the exact SHA, explicit confirmation (for destructive/run-once actions), exact-head green CI and moved-branch protection.
+- The orchestrator never needs to arm the normal push guard files; `membership-access-migration-action.txt`, `staging-deploy-action.txt` and `onboarding-e2e-action.txt` remain `plan`.
+- An always-run cleanup/rearm job verifies all execution guard files are back at `plan` even if an approved sequence fails part-way through.
+- The new launch-sequence and child-workflow safety contracts run inside AWS Infrastructure CI.
+- Exact-head verification passed at **366 test files / 1,750 tests**, plus Docker, both Terraform validations, Terraform plan guards, SSM execution contract and Remote Verify.
+- The manual launch sequence itself has **not** been executed; no membership migration or schema-dependent deployment was performed by this work.
 
 ## Tests added/updated
 
@@ -270,16 +281,15 @@ No membership schema migration has been intentionally applied to staging yet.
 
 Use the master checklist as the authoritative list. Highest-priority unfinished items are:
 
-1. Live all-eight-persona staging onboarding E2E, only as part of the explicitly approved guarded migration → deploy → E2E one-shot sequence.
-2. Re-arm every execution guard to `plan` immediately after any approved one-shot staging execution.
-3. Pricing decision, currency/tax behavior and payment-provider selection.
-4. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
+1. Explicit approval to execute the manual exact-SHA staging sequence: membership migration → deploy → all-eight-persona onboarding E2E.
+2. Pricing decision, currency/tax behavior and payment-provider selection.
+3. Checkout/webhook/idempotency/invoice implementation after pricing/provider approval.
 
 ## Exact next action
 
 All remaining **non-deployment onboarding/membership implementation and regression work is complete** for the currently approved scope.
 
-The next technical launch step requires explicit approval to run the guarded staging sequence: membership migration → schema-dependent application deploy → all-eight-persona browser E2E/persistence/mobile/accessibility verification → re-arm every action guard to `plan`. Until that approval is given, keep all execution guards at `plan` and do not apply or deploy the new membership schema.
+The next technical launch step requires explicit approval to run `.github/workflows/aws-membership-launch-sequence.yml` in execute mode for an exact approved branch SHA. The workflow enforces membership migration → schema-dependent application deploy → all-eight-persona browser E2E/persistence/mobile/accessibility verification in strict order on that same SHA, then verifies every action guard is `plan`. Until that approval is given, do not run the sequence and do not apply or deploy the new membership schema.
 
 Billing remains separately blocked on product decisions for Creator Pro / Organization Pro pricing, currency/tax treatment and payment provider.
 
