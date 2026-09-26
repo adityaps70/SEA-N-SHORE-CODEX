@@ -51,12 +51,14 @@ describe('ProfileEditForm', () => {
     expect(screen.getByRole('link', { name: /cancel/i })).toHaveAttribute('href', '/profile')
   })
 
-  it('keeps current company editable for professional identities with non-maritime legacy profile types', () => {
+  it('keeps organization data out of the generic legacy profile form', () => {
     render(<ProfileEditForm profile={{ ...profile, profileType: 'mentor', identityRoot: 'professional' }} />)
 
-    expect(screen.getByRole('textbox', { name: /current company/i })).toHaveValue('Example Shipping')
+    expect(screen.queryByRole('textbox', { name: /current company/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /current organization/i })).not.toBeInTheDocument()
   })
-  it('shows company name for Shipowner organisation identities', () => {
+
+  it('does not expose legacy organization-account editing in the personal profile form', () => {
     render(
       <ProfileEditForm
         profile={{
@@ -70,7 +72,8 @@ describe('ProfileEditForm', () => {
       />,
     )
 
-    expect(screen.getByRole('textbox', { name: 'Company name' })).toHaveValue('Beaufort Marine Services')
+    expect(screen.queryByRole('textbox', { name: 'Company name' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /current organization/i })).not.toBeInTheDocument()
   })
 
 })
