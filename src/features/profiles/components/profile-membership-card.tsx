@@ -15,7 +15,7 @@ const verificationLabel = {
 } as const
 
 const roleLabel = (role: UserOrganizationMembershipSummary['role']) =>
-  role.replaceAll('_', ' ').replace(/w/g, (letter) => letter.toUpperCase())
+  role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
 export function ProfileMembershipCard({
   profile,
@@ -26,6 +26,8 @@ export function ProfileMembershipCard({
   access: AccessContext
   organizations: UserOrganizationMembershipSummary[]
 }) {
+  const profileIntents = profile.profileIntents ?? []
+
   return (
     <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -50,12 +52,12 @@ export function ProfileMembershipCard({
             {profile.persona ? PERSONA_LABELS[profile.persona] : 'Legacy profile'}
           </p>
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {profile.profileIntents.map((intent) => (
+            {profileIntents.map((intent) => (
               <span key={intent} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-navy-900">
                 {PROFILE_INTENT_LABELS[intent]}
               </span>
             ))}
-            {!profile.profileIntents.length ? <span className="text-xs text-muted">Add your goals from Edit Profile.</span> : null}
+            {!profileIntents.length ? <span className="text-xs text-muted">Add your goals from Edit Profile.</span> : null}
           </div>
         </article>
 
