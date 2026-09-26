@@ -17,6 +17,33 @@ const verificationLabel = {
 const roleLabel = (role: UserOrganizationMembershipSummary['role']) =>
   role.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 
+function onboardingDetails(profile: OwnProfile) {
+  const details: Array<{ label: string; value: string }> = []
+
+  if (profile.persona === 'seafarer') {
+    if (profile.rank) details.push({ label: 'Rank', value: profile.rank })
+    if (profile.currentCompany) details.push({ label: 'Current organization', value: profile.currentCompany })
+  } else if (
+    profile.persona === 'shore_professional'
+    || profile.persona === 'recruiter_hr'
+    || profile.persona === 'trainer_instructor'
+  ) {
+    if (profile.currentCompany) details.push({ label: 'Current organization', value: profile.currentCompany })
+  }
+
+  if (profile.persona === 'trainer_instructor' && profile.specialization) {
+    details.push({ label: 'Specialization', value: profile.specialization })
+  }
+  if (profile.persona === 'student_cadet' && profile.institutionName) {
+    details.push({ label: 'Institute / academy', value: profile.institutionName })
+  }
+  if (profile.persona === 'seafarer_family' && profile.communityRelationship) {
+    details.push({ label: 'Relationship', value: profile.communityRelationship })
+  }
+
+  return details
+}
+
 export function ProfileMembershipCard({
   profile,
   access,
@@ -27,6 +54,7 @@ export function ProfileMembershipCard({
   organizations: UserOrganizationMembershipSummary[]
 }) {
   const profileIntents = profile.profileIntents ?? []
+  const details = onboardingDetails(profile)
 
   return (
     <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
@@ -51,6 +79,16 @@ export function ProfileMembershipCard({
           <p className="mt-2 font-bold text-navy-950">
             {profile.persona ? PERSONA_LABELS[profile.persona] : 'Legacy profile'}
           </p>
+          {details.length ? (
+            <dl className="mt-3 space-y-2">
+              {details.map((detail) => (
+                <div key={detail.label}>
+                  <dt className="text-[11px] font-bold uppercase tracking-[0.1em] text-muted">{detail.label}</dt>
+                  <dd className="mt-0.5 text-sm font-semibold text-navy-950">{detail.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-1.5">
             {profileIntents.map((intent) => (
               <span key={intent} className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-navy-900">
@@ -93,9 +131,13 @@ export function ProfileMembershipCard({
         {organizations.length ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {organizations.map((organization) => (
-              <span key={organization.id} className="rounded-full bg-mist-50 px-3 py-1.5 text-xs font-semibold text-navy-900">
+              <Link
+                key={organization.id}
+                href={'/organizations/' + organization.slug}
+                className="rounded-full bg-mist-50 px-3 py-1.5 text-xs font-semibold text-navy-900 transition hover:bg-ocean-50 hover:text-ocean-800"
+              >
                 {organization.name} · {roleLabel(organization.role)}{organization.verified ? ' · Verified' : ''}
-              </span>
+              </Link>
             ))}
           </div>
         ) : (
