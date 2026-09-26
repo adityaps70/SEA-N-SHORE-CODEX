@@ -3,6 +3,7 @@ const repo = process.env.GITHUB_REPOSITORY || 'adityaps70/SEA-N-SHORE-CODEX'
 const token = process.env.GITHUB_TOKEN
 const apiBase = 'https://api.github.com'
 const approvalPhrase = 'I_APPROVE_MEMBERSHIP_STAGING_ONE_SHOT'
+const launchActionPath = 'scripts/aws/membership-launch-action.txt'
 
 const guards = {
   migration: {
@@ -207,6 +208,27 @@ async function dispatchWorkflow(key, expectedSha) {
 
   await assertBranchHead(expectedSha)
   return run
+}
+
+async function rearmAllGuards() {
+  const expectedHead = await getBranchHead()
+  const files = []
+
+  for (const guard of Object.values(guards)) {
+    const value = await getRemoteFile(guard.path)
+    if (value !== 'plan') files.push({ path: guard.path, content: 'plan' })
+  }
+
+  const launchAction = await getRemoteFile(launchActionPath)
+  if (launchAction !== 'plan') files.push({ path: launchActionPath, content: 'plan' })
+
+  if (!files.length) return expectedHead
+
+  return commitFiles(
+    expectedHead,
+    files,
+    'ops: rearm membership staging execution guards',
+  )
 }
 
 async function preflight(expectedSha) {
