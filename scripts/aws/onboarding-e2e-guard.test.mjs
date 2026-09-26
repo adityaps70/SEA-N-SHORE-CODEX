@@ -301,3 +301,26 @@ test('signup diagnostics ignore the empty Next.js route announcer and audit only
   assert.doesNotMatch(auditScript, /delete\s+from/i)
   assert.doesNotMatch(auditScript, /admin-delete-user/)
 })
+
+
+test('workflow structure keeps step ids unique and admin confirmation assertion complete', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const ids = [...workflow.matchAll(/^\s+id:\s*([A-Za-z0-9_-]+)\s*$/gm)].map((match) => match[1])
+  assert.equal(new Set(ids).size, ids.length, `Duplicate onboarding workflow step id(s): ${ids.join(', ')}`)
+
+  for (const stepName of [
+    'Run staging sign-in and onboarding browser journeys',
+    'Verify authenticated Home feed avatar hydration',
+    'Audit persona persistence through SSM',
+    'Wait and surface persistence evidence',
+  ]) {
+    const count = workflow.split(`- name: ${stepName}`).length - 1
+    assert.equal(count, 1, `Expected exactly one "${stepName}" step, found ${count}`)
+  }
+
+  assert.match(
+    workflow,
+    /grep -q '\^ONBOARDING_E2E_ADMIN_CONFIRM_VERIFIED=true\$'/,
+    'Admin confirmation marker assertion must be a complete quoted grep expression',
+  )
+})
