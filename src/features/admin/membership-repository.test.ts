@@ -10,7 +10,7 @@ const grantId = '44444444-4444-4444-8444-444444444444'
 function access(overrides: Partial<AccessContext> = {}): AccessContext {
   return {
     personalPlan: 'creator_pro',
-    personalEntitlements: ['job.publish'],
+    personalEntitlements: ['job.apply', 'event.attend', 'course.enroll', 'job.publish'],
     verifications: ['recruiter'],
     organizationMemberships: [],
     accountActive: true,
