@@ -203,8 +203,8 @@ describe('independent recruiter hiring publisher', () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
-      if (text.includes('select a.id') && text.includes('created_by_user_id')) {
-        return [{ id: 'application-1', company_id: null, created_by_user_id: 'user-1' }]
+      if (text.includes('select j.company_id') && text.includes('created_by_user_id')) {
+        return [{ company_id: null }]
       }
       return []
     }
