@@ -26,7 +26,7 @@ describe('hiring publish-as experience', () => {
     expect(form).toContain('verification_required')
     expect(form).toContain('upgrade_required')
     expect(form).toContain('/plans')
-    expect(form).toContain('/hiring/organization')
+    expect(form).toContain('/organizations')
     expect(form).toContain('publisherType')
   })
 
@@ -60,12 +60,17 @@ describe('hiring publish-as experience', () => {
     expect(applicantsPage).not.toContain('listCompanyJobs')
   })
 
-  it('keeps Start Hiring visible for approved personal recruiters even without a company', () => {
+  it('keeps the central Create workspace visible without module-specific hiring gates', () => {
+    const desktopHeader = source('src/components/navigation/app-header.tsx')
+    const mobileHeader = source('src/components/navigation/mobile-app-header.tsx')
     const layout = source('src/app/(app)/layout.tsx')
 
-    expect(layout).toContain('getAccessContext')
-    expect(layout).toContain("verifications.includes('recruiter')")
-    expect(layout).toContain('canStartHiring')
+    expect(desktopHeader).toContain('href="/creator"')
+    expect(desktopHeader).toContain('Create')
+    expect(mobileHeader).toContain('href="/creator"')
+    expect(mobileHeader).toContain('Create')
+    expect(layout).not.toContain('canStartHiring')
+    expect(layout).not.toContain('getAuthorizedCompany')
   })
 
 })
