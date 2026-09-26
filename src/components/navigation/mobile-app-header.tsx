@@ -1,17 +1,15 @@
 import Link from 'next/link'
-import { Bell, Bookmark, BriefcaseBusiness, MessageCircleMore, Settings, ShieldCheck } from 'lucide-react'
+import { Bell, Bookmark, MessageCircleMore, Settings, ShieldCheck, SquarePlus } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 
 export function MobileAppHeader({
   unreadCount,
   messagingUnreadCount = 0,
-  canStartHiring = false,
   canAccessAdmin = false,
 }: {
   unreadCount: number
   messagingUnreadCount?: number
-  canStartHiring?: boolean
   canAccessAdmin?: boolean
 }) {
   return (
@@ -19,16 +17,14 @@ export function MobileAppHeader({
       <div className="flex min-h-14 items-center justify-between gap-3 px-4">
         <Wordmark compact />
         <div className="flex items-center gap-1">
-          {canStartHiring ? (
-            <Link
-              href="/hiring"
-              aria-label="Start Hiring"
-              className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-ocean-700 px-2.5 text-xs font-bold text-white transition hover:bg-ocean-800"
-            >
-              <BriefcaseBusiness aria-hidden="true" className="size-4 shrink-0" />
-              <span className="whitespace-nowrap">Start Hiring</span>
-            </Link>
-          ) : null}
+          <Link
+            href="/creator"
+            aria-label="Create"
+            className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-ocean-700 px-2.5 text-xs font-bold text-white transition hover:bg-ocean-800"
+          >
+            <SquarePlus aria-hidden="true" className="size-4 shrink-0" />
+            <span className="whitespace-nowrap">Create</span>
+          </Link>
           {canAccessAdmin ? (
             <Link
               href="/admin"
