@@ -105,7 +105,7 @@ export function MentorApplicationForm({ initialValue, applicationId, reviewNote 
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">{isResubmission ? 'Update application' : 'Apply to teach'}</p>
           <h2 className="mt-1 text-xl font-bold text-navy-950">Share your maritime expertise</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">Your Sea N Shore profile starts the application. Add the credentials, teaching focus and course topics that help our review team assess your mentor fit.</p>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">Your Sea N Shore profile starts the application. Add the credentials, teaching focus and course topics that help our review team assess your trainer fit.</p>
         </div>
       </div>
 
@@ -153,7 +153,7 @@ export function MentorApplicationForm({ initialValue, applicationId, reviewNote 
 
       <label className="block text-sm font-semibold text-navy-950">Proposed course topics
         <input aria-label="Proposed course topics" className={inputClassName()} value={form.proposedCourseTopics} onChange={(event) => update('proposedCourseTopics', event.target.value)} placeholder="SIRE 2.0 readiness, Bridge leadership" />
-        <span className="mt-1.5 block text-xs font-normal text-muted">Separate course ideas with commas. You can refine them later in Mentor Studio after approval.</span>
+        <span className="mt-1.5 block text-xs font-normal text-muted">Separate course ideas with commas. You can refine them later in Learning Studio after approval.</span>
       </label>
 
       {message ? (
@@ -166,9 +166,9 @@ export function MentorApplicationForm({ initialValue, applicationId, reviewNote 
       <div className="flex flex-wrap items-center gap-3 border-t border-mist-100 pt-5">
         <button type="submit" disabled={pending} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60">
           {pending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
-          {pending ? 'Saving…' : isResubmission ? 'Resubmit mentor application' : 'Submit mentor application'}
+          {pending ? 'Saving…' : isResubmission ? 'Resubmit trainer verification application' : 'Submit trainer verification application'}
         </button>
-        <p className="text-xs leading-5 text-muted">Applications are reviewed by Sea N Shore before Mentor Studio access is activated.</p>
+        <p className="text-xs leading-5 text-muted">Applications are reviewed by Sea N Shore before Learning Studio access is activated.</p>
       </div>
     </form>
   )
