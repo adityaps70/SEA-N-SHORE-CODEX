@@ -172,6 +172,23 @@ describe('organization application server actions', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/hiring/organization')
   })
 
+  it('accepts Organization Pro workspace roles in claim requests', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+
+    await expect(requestOrganizationAccess(companyId, 'event_manager', 'I manage professional events.')).resolves.toEqual({
+      ok: true,
+      requestId: '44444444-4444-4444-8444-444444444444',
+    })
+
+    expect(mocks.requestCompanyAccess).toHaveBeenCalledWith(
+      'user-1',
+      companyId,
+      'event_manager',
+      'I manage professional events.',
+    )
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/organizations')
+  })
+
   it('returns useful copy for an already-pending or existing organization membership', async () => {
     const companyId = '33333333-3333-4333-8333-333333333333'
     mocks.requestCompanyAccess.mockRejectedValueOnce(new Error('organization_access_request_exists'))
