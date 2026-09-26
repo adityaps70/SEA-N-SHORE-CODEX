@@ -104,7 +104,7 @@ export default async function MentorStudioPage() {
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link href="/learn/teach" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
-          <ArrowLeft aria-hidden="true" className="size-4" /> Mentor profile
+          <ArrowLeft aria-hidden="true" className="size-4" /> Trainer verification
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           <Link
