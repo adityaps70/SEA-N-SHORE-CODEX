@@ -25,18 +25,15 @@ export function ProfileMediaControls({
   const removeAction = kind === 'avatar' ? removeAvatarAction : removeCoverAction
   const [state, formAction, uploading] = useActionState(uploadAction, initialState)
   const [removeError, setRemoveError] = useState('')
-  const [imagePresent, setImagePresent] = useState(hasImage)
+  const [removed, setRemoved] = useState(false)
   const [removing, startRemoving] = useTransition()
   const inputRef = useRef<HTMLInputElement>(null)
   const label = kind === 'avatar' ? 'profile photo' : 'cover photo'
 
-  useEffect(() => {
-    setImagePresent(hasImage)
-  }, [hasImage])
+  const imagePresent = removed ? false : state.success ? true : hasImage
 
   useEffect(() => {
     if (!state.success) return
-    setImagePresent(true)
     if (inputRef.current) inputRef.current.value = ''
     router.refresh()
   }, [router, state])
@@ -50,7 +47,7 @@ export function ProfileMediaControls({
         setRemoveError(result.error ?? `Unable to remove ${label}.`)
         return
       }
-      setImagePresent(false)
+      setRemoved(true)
       router.refresh()
     })
   }
@@ -69,7 +66,10 @@ export function ProfileMediaControls({
           className="sr-only"
           onChange={(event) => {
             setRemoveError('')
-            if (event.currentTarget.files?.length) event.currentTarget.form?.requestSubmit()
+            if (event.currentTarget.files?.length) {
+              setRemoved(false)
+              event.currentTarget.form?.requestSubmit()
+            }
           }}
         />
         <button
