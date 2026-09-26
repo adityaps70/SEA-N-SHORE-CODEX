@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation'
+import { getAccessContext } from '@/features/access/server'
+import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PeopleYouMayKnow } from '@/features/network/components/people-you-may-know'
 import { getPeopleYouMayKnow } from '@/features/network/queries'
 import { MaritimeProfileCard } from '@/features/profiles/components/maritime-profile-card'
@@ -7,15 +9,20 @@ import { ProfileCareerTimeline } from '@/features/profiles/components/profile-ca
 import { ProfileCredentialWallet } from '@/features/profiles/components/profile-credential-wallet'
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { ProfileMediaControls } from '@/features/profiles/components/profile-media-controls'
+import { ProfileMembershipCard } from '@/features/profiles/components/profile-membership-card'
 import { ProfilePassportToolbar } from '@/features/profiles/components/profile-passport-toolbar'
+import { organizationRepository } from '@/features/organizations/repository'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
 
 export default async function OwnProfilePage() {
-  const [profile, portfolio, recommendations] = await Promise.all([
+  const user = await requireAwsUser()
+  const [profile, portfolio, recommendations, access, organizations] = await Promise.all([
     getOwnProfile(),
     getOwnProfilePortfolio(),
     getPeopleYouMayKnow(3),
+    getAccessContext(user.id),
+    organizationRepository.listUserOrganizations(user.id),
   ])
   if (!profile) redirect('/onboarding')
 
@@ -31,6 +38,7 @@ export default async function OwnProfilePage() {
           actions={<ProfilePassportToolbar slug={profile.slug} />}
         />
 
+        <ProfileMembershipCard profile={profile} access={access} organizations={organizations} />
         <ProfileAbout profile={profile} editHref="inline" />
         <MaritimeProfileCard profile={profile} editHref="inline" />
         <ProfileCareerTimeline experiences={portfolio.experiences} editable />
