@@ -139,13 +139,13 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-white">{course.mentorName}</p>
                   <p className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-teal-200">
-                    <BadgeCheck aria-hidden="true" className="size-3.5" /> Verified mentor
+                    <BadgeCheck aria-hidden="true" className="size-3.5" /> Verified trainer
                   </p>
                 </div>
               </div>
               <p className="mt-4 flex gap-2 text-xs leading-5 text-white/62">
                 <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-teal-200" />
-                Mentor credentials and this course were reviewed before publication on Sea N Shore.
+                Trainer credentials and this course were reviewed before publication on Sea N Shore.
               </p>
             </div>
           </aside>
