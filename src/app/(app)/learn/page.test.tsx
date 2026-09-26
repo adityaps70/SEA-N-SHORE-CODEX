@@ -5,10 +5,16 @@ import type { MarketplaceCourse } from '@/features/learning/marketplace-reposito
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getMentorApplicationState: vi.fn(),
+  getAccessContext: vi.fn(),
+  listUserOrganizations: vi.fn(),
   listPublishedCourses: vi.fn(),
 }))
 
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/access/server', () => ({ getAccessContext: mocks.getAccessContext }))
+vi.mock('@/features/organizations/repository', () => ({
+  organizationRepository: { listUserOrganizations: mocks.listUserOrganizations },
+}))
 vi.mock('@/features/learning/repository', () => ({
   learningRepository: {
     getMentorApplicationState: mocks.getMentorApplicationState,
@@ -73,10 +79,18 @@ describe('/learn marketplace', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'maya@example.com' })
     mocks.getMentorApplicationState.mockResolvedValue({ kind: 'none' })
+    mocks.getAccessContext.mockResolvedValue({
+      personalPlan: 'free',
+      personalEntitlements: ['job.apply', 'event.attend', 'course.enroll'],
+      verifications: [],
+      organizationMemberships: [],
+      accountActive: true,
+    })
+    mocks.listUserOrganizations.mockResolvedValue([])
     mocks.listPublishedCourses.mockResolvedValue([course])
   })
 
-  it('renders real published courses from verified maritime mentors with their configured price', async () => {
+  it('renders real published courses from verified maritime trainers with their configured price', async () => {
     await renderLearnPage()
 
     expect(mocks.listPublishedCourses).toHaveBeenCalledWith({ category: null, search: null })
@@ -87,7 +101,7 @@ describe('/learn marketplace', () => {
       '/learn/courses/sire-2-readiness-for-tanker-officers',
     )
     expect(screen.getByText('Capt. Maya Singh')).toBeInTheDocument()
-    expect(screen.getByText('Verified mentor')).toBeInTheDocument()
+    expect(screen.getByText('Verified trainer')).toBeInTheDocument()
     expect(screen.getAllByText('SIRE 2.0')).toHaveLength(2)
     expect(screen.getByText('Advanced')).toBeInTheDocument()
     expect(screen.getByText('Recorded')).toBeInTheDocument()
@@ -95,10 +109,10 @@ describe('/learn marketplace', () => {
     expect(screen.queryByText('Free')).not.toBeInTheDocument()
     expect(screen.getByText('Certificate')).toBeInTheDocument()
     expect(screen.getByText('Prepare evidence for SIRE 2.0 interviews')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Teach on Sea N Shore' })).toHaveAttribute('href', '/learn/teach')
+    expect(screen.getByRole('link', { name: 'Trainer verification' })).toHaveAttribute('href', '/learn/teach')
   })
 
-  it('replaces the teaching application CTA with Mentor Studio for an approved active mentor', async () => {
+  it('replaces the teaching application CTA with Learning Studio for an approved active trainer', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
       applicationId: '33333333-3333-4333-8333-333333333333',
@@ -112,11 +126,11 @@ describe('/learn marketplace', () => {
 
     await renderLearnPage()
 
-    expect(screen.getByRole('link', { name: 'Mentor Studio' })).toHaveAttribute('href', '/learn/studio')
-    expect(screen.queryByRole('link', { name: 'Teach on Sea N Shore' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Learning Studio' })).toHaveAttribute('href', '/learn/studio')
+    expect(screen.queryByRole('link', { name: 'Trainer verification' })).not.toBeInTheDocument()
   })
 
-  it('keeps the teaching application CTA when mentor access is suspended', async () => {
+  it('keeps the teaching application CTA when trainer verification is suspended', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'mentor',
       applicationId: '33333333-3333-4333-8333-333333333333',
@@ -130,8 +144,8 @@ describe('/learn marketplace', () => {
 
     await renderLearnPage()
 
-    expect(screen.getByRole('link', { name: 'Teach on Sea N Shore' })).toHaveAttribute('href', '/learn/teach')
-    expect(screen.queryByRole('link', { name: 'Mentor Studio' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Trainer verification' })).toHaveAttribute('href', '/learn/teach')
+    expect(screen.queryByRole('link', { name: 'Learning Studio' })).not.toBeInTheDocument()
   })
 
   it('passes normalized search and category filters into the published marketplace query', async () => {
