@@ -29,7 +29,7 @@ export function MentorReviewControls({ applicationId }: { applicationId: string 
         return
       }
       const message = decision === 'approved'
-        ? 'Mentor approved. The verified mentor workspace is now active.'
+        ? 'Trainer verification approved. The verified trainer workspace is now active.'
         : decision === 'changes_requested'
           ? 'Changes requested. The applicant can update and resubmit.'
           : 'Application rejected. The applicant can review the feedback and resubmit.'
@@ -61,7 +61,7 @@ export function MentorReviewControls({ applicationId }: { applicationId: string 
           onClick={() => submit('approved')}
           className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-3.5 py-2 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <CheckCircle2 aria-hidden="true" className="size-4" /> Approve mentor
+          <CheckCircle2 aria-hidden="true" className="size-4" /> Approve trainer
         </button>
         <button
           type="button"
