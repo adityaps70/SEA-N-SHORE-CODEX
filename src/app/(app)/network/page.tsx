@@ -12,15 +12,15 @@ import type { NetworkFollowView, NetworkProfile } from '@/features/network/types
 const emptyCopy = {
   discover: {
     title: 'No new professionals to recommend yet.',
-    body: 'As more maritime professionals complete their profiles, relevant people will appear here.',
+    body: 'As more Sea N Shore members complete their profiles, relevant people will appear here.',
   },
   connections: {
     title: 'Your first professional connection is waiting to happen.',
-    body: 'Discover seafarers and maritime professionals, then send a connection request to build your network.',
+    body: 'Discover people across the maritime community, then send a connection request to build your network.',
   },
   following: {
     title: 'No professionals to show here yet.',
-    body: 'Follow maritime professionals whose experience, knowledge, or career journey you want to keep up with.',
+    body: 'Follow Sea N Shore members whose experience, knowledge or maritime journey you want to keep up with.',
   },
 } as const
 
@@ -99,12 +99,12 @@ export default async function NetworkPage({
       <PremiumPageHero
         eyebrow="Maritime network"
         title="People worth knowing at sea and ashore."
-        description="Discover trusted maritime professionals by rank, company, location, vessel experience and specialist skills."
+        description="Discover trusted maritime people by role, organization, location, experience and specialist skills."
       >
         {tab === 'discover' ? (
           <form action="/network" method="get" role="search" className="relative mt-6 max-w-2xl rounded-2xl bg-white p-2">
             <input type="hidden" name="tab" value="discover" />
-            <label htmlFor="network-search" className="sr-only">Search maritime professionals</label>
+            <label htmlFor="network-search" className="sr-only">Search Sea N Shore members</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <input
               id="network-search"
@@ -128,7 +128,7 @@ export default async function NetworkPage({
               <div>
                 <h2 id="people-you-may-know-heading" className="text-xl font-semibold text-navy-950">People you may know</h2>
                 <p className="mt-1 text-sm text-muted">
-                  {query ? `${profiles.length} relevant result${profiles.length === 1 ? '' : 's'} for “${query}”.` : 'Recommended maritime professionals based on your profile and network.'}
+                  {query ? `${profiles.length} relevant result${profiles.length === 1 ? '' : 's'} for “${query}”.` : 'Recommended members based on your profile and network.'}
                 </p>
               </div>
               {query ? <Link href="/network?tab=discover" className="text-sm font-semibold text-ocean-700 hover:text-navy-950">Clear search</Link> : null}
@@ -253,7 +253,7 @@ export default async function NetworkPage({
                 {hub.receivedRequests.map((profile) => <ConnectionRequestCard key={profile.id} profile={profile} direction="incoming" />)}
               </div>
             ) : (
-              <EmptyState compact title="No connection requests are waiting." body="New invitations from maritime professionals will appear here." />
+              <EmptyState compact title="No connection requests are waiting." body="New invitations from Sea N Shore members will appear here." />
             )
           ) : hub.sentRequests.length ? (
             <div className="divide-y divide-mist-100">
