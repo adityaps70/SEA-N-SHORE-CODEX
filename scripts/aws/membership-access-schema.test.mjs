@@ -43,6 +43,8 @@ test('membership access foundation is additive and separates persona, plans, ver
   assert.match(normalized, /company_access_requests_type_check.*role_access/)
   assert.match(normalized, /company_access_requests_role_check.*lms_manager.*event_manager.*content_manager.*analyst/)
   assert.match(normalized, /company_access_requests_type_role_check.*role_access/)
+  assert.match(normalized, /create table if not exists public\.organization_follows/)
+  assert.match(normalized, /organization_follows_follower_idx/)
 
   assert.match(normalized, /insert into public\.feature_verifications/)
   assert.match(normalized, /learning_mentors/)
