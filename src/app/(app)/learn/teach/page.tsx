@@ -82,7 +82,7 @@ export default async function TeachPage() {
       <StatusCard
         eyebrow="Profile required"
         title="Complete your Sea N Shore profile before applying"
-        copy="Your mentor application is connected to your verified Sea N Shore identity. Complete your professional profile first so your maritime rank, experience and vessel background can be carried into the application safely."
+        copy="Your trainer verification application is connected to your verified Sea N Shore identity. Complete your professional profile first so your maritime rank, experience and vessel background can be carried into the application safely."
         icon={ShieldAlert}
       />
     )
@@ -91,7 +91,7 @@ export default async function TeachPage() {
       <StatusCard
         eyebrow="Access review"
         title="Mentor access is temporarily suspended"
-        copy="Mentor Studio remains locked while your mentor access is under review. Existing learning records remain protected; contact the Sea N Shore team if you need clarification about the review."
+        copy="Learning Studio remains locked while your trainer verification is under review. Existing learning records remain protected; contact the Sea N Shore team if you need clarification about the review."
         icon={ShieldAlert}
       />
     )
@@ -117,8 +117,8 @@ export default async function TeachPage() {
     ) : (
       <StatusCard
         eyebrow="Application unavailable"
-        title="We could not load your mentor application"
-        copy="Your mentor application status is recorded, but the editable details could not be loaded safely. Return to Learning and try again before making another submission."
+        title="We could not load your trainer verification application"
+        copy="Your trainer verification application status is recorded, but the editable details could not be loaded safely. Return to Learning and try again before making another submission."
         icon={ShieldAlert}
       />
     )
@@ -126,8 +126,8 @@ export default async function TeachPage() {
     content = (
       <StatusCard
         eyebrow="Approval processing"
-        title="Your mentor approval is being finalized"
-        copy="Your application has been approved and Sea N Shore is finalizing your mentor workspace. Mentor Studio will unlock only after the approved mentor record is active."
+        title="Your trainer verification is being finalized"
+        copy="Your application has been approved and Sea N Shore is finalizing your mentor workspace. Learning Studio will unlock only after the approved mentor record is active."
         icon={Sparkles}
       />
     )
@@ -147,7 +147,7 @@ export default async function TeachPage() {
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Teach on Sea N Shore</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">
-              Help maritime professionals learn from real sea and shore experience. Approved mentors build practical courses, submit them for quality review and grow a trusted professional teaching profile inside Sea N Shore.
+              Help maritime professionals learn from real sea and shore experience. Trainer verification establishes trust; Creator Pro or an eligible Organization Pro workspace provides the publishing entitlement. Courses still pass Sea N Shore quality review before publication.
             </p>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white/75">
@@ -161,9 +161,9 @@ export default async function TeachPage() {
         <div>{content}</div>
         <aside className="space-y-4">
           <article className="rounded-[1.35rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Mentor standard</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Trainer standard</p>
             <h2 className="mt-2 text-lg font-bold text-navy-950">Practical. Credible. Reviewed.</h2>
-            <p className="mt-2 text-sm leading-6 text-muted">Mentors do not publish directly. Courses move through Sea N Shore review before they become available to learners.</p>
+            <p className="mt-2 text-sm leading-6 text-muted">Verified trainers do not publish automatically. Courses move through Sea N Shore review before they become available to learners.</p>
           </article>
           <article className="rounded-[1.35rem] border border-mist-100 bg-mist-50 p-5">
             <p className="text-sm font-bold text-navy-950">Built for maritime careers</p>
