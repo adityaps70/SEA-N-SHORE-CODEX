@@ -9,6 +9,8 @@ import { completeActivationWithAurora, completeOnboardingWithAurora } from './on
 import { updateProfileWithAurora } from './profile-edit-service'
 import { onboardingActivationSchema, onboardingSchema } from './schemas'
 import { PERSONAS, type Persona } from './persona'
+import { profilePreferencesSchema } from './profile-preferences'
+import { updateProfilePreferencesWithAurora } from './profile-preferences-service'
 import { PROFILE_TYPES, type ProfileType } from './types'
 
 export type OnboardingFormValues = {
@@ -224,6 +226,39 @@ export async function completeActivation(
   }
 
   redirect('/home')
+}
+
+export async function updateProfilePreferences(
+  previousState: ProfileActionState,
+  formData: FormData,
+): Promise<ProfileActionState> {
+  const parsed = profilePreferencesSchema.safeParse(Object.fromEntries(formData))
+  if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
+
+  const moderation = profileModerationAssessment(parsed.data)
+  if (moderation.decision === 'block') {
+    return failureState(previousState, formData, { error: moderationBlockMessage() })
+  }
+
+  let user
+  try {
+    user = await requireAwsUser()
+  } catch {
+    return failureState(previousState, formData, {
+      error: 'Your session may have expired. Sign in again and try saving your profile preferences.',
+    })
+  }
+
+  try {
+    await updateProfilePreferencesWithAurora(user.id, parsed.data)
+    await flagProfileModeration(user.id, moderation)
+  } catch {
+    return failureState(previousState, formData, {
+      error: 'We could not save your profile preferences. Your selections are still here; please try again.',
+    })
+  }
+
+  redirect('/profile')
 }
 
 export async function updateProfile(
