@@ -1,15 +1,37 @@
 import { describe, expect, it } from 'vitest'
 import { buildHiringPublisherOptions } from './publishers'
-import type { AccessContext } from '@/features/access/policy'
+import type { AccessContext, Capability, PlanCode } from '@/features/access/policy'
+
+const TEST_PLAN_ENTITLEMENTS: Record<PlanCode, Capability[]> = {
+  free: ['job.apply', 'event.attend', 'course.enroll'],
+  creator_pro: ['job.apply', 'event.attend', 'course.enroll', 'job.publish', 'event.publish', 'course.publish'],
+  organization_pro: [
+    'job.apply', 'event.attend', 'course.enroll',
+    'job.publish', 'event.publish', 'course.publish',
+    'job.manage_applicants', 'event.manage_attendees', 'course.manage_students',
+    'organization.manage', 'organization.team', 'organization.branding', 'analytics.view', 'billing.manage',
+  ],
+}
 
 function access(overrides: Partial<AccessContext> = {}): AccessContext {
+  const personalPlan = overrides.personalPlan ?? 'free'
+  const organizationMemberships = (overrides.organizationMemberships ?? []).map((membership) => ({
+    ...membership,
+    entitlements: membership.entitlements.length
+      ? membership.entitlements
+      : TEST_PLAN_ENTITLEMENTS[membership.plan],
+  }))
+
   return {
-    personalPlan: 'free',
-    personalEntitlements: [],
+    personalPlan,
+    personalEntitlements: overrides.personalEntitlements ?? TEST_PLAN_ENTITLEMENTS[personalPlan],
     verifications: [],
-    organizationMemberships: [],
+    organizationMemberships,
     accountActive: true,
     ...overrides,
+    personalPlan,
+    personalEntitlements: overrides.personalEntitlements ?? TEST_PLAN_ENTITLEMENTS[personalPlan],
+    organizationMemberships,
   }
 }
 
