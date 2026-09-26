@@ -69,6 +69,23 @@ describe('central paid capability policy', () => {
     expect(canUseCapability(access, 'job.publish')).toBe(true)
   })
 
+  it('lets each verified Creator Pro identity manage the audience created by its own content', () => {
+    expect(canUseCapability(context({
+      personalPlan: 'creator_pro',
+      verifications: ['recruiter'],
+    }), 'job.manage_applicants')).toBe(true)
+
+    expect(canUseCapability(context({
+      personalPlan: 'creator_pro',
+      verifications: ['event_host'],
+    }), 'event.manage_attendees')).toBe(true)
+
+    expect(canUseCapability(context({
+      personalPlan: 'creator_pro',
+      verifications: ['trainer'],
+    }), 'course.manage_students')).toBe(true)
+  })
+
   it('does not let recruiter verification unlock unrelated paid creator features', () => {
     const access = context({
       personalPlan: 'creator_pro',
