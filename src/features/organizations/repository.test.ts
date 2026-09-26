@@ -204,6 +204,32 @@ describe('organization approval repository', () => {
     expect(seen.some((entry) => entry.text.includes('insert into public.companies'))).toBe(false)
   })
 
+  it('supports full Organization Pro role requests without creating a duplicate organization', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('from public.companies') && text.includes('where id = $1')) return [{ id: companyId }]
+      if (text.includes('from public.company_members')) return []
+      if (text.includes('insert into public.company_access_requests')) return [{ id: 'request-lms' }]
+      return []
+    }
+    const repository = createOrganizationRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.requestCompanyAccess(actorId, companyId, 'lms_manager', 'I manage training for this institute.')).resolves.toEqual({
+      requestId: 'request-lms',
+    })
+
+    const requestInsert = seen.find((entry) => entry.text.includes('insert into public.company_access_requests'))
+    expect(requestInsert?.values).toEqual([
+      companyId,
+      actorId,
+      'lms_manager',
+      'role_access',
+      'I manage training for this institute.',
+    ])
+  })
+
   it('fails closed when requesting access to a company the member already belongs to', async () => {
     const companyId = '33333333-3333-4333-8333-333333333333'
     const query = async (text: string) => {
