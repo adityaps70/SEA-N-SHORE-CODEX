@@ -22,6 +22,20 @@ vi.mock('@/features/notifications/components/notification-bell', () => ({
 }))
 
 vi.mock('@/features/auth/actions', () => ({ signOut: vi.fn() }))
+vi.mock('@/features/auth/aws-queries', () => ({
+  requireAwsUser: vi.fn().mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111' }),
+}))
+vi.mock('@/features/events/calendar-repository', () => ({
+  calendarEventRepository: {
+    listMyEvents: vi.fn().mockResolvedValue([]),
+    listHostedEvents: vi.fn().mockResolvedValue([]),
+  },
+}))
+vi.mock('@/features/learning/enrollment-repository', () => ({
+  enrollmentRepository: {
+    listLearnerEnrollments: vi.fn().mockResolvedValue([]),
+  },
+}))
 
 vi.mock('@/features/feed/queries', () => ({
   getMyActivityPosts: vi.fn().mockResolvedValue([]),
@@ -75,7 +89,7 @@ describe('My Activities and jobs integration contract', () => {
     }
   })
 
-  it('keeps Jobs Applied third and adds Recently Deleted as the fourth activity tab', async () => {
+  it('keeps Jobs Applied alongside Events, Learning and Recently Deleted in the member workspace', async () => {
     render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'jobs' }) }))
 
     const tabs = screen.getByRole('navigation', { name: 'Activity sections' })
@@ -83,6 +97,8 @@ describe('My Activities and jobs integration contract', () => {
       'My Posts',
       'My Comments',
       'Jobs Applied',
+      'Events',
+      'Learning',
       'Recently Deleted',
     ])
     expect(within(tabs).getByRole('link', { name: 'Jobs Applied' })).toHaveAttribute('aria-current', 'page')
