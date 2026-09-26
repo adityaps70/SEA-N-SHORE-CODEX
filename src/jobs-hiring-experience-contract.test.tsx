@@ -19,14 +19,14 @@ describe('premium hiring workspace contract', () => {
     expect(page).toContain('Post a job')
     expect(page).toContain('Publishing setup required')
     expect(subnav).toContain('/hiring/jobs')
-    expect(subnav).toContain('/hiring/company')
+    expect(subnav).toContain('/organizations')
   })
 
   it('keeps upgrade and verification paths visible without making organization verification the only hiring route', () => {
     const page = source('src/app/(app)/hiring/page.tsx')
 
     expect(page).toContain('/plans')
-    expect(page).toContain('/hiring/organization')
+    expect(page).toContain('/organizations')
     expect(page).toContain('Verification and paid plan access are checked separately')
     expect(page).not.toContain('HiringAccessRequired')
   })
@@ -103,36 +103,29 @@ describe('premium hiring workspace contract', () => {
     expect(notes).toContain('saveHiringRecruiterNote')
   })
 
-  it('shows an authorized company trust summary without allowing recruiter self-verification', () => {
-    const page = source('src/app/(app)/hiring/company/page.tsx')
+  it('routes legacy company management into the shared verified organization workspace', () => {
+    const legacyPage = source('src/app/(app)/hiring/company/page.tsx')
+    const workspace = source('src/app/(app)/organizations/[slug]/page.tsx')
 
-    expect(page).toContain('getAuthorizedCompany')
-    expect(page).toContain('company.name')
-    expect(page).toContain('company.verified')
-    expect(page).toContain('company.role')
-    expect(page).toContain('Verification is controlled by Sea N Shore')
-    expect(page).toContain('/jobs?q=')
-    expect(page).toContain('View public jobs')
-    expect(page).not.toContain('is_verified =')
-    expect(page).not.toContain('verified_by =')
+    expect(legacyPage).toContain("redirect('/organizations/' + company.slug)")
+    expect(workspace).toContain('Verified organization')
+    expect(workspace).toContain('Your workspace access')
+    expect(workspace).toContain('Organization Pro')
+    expect(workspace).not.toContain('is_verified =')
+    expect(workspace).not.toContain('verified_by =')
   })
 
-  it('shows Start Hiring when the signed-in user has either organization hiring access or approved personal recruiter verification', () => {
+  it('uses one central Create entry while hiring authorization remains server-side', () => {
     const layout = source('src/app/(app)/layout.tsx')
     const desktopHeader = source('src/components/navigation/app-header.tsx')
     const mobileHeader = source('src/components/navigation/mobile-app-header.tsx')
     const repository = source('src/features/jobs/hiring-repository.ts')
 
-    expect(layout).toContain('hiringRepository.getAuthorizedCompany(user.id)')
-    expect(layout).toContain('getAccessContext(user.id)')
-    expect(layout).toContain("access?.verifications.includes('recruiter')")
-    expect(layout).toContain('canStartHiring={canStartHiring}')
-    expect(desktopHeader).toContain('canStartHiring')
-    expect(desktopHeader).toContain('Start Hiring')
-    expect(desktopHeader).toContain('href="/hiring"')
-    expect(mobileHeader).toContain('canStartHiring')
-    expect(mobileHeader).toContain('Start Hiring')
-    expect(mobileHeader).toContain('href="/hiring"')
+    expect(layout).not.toContain('canStartHiring')
+    expect(desktopHeader).toContain('href="/creator"')
+    expect(desktopHeader).toContain('Create')
+    expect(mobileHeader).toContain('href="/creator"')
+    expect(mobileHeader).toContain('Create')
 
     expect(repository).toContain('cm.approved_at is not null')
     expect(repository).toContain('cm.role::text = any($2::text[])')
