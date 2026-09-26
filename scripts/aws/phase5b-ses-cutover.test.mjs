@@ -117,3 +117,19 @@ test('Phase 5B rollback restores Cognito default delivery from live state withou
   assert.doesNotMatch(rollback, /PHASE5B_ROLLBACK_CAPTURE_MISSING/)
   assert.doesNotMatch(rollback, /\[\[ -f "\$BEFORE_POOL_FILE"/)
 })
+
+
+test('GitHub deploy role allows bounded Cognito email rollback only on the exact staging pool', () => {
+  const bootstrap = fs.readFileSync('infra/aws/bootstrap/main.tf', 'utf8')
+  const reconcile = fs.readFileSync('scripts/aws/github-deploy-iam.sh', 'utf8')
+
+  for (const source of [bootstrap, reconcile]) {
+    assert.match(source, /cognito-idp:UpdateUserPool/)
+  }
+
+  assert.match(bootstrap, /Resource\s*=\s*"arn:aws:cognito-idp:\$\{var\.aws_region\}:\$\{data\.aws_caller_identity\.current\.account_id\}:userpool\/\$\{var\.phase5b_cognito_user_pool_id\}"/)
+  assert.match(reconcile, /Phase5bCognitoRead/)
+  assert.match(reconcile, /COGNITO_POOL_ARN/)
+  assert.match(reconcile, /verify_phase5b_cognito_pool_statement/)
+  assert.doesNotMatch(reconcile, /cognito-idp:UpdateUserPool"\],\s*Resource:\s*"\*"/)
+})
