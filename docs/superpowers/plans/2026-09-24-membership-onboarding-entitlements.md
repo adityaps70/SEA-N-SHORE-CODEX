@@ -226,8 +226,9 @@ Current note: deterministic persona backfill is implemented and contract-tested.
 
 ## Phase 12 — Full regression / launch readiness
 
-Current note: exact-head automated application regression is green at 359 test files / 1,721 tests, with Docker, Terraform validations, plan guards, Remote Verify and the SSM execution contract also green. Keyboard activation, error-focus behavior and mobile-first layout contracts are covered in CI. The guarded browser harness has been upgraded from the retired Professional/Organisation onboarding to all eight persona journeys, representative 390×844 mobile journeys, serious/critical Axe accessibility checks, horizontal-overflow checks and persona/intents persistence checks, but it remains at `plan` and has **not** been executed against staging.
+Current note: exact-head automated application regression is green at 366 test files / 1,750 tests, with Docker, Terraform validations, plan guards, Remote Verify and the SSM execution contract also green. Keyboard activation, error-focus behavior and mobile-first layout contracts are covered in CI. The guarded browser harness covers all eight persona journeys, representative 390×844 mobile journeys, serious/critical Axe accessibility checks, horizontal-overflow checks and persona/intents persistence checks. A manual-only exact-SHA launch orchestrator now enforces migration → deploy → E2E in strict order with explicit confirmation and cleanup guard verification. The live one-shot has **not** been executed against staging.
 
+- [x] Manual one-shot staging orchestrator enforces exact SHA + explicit confirmation, strict migration → deploy → E2E ordering, moved-branch refusal and cleanup/re-arm verification while normal action files remain `plan`.
 - [ ] Onboarding E2E: all 8 personas. *(Harness prepared; staging execution still pending explicit one-shot approval.)*
 - [x] Onboarding preserves inputs on failure.
 - [x] Free member cannot bypass paid publishing server-side.
