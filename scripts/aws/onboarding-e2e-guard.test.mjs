@@ -160,6 +160,8 @@ test('public signup defers explicit confirmation-delivery quota failures to the 
   assert.match(browserScript, /outcome\\?\\.kind === 'error' && safeText === SIGNUP_DELIVERY_LIMIT_MESSAGE/)
   assert.match(browserScript, /ONBOARDING_E2E_PUBLIC_SIGNUP_DELIVERY_DEFERRED=/)
   assert.match(browserScript, /return 'delivery-deferred'/)
+  assert.match(browserScript, /\['confirmed', 'delivery-deferred'\]\.includes\(signupOutcome\)/)
+  assert.doesNotMatch(browserScript, /assert\.equal\(signupOutcome, 'confirmed'\)/)
 })
 
 test('public signup is quota-aware and creates all eight persona accounts', () => {
