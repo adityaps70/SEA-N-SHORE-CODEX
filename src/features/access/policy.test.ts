@@ -27,18 +27,26 @@ const TEST_PLAN_ENTITLEMENTS: Record<PlanCode, Capability[]> = {
   ],
 }
 
+function personalPlanEntitlements(plan: PlanCode): Capability[] {
+  return plan === 'creator_pro' ? TEST_PLAN_ENTITLEMENTS.creator_pro : TEST_PLAN_ENTITLEMENTS.free
+}
+
+function organizationPlanEntitlements(plan: PlanCode): Capability[] {
+  return plan === 'organization_pro' ? TEST_PLAN_ENTITLEMENTS.organization_pro : TEST_PLAN_ENTITLEMENTS.free
+}
+
 function context(overrides: Partial<AccessContext> = {}): AccessContext {
   const personalPlan = overrides.personalPlan ?? 'free'
   const organizationMemberships = (overrides.organizationMemberships ?? []).map((membership) => ({
     ...membership,
     entitlements: membership.entitlements.length
       ? membership.entitlements
-      : TEST_PLAN_ENTITLEMENTS[membership.plan],
+      : organizationPlanEntitlements(membership.plan),
   }))
 
   return {
     personalPlan,
-    personalEntitlements: overrides.personalEntitlements ?? TEST_PLAN_ENTITLEMENTS[personalPlan],
+    personalEntitlements: overrides.personalEntitlements ?? personalPlanEntitlements(personalPlan),
     verifications: overrides.verifications ?? [],
     organizationMemberships,
     accountActive: overrides.accountActive ?? true,
