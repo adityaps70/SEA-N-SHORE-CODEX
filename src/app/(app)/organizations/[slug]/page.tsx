@@ -37,6 +37,7 @@ export default async function OrganizationWorkspacePage({ params }: { params: Pr
                   alt=""
                   width={80}
                   height={80}
+                  unoptimized
                   className="size-full bg-white object-contain"
                 />
               : <Building2 aria-hidden="true" className="size-8" />}
