@@ -32,6 +32,7 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
 
   const [state, formAction, pending] = useActionState(submitProfessional, initialState)
   const editable = Boolean(editHref)
+  const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
   const availabilityLabel = profileAvailabilityLabel(profile.availability)
 
   const details: Detail[] = [
@@ -49,6 +50,7 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
     availabilityLabel ? { label: 'Availability', value: availabilityLabel, icon: TimerReset } : null,
   ].filter((detail): detail is Detail => Boolean(detail))
 
+  if (!isSeafarer) return null
   if (!editable && !details.length) return null
 
   const inputClass = 'mt-1 min-h-10 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500'
