@@ -65,6 +65,7 @@ data "aws_sesv2_email_identity" "seanshore_transactional" {
   email_identity = var.ses_domain
 }
 
+# SES verification records are additive; preserve the legacy website A/WWW records until the production cutover is separately approved.
 resource "aws_route53_record" "seanshore_ses_dkim" {
   for_each = toset(
     data.aws_sesv2_email_identity.seanshore_transactional.dkim_signing_attributes[0].tokens
