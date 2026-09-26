@@ -105,7 +105,7 @@ export default async function NetworkPage({
         description="Discover trusted maritime people by role, organization, location, experience and specialist skills."
       >
         {tab === 'discover' ? (
-          <form action="/network" method="get" role="search" className="relative mt-6 max-w-2xl rounded-2xl bg-white p-2">
+          <form action="/network" method="get" role="search" className="relative mt-4 max-w-2xl rounded-2xl bg-white p-2">
             <input type="hidden" name="tab" value="discover" />
             <label htmlFor="network-search" className="sr-only">Search Sea N Shore members</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-4 -translate-y-1/2 text-muted" />

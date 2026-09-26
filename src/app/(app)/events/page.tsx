@@ -49,7 +49,7 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         title="Learn, meet and move the maritime industry forward."
         description="Discover webinars, masterclasses, conferences, meetups and professional sessions hosted by verified members and maritime organizations."
       >
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           <Link href="/events" className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-navy-950">Discover</Link>
           <Link href="/events/my" className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15">My Events</Link>
           <Link href="/events/hosting" className="rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15">Hosting</Link>
@@ -67,12 +67,12 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         <label className="relative"><span className="sr-only">Event type</span><select name="eventType" defaultValue={params.eventType ?? ''} className={filterSelectClass}><option value="">All event types</option>{CALENDAR_EVENT_TYPES.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
         <label className="relative"><span className="sr-only">Format</span><select name="format" defaultValue={params.format ?? ''} className={filterSelectClass}><option value="">Any format</option>{CALENDAR_EVENT_FORMATS.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select><FilterChevron /></label>
         <label><span className="sr-only">Location</span><input name="location" defaultValue={params.location ?? ''} placeholder="City, country or venue" className="min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 text-sm font-normal text-navy-950 outline-none transition placeholder:text-slate-400 focus:border-teal-500" /></label>
-        <button className="min-h-12 rounded-2xl bg-teal-600 px-6 text-sm font-bold text-white transition hover:bg-teal-700">Filter</button>
+        <button className="min-h-12 rounded-2xl bg-teal-600 px-6 text-sm font-bold text-white transition hover:bg-teal-700">Search</button>
       </form>
 
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Discover</p><h2 className="text-2xl font-bold text-navy-950">Upcoming events</h2></div><span className="text-sm text-muted">{upcoming.length} found</span></div>
-        {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">No matching upcoming events</h3><p className="mt-1 text-sm text-muted">Adjust the filters or host the maritime session your community needs.</p><div className="mt-4 flex justify-center gap-2"><Link href="/events" className="rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-800">Clear filters</Link><Link href="/events/create" className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white">Host an event</Link></div></div>}
+        {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">No matching upcoming events</h3><p className="mt-1 text-sm text-muted">Adjust the filters or host the maritime session your community needs.</p><div className="mt-4 flex justify-center gap-2"><Link href="/events" className="rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-800">Clear filters</Link><Link href="/events/create" className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white">Create event</Link></div></div>}
       </section>
 
       <section className="space-y-4 border-t border-mist-100 pt-6">

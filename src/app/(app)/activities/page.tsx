@@ -100,7 +100,7 @@ export default async function ActivitiesPage({
           title="My Activities"
           description="Review your community activity, job applications, events, learning progress and recently deleted posts from one member workspace."
         >
-          <nav aria-label="Activity sections" className="mt-6 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-1.5 sm:max-w-4xl sm:grid-cols-6">
+          <nav aria-label="Activity sections" className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-1.5 sm:max-w-4xl sm:grid-cols-6">
             <Link href="/activities?tab=posts" aria-current={tab === 'posts' ? 'page' : undefined} className={tabClass(tab === 'posts')}>
               <PenSquare aria-hidden="true" className="size-4" />
               <span>My Posts</span>

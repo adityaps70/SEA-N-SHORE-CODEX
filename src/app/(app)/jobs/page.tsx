@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { BellRing, BriefcaseBusiness, Search, ShieldCheck } from 'lucide-react'
+import { BellRing, BriefcaseBusiness, Search } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { JobCard } from '@/features/jobs/components/job-card'
 import { JobsDiscoveryControls } from '@/features/jobs/components/jobs-discovery-controls'
@@ -47,11 +47,10 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     <section className="py-2 sm:py-5">
       <PremiumPageHero
         eyebrow="Sea N Shore Jobs Intelligence"
-        title="The right maritime role should find you faster."
-        description="Search sea and shore opportunities using real maritime requirements, then see why each role matches your rank, experience, vessels and credentials."
+        title="Find your next sea or shore role"
+        description="Every listing shows how well it matches your rank, experience, vessels and certificates."
       >
-        <div className="mt-5 inline-flex rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-white/80"><ShieldCheck aria-hidden="true" className="mr-2 mt-0.5 inline size-4 shrink-0" />Verified employer signals and suspicious-job reporting are built in.</div>
-        <form action="/jobs" method="get" role="search" className="mt-6 grid gap-2 rounded-2xl bg-white p-2 sm:grid-cols-[1fr_180px_auto]">
+        <form action="/jobs" method="get" role="search" className="mt-4 grid gap-2 rounded-2xl bg-white p-2 sm:grid-cols-[1fr_180px_auto]">
           <input type="hidden" name="mode" value={filters.mode} />
           <input type="hidden" name="sort" value={filters.sort} />
           <label className="relative block">

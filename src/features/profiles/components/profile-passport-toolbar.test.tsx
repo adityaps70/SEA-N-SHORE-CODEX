@@ -17,7 +17,8 @@ describe('ProfilePassportToolbar', () => {
     expect(screen.getByRole('link', { name: /view public profile/i })).toHaveAttribute('href', '/people/captain-example')
     expect(screen.getByTestId('profile-share-controls')).toHaveTextContent('captain-example:https://seaandshore.in')
     expect(screen.getByRole('link', { name: /download cv/i })).toHaveAttribute('href', '/api/profile/cv')
-    expect(screen.getByRole('link', { name: /settings/i })).toHaveAttribute('href', '/settings')
+    // Settings lives in the account menu; the profile toolbar no longer duplicates it.
+    expect(screen.queryByRole('link', { name: /settings/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /qr profile/i })).not.toBeInTheDocument()
   })
 })

@@ -18,14 +18,16 @@ export function PremiumPageHero({
   className = '',
 }: PremiumPageHeroProps) {
   return (
-    <header className={`overflow-hidden rounded-[2rem] bg-gradient-to-br from-navy-950 via-navy-900 to-teal-800 p-6 text-white shadow-xl sm:p-8 ${className}`.trim()}>
+    // Compact section header: brand gradient kept, but about half the height of the
+    // former hero so the page's real content starts above the fold on laptops and phones.
+    <header className={`overflow-hidden rounded-2xl bg-gradient-to-br from-navy-950 via-navy-900 to-teal-800 px-5 py-4 text-white shadow-md sm:px-6 sm:py-5 ${className}`.trim()}>
       <div className="max-w-3xl">
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-200">{eyebrow}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200">{eyebrow}</p>
           {eyebrowAccessory}
         </div>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
-        {description ? <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75 sm:text-base">{description}</p> : null}
+        <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
+        {description ? <p className="mt-1.5 hidden max-w-2xl text-sm leading-6 text-white/75 sm:line-clamp-2">{description}</p> : null}
       </div>
       {children}
     </header>

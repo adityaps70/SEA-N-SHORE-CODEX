@@ -16,7 +16,8 @@ describe('Sea N Shore premium page and Events presentation contract', () => {
     expect(hero).toContain('from-navy-950')
     expect(hero).toContain('via-navy-900')
     expect(hero).toContain('to-teal-800')
-    expect(hero).toContain('rounded-[2rem]')
+    // Compact header (audit Sept 2026): same gradient, smaller radius and padding.
+    expect(hero).toContain('rounded-2xl')
 
     for (const page of [
       'src/components/product/product-surface.tsx',

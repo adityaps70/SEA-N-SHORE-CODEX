@@ -94,7 +94,7 @@ export default async function GlobalSearchPage({
           title="Search the maritime ecosystem."
           description="Find professionals, organizations, jobs, courses and events across Sea N Shore from one place."
         >
-          <form action="/search" method="get" role="search" className="relative mt-6 max-w-3xl rounded-2xl bg-white p-2">
+          <form action="/search" method="get" role="search" className="relative mt-4 max-w-3xl rounded-2xl bg-white p-2">
             <label htmlFor="global-search-page" className="sr-only">Search Sea N Shore</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-5 -translate-y-1/2 text-muted" />
             <input id="global-search-page" name="q" type="search" maxLength={100} autoFocus placeholder="Search people, organizations, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
@@ -132,7 +132,7 @@ export default async function GlobalSearchPage({
         title={`Results for “${query}”`}
         description={`${totalResults} matching result${totalResults === 1 ? '' : 's'} across people, organizations, jobs, courses and events.`}
       >
-        <form action="/search" method="get" role="search" className="relative mt-6 max-w-3xl rounded-2xl bg-white p-2">
+        <form action="/search" method="get" role="search" className="relative mt-4 max-w-3xl rounded-2xl bg-white p-2">
           <label htmlFor="global-search-page" className="sr-only">Search Sea N Shore</label>
           <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-5 -translate-y-1/2 text-muted" />
           <input id="global-search-page" name="q" type="search" defaultValue={query} maxLength={100} placeholder="Search people, organizations, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />

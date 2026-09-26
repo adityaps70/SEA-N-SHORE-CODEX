@@ -6,10 +6,7 @@ import {
   Award,
   BadgeCheck,
   BookOpen,
-  CheckCircle2,
-  GraduationCap,
   Search,
-  ShieldCheck,
   Sparkles,
 } from 'lucide-react'
 import { getAccessContext } from '@/features/access/server'
@@ -197,51 +194,34 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <section className="overflow-hidden rounded-[1.9rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8 lg:p-10">
-        <div className="grid gap-8 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
+      <section className="overflow-hidden rounded-2xl bg-navy-950 px-5 py-5 text-white shadow-md sm:px-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
               <Sparkles aria-hidden="true" className="size-4" /> Sea N Shore Learning
             </p>
-            <h1 className="mt-3 max-w-3xl text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
+            <h1 className="mt-1 max-w-3xl text-2xl font-bold tracking-tight sm:text-3xl">
               Learn from verified maritime professionals.
             </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">
-              Build practical maritime skills with courses reviewed by Sea N Shore and taught by professionals whose industry experience has been verified.
+            <p className="mt-1.5 hidden max-w-2xl text-sm leading-6 text-white/72 sm:block">
+              Practical courses taught by professionals whose experience Sea N Shore has checked, and reviewed before they are published.
             </p>
-            <div className="mt-5 flex flex-wrap gap-2 text-xs font-bold text-white/80">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                <ShieldCheck aria-hidden="true" className="size-3.5 text-teal-200" /> Verified trainers
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                <CheckCircle2 aria-hidden="true" className="size-3.5 text-teal-200" /> Reviewed before publishing
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                <GraduationCap aria-hidden="true" className="size-3.5 text-teal-200" /> Career-relevant learning
-              </span>
-            </div>
           </div>
 
-          <div className="rounded-[1.4rem] border border-white/10 bg-white/5 p-5">
+          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
             {hasLearningStudio ? (
               <>
-                <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-200">Creator workspace</p>
-                <p className="mt-2 text-lg font-bold">Build and manage maritime learning</p>
-                <p className="mt-2 text-sm leading-6 text-white/68">
-                  Learning Studio supports verified trainers and authorized organization LMS managers. Personal publishing also requires Creator Pro; organization publishing follows Organization Pro and workspace role rules.
-                </p>
-                <Link href="/learn/studio" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
+                <span className="text-white/75">Build and manage your courses</span>
+                <Link href="/learn/studio" className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
                   Learning Studio <ArrowRight aria-hidden="true" className="size-4" />
                 </Link>
               </>
             ) : (
               <>
-                <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-200">Teach what you know</p>
-                <p className="mt-2 text-lg font-bold">Become a verified trainer</p>
-                <p className="mt-2 text-sm leading-6 text-white/68">
-                  Trainer verification establishes professional trust. {hasCreatorPro ? 'Your Creator Pro plan is ready for personal course publishing after verification.' : 'Creator Pro is a separate requirement for personal course publishing after verification.'}
-                </p>
-                <Link href="/learn/teach" className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
+                <span className="text-white/75" title={hasCreatorPro ? 'Your Creator Pro plan is ready for publishing once you are verified.' : 'Publishing your own courses also needs Creator Pro after verification.'}>
+                  Teach what you know
+                </span>
+                <Link href="/learn/teach" className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
                   Trainer verification <ArrowRight aria-hidden="true" className="size-4" />
                 </Link>
               </>
@@ -250,7 +230,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
         </div>
       </section>
 
-      <section className="mt-6 rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5">
+      <section className="mt-4 rounded-xl border border-mist-100 bg-white p-4">
         <form action="/learn" method="get" className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search aria-hidden="true" className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />

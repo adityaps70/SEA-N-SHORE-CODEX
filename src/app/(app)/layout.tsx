@@ -1,27 +1,21 @@
 import { AppFooter } from '@/components/navigation/app-footer'
+import { getAppChromeData } from '@/components/navigation/app-chrome-data'
 import { AppHeader } from '@/components/navigation/app-header'
 import { MobileAppHeader } from '@/components/navigation/mobile-app-header'
 import { MobileNav } from '@/components/navigation/mobile-nav'
-import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { requireUser } from '@/features/auth/queries'
 import { MessagingDock } from '@/features/messaging/components/messaging-dock'
 import { LegacyOrganizationConversionBanner } from '@/features/organizations/components/legacy-conversion-banner'
 import { legacyOrganizationConversionRepository } from '@/features/organizations/legacy-conversion-repository'
-import { getUnreadMessageCount } from '@/features/messaging/queries'
-import { getNotificationChrome } from '@/features/notifications/queries'
-import { getOwnProfile } from '@/features/profiles/queries'
 import { MessagingRealtimeProvider } from '@/features/realtime/provider'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
-  const [notificationChrome, messagingUnreadCount, canAccessAdmin, legacyConversion, profile] = await Promise.all([
-    getNotificationChrome(),
-    getUnreadMessageCount(),
-    canAccessPlatformAdmin(user.id),
+  const [chrome, legacyConversion] = await Promise.all([
+    getAppChromeData(user),
     legacyOrganizationConversionRepository.getConversion(user.id).catch(() => null),
-    getOwnProfile().catch(() => null),
   ])
-  const viewer = { name: profile?.fullName ?? user.email ?? 'Member', avatarUrl: profile?.avatarUrl ?? null }
+  const { notificationChrome, messagingUnreadCount, canAccessAdmin, viewer } = chrome
 
   return (
     <MessagingRealtimeProvider viewerProfileId={user.id}>
