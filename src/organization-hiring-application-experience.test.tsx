@@ -25,20 +25,17 @@ describe('organization hiring verification experience', () => {
     expect(form).toContain('Supporting notes')
   })
 
-  it('renders pending, changes requested, rejected and suspended organization states', () => {
-    const page = source('src/app/(app)/hiring/organization/page.tsx')
+  it('renders organization verification states in the shared workspace hub and keeps the legacy route as a redirect', () => {
+    const legacyPage = source('src/app/(app)/hiring/organization/page.tsx')
+    const page = source('src/app/(app)/organizations/page.tsx')
 
+    expect(legacyPage).toContain("redirect('/organizations')")
     expect(page).toContain('getUserOrganizationState')
-    expect(page).toContain('Verification in progress')
-    expect(page).toContain('Changes requested')
-    expect(page).toContain('Application rejected')
-    expect(page).toContain('Hiring access suspended')
+    expect(page).toContain('Organization verification in progress')
+    expect(page).toContain('Organization access suspended')
     expect(page).toContain('adminReviewNote')
-    expect(page).toContain('state.submittedAt')
-    expect(page).toContain('Submitted')
     expect(page).toContain('OrganizationApplicationForm')
-    expect(page).toContain("redirect('/hiring')")
-    expect(page).toContain('verification and plan access are separate')
+    expect(page).toContain('Verification and paid Organization Pro access remain separate')
     expect(page).toContain('Organization Pro')
   })
 })
