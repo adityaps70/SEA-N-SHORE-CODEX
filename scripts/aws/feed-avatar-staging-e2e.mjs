@@ -70,12 +70,18 @@ async function uploadAvatar(page, user) {
   const control = form.locator('xpath=..')
   const alert = control.getByRole('alert').first()
 
-  const input = form.locator('input[name="image"]')
+  const fileChooserPromise = page.waitForEvent('filechooser', { timeout: 20_000 })
+  await addButton.click()
+  const fileChooser = await fileChooserPromise
+
   const uploadResponsePromise = page.waitForResponse(
-    (response) => response.request().method() === 'POST' && response.url().startsWith(siteUrl),
+    (response) => {
+      if (response.request().method() !== 'POST') return false
+      return new URL(response.url()).pathname === '/profile'
+    },
     { timeout: 30_000 },
   )
-  await input.setInputFiles({
+  await fileChooser.setFiles({
     name: 'avatar-' + runId + '.png',
     mimeType: 'image/png',
     buffer: avatarPng,
