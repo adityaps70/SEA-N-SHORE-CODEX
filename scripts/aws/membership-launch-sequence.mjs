@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs'
-
 const branch = 'feat/aws-native-phase-0-1'
 const repo = process.env.GITHUB_REPOSITORY || 'adityaps70/SEA-N-SHORE-CODEX'
 const token = process.env.GITHUB_TOKEN
