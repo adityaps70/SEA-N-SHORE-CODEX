@@ -51,8 +51,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const metrics = await adminRepository.getAdminDashboardMetrics(adminId).catch(() => null)
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start">
-      <aside className="lg:sticky lg:top-24">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start">
+      <aside className="min-w-0 lg:sticky lg:top-24">
         <p className="mb-2 hidden items-center gap-2 px-3 text-xs font-bold uppercase tracking-[0.14em] text-muted lg:flex">
           <ShieldCheck aria-hidden="true" className="size-4 text-ocean-700" />
           Sea N Shore Admin

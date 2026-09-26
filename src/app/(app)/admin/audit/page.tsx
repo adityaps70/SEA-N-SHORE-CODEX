@@ -69,7 +69,7 @@ export default async function AdminAuditPage({
         {events.length === 0 ? (
           <AdminEmptyState title="No audit activity in this view" description="Choose another filter to review more administrator activity." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[48rem] text-left text-sm">
               <thead className="border-b border-mist-100 bg-mist-50/70 text-xs font-semibold uppercase tracking-wide text-muted">
                 <tr>

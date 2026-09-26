@@ -118,7 +118,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
         {users.length === 0 ? (
           <AdminEmptyState title="No users match this view." description="Try a different search term or account-status filter." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[44rem] table-fixed text-left text-sm">
               <colgroup>
                 <col className="w-[38%]" />
