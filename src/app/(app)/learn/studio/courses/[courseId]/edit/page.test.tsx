@@ -99,11 +99,11 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     mocks.getCurriculum.mockResolvedValue(curriculum)
   })
 
-  it('loads the signed-in mentor owned draft, curriculum and submission control in one editor', async () => {
+  it('loads the signed-in creator owned draft, curriculum and submission control in one editor', async () => {
     render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
 
     expect(screen.getByRole('heading', { name: 'Edit course' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /mentor studio/i })).toHaveAttribute('href', '/learn/studio')
+    expect(screen.getByRole('link', { name: /learning studio/i })).toHaveAttribute('href', '/learn/studio')
     expect(screen.getByText('SIRE 2.0 Readiness for Tanker Officers')).toBeInTheDocument()
     expect(screen.getByTestId('course-form')).toBeInTheDocument()
     expect(screen.getByTestId('mentor-curriculum-editor')).toBeInTheDocument()
@@ -142,7 +142,7 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     expect(screen.getByTestId('course-submit-control')).toBeInTheDocument()
   })
 
-  it('relies on unified course ownership instead of a personal mentor pre-gate', async () => {
+  it('relies on unified course ownership instead of a personal trainer pre-gate', async () => {
     render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
 
     expect(mocks.getOwnedCourse).toHaveBeenCalledWith('user-1', courseId)
@@ -171,7 +171,7 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     expect(mocks.capturedSubmitCourseId).toBeNull()
   })
 
-  it.each(['submitted', 'approved', 'published', 'archived'])('returns a non-editable %s course to Mentor Studio before reading curriculum', async (status) => {
+  it.each(['submitted', 'approved', 'published', 'archived'])('returns a non-editable %s course to Learning Studio before reading curriculum', async (status) => {
     mocks.getOwnedCourse.mockResolvedValue({ ...draftCourse, status })
 
     await EditMentorCoursePage({ params: Promise.resolve({ courseId }) })
