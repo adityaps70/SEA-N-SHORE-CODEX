@@ -13,8 +13,8 @@ export type AdminCompanyAccessDecision = Extract<AdminCompanyAccessStatus, 'appr
 export type AdminCompanyAccessRequest = {
   id: string
   status: AdminCompanyAccessStatus
-  requestedRole: 'member' | 'recruiter' | 'administrator'
-  requestType: 'join_company' | 'recruiter_access'
+  requestedRole: 'member' | 'recruiter' | 'administrator' | 'lms_manager' | 'event_manager' | 'content_manager' | 'analyst'
+  requestType: 'join_company' | 'recruiter_access' | 'role_access'
   message: string | null
   requestedAt: string
   reviewedAt: string | null
@@ -376,12 +376,20 @@ function adminCompanyAccessStatus(value: string): AdminCompanyAccessStatus {
 }
 
 function adminCompanyAccessRole(value: string): AdminCompanyAccessRequest['requestedRole'] {
-  if (value === 'member' || value === 'recruiter' || value === 'administrator') return value
+  if (
+    value === 'member'
+    || value === 'recruiter'
+    || value === 'administrator'
+    || value === 'lms_manager'
+    || value === 'event_manager'
+    || value === 'content_manager'
+    || value === 'analyst'
+  ) return value
   throw new Error('admin_company_access_role_invalid')
 }
 
 function adminCompanyAccessType(value: string): AdminCompanyAccessRequest['requestType'] {
-  if (value === 'join_company' || value === 'recruiter_access') return value
+  if (value === 'join_company' || value === 'recruiter_access' || value === 'role_access') return value
   throw new Error('admin_company_access_type_invalid')
 }
 
