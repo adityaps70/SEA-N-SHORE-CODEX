@@ -39,13 +39,9 @@ function context(overrides: Partial<AccessContext> = {}): AccessContext {
   return {
     personalPlan,
     personalEntitlements: overrides.personalEntitlements ?? TEST_PLAN_ENTITLEMENTS[personalPlan],
-    verifications: [],
+    verifications: overrides.verifications ?? [],
     organizationMemberships,
-    accountActive: true,
-    ...overrides,
-    personalPlan,
-    personalEntitlements: overrides.personalEntitlements ?? TEST_PLAN_ENTITLEMENTS[personalPlan],
-    organizationMemberships,
+    accountActive: overrides.accountActive ?? true,
   }
 }
 
