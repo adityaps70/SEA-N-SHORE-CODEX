@@ -8,6 +8,14 @@ on:
         required: true
         type: boolean
         default: false
+      expected_sha:
+        description: "Exact feature-branch SHA approved for deployment"
+        required: false
+        type: string
+      confirmation:
+        description: "Required when deploy_to_ecs is true"
+        required: false
+        type: string
   push:
     branches:
       - feat/aws-native-phase-0-1
@@ -35,6 +43,8 @@ jobs:
         id: resolve
         env:
           MANUAL_DEPLOY: ${{ inputs.deploy_to_ecs }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         shell: bash
         run: |
           set -euo pipefail
@@ -42,6 +52,9 @@ jobs:
             echo "STAGING_DEPLOY_ACTION=workflow-dispatch" >> "$GITHUB_ENV"
             echo "run_build=true" >> "$GITHUB_OUTPUT"
             if [[ "$MANUAL_DEPLOY" == "true" ]]; then
+              [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "expected_sha must be an exact commit SHA." >&2; exit 1; }
+              [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]] || { echo "expected_sha does not match GITHUB_SHA." >&2; exit 1; }
+              [[ "$CONFIRMATION" == "I_APPROVE_MEMBERSHIP_STAGING_ONE_SHOT" ]] || { echo "Explicit launch confirmation is required." >&2; exit 1; }
               echo "deploy_to_ecs=true" >> "$GITHUB_OUTPUT"
             else
               echo "deploy_to_ecs=false" >> "$GITHUB_OUTPUT"
@@ -89,8 +102,8 @@ jobs:
           echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
           exit 1
 
-      - name: Guard push deployment against a moved branch
-        if: github.event_name == 'push' && steps.resolve.outputs.deploy_to_ecs == 'true'
+      - name: Guard deployment against a moved branch
+        if: steps.resolve.outputs.deploy_to_ecs == 'true'
         shell: bash
         run: |
           set -euo pipefail
