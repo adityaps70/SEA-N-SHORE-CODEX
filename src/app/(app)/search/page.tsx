@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { BookOpen, BriefcaseBusiness, CalendarDays, Search, UsersRound } from 'lucide-react'
+import { BadgeCheck, BookOpen, BriefcaseBusiness, Building2, CalendarDays, Search, UsersRound } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
@@ -8,6 +8,7 @@ import { JobCard } from '@/features/jobs/components/job-card'
 import { getJobsDiscovery } from '@/features/jobs/queries'
 import { marketplaceRepository } from '@/features/learning/marketplace-repository'
 import { getNetworkHub } from '@/features/network/queries'
+import { organizationRepository } from '@/features/organizations/repository'
 import { NetworkProfileCard } from '@/features/network/components/network-profile-card'
 
 const verticalPaths = {
@@ -15,6 +16,7 @@ const verticalPaths = {
   jobs: '/jobs',
   courses: '/learn',
   events: '/events',
+  organizations: '/organizations',
 } as const
 
 function verticalHref(path: typeof verticalPaths.people | typeof verticalPaths.jobs | typeof verticalPaths.events, query: string) {
@@ -82,12 +84,12 @@ export default async function GlobalSearchPage({
         <PremiumPageHero
           eyebrow="Global search"
           title="Search the maritime ecosystem."
-          description="Find professionals, jobs, courses and events across Sea N Shore from one place."
+          description="Find professionals, organizations, jobs, courses and events across Sea N Shore from one place."
         >
           <form action="/search" method="get" role="search" className="relative mt-6 max-w-3xl rounded-2xl bg-white p-2">
             <label htmlFor="global-search-page" className="sr-only">Search Sea N Shore</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-5 -translate-y-1/2 text-muted" />
-            <input id="global-search-page" name="q" type="search" maxLength={100} autoFocus placeholder="Search people, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
+            <input id="global-search-page" name="q" type="search" maxLength={100} autoFocus placeholder="Search people, organizations, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
           </form>
         </PremiumPageHero>
         <div className="mt-5 rounded-[1.5rem] border border-dashed border-mist-200 bg-white px-6 py-12 text-center">
@@ -100,30 +102,32 @@ export default async function GlobalSearchPage({
   }
 
   const user = await requireAwsUser()
-  const [network, jobs, courses, events] = await Promise.all([
+  const [network, organizations, jobs, courses, events] = await Promise.all([
     getNetworkHub('discover', query),
+    organizationRepository.searchCompanies(query),
     getJobsDiscovery({ q: query }),
     marketplaceRepository.listPublishedCourses({ search: query }),
     calendarEventRepository.listDiscoverEvents(user.id, { search: query }),
   ])
 
   const peopleResults = network.profiles.slice(0, 6)
+  const organizationResults = organizations.slice(0, 6)
   const jobResults = jobs.items.slice(0, 6)
   const courseResults = courses.slice(0, 6)
   const eventResults = events.slice(0, 6)
-  const totalResults = network.profiles.length + jobs.items.length + courses.length + events.length
+  const totalResults = network.profiles.length + organizations.length + jobs.items.length + courses.length + events.length
 
   return (
     <section className="py-2 sm:py-5">
       <PremiumPageHero
         eyebrow="Global search"
         title={`Results for “${query}”`}
-        description={`${totalResults} matching result${totalResults === 1 ? '' : 's'} across people, jobs, courses and events.`}
+        description={`${totalResults} matching result${totalResults === 1 ? '' : 's'} across people, organizations, jobs, courses and events.`}
       >
         <form action="/search" method="get" role="search" className="relative mt-6 max-w-3xl rounded-2xl bg-white p-2">
           <label htmlFor="global-search-page" className="sr-only">Search Sea N Shore</label>
           <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-5 -translate-y-1/2 text-muted" />
-          <input id="global-search-page" name="q" type="search" defaultValue={query} maxLength={100} placeholder="Search people, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
+          <input id="global-search-page" name="q" type="search" defaultValue={query} maxLength={100} placeholder="Search people, organizations, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
         </form>
       </PremiumPageHero>
 
@@ -133,6 +137,41 @@ export default async function GlobalSearchPage({
             <SectionHeading icon={UsersRound} title="People" count={network.profiles.length} href={verticalHref(verticalPaths.people, query)} />
           </div>
           {peopleResults.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{peopleResults.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}</div> : <EmptyVertical label="People" />}
+        </section>
+
+        <section aria-labelledby="global-organizations-heading" className="border-t border-mist-100 pt-7">
+          <div id="global-organizations-heading">
+            <SectionHeading icon={Building2} title="Organizations" count={organizations.length} href={verticalPaths.organizations} />
+          </div>
+          {organizationResults.length ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {organizationResults.map((organization) => (
+                <Link
+                  key={organization.id}
+                  href={'/organizations/' + organization.slug}
+                  className="group rounded-[1.4rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-teal-200"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
+                      <Building2 aria-hidden="true" className="size-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <h3 className="font-bold text-navy-950 transition group-hover:text-teal-800">{organization.name}</h3>
+                        {organization.verified ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
+                            <BadgeCheck aria-hidden="true" className="size-3" /> Verified
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-sm text-muted">{organization.companyType ?? 'Maritime organization'}</p>
+                      {organization.website ? <p className="mt-2 truncate text-xs font-semibold text-ocean-700">{organization.website}</p> : null}
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : <EmptyVertical label="Organizations" />}
         </section>
 
         <section aria-labelledby="global-jobs-heading" className="border-t border-mist-100 pt-7">
