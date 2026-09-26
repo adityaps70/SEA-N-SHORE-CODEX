@@ -63,7 +63,7 @@ export default async function AdminLearningAnalyticsPage() {
           href="/admin/learning"
           className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
         >
-          Mentor approvals
+          Trainer verifications
         </Link>
         <Link
           href="/admin/learning/courses"
@@ -172,7 +172,7 @@ export default async function AdminLearningAnalyticsPage() {
               href="/admin/learning"
               className="mt-5 inline-flex items-center rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
             >
-              Review mentor applications
+              Review trainer applications
             </Link>
           </div>
         )}
