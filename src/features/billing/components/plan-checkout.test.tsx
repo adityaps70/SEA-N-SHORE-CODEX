@@ -64,7 +64,7 @@ describe('PlanCheckout', () => {
     render(<PlanCheckout {...base} defaultInterval="month" />)
     fireEvent.click(screen.getByRole('button', { name: /Set up auto-pay/ }))
     const phone = await screen.findByLabelText('Mobile number')
-    expect(phone).toHaveFocus()
+    await waitFor(() => expect(phone).toHaveFocus())
     fireEvent.click(screen.getByRole('button', { name: /Continue to Cashfree/ }))
     expect(screen.getByRole('alert')).toHaveTextContent('Enter your mobile number to continue.')
     fireEvent.change(phone, { target: { value: '98765 43210' } })
