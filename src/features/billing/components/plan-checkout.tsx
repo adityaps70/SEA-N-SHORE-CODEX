@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, Clock3, ExternalLink, Info, Lock, RefreshCw, Smartphone, XCircle } from 'lucide-react'
-import { useCallback, useEffect, useId, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useTransition } from 'react'
 import { checkPlanCheckoutAction, startPlanCheckoutAction } from '../actions'
 import {
   BILLING_NOT_CONFIGURED_MESSAGE,
@@ -73,7 +73,8 @@ export function PlanCheckout(props: PlanCheckoutProps) {
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const pollCount = useRef(0)
 
-  useEffect(() => {
+  // Layout effect: focus lands in the same commit that shows the contact form.
+  useLayoutEffect(() => {
     if (phase === 'contact') firstFieldRef.current?.focus()
   }, [phase])
 
