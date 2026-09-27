@@ -1,8 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Building2, Check, Crown, UserRound } from 'lucide-react'
+import { formatRupeesShort, yearlySaving, type PaidPlanCode } from '@/features/billing/plans'
+import { subscriptionRepository } from '@/features/billing/subscription-repository'
+import type { PlanPrice } from '@/features/billing/subscription-types'
 
 export const metadata: Metadata = { title: 'Plans' }
+// Prices come from the database (plan_prices) on every request.
+export const dynamic = 'force-dynamic'
 
 const freeFeatures = [
   'Profile',
@@ -50,7 +55,44 @@ function FeatureList({ items }: { items: string[] }) {
   )
 }
 
-export default function PlansPage() {
+type PlanPriceSummary = { month: number | null; year: number | null }
+
+function summarize(prices: PlanPrice[], plan: PaidPlanCode): PlanPriceSummary {
+  const find = (interval: 'month' | 'year') => prices.find((price) => price.planCode === plan && price.interval === interval)?.amountMinor ?? null
+  return { month: find('month'), year: find('year') }
+}
+
+/** Real prices from plan_prices; nothing is shown when they cannot be loaded. */
+function PriceBlock({ prices, dark = false }: { prices: PlanPriceSummary; dark?: boolean }) {
+  if (prices.month === null && prices.year === null) {
+    return <p className={`mt-2 text-sm ${dark ? 'text-white/70' : 'text-muted'}`}>Price shown at checkout</p>
+  }
+  const saving = prices.month !== null && prices.year !== null ? yearlySaving(prices.month, prices.year) : null
+  return (
+    <div className="mt-2">
+      {prices.month !== null ? (
+        <p className={`text-3xl font-bold ${dark ? 'text-white' : 'text-navy-950'}`}>
+          {formatRupeesShort(prices.month)}<span className={`text-base font-semibold ${dark ? 'text-white/70' : 'text-muted'}`}> / month</span>
+        </p>
+      ) : null}
+      {prices.year !== null ? (
+        <p className={`mt-1 text-sm font-semibold ${dark ? 'text-teal-200' : 'text-teal-800'}`}>
+          or {formatRupeesShort(prices.year)} / year{saving ? ` — save ${formatRupeesShort(saving.savingMinor)}` : ''}
+        </p>
+      ) : null}
+      <p className={`mt-1 text-xs ${dark ? 'text-white/60' : 'text-muted'}`}>Renews automatically. Cancel auto-renew any time.</p>
+    </div>
+  )
+}
+
+export default async function PlansPage() {
+  const prices = await subscriptionRepository.listActivePrices().catch((error: unknown) => {
+    console.error('plans_prices_unavailable', { message: error instanceof Error ? error.message : null })
+    return [] as PlanPrice[]
+  })
+  const creatorPrices = summarize(prices, 'creator_pro')
+  const organizationPrices = summarize(prices, 'organization_pro')
+
   return (
     <main className="mx-auto w-full max-w-6xl space-y-8 px-4 py-8 sm:px-6 lg:px-8">
       <header className="mx-auto max-w-3xl text-center">
@@ -80,11 +122,12 @@ export default function PlansPage() {
           </span>
           <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Independent creators</p>
           <h2 className="mt-1 text-2xl font-bold text-navy-950">Creator Pro</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">For recruiters, consultants, trainers, coaches and event organizers.</p>
+          <PriceBlock prices={creatorPrices} />
+          <p className="mt-3 text-sm leading-6 text-muted">For recruiters, consultants, trainers, coaches and event organizers.</p>
           <FeatureList items={creatorFeatures} />
           <Link
-            href="/settings/billing?plan=creator_pro"
-            className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
+            href="/settings/billing?plan=creator_pro#creator-pro"
+            className="mt-6 inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
           >
             Get Creator Pro
           </Link>
@@ -96,16 +139,20 @@ export default function PlansPage() {
           </span>
           <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-teal-200">Companies & institutions</p>
           <h2 className="mt-1 text-2xl font-bold">Organization Pro</h2>
-          <p className="mt-2 text-sm leading-6 text-white/70">
+          <PriceBlock prices={organizationPrices} dark />
+          <p className="mt-3 text-sm leading-6 text-white/70">
             For shipping companies, manning agencies, training institutes, colleges, survey companies, service companies and associations.
           </p>
           <div className="[&_li]:text-white/85 [&_svg]:text-teal-200">
             <FeatureList items={organizationFeatures} />
           </div>
           <Link
-            href="/organizations"
-            className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-mist-50"
+            href="/settings/billing?plan=organization_pro#organization-pro"
+            className="mt-6 inline-flex min-h-11 w-full cursor-pointer items-center justify-center rounded-xl bg-white px-5 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-mist-50"
           >
+            Get Organization Pro
+          </Link>
+          <Link href="/organizations" className="mt-3 inline-flex w-full justify-center text-sm font-semibold text-teal-200 hover:text-white hover:underline">
             Create or manage organization
           </Link>
         </article>

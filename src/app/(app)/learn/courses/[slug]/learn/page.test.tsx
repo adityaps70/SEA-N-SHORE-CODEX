@@ -10,9 +10,14 @@ const mocks = vi.hoisted(() => ({
   createMediaReadUrl: vi.fn(),
   materialPlayer: vi.fn(),
   notFound: vi.fn(),
+  redirect: vi.fn(),
+  isCourseManager: vi.fn(),
+  canAccessPlatformAdmin: vi.fn(),
 }))
 
-vi.mock('next/navigation', () => ({ notFound: mocks.notFound }))
+vi.mock('next/navigation', () => ({ notFound: mocks.notFound, redirect: mocks.redirect }))
+vi.mock('@/features/learning/course-payment-repository', () => ({ coursePaymentRepository: { isCourseManager: mocks.isCourseManager } }))
+vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: mocks.canAccessPlatformAdmin }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/learner-course-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/learning/learner-course-repository')>()
@@ -335,5 +340,40 @@ describe('/learn/courses/[slug]/learn', () => {
     expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
     expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
     expect(mocks.materialPlayer).not.toHaveBeenCalled()
+  })
+})
+
+describe('/learn/courses/[slug]/learn course team access', () => {
+  it('lets a learner with a free or purchased enrollment in without any team check', async () => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
+    mocks.getLearnerCourse.mockResolvedValue({ ...course, enrollmentSource: 'purchase' })
+    mocks.getQuizForLearner.mockResolvedValue(null)
+    mocks.createMediaReadUrl.mockResolvedValue(null)
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
+    expect(mocks.isCourseManager).not.toHaveBeenCalled()
+    expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
+  it('sends someone whose course team access has ended back to the course page', async () => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
+    mocks.getLearnerCourse.mockResolvedValue({ ...course, enrollmentSource: 'admin' })
+    mocks.isCourseManager.mockResolvedValue(false)
+    mocks.canAccessPlatformAdmin.mockResolvedValue(false)
+    await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }) })
+    expect(mocks.isCourseManager).toHaveBeenCalledWith('learner-1', course.courseId)
+    expect(mocks.redirect).toHaveBeenCalledWith(`/learn/courses/${course.slug}`)
+  })
+
+  it('keeps team access open while the person still manages the course', async () => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
+    mocks.getLearnerCourse.mockResolvedValue({ ...course, enrollmentSource: 'admin' })
+    mocks.getQuizForLearner.mockResolvedValue(null)
+    mocks.createMediaReadUrl.mockResolvedValue(null)
+    mocks.isCourseManager.mockResolvedValue(true)
+    render(await LearnerCoursePage({ params: Promise.resolve({ slug: course.slug }) }))
+    expect(mocks.redirect).not.toHaveBeenCalled()
   })
 })

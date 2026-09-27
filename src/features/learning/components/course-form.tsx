@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { AlertCircle, Loader2 } from 'lucide-react'
 import { createCourseDraft, updateCourseDraft } from '../course-actions'
 import type { CourseDraftInput } from '../course-repository'
+import { coursePrice, courseSellerNet, formatCourseAmount, formatFeePercent, type SellerFeeTerms } from '../course-pricing'
 import type { CoursePublisherOption } from '../publishers'
 import { LearningMediaUploadField } from './learning-media-upload-field'
 import {
@@ -23,6 +24,11 @@ type Props = {
   publisherName?: string
   /** Course is in review, published or archived: show the details without letting them change. */
   readOnly?: boolean
+  /**
+   * Sea N Shore's fee and payout hold for the seller (read-only preview next to the price).
+   * `byPublisherKey` is used while creating a course, where the seller depends on the chosen publisher.
+   */
+  sellerFees?: { default: SellerFeeTerms | null; byPublisherKey?: Record<string, SellerFeeTerms | null> }
 }
 
 type FormState = {
@@ -144,7 +150,30 @@ function fingerprint(form: FormState) {
   })
 }
 
-export function CourseForm({ initialValue, courseId, publisherOptions = [], publisherName, readOnly = false }: Props) {
+/** "Sea N Shore keeps 10% — you receive ₹4,491 per sale, paid out after 7 days." */
+function SellerFeePreview({ form, terms }: { form: FormState; terms: SellerFeeTerms | null | undefined }) {
+  if (terms === undefined) return null
+  if (terms === null) {
+    return <p className="mt-3 rounded-xl border border-mist-200 bg-mist-50 px-4 py-3 text-sm leading-6 text-navy-900">We couldn&apos;t load Sea N Shore&apos;s fee just now, so we can&apos;t show what you receive per sale. Refresh the page to try again.</p>
+  }
+  const price = coursePrice({
+    accessType: 'paid',
+    priceMinor: rupeesToMinor(form.price),
+    discountPriceMinor: form.discountPrice.trim() ? rupeesToMinor(form.discountPrice) : null,
+    currency: form.currency.trim().toUpperCase(),
+  })
+  const share = price ? courseSellerNet(price.amountMinor, terms.percent) : null
+  const days = `${terms.holdDays} ${terms.holdDays === 1 ? 'day' : 'days'}`
+  return (
+    <p aria-live="polite" className="mt-3 rounded-xl border border-teal-100 bg-teal-50/70 px-4 py-3 text-sm leading-6 text-navy-950">
+      {price && share
+        ? <>Sea N Shore keeps {formatFeePercent(terms.percent)}% — you receive <strong>{formatCourseAmount(share.netMinor, price.currency)}</strong> per sale, paid out after {days}.{price.discountPriceMinor !== null ? ' Worked out on the discount price, which is what learners pay.' : ''}</>
+        : <>Sea N Shore keeps {formatFeePercent(terms.percent)}% of each sale; your share is paid out {days} after the sale. Enter a price of at least ₹1 in INR to see what you receive per sale.</>}
+    </p>
+  )
+}
+
+export function CourseForm({ initialValue, courseId, publisherOptions = [], publisherName, readOnly = false, sellerFees }: Props) {
   const router = useRouter()
   const session = useCourseEditSession()
   const initial = useMemo(() => toFormState(initialValue), [initialValue])
@@ -450,7 +479,14 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
         </div>
 
         {form.accessType === 'paid' ? (
-          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">Paid enrollment will activate in the commerce phase. You can define pricing now, but learners will not be charged in Phase 1.</p>
+          <SellerFeePreview
+            form={form}
+            terms={sellerFees
+              ? (selectedPublisher && sellerFees.byPublisherKey && selectedPublisher.key in sellerFees.byPublisherKey
+                  ? sellerFees.byPublisherKey[selectedPublisher.key]
+                  : sellerFees.default)
+              : undefined}
+          />
         ) : null}
 
         <label className="mt-4 inline-flex items-center gap-3 text-sm font-semibold text-navy-950">

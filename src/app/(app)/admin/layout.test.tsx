@@ -58,6 +58,7 @@ describe('admin route boundary', () => {
     expect(screen.getByText('Restricted workspace')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Deleted content' })).toHaveAttribute('href', '/admin/deleted-content')
     expect(screen.getByRole('link', { name: /Access requests/ })).toHaveAttribute('href', '/admin/access')
+    expect(screen.getByRole('link', { name: 'Payments' })).toHaveAttribute('href', '/admin/payments')
     expect(mocks.notFound).not.toHaveBeenCalled()
   })
 

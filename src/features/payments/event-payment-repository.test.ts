@@ -57,6 +57,30 @@ type Scenario = {
   held?: number
   openOrder?: Record<string, unknown> | null
   lockedOrder?: Record<string, unknown> | null
+  earning?: Record<string, unknown> | null
+  refundRequestStale?: boolean
+}
+
+function earningRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: '66666666-6666-4666-8666-666666666666',
+    seller_profile_id: eventRow.host_user_id,
+    seller_company_id: null,
+    source_type: 'event_ticket',
+    source_id: orderId,
+    adjusts_earning_id: null,
+    currency: 'INR',
+    gross_minor: '49900',
+    platform_fee_percent: '10.00',
+    platform_fee_minor: '4990',
+    net_minor: '44910',
+    status: 'pending',
+    available_at: '2030-01-12T10:00:00.000Z',
+    payout_id: null,
+    reversed_reason: null,
+    created_at: now.toISOString(),
+    ...overrides,
+  }
 }
 
 /** Answers each SQL statement by what it does, so the tests do not depend on call order. */
@@ -69,6 +93,15 @@ function scenario(input: Scenario) {
     if (text.includes("status = 'created' and created_at > now()")) return { rows: [{ count: String(input.held ?? 0) }] }
     if (text.includes("o.status = 'created' for update")) return { rows: input.openOrder ? [input.openOrder] : [] }
     if (text.includes('where o.id = $1::uuid for update')) return { rows: input.lockedOrder ? [input.lockedOrder] : [] }
+    if (text.includes('from public.platform_fee_settings')) return { rows: [{ default_percent: '10.00', hold_days: 7 }] }
+    if (text.includes('insert into public.seller_earnings')) {
+      return { rows: [earningRow({ seller_profile_id: values[0], seller_company_id: values[1], gross_minor: values[5], platform_fee_minor: values[7], net_minor: values[8], available_at: values[9] })] }
+    }
+    if (text.includes('from public.seller_earnings where source_type = $1::text and source_id = $2::text for update')) return { rows: input.earning ? [input.earning] : [] }
+    if (text.includes("set status = 'reversed'")) return { rows: [{ ...input.earning, status: 'reversed' }] }
+    if (text.includes('refund_requested_at < now()')) return { rows: [{ stale: Boolean(input.refundRequestStale) }] }
+    if (text.includes("set refund_status = 'requested'")) return { rows: [orderRow({ ...input.lockedOrder, refund_status: 'requested', refund_attempts: Number(input.lockedOrder?.refund_attempts ?? 0) + 1 })] }
+    if (text.includes("set status = 'refunded'")) return { rows: [orderRow({ ...input.lockedOrder, status: 'refunded', refund_status: values[1] ?? 'processed', provider_refund_id: values[2] })] }
     if (text.includes('insert into public.event_payment_orders')) {
       return { rows: [orderRow({ provider_order_id: null, amount_minor: values[3], currency: values[4], created_at: now.toISOString() })] }
     }
@@ -76,6 +109,12 @@ function scenario(input: Scenario) {
     if (text.includes('set registration_confirmed_at')) return { rows: [orderRow({ status: 'paid', provider_payment_id: 'pay_1', registration_confirmed_at: now.toISOString() })] }
     return { rows: [] }
   })
+}
+
+function auditActions() {
+  return db.txQuery.mock.calls
+    .filter((call) => String(call[0]).includes('insert into public.payment_audit_events'))
+    .map((call) => (call[1] as unknown[])[4])
 }
 
 function sqlCalls() {
@@ -191,10 +230,22 @@ describe('event payment repository: confirming payment', () => {
       .resolves.toMatchObject({ state: 'refund_due', reason: 'amount_mismatch' })
   })
 
-  it('releases the seat when a payment is refunded', async () => {
-    db.txQuery.mockResolvedValue({ rows: [orderRow({ status: 'refunded' })] })
-    await eventPaymentRepository.markOrderRefunded(client, orderId)
+  it('releases the seat, reverses the organiser earning and audits a refund', async () => {
+    scenario({
+      lockedOrder: orderRow({ status: 'paid', provider_payment_id: 'pay_1', registration_confirmed_at: now.toISOString(), refund_status: 'requested' }),
+      earning: earningRow(),
+    })
+    const order = await eventPaymentRepository.markOrderRefunded(client, orderId, { providerRefundId: 'rfnd_1', refundStatus: 'processed', actor: { type: 'organizer', profileId: eventRow.host_user_id } })
+    expect(order).toMatchObject({ status: 'refunded', refundStatus: 'processed', providerRefundId: 'rfnd_1' })
     expect(sqlCalls().some((sql) => sql.includes('delete from public.event_attendees where payment_order_id = $1::uuid'))).toBe(true)
+    expect(sqlCalls().some((sql) => sql.includes("set status = 'reversed'"))).toBe(true)
+    expect(auditActions()).toEqual(['refunded', 'earning_reversed'])
+  })
+
+  it('does not refund an order that was never paid', async () => {
+    scenario({ lockedOrder: orderRow({ status: 'created' }) })
+    await expect(eventPaymentRepository.markOrderRefunded(client, orderId)).resolves.toBeNull()
+    expect(sqlCalls().some((sql) => sql.includes('delete from public.event_attendees'))).toBe(false)
   })
 })
 
@@ -215,5 +266,80 @@ describe('event payment repository: webhooks and organiser view', () => {
     expect(sql).toContain('e.host_user_id = $1::uuid')
     expect(sql).toContain("'event_manager'")
     expect(db.query.mock.calls[0]?.[1]).toEqual([profileId, eventId])
+  })
+})
+
+describe('event payment repository: seller earnings, refunds and Cashfree lookups', () => {
+  const client = { query: db.txQuery }
+
+  it('records the organisation earning when a seat is confirmed, available a hold period after the event ends', async () => {
+    const companyId = '55555555-5555-4555-8555-555555555555'
+    scenario({ lockedOrder: orderRow(), event: { ...eventRow, company_id: companyId } })
+    await expect(eventPaymentRepository.confirmPaidOrder(client, { orderId, providerPaymentId: 'pay_1', now, actor: { type: 'provider' } }))
+      .resolves.toMatchObject({ state: 'registered' })
+    const insert = db.txQuery.mock.calls.find((call) => String(call[0]).includes('insert into public.seller_earnings'))!
+    // seller = the hosting organization; available = event end (5 Jan) + 7 days.
+    expect(insert[1]).toEqual([null, companyId, 'event_ticket', orderId, 'INR', 49900, '10.00', 4990, 44910, '2030-01-12T10:00:00.000Z'])
+    expect(auditActions()).toEqual(['paid', 'seat_confirmed', 'earning_recorded'])
+  })
+
+  it('records the host profile as seller for a personal event', async () => {
+    scenario({ lockedOrder: orderRow() })
+    await eventPaymentRepository.confirmPaidOrder(client, { orderId, providerPaymentId: 'pay_1', now })
+    const insert = db.txQuery.mock.calls.find((call) => String(call[0]).includes('insert into public.seller_earnings'))!
+    expect((insert[1] as unknown[]).slice(0, 2)).toEqual([eventRow.host_user_id, null])
+  })
+
+  it('records no earning for a payment that is due a refund', async () => {
+    scenario({ lockedOrder: orderRow(), attendees: 2 })
+    await eventPaymentRepository.confirmPaidOrder(client, { orderId, providerPaymentId: 'pay_1', now })
+    expect(sqlCalls().some((sql) => sql.includes('insert into public.seller_earnings'))).toBe(false)
+    expect(auditActions()).toEqual(['paid', 'refund_due'])
+  })
+
+  it('marks a refund as requested once, so a double click cannot refund twice', async () => {
+    scenario({ lockedOrder: orderRow({ status: 'paid', provider_payment_id: 'pay_1' }) })
+    await expect(eventPaymentRepository.requestRefund(client, { orderId, actor: { type: 'organizer', profileId }, reason: 'organizer_refund' }))
+      .resolves.toMatchObject({ attempt: 1, order: { refundStatus: 'requested' } })
+    expect(auditActions()).toEqual(['refund_requested'])
+
+    scenario({ lockedOrder: orderRow({ status: 'paid', provider_payment_id: 'pay_1', refund_status: 'requested', refund_attempts: 1 }) })
+    await expect(eventPaymentRepository.requestRefund(client, { orderId, actor: { type: 'organizer', profileId }, reason: 'organizer_refund' }))
+      .rejects.toMatchObject({ code: 'refund_in_progress' })
+
+    scenario({ lockedOrder: orderRow({ status: 'created' }) })
+    await expect(eventPaymentRepository.requestRefund(client, { orderId, actor: { type: 'admin', profileId }, reason: 'admin_refund' }))
+      .rejects.toMatchObject({ code: 'refund_not_allowed' })
+  })
+
+  it('allows a retry after a failed refund', async () => {
+    scenario({ lockedOrder: orderRow({ status: 'refunded', provider_payment_id: 'pay_1', refund_status: 'failed', refund_attempts: 1 }) })
+    await expect(eventPaymentRepository.requestRefund(client, { orderId, actor: { type: 'admin', profileId }, reason: 'admin_refund' }))
+      .resolves.toMatchObject({ attempt: 2 })
+  })
+
+  it('refuses a currency the gateway cannot charge', async () => {
+    scenario({ event: { ...eventRow, currency: 'USD', price_minor: '2500' } })
+    await expect(eventPaymentRepository.prepareCheckoutOrder({ profileId, eventId, provider: 'cashfree', currencies: ['INR'], now }))
+      .rejects.toMatchObject({ code: 'event_currency_unsupported' })
+  })
+
+  it('does not reuse an open checkout from another gateway', async () => {
+    scenario({ openOrder: orderRow({ provider: 'razorpay' }) })
+    const result = await eventPaymentRepository.prepareCheckoutOrder({ profileId, eventId, provider: 'cashfree', now })
+    expect(result.reused).toBe(false)
+  })
+
+  it('finds a Cashfree order by our id even before its gateway id was saved', async () => {
+    db.txQuery.mockImplementation(async (sql: string) => {
+      const text = String(sql).replace(/\s+/g, ' ')
+      if (text.includes('o.provider_order_id = $2::text limit 1')) return { rows: [] }
+      if (text.includes('where o.id = $1::uuid and o.provider = $2::text')) return { rows: [orderRow({ provider: 'cashfree', provider_order_id: null })] }
+      return { rows: [] }
+    })
+    await expect(eventPaymentRepository.findOrderByProviderOrderId(client, 'cashfree', 'evt_33333333333343338333333333333333'))
+      .resolves.toMatchObject({ id: orderId })
+    const byId = db.txQuery.mock.calls.find((call) => String(call[0]).includes('where o.id = $1::uuid and o.provider'))
+    expect(byId?.[1]).toEqual([orderId, 'cashfree', 'evt_33333333333343338333333333333333'])
   })
 })

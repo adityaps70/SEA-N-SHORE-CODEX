@@ -30,7 +30,9 @@ describe('SettingsPage', () => {
     expect(billing).toHaveAttribute('href', '/settings/billing')
     expect(billing).toHaveClass('border-mist-200', 'hover:border-ocean-300')
     expect(billing.querySelector('svg.lucide-chevron-right')).not.toBeNull()
-    expect(container.querySelectorAll('a svg.lucide-chevron-right')).toHaveLength(6)
+    expect(container.querySelectorAll('a svg.lucide-chevron-right')).toHaveLength(8)
+    expect(screen.getByRole('link', { name: /Earnings/ })).toHaveAttribute('href', '/settings/earnings')
+    expect(screen.getByRole('link', { name: /Payout details/ })).toHaveAttribute('href', '/settings/payouts')
 
     const security = screen.getByText('Security:').closest('p')
     expect(security).not.toBeNull()

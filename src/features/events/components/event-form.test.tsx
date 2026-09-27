@@ -89,8 +89,23 @@ describe('event form: Free or Paid', () => {
     const currency = screen.getByLabelText(/Currency/) as HTMLSelectElement
     expect(currency.value).toBe('INR')
     expect(within(currency).getByRole('option', { name: /USD/ })).toBeInTheDocument()
-    expect(screen.getByText(/Payouts to organisers and any refunds are handled by the Sea N Shore team/)).toBeInTheDocument()
+    expect(screen.getByText(/You can refund a ticket from the event.s Paid registrations page\. Payouts of your share \(the ticket price minus the Sea N Shore platform fee\) are handled by the Sea N Shore team/)).toBeInTheDocument()
     expect(screen.queryByText(/Payments aren.t switched on/)).not.toBeInTheDocument()
+  })
+
+  it('warns organisers that US dollar tickets cannot be paid until the gateway accepts them', () => {
+    render(<EventForm mode="create" publisherOptions={[publisher]} paymentsConfigured paymentCurrencies={['INR']} />)
+    fireEvent.click(screen.getByRole('radio', { name: /Paid/ }))
+    expect(screen.queryByText(/can only take payments in Indian rupees/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'USD' } })
+    expect(screen.getByRole('status')).toHaveTextContent("Sea N Shore can only take payments in Indian rupees (INR) right now. You can save a US dollar price, but attendees won't be able to pay")
+  })
+
+  it('does not warn about US dollars when the gateway accepts them', () => {
+    render(<EventForm mode="create" publisherOptions={[publisher]} paymentsConfigured paymentCurrencies={['INR', 'USD']} />)
+    fireEvent.click(screen.getByRole('radio', { name: /Paid/ }))
+    fireEvent.change(screen.getByLabelText('Currency'), { target: { value: 'USD' } })
+    expect(screen.queryByText(/can only take payments in Indian rupees/)).not.toBeInTheDocument()
   })
 
   it('tells organisers when payments are not set up yet', () => {

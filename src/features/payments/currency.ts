@@ -50,6 +50,37 @@ export function formatMoney(amountMinor: number, currency: string) {
   }).format(major)
 }
 
+/**
+ * Minor units (paise / cents) to the decimal amount gateways like Cashfree expect,
+ * e.g. 49950 -> 499.5. Built from the digits, so there is no floating-point drift.
+ */
+export function minorToDecimalAmount(amountMinor: number): number {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new RangeError('amount_minor_invalid')
+  const whole = Math.floor(amountMinor / 100)
+  const fraction = String(amountMinor % 100).padStart(2, '0')
+  return Number(`${whole}.${fraction}`)
+}
+
+/**
+ * A decimal amount from a gateway (number or text, at most 2 decimals) to minor units,
+ * e.g. 10.15 -> 1015. Returns null for anything that is not a clean non-negative amount.
+ */
+export function decimalAmountToMinor(value: unknown): number | null {
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) return null
+    const scaled = value * 100
+    const rounded = Math.round(scaled)
+    return Math.abs(rounded - scaled) < 1e-6 && Number.isSafeInteger(rounded) ? rounded : null
+  }
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (!/^\d{1,13}(\.\d{1,2})?$/.test(text)) return null
+    const [whole, fraction = ''] = text.split('.')
+    return Number(whole) * 100 + Number(fraction.padEnd(2, '0'))
+  }
+  return null
+}
+
 export function minTicketPriceMinor(currency: PaymentCurrency) {
   return MIN_TICKET_PRICE * MINOR_UNITS[currency]
 }

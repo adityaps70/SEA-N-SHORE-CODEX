@@ -226,4 +226,22 @@ describe('learning enrollment repository', () => {
     ])
   })
 
+  it('gives the course team access with an admin-source enrollment on published courses only, reopening a revoked one', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createEnrollmentRepository({
+      query: async (text: string, values?: readonly unknown[]) => {
+        seen.push({ text, values })
+        return [{ ...enrollmentRow, enrollment_source: 'admin' }]
+      },
+    })
+    await expect(repository.grantTeamAccess(learnerId, courseId)).resolves.toMatchObject({ enrollmentId, enrollmentSource: 'admin', status: 'active' })
+    const sql = seen[0]!.text.replace(/\s+/g, ' ')
+    expect(sql).toContain("select course.id, $1, 'admin', 'active'")
+    expect(sql).toContain("course.status = 'published'")
+    expect(sql).toContain("case when learning_enrollments.status = 'revoked' then 'admin' else learning_enrollments.enrollment_source end")
+    expect(seen[0]!.values).toEqual([learnerId, courseId])
+
+    const empty = createEnrollmentRepository({ query: async () => [] })
+    await expect(empty.grantTeamAccess(learnerId, courseId)).rejects.toThrow('course_not_enrollable')
+  })
 })

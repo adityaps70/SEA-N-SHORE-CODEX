@@ -3,6 +3,7 @@ import {
   Activity,
   BadgeCheck,
   Building2,
+  CreditCard,
   GraduationCap,
   KeyRound,
   LayoutDashboard,
@@ -11,6 +12,7 @@ import {
   ShieldCheck,
   Trash2,
   UsersRound,
+  Wallet,
 } from 'lucide-react'
 import { ActiveNavLink } from '@/components/navigation/active-nav-link'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
@@ -31,6 +33,8 @@ const sections: Section[] = [
   { href: '/admin/verifications', label: 'Verifications', icon: BadgeCheck },
   { href: '/admin/access', label: 'Access requests', icon: KeyRound, count: (m) => m.pendingAccessRequests },
   { href: '/admin/learning', label: 'Learning', icon: GraduationCap },
+  { href: '/admin/billing', label: 'Billing', icon: CreditCard },
+  { href: '/admin/payments', label: 'Payments', icon: Wallet },
   { href: '/admin/newsletter', label: 'Newsletter', icon: Mail },
   { href: '/admin/deleted-content', label: 'Deleted content', icon: Trash2 },
   { href: '/admin/audit', label: 'Audit log', icon: Activity },

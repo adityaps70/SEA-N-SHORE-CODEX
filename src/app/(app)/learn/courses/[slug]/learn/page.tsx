@@ -1,7 +1,9 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft, ArrowRight, CheckCircle2, Circle, LockKeyhole } from 'lucide-react'
+import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { coursePaymentRepository } from '@/features/learning/course-payment-repository'
 import { MaterialPlayer } from '@/features/learning/components/material-player'
 import {
   learnerCourseRepository,
@@ -51,6 +53,12 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
 
   const course = await learnerCourseRepository.getLearnerCourse(user.id, slug)
   if (!course) return notFound()
+  // Course team access (no purchase) lasts only while the person is still on the team.
+  if (course.enrollmentSource === 'admin') {
+    const stillOnTeam = await coursePaymentRepository.isCourseManager(user.id, course.courseId)
+      || await canAccessPlatformAdmin(user.id)
+    if (!stillOnTeam) return redirect(`/learn/courses/${course.slug}`)
+  }
 
   const lessons = allLessons(course)
   const requestedLessonId = query.lesson

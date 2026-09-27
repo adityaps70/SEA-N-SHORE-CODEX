@@ -10,7 +10,9 @@ import { EventNav } from '@/features/events/components/event-nav'
 import { EventShareButton } from '@/features/events/components/event-share-button'
 import { eventFormatLabel, eventPriceLabel } from '@/features/events/event-labels'
 import { EventCheckoutButton } from '@/features/payments/components/event-checkout-button'
-import { arePaymentsConfigured } from '@/features/payments/provider'
+import { CURRENCY_UNAVAILABLE_BUYER_MESSAGE } from '@/features/payments/event-payment-rules'
+import { getPaymentCapabilities } from '@/features/payments/provider'
+import { isPaymentCurrency } from '@/features/payments/currency'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 
 function dateTime(value: string, timeZone: string) {
@@ -96,7 +98,10 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
   const showAttendanceControl = !event.viewerIsHost && !event.isPast && event.status !== 'cancelled'
   const isPaidEvent = event.pricing === 'paid'
   const priceLabel = eventPriceLabel(event)
-  const paymentsConfigured = isPaidEvent ? await arePaymentsConfigured() : true
+  const payments = isPaidEvent ? await getPaymentCapabilities() : null
+  const paymentsConfigured = payments ? payments.configured : true
+  // Tickets can be bought only when a gateway is set up and it accepts the event's currency.
+  const currencyUnavailable = Boolean(payments?.configured && isPaymentCurrency(event.currency) && !payments.currencies.includes(event.currency))
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:px-6 sm:py-6">
@@ -205,6 +210,11 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
                     Paid registrations
                   </Link>
                 ) : null}
+                {currencyUnavailable ? (
+                  <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                    Sea N Shore can only take payments in Indian rupees (INR) right now, so attendees can&apos;t buy tickets priced in US dollars yet. Edit the event and choose INR to start selling tickets.
+                  </p>
+                ) : null}
                 {isPaidEvent && !paymentsConfigured ? (
                   <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
                     Payments aren&apos;t switched on for Sea N Shore yet, so attendees see &ldquo;Registration opens soon&rdquo; instead of a Pay button. Nothing else is needed from you.
@@ -220,6 +230,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
                   paymentsConfigured={paymentsConfigured}
                   disabled={registrationState !== 'open'}
                   unavailableLabel={registrationLabel}
+                  blockedMessage={currencyUnavailable ? CURRENCY_UNAVAILABLE_BUYER_MESSAGE : undefined}
                 />
               ) : (
                 <AttendanceControl

@@ -6,6 +6,7 @@ import { ChevronDown, ImageUp, Info, MapPin, Monitor, MonitorSmartphone, Ticket,
 import { useRouter } from 'next/navigation'
 import { focusFirstFormError } from '@/components/ui/form-error-summary'
 import { CURRENCY_LABELS, DEFAULT_PAYMENT_CURRENCY, isPaymentCurrency, minorToPriceInput, parsePriceToMinor } from '@/features/payments/currency'
+import { CURRENCY_UNAVAILABLE_ORGANIZER_MESSAGE } from '@/features/payments/event-payment-rules'
 import { PAYMENT_CURRENCIES, type PaymentCurrency } from '@/features/payments/types'
 import { cancelEventAction, createEventAction, createEventBannerUploadAction, updateEventAction } from '../calendar-actions'
 import { calendarFieldErrors, parseCalendarEventInput } from '../calendar-validation'
@@ -30,8 +31,8 @@ import { EventDateTimeField } from './event-date-time-field'
 import { uploadEventBannerFile } from './upload-event-banner'
 
 type Props =
-  | { mode: 'create'; publisherOptions: EventPublisherOption[]; paymentsConfigured: boolean; initial?: never; eventId?: never }
-  | { mode: 'edit'; initial: CalendarEvent; eventId: string; paymentsConfigured: boolean; publisherOptions?: never }
+  | { mode: 'create'; publisherOptions: EventPublisherOption[]; paymentsConfigured: boolean; paymentCurrencies?: readonly PaymentCurrency[]; initial?: never; eventId?: never }
+  | { mode: 'edit'; initial: CalendarEvent; eventId: string; paymentsConfigured: boolean; paymentCurrencies?: readonly PaymentCurrency[]; publisherOptions?: never }
 
 const inputClass = 'min-h-12 w-full rounded-2xl border border-mist-100 bg-mist-50 px-4 py-3 text-[15px] font-normal text-navy-950 outline-none transition placeholder:font-normal placeholder:text-slate-400 focus:border-teal-500 aria-[invalid=true]:border-rose-300'
 const selectClass = `${inputClass} appearance-none pr-10 font-semibold`
@@ -595,8 +596,13 @@ export function EventForm(props: Props) {
             </div>
             <p className="flex gap-2 rounded-2xl bg-mist-50 p-4 text-xs leading-5 text-navy-700">
               <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-teal-700" />
-              <span>Attendees pay inside Sea N Shore by card, UPI or net banking, and their seat is confirmed as soon as the payment succeeds. Payouts to organisers and any refunds are handled by the Sea N Shore team outside the site for now.</span>
+              <span>Attendees pay inside Sea N Shore by card, UPI or net banking, and their seat is confirmed as soon as the payment succeeds. You can refund a ticket from the event&apos;s Paid registrations page. Payouts of your share (the ticket price minus the Sea N Shore platform fee) are handled by the Sea N Shore team outside the site for now.</span>
             </p>
+            {props.paymentsConfigured && props.paymentCurrencies && !props.paymentCurrencies.includes(currency) ? (
+              <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">
+                {CURRENCY_UNAVAILABLE_ORGANIZER_MESSAGE}
+              </p>
+            ) : null}
             {!props.paymentsConfigured ? (
               <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold leading-5 text-amber-900">
                 Payments aren&apos;t switched on for Sea N Shore yet. You can still save and publish this paid event, but attendees will see &ldquo;Registration opens soon&rdquo; until payments are set up.

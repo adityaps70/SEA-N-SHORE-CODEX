@@ -19,7 +19,7 @@ export type RazorpayCheckoutOptions = {
   name: string
   description: string
   order_id: string
-  prefill?: { email?: string; name?: string }
+  prefill?: { email?: string; name?: string; contact?: string }
   notes?: Record<string, string>
   theme?: { color?: string }
   timeout?: number

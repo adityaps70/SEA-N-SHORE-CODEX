@@ -15,7 +15,8 @@ vi.mock('@/lib/db/client', () => ({
   withTransaction: async (fn: (client: unknown) => unknown) => fn({ query: vi.fn() }),
 }))
 vi.mock('@/features/payments/provider', () => ({
-  getPaymentProvider: async () => mocks.provider,
+  getPaymentGateway: async () => mocks.provider,
+  getGatewayByName: async (name: string) => (name === 'razorpay' ? mocks.provider : null),
 }))
 vi.mock('@/features/payments/event-payment-repository', () => ({
   EventRegistrationError: class EventRegistrationError extends Error {},
@@ -29,7 +30,7 @@ vi.mock('@/features/payments/event-payment-repository', () => ({
   },
 }))
 
-import { createRazorpayProvider } from '@/features/payments/razorpay'
+import { createRazorpayGateway } from '@/features/payments/razorpay'
 import { POST } from './route'
 
 const webhookSecret = 'whsec-test'
@@ -63,7 +64,7 @@ function sign(payload: string, secret = webhookSecret) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.provider = createRazorpayProvider(
+  mocks.provider = createRazorpayGateway(
     { keyId: 'rzp_test_Key1', keySecret: 'key-secret', webhookSecret },
     async () => new Response(JSON.stringify({ id: 'pay_1', amount: 49900, currency: 'INR', status: 'captured' }), { status: 200 }),
   )

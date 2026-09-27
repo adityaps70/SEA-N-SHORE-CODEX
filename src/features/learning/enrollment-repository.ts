@@ -189,6 +189,49 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
     }
   }
 
+  /**
+   * Course team access without buying (the course owner, its organization's learning
+   * managers, platform admins): an enrollment with source 'admin'. The caller must
+   * have checked the person's access. An existing enrollment is kept as it is; one
+   * that was revoked (for example after a refund) is reopened as team access.
+   */
+  async function grantTeamAccess(learnerId: string, courseId: string) {
+    const rows = await queryRows(
+      `insert into public.learning_enrollments (
+         course_id, learner_id, enrollment_source, status, enrolled_at, created_at, updated_at
+       )
+       select course.id, $1, 'admin', 'active', now(), now(), now()
+       from public.learning_courses course
+       left join public.learning_mentors mentor
+         on mentor.id = course.mentor_id
+       left join public.learning_mentor_applications application
+         on application.id = mentor.application_id
+        and application.user_id = mentor.user_id
+       left join public.companies company
+         on company.id = course.company_id
+       where course.id = $2
+         and ${publishedCourseVisibilitySql()}
+       on conflict (course_id, learner_id) do update
+         set enrollment_source = case when learning_enrollments.status = 'revoked' then 'admin' else learning_enrollments.enrollment_source end,
+             payment_order_id = case when learning_enrollments.status = 'revoked' then null else learning_enrollments.payment_order_id end,
+             revoked_at = null,
+             status = case when learning_enrollments.status = 'revoked' then 'active' else learning_enrollments.status end,
+             updated_at = now()
+       returning
+         id,
+         status,
+         enrollment_source,
+         enrolled_at,
+         completed_at,
+         revoked_at`,
+      [learnerId, courseId],
+    ) as EnrollmentRow[]
+
+    const row = rows[0]
+    if (!row) throw new Error('course_not_enrollable')
+    return mapEnrollment(row)
+  }
+
   async function listLearnerEnrollments(learnerId: string): Promise<LearnerCourseEnrollment[]> {
     const rows = await queryRows(
       `select
@@ -295,6 +338,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
 
   return {
     enrollFreeCourse,
+    grantTeamAccess,
     getLearnerEnrollment,
     listLearnerEnrollments,
   }

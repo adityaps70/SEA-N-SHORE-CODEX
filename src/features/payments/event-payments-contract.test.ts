@@ -54,29 +54,54 @@ describe('in-platform event payment flow contract', () => {
   it('keeps secrets on the server and loads Checkout only when a payment starts', () => {
     const loader = source('src/features/payments/components/load-razorpay-checkout.ts')
     expect(loader).toContain('https://checkout.razorpay.com/v1/checkout.js')
+    expect(source('src/features/payments/components/gateway-checkout.ts')).toContain('https://sdk.cashfree.com/js/v3/cashfree.js')
     expect(source('src/app/layout.tsx')).not.toContain('checkout.razorpay.com')
-    const button = source('src/features/payments/components/event-checkout-button.tsx')
-    expect(button).not.toMatch(/keySecret|webhookSecret|RAZORPAY_KEY_SECRET/)
+    expect(source('src/app/layout.tsx')).not.toContain('sdk.cashfree.com')
+    for (const file of [
+      'src/features/payments/components/event-checkout-button.tsx',
+      'src/features/payments/components/gateway-checkout-button.tsx',
+      'src/features/payments/components/gateway-checkout.ts',
+    ]) {
+      expect(source(file)).not.toMatch(/keySecret|webhookSecret|clientSecret|RAZORPAY_KEY_SECRET|CASHFREE_CLIENT_SECRET/)
+    }
     expect(source('src/features/payments/event-payment-actions.ts')).toContain("'use server'")
   })
 
-  it('verifies the raw webhook body before parsing it', () => {
+  it('verifies the raw webhook body before parsing it (Razorpay and Cashfree)', () => {
     const route = source('src/app/api/payments/razorpay/webhook/route.ts')
     expect(route).toContain('await request.text()')
     expect(route).toContain('x-razorpay-signature')
     expect(route).toContain('x-razorpay-event-id')
     const service = source('src/features/payments/event-payment-service.ts')
-    expect(service.indexOf('verifyWebhookSignature')).toBeLessThan(service.indexOf('JSON.parse(input.rawBody)'))
+    expect(service.indexOf('gateway.verifyWebhook(input.rawBody')).toBeGreaterThan(-1)
+    expect(service.indexOf('gateway.verifyWebhook(input.rawBody')).toBeLessThan(service.indexOf('JSON.parse(input.rawBody)'))
+
+    const cashfreeRoute = source('src/app/api/payments/cashfree/webhook/route.ts')
+    expect(cashfreeRoute).toContain('await request.text()')
+    const cashfreeWebhook = source('src/features/payments/cashfree-webhook.ts')
+    expect(cashfreeWebhook.indexOf('gateway.verifyWebhook(input.rawBody')).toBeGreaterThan(-1)
+    expect(cashfreeWebhook.indexOf('gateway.verifyWebhook(input.rawBody')).toBeLessThan(cashfreeWebhook.indexOf('parseCashfreeWebhook(input.rawBody)'))
+  })
+
+  it('never marks an order paid from the browser: confirmation always asks the gateway', () => {
+    const service = source('src/features/payments/event-payment-service.ts')
+    const confirm = service.slice(service.indexOf('async function confirmOrder('), service.indexOf('async function confirmCheckout('))
+    expect(confirm).toContain('gateway.confirmOrder(order.providerOrderId, proof)')
+    expect(confirm.indexOf('gateway.confirmOrder(')).toBeLessThan(confirm.indexOf("confirmation.status === 'paid'"))
   })
 
   it('shows paid registration, organiser payouts notice and not-configured states on event pages', () => {
     const detail = source('src/app/(app)/events/[eventId]/page.tsx')
     expect(detail).toContain('EventCheckoutButton')
-    expect(detail).toContain('arePaymentsConfigured')
+    expect(detail).toContain('getPaymentCapabilities')
+    expect(detail).toContain('CURRENCY_UNAVAILABLE_BUYER_MESSAGE')
     expect(detail).toContain('Paid registrations')
     const registrations = source('src/app/(app)/events/[eventId]/registrations/page.tsx')
     expect(registrations).toContain('listEventPaymentsForManager')
-    expect(registrations).toContain('handled by the Sea N Shore team outside the site for now')
+    // Round 5 payouts: organisers track their share in Earnings and set Payout details on the site.
+    expect(registrations).toContain('/settings/earnings')
+    expect(registrations).toContain('/settings/payouts')
+    expect(registrations).toContain('EventRefundButton')
     expect(registrations).toContain('viewerIsHost')
     expect(source('src/features/events/components/attendance-control.tsx')).toContain('Paid')
   })

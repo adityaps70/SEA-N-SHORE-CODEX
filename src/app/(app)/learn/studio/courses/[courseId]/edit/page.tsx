@@ -13,6 +13,7 @@ import {
   type CourseDraftInput,
   type MentorOwnedCourseDetail,
 } from '@/features/learning/course-repository'
+import { loadSellerFeeTerms } from '@/features/learning/course-seller-fees'
 import { canMentorEditCourse } from '@/features/learning/course-workflow'
 import { mentorMaterialRepository } from '@/features/learning/mentor-material-repository'
 
@@ -127,7 +128,11 @@ export default async function EditMentorCoursePage({
   const course = await courseRepository.getOwnedCourse(user.id, courseId)
   if (!course) return notFound()
 
-  const curriculum = await mentorMaterialRepository.getCurriculum(user.id, courseId)
+  const [curriculum, sellerFee] = await Promise.all([
+    mentorMaterialRepository.getCurriculum(user.id, courseId),
+    // The seller is the course's organization, or the trainer who owns a personal course.
+    loadSellerFeeTerms(course.companyId ? { companyId: course.companyId } : { profileId: user.id }),
+  ])
   if (!curriculum) return notFound()
 
   const editable = canMentorEditCourse(course.status)
@@ -182,6 +187,7 @@ export default async function EditMentorCoursePage({
             courseId={course.id}
             publisherName={course.publisherName}
             readOnly={!editable}
+            sellerFees={{ default: sellerFee }}
           />
         </div>
 
