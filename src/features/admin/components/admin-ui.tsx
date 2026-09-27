@@ -51,7 +51,7 @@ export function AdminFilterBar({ label, options }: { label: string; options: Adm
           className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition ${
             option.active
               ? 'border-navy-950 bg-navy-950 text-white'
-              : 'border-mist-100 bg-white text-navy-900 hover:border-mist-200 hover:bg-mist-50'
+              : 'border-mist-200 bg-white text-navy-900 hover:border-mist-200 hover:bg-mist-50'
           }`}
         >
           {option.label}

@@ -94,7 +94,7 @@ export default async function HiringApplicantsPage({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
-          <Link href={`/hiring/jobs/${jobId}/edit`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">Edit vacancy</Link>
+          <Link href={`/hiring/jobs/${jobId}/edit`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">Edit vacancy</Link>
           <Link href="/hiring/jobs" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">All jobs</Link>
         </div>
       </div>
@@ -216,7 +216,7 @@ export default async function HiringApplicantsPage({
           <section className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center">
             <h2 className="text-xl font-bold text-navy-950">No applicants in this stage</h2>
             <p className="mt-2 text-sm text-muted">Try another stage, or show all applicants.</p>
-            <Link href={`/hiring/jobs/${jobId}/applicants`} className="mt-5 inline-flex rounded-xl border border-mist-100 px-5 py-2.5 text-sm font-bold text-navy-950 hover:bg-mist-50">Show all applicants</Link>
+            <Link href={`/hiring/jobs/${jobId}/applicants`} className="mt-5 inline-flex rounded-xl border border-mist-200 px-5 py-2.5 text-sm font-bold text-navy-950 hover:bg-mist-50">Show all applicants</Link>
           </section>
         ) : null}
       </section>

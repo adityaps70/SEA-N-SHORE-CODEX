@@ -191,7 +191,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                       <td className="px-4 py-2.5 text-right">
                         <Link
                           href={`/admin/users/${user.id}`}
-                          className="inline-flex min-h-8 items-center whitespace-nowrap rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
+                          className="inline-flex min-h-8 items-center whitespace-nowrap rounded-lg border border-mist-200 px-3 text-xs font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
                         >
                           {deleted ? 'View deletion record' : 'Manage user'}
                         </Link>

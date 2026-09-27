@@ -16,6 +16,9 @@ vi.mock('@/features/feed/queries', () => ({ getFeedPage: vi.fn() }))
 vi.mock('@/features/network/queries', () => ({ getPeopleYouMayKnow: vi.fn() }))
 vi.mock('@/features/profiles/queries', () => ({ getOwnProfile: vi.fn() }))
 vi.mock('@/features/profiles/profile-portfolio-queries', () => ({ getOwnProfilePortfolio: vi.fn() }))
+vi.mock('@/features/profiles/home-rail-queries', () => ({
+  getHomeRailData: vi.fn(async () => ({ verified: false, organizations: { memberships: [], application: null } })),
+}))
 
 vi.mock('@/features/feed/components/feed-layout', () => ({
   FeedLayout: ({ portfolioCompletion, children }: { portfolioCompletion: { experienceCount: number; credentialCount: number }; children: React.ReactNode }) => (

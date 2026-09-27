@@ -78,7 +78,7 @@ export default async function HiringApplicantReviewPage({
           <h1 className="mt-4 text-3xl font-bold text-navy-950">Candidate review</h1>
           <p className="mt-2 text-sm text-muted">{review.job.title} · Applied {formatDate(review.appliedAt)}</p>
         </div>
-        <Link href={`/hiring/jobs/${review.job.id}/applicants`} className="inline-flex min-h-10 items-center self-start rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
+        <Link href={`/hiring/jobs/${review.job.id}/applicants`} className="inline-flex min-h-10 items-center self-start rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
           Back to applicants
         </Link>
       </div>
@@ -256,7 +256,7 @@ export default async function HiringApplicantReviewPage({
                   href={dgProfileDownloadHref(candidate.id)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-3 flex min-h-11 w-full min-w-0 flex-col justify-center rounded-xl border border-mist-100 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
+                  className="mt-3 flex min-h-11 w-full min-w-0 flex-col justify-center rounded-xl border border-mist-200 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
                 >
                   <span>Open DG profile (PDF)</span>
                   <span className="block truncate text-xs font-medium text-muted">{dgProfile.fileName}</span>

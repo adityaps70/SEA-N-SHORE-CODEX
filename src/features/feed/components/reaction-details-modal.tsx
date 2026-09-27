@@ -132,7 +132,7 @@ function OpenReactionDetails({
                       ) : initials(reactor.fullName)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <Link href={`/people/${reactor.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
+                      <Link href={`/people/${reactor.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
                         {reactor.fullName}
                       </Link>
                       {details ? <p className="mt-0.5 truncate text-sm text-muted">{details}</p> : null}

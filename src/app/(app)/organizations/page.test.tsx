@@ -11,9 +11,12 @@ const mocks = vi.hoisted(() => ({
   getOrganizationApplication: vi.fn(),
   listFollowedOrganizations: vi.fn(),
   countPendingForManager: vi.fn(),
+  listOrganizationCards: vi.fn(),
+  listDiscoverOrganizations: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
+vi.mock('next/image', () => ({ default: (props: Record<string, unknown>) => <span data-testid="logo" data-src={String(props.src)} /> }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/access/server', () => ({ getAccessContext: mocks.getAccessContext }))
 vi.mock('@/features/organizations/repository', () => ({
@@ -26,7 +29,11 @@ vi.mock('@/features/organizations/repository', () => ({
   },
 }))
 vi.mock('@/features/organizations/workspace-repository', () => ({
-  organizationWorkspaceRepository: { listFollowedOrganizations: mocks.listFollowedOrganizations },
+  organizationWorkspaceRepository: {
+    listFollowedOrganizations: mocks.listFollowedOrganizations,
+    listOrganizationCards: mocks.listOrganizationCards,
+    listDiscoverOrganizations: mocks.listDiscoverOrganizations,
+  },
 }))
 vi.mock('@/features/organizations/access-request-repository', () => ({
   organizationAccessRequestRepository: { countPendingForManager: mocks.countPendingForManager },
@@ -36,12 +43,21 @@ vi.mock('@/features/organizations/actions', () => ({
   submitOrganizationApplication: vi.fn(),
   resubmitOrganizationApplication: vi.fn(),
 }))
+vi.mock('@/features/organizations/follow-actions', () => ({ followOrganizationAction: vi.fn(), unfollowOrganizationAction: vi.fn() }))
 vi.mock('@/features/organizations/access-request-actions', () => ({
   escalateOrganizationAccessRequest: vi.fn(),
   withdrawOrganizationAccessRequest: vi.fn(),
 }))
 
 import OrganizationsPage from './page'
+
+function card(overrides: Record<string, unknown>) {
+  return {
+    id: 'c1', slug: 'oceanic', name: 'Oceanic Shipping', logoPath: null, coverPath: null, tagline: 'Tanker management from Mumbai',
+    description: null, companyType: 'Ship manager', organizationType: 'ship_manager', headquarters: 'Mumbai',
+    verified: true, followerCount: 120, following: false, ...overrides,
+  }
+}
 
 afterEach(() => cleanup())
 
@@ -61,6 +77,8 @@ beforeEach(() => {
   mocks.searchCompanies.mockResolvedValue([])
   mocks.listFollowedOrganizations.mockResolvedValue([])
   mocks.countPendingForManager.mockResolvedValue({ c1: 2 })
+  mocks.listOrganizationCards.mockImplementation(async (ids: string[]) => ids.map((id) => card({ id })))
+  mocks.listDiscoverOrganizations.mockResolvedValue([])
 })
 
 describe('/organizations hub', () => {
@@ -69,10 +87,14 @@ describe('/organizations hub', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'Organizations' })).toBeInTheDocument()
     expect(screen.getByText('2 requests need your decision')).toBeInTheDocument()
-    const organizations = screen.getByRole('region', { name: 'Your organizations' })
+    const organizations = screen.getByRole('region', { name: 'Your pages' })
+    expect(mocks.listOrganizationCards).toHaveBeenCalledWith(['c1'], 'user-1')
+    expect(within(organizations).getByText('Tanker management from Mumbai')).toBeInTheDocument()
     expect(within(organizations).getByText('Owner')).toBeInTheDocument()
     expect(within(organizations).getByText('Free plan')).toBeInTheDocument()
-    expect(within(organizations).getByRole('link', { name: '2 requests waiting' })).toHaveAttribute('href', '/organizations/oceanic#requests')
+    expect(within(organizations).getByRole('link', { name: '2 requests waiting' })).toHaveAttribute('href', '/organizations/oceanic/manage?section=requests')
+    expect(within(organizations).getByRole('link', { name: 'View Oceanic Shipping page' })).toHaveAttribute('href', '/organizations/oceanic')
+    expect(within(organizations).getByRole('link', { name: 'Manage Oceanic Shipping' })).toHaveAttribute('href', '/organizations/oceanic/manage')
     // The long registration form stays collapsed until asked for.
     expect(screen.getByRole('button', { name: 'Register a new organization' })).toBeInTheDocument()
     expect(screen.queryByRole('form', { name: 'Register a new organization' })).not.toBeInTheDocument()
@@ -133,5 +155,23 @@ describe('/organizations hub', () => {
     expect(screen.getByText('Organization verification in progress')).toBeInTheDocument()
     expect(screen.getByText('You can register another organization once Sea N Shore has reviewed New Org.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Register a new organization' })).not.toBeInTheDocument()
+  })
+})
+
+describe('/organizations hub discovery', () => {
+  it('suggests verified organizations with follow buttons', async () => {
+    mocks.listDiscoverOrganizations.mockResolvedValue([card({ id: 'c7', slug: 'kochi-academy', name: 'Kochi Maritime Academy', companyType: 'Maritime training institute', followerCount: 1 })])
+    render(await OrganizationsPage({ searchParams: Promise.resolve({}) }))
+    const discover = screen.getByRole('region', { name: 'Discover organizations' })
+    expect(discover).toHaveAttribute('id', 'discover')
+    expect(within(discover).getByRole('link', { name: 'Kochi Maritime Academy' })).toHaveAttribute('href', '/organizations/kochi-academy')
+    expect(within(discover).getByText('1 follower')).toBeInTheDocument()
+    expect(within(discover).getByRole('button', { name: 'Follow Kochi Maritime Academy' })).toBeInTheDocument()
+  })
+
+  it('says so when suggestions cannot be loaded', async () => {
+    mocks.listDiscoverOrganizations.mockRejectedValue(new Error('db down'))
+    render(await OrganizationsPage({ searchParams: Promise.resolve({}) }))
+    expect(within(screen.getByRole('region', { name: 'Discover organizations' })).getByRole('alert')).toHaveTextContent('Suggestions could not be loaded right now')
   })
 })

@@ -97,8 +97,8 @@ export function FeedList({ initialPage, category }: { initialPage: FeedPage; cat
         <p className="text-lg font-semibold text-navy-950">The maritime feed is ready for its first conversation.</p>
         <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Publish a professional update above or discover relevant maritime professionals in the network.</p>
         <div className="mt-5 flex flex-wrap justify-center gap-2">
-          <a href="#feed-composer" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">Publish an update</a>
-          <Link href="/network" className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-900">Explore Network</Link>
+          <a href="#feed-composer" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">Publish an update</a>
+          <Link href="/network" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-900 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Explore Network</Link>
         </div>
       </div>
     )
@@ -125,7 +125,7 @@ export function FeedList({ initialPage, category }: { initialPage: FeedPage; cat
             type="button"
             disabled={pending}
             onClick={loadMore}
-            className="min-h-11 rounded-xl border border-mist-100 bg-white px-5 text-sm font-semibold text-navy-900 shadow-sm hover:border-ocean-500 hover:text-ocean-700 disabled:opacity-60"
+            className="min-h-11 rounded-xl border border-mist-200 bg-white px-5 text-sm font-semibold text-navy-900 shadow-sm hover:border-ocean-500 hover:text-ocean-700 disabled:opacity-60"
           >
             {pending ? 'Loading…' : 'Load more'}
           </button>

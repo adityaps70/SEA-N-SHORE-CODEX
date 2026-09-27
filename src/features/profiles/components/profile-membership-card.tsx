@@ -66,7 +66,7 @@ export function ProfileMembershipCard({
             Your persona personalizes the platform. Verification, paid plan and organization role separately control professional publishing.
           </p>
         </div>
-        <Link href="/profile/edit" className="rounded-xl border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-navy-950 hover:border-ocean-300">
+        <Link href="/profile/edit" className="rounded-xl border border-mist-200 bg-white px-4 py-2 text-sm font-bold text-navy-950 hover:border-ocean-300">
           Edit profile & goals
         </Link>
       </div>

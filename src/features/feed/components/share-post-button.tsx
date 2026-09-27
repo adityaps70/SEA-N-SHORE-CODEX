@@ -14,11 +14,12 @@ import {
   shareWithDevice,
   type FeedNotice,
 } from './share-utils'
+import { POST_ACTION_BUTTON_CLASS, POST_ACTION_LABEL_CLASS } from './post-action-styles'
 import { useFeedMenu } from './use-feed-menu'
 
 const SHARE_TEXT = 'View this maritime discussion on Sea N Shore.'
 
-const itemClass = 'flex w-full items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50'
+const itemClass = 'flex w-full cursor-pointer items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50'
 
 function ExternalShareDialog({ url, onClose, onCopy }: { url: string; onClose(): void; onCopy(): void }) {
   return (
@@ -31,7 +32,7 @@ function ExternalShareDialog({ url, onClose, onCopy }: { url: string; onClose():
               target="_blank"
               rel="noopener noreferrer"
               onClick={onClose}
-              className="flex min-h-11 items-center justify-between gap-2 rounded-xl border border-mist-100 px-3 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50"
+              className="flex min-h-11 items-center justify-between gap-2 rounded-xl border border-mist-200 px-3 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50"
             >
               {target.label}
               <ExternalLink aria-hidden="true" className="size-3.5 text-muted" />
@@ -56,6 +57,7 @@ export function SharePostButton({
   authorName = 'this member',
   source,
   iconOnly = false,
+  variant = 'default',
   allowRepost = true,
   allowSend = true,
   menuAlign = 'center',
@@ -68,6 +70,8 @@ export function SharePostButton({
   authorName?: string
   source?: RepostSourcePreview
   iconOnly?: boolean
+  /** 'action': bordered button of the post action row, labelled Repost (or Share). */
+  variant?: 'default' | 'action'
   allowRepost?: boolean
   allowSend?: boolean
   /** Where the menu opens relative to the button; use 'start' near the card's left edge. */
@@ -80,6 +84,7 @@ export function SharePostButton({
   const [ownNotice, setOwnNotice] = useState<FeedNotice | null>(null)
   const [pending, startTransition] = useTransition()
   const repostTarget = repostPostId ?? postId
+  const actionLabel = allowRepost ? 'Repost' : 'Share'
 
   function notify(notice: FeedNotice) {
     if (onNotice) onNotice(notice)
@@ -123,19 +128,35 @@ export function SharePostButton({
 
   return (
     <div ref={menuRootRef} className="relative">
-      <button
-        ref={menuTriggerRef}
-        type="button"
-        onClick={toggleMenu}
-        aria-label={iconOnly ? 'Share' : undefined}
-        title="Repost or share"
-        aria-expanded={menuOpen}
-        aria-haspopup="menu"
-        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
-      >
-        {allowRepost ? <Repeat2 aria-hidden="true" className="size-5" /> : <Share2 aria-hidden="true" className="size-5" />}
-        {iconOnly ? null : 'Share'}
-      </button>
+      {variant === 'action' ? (
+        <button
+          ref={menuTriggerRef}
+          type="button"
+          onClick={toggleMenu}
+          aria-label={actionLabel}
+          title={allowRepost ? 'Repost or share' : 'Share'}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          className={POST_ACTION_BUTTON_CLASS}
+        >
+          {allowRepost ? <Repeat2 aria-hidden="true" className="size-5" /> : <Share2 aria-hidden="true" className="size-5" />}
+          <span className={POST_ACTION_LABEL_CLASS}>{actionLabel}</span>
+        </button>
+      ) : (
+        <button
+          ref={menuTriggerRef}
+          type="button"
+          onClick={toggleMenu}
+          aria-label={iconOnly ? 'Share' : undefined}
+          title="Repost or share"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl px-3 text-sm font-semibold text-navy-900 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+        >
+          {allowRepost ? <Repeat2 aria-hidden="true" className="size-5" /> : <Share2 aria-hidden="true" className="size-5" />}
+          {iconOnly ? null : 'Share'}
+        </button>
+      )}
 
       {menuOpen ? (
         <div

@@ -48,6 +48,7 @@ export type MessagingInboxRow = {
   other_name: string | null
   other_headline: string | null
   other_avatar_path: string | null
+  other_slug?: string | null
   last_message_id: string | null
   last_message_body: string | null
   last_message_sender_id: string | null

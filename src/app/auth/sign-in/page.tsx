@@ -24,10 +24,10 @@ export default async function SignInPage({
       <AuthMethodLinks intent="sign-in" googleEnabled={googleEnabled} />
       <p className="mt-6 text-sm text-muted">
         New to Sea N Shore?{" "}
-        <Link href="/auth/sign-up" className="font-semibold text-ocean-700">Create your profile</Link>
+        <Link href="/auth/sign-up" className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">Create your profile</Link>
       </p>
       <p className="mt-3 text-sm">
-        <Link href="/auth/forgot-password" className="font-semibold text-ocean-700">Forgot password?</Link>
+        <Link href="/auth/forgot-password" className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">Forgot password?</Link>
       </p>
     </AuthPage>
   );

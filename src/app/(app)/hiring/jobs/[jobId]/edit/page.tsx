@@ -59,7 +59,7 @@ export default async function EditHiringJobPage({ params }: { params: Promise<{ 
             </div>
             <p className="mt-1 text-sm text-muted">{presentation.description}</p>
           </div>
-          <Link href={`/hiring/jobs/${jobId}/applicants`} className="inline-flex min-h-10 shrink-0 items-center self-start rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
+          <Link href={`/hiring/jobs/${jobId}/applicants`} className="inline-flex min-h-10 shrink-0 items-center self-start rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
             {jobSummary.applicantCount} applicant{jobSummary.applicantCount === 1 ? '' : 's'}
           </Link>
         </div>

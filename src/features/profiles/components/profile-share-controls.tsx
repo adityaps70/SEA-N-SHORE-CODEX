@@ -23,7 +23,7 @@ export function ProfileShareControls({
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const publicUrl = useMemo(() => getPublicProfileUrl(slug, siteUrl), [siteUrl, slug])
-  const secondary = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-mist-100 bg-white px-3.5 text-sm font-semibold text-navy-950 transition hover:border-ocean-400 hover:text-ocean-700'
+  const secondary = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-3.5 text-sm font-semibold text-navy-950 transition hover:border-ocean-400 hover:bg-mist-50 hover:text-ocean-700'
 
   useEffect(() => {
     if (!qrOpen) return
@@ -86,7 +86,7 @@ export function ProfileShareControls({
                 <h2 id="profile-share-dialog-title" className="mt-1 text-xl font-semibold text-navy-950">Share Maritime Passport</h2>
                 <p className="mt-1 text-sm leading-5 text-muted">Anyone scanning this code opens the same public profile recruiters see.</p>
               </div>
-              <button type="button" onClick={() => setQrOpen(false)} aria-label="Close QR profile" className="grid size-9 shrink-0 place-items-center rounded-full border border-mist-100 text-muted hover:text-navy-950">
+              <button type="button" onClick={() => setQrOpen(false)} aria-label="Close QR profile" className="grid size-9 shrink-0 place-items-center rounded-full border border-mist-200 text-muted hover:text-navy-950">
                 <X aria-hidden="true" className="size-4" />
               </button>
             </div>
@@ -101,7 +101,7 @@ export function ProfileShareControls({
             </div>
 
             <p className="mt-4 break-all rounded-xl bg-mist-50 px-3 py-2.5 text-xs leading-5 text-muted">{publicUrl}</p>
-            <button type="button" onClick={copyProfileUrl} className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">
+            <button type="button" onClick={copyProfileUrl} className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
               {copied ? <Check aria-hidden="true" className="size-4" /> : <Copy aria-hidden="true" className="size-4" />}
               {copied ? 'Link copied' : 'Copy profile link'}
             </button>

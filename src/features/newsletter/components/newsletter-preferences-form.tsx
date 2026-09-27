@@ -60,12 +60,12 @@ export function NewsletterPreferencesForm({ email, topics }: { email: string; to
             <button type="submit" name="intent" value="unsubscribe" disabled={pending} className="min-h-9 rounded-lg bg-navy-950 px-3 font-semibold text-white hover:bg-navy-800 disabled:opacity-70">
               Yes, unsubscribe
             </button>
-            <button type="button" onClick={() => setConfirmingUnsubscribe(false)} className="min-h-9 rounded-lg px-3 font-semibold text-navy-900 hover:bg-mist-50">
+            <button type="button" onClick={() => setConfirmingUnsubscribe(false)} className="min-h-9 rounded-lg px-3 font-semibold text-navy-900 border border-mist-200 bg-white transition-colors hover:border-ocean-300 hover:bg-mist-50">
               Keep subscription
             </button>
           </span>
         ) : (
-          <button type="button" onClick={() => setConfirmingUnsubscribe(true)} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-semibold text-navy-900 hover:bg-mist-50">
+          <button type="button" onClick={() => setConfirmingUnsubscribe(true)} className="inline-flex min-h-11 items-center rounded-xl px-4 text-sm font-semibold text-navy-900 border border-mist-200 bg-white transition-colors hover:border-ocean-300 hover:bg-mist-50">
             Unsubscribe
           </button>
         )}

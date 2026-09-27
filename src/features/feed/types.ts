@@ -62,6 +62,27 @@ export type FeedAuthor = {
   currentCompany: string | null
 }
 
+/** The organization a post was published as. The person stays the stored author. */
+export type FeedOrganization = {
+  id: string
+  slug: string
+  name: string
+  /** First-party logo route, or null when the organization has no logo. */
+  logoUrl: string | null
+}
+
+/** An organization the signed-in member may publish posts for ("Post as"). */
+export type PostingOrganization = FeedOrganization
+
+/** The member identity the post composer shows. */
+export type ComposerProfile = {
+  id: string
+  fullName: string
+  avatarUrl?: string | null
+  rank: string | null
+  headline: string | null
+}
+
 export type ReactorProfile = FeedAuthor & {
   reaction: PostReactionType
   reactedAt: string
@@ -139,6 +160,7 @@ export type FeedRepostSource = {
   mediaItems?: FeedMedia[]
   poll: FeedPoll | null
   mentions?: FeedMention[]
+  organization?: FeedOrganization | null
 }
 
 export type FeedPost = {
@@ -162,6 +184,12 @@ export type FeedPost = {
   commentCount: number
   viewerSaved: boolean
   viewerOwns?: boolean
+  /** Published as an organization: show the organization instead of the person. */
+  organization?: FeedOrganization | null
+  /** The viewer may edit this post (its author, or an admin of its organization). */
+  viewerCanEdit?: boolean
+  /** The viewer may delete this post (its author, or an admin of its organization). */
+  viewerCanDelete?: boolean
   /** True when the signed-in viewer follows this post's author. */
   viewerFollowsAuthor?: boolean
   mentions?: FeedMention[]
@@ -183,6 +211,8 @@ export type FeedPage = {
 
 export type FeedRequest = {
   category?: PostCategory
+  /** Only posts published as this organization. */
+  companyId?: string
   cursor?: FeedCursor
   limit?: number
 }

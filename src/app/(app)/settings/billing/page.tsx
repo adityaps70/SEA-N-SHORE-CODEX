@@ -67,7 +67,7 @@ export default async function BillingSettingsPage() {
                 <Link
                   key={organization.id}
                   href={`/settings/billing/organizations/${organization.id}`}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-mist-100 bg-mist-50/50 px-3 py-3 text-sm transition hover:border-ocean-300 hover:bg-ocean-50/40"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-mist-200 bg-mist-50/50 px-3 py-3 text-sm transition hover:border-ocean-300 hover:bg-ocean-50/40"
                 >
                   <span className="min-w-0 truncate font-semibold text-navy-950">{organization.name}</span>
                   <span className="shrink-0 text-xs font-bold text-ocean-700">Manage organization billing →</span>

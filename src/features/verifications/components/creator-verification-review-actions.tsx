@@ -45,7 +45,7 @@ export function CreatorVerificationReviewActions({
           type="button"
           disabled={pending}
           onClick={() => submit('approved')}
-          className="min-h-10 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+          className="min-h-10 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-emerald-800 transition-colors disabled:cursor-not-allowed"
         >
           Approve verification
         </button>
@@ -53,7 +53,7 @@ export function CreatorVerificationReviewActions({
           type="button"
           disabled={pending}
           onClick={() => submit('rejected')}
-          className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+          className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-red-800 transition-colors disabled:cursor-not-allowed"
         >
           Reject
         </button>

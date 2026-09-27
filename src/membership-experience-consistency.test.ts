@@ -43,7 +43,9 @@ test('membership experience is reflected across profile, creator, activities, or
   assert.match(hiringOrganization, /redirect\('\/organizations'\)/)
   assert.match(organizationsPage, /Organization search results/)
   assert.match(organizationsPage, /href={'\/organizations\/' \+ organization\.slug}/)
-  assert.match(organizationWorkspace, /unoptimized/)
+  // Round 4: the organization page renders its logo through the shared OrganizationLogo component.
+  assert.match(organizationWorkspace, /OrganizationLogo/)
+  assert.match(read('src/features/organizations/components/organization-logo.tsx'), /unoptimized/)
   assert.match(organizationBranding, /unoptimized/)
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/page.tsx')))
   assert.ok(fs.existsSync(path.join(root, 'src/app/(app)/organizations/[slug]/page.tsx')))

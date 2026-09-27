@@ -1,14 +1,18 @@
 'use client'
 
 /* eslint-disable @next/next/no-img-element */
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useActionState, useState } from 'react'
-import { Anchor, MapPin, Pencil, Ship, TimerReset } from 'lucide-react'
+import { Anchor, BadgeCheck, MapPin, Pencil, Ship, TimerReset } from 'lucide-react'
+import { organizationPageHref } from '../organization-link'
 import { updateProfileIdentitySection, type ProfileInlineActionState } from '../profile-inline-actions'
 import { PERSONA_LABELS, personaUsesProfessionalCompany } from '../persona'
 import { profileAvailabilityLabel } from '../profile-availability'
 import type { ContactVisibility, PublicProfile } from '../types'
+import { OrganizationLogo } from './organization-logo'
+import { OrganizationPicker } from './organization-picker'
 
 const profileTypeLabels: Record<PublicProfile['profileType'], string> = {
   seafarer: 'Seafarer',
@@ -114,7 +118,7 @@ export function ProfileHeader({
           </div>
 
           {availabilityLabel ? (
-            <span className="mb-1 inline-flex w-fit shrink-0 items-center gap-2 rounded-xl border border-mist-100 bg-mist-50 px-3 py-2 text-sm font-medium text-navy-900">
+            <span className="mb-1 inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full bg-mist-100 px-3 py-1 text-sm font-medium text-navy-900">
               <TimerReset aria-hidden="true" className="size-4 text-teal-500" />
               {availabilityLabel}
             </span>
@@ -136,7 +140,7 @@ export function ProfileHeader({
                 type="button"
                 onClick={() => setEditing(true)}
                 aria-label="Edit basic information"
-                className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-mist-100 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-mist-200 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
               >
                 <Pencil aria-hidden="true" className="size-4" />
               </button>
@@ -166,7 +170,19 @@ export function ProfileHeader({
                   {profile.location}
                 </span>
               ) : null}
-              {profile.currentCompany ? (
+              {profile.currentOrganization ? (
+                <Link
+                  href={organizationPageHref(profile.currentOrganization.slug)}
+                  data-testid="profile-header-organization"
+                  className="inline-flex min-w-0 items-center gap-2 font-semibold text-ocean-700 hover:underline"
+                >
+                  <OrganizationLogo logoUrl={profile.currentOrganization.logoUrl} size="xs" />
+                  <span className="min-w-0 truncate">{profile.currentOrganization.name}</span>
+                  {profile.currentOrganization.verified ? (
+                    <BadgeCheck aria-label="Verified organization" className="size-3.5 shrink-0" />
+                  ) : null}
+                </Link>
+              ) : profile.currentCompany ? (
                 <span className="inline-flex items-center gap-1.5">
                   <Ship aria-hidden="true" className="size-4" />
                   {profile.currentCompany}
@@ -214,11 +230,14 @@ export function ProfileHeader({
                 <FieldError state={state} name="headline" />
               </label>
               {showCompanyField ? (
-                <label className={labelClass}>
-                  {companyFieldLabel}
-                  <input name="currentCompany" maxLength={160} defaultValue={profile.currentCompany ?? ''} className={inputClass} />
-                  <FieldError state={state} name="currentCompany" />
-                </label>
+                <OrganizationPicker
+                  label={companyFieldLabel}
+                  defaultName={profile.currentCompany ?? ''}
+                  defaultOrganization={profile.currentOrganization ?? null}
+                  error={state.fieldErrors?.currentCompany?.[0] ?? state.fieldErrors?.currentCompanyId?.[0]}
+                  labelClassName={labelClass}
+                  inputClassName={inputClass}
+                />
               ) : null}
               <label className={labelClass}>
                 Contact visibility
@@ -232,10 +251,10 @@ export function ProfileHeader({
             </div>
             {state.error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setEditing(false)} className="min-h-10 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950">
+              <button type="button" onClick={() => setEditing(false)} className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">
                 Cancel
               </button>
-              <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60">
+              <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">
                 {pending ? 'Saving…' : 'Save'}
               </button>
             </div>

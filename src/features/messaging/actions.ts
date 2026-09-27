@@ -14,6 +14,7 @@ import {
 import { hydratedMessagingMessageDto } from './queries'
 import { messagingRepository } from './repository'
 import {
+  deleteConversationInputSchema,
   deleteMessageInputSchema,
   directConversationInputSchema,
   editMessageInputSchema,
@@ -282,4 +283,43 @@ export async function markConversationReadAction(conversationId: string, message
       error: messagingError(error instanceof Error ? error.message : undefined),
     }
   }
+}
+
+/**
+ * Deletes a conversation for the signed-in member only (LinkedIn behaviour).
+ * The other participant keeps the full conversation.
+ */
+export async function deleteConversationAction(conversationId: string) {
+  const parsed = deleteConversationInputSchema.safeParse({ conversationId })
+  if (!parsed.success) {
+    return { ok: false as const, error: 'This conversation is not available. Refresh the page and try again.' }
+  }
+
+  let user: Awaited<ReturnType<typeof requireAwsUser>>
+  try {
+    user = await requireAwsUser()
+  } catch {
+    return { ok: false as const, error: 'Please sign in again to delete this conversation.' }
+  }
+
+  try {
+    await messagingService.deleteConversationForParticipant(user.id, parsed.data.conversationId)
+  } catch (error) {
+    const code = error instanceof Error ? error.message : undefined
+    return {
+      ok: false as const,
+      error: code === 'messaging_not_participant'
+        ? 'This conversation is not available. It may already have been deleted.'
+        : 'We could not delete this conversation. Check your connection and try again.',
+    }
+  }
+
+  revalidateMessaging(parsed.data.conversationId)
+  let unreadCount: number | null = null
+  try {
+    unreadCount = await messagingRepository.countUnreadMessages(user.id)
+  } catch {
+    // The badge refreshes on the next realtime reconcile if this lookup fails.
+  }
+  return { ok: true as const, conversationId: parsed.data.conversationId, unreadCount }
 }

@@ -42,7 +42,7 @@ export function NetworkPersonListRow({
       </Link>
 
       <div className="min-w-0 flex-1">
-        <Link href={`/people/${profile.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
+        <Link href={`/people/${profile.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
           {profile.fullName}
         </Link>
         <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-ink">

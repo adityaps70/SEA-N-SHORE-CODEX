@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { Building2, CheckCircle2, Clock3, Search, ShieldAlert } from 'lucide-react'
+import { Clock3, Search, ShieldAlert } from 'lucide-react'
 import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -8,36 +9,44 @@ import { accessRoleLabel } from '@/features/organizations/access-request-labels'
 import { organizationAccessRequestRepository } from '@/features/organizations/access-request-repository'
 import { OrganizationAccessPanel, StatusChip } from '@/features/organizations/components/organization-access-panel'
 import { OrganizationApplicationForm } from '@/features/organizations/components/organization-application-form'
+import { OrganizationCard, VerifiedMark } from '@/features/organizations/components/organization-card'
+import { OrganizationLogo } from '@/features/organizations/components/organization-logo'
 import { NewOrganizationPanel } from '@/features/organizations/components/new-organization-panel'
 import { RequestAccessForm, type RequestAccessState } from '@/features/organizations/components/request-access-form'
+import { organizationManageHref } from '@/features/organizations/organization-page-profile'
 import { organizationRepository } from '@/features/organizations/repository'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
 
 export const metadata: Metadata = { title: 'Organizations' }
 
-function SectionHeader({ id, title, description, meta }: { id: string; title: string; description?: string; meta?: string }) {
+function SectionHeader({ id, title, description, meta }: { id: string; title: string; description?: string; meta?: ReactNode }) {
   return (
     <div className="mb-3">
       <div className="flex flex-wrap items-baseline gap-x-3">
         <h2 id={id} className="text-lg font-bold text-navy-950">{title}</h2>
-        {meta ? <p className="text-sm font-medium text-muted">{meta}</p> : null}
+        {meta}
       </div>
       {description ? <p className="mt-0.5 max-w-3xl text-sm leading-6 text-muted">{description}</p> : null}
     </div>
   )
 }
 
+const primaryButton = 'inline-flex min-h-9 flex-1 items-center justify-center rounded-lg bg-navy-950 px-3 text-xs font-bold text-white transition hover:bg-navy-900'
+const secondaryButton = 'inline-flex min-h-9 flex-1 items-center justify-center rounded-lg border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50'
+
 export default async function OrganizationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string | string[]; register?: string | string[] }>
+  searchParams: Promise<{ q?: string | string[]; register?: string | string[]; name?: string | string[] }>
 }) {
   const params = await searchParams
   const rawQuery = Array.isArray(params.q) ? params.q[0] : params.q
   const query = rawQuery?.trim().slice(0, 100) ?? ''
   const registerRequested = (Array.isArray(params.register) ? params.register[0] : params.register) === '1'
+  // "Can't find it? Create its page" from the profile organization picker fills in the name.
+  const prefillName = (Array.isArray(params.name) ? params.name[0] : params.name)?.trim().slice(0, 160) || undefined
   const user = await requireAwsUser()
-  const [state, requests, memberships, followedOrganizations, searchResults, access, pendingCounts] = await Promise.all([
+  const [state, requests, memberships, followedOrganizations, searchResults, access, pendingCounts, discover] = await Promise.all([
     organizationRepository.getUserOrganizationState(user.id),
     organizationRepository.listUserAccessRequests(user.id),
     organizationRepository.listUserOrganizations(user.id),
@@ -45,6 +54,7 @@ export default async function OrganizationsPage({
     query.length >= 2 ? organizationRepository.searchCompanies(query) : Promise.resolve([]),
     getAccessContext(user.id),
     organizationAccessRequestRepository.countPendingForManager(user.id),
+    organizationWorkspaceRepository.listDiscoverOrganizations(user.id, 6).catch(() => null),
   ])
   const nowIso = new Date().toISOString()
 
@@ -57,6 +67,11 @@ export default async function OrganizationsPage({
   const pendingCompanyIds = new Set(requests.filter((request) => request.status === 'pending').map((request) => request.company.id))
   const applicationInProgress = state.kind === 'application' && state.status !== 'approved' && !memberships.some((organization) => organization.id === state.company.id)
   const waitingTotal = Object.values(pendingCounts).reduce((sum, value) => sum + value, 0)
+  const cards = await organizationWorkspaceRepository.listOrganizationCards(
+    [...memberships.map((organization) => organization.id), ...(applicationInProgress && state.kind === 'application' ? [state.company.id] : [])],
+    user.id,
+  )
+  const cardById = new Map(cards.map((card) => [card.id, card]))
 
   function requestState(companyId: string): RequestAccessState {
     if (memberCompanyIds.has(companyId)) return 'member'
@@ -64,77 +79,99 @@ export default async function OrganizationsPage({
     return 'none'
   }
 
+  const applicationCard = applicationInProgress && state.kind === 'application' ? cardById.get(state.company.id) : null
+
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-8 py-6 sm:px-6 lg:px-8">
-      <header className="border-b border-mist-100 pb-4">
+    <div className="mx-auto w-full max-w-6xl space-y-8 py-2 sm:py-4">
+      <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <h1 className="text-2xl font-bold tracking-tight text-navy-950">Organizations</h1>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
           Join the organizations you work with, or register a new one. Your personal account stays yours: each organization&apos;s owner and administrators decide who joins and with which role.
         </p>
+        <nav aria-label="On this page" className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold">
+          <a href="#your-pages" className="text-ocean-700 hover:underline">Your pages</a>
+          {requests.length ? <a href="#your-requests" className="text-ocean-700 hover:underline">Your requests</a> : null}
+          <a href="#find" className="text-ocean-700 hover:underline">Find an organization</a>
+          <a href="#update-application" className="text-ocean-700 hover:underline">{editable ? 'Update your application' : 'Register an organization'}</a>
+          <a href="#discover" className="text-ocean-700 hover:underline">Discover</a>
+        </nav>
       </header>
 
-      <section aria-labelledby="your-organizations">
-        <div className="mb-3 flex flex-wrap items-baseline gap-x-3">
-          <h2 id="your-organizations" className="text-lg font-bold text-navy-950">Your organizations</h2>
-          {waitingTotal ? <p className="text-sm font-medium text-amber-800">{waitingTotal} {waitingTotal === 1 ? 'request needs' : 'requests need'} your decision</p> : null}
-        </div>
+      <section aria-labelledby="your-organizations" id="your-pages" className="scroll-mt-24">
+        <SectionHeader
+          id="your-organizations"
+          title="Your pages"
+          meta={waitingTotal ? <p className="text-sm font-medium text-amber-800">{waitingTotal} {waitingTotal === 1 ? 'request needs' : 'requests need'} your decision</p> : null}
+        />
 
         {memberships.length || applicationInProgress ? (
-          <ul className="divide-y divide-mist-100 overflow-hidden rounded-xl border border-mist-100 bg-white">
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {memberships.map((organization) => {
+              const card = cardById.get(organization.id)
+              if (!card) return null
               const accessMembership = access.organizationMemberships.find((entry) => entry.companyId === organization.id)
               const waiting = pendingCounts[organization.id] ?? 0
               return (
-                <li key={organization.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-mist-50 text-navy-950"><Building2 className="size-4" aria-hidden="true" /></span>
-                    <div className="min-w-0">
-                      <Link href={'/organizations/' + organization.slug} className="font-semibold text-navy-950 hover:underline">{organization.name}</Link>
-                      <div className="mt-1 flex flex-wrap gap-1.5">
+                <li key={organization.id} className="min-w-0">
+                  <OrganizationCard
+                    organization={card}
+                    meta={(
+                      <>
                         <StatusChip tone="neutral">{accessRoleLabel(organization.role)}</StatusChip>
                         {organization.verified ? <StatusChip tone="success">Verified</StatusChip> : <StatusChip tone="warning">Not verified yet</StatusChip>}
                         <StatusChip tone={accessMembership?.plan === 'organization_pro' ? 'info' : 'neutral'}>
                           {accessMembership?.plan === 'organization_pro' ? 'Organization Pro' : 'Free plan'}
                         </StatusChip>
+                      </>
+                    )}
+                    actions={(
+                      <div className="space-y-2">
+                        {waiting ? (
+                          <Link href={organizationManageHref(organization.slug, 'requests')} className="flex min-h-9 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100">
+                            {waiting} {waiting === 1 ? 'request' : 'requests'} waiting
+                          </Link>
+                        ) : null}
+                        <div className="flex gap-2">
+                          <Link href={'/organizations/' + organization.slug} className={secondaryButton} aria-label={`View ${organization.name} page`}>View page</Link>
+                          <Link href={organizationManageHref(organization.slug)} className={primaryButton} aria-label={`Manage ${organization.name}`}>Manage</Link>
+                        </div>
+                        {canUseCapability(access, 'billing.manage', { companyId: organization.id }) ? (
+                          <Link href={`/settings/billing/organizations/${organization.id}`} className="block text-center text-xs font-semibold text-ocean-700 hover:underline">Billing</Link>
+                        ) : null}
                       </div>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap gap-2">
-                    {waiting ? (
-                      <Link href={`/organizations/${organization.slug}#requests`} className="inline-flex min-h-9 items-center rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100">
-                        {waiting} {waiting === 1 ? 'request' : 'requests'} waiting
-                      </Link>
-                    ) : null}
-                    <Link href={'/organizations/' + organization.slug} className="inline-flex min-h-9 items-center rounded-lg bg-navy-950 px-3 text-xs font-bold text-white hover:bg-navy-900">Open workspace</Link>
-                    {canUseCapability(access, 'billing.manage', { companyId: organization.id }) ? (
-                      <Link href={`/settings/billing/organizations/${organization.id}`} className="inline-flex min-h-9 items-center rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 hover:bg-mist-50">Billing</Link>
-                    ) : null}
-                  </div>
+                    )}
+                  />
                 </li>
               )
             })}
 
             {applicationInProgress && state.kind === 'application' ? (
-              <li className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-mist-50 text-navy-950"><Building2 className="size-4" aria-hidden="true" /></span>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-navy-950">{state.company.name}</p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      <StatusChip tone="neutral">Owner</StatusChip>
-                      {state.status === 'pending' ? <StatusChip tone="info">Sea N Shore is reviewing</StatusChip> : null}
-                      {state.status === 'changes_requested' ? <StatusChip tone="warning">Changes requested</StatusChip> : null}
-                      {state.status === 'rejected' ? <StatusChip tone="danger">Not approved</StatusChip> : null}
-                      {state.status === 'suspended' ? <StatusChip tone="danger">Suspended</StatusChip> : null}
+              <li className="min-w-0">
+                <article className="flex h-full flex-col rounded-2xl border border-dashed border-mist-200 bg-white p-4 shadow-[var(--shadow-card)]">
+                  <div className="flex items-center gap-3">
+                    <OrganizationLogo company={{ id: state.company.id, name: state.company.name, logoPath: applicationCard?.logoPath ?? null }} size="md" />
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-navy-950">{state.company.name}</p>
+                      <p className="text-xs text-muted">Application</p>
                     </div>
                   </div>
-                </div>
-                {editable ? <a href="#update-application" className="inline-flex min-h-9 items-center rounded-lg bg-navy-950 px-3 text-xs font-bold text-white">Update application</a> : null}
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <StatusChip tone="neutral">Owner</StatusChip>
+                    {state.status === 'pending' ? <StatusChip tone="info">Sea N Shore is reviewing</StatusChip> : null}
+                    {state.status === 'changes_requested' ? <StatusChip tone="warning">Changes requested</StatusChip> : null}
+                    {state.status === 'rejected' ? <StatusChip tone="danger">Not approved</StatusChip> : null}
+                    {state.status === 'suspended' ? <StatusChip tone="danger">Suspended</StatusChip> : null}
+                  </div>
+                  <div className="mt-auto flex gap-2 pt-4">
+                    <Link href={'/organizations/' + state.company.slug} className={secondaryButton}>View page</Link>
+                    {editable ? <a href="#update-application" className={primaryButton}>Update application</a> : null}
+                  </div>
+                </article>
               </li>
             ) : null}
           </ul>
         ) : (
-          <p className="rounded-xl border border-dashed border-mist-200 bg-white px-4 py-6 text-sm leading-6 text-muted">
+          <p className="rounded-2xl border border-dashed border-mist-200 bg-white px-4 py-6 text-sm leading-6 text-muted">
             You are not part of an organization yet. Find the one you work with below and request access, or register it if it is not on Sea N Shore.
           </p>
         )}
@@ -158,19 +195,18 @@ export default async function OrganizationsPage({
             </div>
           </div>
         ) : null}
-
       </section>
 
       {requests.length ? (
         <section aria-labelledby="your-requests-heading" id="your-requests" className="scroll-mt-24">
           <SectionHeader id="your-requests-heading" title="Your requests" description="Requests go to each organization's owner and administrators. If nobody responds within 7 days, or you disagree with a decision, you can ask Sea N Shore to review it." />
-          <div className="overflow-hidden rounded-xl border border-mist-100 bg-white">
+          <div className="overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-[var(--shadow-card)]">
             <OrganizationAccessPanel initialRequests={requests} nowIso={nowIso} />
           </div>
         </section>
       ) : null}
 
-      <section aria-labelledby="find-organization">
+      <section aria-labelledby="find-organization" id="find" className="scroll-mt-24 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5">
         <h2 id="find-organization" className="text-lg font-bold text-navy-950">Find your organization</h2>
         <p className="mt-0.5 max-w-3xl text-sm leading-6 text-muted">Search before registering so the same organization is not listed twice.</p>
         <form method="get" action="/organizations" className="mt-3 flex flex-col gap-2 sm:flex-row" role="search">
@@ -187,7 +223,7 @@ export default async function OrganizationsPage({
               className="min-h-11 w-full rounded-xl border border-mist-100 bg-white pl-9 pr-3 text-sm text-navy-950 outline-none focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100"
             />
           </label>
-          <button type="submit" className="min-h-11 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white hover:bg-navy-900">Search</button>
+          <button type="submit" className="min-h-11 cursor-pointer rounded-xl bg-navy-950 px-5 text-sm font-bold text-white hover:bg-navy-900">Search</button>
         </form>
 
         {query ? (
@@ -204,7 +240,7 @@ export default async function OrganizationsPage({
                   <li key={organization.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2">
-                        <Link href={'/organizations/' + organization.slug} className="font-semibold text-navy-950 hover:underline">{organization.name}</Link>
+                        <Link href={'/organizations/' + organization.slug} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{organization.name}</Link>
                         {organization.verified ? <StatusChip tone="success">Verified</StatusChip> : null}
                       </p>
                       <p className="mt-0.5 truncate text-sm text-muted">
@@ -244,7 +280,7 @@ export default async function OrganizationsPage({
             <OrganizationApplicationForm mode="resubmit" applicationId={state.kind === 'application' ? state.applicationId : ''} initial={editable} />
           </div>
         ) : canRegister ? (
-          <NewOrganizationPanel initiallyOpen={registerRequested} />
+          <NewOrganizationPanel initiallyOpen={registerRequested} prefillName={prefillName} />
         ) : state.kind === 'application' && state.status === 'pending' ? (
           <p className="text-sm leading-6 text-muted">You can register another organization once Sea N Shore has reviewed {state.company.name}.</p>
         ) : (
@@ -253,23 +289,41 @@ export default async function OrganizationsPage({
       </section>
 
       <section aria-labelledby="following">
-        <SectionHeader id="following" title="Following" meta={followedOrganizations.length ? `${followedOrganizations.length}` : undefined} />
+        <SectionHeader id="following" title="Following" meta={followedOrganizations.length ? <p className="text-sm font-medium text-muted">{followedOrganizations.length}</p> : null} />
         {followedOrganizations.length ? (
           <ul className="flex flex-wrap gap-2">
             {followedOrganizations.map((organization) => (
               <li key={organization.id}>
                 <Link
                   href={'/organizations/' + organization.slug}
-                  className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950 hover:border-ocean-200 hover:bg-ocean-50"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-mist-200 bg-white py-1 pl-1 pr-3 text-sm font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
                 >
+                  <OrganizationLogo company={organization} size="xs" />
                   {organization.name}
-                  {organization.verified ? <CheckCircle2 aria-label="Verified" className="size-3.5 text-emerald-700" /> : null}
+                  {organization.verified ? <VerifiedMark className="size-3.5" /> : null}
                 </Link>
               </li>
             ))}
           </ul>
         ) : (
           <p className="text-sm leading-6 text-muted">You are not following any organizations yet. Open an organization and choose Follow to see its updates.</p>
+        )}
+      </section>
+
+      <section aria-labelledby="discover-heading" id="discover" className="scroll-mt-24">
+        <SectionHeader
+          id="discover-heading"
+          title="Discover organizations"
+          description="Verified shipping companies, training bodies, welfare and wellbeing services on Sea N Shore. Follow them to see their jobs, events and updates."
+        />
+        {discover === null ? (
+          <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">Suggestions could not be loaded right now. Reload the page to try again.</p>
+        ) : discover.length ? (
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {discover.map((organization) => <li key={organization.id} className="min-w-0"><OrganizationCard organization={organization} /></li>)}
+          </ul>
+        ) : (
+          <p className="text-sm leading-6 text-muted">You already follow every verified organization we can suggest. Use search to find more.</p>
         )}
       </section>
 

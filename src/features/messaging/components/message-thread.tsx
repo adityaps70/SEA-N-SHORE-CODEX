@@ -27,6 +27,11 @@ import { publishMessagingUnreadCount } from '../unread-client'
 import type { MessagingMessageDto } from '../queries'
 import { isMessageSeen, type MessagingReadCursor } from '../thread-realtime'
 import { messageAttachmentRoute } from '../media-policy'
+import {
+  ConversationActionsMenu,
+  messagingProfileHref,
+  type DeletedConversationResult,
+} from './conversation-actions'
 import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import type { OptimisticMessagingMessage } from './message-composer'
 import { MessageEmojiPicker } from './message-emoji-picker'
@@ -151,7 +156,7 @@ function AttachmentCard({
       className={`mb-2 flex min-w-56 items-center gap-3 rounded-xl border px-3 py-3 transition ${
         mine
           ? 'border-white/20 bg-white/10 hover:bg-white/15'
-          : 'border-mist-100 bg-mist-50 hover:bg-mist-100'
+          : 'border-mist-200 bg-mist-50 hover:bg-mist-100'
       }`}
     >
       <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${mine ? 'bg-white/10' : 'bg-white'}`}>
@@ -194,25 +199,32 @@ export function MessageThread({
   otherName,
   otherHeadline,
   otherAvatarUrl,
+  otherSlug = null,
   messages,
   nextCursor,
   peerReadCursor,
   onReply,
   otherTyping = false,
+  onConversationDeleted,
 }: {
   viewerId: string
   conversationId: string
   otherName: string | null
   otherHeadline: string | null
   otherAvatarUrl: string | null
+  /** Profile handle of the other person; their photo and name link to /people/<slug>. */
+  otherSlug?: string | null
   messages: MessageThreadItem[]
   nextCursor: { createdAt: string; id: string } | null
   peerReadCursor: MessagingReadCursor | null
   onReply?: (message: MessagingMessageDto) => void
   otherTyping?: boolean
+  /** Called after "Delete conversation" succeeds. Without it the thread returns to /messages itself. */
+  onConversationDeleted?: (result: DeletedConversationResult) => void
 }) {
   const router = useRouter()
   const name = otherName ?? 'Sea N Shore member'
+  const profileHref = messagingProfileHref(otherSlug)
   const lastRequestedReadIdRef = useRef<string | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const threadRef = useRef<HTMLElement | null>(null)
@@ -378,36 +390,86 @@ export function MessageThread({
     }
   }
 
+  const incomingAvatar = (messageId: string) => (otherAvatarUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
+    <img
+      data-testid={`message-avatar-${messageId}`}
+      src={otherAvatarUrl}
+      alt=""
+      className="block size-7 rounded-full object-cover ring-1 ring-mist-100"
+    />
+  ) : (
+    <span
+      data-testid={`message-avatar-${messageId}`}
+      className="grid size-7 place-items-center rounded-full bg-white text-[9px] font-bold text-navy-950 ring-1 ring-mist-100"
+    >
+      {initials(otherName)}
+    </span>
+  ))
+
+  const headerAvatar = otherAvatarUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
+    <img src={otherAvatarUrl} alt="" className="size-11 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" />
+  ) : (
+    <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-xs font-bold text-navy-950 ring-1 ring-mist-100">
+      {initials(otherName)}
+    </div>
+  )
+
   return (
     <section ref={threadRef} className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,white,var(--mist-50))]">
       <header className="flex min-h-18 items-center gap-3 border-b border-mist-100 bg-white px-4 py-3 sm:px-5">
         <Link
           href="/messages"
           aria-label="Back to messages"
-          className="grid size-10 shrink-0 place-items-center rounded-xl text-navy-900 hover:bg-mist-50 md:hidden"
+          className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-xl border border-mist-200 bg-white text-navy-900 transition hover:bg-mist-50 hover:text-ocean-800 md:hidden"
         >
           <ArrowLeft aria-hidden="true" className="size-4.5" />
         </Link>
-        {otherAvatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-          <img src={otherAvatarUrl} alt="" className="size-11 rounded-2xl object-cover ring-1 ring-mist-100" />
-        ) : (
-          <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-xs font-bold text-navy-950 ring-1 ring-mist-100">
-            {initials(otherName)}
-          </div>
-        )}
+        {profileHref ? (
+          <Link
+            href={profileHref}
+            aria-label={`View ${name}'s profile`}
+            data-testid="thread-peer-avatar-link"
+            className="shrink-0 cursor-pointer rounded-2xl transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+          >
+            {headerAvatar}
+          </Link>
+        ) : headerAvatar}
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-base font-bold text-navy-950 sm:text-lg">{name}</h2>
+          <h2 className="truncate text-base font-bold text-navy-950 sm:text-lg">
+            {profileHref ? (
+              <Link
+                href={profileHref}
+                className="cursor-pointer rounded-sm hover:text-ocean-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+              >
+                {name}
+              </Link>
+            ) : name}
+          </h2>
           <p className="truncate text-xs text-muted sm:text-sm">{otherHeadline ?? 'Maritime professional'}</p>
         </div>
+        <ConversationActionsMenu
+          conversationId={conversationId}
+          otherName={name}
+          onDeleted={(result) => {
+            if (result.unreadCount != null) publishMessagingUnreadCount(result.unreadCount)
+            if (onConversationDeleted) {
+              onConversationDeleted(result)
+              return
+            }
+            router.push('/messages')
+            router.refresh()
+          }}
+        />
       </header>
 
       <div data-testid="message-scroll-area" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-5 sm:px-6">
         {nextCursor ? (
           <div className="mb-5 flex justify-center">
-            <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-muted">
-              Earlier messages are available
-            </span>
+            <p className="text-xs text-muted">
+              Showing your most recent messages
+            </p>
           </div>
         ) : null}
 
@@ -469,7 +531,7 @@ export function MessageThread({
                             type="button"
                             aria-label={`Reply to message ${message.id}`}
                             onClick={() => onReply(canonicalForReply)}
-                            className="grid size-8 place-items-center rounded-full border border-mist-100 bg-white text-muted shadow-sm transition hover:text-ocean-700"
+                            className="grid size-8 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-muted shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-700"
                           >
                             <Reply aria-hidden="true" className="size-4" />
                           </button>
@@ -479,21 +541,16 @@ export function MessageThread({
 
                     {!mine ? (
                       showIncomingAvatar ? (
-                        otherAvatarUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-                          <img
-                            data-testid={`message-avatar-${message.id}`}
-                            src={otherAvatarUrl}
-                            alt=""
-                            className="mb-5 size-7 shrink-0 rounded-full object-cover ring-1 ring-mist-100"
-                          />
-                        ) : (
-                          <span
-                            data-testid={`message-avatar-${message.id}`}
-                            className="mb-5 grid size-7 shrink-0 place-items-center rounded-full bg-white text-[9px] font-bold text-navy-950 ring-1 ring-mist-100"
+                        profileHref ? (
+                          <Link
+                            href={profileHref}
+                            aria-label={`View ${name}'s profile`}
+                            className="mb-5 shrink-0 cursor-pointer rounded-full transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
                           >
-                            {initials(otherName)}
-                          </span>
+                            {incomingAvatar(message.id)}
+                          </Link>
+                        ) : (
+                          <span className="mb-5 shrink-0">{incomingAvatar(message.id)}</span>
                         )
                       ) : (
                         <span aria-hidden="true" className="mb-5 size-7 shrink-0" />
@@ -524,7 +581,7 @@ export function MessageThread({
                                 type="button"
                                 aria-label="Cancel edit"
                                 onClick={cancelEdit}
-                                className="min-h-8 rounded-lg bg-white/10 px-3 text-[11px] font-semibold text-white hover:bg-white/20"
+                                className="min-h-8 cursor-pointer rounded-lg border border-white/30 bg-white/10 px-3 text-[11px] font-semibold text-white hover:bg-white/20"
                               >
                                 Cancel
                               </button>
@@ -533,7 +590,7 @@ export function MessageThread({
                                 aria-label="Save edit"
                                 disabled={!editBody.trim() || pendingMessageId === message.id}
                                 onClick={() => void saveEdit(message.id)}
-                                className="min-h-8 rounded-lg bg-white px-3 text-[11px] font-bold text-navy-950 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="min-h-8 cursor-pointer rounded-lg bg-white px-3 text-[11px] font-bold text-navy-950 hover:bg-mist-100 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Save
                               </button>
@@ -553,7 +610,7 @@ export function MessageThread({
                               aria-label={`${reaction.emoji} ${reaction.count} ${reaction.count === 1 ? 'reaction' : 'reactions'}`}
                               disabled={pendingMessageId === message.id}
                               onClick={() => void react(message.id, reaction.viewerReacted ? null : reaction.emoji)}
-                              className={`inline-flex min-h-7 min-w-8 items-center justify-center gap-0.5 rounded-lg bg-navy-950/90 px-1.5 py-0.5 text-sm leading-none text-white shadow-sm backdrop-blur-sm transition hover:scale-105 hover:bg-navy-950 ${
+                              className={`inline-flex min-h-7 min-w-8 cursor-pointer items-center justify-center gap-0.5 rounded-lg bg-navy-950/90 px-1.5 py-0.5 text-sm leading-none text-white shadow-sm backdrop-blur-sm transition hover:scale-105 hover:bg-navy-950 ${
                                 reaction.viewerReacted ? 'opacity-100' : 'opacity-90'
                               }`}
                             >
@@ -581,7 +638,7 @@ export function MessageThread({
                             type="button"
                             aria-label={`Reply to message ${message.id}`}
                             onClick={() => onReply(canonicalForReply)}
-                            className="grid size-8 place-items-center rounded-full border border-mist-100 bg-white text-muted shadow-sm transition hover:text-ocean-700"
+                            className="grid size-8 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-muted shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-700"
                           >
                             <Reply aria-hidden="true" className="size-4" />
                           </button>
@@ -598,7 +655,7 @@ export function MessageThread({
                             <summary
                               role="button"
                               aria-label={`More actions for message ${message.id}`}
-                              className="grid size-8 cursor-pointer list-none place-items-center rounded-full border border-mist-100 bg-white text-muted shadow-sm transition hover:text-navy-950"
+                              className="grid size-8 cursor-pointer list-none place-items-center rounded-full border border-mist-200 bg-white text-muted shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-navy-950"
                             >
                               <Ellipsis aria-hidden="true" className="size-4" />
                             </summary>
@@ -613,7 +670,7 @@ export function MessageThread({
                                     if (details) details.open = false
                                     beginEdit(canonicalForReply)
                                   }}
-                                  className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-navy-900 hover:bg-mist-50 disabled:opacity-50"
+                                  className="flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-navy-900 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50"
                                 >
                                   <Pencil aria-hidden="true" className="size-4" />
                                   Edit message
@@ -623,7 +680,7 @@ export function MessageThread({
                                 type="button"
                                 disabled={pendingMessageId === message.id}
                                 onClick={() => void unsend(message.id)}
-                                className="flex min-h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                                className="flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <Trash2 aria-hidden="true" className="size-4" />
                                 Unsend message

@@ -301,34 +301,59 @@ async function rowsForViewer(viewerId: string, whereSql: string, values: readonl
   }))
 }
 
+// One search box on /events: the text can be a title, topic, host (member or organization) or a place.
+function eventSearchSql(parameter: string) {
+  const pattern = `('%' || ${parameter}::text || '%')`
+  return `(
+        ${parameter}::text = '' or
+        e.title ilike ${pattern} or
+        coalesce(e.summary, '') ilike ${pattern} or
+        coalesce(e.description, '') ilike ${pattern} or
+        exists (select 1 from unnest(e.topics) topic where topic ilike ${pattern}) or
+        p.full_name ilike ${pattern} or
+        coalesce(c.name, '') ilike ${pattern} or
+        coalesce(e.location_name, '') ilike ${pattern} or
+        coalesce(e.location_address, '') ilike ${pattern} or
+        coalesce(e.city, '') ilike ${pattern} or
+        coalesce(e.country, '') ilike ${pattern}
+      )`
+}
+
+function eventPlaceSql(parameter: string) {
+  const pattern = `('%' || ${parameter}::text || '%')`
+  return `(
+        ${parameter}::text = '' or
+        coalesce(e.location_name, '') ilike ${pattern} or
+        coalesce(e.location_address, '') ilike ${pattern} or
+        coalesce(e.city, '') ilike ${pattern} or
+        coalesce(e.country, '') ilike ${pattern}
+      )`
+}
+
 async function listDiscoverEvents(viewerId: string, filters: CalendarEventFilters | string = '') {
   const value = normalizedFilters(filters)
   return rowsForViewer(viewerId, `
     where e.status = 'published'
       and e.end_at > now()
-      and (
-        $2::text = '' or
-        e.title ilike ('%' || $2::text || '%') or
-        e.summary ilike ('%' || $2::text || '%') or
-        e.description ilike ('%' || $2::text || '%') or
-        coalesce(e.location_name, '') ilike ('%' || $2::text || '%') or
-        coalesce(e.city, '') ilike ('%' || $2::text || '%') or
-        coalesce(e.country, '') ilike ('%' || $2::text || '%') or
-        exists (select 1 from unnest(e.topics) topic where topic ilike ('%' || $2::text || '%'))
-      )
+      and ${eventSearchSql('$2')}
       and ($3::text = '' or e.category = $3::text)
       and ($4::text = '' or e.event_type = $4::text)
       and ($5::text = '' or e.format = $5::text)
-      and (
-        $6::text = '' or
-        coalesce(e.location_name, '') ilike ('%' || $6::text || '%') or
-        coalesce(e.location_address, '') ilike ('%' || $6::text || '%') or
-        coalesce(e.city, '') ilike ('%' || $6::text || '%') or
-        coalesce(e.country, '') ilike ('%' || $6::text || '%')
-      )
+      and ${eventPlaceSql('$6')}
     order by e.start_at asc
     limit 100
   `, [value.search, value.category, value.eventType, value.format, value.location])
+}
+
+/** Upcoming published events hosted as one organization (organization page Events tab). */
+async function listOrganizationEvents(viewerId: string, companyId: string, limit = 30) {
+  return rowsForViewer(viewerId, `
+    where e.company_id = $2::uuid
+      and e.status = 'published'
+      and e.end_at > now()
+    order by e.start_at asc
+    limit $3
+  `, [companyId, Math.min(Math.max(Math.trunc(limit), 1), 100)])
 }
 
 async function listMyEvents(userId: string) {
@@ -362,16 +387,11 @@ async function listPastEvents(viewerId: string, filters: CalendarEventFilters | 
   return rowsForViewer(viewerId, `
     where e.status in ('published', 'cancelled')
       and e.end_at <= now()
-      and ($2::text = '' or e.title ilike ('%' || $2::text || '%') or e.summary ilike ('%' || $2::text || '%'))
+      and ${eventSearchSql('$2')}
       and ($3::text = '' or e.category = $3::text)
       and ($4::text = '' or e.event_type = $4::text)
       and ($5::text = '' or e.format = $5::text)
-      and (
-        $6::text = '' or
-        coalesce(e.location_name, '') ilike ('%' || $6::text || '%') or
-        coalesce(e.city, '') ilike ('%' || $6::text || '%') or
-        coalesce(e.country, '') ilike ('%' || $6::text || '%')
-      )
+      and ${eventPlaceSql('$6')}
     order by e.end_at desc
     limit 30
   `, [value.search, value.category, value.eventType, value.format, value.location])
@@ -522,6 +542,7 @@ async function withdrawAttendance(userId: string, eventId: string) {
 
 export const calendarEventRepository = {
   listDiscoverEvents,
+  listOrganizationEvents,
   listMyEvents,
   listMyPastEvents,
   listHostedEvents,

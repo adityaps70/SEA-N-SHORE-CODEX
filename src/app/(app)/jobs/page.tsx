@@ -65,10 +65,10 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       <JobsSubnav active="discover" />
 
       <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-        {JOB_DISCOVERY_MODES.map((mode) => <Link key={mode.value} href={`/jobs?mode=${mode.value}`} className={filters.mode === mode.value ? 'shrink-0 rounded-full bg-navy-950 px-4 py-2 text-sm font-semibold text-white' : 'shrink-0 rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-mist-50'}>{mode.label}</Link>)}
+        {JOB_DISCOVERY_MODES.map((mode) => <Link key={mode.value} href={`/jobs?mode=${mode.value}`} className={filters.mode === mode.value ? 'shrink-0 rounded-full bg-navy-950 px-4 py-2 text-sm font-semibold text-white' : 'shrink-0 rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-mist-50'}>{mode.label}</Link>)}
       </div>
 
-      {!profileReady ? <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Complete your Maritime Passport for smarter recommendations.</strong> Your job search still works, but match scores become useful once rank, vessel experience and credentials are available. <Link href="/profile" className="font-semibold underline">Complete profile</Link></div> : null}
+      {!profileReady ? <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Complete your Maritime Passport for smarter recommendations.</strong> Your job search still works, but match scores become useful once rank, vessel experience and credentials are available. <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Complete profile</Link></div> : null}
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
         <JobsDiscoveryControls filters={filters} resultCount={items.length} />
@@ -80,7 +80,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
               <p className="mt-0.5 text-xs font-semibold text-navy-700">Sort by: {sortLabel}</p>
               <p className="mt-0.5 text-xs text-muted">{sortCaption}</p>
             </div>
-            <div className="flex items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
+            <div className="flex items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
           </div>
           {items.length ? <div className="grid gap-4 xl:grid-cols-2">{items.map(({ job, match, isSaved, alreadyApplied }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}</div> : (
             <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-12 text-center">
@@ -88,8 +88,8 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
               <p className="mt-3 font-semibold text-navy-950">{hasSearchConstraints ? 'No roles match these filters yet.' : 'No maritime roles are live yet.'}</p>
               <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">{hasSearchConstraints ? 'Try widening the rank, vessel, joining-date or salary requirements—or clear filters to see more opportunities.' : 'New verified maritime opportunities will appear here as employers publish them.'}</p>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
-                {hasSearchConstraints ? <Link href="/jobs?mode=for-you" className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950">Clear all filters</Link> : null}
-                <Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">Create job alert</Link>
+                {hasSearchConstraints ? <Link href="/jobs?mode=for-you" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Clear all filters</Link> : null}
+                <Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">Create job alert</Link>
               </div>
             </div>
           )}

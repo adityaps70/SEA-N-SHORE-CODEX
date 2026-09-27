@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
 import { RailFooter } from '@/components/navigation/rail-footer'
-import { ArrowLeft, BadgeCheck, CalendarClock, CheckCircle2, MapPin, Ship, Sparkles, TriangleAlert, WalletCards } from 'lucide-react'
+import { backLinkClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
+import { ArrowLeft, BadgeCheck, CalendarClock, CheckCircle2, MapPin, Ship, TriangleAlert, WalletCards } from 'lucide-react'
 import { ApplyJobButton } from '@/features/jobs/components/apply-job-button'
 import { JobCompanyIdentity, JobCompanyLogo } from '@/features/jobs/components/job-company-identity'
 import { ReportJobButton } from '@/features/jobs/components/report-job-button'
@@ -46,7 +47,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <section className="mx-auto w-full max-w-5xl py-2 pb-24 sm:py-5 sm:pb-8">
-      <Link href="/jobs" className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-muted hover:bg-mist-50 hover:text-navy-950"><ArrowLeft aria-hidden="true" className="size-4" />Back to jobs</Link>
+      <Link href="/jobs" className={`mb-4 ${backLinkClass}`}><ArrowLeft aria-hidden="true" className="size-4" />Back to jobs</Link>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <article className="min-w-0 rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-8">
@@ -77,19 +78,19 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
           {match ? (
             <section aria-labelledby="maritime-match-heading" className="mt-8 overflow-hidden rounded-[1.5rem] border border-ocean-700/20 bg-mist-50">
-              <div className="flex items-center justify-between gap-4 bg-navy-950 px-5 py-4 text-white"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Sea N Shore intelligence</p><h2 id="maritime-match-heading" className="mt-1 inline-flex items-center gap-2 text-xl font-semibold"><Sparkles aria-hidden="true" className="size-5" />Your Maritime Match</h2></div><div className="text-right"><p className="text-3xl font-bold">{match.score}%</p><p className="text-xs text-white/60">profile fit</p></div></div>
+              <div className="flex items-center justify-between gap-4 bg-navy-950 px-5 py-4 text-white"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Sea N Shore intelligence</p><h2 id="maritime-match-heading" className="mt-1 text-xl font-semibold">Your Maritime Match</h2></div><div className="text-right"><p className="text-3xl font-bold">{match.score}%</p><p className="text-xs text-white/60">profile fit</p></div></div>
               <div className="grid gap-5 p-5 md:grid-cols-2">
                 <div><h3 className="text-sm font-semibold text-navy-950">What matches</h3>{match.reasons.length ? <ul className="mt-3 space-y-2">{match.reasons.map((reason) => <li key={reason} className="flex items-start gap-2 text-sm leading-6 text-ink"><CheckCircle2 aria-hidden="true" className="mt-1 size-4 shrink-0 text-emerald-700" />{reason}</li>)}</ul> : <p className="mt-2 text-sm text-muted">Add more Maritime Passport details to improve match explanations.</p>}</div>
                 <div><h3 className="text-sm font-semibold text-navy-950">Check before applying</h3>{match.missingRequirements.length || match.warnings.length ? <ul className="mt-3 space-y-2">{[...match.missingRequirements, ...match.warnings].map((warning) => <li key={warning} className="flex items-start gap-2 text-sm leading-6 text-amber-900"><TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0" />{warning}</li>)}</ul> : <p className="mt-2 text-sm font-medium text-emerald-800">No major profile gaps detected.</p>}</div>
               </div>
             </section>
-          ) : !profileReady ? <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">Complete your <Link href="/profile" className="font-semibold underline">Maritime Passport</Link> to see an explainable fit score for this job.</div> : null}
+          ) : !profileReady ? <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">Complete your <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Maritime Passport</Link> to see an explainable fit score for this job.</div> : null}
 
           <div className="mt-8 grid gap-7 border-t border-mist-100 pt-7">
             <section aria-labelledby="job-description-heading"><h2 id="job-description-heading" className="text-xl font-semibold text-navy-950">About the role</h2><p className="mt-3 whitespace-pre-line text-sm leading-7 text-ink">{job.description}</p></section>
             {job.requirements ? <section aria-labelledby="job-requirements-heading"><h2 id="job-requirements-heading" className="text-xl font-semibold text-navy-950">Requirements</h2><p className="mt-3 whitespace-pre-line text-sm leading-7 text-ink">{job.requirements}</p></section> : null}
-            {job.certificateRequirements.length ? <section><h2 className="text-xl font-semibold text-navy-950">Certificates</h2><div className="mt-3 flex flex-wrap gap-2">{job.certificateRequirements.map((item) => <span key={item} className="rounded-xl border border-mist-100 bg-mist-50 px-3 py-2 text-sm font-medium text-ink">{item}</span>)}</div></section> : null}
-            {job.visaRequirements.length ? <section><h2 className="text-xl font-semibold text-navy-950">Visa requirements</h2><div className="mt-3 flex flex-wrap gap-2">{job.visaRequirements.map((item) => <span key={item} className="rounded-xl border border-mist-100 bg-mist-50 px-3 py-2 text-sm font-medium text-ink">{item}</span>)}</div></section> : null}
+            {job.certificateRequirements.length ? <section><h2 className="text-xl font-semibold text-navy-950">Certificates</h2><div className="mt-3 flex flex-wrap gap-2">{job.certificateRequirements.map((item) => <span key={item} className="rounded-full bg-mist-100 px-3 py-1 text-sm font-medium text-ink">{item}</span>)}</div></section> : null}
+            {job.visaRequirements.length ? <section><h2 className="text-xl font-semibold text-navy-950">Visa requirements</h2><div className="mt-3 flex flex-wrap gap-2">{job.visaRequirements.map((item) => <span key={item} className="rounded-full bg-mist-100 px-3 py-1 text-sm font-medium text-ink">{item}</span>)}</div></section> : null}
           </div>
         </article>
 
@@ -109,7 +110,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 personalLabel={job.recruiterVerified ? 'Verified independent recruiter' : 'Independent recruiter'}
               />
             </div>
-            {companyHref ? <Link href={companyHref} className="mt-4 inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">View organization</Link> : null}
+            {companyHref ? <Link href={companyHref} className={`mt-4 ${secondaryButtonClass}`}>View organization</Link> : null}
           </section>
           <ReportJobButton jobId={job.id} />
           <RailFooter visibleFrom="lg" />

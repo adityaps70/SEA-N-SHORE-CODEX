@@ -104,11 +104,11 @@ describe('PostCard ⋯ menu', () => {
     expect(within(menu).getByRole('menuitem', { name: 'Hide post' })).toBeInTheDocument()
   })
 
-  it('shows only Save, Copy link and Delete on the viewer’s own post', () => {
+  it('shows only Save, Copy link, Edit and Delete on the viewer’s own post', () => {
     render(<PostCard post={post({ viewerOwns: true, viewerFollowsAuthor: false })} />)
     const menu = openMenu()
     const labels = within(menu).getAllByRole('menuitem').map((item) => item.textContent?.trim())
-    expect(labels).toEqual(['Save post', 'Copy link', 'Delete post'])
+    expect(labels).toEqual(['Save post', 'Copy link', 'Edit post', 'Delete post'])
   })
 
   it('is not rendered for signed-out, read-only views', () => {

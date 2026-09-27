@@ -38,4 +38,19 @@ describe('messaging database contract', () => {
     expect(sql).toMatch(/type[\s\S]*direct/i)
     expect(sql).toMatch(/direct_user_low_id\s*<>\s*direct_user_high_id/i)
   })
+
+  it('adds an idempotent per-participant delete marker without touching existing data', () => {
+    const deletePath = join(
+      process.cwd(),
+      'infra/aws/database/migrations/0045_messaging_conversation_delete_for_me.sql',
+    )
+    expect(existsSync(deletePath)).toBe(true)
+
+    const sql = readFileSync(deletePath, 'utf8')
+    expect(sql).toMatch(/alter table public\.conversation_participants\s+add column if not exists cleared_before timestamptz/i)
+    expect(sql).not.toMatch(/\bdrop\s+(table|column)\b/i)
+    expect(sql).not.toMatch(/\bdelete\s+from\b/i)
+    expect(sql).not.toMatch(/\btruncate\b/i)
+  })
 })
+

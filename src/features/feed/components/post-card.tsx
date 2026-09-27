@@ -10,16 +10,21 @@ import { deletePost, setPostHidden, setPostReaction, setPostSaved } from '../act
 import {
   EMPTY_REACTION_SUMMARY,
   reactionCount,
+  type FeedAuthor,
+  type FeedMention,
+  type FeedOrganization,
   type FeedPost,
   type FeedRepostSource,
   type PostReactionType,
   type ReactionSummary,
 } from '../types'
 import { CommentThread } from './comment-thread'
+import { EditPostDialog } from './edit-post-dialog'
 import { FeedDialog } from './feed-dialog'
 import { MentionText } from './mention-text'
 import { PollCard } from './poll-card'
 import { PostActionsMenu } from './post-actions-menu'
+import { POST_ACTION_BUTTON_CLASS, POST_ACTION_LABEL_CLASS } from './post-action-styles'
 import { PostMedia } from './post-media'
 import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
@@ -75,27 +80,52 @@ function RepostSourcePoll({ source }: { source: FeedRepostSource }) {
   )
 }
 
+/** Logo (or initials) of the organization a post was published as. */
+function OrganizationLogo({ organization, size }: { organization: FeedOrganization; size: 'size-10' | 'size-11' }) {
+  return (
+    <div className={`grid ${size} shrink-0 place-items-center overflow-hidden rounded-xl bg-navy-950 text-xs font-black text-white ring-1 ring-mist-100`}>
+      {organization.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- organization logos come from the signed-in first-party logo route
+        <img src={organization.logoUrl} alt={`${organization.name} logo`} loading="lazy" className="h-full w-full bg-white object-contain p-1" />
+      ) : initials(organization.name)}
+    </div>
+  )
+}
+
+function authorContext(author: FeedAuthor) {
+  return [author.rank ?? author.headline, author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'
+}
+
+/** The name a post is shown under: its organization, or the person who wrote it. */
+function publishedAsName(post: { author: FeedAuthor; organization?: FeedOrganization | null }) {
+  return post.organization?.name ?? post.author.fullName
+}
+
 function RepostSourceCard({ source }: { source: FeedRepostSource }) {
   const media = source.mediaItems?.length ? source.mediaItems : source.media ? [source.media] : []
+  const organization = source.organization ?? null
+  const name = publishedAsName(source)
   return (
     <section
       role="region"
-      aria-label={`Original post by ${source.author.fullName}`}
+      aria-label={`Original post by ${name}`}
       className="rounded-2xl border border-mist-100 bg-mist-50/35 p-4 sm:p-5"
     >
       <div className="flex items-start gap-3">
-        <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-mist-100 text-xs font-semibold text-navy-950 ring-1 ring-mist-100">
-          {source.author.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={source.author.avatarUrl} alt={`${source.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
-          ) : initials(source.author.fullName)}
-        </div>
+        {organization ? <OrganizationLogo organization={organization} size="size-10" /> : (
+          <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-mist-100 text-xs font-semibold text-navy-950 ring-1 ring-mist-100">
+            {source.author.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={source.author.avatarUrl} alt={`${source.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
+            ) : initials(source.author.fullName)}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
-          <Link href={`/people/${source.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
-            {source.author.fullName}
+          <Link href={organization ? `/organizations/${organization.slug}` : `/people/${source.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
+            {name}
           </Link>
           <p className="mt-0.5 truncate text-xs text-muted">
-            {[source.author.rank ?? source.author.headline, source.author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
+            {organization ? 'Organization' : authorContext(source.author)}
           </p>
           <time suppressHydrationWarning dateTime={source.createdAt} title={new Date(source.createdAt).toISOString()} className="mt-1 block text-xs text-muted">
             {relativeTime(source.createdAt)}
@@ -151,6 +181,8 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
   const [deleteError, setDeleteError] = useState('')
   const [deleted, setDeleted] = useState(false)
   const [hidden, setHidden] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [edited, setEdited] = useState<{ body: string; mentions: FeedMention[] } | null>(null)
   const [notice, setNotice] = useState<FeedNotice | null>(null)
   const [pending, startTransition] = useTransition()
   const [visibilityPending, startVisibilityTransition] = useTransition()
@@ -162,6 +194,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
     setSummary(initialSummary(post))
     setSaved(post.viewerSaved)
     setFollowing(Boolean(post.viewerFollowsAuthor))
+    setEdited(null)
   }
 
   useEffect(() => {
@@ -267,8 +300,14 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
       <Card className="border border-mist-100">
         <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-4 text-sm text-navy-900 sm:px-5">
           <span className="font-semibold">Post deleted.</span>
-          <span className="text-muted">You can restore it for 30 days.</span>
-          <Link href="/activities?tab=deleted" className="font-semibold text-ocean-700 hover:text-ocean-800">Recently deleted</Link>
+          {post.viewerOwns ? (
+            <>
+              <span className="text-muted">You can restore it for 30 days.</span>
+              <Link href="/activities?tab=deleted" className="font-semibold text-ocean-700 hover:text-ocean-800 hover:underline">Recently deleted</Link>
+            </>
+          ) : (
+            <span className="text-muted">It no longer appears in the feed or on the organization page.</span>
+          )}
         </div>
       </Card>
     )
@@ -280,13 +319,13 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
           <div role="status" className="min-w-0">
             <p className="text-sm font-semibold text-navy-950">Post hidden</p>
-            <p className="mt-0.5 text-sm text-muted">You won&apos;t see this post from {post.author.fullName} in your feed.</p>
+            <p className="mt-0.5 text-sm text-muted">You won&apos;t see this post from {publishedAsName(post)} in your feed.</p>
           </div>
           <button
             type="button"
             onClick={() => changeHidden(false)}
             disabled={visibilityPending}
-            className="min-h-10 rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 disabled:opacity-60"
+            className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 disabled:opacity-60"
           >
             {visibilityPending ? 'Restoring…' : 'Undo'}
           </button>
@@ -298,32 +337,49 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
 
   const isRepost = post.postType === 'repost'
   const isOwner = Boolean(post.viewerOwns)
+  const canEdit = post.viewerCanEdit ?? isOwner
+  const canDelete = post.viewerCanDelete ?? isOwner
+  const organization = post.organization ?? null
+  const displayName = publishedAsName(post)
+  const body = edited?.body ?? post.body
+  const mentions = edited?.mentions ?? post.mentions
   const postMedia = post.mediaItems?.length ? post.mediaItems : post.media ? [post.media] : []
-  const repostCommentary = isRepost ? post.body.trim() : ''
+  const repostCommentary = isRepost ? body.trim() : ''
   const shareSource = isRepost && post.repostOf
-    ? { id: post.repostOf.id, authorName: post.repostOf.author.fullName, body: post.repostOf.body }
-    : { id: post.id, authorName: post.author.fullName, body: post.body }
+    ? { id: post.repostOf.id, authorName: publishedAsName(post.repostOf), body: post.repostOf.body }
+    : { id: post.id, authorName: displayName, body }
   const canRepost = !isRepost || Boolean(post.repostOf)
+  const totalReactions = reactionCount(summary)
 
   return (
     <Card className="overflow-visible border border-mist-100">
       <article aria-labelledby={`post-author-${post.id}`}>
         <header className="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
-          <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
-            {post.author.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={post.author.avatarUrl} alt={`${post.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
-            ) : initials(post.author.fullName)}
-          </div>
+          {organization ? <OrganizationLogo organization={organization} size="size-11" /> : (
+            <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
+              {post.author.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={post.author.avatarUrl} alt={`${post.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
+              ) : initials(post.author.fullName)}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-              <Link id={`post-author-${post.id}`} href={`/people/${post.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
-                {post.author.fullName}
+              <Link
+                id={`post-author-${post.id}`}
+                href={organization ? `/organizations/${organization.slug}` : `/people/${post.author.slug}`}
+                className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline"
+              >
+                {displayName}
               </Link>
               {isRepost ? <span className="text-xs font-medium text-muted">{repostCommentary ? 'reposted with thoughts' : 'reposted'}</span> : null}
             </div>
             <p className="mt-0.5 truncate text-sm text-muted">
-              {[post.author.rank ?? post.author.headline, post.author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
+              {organization
+                ? (canEdit || canDelete) && !isOwner
+                  ? `Organization · Posted by ${post.author.fullName}`
+                  : isOwner ? 'Organization · Posted by you' : 'Organization'
+                : authorContext(post.author)}
             </p>
             <time suppressHydrationWarning dateTime={post.createdAt} title={new Date(post.createdAt).toISOString()} className="mt-1 block text-xs text-muted">
               {relativeTime(post.createdAt)}
@@ -331,10 +387,13 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
           </div>
           {!readOnly ? (
             <PostActionsMenu
-              authorName={post.author.fullName}
+              authorName={displayName}
               isOwner={isOwner}
+              canEdit={canEdit}
+              canDelete={canDelete}
               saved={saved}
-              canUnfollow={!isOwner && following}
+              // Following is about people; organization posts are followed through the organization.
+              canUnfollow={!isOwner && !organization && following}
               pending={pending || visibilityPending}
               onToggleSave={changeSaved}
               onCopyLink={() => { void copyLink() }}
@@ -342,6 +401,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
               onUnfollow={() => changeFollowing(false)}
               onReport={() => setReportOpen(true)}
               onDelete={() => { setDeleteError(''); setConfirmDelete(true) }}
+              onEdit={() => setEditOpen(true)}
               triggerRef={menuTriggerRef}
             />
           ) : null}
@@ -352,60 +412,59 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
             <>
               {repostCommentary ? (
                 <p className="mb-3 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink">
-                  <MentionText body={repostCommentary} mentions={post.mentions} />
+                  <MentionText body={repostCommentary} mentions={mentions} />
                 </p>
               ) : null}
               <RepostSourceCard source={post.repostOf} />
             </>
           ) : (
             <>
-              <p className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"><MentionText body={post.body} mentions={post.mentions} /></p>
-              {postMedia.some((item) => item.signedUrl) ? <PostMedia media={postMedia} authorName={post.author.fullName} /> : null}
+              <p className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"><MentionText body={body} mentions={mentions} /></p>
+              {postMedia.some((item) => item.signedUrl) ? <PostMedia media={postMedia} authorName={displayName} /> : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
             </>
           )}
         </div>
 
-        {reactionCount(summary) > 0 ? (
-          <div data-testid="post-social-counts" className="flex items-center px-3 pb-1 sm:px-4">
-            <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
-          </div>
-        ) : null}
-
         {readOnly ? (
-          <div className="border-t border-mist-100 px-4 py-2 sm:px-5">
-            <SharePostButton postId={post.id} authorName={post.author.fullName} allowRepost={false} allowSend={false} menuAlign="start" />
+          <div className="flex items-center justify-between gap-2 border-t border-mist-100 px-4 py-2 sm:px-5">
+            <SharePostButton postId={post.id} authorName={displayName} allowRepost={false} allowSend={false} menuAlign="start" />
+            <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
           </div>
         ) : (
           <div
             role="group"
             aria-label="Post actions"
-            className="flex items-center justify-between border-t border-mist-100 px-3 py-1 sm:px-4"
+            className="@container flex items-center justify-between gap-2 border-t border-mist-100 px-3 py-2 sm:px-4"
           >
-            <div data-testid="post-primary-actions" className="flex min-w-0 items-center gap-2 sm:gap-3">
-              <ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} compact />
+            <div data-testid="post-primary-actions" className="flex min-w-0 items-center gap-1.5 @min-[26rem]:gap-2">
+              <ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} count={totalReactions} variant="post" />
               <button
                 type="button"
                 onClick={() => setComposerOpen(true)}
                 aria-label="Comment"
                 aria-expanded={composerOpen}
                 aria-controls={`comments-${post.id}`}
-                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50"
+                title="Comment"
+                className={POST_ACTION_BUTTON_CLASS}
               >
                 <MessageCircle aria-hidden="true" className="size-5" />
-                <span>{post.commentCount}</span>
+                <span className={POST_ACTION_LABEL_CLASS}>Comment</span>
+                {post.commentCount > 0 ? <span data-testid="comment-count" aria-hidden="true" className="tabular-nums">{post.commentCount}</span> : null}
               </button>
               <SharePostButton
                 postId={post.id}
                 repostPostId={shareSource.id}
                 authorName={shareSource.authorName}
                 source={{ authorName: shareSource.authorName, body: shareSource.body }}
-                iconOnly
+                variant="action"
                 allowRepost={canRepost}
+                menuAlign="start"
                 onNotice={setNotice}
               />
-              <SendPostButton postId={post.id} authorName={post.author.fullName} onNotice={setNotice} />
+              <SendPostButton postId={post.id} authorName={displayName} onNotice={setNotice} variant="action" />
             </div>
+            <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
           </div>
         )}
 
@@ -440,12 +499,31 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
             }}
           />
         ) : null}
+        {editOpen ? (
+          <EditPostDialog
+            postId={post.id}
+            postType={post.postType}
+            body={body}
+            mentions={mentions ?? []}
+            publishedAs={displayName}
+            onClose={() => setEditOpen(false)}
+            onSaved={(savedPost) => {
+              setEdited({ body: savedPost.body, mentions: savedPost.mentions ?? [] })
+              setNotice({ text: 'Your changes are saved.', tone: 'success' })
+            }}
+            returnFocusRef={menuTriggerRef}
+          />
+        ) : null}
         {confirmDelete ? (
           <FeedDialog
             role="alertdialog"
             size="sm"
             title="Delete this post?"
-            description="It will be removed from the feed and your profile. You can restore it from My Activities › Recently deleted for 30 days."
+            description={isOwner
+              ? organization
+                ? `It will be removed from the feed and from ${organization.name}'s page. You can restore it from My Activities › Recently deleted for 30 days.`
+                : 'It will be removed from the feed and your profile. You can restore it from My Activities › Recently deleted for 30 days.'
+              : `It will be removed from the feed and from ${organization?.name ?? 'the organization'}'s page for everyone, including ${post.author.fullName}, who wrote it.`}
             onClose={() => { if (!pending) setConfirmDelete(false) }}
             closeLabel="Keep post"
             returnFocusRef={menuTriggerRef}
@@ -453,7 +531,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
           >
             {deleteError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p> : null}
             <div className="flex flex-wrap justify-end gap-2">
-              <button type="button" data-autofocus onClick={() => setConfirmDelete(false)} disabled={pending} className="min-h-10 rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
+              <button type="button" data-autofocus onClick={() => setConfirmDelete(false)} disabled={pending} className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
                 Cancel
               </button>
               <button type="button" onClick={removePost} disabled={pending} className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60">

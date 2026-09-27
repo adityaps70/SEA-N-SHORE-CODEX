@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { optionalOrganizationIdSchema } from './organization-link'
 import type { ProfileType } from './types'
 import { usernameSchema } from './username'
 
@@ -43,6 +44,7 @@ export const profileIdentitySectionSchema = z.object({
   location: optionalText(120),
   headline: z.string().trim().min(4, 'Add a professional headline.').max(160),
   currentCompany: optionalText(160),
+  currentCompanyId: optionalOrganizationIdSchema,
   contactVisibility: z.enum(['private', 'members', 'public']),
 })
 

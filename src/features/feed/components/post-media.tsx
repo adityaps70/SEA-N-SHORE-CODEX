@@ -195,7 +195,7 @@ function PhotoGallery({ media, authorName }: { media: FeedMedia[]; authorName: s
     const item = media[0]
     if (!item?.signedUrl) return null
     return (
-      <button type="button" onClick={() => open(0)} className="mt-4 block w-full overflow-hidden rounded-2xl border border-mist-100 bg-mist-50 text-left">
+      <button type="button" onClick={() => open(0)} className="mt-4 block w-full overflow-hidden rounded-2xl border border-mist-200 bg-mist-50 text-left hover:border-ocean-300 hover:bg-mist-50 transition-colors">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={item.signedUrl}
@@ -215,7 +215,7 @@ function PhotoGallery({ media, authorName }: { media: FeedMedia[]; authorName: s
             type="button"
             onClick={() => open(index)}
             aria-label={index === 3 && overflow > 0 ? `View all ${media.length} photos` : `Open photo ${index + 1} of ${media.length}`}
-            className={`relative min-w-0 overflow-hidden bg-white ${imageGridClass(media.length, index)}`}
+            className={`relative min-w-0 overflow-hidden bg-white transition hover:brightness-95 ${imageGridClass(media.length, index)}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img

@@ -13,7 +13,7 @@ export function FeedCategoryFilter({ category }: { category?: PostCategory }) {
             'inline-flex min-h-10 items-center rounded-xl border px-4 text-sm font-semibold transition-colors',
             !category
               ? 'border-ocean-700 bg-ocean-700 text-white'
-              : 'border-mist-100 bg-white text-navy-900 hover:border-ocean-500 hover:text-ocean-700',
+              : 'border-mist-200 bg-white text-navy-900 hover:border-ocean-500 hover:text-ocean-700',
           )}
         >
           All
@@ -27,7 +27,7 @@ export function FeedCategoryFilter({ category }: { category?: PostCategory }) {
               'inline-flex min-h-10 items-center rounded-xl border px-4 text-sm font-semibold transition-colors',
               category === value
                 ? 'border-ocean-700 bg-ocean-700 text-white'
-                : 'border-mist-100 bg-white text-navy-900 hover:border-ocean-500 hover:text-ocean-700',
+                : 'border-mist-200 bg-white text-navy-900 hover:border-ocean-500 hover:text-ocean-700',
             )}
           >
             {POST_CATEGORY_LABELS[value]}

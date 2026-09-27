@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Bookmark } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { PostCard } from '@/features/feed/components/post-card'
 import { getSavedPosts } from '@/features/feed/queries'
+import { SavedPostsGrid } from './saved-posts-grid'
 
 export const metadata: Metadata = { title: 'Saved posts' }
 
@@ -11,17 +11,18 @@ export default async function SavedPostsPage() {
   const posts = await getSavedPosts()
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ocean-700">Your library</p>
-        <h1 className="mt-1 text-2xl font-semibold text-navy-950">Saved posts</h1>
-        <p className="mt-2 text-sm text-muted">Posts you saved for later.</p>
+    <div className="mx-auto max-w-4xl space-y-4">
+      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ocean-700">Your library</p>
+          <h1 className="mt-1 text-2xl font-semibold text-navy-950">Saved posts</h1>
+          <p className="mt-1 text-sm text-muted">Posts you saved for later. Select one to read it in full or remove it from Saved.</p>
+        </div>
+        {posts.length ? <p className="text-sm font-semibold text-muted">{posts.length} {posts.length === 1 ? 'post' : 'posts'}</p> : null}
       </header>
 
       {posts.length > 0 ? (
-        <div className="space-y-4">
-          {posts.map((post) => <PostCard key={post.id} post={post} />)}
-        </div>
+        <SavedPostsGrid posts={posts} />
       ) : (
         <Card className="border border-mist-100 p-8 text-center">
           <Bookmark aria-hidden="true" className="mx-auto size-7 text-ocean-700" />

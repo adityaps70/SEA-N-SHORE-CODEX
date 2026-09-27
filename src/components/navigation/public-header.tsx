@@ -17,7 +17,7 @@ export async function PublicHeader() {
         >
           <Link
             href={actions.secondary.href}
-            className="rounded-lg px-3 py-2 text-sm font-semibold text-navy-900 hover:bg-mist-50"
+            className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-300 hover:bg-mist-50"
           >
             {actions.secondary.label}
           </Link>

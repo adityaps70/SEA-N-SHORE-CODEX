@@ -185,7 +185,7 @@ export default async function GlobalSearchPage({
                 <Link
                   key={organization.id}
                   href={'/organizations/' + organization.slug}
-                  className="group rounded-[1.4rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-teal-200"
+                  className="group rounded-[1.4rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-teal-200"
                 >
                   <div className="flex items-start gap-3">
                     <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
@@ -224,7 +224,7 @@ export default async function GlobalSearchPage({
           {courseResults.length ? (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {courseResults.map((course) => (
-                <Link key={course.id} href={`/learn/courses/${course.slug}`} className="group rounded-[1.4rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-teal-200">
+                <Link key={course.id} href={`/learn/courses/${course.slug}`} className="group rounded-[1.4rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-teal-200">
                   <div className="flex items-center justify-between gap-3 text-xs font-bold text-muted"><span className="rounded-full bg-mist-50 px-2.5 py-1">{course.category}</span><span>{course.accessType === 'free' || course.priceMinor === 0 ? 'Free' : 'Paid'}</span></div>
                   <h3 className="mt-4 text-lg font-bold text-navy-950 transition group-hover:text-teal-800">{course.title}</h3>
                   {course.subtitle ? <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted">{course.subtitle}</p> : null}

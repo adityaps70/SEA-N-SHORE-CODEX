@@ -41,7 +41,7 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
             type="button"
             onClick={() => setEditing(true)}
             aria-label="Edit About"
-            className="inline-flex size-9 items-center justify-center rounded-full border border-mist-100 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
+            className="inline-flex size-9 items-center justify-center rounded-full border border-mist-200 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
           >
             <Pencil aria-hidden="true" className="size-4" />
           </button>
@@ -73,10 +73,10 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
           </label>
           {state.error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setEditing(false)} className="min-h-10 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950">
+            <button type="button" onClick={() => setEditing(false)} className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60">
+            <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">
               {pending ? 'Saving…' : 'Save'}
             </button>
           </div>

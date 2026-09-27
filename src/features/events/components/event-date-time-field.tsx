@@ -97,7 +97,7 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
     <div ref={rootRef} id={`event-field-${name}`} className="space-y-2">
       <div className="flex items-center justify-between gap-3">
         <label className="text-sm font-semibold text-navy-900" htmlFor={`${name}-time`}>{label}{required ? <span className="ml-1 text-teal-700">*</span> : null}</label>
-        {!required && value ? <button type="button" onClick={clearValue} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400 hover:text-navy-700"><X className="size-3.5" aria-hidden="true" />Clear</button> : null}
+        {!required && value ? <button type="button" onClick={clearValue} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold text-ocean-700 transition-colors hover:bg-mist-50 hover:text-navy-950 hover:underline"><X className="size-3.5" aria-hidden="true" />Clear</button> : null}
       </div>
       <input type="hidden" name={name} value={value} />
       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10.5rem]">
@@ -108,7 +108,7 @@ export function EventDateTimeField({ label, name, defaultValue = '', required = 
             aria-expanded={open}
             aria-label={`${label} date: ${readableDate(date)}`}
             aria-describedby={error ? errorId : undefined}
-            className={`flex min-h-12 w-full items-center gap-3 rounded-2xl border bg-mist-50 px-4 text-left text-[15px] font-normal outline-none transition ${open ? 'border-teal-500' : error ? 'border-rose-300' : 'border-mist-100 hover:border-mist-200'}`}
+            className={`flex min-h-12 w-full items-center gap-3 rounded-2xl border bg-mist-50 px-4 text-left text-[15px] font-normal outline-none transition ${open ? 'border-teal-500' : error ? 'border-rose-300' : 'border-mist-200 hover:border-mist-200'}`}
           >
             <CalendarDays className="size-4.5 shrink-0 text-teal-700" aria-hidden="true" />
             <span className={date ? 'text-navy-950' : 'text-slate-400'}>{readableDate(date)}</span>

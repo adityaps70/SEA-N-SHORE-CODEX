@@ -124,7 +124,7 @@ function RequestRow({ request, nowIso }: { request: CompanyAccessRequestSummary;
         {mode === 'idle' ? (
           <div className="flex shrink-0 flex-wrap gap-2">
             {request.status === 'approved' ? (
-              <Link href={`/organizations/${request.company.slug}`} className="inline-flex min-h-9 items-center rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 hover:bg-mist-50">Open workspace</Link>
+              <Link href={`/organizations/${request.company.slug}`} className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 px-3 text-xs font-semibold text-navy-950 hover:bg-mist-50">Open workspace</Link>
             ) : null}
             {escalation.allowed ? (
               <button type="button" onClick={() => setMode('escalate')} className="inline-flex min-h-9 items-center rounded-lg border border-ocean-200 bg-ocean-50 px-3 text-xs font-semibold text-ocean-800 hover:bg-ocean-100">
@@ -132,7 +132,7 @@ function RequestRow({ request, nowIso }: { request: CompanyAccessRequestSummary;
               </button>
             ) : null}
             {request.status === 'pending' ? (
-              <button type="button" onClick={() => setMode('withdraw')} className="inline-flex min-h-9 items-center rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 hover:bg-mist-50">Withdraw</button>
+              <button type="button" onClick={() => setMode('withdraw')} className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 px-3 text-xs font-semibold text-navy-950 hover:bg-mist-50">Withdraw</button>
             ) : null}
           </div>
         ) : null}
@@ -142,10 +142,10 @@ function RequestRow({ request, nowIso }: { request: CompanyAccessRequestSummary;
         <div className="mt-3 flex flex-col gap-2 rounded-lg border border-mist-100 bg-mist-50 p-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-navy-900">Withdraw your request to {request.company.name}?</p>
           <div className="flex gap-2">
-            <button type="button" disabled={isPending} onClick={() => run(() => withdrawOrganizationAccessRequest(request.id), 'Request withdrawn.')} className="min-h-9 rounded-lg bg-navy-950 px-3 text-xs font-bold text-white disabled:opacity-60">
+            <button type="button" disabled={isPending} onClick={() => run(() => withdrawOrganizationAccessRequest(request.id), 'Request withdrawn.')} className="min-h-9 rounded-lg bg-navy-950 px-3 text-xs font-bold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">
               {isPending ? 'Withdrawing…' : 'Yes, withdraw'}
             </button>
-            <button type="button" disabled={isPending} onClick={() => setMode('idle')} className="min-h-9 rounded-lg border border-mist-100 bg-white px-3 text-xs font-bold text-navy-950">Keep request</button>
+            <button type="button" disabled={isPending} onClick={() => setMode('idle')} className="min-h-9 rounded-lg border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 transition-colors">Keep request</button>
           </div>
         </div>
       ) : null}
@@ -168,10 +168,10 @@ function RequestRow({ request, nowIso }: { request: CompanyAccessRequestSummary;
           </label>
           <p className="text-xs text-muted">Sea N Shore reviews escalated requests and its decision is final.</p>
           <div className="flex gap-2">
-            <button type="button" disabled={isPending} onClick={() => run(() => escalateOrganizationAccessRequest(request.id, note), 'Sent to Sea N Shore. We will update the status here.')} className="min-h-9 rounded-lg bg-navy-950 px-3 text-xs font-bold text-white disabled:opacity-60">
+            <button type="button" disabled={isPending} onClick={() => run(() => escalateOrganizationAccessRequest(request.id, note), 'Sent to Sea N Shore. We will update the status here.')} className="min-h-9 rounded-lg bg-navy-950 px-3 text-xs font-bold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">
               {isPending ? 'Sending…' : 'Send to Sea N Shore'}
             </button>
-            <button type="button" disabled={isPending} onClick={() => { setMode('idle'); setError(null) }} className="min-h-9 rounded-lg border border-mist-100 bg-white px-3 text-xs font-bold text-navy-950">Cancel</button>
+            <button type="button" disabled={isPending} onClick={() => { setMode('idle'); setError(null) }} className="min-h-9 rounded-lg border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 transition-colors">Cancel</button>
           </div>
         </div>
       ) : null}

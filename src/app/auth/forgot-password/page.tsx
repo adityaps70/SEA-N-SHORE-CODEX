@@ -16,7 +16,7 @@ export default function ForgotPasswordPage() {
         </p>
         <AuthForm mode="forgot-password" action={requestPasswordReset} />
         <p className="mt-6 text-sm">
-          <Link href="/auth/sign-in" className="font-semibold text-ocean-700">Back to sign in</Link>
+          <Link href="/auth/sign-in" className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">Back to sign in</Link>
         </p>
       </section>
     </main>

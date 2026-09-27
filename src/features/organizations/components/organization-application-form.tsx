@@ -19,7 +19,7 @@ import {
 import type { OrganizationApplicationInput } from '../types'
 
 type OrganizationApplicationFormProps =
-  | { mode: 'create'; initial?: never; applicationId?: never; onCancel?: () => void }
+  | { mode: 'create'; initial?: never; applicationId?: never; onCancel?: () => void; prefillName?: string }
   | { mode: 'resubmit'; applicationId: string; initial: OrganizationApplicationInput; onCancel?: never }
 
 type FieldErrors = Record<string, string[] | undefined>
@@ -243,7 +243,7 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
         <div className="grid gap-4 sm:grid-cols-2">
           <div className={labelClass}>
             <label htmlFor="org-organizationName" className="block">Organization name</label>
-            <input id="org-organizationName" className={inputClass} name="organizationName" maxLength={160} defaultValue={initial?.organizationName ?? ''} required {...errorProps(fieldErrors, 'organizationName')} />
+            <input id="org-organizationName" className={inputClass} name="organizationName" maxLength={160} defaultValue={initial?.organizationName ?? (props.mode === 'create' ? props.prefillName ?? '' : '')} required {...errorProps(fieldErrors, 'organizationName')} />
             <FieldError fieldErrors={fieldErrors} name="organizationName" />
           </div>
           <div className={labelClass}>
@@ -404,7 +404,7 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
 
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
         {props.mode === 'create' && props.onCancel ? (
-          <button type="button" onClick={props.onCancel} className="min-h-11 rounded-xl border border-mist-100 bg-white px-5 text-sm font-bold text-navy-950 transition hover:bg-mist-50">
+          <button type="button" onClick={props.onCancel} className="min-h-11 rounded-xl border border-mist-200 bg-white px-5 text-sm font-bold text-navy-950 transition hover:bg-mist-50">
             Cancel
           </button>
         ) : null}

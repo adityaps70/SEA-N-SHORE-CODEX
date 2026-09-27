@@ -24,6 +24,7 @@ function repository(overrides: Partial<FeedRepository> = {}) {
     updateOwnCommentWithinEditWindow: vi.fn(async () => ({ id: commentId, postId, parentCommentId: null })),
     softDeleteOwnComment: vi.fn(async () => ({ id: commentId, postId, parentCommentId: null })),
     restoreOwnDeletedPost: vi.fn(async () => true),
+    getRestorablePostCompanyId: vi.fn(async () => null),
     replaceCommentMentions: vi.fn(async () => ({ mentionProfileIds: [], newlyIntroducedProfileIds: [] })),
     insertStandardPost: vi.fn(async () => undefined),
     insertPostMedia: vi.fn(async () => undefined),

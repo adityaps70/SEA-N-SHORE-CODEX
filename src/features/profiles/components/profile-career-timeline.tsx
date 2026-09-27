@@ -80,7 +80,7 @@ function ExperienceEditor({
           <p className="text-xs font-semibold uppercase tracking-[.13em] text-ocean-700">{record ? 'Edit experience' : 'Add experience'}</p>
           <p className="mt-1 text-sm leading-5 text-muted">The fields change to match sea service, shore work and training roles.</p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close experience editor" className="grid size-9 shrink-0 place-items-center rounded-full border border-mist-100 bg-white text-muted hover:text-navy-950">
+        <button type="button" onClick={onClose} aria-label="Close experience editor" className="grid size-9 shrink-0 place-items-center rounded-full border border-mist-200 bg-white text-muted hover:text-navy-950">
           <X aria-hidden="true" className="size-4" />
         </button>
       </div>
@@ -176,8 +176,8 @@ function ExperienceEditor({
       {state.error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onClose} className="min-h-10 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950">Cancel</button>
-        <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60">
+        <button type="button" onClick={onClose} className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Cancel</button>
+        <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">
           {pending ? 'Saving…' : record ? 'Save experience' : 'Add experience'}
         </button>
       </div>
@@ -233,10 +233,10 @@ function ExperienceEntry({
 
           {editable ? (
             <div className="flex shrink-0 gap-1">
-              <button type="button" onClick={onEdit} aria-label={`Edit ${record.title}`} className="grid size-9 place-items-center rounded-full border border-mist-100 text-muted hover:border-ocean-400 hover:text-ocean-700">
+              <button type="button" onClick={onEdit} aria-label={`Edit ${record.title}`} className="grid size-9 place-items-center rounded-full border border-mist-200 text-muted hover:border-ocean-400 hover:text-ocean-700">
                 <Pencil aria-hidden="true" className="size-4" />
               </button>
-              <button type="button" onClick={remove} disabled={deleting} aria-label={`Delete ${record.title}`} className="grid size-9 place-items-center rounded-full border border-mist-100 text-muted hover:border-red-200 hover:text-red-700 disabled:opacity-50">
+              <button type="button" onClick={remove} disabled={deleting} aria-label={`Delete ${record.title}`} className="grid size-9 place-items-center rounded-full border border-mist-200 text-muted hover:border-red-200 hover:text-red-700 disabled:opacity-50">
                 <Trash2 aria-hidden="true" className="size-4" />
               </button>
             </div>
@@ -276,7 +276,7 @@ export function ProfileCareerTimeline({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-xl font-semibold tracking-tight text-navy-950">Experience</h2>
         {editable && !adding ? (
-          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white" aria-label="Add experience">
+          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors" aria-label="Add experience">
             <Plus aria-hidden="true" className="size-4" />
             Add experience
           </button>
@@ -302,7 +302,7 @@ export function ProfileCareerTimeline({
           <Anchor aria-hidden="true" className="mx-auto size-7 text-ocean-600" />
           <p className="mt-2 text-sm font-semibold text-navy-950">Build your maritime career timeline</p>
           <p className="mt-1 text-sm text-muted">Add sea service, shore positions, training roles and other maritime experience.</p>
-          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">
+          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
             <Plus aria-hidden="true" className="size-4" />
             Add your first experience
           </button>

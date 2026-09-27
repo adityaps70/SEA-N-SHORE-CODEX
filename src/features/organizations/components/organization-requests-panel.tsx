@@ -101,10 +101,10 @@ function PendingRequest({
                 />
               </label>
               <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={isPending} onClick={() => decide('rejected')} className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60">
+                <button type="button" disabled={isPending} onClick={() => decide('rejected')} className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-60 enabled:hover:bg-red-800 transition-colors disabled:cursor-not-allowed">
                   {isPending ? 'Saving…' : 'Confirm decline'}
                 </button>
-                <button type="button" disabled={isPending} onClick={() => setRejecting(false)} className="min-h-10 rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950">Cancel</button>
+                <button type="button" disabled={isPending} onClick={() => setRejecting(false)} className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 transition-colors">Cancel</button>
               </div>
             </>
           ) : (
@@ -121,7 +121,7 @@ function PendingRequest({
                 </select>
               </label>
               <div className="flex flex-wrap gap-2">
-                <button type="button" disabled={isPending} onClick={() => decide('approved')} className="min-h-10 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white disabled:opacity-60">
+                <button type="button" disabled={isPending} onClick={() => decide('approved')} className="min-h-10 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white disabled:opacity-60 enabled:hover:bg-emerald-800 transition-colors disabled:cursor-not-allowed">
                   {isPending ? 'Saving…' : 'Approve'}
                 </button>
                 <button type="button" disabled={isPending} onClick={() => setRejecting(true)} className="min-h-10 rounded-xl border border-red-200 bg-white px-4 text-sm font-bold text-red-800 hover:bg-red-50">

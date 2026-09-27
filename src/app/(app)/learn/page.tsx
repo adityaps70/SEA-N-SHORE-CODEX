@@ -6,8 +6,8 @@ import {
   Award,
   BadgeCheck,
   BookOpen,
+  ChevronDown,
   Search,
-  Sparkles,
 } from 'lucide-react'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -45,19 +45,6 @@ type LearnPageProps = {
 function normalizeParam(value: string | string[] | undefined) {
   const first = Array.isArray(value) ? value[0] : value
   return first?.trim() || null
-}
-
-function categoryHref(category: string, search: string | null) {
-  const params = new URLSearchParams()
-  if (search) params.set('search', search)
-  params.set('category', category)
-  return `/learn?${params.toString()}`
-}
-
-function allCoursesHref(search: string | null) {
-  if (!search) return '/learn'
-  const params = new URLSearchParams({ search })
-  return `/learn?${params.toString()}`
 }
 
 function levelLabel(level: MarketplaceCourse['level']) {
@@ -193,6 +180,8 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   const hasLearningStudio = isActiveTrainer || hasOrganizationLmsAccess
   const hasCreatorPro = access.personalPlan === 'creator_pro'
   const hasFilters = Boolean(category || search)
+  // Keep an old ?category= link selectable even if that label is no longer in the standard list.
+  const categoryOptions: readonly string[] = category && !(categories as readonly string[]).includes(category) ? [...categories, category] : categories
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -200,7 +189,7 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
-              <Sparkles aria-hidden="true" className="size-4" /> Sea N Shore Learning
+              Sea N Shore Learning
             </p>
             <h1 className="mt-1 max-w-3xl text-2xl font-bold tracking-tight sm:text-3xl">
               Learn from verified maritime professionals.
@@ -238,20 +227,17 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
             <Search aria-hidden="true" className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
             <input aria-label="Search maritime courses" type="search" name="search" defaultValue={search ?? ''} placeholder="Search courses, skills, trainers or organizations" className="w-full rounded-xl border border-mist-200 bg-mist-50/60 py-3 pl-10 pr-4 text-sm font-semibold text-navy-950 outline-none transition placeholder:font-normal placeholder:text-muted focus:border-teal-400 focus:bg-white" />
           </div>
-          {category ? <input type="hidden" name="category" value={category} /> : null}
-          <button type="submit" className="rounded-xl bg-navy-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-navy-900">Search courses</button>
-          {hasFilters ? <Link href="/learn" className="px-2 py-2 text-center text-sm font-bold text-teal-800 hover:text-teal-700">Clear filters</Link> : null}
+          <label className="relative sm:w-52">
+            <span className="sr-only">Category</span>
+            <select name="category" defaultValue={category ?? ''} className="w-full cursor-pointer appearance-none rounded-xl border border-mist-200 bg-mist-50/60 py-3 pl-4 pr-10 text-sm font-semibold text-navy-950 outline-none transition hover:border-mist-300 focus:border-teal-400 focus:bg-white">
+              <option value="">All categories</option>
+              {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          </label>
+          <button type="submit" className="cursor-pointer rounded-xl bg-navy-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-navy-900">Search courses</button>
+          {hasFilters ? <Link href="/learn" className="px-2 py-2 text-center text-sm font-bold text-ocean-700 hover:underline">Clear filters</Link> : null}
         </form>
-
-        <div className="mt-4 flex flex-wrap gap-2" aria-label="Course categories">
-          <Link href={allCoursesHref(search)} aria-current={category ? undefined : 'page'} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold transition ${category ? 'border-mist-200 bg-white text-muted hover:border-teal-300 hover:text-teal-800' : 'border-navy-950 bg-navy-950 text-white'}`}>
-            All courses
-          </Link>
-          {categories.map((item) => {
-            const active = category === item
-            return <Link key={item} href={categoryHref(item, search)} aria-current={active ? 'page' : undefined} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-bold transition ${active ? 'border-navy-950 bg-navy-950 text-white' : 'border-mist-200 bg-white text-muted hover:border-teal-300 hover:text-teal-800'}`}>{item}</Link>
-          })}
-        </div>
       </section>
 
       <section className="mt-7">

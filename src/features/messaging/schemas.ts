@@ -54,6 +54,10 @@ export const deleteMessageInputSchema = z.object({
   messageId: uuid,
 })
 
+export const deleteConversationInputSchema = z.object({
+  conversationId: uuid,
+})
+
 export const markConversationReadInputSchema = z.object({
   conversationId: uuid,
   messageId: uuid,

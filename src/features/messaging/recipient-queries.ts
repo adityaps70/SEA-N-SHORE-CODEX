@@ -33,5 +33,6 @@ export async function getConversationPeer(viewerId: string, conversationId: stri
       ? [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || profile.headline
       : null,
     otherAvatarUrl: profile?.avatarUrl ?? null,
+    otherSlug: profile?.slug ?? null,
   }
 }

@@ -95,7 +95,7 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
           initialPositionSeconds={lesson.lastPositionSeconds}
         />
       ) : lesson.externalUrl ? (
-        <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white">
+        <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
           Watch video <ExternalLink className="size-4" aria-hidden="true" />
         </a>
       ) : null
@@ -120,7 +120,7 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
       return mediaUrl ? (
         <div className="rounded-2xl border border-mist-200 bg-mist-50 p-5">
           <p className="text-sm leading-6 text-muted">This document is ready for study in a new tab.</p>
-          <a href={mediaUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white">
+          <a href={mediaUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
             View document <ExternalLink className="size-4" aria-hidden="true" />
           </a>
         </div>
@@ -192,7 +192,7 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
 
     case 'live_session':
       return lesson.externalUrl ? (
-        <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white">
+        <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
           Join live session <ExternalLink className="size-4" aria-hidden="true" />
         </a>
       ) : null

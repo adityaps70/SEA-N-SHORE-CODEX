@@ -71,6 +71,22 @@ describe('calendar event repository', () => {
     expect(db.query.mock.calls[0]?.[1]).toEqual([viewerId, 'SIRE', 'training', 'masterclass', 'hybrid', 'Mumbai'])
   })
 
+  it('matches one search text against title, topic, host and place for upcoming and past events', async () => {
+    db.query.mockResolvedValue([])
+    await calendarEventRepository.listDiscoverEvents(viewerId, { search: 'Rotterdam' })
+    await calendarEventRepository.listPastEvents(viewerId, { search: 'Rotterdam' })
+    expect(db.query).toHaveBeenCalledTimes(2)
+    for (const call of db.query.mock.calls) {
+      const sql = String(call[0])
+      for (const column of ['e.title ilike', 'e.summary', 'e.description', 'unnest(e.topics)', 'p.full_name ilike', 'c.name', 'e.location_name', 'e.location_address', 'e.city', 'e.country']) {
+        expect(sql).toContain(column)
+      }
+      expect(sql).toContain("p.full_name ilike ('%' || $2::text || '%')")
+      expect(sql).toContain("coalesce(e.city, '') ilike ('%' || $2::text || '%')")
+      expect(call[1]).toEqual([viewerId, 'Rotterdam', '', '', '', ''])
+    }
+  })
+
   it('queries attending and hosting views using the authenticated user id', async () => {
     db.query.mockResolvedValue([])
     await calendarEventRepository.listMyEvents(viewerId)

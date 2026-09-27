@@ -214,4 +214,45 @@ describe('Aurora profile repository', () => {
       repository.getPublicProfileBySlug({ slug: 'invalid-profile', viewerProfileId: VIEWER_ID }),
     ).resolves.toBeNull()
   })
+
+  it('maps the linked organization only through the listable organization join', async () => {
+    const organizationId = '44444444-4444-4444-8444-444444444444'
+    const query = vi.fn(async () => [
+      {
+        ...profileRow(),
+        maritime_profiles: { ...profileRow().maritime_profiles!, current_company_id: organizationId },
+        current_organization: { id: organizationId, slug: 'oceanic-shipping', name: 'Oceanic Shipping', has_logo: true, verified: true },
+      },
+    ])
+    const { createProfileRepository } = await import('./repository')
+    const repository = createProfileRepository({ query })
+
+    await expect(repository.getPublicProfileBySlug({ slug: 'captain-ananya-rao' })).resolves.toMatchObject({
+      currentCompany: 'Oceanic Shipping',
+      currentCompanyId: organizationId,
+      currentOrganization: {
+        id: organizationId,
+        slug: 'oceanic-shipping',
+        name: 'Oceanic Shipping',
+        logoUrl: `/api/company-logo/${organizationId}`,
+        verified: true,
+      },
+    })
+    const sql = String(callsOf(query)[0]?.[0])
+    expect(sql).toContain('left join public.companies linked_org')
+    expect(sql).toContain('on linked_org.id = mp.current_company_id')
+    expect(sql).toContain("blocked_application.status <> 'approved'")
+  })
+
+  it('treats a profile without a linked organization as plain text', async () => {
+    const query = vi.fn(async () => [profileRow()])
+    const { createProfileRepository } = await import('./repository')
+    const repository = createProfileRepository({ query })
+
+    await expect(repository.getPublicProfileBySlug({ slug: 'captain-ananya-rao' })).resolves.toMatchObject({
+      currentCompany: 'Oceanic Shipping',
+      currentCompanyId: null,
+      currentOrganization: null,
+    })
+  })
 })

@@ -61,6 +61,8 @@ export type MessagingInboxItem = {
   otherName: string | null
   otherHeadline: string | null
   otherAvatarUrl: string | null
+  /** Profile handle for /people/<slug>; null when the member has none. */
+  otherSlug?: string | null
   lastMessageId: string | null
   lastMessageBody: string | null
   lastMessageSenderId: string | null
@@ -179,6 +181,7 @@ export function createMessagingQueries(input: {
         otherAvatarUrl: row.other_avatar_path
           ? await input.createReadUrl(row.other_avatar_path)
           : null,
+        otherSlug: row.other_slug ?? null,
         lastMessageId: row.last_message_id,
         lastMessageBody: row.last_message_body,
         lastMessageSenderId: row.last_message_sender_id,

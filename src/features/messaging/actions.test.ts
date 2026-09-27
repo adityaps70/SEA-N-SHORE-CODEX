@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
   editMessage: vi.fn(),
   markConversationRead: vi.fn(),
+  deleteConversationForParticipant: vi.fn(),
   countUnreadMessages: vi.fn(),
   revalidatePath: vi.fn(),
 }))
@@ -18,6 +19,7 @@ vi.mock('./service', () => ({
     sendMessage: mocks.sendMessage,
     editMessage: mocks.editMessage,
     markConversationRead: mocks.markConversationRead,
+    deleteConversationForParticipant: mocks.deleteConversationForParticipant,
   }),
 }))
 vi.mock('./repository', () => ({
@@ -27,6 +29,7 @@ vi.mock('./repository', () => ({
 }))
 
 import {
+  deleteConversationAction,
   editMessageAction,
   markConversationReadAction,
   sendMessageAction,
@@ -67,6 +70,7 @@ describe('messaging server actions', () => {
     })
     mocks.markConversationRead.mockResolvedValue(true)
     mocks.countUnreadMessages.mockResolvedValue(0)
+    mocks.deleteConversationForParticipant.mockResolvedValue(true)
   })
 
   it('rejects an invalid direct-message target before resolving identity', async () => {
@@ -216,6 +220,66 @@ describe('messaging server actions', () => {
     await expect(startDirectConversationAction(TARGET_ID)).resolves.toEqual({
       ok: false,
       error: expected,
+    })
+  })
+
+  it('deletes a conversation for the signed-in member only and returns the fresh unread count', async () => {
+    mocks.countUnreadMessages.mockResolvedValueOnce(2)
+
+    await expect(deleteConversationAction(CONVERSATION_ID)).resolves.toEqual({
+      ok: true,
+      conversationId: CONVERSATION_ID,
+      unreadCount: 2,
+    })
+    expect(mocks.deleteConversationForParticipant).toHaveBeenCalledWith(VIEWER_ID, CONVERSATION_ID)
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/messages')
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/messages/${CONVERSATION_ID}`)
+  })
+
+  it('rejects a malformed conversation id before resolving identity', async () => {
+    const result = await deleteConversationAction('not-a-conversation')
+
+    expect(result.ok).toBe(false)
+    expect(mocks.requireAwsUser).not.toHaveBeenCalled()
+    expect(mocks.deleteConversationForParticipant).not.toHaveBeenCalled()
+  })
+
+  it('asks the member to sign in again before deleting when there is no session', async () => {
+    mocks.requireAwsUser.mockRejectedValueOnce(new Error('aws_auth_required'))
+
+    await expect(deleteConversationAction(CONVERSATION_ID)).resolves.toEqual({
+      ok: false,
+      error: 'Please sign in again to delete this conversation.',
+    })
+    expect(mocks.deleteConversationForParticipant).not.toHaveBeenCalled()
+  })
+
+  it('explains when the member is not part of the conversation they try to delete', async () => {
+    mocks.deleteConversationForParticipant.mockRejectedValueOnce(new Error('messaging_not_participant'))
+
+    await expect(deleteConversationAction(CONVERSATION_ID)).resolves.toEqual({
+      ok: false,
+      error: 'This conversation is not available. It may already have been deleted.',
+    })
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('shows a retry message when the delete fails unexpectedly', async () => {
+    mocks.deleteConversationForParticipant.mockRejectedValueOnce(new Error('connection reset'))
+
+    await expect(deleteConversationAction(CONVERSATION_ID)).resolves.toEqual({
+      ok: false,
+      error: 'We could not delete this conversation. Check your connection and try again.',
+    })
+  })
+
+  it('still reports a successful delete when only the unread badge lookup fails', async () => {
+    mocks.countUnreadMessages.mockRejectedValueOnce(new Error('timeout'))
+
+    await expect(deleteConversationAction(CONVERSATION_ID)).resolves.toEqual({
+      ok: true,
+      conversationId: CONVERSATION_ID,
+      unreadCount: null,
     })
   })
 })

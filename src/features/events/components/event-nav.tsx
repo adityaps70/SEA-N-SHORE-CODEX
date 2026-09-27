@@ -9,7 +9,7 @@ export function EventNav({ active }: { active: 'discover' | 'my' | 'hosting' }) 
   return (
     <nav aria-label="Events" className="flex flex-wrap gap-2 rounded-2xl border border-mist-100 bg-white p-2 shadow-[var(--shadow-card)]">
       {links.map((link) => (
-        <Link key={link.key} href={link.href} className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${active === link.key ? 'bg-navy-950 text-white' : 'text-navy-800 hover:bg-mist-50'}`}>
+        <Link key={link.key} href={link.href} aria-current={active === link.key ? 'page' : undefined} className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${active === link.key ? 'bg-navy-950 text-white' : 'text-navy-800 hover:bg-mist-100 hover:text-navy-950'}`}>
           {link.label}
         </Link>
       ))}

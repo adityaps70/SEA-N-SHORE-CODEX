@@ -159,28 +159,50 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     await query(
       `insert into public.maritime_profiles (
          user_id, rank, current_company, current_vessel, sailing_experience_years,
-         vessel_types, trading_areas, shore_career_preference, availability, updated_at
-       ) values ($1, $2, $3, $4, $5, $6::text[], $7::text[], $8, $9, now())
+         vessel_types, trading_areas, shore_career_preference, availability, current_company_id, updated_at
+       ) values ($1, $2, $3, $4, $5, $6::text[], $7::text[], $8, $9, $10::uuid, now())
        on conflict (user_id) do update set
          rank = excluded.rank, current_company = excluded.current_company, current_vessel = excluded.current_vessel,
+         current_company_id = excluded.current_company_id,
          sailing_experience_years = excluded.sailing_experience_years, vessel_types = excluded.vessel_types,
          trading_areas = excluded.trading_areas, shore_career_preference = excluded.shore_career_preference,
          availability = excluded.availability, updated_at = now()`,
-      [profileId, data.rank ?? null, data.currentCompany ?? null, data.currentVessel ?? null, data.sailingExperienceYears ?? null, data.vesselTypes, data.tradingAreas, data.shoreCareerPreference, data.availability ?? null],
+      [profileId, data.rank ?? null, data.currentCompany ?? null, data.currentVessel ?? null, data.sailingExperienceYears ?? null, data.vesselTypes, data.tradingAreas, data.shoreCareerPreference, data.availability ?? null, data.currentCompany ? data.currentCompanyId ?? null : null],
     )
   }
 
-  async function upsertActivationMaritimeProfile(profileId: string, currentCompany?: string, rank?: string) {
+  async function upsertActivationMaritimeProfile(
+    profileId: string,
+    currentCompany?: string,
+    rank?: string,
+    currentCompanyId?: string,
+  ) {
     await query(
       `insert into public.maritime_profiles (
-         user_id, rank, current_company, vessel_types, trading_areas, shore_career_preference, updated_at
+         user_id, rank, current_company, current_company_id, vessel_types, trading_areas, shore_career_preference, updated_at
        )
-       values ($1, $2, $3, '{}'::text[], '{}'::text[], false, now())
+       values ($1, $2, $3, $4::uuid, '{}'::text[], '{}'::text[], false, now())
        on conflict (user_id) do update set
          rank = excluded.rank,
          current_company = excluded.current_company,
+         current_company_id = excluded.current_company_id,
          updated_at = now()`,
-      [profileId, rank ?? null, currentCompany ?? null],
+      [profileId, rank ?? null, currentCompany ?? null, currentCompany ? currentCompanyId ?? null : null],
+    )
+  }
+
+  /** Sets only the current organization (name and optional linked page), keeping every other maritime detail. */
+  async function upsertCurrentOrganization(profileId: string, currentCompany?: string, currentCompanyId?: string) {
+    await query(
+      `insert into public.maritime_profiles (
+         user_id, current_company, current_company_id, vessel_types, trading_areas, shore_career_preference, updated_at
+       )
+       values ($1, $2, $3::uuid, '{}'::text[], '{}'::text[], false, now())
+       on conflict (user_id) do update set
+         current_company = excluded.current_company,
+         current_company_id = excluded.current_company_id,
+         updated_at = now()`,
+      [profileId, currentCompany ?? null, currentCompany ? currentCompanyId ?? null : null],
     )
   }
 
@@ -212,6 +234,7 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     updateCompletedProfile,
     upsertMaritimeProfile,
     upsertActivationMaritimeProfile,
+    upsertCurrentOrganization,
     deleteMaritimeProfile,
     replaceSkills,
     finalizeOnboarding,

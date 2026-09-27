@@ -233,10 +233,10 @@ describe('emoji in comments', () => {
 })
 
 describe('comment reaction count placement', () => {
-  it('puts the comment reaction total before the reaction symbols', () => {
+  it('puts the comment reaction total inside Like and only the reaction types at the right end', () => {
     render(<CommentThread postId={postId} comments={[comment({ reactionSummary: { like: 5, support: 0, respect: 2, on_point: 0 }, reactionCount: 7 })]} />)
     const summary = item(rootId).getByRole('button', { name: 'View 7 comment reactions' })
-    expect(summary).toHaveTextContent(/^7👍🫡$/)
-    expect(summary.firstElementChild).toHaveTextContent('7')
+    expect(summary).toHaveTextContent(/^👍🫡$/)
+    expect(item(rootId).getByRole('button', { name: 'Like' })).toHaveTextContent(/^Like7$/)
   })
 })

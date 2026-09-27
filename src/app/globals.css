@@ -69,6 +69,34 @@
 html { background: var(--mist-50); color: var(--ink); }
 body { min-height: 100vh; margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
 
+/* Tailwind v4's preflight gives buttons the default arrow cursor. Every clickable control
+   shows the pointer, and disabled ones show not-allowed. Kept in the base layer so utilities
+   such as cursor-zoom-in still win. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  select:not(:disabled),
+  label[for],
+  label:has(> input[type="checkbox"], > input[type="radio"]),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="range"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  select:disabled,
+  input:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {

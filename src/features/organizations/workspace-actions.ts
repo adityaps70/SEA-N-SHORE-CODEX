@@ -9,6 +9,7 @@ import type { OrganizationAccessRole } from '@/features/access/policy'
 import { deleteMediaObject, putMediaObject } from '@/lib/aws/storage'
 import { organizationWorkspaceRepository } from './workspace-repository'
 import { WELLBEING_SERVICE_VALUES, isWellbeingType } from './organization-types'
+import { COMPANY_SIZE_VALUES, MAX_SPECIALTIES, TAGLINE_MAX_LENGTH, type CompanySize } from './organization-page-profile'
 
 const uuidSchema = z.string().uuid()
 const assignableRoles = [
@@ -69,12 +70,34 @@ const supportSchema = z.object({
   ),
 })
 
+const pageDetailsSchema = z.object({
+  tagline: z.preprocess(
+    (value) => typeof value === 'string' && value.trim() ? value.trim().replace(/\s+/g, ' ') : null,
+    z.string().max(TAGLINE_MAX_LENGTH, `Keep the tagline to ${TAGLINE_MAX_LENGTH} characters or fewer.`).nullable(),
+  ),
+  companySize: z.preprocess(
+    (value) => typeof value === 'string' && value ? value : null,
+    z.enum(COMPANY_SIZE_VALUES as [CompanySize, ...CompanySize[]], { message: 'Choose a company size from the list.' }).nullable(),
+  ),
+  specialties: z.preprocess(
+    (value) => typeof value === 'string'
+      ? [...new Set(value.split(',').map((entry) => entry.trim().replace(/\s+/g, ' ')).filter(Boolean))]
+      : [],
+    z.array(
+      z.string()
+        .min(2, 'Enter each speciality using at least 2 characters.')
+        .max(60, 'Keep each speciality to 60 characters or fewer.'),
+    ).max(MAX_SPECIALTIES, `Add no more than ${MAX_SPECIALTIES} specialities.`),
+  ),
+})
+
 const logoTypes: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
 }
 const MAX_LOGO_BYTES = 5 * 1024 * 1024
+const MAX_COVER_BYTES = 5 * 1024 * 1024
 
 export type OrganizationWorkspaceActionResult =
   | { ok: true }
@@ -93,6 +116,7 @@ function workspacePath(slug: string) {
 function refreshOrganizationWorkspace(slug: string) {
   revalidatePath('/organizations')
   revalidatePath(workspacePath(slug))
+  revalidatePath(`${workspacePath(slug)}/manage`)
   revalidatePath(`${workspacePath(slug)}/team`)
   revalidatePath(`${workspacePath(slug)}/branding`)
   revalidatePath(`${workspacePath(slug)}/analytics`)
@@ -172,43 +196,85 @@ export async function updateOrganizationBranding(
       supportDetails = support.data
     }
 
-    const logo = formData.get('logo')
-    let nextLogoPath: string | null = null
-    let newLogoUploaded = false
-
-    if (logo instanceof File && logo.size > 0) {
-      const extension = logoTypes[logo.type]
-      if (!extension || logo.size > MAX_LOGO_BYTES) {
-        return { error: 'Organization logo must be a JPG, PNG or WebP image up to 5 MB.' }
-      }
-      nextLogoPath = `organizations/${parsed.data.companyId}/logo-${randomUUID()}.${extension}`
-      await putMediaObject({
-        key: nextLogoPath,
-        body: new Uint8Array(await logo.arrayBuffer()),
-        contentType: logo.type,
+    // Page details (tagline, size, specialities) are only changed when the form sends them.
+    let pageDetails: { tagline: string | null; companySize: CompanySize | null; specialties: string[] } | undefined
+    if (formData.has('tagline') || formData.has('companySize') || formData.has('specialties')) {
+      const details = pageDetailsSchema.safeParse({
+        tagline: formData.get('tagline'),
+        companySize: formData.get('companySize'),
+        specialties: formData.get('specialties'),
       })
-      newLogoUploaded = true
+      if (!details.success) {
+        return {
+          error: 'Please correct the highlighted organization information.',
+          fieldErrors: details.error.flatten().fieldErrors as Record<string, string[]>,
+        }
+      }
+      pageDetails = details.data
     }
 
+    const logo = formData.get('logo')
+    const cover = formData.get('cover')
+    const removeCover = formData.get('removeCover') === 'on'
+    const hasNewLogo = logo instanceof File && logo.size > 0
+    const hasNewCover = cover instanceof File && cover.size > 0
+
+    if (hasNewLogo && (!logoTypes[logo.type] || logo.size > MAX_LOGO_BYTES)) {
+      return { error: 'Organization logo must be a JPG, PNG or WebP image up to 5 MB.' }
+    }
+    if (hasNewCover && (!logoTypes[cover.type] || cover.size > MAX_COVER_BYTES)) {
+      return { error: 'Cover image must be a JPG, PNG or WebP image up to 5 MB.' }
+    }
+
+    const uploaded: string[] = []
+    let nextLogoPath: string | null = null
+    let nextCoverPath: string | null = null
+
     try {
+      if (hasNewLogo) {
+        nextLogoPath = `organizations/${parsed.data.companyId}/logo-${randomUUID()}.${logoTypes[logo.type]}`
+        await putMediaObject({
+          key: nextLogoPath,
+          body: new Uint8Array(await logo.arrayBuffer()),
+          contentType: logo.type,
+        })
+        uploaded.push(nextLogoPath)
+      }
+      if (hasNewCover) {
+        nextCoverPath = `organizations/${parsed.data.companyId}/cover-${randomUUID()}.${logoTypes[cover.type]}`
+        await putMediaObject({
+          key: nextCoverPath,
+          body: new Uint8Array(await cover.arrayBuffer()),
+          contentType: cover.type,
+        })
+        uploaded.push(nextCoverPath)
+      }
+
       await organizationWorkspaceRepository.updateBranding(parsed.data.companyId, {
         website: parsed.data.website,
         description: parsed.data.description,
         fleetSummary: parsed.data.fleetSummary,
         vesselTypes: parsed.data.vesselTypes,
         officeLocations: parsed.data.officeLocations,
+        ...(pageDetails ?? {}),
         supportDetails,
       })
-      if (newLogoUploaded && nextLogoPath) {
+      if (nextLogoPath) {
         await organizationWorkspaceRepository.updateLogoPath(parsed.data.companyId, nextLogoPath)
       }
+      if (nextCoverPath || (removeCover && workspace.coverPath)) {
+        await organizationWorkspaceRepository.updateCoverPath(parsed.data.companyId, nextCoverPath)
+      }
     } catch (error) {
-      if (newLogoUploaded && nextLogoPath) await deleteMediaObject(nextLogoPath).catch(() => undefined)
+      await Promise.all(uploaded.map((key) => deleteMediaObject(key).catch(() => undefined)))
       throw error
     }
 
-    if (newLogoUploaded && nextLogoPath && workspace.logoPath && workspace.logoPath !== nextLogoPath) {
+    if (nextLogoPath && workspace.logoPath && workspace.logoPath !== nextLogoPath) {
       await deleteMediaObject(workspace.logoPath).catch(() => undefined)
+    }
+    if ((nextCoverPath || removeCover) && workspace.coverPath && workspace.coverPath !== nextCoverPath) {
+      await deleteMediaObject(workspace.coverPath).catch(() => undefined)
     }
 
     refreshOrganizationWorkspace(workspace.slug)

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, BookOpen, ShieldCheck } from 'lucide-react'
+import { CreateRequirementsBanner } from '@/components/creator/create-requirements-banner'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CourseEditSession } from '@/features/learning/components/course-edit-session'
@@ -63,7 +64,8 @@ export default async function NewMentorCoursePage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl py-6 sm:px-6 lg:px-8">
-      <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
+      <CreateRequirementsBanner access={access} kind="course" className="mb-5" />
+      <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
         <ArrowLeft aria-hidden="true" className="size-4" /> Learning Studio
       </Link>
 

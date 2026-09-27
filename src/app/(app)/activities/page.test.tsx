@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -102,6 +102,33 @@ describe('/activities recently deleted', () => {
     expect(mocks.getMyActivityPosts).not.toHaveBeenCalled()
     expect(mocks.getMyCommentActivity).not.toHaveBeenCalled()
     expect(mocks.getMyJobApplications).not.toHaveBeenCalled()
+  })
+
+  it('uses one consistent tab bar: same treatment for every tab, no icons, single-line labels, scrollable on phones', async () => {
+    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'events' }) }))
+
+    const nav = screen.getByRole('navigation', { name: 'Activity sections' })
+    const tabs = within(nav).getAllByRole('link')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Posts', 'Comments', 'Jobs Applied', 'Events', 'Learning', 'Recently Deleted'])
+    for (const tab of tabs) {
+      expect(tab.querySelector('svg')).toBeNull()
+      expect(tab).toHaveClass('whitespace-nowrap', 'border-b-2', 'cursor-pointer')
+    }
+    expect(within(nav).getByRole('list')).toHaveClass('overflow-x-auto')
+    expect(screen.getByRole('heading', { name: 'My Events' })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: 'Events' })).toHaveAttribute('aria-current', 'page')
+    expect(tabs.filter((tab) => tab.getAttribute('aria-current') === 'page')).toHaveLength(1)
+  })
+
+  it('shows matching empty states with a next step for the events tab', async () => {
+    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'events' }) }))
+
+    expect(screen.getByText('You are not attending an upcoming event yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Discover events' })).toHaveAttribute('href', '/events')
+    expect(screen.getByText('You have not hosted an event yet.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Open My Events/ })).toHaveAttribute('href', '/events/my')
+    expect(mocks.listMyEvents).toHaveBeenCalledTimes(1)
+    expect(mocks.listHostedEvents).toHaveBeenCalledTimes(1)
   })
 
   it('shows a clear empty state when there are no recoverable self-deleted posts', async () => {

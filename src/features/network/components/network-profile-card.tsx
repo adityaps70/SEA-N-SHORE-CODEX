@@ -47,7 +47,7 @@ export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
       </div>
 
       <div className="flex flex-1 flex-col px-5 pb-5 pt-3 text-center">
-        <Link href={`/people/${profile.slug}`} className="text-lg font-semibold text-navy-950 hover:text-ocean-700">
+        <Link href={`/people/${profile.slug}`} className="text-lg font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
           {profile.fullName}
         </Link>
         <p className="mt-1 min-h-10 line-clamp-2 text-sm leading-5 text-muted">

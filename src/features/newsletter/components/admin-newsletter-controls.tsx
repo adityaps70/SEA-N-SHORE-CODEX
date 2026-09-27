@@ -33,7 +33,7 @@ export function AdminUnsubscribeButton({ subscriberId, email }: { subscriberId: 
           <button type="submit" disabled={pending} className="min-h-8 rounded-lg bg-navy-950 px-3 text-xs font-semibold text-white hover:bg-navy-800 disabled:opacity-70">
             {pending ? 'Unsubscribing…' : 'Yes, unsubscribe'}
           </button>
-          <button type="button" onClick={() => setConfirming(false)} className="min-h-8 rounded-lg px-3 text-xs font-semibold text-navy-900 hover:bg-white">
+          <button type="button" onClick={() => setConfirming(false)} className="min-h-8 rounded-lg px-3 text-xs font-semibold text-navy-900 border border-mist-200 bg-white transition-colors hover:border-ocean-300 hover:bg-mist-50">
             Cancel
           </button>
         </div>

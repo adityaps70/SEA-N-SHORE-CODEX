@@ -156,17 +156,29 @@ describe('/learn marketplace', () => {
       search: 'tanker readiness',
     })
     expect(screen.getByRole('searchbox', { name: 'Search maritime courses' })).toHaveValue('tanker readiness')
-    expect(screen.getByRole('link', { name: 'SIRE 2.0' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue('SIRE 2.0')
     expect(screen.getByRole('link', { name: 'Clear filters' })).toHaveAttribute('href', '/learn')
   })
 
-  it('preserves the active text search when switching categories', async () => {
+  it('filters by category with one dropdown inside the search form instead of a row of chips', async () => {
     await renderLearnPage({ search: 'leadership' })
 
-    expect(screen.getByRole('link', { name: 'Leadership' })).toHaveAttribute(
-      'href',
-      '/learn?search=leadership&category=Leadership',
-    )
+    const select = screen.getByRole('combobox', { name: 'Category' })
+    expect(select).toHaveAttribute('name', 'category')
+    expect(select).toHaveValue('')
+    expect(select.closest('form')).toBe(screen.getByRole('searchbox', { name: 'Search maritime courses' }).closest('form'))
+    expect(screen.getByRole('option', { name: 'All categories' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Leadership' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Leadership' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'All courses' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Course categories')).not.toBeInTheDocument()
+  })
+
+  it('keeps an old ?category= link selected even when the label is not in the standard list', async () => {
+    await renderLearnPage({ category: 'Ship Handling' })
+
+    expect(mocks.listPublishedCourses).toHaveBeenCalledWith({ category: 'Ship Handling', search: null })
+    expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue('Ship Handling')
   })
 
   it('shows a useful no-results state without inventing courses', async () => {

@@ -70,7 +70,7 @@ export default async function AdminOrganizationsPage({ searchParams }: { searchP
                 </p>
                 <p className="mt-1 truncate text-sm text-muted">{application.officialEmail}{application.company.type ? ` · ${application.company.type}` : ''}</p>
               </div>
-              <Link href={`/admin/organizations/${application.applicationId}`} className="inline-flex min-h-8 items-center justify-center rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50">
+              <Link href={`/admin/organizations/${application.applicationId}`} className="inline-flex min-h-8 items-center justify-center rounded-lg border border-mist-200 px-3 text-xs font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50">
                 Review application
               </Link>
             </article>

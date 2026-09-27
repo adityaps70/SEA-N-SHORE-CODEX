@@ -194,7 +194,7 @@ function CurriculumEvidence({ course }: { course: CourseReviewItem }) {
 
   return (
     <details open className="mt-5 rounded-2xl border border-mist-100 bg-mist-50/50 p-4">
-      <summary className="cursor-pointer list-none">
+      <summary className="-m-1 cursor-pointer list-none rounded-lg p-1 transition-colors hover:bg-white">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Curriculum & assessment</p>
           <span className="text-xs font-bold text-muted">{moduleLabel} · {lessonLabel}</span>
@@ -385,20 +385,20 @@ export default async function LearningCoursesAdminPage({
       <nav aria-label="Learning administration" className="flex flex-wrap gap-2">
         <Link
           href="/admin/learning"
-          className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
+          className="rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950"
         >
           Trainer verifications
         </Link>
         <Link
           href="/admin/learning/courses"
           aria-current="page"
-          className="rounded-full bg-navy-950 px-4 py-2 text-sm font-bold text-white"
+          className="rounded-full bg-navy-950 px-4 py-2 text-sm font-bold text-white hover:bg-navy-800 transition-colors"
         >
           Course review
         </Link>
         <Link
           href="/admin/learning/analytics"
-          className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
+          className="rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950"
         >
           Analytics
         </Link>
@@ -410,7 +410,7 @@ export default async function LearningCoursesAdminPage({
             key={filter.value}
             href={`/admin/learning/courses?status=${filter.value}`}
             aria-current={status === filter.value ? 'page' : undefined}
-            className={`rounded-full px-4 py-2 text-sm font-bold transition ${status === filter.value ? 'bg-teal-700 text-white' : 'border border-mist-100 bg-white text-muted hover:text-navy-950'}`}
+            className={`rounded-full px-4 py-2 text-sm font-bold transition ${status === filter.value ? 'bg-teal-700 text-white' : 'border border-mist-200 bg-white text-muted hover:text-navy-950'}`}
           >
             {filter.label}
           </Link>

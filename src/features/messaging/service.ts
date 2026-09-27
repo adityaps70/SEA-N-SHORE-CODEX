@@ -234,6 +234,22 @@ export function createMessagingService(input: {
       })
     },
 
+    /**
+     * "Delete conversation" for the actor only. The other participant keeps
+     * every message; the actor's inbox, thread and unread count stop showing
+     * anything sent up to now. Only a participant can clear their own view.
+     */
+    async deleteConversationForParticipant(actorId: string, conversationId: string) {
+      return input.withTransaction(async ({ messaging }) => {
+        if (!await messaging.isParticipant(actorId, conversationId)) {
+          error('messaging_not_participant')
+        }
+        const cleared = await messaging.clearConversationForParticipant(actorId, conversationId)
+        if (!cleared) error('messaging_not_participant')
+        return true
+      })
+    },
+
     async markConversationRead(actorId: string, conversationId: string, messageId: string) {
       return input.withTransaction(async ({ messaging, outbox }) => {
         if (!await messaging.isParticipant(actorId, conversationId)) {

@@ -3,6 +3,7 @@ import type {
   FeedComment,
   FeedCommentReplyTarget,
   FeedMention,
+  FeedOrganization,
   FeedPost,
   FeedPostType,
   FeedRepostSource,
@@ -36,6 +37,13 @@ type ReplyTargetRow = {
   comment_id: string
   author_name: string | null
   author_slug: string | null
+}
+
+export type OrganizationIdentityRow = {
+  id: string
+  slug: string
+  name: string
+  logo_path: string | null
 }
 
 type ReactionCountsRow = Partial<Record<PostReactionType, number>> & { count?: number }
@@ -84,6 +92,10 @@ export type FeedPostRow = {
   post_type: FeedPostType
   repost_of_post_id?: string | null
   repost_source?: FeedPostRow | FeedPostRow[] | null
+  /** Organization the post was published as (migration 0044). */
+  company_id?: string | null
+  organization?: OrganizationIdentityRow | OrganizationIdentityRow[] | null
+  viewer_follows_organization?: boolean | null
   created_at: string
   updated_at: string
   profiles: AuthorRow | AuthorRow[] | null
@@ -173,6 +185,22 @@ function mapAuthor(row: AuthorRow | AuthorRow[] | null, signedUrls: Map<string, 
   }
 }
 
+/** Organization logos are served by the first-party, signed-in-only logo route. */
+export function organizationLogoUrl(companyId: string, logoPath: string | null | undefined) {
+  return logoPath?.trim() ? `/api/company-logo/${companyId}` : null
+}
+
+export function mapOrganization(row: OrganizationIdentityRow | OrganizationIdentityRow[] | null | undefined): FeedOrganization | null {
+  const organization = firstOrNull(row)
+  if (!organization?.id || !organization.slug || !organization.name) return null
+  return {
+    id: organization.id,
+    slug: organization.slug,
+    name: organization.name,
+    logoUrl: organizationLogoUrl(organization.id, organization.logo_path),
+  }
+}
+
 function mapReplyTarget(row: ReplyTargetRow | null | undefined): FeedCommentReplyTarget | null {
   if (!row?.comment_id || !row.author_name) return null
   return { commentId: row.comment_id, authorName: row.author_name, authorSlug: row.author_slug ?? null }
@@ -246,6 +274,7 @@ function mapRepostSource(row: FeedPostRow | null, viewer: FeedViewerState, signe
     mediaItems: mapMediaItems(row, signedUrls),
     poll: mapPoll(row, viewer),
     mentions: mapMentions(row.post_mentions),
+    organization: mapOrganization(row.organization),
   }
 }
 
@@ -261,6 +290,7 @@ export function mapFeedPost(
   const viewerReaction = viewer.postReactions?.get(row.id)
     ?? (viewer.likedPostIds?.has(row.id) ? 'like' : null)
   const repostSource = row.post_type === 'repost' ? firstOrNull(row.repost_source) : null
+  const viewerOwns = Boolean(viewerProfileId) && author.id === viewerProfileId
 
   return {
     id: row.id,
@@ -281,7 +311,11 @@ export function mapFeedPost(
     viewerLiked: viewerReaction === 'like',
     commentCount: countRelation(row.post_comment_count) || comments.length,
     viewerSaved: viewer.savedPostIds.has(row.id),
-    viewerOwns: Boolean(viewerProfileId) && author.id === viewerProfileId,
+    viewerOwns,
+    organization: mapOrganization(row.organization),
+    // Organization admins get edit/delete through the queries layer, which knows their roles.
+    viewerCanEdit: viewerOwns,
+    viewerCanDelete: viewerOwns,
     viewerFollowsAuthor: Boolean(viewerProfileId) && author.id !== viewerProfileId && Boolean(row.viewer_follows_author),
     mentions: mapMentions(row.post_mentions),
     comments,

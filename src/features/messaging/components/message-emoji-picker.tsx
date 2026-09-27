@@ -253,7 +253,7 @@ export function MessageEmojiPicker({
             aria-label="Show recent emojis"
             aria-pressed={category === 'recent'}
             onClick={() => setCategory('recent')}
-            className={`rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition ${
+            className={`cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition ${
               category === 'recent'
                 ? 'bg-navy-950 text-white'
                 : 'bg-mist-50 text-muted hover:bg-mist-100 hover:text-navy-950'
@@ -269,7 +269,7 @@ export function MessageEmojiPicker({
             aria-label={`Show ${key} emojis`}
             aria-pressed={category === key}
             onClick={() => setCategory(key)}
-            className={`rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition ${
+            className={`cursor-pointer rounded-full px-2.5 py-1.5 text-[11px] font-semibold transition ${
               category === key
                 ? 'bg-navy-950 text-white'
                 : 'bg-mist-50 text-muted hover:bg-mist-100 hover:text-navy-950'
@@ -288,7 +288,7 @@ export function MessageEmojiPicker({
               type="button"
               aria-label={mode === 'reaction' ? `React with ${emoji}` : `Insert ${emoji}`}
               onClick={() => choose(emoji)}
-              className={`grid size-9 place-items-center rounded-lg text-xl transition hover:bg-mist-50 ${
+              className={`grid size-9 cursor-pointer place-items-center rounded-lg text-xl transition hover:bg-mist-100 ${
                 currentEmoji === emoji ? 'bg-ocean-50 ring-1 ring-ocean-200' : ''
               }`}
             >
@@ -316,7 +316,7 @@ export function MessageEmojiPicker({
           aria-label={mode === 'reaction' ? 'Use custom emoji' : 'Insert custom emoji'}
           disabled={!isSingleEmoji(custom)}
           onClick={chooseCustom}
-          className="min-h-9 rounded-xl bg-navy-950 px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="min-h-9 cursor-pointer rounded-xl bg-navy-950 px-3 text-xs font-semibold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Use
         </button>
@@ -330,7 +330,7 @@ export function MessageEmojiPicker({
             setOpen(false)
             setExpandedReactionPicker(false)
           }}
-          className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
+          className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1 rounded-xl border border-red-100 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50"
         >
           <X aria-hidden="true" className="size-3.5" />
           Remove your reaction
@@ -342,7 +342,7 @@ export function MessageEmojiPicker({
           type="button"
           aria-label="Done choosing emojis"
           onClick={() => setOpen(false)}
-          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl bg-ocean-50 px-3 py-2 text-xs font-semibold text-ocean-800 hover:bg-ocean-100"
+          className="mt-2 flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-ocean-50 px-3 py-2 text-xs font-semibold text-ocean-800 hover:bg-ocean-100"
         >
           <Check aria-hidden="true" className="size-3.5" />
           Done
@@ -359,8 +359,8 @@ export function MessageEmojiPicker({
         aria-expanded={open}
         onClick={toggleOpen}
         className={mode === 'reaction'
-          ? 'grid size-8 place-items-center rounded-full border border-mist-100 bg-white text-muted shadow-sm transition hover:text-ocean-700'
-          : 'grid size-10 place-items-center rounded-full text-navy-900 transition hover:bg-white'}
+          ? 'grid size-8 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-muted shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-700'
+          : 'grid size-10 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50'}
       >
         <Smile aria-hidden="true" className={mode === 'reaction' ? 'size-4' : 'size-5 text-ocean-700'} />
       </button>
@@ -377,7 +377,7 @@ export function MessageEmojiPicker({
               type="button"
               aria-label={`React with ${emoji}`}
               onClick={() => choose(emoji)}
-              className={`grid size-9 shrink-0 place-items-center rounded-full text-xl transition hover:bg-mist-50 ${
+              className={`grid size-9 shrink-0 cursor-pointer place-items-center rounded-full text-xl transition hover:bg-mist-100 ${
                 currentEmoji === emoji ? 'bg-ocean-50' : ''
               }`}
             >
@@ -388,7 +388,7 @@ export function MessageEmojiPicker({
             type="button"
             aria-label="More reaction emojis"
             onClick={() => setExpandedReactionPicker(true)}
-            className="grid size-9 shrink-0 place-items-center rounded-full bg-mist-50 text-navy-900 transition hover:bg-mist-100"
+            className="grid size-9 shrink-0 cursor-pointer place-items-center rounded-full bg-mist-50 text-navy-900 transition hover:bg-mist-100"
           >
             <Plus aria-hidden="true" className="size-4" />
           </button>

@@ -8,6 +8,9 @@ const usernameMocks = vi.hoisted(() => ({
   suggest: vi.fn(async () => 'asha.singh'),
   removeDgProfile: vi.fn(async () => false),
 }))
+const organizationMocks = vi.hoisted(() => ({
+  getListableOrganization: vi.fn(async (): Promise<unknown> => null),
+}))
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAwsOwnProfile } from './aws-queries'
 import { completeActivationWithAurora, completeOnboardingWithAurora } from './onboarding-service'
@@ -63,6 +66,9 @@ vi.mock('./profile-edit-service', () => ({
 vi.mock('./username-availability', () => ({
   checkUsernameAvailabilityFromAurora: usernameMocks.check,
   suggestAvailableUsernameFromAurora: usernameMocks.suggest,
+}))
+vi.mock('./organization-link-repository', () => ({
+  organizationLinkRepository: { getListableOrganization: organizationMocks.getListableOrganization },
 }))
 vi.mock('./profile-document-service', () => ({
   removeDgProfileDocumentForProfile: usernameMocks.removeDgProfile,
@@ -313,6 +319,7 @@ describe('completed profile update action', () => {
         skills: ['Navigation', 'SIRE 2.0'],
       }),
       true,
+      { currentCompanySubmitted: true },
     )
   })
 
@@ -353,6 +360,7 @@ describe('completed profile update action', () => {
       viewerId,
       expect.objectContaining({ profileType: 'mentor', currentCompany: 'New Shipping Co' }),
       true,
+      { currentCompanySubmitted: true },
     )
   })
 
@@ -399,6 +407,7 @@ describe('completed profile update action', () => {
         currentCompany: 'Beaufort Marine Services',
       }),
       true,
+      { currentCompanySubmitted: true },
     )
   })
 
@@ -408,5 +417,101 @@ describe('completed profile update action', () => {
     const result = await updateProfile({}, validForm())
 
     expect(result.fieldErrors?.slug).toEqual(['That username is already in use.'])
+  })
+})
+
+describe('current organization link', () => {
+  const organizationId = '44444444-4444-4444-8444-444444444444'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    organizationMocks.getListableOrganization.mockResolvedValue(null)
+  })
+
+  it('stores the listed organization name and id when a member picks it', async () => {
+    organizationMocks.getListableOrganization.mockResolvedValueOnce({
+      id: organizationId,
+      slug: 'oceanic-ship-management',
+      name: 'Oceanic Ship Management',
+      logoUrl: null,
+      verified: true,
+    })
+    const formData = validForm()
+    formData.set('currentCompany', 'oceanic ship')
+    formData.set('currentCompanyId', organizationId)
+
+    await expect(updateProfile({}, formData)).rejects.toThrow('NEXT_REDIRECT:/profile')
+
+    expect(organizationMocks.getListableOrganization).toHaveBeenCalledWith(organizationId)
+    expect(mockedUpdateProfile).toHaveBeenCalledWith(
+      viewerId,
+      expect.objectContaining({ currentCompany: 'Oceanic Ship Management', currentCompanyId: organizationId }),
+      true,
+      { currentCompanySubmitted: true },
+    )
+  })
+
+  it('refuses an organization that is not listed and keeps the entries', async () => {
+    const formData = validForm()
+    formData.set('currentCompanyId', organizationId)
+
+    const result = await updateProfile({}, formData)
+
+    expect(result.fieldErrors?.currentCompany?.[0]).toContain('not listed on Sea N Shore')
+    expect(result.values?.currentCompanyId).toBe(organizationId)
+    expect(mockedUpdateProfile).not.toHaveBeenCalled()
+  })
+
+  it('rejects a malformed organization id without looking it up', async () => {
+    const formData = validForm()
+    formData.set('currentCompanyId', 'not-a-uuid')
+
+    const result = await updateProfile({}, formData)
+
+    expect(result.fieldErrors?.currentCompanyId?.[0]).toContain('Choose the organization again')
+    expect(organizationMocks.getListableOrganization).not.toHaveBeenCalled()
+  })
+
+  it('saves a typed organization as text without a link', async () => {
+    await expect(updateProfile({}, validForm())).rejects.toThrow('NEXT_REDIRECT:/profile')
+
+    expect(organizationMocks.getListableOrganization).not.toHaveBeenCalled()
+    expect(mockedUpdateProfile).toHaveBeenCalledWith(
+      viewerId,
+      expect.objectContaining({ currentCompany: 'Example Shipping', currentCompanyId: undefined }),
+      true,
+      { currentCompanySubmitted: true },
+    )
+  })
+
+  it('links the organization chosen during onboarding', async () => {
+    organizationMocks.getListableOrganization.mockResolvedValueOnce({
+      id: organizationId,
+      slug: 'oceanic-shipping',
+      name: 'Oceanic Shipping',
+      logoUrl: null,
+      verified: false,
+    })
+    const formData = validActivationForm()
+    formData.set('currentCompanyId', organizationId)
+
+    await expect(completeActivation({}, formData)).rejects.toThrow('NEXT_REDIRECT:/home')
+
+    expect(mockedCompleteActivation).toHaveBeenCalledWith(
+      viewerId,
+      expect.objectContaining({ currentCompany: 'Oceanic Shipping', currentCompanyId: organizationId }),
+      expect.anything(),
+    )
+  })
+
+  it('explains when the organization check itself fails', async () => {
+    organizationMocks.getListableOrganization.mockRejectedValueOnce(new Error('timeout'))
+    const formData = validActivationForm()
+    formData.set('currentCompanyId', organizationId)
+
+    const result = await completeActivation({}, formData)
+
+    expect(result.error).toBe('We could not check the organization you chose. Your entries are still here; please try again.')
+    expect(mockedCompleteActivation).not.toHaveBeenCalled()
   })
 })

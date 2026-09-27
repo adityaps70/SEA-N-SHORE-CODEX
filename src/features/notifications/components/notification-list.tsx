@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCheck } from 'lucide-react'
+import { CheckCheck, ChevronRight } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { relativeTimeFrom } from '@/lib/relative-time'
@@ -82,7 +82,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
       <div className="flex items-center justify-between gap-3 border-b border-mist-100 px-5 py-4">
         <p className="text-sm font-medium text-muted">{unreadCount ? `${unreadCount} unread` : 'All caught up'}</p>
         {unreadCount ? (
-          <button type="button" disabled={pending} onClick={markAll} className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-ocean-700 hover:bg-mist-50 disabled:opacity-50">
+          <button type="button" disabled={pending} onClick={markAll} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-ocean-700 transition-colors enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50">
             <CheckCheck aria-hidden="true" className="size-4" />
             Mark all read
           </button>
@@ -99,13 +99,14 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
               disabled={pending}
               onClick={() => openNotification(notification)}
               data-notification-state={unread ? 'unread' : 'read'}
-              className={`flex w-full items-start gap-3 px-5 py-4 text-left transition hover:bg-mist-50 disabled:opacity-60 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-4' : ''}`}
+              className={`group flex w-full items-start gap-3 px-5 py-4 text-left transition disabled:cursor-wait disabled:opacity-60 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-4 enabled:hover:bg-ocean-100' : 'enabled:hover:bg-mist-50'}`}
             >
               <span className={`mt-2 size-2 shrink-0 rounded-full ${unread ? 'bg-ocean-700' : 'bg-mist-100'}`} aria-hidden="true" />
               <span className="min-w-0 flex-1">
                 <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
                 <time dateTime={notification.createdAt} title={notification.createdAt} className="mt-1 block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
               </span>
+              <ChevronRight aria-hidden="true" className="mt-1.5 size-4 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
             </button>
           )
         })}

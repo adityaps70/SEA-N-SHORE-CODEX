@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { CreateRequirementsBanner } from '@/components/creator/create-requirements-banner'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAccessContext } from '@/features/access/server'
 import { HiringJobForm } from '@/features/jobs/components/hiring-job-form'
@@ -33,6 +34,7 @@ export default async function NewHiringJobPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 py-8 sm:px-6 lg:px-8">
+      <CreateRequirementsBanner access={access} kind="job" />
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Sea N Shore Hiring</p>
         <h1 className="mt-2 text-3xl font-bold text-navy-950">Post a maritime job</h1>

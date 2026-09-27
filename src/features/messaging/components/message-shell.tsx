@@ -1,7 +1,8 @@
 'use client'
 
 import { MessageCircleMore } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
 import {
@@ -17,6 +18,7 @@ import {
   syncThreadMessagesWithCanonicalSnapshot,
   type MessagingReadCursor,
 } from '../thread-realtime'
+import type { DeletedConversationResult } from './conversation-actions'
 import { ConversationList } from './conversation-list'
 import { MessageComposer, type OptimisticMessagingMessage } from './message-composer'
 import { MessageThread, type MessageThreadItem } from './message-thread'
@@ -28,6 +30,7 @@ export type MessagingActiveConversation = {
   otherName: string | null
   otherHeadline: string | null
   otherAvatarUrl: string | null
+  otherSlug?: string | null
   otherLastReadMessageId: string | null
   otherLastReadAt: string | null
   messages: MessagingMessageDto[]
@@ -45,9 +48,11 @@ function peerCursorFromConversation(conversation: MessagingActiveConversation): 
 function ActiveConversationWorkspace({
   viewerId,
   conversation,
+  onConversationDeleted,
 }: {
   viewerId: string
   conversation: MessagingActiveConversation
+  onConversationDeleted: (result: DeletedConversationResult) => void
 }) {
   const { subscribe } = useMessagingRealtime()
   const [messages, setMessages] = useState<MessageThreadItem[]>(conversation.messages)
@@ -220,6 +225,8 @@ function ActiveConversationWorkspace({
         otherName={conversation.otherName}
         otherHeadline={conversation.otherHeadline}
         otherAvatarUrl={conversation.otherAvatarUrl}
+        otherSlug={conversation.otherSlug ?? null}
+        onConversationDeleted={onConversationDeleted}
         messages={displayedMessages}
         nextCursor={conversation.nextCursor}
         peerReadCursor={effectivePeerReadCursor}
@@ -251,11 +258,26 @@ export function MessageShell({
   activeConversation: MessagingActiveConversation | null
   authoritativeUnreadCount?: number
 }) {
+  const router = useRouter()
   const { subscribe } = useMessagingRealtime()
   const [realtimeInbox, setRealtimeInbox] = useState<MessagingInboxItem[] | null>(null)
+  // Conversations deleted in this view, hidden until the server's inbox catches up.
+  const [removedConversationIds, setRemovedConversationIds] = useState<readonly string[]>([])
   const inboxRefreshRunningRef = useRef(false)
   const inboxRefreshPendingRef = useRef(false)
-  const displayedInbox = realtimeInbox ?? inbox
+  const displayedInbox = (realtimeInbox ?? inbox).filter(
+    (item) => !removedConversationIds.includes(item.conversationId),
+  )
+  const activeConversationId = activeConversation?.conversationId ?? null
+
+  const handleConversationDeleted = useCallback((result: DeletedConversationResult) => {
+    setRemovedConversationIds((current) => (
+      current.includes(result.conversationId) ? current : [...current, result.conversationId]
+    ))
+    if (result.unreadCount != null) publishMessagingUnreadCount(result.unreadCount)
+    if (result.conversationId === activeConversationId) router.push('/messages')
+    router.refresh()
+  }, [activeConversationId, router])
 
   useEffect(() => {
     if (authoritativeUnreadCount == null) return
@@ -298,6 +320,9 @@ export function MessageShell({
               }
 
               setRealtimeInbox(payload.inbox as MessagingInboxItem[])
+              // The server inbox is authoritative: a deleted conversation that
+              // received a new message since must reappear.
+              setRemovedConversationIds([])
               publishMessagingUnreadCount(payload.unreadCount)
             }
           } catch {
@@ -338,18 +363,18 @@ export function MessageShell({
           <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">Stay connected with accepted maritime professionals through focused one-to-one conversations.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-mist-100 bg-white px-3 py-1.5 text-xs font-semibold text-navy-900 shadow-sm">
-            <MessageCircleMore aria-hidden="true" className="size-4 text-ocean-700" />
-            {displayedInbox.length} {displayedInbox.length === 1 ? 'conversation' : 'conversations'}
-          </span>
           <NewMessageButton activeConversationId={activeConversation?.conversationId ?? null} />
         </div>
       </header>
 
       <div className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
-        <div className="grid min-h-[38rem] md:h-[calc(100vh-13rem)] md:min-h-[38rem] md:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
+        <div className="grid min-h-[38rem] grid-cols-[minmax(0,1fr)] md:h-[calc(100vh-13rem)] md:min-h-[38rem] md:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
           <div className={activeConversation ? 'hidden min-h-0 md:block' : 'min-h-0'}>
-            <ConversationList inbox={displayedInbox} activeConversationId={activeConversation?.conversationId} />
+            <ConversationList
+              inbox={displayedInbox}
+              activeConversationId={activeConversationId}
+              onConversationDeleted={handleConversationDeleted}
+            />
           </div>
 
           <div className={activeConversation ? 'flex min-h-0 flex-col' : 'hidden min-h-0 md:flex md:flex-col'}>
@@ -358,6 +383,7 @@ export function MessageShell({
                 key={activeConversation.conversationId}
                 viewerId={viewerId}
                 conversation={activeConversation}
+                onConversationDeleted={handleConversationDeleted}
               />
             ) : (
               <div className="grid min-h-full flex-1 place-items-center bg-[linear-gradient(180deg,white,var(--mist-50))] p-8 text-center">

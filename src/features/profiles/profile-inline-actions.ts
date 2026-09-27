@@ -5,6 +5,8 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
 import { getAwsOwnProfile } from './aws-queries'
+import { organizationLinkRepository } from './organization-link-repository'
+import { resolveCurrentOrganizationLink } from './organization-link-service'
 import { personaUsesProfessionalCompany } from './persona'
 import {
   updateProfileAboutSectionWithAurora,
@@ -96,13 +98,23 @@ export async function updateProfileIdentitySection(
 
   const parsed = profileIdentitySectionSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return validationFailure(previousState, parsed.error)
-  const moderation = assessProfileSection(parsed.data)
+
+  let identity = parsed.data
+  try {
+    const linked = await resolveCurrentOrganizationLink(parsed.data, organizationLinkRepository)
+    if (!linked.ok) return nextFailure(previousState, { fieldErrors: linked.fieldErrors })
+    identity = linked.data
+  } catch {
+    return nextFailure(previousState, { error: 'We could not check the organization you chose. Please try again.' })
+  }
+
+  const moderation = assessProfileSection(identity)
   if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
 
   try {
     await updateProfileIdentitySectionWithAurora(
       user.id,
-      parsed.data,
+      identity,
       profile.persona ? personaUsesProfessionalCompany(profile.persona) : true,
     )
     await flagProfileModeration(user.id, moderation)

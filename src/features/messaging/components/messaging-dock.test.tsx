@@ -30,6 +30,7 @@ const actions = vi.hoisted(() => ({
   createMessageAttachmentUploadAction: vi.fn(),
   discardMessageAttachmentAction: vi.fn(),
   startDirectConversationAction: vi.fn(),
+  deleteConversationAction: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -436,5 +437,55 @@ describe('MessagingDock', () => {
     // Still in the same compact conversation.
     expect(screen.getByText('Deck photo')).toBeVisible()
     expect(screen.getByRole('textbox', { name: 'Write a message' })).toBeInTheDocument()
+  })
+
+  it('links the open chat header photo, name and message avatars to the other person\'s profile', async () => {
+    const user = userEvent.setup()
+    const base = vi.mocked(fetch).getMockImplementation()!
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await base(input, init)
+      if (String(input) !== '/api/realtime/messaging-state') return response
+      const payload = await response.json() as { inbox: Array<Record<string, unknown>>; unreadCount: number }
+      payload.inbox = payload.inbox.map((item) => ({ ...item, otherSlug: 'anita-singh' }))
+      return new Response(JSON.stringify(payload), { status: 200 })
+    })
+
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+    await waitFor(() => expect(screen.getByText('Hello')).toBeVisible())
+
+    const dock = screen.getByRole('region', { name: 'Messaging dock' })
+    const header = dock.querySelector('header') as HTMLElement
+    expect(within(header).getByRole('link', { name: 'Capt. Anita Singh' })).toHaveAttribute('href', '/people/anita-singh')
+    const profileLinks = screen.getAllByRole('link', { name: "View Capt. Anita Singh's profile" })
+    expect(profileLinks.length).toBeGreaterThanOrEqual(2)
+    for (const link of profileLinks) expect(link).toHaveAttribute('href', '/people/anita-singh')
+  })
+
+  it('deletes the open chat for the viewer only and returns to the conversation list', async () => {
+    const user = userEvent.setup()
+    actions.deleteConversationAction.mockResolvedValueOnce({
+      ok: true,
+      conversationId: CONVERSATION_ID,
+      unreadCount: 0,
+    } as never)
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+    await waitFor(() => expect(screen.getByText('Hello')).toBeVisible())
+
+    await user.click(screen.getByRole('button', { name: 'Conversation options for Capt. Anita Singh' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete conversation' }))
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('It will be removed for you only. Capt. Anita Singh can still see it.')
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(actions.deleteConversationAction).toHaveBeenCalledWith(CONVERSATION_ID)
+    expect(screen.queryByText('Hello')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open compact chat with Capt. Anita Singh' })).not.toBeInTheDocument()
+    expect(screen.getByText('No conversations yet')).toBeInTheDocument()
+    expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0)
   })
 })

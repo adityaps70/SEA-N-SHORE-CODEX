@@ -24,6 +24,11 @@ const normalizeMentionIds = (value: unknown) => {
 const bodySchema = z.string().trim().min(1, 'Write something before posting.').max(5000, 'Keep posts to 5,000 characters or fewer.')
 const commentBodySchema = z.string().trim().min(1, 'Write a comment first.').max(2000, 'Keep comments to 2,000 characters or fewer.')
 const mentionIdsSchema = z.preprocess(normalizeMentionIds, z.array(z.string().uuid()).max(20, 'Mention no more than 20 members.')).default([])
+/** Empty form values mean "post as yourself". */
+const postAsCompanySchema = z.preprocess(
+  (value) => value === '' || value == null ? undefined : value,
+  z.string().uuid('Choose who this post is from again.').optional(),
+)
 const pollOptionsSchema = z.preprocess(
   normalizePollOptions,
   z.array(z.string().max(120, 'Keep each poll option to 120 characters or fewer.')).min(2, 'Add at least two distinct poll options.').max(6, 'Add no more than six poll options.'),
@@ -105,6 +110,7 @@ const standardPostSchema = z.object({
   pollOptions: z.preprocess(() => [], z.array(z.never()).max(0)).optional().default([]),
   media: postMediaCollectionSchema.optional(),
   mentionProfileIds: mentionIdsSchema,
+  companyId: postAsCompanySchema,
 })
 
 const pollPostSchema = z.object({
@@ -114,6 +120,7 @@ const pollPostSchema = z.object({
   pollOptions: pollOptionsSchema,
   media: z.never({ error: 'Technical polls cannot include media.' }).optional(),
   mentionProfileIds: mentionIdsSchema,
+  companyId: postAsCompanySchema,
 })
 
 export const createPostInputSchema = z.discriminatedUnion('mode', [standardPostSchema, pollPostSchema])
@@ -136,6 +143,16 @@ export const deleteCommentInputSchema = z.object({
 })
 
 export const REPOST_COMMENTARY_MAX = 3000
+
+/** Editing keeps the post type; the service decides whether an empty body is allowed (reposts only). */
+export const updatePostInputSchema = z.object({
+  postId: z.string().uuid(),
+  body: z.preprocess(
+    (value) => typeof value === 'string' ? value : '',
+    z.string().trim().max(5000, 'Keep posts to 5,000 characters or fewer.'),
+  ),
+  mentionProfileIds: mentionIdsSchema,
+})
 
 export const repostInputSchema = z.object({
   postId: z.string().uuid(),
@@ -168,6 +185,7 @@ export const feedCursorSchema = z.object({
 
 export const feedRequestSchema = z.object({
   category: z.enum(POST_CATEGORIES).optional(),
+  companyId: z.string().uuid().optional(),
   cursor: feedCursorSchema.optional(),
   limit: z.number().int().min(1).max(20).default(12),
 })
@@ -186,6 +204,7 @@ export type PostMediaReferenceInput = z.infer<typeof postMediaReferenceSchema>
 export type CreatePostInput = z.infer<typeof createPostInputSchema>
 export type CommentInput = z.infer<typeof commentInputSchema>
 export type UpdateCommentInput = z.infer<typeof updateCommentInputSchema>
+export type UpdatePostInput = z.infer<typeof updatePostInputSchema>
 export type DeleteCommentInput = z.infer<typeof deleteCommentInputSchema>
 export type FeedRequestInput = z.infer<typeof feedRequestSchema>
 export type ReactionDetailsInput = z.infer<typeof reactionDetailsSchema>

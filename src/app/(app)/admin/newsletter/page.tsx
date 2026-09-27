@@ -125,7 +125,7 @@ export default async function AdminNewsletterPage({ searchParams }: { searchPara
         meta={`${pluralize(counts.subscribed, 'subscriber')} · ${counts.pending} awaiting confirmation · ${counts.unsubscribed} unsubscribed`}
         description="Consent is stored in the Sea N Shore database and synced to the Amazon SES contact list. The database is the source of truth; SES sync retries automatically."
         actions={(
-          <a href={exportHref} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+          <a href={exportHref} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">
             <Download aria-hidden="true" className="size-4" />
             Export CSV
           </a>
@@ -236,7 +236,7 @@ export default async function AdminNewsletterPage({ searchParams }: { searchPara
                     <td className="px-4 py-2.5"><AdminChip tone={syncLabels[subscriber.sesSyncStatus].tone}>{syncLabels[subscriber.sesSyncStatus].label}</AdminChip></td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatAdminDate(subscriber.createdAt)}</td>
                     <td className="px-4 py-2.5 text-right">
-                      <Link href={href({ page, subscriber: subscriber.id })} className="inline-flex min-h-8 items-center whitespace-nowrap rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 hover:border-ocean-200 hover:bg-ocean-50">
+                      <Link href={href({ page, subscriber: subscriber.id })} className="inline-flex min-h-8 items-center whitespace-nowrap rounded-lg border border-mist-200 px-3 text-xs font-semibold text-navy-950 hover:border-ocean-200 hover:bg-ocean-50">
                         Consent history
                       </Link>
                     </td>

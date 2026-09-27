@@ -54,6 +54,7 @@ export default async function MessageConversationPage({
     otherName: peer?.otherName ?? fallbackPeer?.otherName ?? 'Sea N Shore member',
     otherHeadline: peer?.otherHeadline ?? fallbackPeer?.otherHeadline ?? null,
     otherAvatarUrl: peer?.otherAvatarUrl ?? fallbackPeer?.otherAvatarUrl ?? null,
+    otherSlug: peer?.otherSlug ?? fallbackPeer?.otherSlug ?? null,
     otherLastReadMessageId: peer?.otherLastReadMessageId ?? null,
     otherLastReadAt: peer?.otherLastReadAt ?? null,
     messages: thread.messages,

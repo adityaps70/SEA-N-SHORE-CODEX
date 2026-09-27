@@ -26,7 +26,7 @@ export function AuthMethodLinks({
       {googleEnabled && (
         <Link
           href={`/auth/google/start?intent=${intent}`}
-          className="inline-flex min-h-12 items-center justify-center gap-3 rounded-xl border border-mist-100 bg-white px-5 text-sm font-semibold text-navy-900 shadow-sm transition-colors hover:bg-mist-50"
+          className="inline-flex min-h-12 items-center justify-center gap-3 rounded-xl border border-mist-200 bg-white px-5 text-sm font-semibold text-navy-900 shadow-sm transition-colors hover:bg-mist-50"
         >
           <span
             aria-hidden="true"

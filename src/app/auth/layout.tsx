@@ -11,9 +11,9 @@ export default function AuthLayout({ children }: Readonly<{ children: React.Reac
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p>© {new Date().getFullYear()} Sea N Shore · All rights reserved.</p>
           <nav className="flex flex-wrap gap-x-4 gap-y-2" aria-label="Legal">
-            <Link href="/terms" className="font-semibold hover:text-ocean-700">Terms</Link>
-            <Link href="/privacy" className="font-semibold hover:text-ocean-700">Privacy</Link>
-            <Link href="/copyright" className="font-semibold hover:text-ocean-700">Copyright &amp; IP</Link>
+            <Link href="/terms" className="font-semibold hover:text-ocean-700 hover:underline">Terms</Link>
+            <Link href="/privacy" className="font-semibold hover:text-ocean-700 hover:underline">Privacy</Link>
+            <Link href="/copyright" className="font-semibold hover:text-ocean-700 hover:underline">Copyright &amp; IP</Link>
           </nav>
         </div>
       </footer>

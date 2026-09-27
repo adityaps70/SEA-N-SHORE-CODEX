@@ -78,12 +78,13 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
       if (isMaritime) {
         await client.query(
           `insert into public.maritime_profiles (
-             user_id, current_company, vessel_types, trading_areas, shore_career_preference, updated_at
-           ) values ($1, $2, '{}'::text[], '{}'::text[], false, now())
+             user_id, current_company, current_company_id, vessel_types, trading_areas, shore_career_preference, updated_at
+           ) values ($1, $2, $3::uuid, '{}'::text[], '{}'::text[], false, now())
            on conflict (user_id) do update set
              current_company = excluded.current_company,
+             current_company_id = excluded.current_company_id,
              updated_at = now()`,
-          [profileId, data.currentCompany ?? null],
+          [profileId, data.currentCompany ?? null, data.currentCompany ? data.currentCompanyId ?? null : null],
         )
       }
       return true

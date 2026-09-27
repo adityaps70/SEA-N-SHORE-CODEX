@@ -62,7 +62,7 @@ export function FooterSocialLinks({ className = '' }: { className?: string }) {
     <ul aria-label="Sea N Shore on social media" className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${className}`.trim()}>
       {social.map((link) => (
         <li key={link.key}>
-          <a href={link.href} target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-ocean-700">
+          <a href={link.href} target="_blank" rel="noopener noreferrer" className="font-semibold hover:text-ocean-700 hover:underline">
             {link.label}
             <span className="sr-only"> (opens in a new tab)</span>
           </a>
@@ -91,7 +91,7 @@ export function AppFooter() {
           <ul className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {links.map((link) => (
               <li key={link.href}>
-                <Link href={link.href} className="inline-flex min-h-8 items-center font-semibold transition hover:text-ocean-700">
+                <Link href={link.href} className="inline-flex min-h-8 items-center font-semibold transition hover:text-ocean-700 hover:underline">
                   {link.label}
                 </Link>
               </li>

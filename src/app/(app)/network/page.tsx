@@ -155,7 +155,7 @@ export default async function NetworkPage({
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted">Sort by:</span>
                 <details className="relative">
-                  <summary className="cursor-pointer list-none font-semibold text-navy-950">
+                  <summary className="inline-flex min-h-9 cursor-pointer list-none items-center rounded-lg border border-mist-200 bg-white px-3 font-semibold text-navy-950 transition-colors hover:border-ocean-300 hover:bg-mist-50 [&::-webkit-details-marker]:hidden">
                     {sort === 'name' ? 'Name' : 'Recently added'}
                   </summary>
                   <div className="absolute left-0 z-20 mt-2 min-w-44 rounded-xl border border-mist-100 bg-white p-1 shadow-lg">

@@ -1,11 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Crown, UsersRound } from 'lucide-react'
+import { Crown } from 'lucide-react'
 import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { OrganizationManageShell } from '@/features/organizations/components/organization-manage-shell'
 import { OrganizationTeamPanel } from '@/features/organizations/components/organization-team-panel'
+import { loadManageShellContext } from '@/features/organizations/manage-context'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
 
 export const metadata: Metadata = { title: 'Organization team' }
@@ -21,19 +23,14 @@ export default async function OrganizationTeamPage({ params }: { params: Promise
   if (!membership) notFound()
 
   const canManageTeam = canUseCapability(access, 'organization.team', { companyId: workspace.id })
+  const shell = await loadManageShellContext(user.id, workspace.id, access)
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 py-8 sm:px-6 lg:px-8">
+    <OrganizationManageShell workspace={workspace} active="team" {...shell}>
       <div>
-        <Link href={'/organizations/' + workspace.slug} className="text-sm font-bold text-muted hover:text-navy-950">← {workspace.name}</Link>
-        <div className="mt-3 flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-xl bg-ocean-50 text-ocean-700"><UsersRound aria-hidden="true" className="size-5" /></span>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700">Organization Pro</p>
-            <h1 className="text-3xl font-bold text-navy-950">Team & permissions</h1>
-          </div>
-        </div>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700">Organization Pro</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950">Team & permissions</h1>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
           Assign approved members the role that matches their responsibility. Roles determine which Organization Pro capabilities they can use inside this workspace.
         </p>
       </div>
@@ -41,7 +38,7 @@ export default async function OrganizationTeamPage({ params }: { params: Promise
       {canManageTeam ? (
         <OrganizationTeamPanel companyId={workspace.id} members={await organizationWorkspaceRepository.listMembers(workspace.id)} />
       ) : (
-        <section className="rounded-[1.5rem] border border-amber-200 bg-amber-50 p-6">
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-6">
           <div className="flex gap-3">
             <Crown className="mt-0.5 size-5 shrink-0 text-amber-900" aria-hidden="true" />
             <div>
@@ -49,11 +46,11 @@ export default async function OrganizationTeamPage({ params }: { params: Promise
               <p className="mt-2 text-sm leading-6 text-amber-900">
                 Team permissions require Organization Pro and an Owner or Administrator role. Verification alone does not unlock this capability.
               </p>
-              <Link href="/plans" className="mt-4 inline-flex rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white">View Organization Pro</Link>
+              <Link href="/plans" className="mt-4 inline-flex rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-900">View Organization Pro</Link>
             </div>
           </div>
         </section>
       )}
-    </div>
+    </OrganizationManageShell>
   )
 }

@@ -98,8 +98,8 @@ describe('My Activities and jobs integration contract', () => {
 
     const tabs = screen.getByRole('navigation', { name: 'Activity sections' })
     expect(within(tabs).getAllByRole('link').map((link) => link.textContent?.trim())).toEqual([
-      'My Posts',
-      'My Comments',
+      'Posts',
+      'Comments',
       'Jobs Applied',
       'Events',
       'Learning',

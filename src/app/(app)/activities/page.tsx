@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { BookOpenCheck, BriefcaseBusiness, CalendarDays, MapPin, MessageSquareText, PenSquare, Trash2 } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { ArrowRight, BookOpenCheck, BriefcaseBusiness, CalendarDays, MapPin, MessageSquareText, PenSquare, Trash2, type LucideIcon } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
+import { ActivityTabs } from './activity-tabs'
 import { RailFooter } from '@/components/navigation/rail-footer'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { Card } from '@/components/ui/card'
@@ -23,23 +25,52 @@ import { getOwnProfile } from '@/features/profiles/queries'
 
 export const metadata: Metadata = { title: 'My Activities' }
 
-function EmptyPosts({ mode }: { mode: 'posts' | 'comments' }) {
+function EmptyState({
+  icon: Icon,
+  title,
+  children,
+  action,
+}: {
+  icon: LucideIcon
+  title: string
+  children?: ReactNode
+  action?: { href: string; label: string }
+}) {
   return (
-    <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-10 text-center">
-      <p className="font-semibold text-navy-950">
-        {mode === 'posts' ? 'You have not published a post yet.' : 'You have not commented on a post yet.'}
-      </p>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">
-        {mode === 'posts'
-          ? 'Share an update, question, lesson or professional insight with the maritime community.'
-          : 'Join a discussion on the home feed and the post will appear here with your comment highlighted.'}
-      </p>
-      <Link href="/home" className="mt-4 inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">
-        Go to home feed
+    <div className="rounded-2xl border border-dashed border-mist-200 bg-white px-6 py-10 text-center">
+      <span className="mx-auto grid size-11 place-items-center rounded-xl bg-mist-50 text-navy-700">
+        <Icon aria-hidden="true" className="size-5" />
+      </span>
+      <p className="mt-3 font-semibold text-navy-950">{title}</p>
+      {children ? <p className="mx-auto mt-1.5 max-w-lg text-sm leading-6 text-muted">{children}</p> : null}
+      {action ? (
+        <Link href={action.href} className="mt-4 inline-flex min-h-10 cursor-pointer items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white transition hover:bg-navy-800">
+          {action.label}
+        </Link>
+      ) : null}
+    </div>
+  )
+}
+
+function SectionHeading({ title, link }: { title: string; link: { href: string; label: string } }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <h3 className="text-base font-bold text-navy-950">{title}</h3>
+      <Link href={link.href} className="inline-flex items-center gap-1 text-sm font-semibold text-ocean-700 hover:underline">
+        {link.label} <ArrowRight aria-hidden="true" className="size-3.5" />
       </Link>
     </div>
   )
 }
+
+const ACTIVITY_TABS: ReadonlyArray<{ id: ActivityTab; label: string; heading: string }> = [
+  { id: 'posts', label: 'Posts', heading: 'My Posts' },
+  { id: 'comments', label: 'Comments', heading: 'My Comments' },
+  { id: 'jobs', label: 'Jobs Applied', heading: 'Jobs Applied' },
+  { id: 'events', label: 'Events', heading: 'My Events' },
+  { id: 'learning', label: 'Learning', heading: 'My Learning' },
+  { id: 'deleted', label: 'Recently Deleted', heading: 'Recently Deleted' },
+]
 
 type ActivityTab = 'posts' | 'comments' | 'jobs' | 'events' | 'learning' | 'deleted'
 
@@ -81,7 +112,7 @@ export default async function ActivitiesPage({
     experienceCount: portfolio.experiences.length,
     credentialCount: portfolio.credentials.length,
   }
-  const tabClass = (active: boolean) => `inline-flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1.5 text-[11px] font-semibold transition sm:min-h-11 sm:flex-row sm:gap-2 sm:px-4 sm:text-sm ${active ? 'bg-white text-navy-950 shadow-sm' : 'text-white/75 hover:bg-white/10 hover:text-white'}`
+  const activeTab = ACTIVITY_TABS.find((item) => item.id === tab) ?? ACTIVITY_TABS[0]
 
   return (
     <section className="grid gap-5 py-2 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_300px] xl:gap-6">
@@ -99,72 +130,47 @@ export default async function ActivitiesPage({
         <PremiumPageHero
           eyebrow="Member workspace"
           title="My Activities"
-          description="Review your community activity, job applications, events, learning progress and recently deleted posts from one member workspace."
-        >
-          <nav aria-label="Activity sections" className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-white/10 bg-white/10 p-1.5 sm:max-w-4xl sm:grid-cols-6">
-            <Link href="/activities?tab=posts" aria-current={tab === 'posts' ? 'page' : undefined} className={tabClass(tab === 'posts')}>
-              <PenSquare aria-hidden="true" className="size-4" />
-              <span>My Posts</span>
-            </Link>
-            <Link href="/activities?tab=comments" aria-current={tab === 'comments' ? 'page' : undefined} className={tabClass(tab === 'comments')}>
-              <MessageSquareText aria-hidden="true" className="size-4" />
-              <span>My Comments</span>
-            </Link>
-            <Link href="/activities?tab=jobs" aria-current={tab === 'jobs' ? 'page' : undefined} className={tabClass(tab === 'jobs')}>
-              <BriefcaseBusiness aria-hidden="true" className="size-4" />
-              <span>Jobs Applied</span>
-            </Link>
-            <Link href="/activities?tab=events" aria-current={tab === 'events' ? 'page' : undefined} className={tabClass(tab === 'events')}>
-              <CalendarDays aria-hidden="true" className="size-4" />
-              <span>Events</span>
-            </Link>
-            <Link href="/activities?tab=learning" aria-current={tab === 'learning' ? 'page' : undefined} className={tabClass(tab === 'learning')}>
-              <BookOpenCheck aria-hidden="true" className="size-4" />
-              <span>Learning</span>
-            </Link>
-            <Link href="/activities?tab=deleted" aria-current={tab === 'deleted' ? 'page' : undefined} className={tabClass(tab === 'deleted')}>
-              <Trash2 aria-hidden="true" className="size-4" />
-              <span>Recently Deleted</span>
-            </Link>
-          </nav>
-        </PremiumPageHero>
+          description="Your posts, comments, applications, events, courses and recently deleted posts in one place."
+        />
 
-        <section aria-labelledby="activity-panel-heading" className="mt-5">
-          <h2 id="activity-panel-heading" className="sr-only">
-            {tab === 'posts'
-              ? 'My Posts'
-              : tab === 'comments'
-                ? 'My Comments'
-                : tab === 'jobs'
-                  ? 'Jobs Applied'
-                  : tab === 'events'
-                    ? 'My Events'
-                    : tab === 'learning'
-                      ? 'My Learning'
-                      : 'Recently Deleted'}
-          </h2>
+        <ActivityTabs tabs={ACTIVITY_TABS.map((item) => ({ id: item.id, label: item.label, href: `/activities?tab=${item.id}` }))} activeId={tab} />
+
+        <section aria-labelledby="activity-panel-heading" className="mt-4">
+          <h2 id="activity-panel-heading" className="sr-only">{activeTab.heading}</h2>
           {tab === 'posts' ? (
-            posts.length ? <div className="space-y-4">{posts.map((post) => <PostCard key={post.id} post={post} />)}</div> : <EmptyPosts mode="posts" />
+            posts.length ? <div className="space-y-4">{posts.map((post) => <PostCard key={post.id} post={post} />)}</div> : (
+              <EmptyState icon={PenSquare} title="You have not published a post yet." action={{ href: '/home', label: 'Go to home feed' }}>
+                Share an update, question, lesson or professional insight with the maritime community.
+              </EmptyState>
+            )
           ) : tab === 'comments' ? (
-            comments.length ? <div className="space-y-5">{comments.map((item) => <CommentActivityCard key={item.post.id} activity={item} />)}</div> : <EmptyPosts mode="comments" />
+            comments.length ? <div className="space-y-4">{comments.map((item) => <CommentActivityCard key={item.post.id} activity={item} />)}</div> : (
+              <EmptyState icon={MessageSquareText} title="You have not commented on a post yet." action={{ href: '/home', label: 'Go to home feed' }}>
+                Join a discussion on the home feed and the post will appear here with your comment highlighted.
+              </EmptyState>
+            )
           ) : tab === 'jobs' ? (
             <JobApplicationList applications={applications} />
           ) : tab === 'events' ? (
             <div className="space-y-6">
-              <section>
-                <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold text-navy-950">Attending</h3><Link href="/events/my" className="text-sm font-bold text-ocean-700">Open My Events →</Link></div>
-                {attendingEvents.length ? <div className="mt-3 grid gap-4 md:grid-cols-2">{attendingEvents.map((event) => <EventCard key={event.id} event={event} showStatus />)}</div> : <div className="mt-3 rounded-2xl border border-dashed border-mist-100 bg-white p-6 text-sm text-muted">You are not attending an upcoming event yet.</div>}
+              <section aria-label="Events you are attending" className="space-y-3">
+                <SectionHeading title="Attending" link={{ href: '/events/my', label: 'Open My Events' }} />
+                {attendingEvents.length ? <div className="grid gap-4 md:grid-cols-2">{attendingEvents.map((event) => <EventCard key={event.id} event={event} showStatus />)}</div> : (
+                  <EmptyState icon={CalendarDays} title="You are not attending an upcoming event yet." action={{ href: '/events', label: 'Discover events' }} />
+                )}
               </section>
-              <section>
-                <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold text-navy-950">Hosting</h3><Link href="/events/hosting" className="text-sm font-bold text-ocean-700">Manage hosted events →</Link></div>
-                {hostedEvents.length ? <div className="mt-3 grid gap-4 md:grid-cols-2">{hostedEvents.slice(0, 6).map((event) => <EventCard key={event.id} event={event} showStatus />)}</div> : <div className="mt-3 rounded-2xl border border-dashed border-mist-100 bg-white p-6 text-sm text-muted">You have not hosted an event yet.</div>}
+              <section aria-label="Events you are hosting" className="space-y-3">
+                <SectionHeading title="Hosting" link={{ href: '/events/hosting', label: 'Manage hosted events' }} />
+                {hostedEvents.length ? <div className="grid gap-4 md:grid-cols-2">{hostedEvents.slice(0, 6).map((event) => <EventCard key={event.id} event={event} showStatus />)}</div> : (
+                  <EmptyState icon={CalendarDays} title="You have not hosted an event yet." />
+                )}
               </section>
             </div>
           ) : tab === 'learning' ? (
             learning.length ? (
-              <div className="grid gap-4">
+              <div className="space-y-4">
                 {learning.map((course) => (
-                  <article key={course.enrollmentId} className="rounded-[1.35rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
+                  <article key={course.enrollmentId} className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.12em] text-ocean-700">{course.category}</p>
@@ -175,29 +181,23 @@ export default async function ActivitiesPage({
                     </div>
                     <div className="mt-4 h-2 overflow-hidden rounded-full bg-mist-100"><div className="h-full rounded-full bg-ocean-600" style={{ width: `${course.progressPercent}%` }} /></div>
                     <div className="mt-4 flex flex-wrap gap-2">
-                      <Link href={`/learn/courses/${course.slug}/learn`} className="rounded-xl bg-navy-950 px-4 py-2 text-sm font-bold text-white">Continue learning</Link>
-                      <Link href="/learn" className="rounded-xl border border-mist-100 px-4 py-2 text-sm font-bold text-navy-950">Browse courses</Link>
+                      <Link href={`/learn/courses/${course.slug}/learn`} className="cursor-pointer rounded-xl bg-navy-950 px-4 py-2 text-sm font-bold text-white transition hover:bg-navy-800">Continue learning</Link>
+                      <Link href="/learn" className="cursor-pointer rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-950 transition hover:bg-mist-50">Browse courses</Link>
                     </div>
                   </article>
                 ))}
               </div>
             ) : (
-              <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-10 text-center">
-                <BookOpenCheck aria-hidden="true" className="mx-auto size-6 text-muted" />
-                <p className="mt-3 font-semibold text-navy-950">No course enrollments yet.</p>
-                <Link href="/learn" className="mt-4 inline-flex rounded-xl bg-navy-950 px-4 py-2 text-sm font-bold text-white">Explore Learning</Link>
-              </div>
+              <EmptyState icon={BookOpenCheck} title="No course enrollments yet." action={{ href: '/learn', label: 'Explore Learning' }}>
+                Courses you join appear here with your progress, so you can pick up where you left off.
+              </EmptyState>
             )
           ) : deletedPosts.length ? (
             <div className="space-y-4">{deletedPosts.map((post) => <RecentlyDeletedPostCard key={post.id} post={post} />)}</div>
           ) : (
-            <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-10 text-center">
-              <Trash2 aria-hidden="true" className="mx-auto size-6 text-muted" />
-              <p className="mt-3 font-semibold text-navy-950">No recently deleted posts.</p>
-              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">
-                Posts you delete yourself remain recoverable here for 30 days before they are permanently removed.
-              </p>
-            </div>
+            <EmptyState icon={Trash2} title="No recently deleted posts.">
+              Posts you delete yourself remain recoverable here for 30 days before they are permanently removed.
+            </EmptyState>
           )}
         </section>
       </main>
@@ -214,7 +214,7 @@ export default async function ActivitiesPage({
             </div>
             <div className="mt-3 space-y-2.5">
               {jobs.slice(0, 3).map((job) => (
-                <Link key={job.id} href={`/jobs/${job.id}`} className="block rounded-xl border border-mist-100 p-3 transition hover:border-ocean-200 hover:bg-ocean-50/40">
+                <Link key={job.id} href={`/jobs/${job.id}`} className="block rounded-xl border border-mist-200 p-3 transition hover:border-ocean-200 hover:bg-ocean-50/40">
                   <p className="text-sm font-semibold leading-5 text-navy-950">{job.title}</p>
                   <p className="mt-1 text-xs text-muted">{job.companyName}</p>
                   {job.location ? <p className="mt-1 flex items-center gap-1 text-xs text-muted"><MapPin aria-hidden="true" className="size-3" />{job.location}</p> : null}

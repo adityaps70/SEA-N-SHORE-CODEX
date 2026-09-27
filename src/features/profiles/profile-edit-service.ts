@@ -11,6 +11,7 @@ export type ProfileEditRepository = Pick<
   | 'updateCompletedProfile'
   | 'upsertMaritimeProfile'
   | 'upsertActivationMaritimeProfile'
+  | 'upsertCurrentOrganization'
   | 'deleteMaritimeProfile'
   | 'replaceSkills'
 >
@@ -26,6 +27,7 @@ export function createProfileEditService(input: { withTransaction: ProfileEditTr
     actorId: string,
     data: OnboardingInput,
     supportsCurrentCompany = data.profileType === 'seafarer' || data.profileType === 'maritime_professional',
+    options: { currentCompanySubmitted?: boolean } = {},
   ) {
     return input.withTransaction(async (repository) => {
       const current = await repository.lockCompletedProfile(actorId)
@@ -43,8 +45,9 @@ export function createProfileEditService(input: { withTransaction: ProfileEditTr
 
       if (data.profileType === 'seafarer') {
         await repository.upsertMaritimeProfile(actorId, data)
-      } else if (supportsCurrentCompany && data.currentCompany !== undefined) {
-        await repository.upsertActivationMaritimeProfile(actorId, data.currentCompany)
+      } else if (supportsCurrentCompany && (options.currentCompanySubmitted || data.currentCompany !== undefined)) {
+        // Only the organization changes here, so legacy details such as rank are kept.
+        await repository.upsertCurrentOrganization(actorId, data.currentCompany, data.currentCompanyId)
       }
 
       await repository.replaceSkills(actorId, data.skills)

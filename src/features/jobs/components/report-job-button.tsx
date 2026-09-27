@@ -9,7 +9,6 @@ export function ReportJobButton({ jobId }: { jobId: string }) {
         targetType="job"
         targetId={jobId}
         label="Report this job"
-        className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-navy-950"
       />
       <p className="mt-2 text-xs leading-5 text-muted">
         Reports are reviewed by Sea N Shore administrators and do not automatically remove a vacancy.

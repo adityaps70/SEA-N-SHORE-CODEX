@@ -43,7 +43,7 @@ export default async function AdminPage() {
         meta={waiting.length ? `${waiting.reduce((sum, item) => sum + item.count, 0)} items need attention` : 'All queues clear'}
         actions={(
           <>
-            <Link href="/admin/verifications" className="inline-flex min-h-9 items-center rounded-lg border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">Creator verifications</Link>
+            <Link href="/admin/verifications" className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">Creator verifications</Link>
             <Link href="/admin/users" className="inline-flex min-h-9 items-center rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">Manage users</Link>
           </>
         )}

@@ -124,7 +124,7 @@ export function AssignmentActivity({
             type="button"
             disabled={pending || exhausted || response.trim().length === 0}
             onClick={submit}
-            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+            className="mt-4 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed"
           >
             {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : latest?.passed === false ? <RotateCcw className="size-4" aria-hidden="true" /> : <Send className="size-4" aria-hidden="true" />}
             {exhausted ? 'Attempt limit reached' : pending ? 'Submitting…' : latest?.passed === false ? 'Submit revision' : 'Submit for review'}

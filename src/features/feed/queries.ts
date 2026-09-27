@@ -1,13 +1,17 @@
+import { organizationsMemberCanPostFor, type AccessContext } from '@/features/access/policy'
+import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { getPreferredFeedAuthorIds } from '@/features/network/queries'
 import { resolveFeedMediaUrls } from './media'
-import { feedAuthorAvatarPath, feedPostMediaPaths, mapFeedPost, type FeedCommentRow, type FeedPostRow } from './mappers'
+import { feedAuthorAvatarPath, feedPostMediaPaths, mapFeedPost, organizationLogoUrl, type FeedCommentRow, type FeedPostRow } from './mappers'
+import { postPermissions } from './post-permissions'
 import { prioritizeRecentFeedRows } from './ranking'
 import { feedRepository, type FeedRepository } from './repository'
 import { feedRequestSchema } from './schemas'
-import type { FeedComment, FeedCursor, FeedPage, FeedPost, FeedRequest } from './types'
+import type { FeedComment, FeedCursor, FeedPage, FeedPost, FeedRequest, PostingOrganization } from './types'
 
 type RequireUser = () => Promise<AwsVerifiedUser>
+type LoadAccessContext = (profileId: string) => Promise<AccessContext>
 type ResolveMediaUrls = (paths: string[]) => Promise<Map<string, string>>
 type GetPreferredAuthorIds = () => Promise<Iterable<string>>
 
@@ -36,7 +40,27 @@ export function createFeedQueries(input: {
   repository: FeedRepository
   getPreferredAuthorIds: GetPreferredAuthorIds
   resolveMediaUrls: ResolveMediaUrls
+  loadAccessContext?: LoadAccessContext
 }) {
+  const loadAccessContext = input.loadAccessContext ?? getAccessContext
+
+  /** Organization admins may edit and delete their organization's posts; only then do we load roles. */
+  async function applyOrganizationPermissions(rows: FeedPostRow[], posts: FeedPost[], viewerId: string) {
+    if (!rows.some((row) => row.company_id)) return posts
+    let access: AccessContext | null = null
+    try {
+      access = await loadAccessContext(viewerId)
+    } catch {
+      access = null
+    }
+    return posts.map((post, index) => {
+      const companyId = rows[index]?.company_id ?? null
+      if (!companyId) return post
+      const permissions = postPermissions(access, viewerId, { authorId: post.author.id, companyId })
+      return { ...post, viewerCanEdit: permissions.canEdit, viewerCanDelete: permissions.canDelete }
+    })
+  }
+
   async function hydratePosts(rows: FeedPostRow[], viewerId: string): Promise<FeedPost[]> {
     if (!rows.length) return []
     const postIds = rows.map((row) => row.id)
@@ -63,11 +87,12 @@ export function createFeedQueries(input: {
       commentsByPost.set(comment.post_id, existing)
     }
     const sourceById = new Map(repostSources.map((row) => [row.id, row] as const))
-    return rows.map((row) => mapFeedPost({
+    const posts = rows.map((row) => mapFeedPost({
       ...row,
       post_comments: commentsByPost.get(row.id) ?? [],
       repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
     }, viewer, signedUrls, viewerId))
+    return applyOrganizationPermissions(rows, posts, viewerId)
   }
 
   async function hydratePublicPosts(rows: FeedPostRow[], viewerId: string): Promise<FeedPost[]> {
@@ -108,16 +133,39 @@ export function createFeedQueries(input: {
     const rows = await input.repository.listFeedRows({
       viewerProfileId: user.id,
       ...(parsed.category ? { category: parsed.category } : {}),
+      ...(parsed.companyId ? { companyId: parsed.companyId } : {}),
       ...(parsed.cursor ? { cursor: parsed.cursor } : {}),
       limit: parsed.limit + 1,
     })
     const hasMore = rows.length > parsed.limit
     const pageRows = rows.slice(0, parsed.limit)
     const nextCursor = feedNextCursor(pageRows, hasMore)
+    // An organization's own post list stays newest first.
+    if (parsed.companyId) return { posts: await hydratePosts(pageRows, user.id), nextCursor }
     const preferredAuthorIds = new Set(await input.getPreferredAuthorIds())
     preferredAuthorIds.add(user.id)
-    const displayRows = prioritizeRecentFeedRows(pageRows, preferredAuthorIds, feedRowAuthorId)
+    const displayRows = prioritizeRecentFeedRows(
+      pageRows,
+      preferredAuthorIds,
+      feedRowAuthorId,
+      (row) => Boolean(row.viewer_follows_organization),
+    )
     return { posts: await hydratePosts(displayRows, user.id), nextCursor }
+  }
+
+  /** Organizations the signed-in member may publish posts for ("Post as"). */
+  async function getPostingOrganizations(): Promise<PostingOrganization[]> {
+    const user = await input.requireUser()
+    const access = await loadAccessContext(user.id)
+    const companyIds = organizationsMemberCanPostFor(access)
+    if (!companyIds.length) return []
+    const companies = await input.repository.listCompanyIdentities(companyIds)
+    return companies.map((company) => ({
+      id: company.id,
+      slug: company.slug,
+      name: company.name,
+      logoUrl: organizationLogoUrl(company.id, company.logoPath),
+    }))
   }
 
   async function getSavedPosts(): Promise<FeedPost[]> {
@@ -127,12 +175,12 @@ export function createFeedQueries(input: {
 
   async function getPostsByAuthor(authorProfileId: string): Promise<FeedPost[]> {
     const user = await input.requireUser()
-    const rows = await input.repository.listAuthorRows({ viewerProfileId: user.id, authorProfileId, limit: 30 })
+    const rows = await input.repository.listAuthorRows({ viewerProfileId: user.id, authorProfileId, limit: 30, personalOnly: true })
     return hydratePosts(rows, user.id)
   }
 
   async function getPublicPostsByAuthor(authorProfileId: string): Promise<FeedPost[]> {
-    const rows = await input.repository.listAuthorRows({ viewerProfileId: authorProfileId, authorProfileId, limit: 30 })
+    const rows = await input.repository.listAuthorRows({ viewerProfileId: authorProfileId, authorProfileId, limit: 30, personalOnly: true })
     return hydratePublicPosts(rows, authorProfileId)
   }
 
@@ -162,7 +210,7 @@ export function createFeedQueries(input: {
     return post ?? null
   }
 
-  return { getFeedPage, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyCommentActivity, getPostById }
+  return { getFeedPage, getPostingOrganizations, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyCommentActivity, getPostById }
 }
 
 const productionQueries = createFeedQueries({
@@ -173,6 +221,7 @@ const productionQueries = createFeedQueries({
 })
 
 export const getFeedPage = productionQueries.getFeedPage
+export const getPostingOrganizations = productionQueries.getPostingOrganizations
 export const getSavedPosts = productionQueries.getSavedPosts
 export const getPostsByAuthor = productionQueries.getPostsByAuthor
 export const getPublicPostsByAuthor = productionQueries.getPublicPostsByAuthor

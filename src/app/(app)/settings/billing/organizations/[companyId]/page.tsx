@@ -43,7 +43,7 @@ export default async function OrganizationBillingPage({
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:py-5">
       <header>
-        <Link href="/settings/billing" className="text-sm font-bold text-muted hover:text-navy-950">
+        <Link href="/settings/billing" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
           ← Membership & billing
         </Link>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

@@ -1,14 +1,15 @@
 'use client'
 
-import { ChevronDown, ChevronUp, CornerDownRight, Ellipsis, MessageCircle } from 'lucide-react'
+import { ChevronDown, ChevronUp, CornerDownRight, Ellipsis, Flag, MessageCircle, PencilLine, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react'
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type RefObject } from 'react'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import * as feedActions from '../actions'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import type { CommentActionState } from '../actions'
 import {
   EMPTY_REACTION_SUMMARY,
+  reactionCount,
   type FeedComment,
   type PostReactionType,
   type ReactionSummary,
@@ -114,7 +115,7 @@ function ReplyComposer({ postId, target, onCreated, onDone }: {
           <MentionInput id={inputId} name="body" rows={1} value={body} onChange={setBody} mentions={mentions} onMentionsChange={setMentions} textareaRef={textareaRef} maxLength={2000} placeholder="Write a reply…" className="min-h-10 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500" />
         </div>
         <EmojiPicker onSelect={insert} label="Add emoji to reply" align="right" size="sm" />
-        <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60">{pending ? 'Replying…' : 'Reply'}</button>
+        <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">{pending ? 'Replying…' : 'Reply'}</button>
       </div>
       {state.fieldErrors?.body ? <p className="mt-1 px-1 text-xs text-red-700">{state.fieldErrors.body[0]}</p> : null}
       {state.error ? <p role="alert" className="mt-1 px-1 text-xs text-red-700">{state.error}</p> : null}
@@ -122,22 +123,69 @@ function ReplyComposer({ postId, target, onCreated, onDone }: {
   )
 }
 
-function CommentOwnerMenu({ canEdit, pending, onEdit, onDelete }: {
+const menuItemClass = 'flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-xs font-semibold hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60'
+
+/**
+ * The comment "⋯" menu. Owners get Edit (inside the edit window) and Delete; everyone else gets
+ * Report, so the action row only holds Like and Reply.
+ */
+function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onReport, triggerRef }: {
+  owner: boolean
   canEdit: boolean
   pending: boolean
   onEdit(): void
   onDelete(): void
+  onReport(): void
+  triggerRef: RefObject<HTMLButtonElement | null>
 }) {
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
-  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close)
+  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close, { triggerRef })
+  const menuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (open) menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus()
+  }, [open])
+
+  function run(action: () => void) {
+    return () => {
+      setOpen(false)
+      action()
+    }
+  }
+
   return (
     <div ref={rootRef} className="absolute right-1.5 top-1.5">
-      <button type="button" aria-label="Comment actions" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} className="grid size-7 place-items-center rounded-full text-muted transition hover:bg-white hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"><Ellipsis className="size-4" aria-hidden="true" /></button>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label="Comment actions"
+        title="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="grid size-7 cursor-pointer place-items-center rounded-full text-muted transition hover:bg-white hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+      >
+        <Ellipsis className="size-4" aria-hidden="true" />
+      </button>
       {open ? (
-        <div className="absolute right-0 z-20 mt-1 min-w-24 overflow-hidden rounded-xl border border-mist-100 bg-white py-1 shadow-lg">
-          {canEdit ? <button type="button" onClick={() => { setOpen(false); onEdit() }} className="block w-full px-3 py-2 text-left text-xs font-semibold text-navy-950 hover:bg-mist-50">Edit</button> : null}
-          <button type="button" onClick={() => { setOpen(false); onDelete() }} disabled={pending} className="block w-full px-3 py-2 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-60">Delete</button>
+        <div ref={menuRef} role="menu" aria-label="Comment actions" className="absolute right-0 z-20 mt-1 w-max min-w-32 overflow-hidden rounded-xl border border-mist-100 bg-white py-1 shadow-lg">
+          {owner ? (
+            <>
+              {canEdit ? (
+                <button type="button" role="menuitem" onClick={run(onEdit)} className={`${menuItemClass} text-navy-950`}>
+                  <PencilLine aria-hidden="true" className="size-3.5" /> Edit
+                </button>
+              ) : null}
+              <button type="button" role="menuitem" onClick={run(onDelete)} disabled={pending} className={`${menuItemClass} text-red-700 hover:bg-red-50`}>
+                <Trash2 aria-hidden="true" className="size-3.5" /> Delete
+              </button>
+            </>
+          ) : (
+            <button type="button" role="menuitem" onClick={run(onReport)} className={`${menuItemClass} text-red-700 hover:bg-red-50`}>
+              <Flag aria-hidden="true" className="size-3.5" /> Report comment
+            </button>
+          )}
         </div>
       ) : null}
     </div>
@@ -160,6 +208,8 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
   const [summary, setSummary] = useState<ReactionSummary>(() => commentSummary(comment))
   const [replying, setReplying] = useState(false)
   const [reactionsOpen, setReactionsOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null)
   const [editing, setEditing] = useState(false)
   const [editBody, setEditBody] = useState(comment.body)
   const [editMentions, setEditMentions] = useState<SelectedMention[]>(() => selectedMentions(comment))
@@ -264,7 +314,7 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
       <div className="min-w-0 flex-1">
         <div className={`relative rounded-2xl px-3 py-2.5 ${isReply ? 'bg-mist-50/70 ring-1 ring-mist-100' : 'bg-mist-50'}`}>
           <div className="flex flex-wrap items-baseline gap-x-2 pr-7">
-            <Link href={`/people/${comment.author.slug}`} className="text-sm font-semibold text-navy-950 hover:text-ocean-700">{comment.author.fullName}</Link>
+            <Link href={`/people/${comment.author.slug}`} className="text-sm font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{comment.author.fullName}</Link>
             {isPostAuthor ? <span className="rounded-full bg-ocean-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ocean-800">Author</span> : null}
             <span className="min-w-0 truncate text-xs text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
             <div className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted"><time dateTime={comment.createdAt}>{relativeTime(comment.createdAt)}</time>{edited ? <span>Edited</span> : null}</div>
@@ -275,13 +325,21 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
               <span className="truncate">
                 Replying to{' '}
                 {replyTarget.authorSlug ? (
-                  <Link href={`/people/${replyTarget.authorSlug}`} className="font-semibold text-navy-900 hover:text-ocean-700">{replyTarget.authorName}</Link>
+                  <Link href={`/people/${replyTarget.authorSlug}`} className="font-semibold text-navy-900 hover:text-ocean-700 hover:underline">{replyTarget.authorName}</Link>
                 ) : <span className="font-semibold text-navy-900">{replyTarget.authorName}</span>}
               </span>
             </p>
           ) : null}
-          {!readOnly && comment.viewerOwns ? (
-            <CommentOwnerMenu canEdit={Boolean(comment.canEdit)} pending={managementPending} onEdit={beginEdit} onDelete={removeComment} />
+          {!readOnly ? (
+            <CommentActionsMenu
+              owner={Boolean(comment.viewerOwns)}
+              canEdit={Boolean(comment.canEdit)}
+              pending={managementPending}
+              onEdit={beginEdit}
+              onDelete={removeComment}
+              onReport={() => setReportOpen(true)}
+              triggerRef={menuTriggerRef}
+            />
           ) : null}
           {editing ? (
             <form className="mt-2" onSubmit={(event) => { event.preventDefault(); submitEdit(new FormData(event.currentTarget)) }}>
@@ -290,39 +348,48 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
               <MentionInput id={`edit-comment-${comment.id}`} name="body" rows={2} value={editBody} onChange={setEditBody} mentions={editMentions} onMentionsChange={setEditMentions} textareaRef={editTextareaRef} maxLength={2000} placeholder="Edit comment…" className="min-h-16 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500" />
               <div className="mt-2 flex items-center justify-end gap-2">
                 <div className="mr-auto"><EmojiPicker onSelect={insertEditEmoji} label="Add emoji to comment" size="sm" /></div>
-                <button type="button" onClick={cancelEdit} disabled={managementPending} className="min-h-8 rounded-lg px-3 text-xs font-semibold text-navy-900 hover:bg-white disabled:opacity-60">Cancel</button>
-                <button type="submit" disabled={managementPending} className="min-h-8 rounded-lg bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60">{managementPending ? 'Saving…' : 'Save'}</button>
+                <button type="button" onClick={cancelEdit} disabled={managementPending} className="min-h-8 rounded-lg px-3 text-xs font-semibold text-navy-900 border border-mist-200 bg-white transition-colors hover:border-ocean-300 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
+                <button type="submit" disabled={managementPending} className="min-h-8 rounded-lg bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">{managementPending ? 'Saving…' : 'Save'}</button>
               </div>
             </form>
           ) : <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink [overflow-wrap:anywhere]"><MentionText body={comment.body} mentions={comment.mentions} /></p>}
         </div>
         {!editing ? (
-          <div className="mt-0.5 flex min-h-8 flex-wrap items-center gap-1.5 px-1">
-            {!readOnly ? <ReactionPicker value={reaction} disabled={reactionPending} onChange={changeReaction} compact /> : null}
-            <ReactionSummaryTrigger variant="comment" summary={summary} onOpen={() => setReactionsOpen(true)} />
+          <div data-testid={`comment-actions-${comment.id}`} className="mt-1 flex min-h-8 items-center gap-1.5 px-1">
             {!readOnly ? (
-              <button
-                type="button"
-                onClick={() => setReplying((value) => !value)}
-                aria-expanded={replying}
-                aria-label="Reply"
-                title={`Reply to ${comment.author.fullName}`}
-                className="min-h-8 rounded-lg px-2 text-xs font-semibold text-navy-900 hover:bg-mist-50"
-              >
-                Reply
-              </button>
+              <ReactionPicker value={reaction} disabled={reactionPending} onChange={changeReaction} count={reactionCount(summary)} variant="comment" />
             ) : null}
-            {!readOnly && !comment.viewerOwns ? (
-              <ReportContentButton
-                targetType="comment"
-                targetId={comment.id}
-                label="Report comment"
-                iconOnly
-                className="inline-flex min-h-8 items-center justify-center rounded-lg px-1.5 text-muted transition hover:bg-red-50 hover:text-red-700"
-              />
+            {!readOnly ? (
+              <>
+                <span aria-hidden="true" className="text-xs text-muted">·</span>
+                <button
+                  type="button"
+                  onClick={() => setReplying((value) => !value)}
+                  aria-expanded={replying}
+                  aria-label="Reply"
+                  title={`Reply to ${comment.author.fullName}`}
+                  className="inline-flex min-h-8 shrink-0 cursor-pointer items-center rounded-full border border-mist-200 bg-white px-2.5 text-xs font-semibold text-navy-900 transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+                >
+                  Reply
+                </button>
+              </>
             ) : null}
             <CommentReplySummary count={replyCount} />
+            <ReactionSummaryTrigger variant="comment" className="ml-auto" summary={summary} onOpen={() => setReactionsOpen(true)} />
           </div>
+        ) : null}
+        {reportOpen ? (
+          <ReportContentButton
+            targetType="comment"
+            targetId={comment.id}
+            label="Report comment"
+            defaultOpen
+            hideTrigger
+            onClose={() => {
+              setReportOpen(false)
+              menuTriggerRef.current?.focus()
+            }}
+          />
         ) : null}
         {error ? <p role="alert" className="px-1 text-xs text-red-700">{error}</p> : null}
         {replying && !readOnly && !editing ? <ReplyComposer postId={postId} target={comment} onCreated={onCreatedReply} onDone={() => setReplying(false)} /> : null}
@@ -477,7 +544,7 @@ export function CommentThread({ postId, postAuthorId, comments, readOnly = false
             {state.fieldErrors?.body ? <p className="mt-1 text-xs text-red-700">{state.fieldErrors.body[0]}</p> : null}
           </div>
           <EmojiPicker onSelect={insert} label="Add emoji to comment" align="right" />
-          <button type="submit" disabled={pending} className="min-h-11 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60">{pending ? 'Adding…' : 'Comment'}</button>
+          <button type="submit" disabled={pending} className="min-h-11 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">{pending ? 'Adding…' : 'Comment'}</button>
         </form>
       ) : null}
       {state.error ? <p role="alert" className="mt-2 text-sm text-red-700">{state.error}</p> : null}

@@ -143,11 +143,11 @@ export default async function HiringJobsPage({
                   <Link href={`/hiring/jobs/${job.id}/applicants`} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">
                     View applicants
                   </Link>
-                  <Link href={`/hiring/jobs/${job.id}/edit`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
+                  <Link href={`/hiring/jobs/${job.id}/edit`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
                     Edit
                   </Link>
                   {presentation.key === 'live' || presentation.key === 'expired' ? (
-                    <Link href={`/jobs/${job.id}`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
+                    <Link href={`/jobs/${job.id}`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
                       View live job
                     </Link>
                   ) : null}
@@ -170,7 +170,7 @@ export default async function HiringJobsPage({
           <section className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center">
             <h2 className="text-xl font-bold text-navy-950">No jobs in this view</h2>
             <p className="mt-2 text-sm text-muted">Choose another filter to see the rest of your jobs.</p>
-            <Link href="/hiring/jobs" className="mt-5 inline-flex rounded-xl border border-mist-100 px-5 py-2.5 text-sm font-bold text-navy-950 hover:bg-mist-50">Show all jobs</Link>
+            <Link href="/hiring/jobs" className="mt-5 inline-flex rounded-xl border border-mist-200 px-5 py-2.5 text-sm font-bold text-navy-950 hover:bg-mist-50">Show all jobs</Link>
           </section>
         ) : null}
 
@@ -178,7 +178,7 @@ export default async function HiringJobsPage({
           <section className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center">
             <h2 className="text-xl font-bold text-navy-950">No vacancies yet</h2>
             <p className="mt-2 text-sm text-muted">Post your first maritime role using your personal recruiter identity or an organization workspace.</p>
-            <Link href="/hiring/jobs/new" className="mt-5 inline-flex rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white">Post a job</Link>
+            <Link href="/hiring/jobs/new" className="mt-5 inline-flex rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">Post a job</Link>
           </section>
         ) : null}
       </section>

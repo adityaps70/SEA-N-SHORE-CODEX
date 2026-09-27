@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { BadgeCheck, Building2, CreditCard, LockKeyhole, Mail, ShieldCheck, SquarePlus } from 'lucide-react'
+import { BadgeCheck, Building2, ChevronRight, CreditCard, LockKeyhole, Mail, ShieldCheck, SquarePlus } from 'lucide-react'
 import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
 import { DeleteAccountPanel } from '@/features/account-deletion/components/delete-account-panel'
 
@@ -33,69 +33,72 @@ export default function SettingsPage() {
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <Link
             href="/settings/billing"
-            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
           >
             <div className="flex items-center gap-2">
               <CreditCard aria-hidden="true" className="size-4 text-ocean-700" />
               <p className="font-semibold text-navy-950">Membership & billing</p>
             </div>
             <p className="mt-1 text-sm leading-5 text-muted">Review Free, Creator Pro and Organization Pro access.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link
             href="/settings/verifications"
-            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
           >
             <div className="flex items-center gap-2">
               <BadgeCheck aria-hidden="true" className="size-4 text-ocean-700" />
               <p className="font-semibold text-navy-950">Professional verifications</p>
             </div>
             <p className="mt-1 text-sm leading-5 text-muted">Apply for or review Recruiter, Trainer and Event Host verification.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link
             href="/organizations"
-            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
           >
             <div className="flex items-center gap-2">
               <Building2 aria-hidden="true" className="size-4 text-ocean-700" />
               <p className="font-semibold text-navy-950">Organizations</p>
             </div>
             <p className="mt-1 text-sm leading-5 text-muted">Create, claim or manage organization workspaces and roles.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link
             href="/creator"
-            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
           >
             <div className="flex items-center gap-2">
               <SquarePlus aria-hidden="true" className="size-4 text-ocean-700" />
               <p className="font-semibold text-navy-950">Creator access</p>
             </div>
             <p className="mt-1 text-sm leading-5 text-muted">See publishing readiness for Jobs, Events and LMS in one place.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link
             href="/newsletter"
-            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
           >
             <div className="flex items-center gap-2">
               <Mail aria-hidden="true" className="size-4 text-ocean-700" />
               <p className="font-semibold text-navy-950">Newsletter</p>
             </div>
             <p className="mt-1 text-sm leading-5 text-muted">Subscribe, choose topics or unsubscribe from Sea N Shore emails.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
           <Link
             href="/privacy"
-            className="rounded-xl border border-mist-100 bg-mist-50/50 p-4 transition hover:border-ocean-300 hover:bg-ocean-50/40"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
           >
             <p className="font-semibold text-navy-950">Privacy</p>
             <p className="mt-1 text-sm leading-5 text-muted">Read how profile, community, jobs, learning, and messaging data is used.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
           </Link>
-          <div className="rounded-xl border border-mist-100 bg-mist-50/50 p-4">
-            <div className="flex items-center gap-2">
-              <LockKeyhole aria-hidden="true" className="size-4 text-ocean-700" />
-              <p className="font-semibold text-navy-950">Security</p>
-            </div>
-            <p className="mt-1 text-sm leading-5 text-muted">Sensitive account actions require a fresh password verification.</p>
-          </div>
         </div>
+        <p className="mt-4 flex items-start gap-2 text-sm leading-5 text-muted">
+          <LockKeyhole aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ocean-700" />
+          <span><span className="font-semibold text-navy-950">Security:</span> sensitive account actions require a fresh password verification.</span>
+        </p>
       </section>
 
       <div id="your-data" className="grid scroll-mt-24 gap-5">

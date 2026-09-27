@@ -32,7 +32,7 @@ export function ConnectionRequestCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Link href={`/people/${profile.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
+            <Link href={`/people/${profile.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
               {profile.fullName}
             </Link>
             <span className="inline-flex items-center gap-1 rounded-full bg-mist-50 px-2 py-1 text-[11px] font-semibold text-ocean-700">

@@ -332,4 +332,74 @@ describe('Aurora messaging repository', () => {
     await expect(repository.listDirectConversationsWithPeers(VIEWER_ID, [])).resolves.toEqual(new Map())
     expect(query).not.toHaveBeenCalled()
   })
+
+  it('deletes a conversation for one participant only by stamping their own cleared_before marker', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce([{ advanced: true }])
+      .mockResolvedValueOnce([])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.clearConversationForParticipant(VIEWER_ID, CONVERSATION_ID)).resolves.toBe(true)
+    await expect(repository.clearConversationForParticipant(TARGET_ID, CONVERSATION_ID)).resolves.toBe(false)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('update public.conversation_participants')
+    expect(text).toContain('set cleared_before')
+    expect(text).toContain('where conversation_id = $1')
+    expect(text).toContain('and profile_id = $2')
+    // Only the actor's participant row changes; no message is deleted or edited.
+    expect(text).not.toContain('delete from')
+    expect(text).not.toContain('update public.messages')
+    expect(values).toEqual([CONVERSATION_ID, VIEWER_ID])
+  })
+
+  it('hides messages from before the viewer deleted the conversation in history, catch-up and reply previews', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.listMessageRows({ viewerProfileId: VIEWER_ID, conversationId: CONVERSATION_ID, limit: 30 })
+    await repository.listMessageRowsAfter({ viewerProfileId: VIEWER_ID, conversationId: CONVERSATION_ID, limit: 30 })
+
+    for (const [sql, values] of callsOf(query)) {
+      const text = String(sql).toLowerCase()
+      expect(text).toContain('cp.profile_id = $2')
+      expect(text).toContain('cp.cleared_before is null or m.created_at > cp.cleared_before')
+      expect(text).toContain('reply.created_at <= cp.cleared_before')
+      expect(values?.slice(0, 2)).toEqual([CONVERSATION_ID, VIEWER_ID])
+    }
+  })
+
+  it('refuses attachment and reaction access to messages the viewer deleted', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.findMessageAccessibleToParticipant(VIEWER_ID, MESSAGE_ID)).resolves.toBeNull()
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql).toLowerCase()).toContain('cp.cleared_before is null or m.created_at > cp.cleared_before')
+    expect(values).toEqual([VIEWER_ID, MESSAGE_ID])
+  })
+
+  it('keeps a deleted conversation out of the inbox and unread count until a newer message arrives', async () => {
+    const query = vi.fn(async () => [{ count: 0 }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.listInboxRows(VIEWER_ID, { limit: 30 })
+    await repository.countUnreadMessages(VIEWER_ID)
+
+    const [inboxSql] = callsOf(query)[0] ?? []
+    const inboxText = String(inboxSql).toLowerCase()
+    expect(inboxText).toContain('mine.cleared_before is null')
+    expect(inboxText).toContain('c.last_message_at > mine.cleared_before')
+    expect(inboxText).toContain('unread_message.created_at > mine.cleared_before')
+    expect(inboxText).toContain('p.slug as other_slug')
+
+    const [countSql] = callsOf(query)[1] ?? []
+    expect(String(countSql).toLowerCase()).toContain('unread_message.created_at > mine.cleared_before')
+  })
 })

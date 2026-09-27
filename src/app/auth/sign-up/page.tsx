@@ -53,7 +53,7 @@ export default async function SignUpPage({
         )}
         <p className="mt-6 text-sm text-muted">
           Already have an account?{" "}
-          <Link href="/auth/sign-in" className="font-semibold text-ocean-700">Sign in</Link>
+          <Link href="/auth/sign-in" className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">Sign in</Link>
         </p>
       </section>
     </main>

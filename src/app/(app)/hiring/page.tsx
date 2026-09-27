@@ -67,8 +67,8 @@ export default async function HiringPage() {
             Verification and paid plan access are checked separately. Open Post a job to see the exact requirement for each identity.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Link href="/plans" className="rounded-xl bg-amber-900 px-4 py-2 text-sm font-bold text-white">Compare plans</Link>
-            <Link href="/organizations" className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-950">Organizations</Link>
+            <Link href="/plans" className="rounded-xl bg-amber-900 px-4 py-2 text-sm font-bold text-white hover:bg-amber-950 transition-colors">Compare plans</Link>
+            <Link href="/organizations" className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-bold text-amber-950 transition-colors hover:bg-amber-50">Organizations</Link>
           </div>
         </section>
       ) : null}
@@ -90,7 +90,7 @@ export default async function HiringPage() {
             <h2 className="text-xl font-bold text-navy-950">Recent vacancies</h2>
             <p className="mt-1 text-sm text-muted">Your latest personal and organization hiring activity.</p>
           </div>
-          <Link href="/hiring/jobs" className="text-sm font-bold text-navy-950 hover:underline">View all vacancies</Link>
+          <Link href="/hiring/jobs" className="text-sm font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">View all vacancies</Link>
         </div>
 
         <div className="mt-5 divide-y divide-mist-100">
@@ -117,7 +117,7 @@ export default async function HiringPage() {
                     </p>
                   </div>
                 </div>
-                <Link href={`/hiring/jobs/${job.id}/applicants`} className="shrink-0 text-sm font-bold text-navy-950 hover:underline">
+                <Link href={`/hiring/jobs/${job.id}/applicants`} className="shrink-0 text-sm font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
                   {job.applicantCount} applicant{job.applicantCount === 1 ? '' : 's'}
                   {job.newApplicantCount ? <span className="ml-2 rounded-full bg-ocean-50 px-2 py-0.5 text-xs font-bold text-ocean-800">{job.newApplicantCount} new</span> : null}
                 </Link>

@@ -172,7 +172,7 @@ export function DeleteAccountPanel() {
                 type="button"
                 onClick={close}
                 disabled={pending}
-                className="min-h-11 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-50"
+                className="min-h-11 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-50"
               >
                 Cancel
               </button>

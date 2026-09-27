@@ -145,7 +145,7 @@ export function LegacyOrganizationConversionForm({
                   className={`rounded-full border px-3.5 py-2 text-sm font-semibold transition ${
                     selected
                       ? 'border-ocean-700 bg-ocean-700 text-white'
-                      : 'border-mist-100 bg-white text-navy-900 hover:border-ocean-300'
+                      : 'border-mist-200 bg-white text-navy-900 hover:border-ocean-300'
                   }`}
                 >
                   {selected ? '✓ ' : ''}{PROFILE_INTENT_LABELS[intent]}
@@ -250,7 +250,7 @@ export function LegacyOrganizationConversionForm({
 
         <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
           If this organization already exists on Sea N Shore, do not create another copy.{' '}
-          <Link href="/hiring/organization" className="font-bold underline underline-offset-2">
+          <Link href="/hiring/organization" className="font-bold underline underline-offset-2 hover:decoration-2">
             Use Claim Existing Organization
           </Link>{' '}
           and request Administrator access first.
@@ -272,7 +272,7 @@ export function LegacyOrganizationConversionForm({
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed"
         >
           {pending ? 'Converting account…' : 'Complete conversion'}
         </button>

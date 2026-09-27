@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { mapPublicProfile } from './mappers'
+import { listableOrganizationSql } from './organization-link-repository'
 import { PERSONAS, PROFILE_INTENTS, type Persona, type ProfileIntent } from './persona'
 import {
   PROFILE_TYPES,
@@ -37,6 +38,7 @@ type ProfileRow = QueryResultRow & {
   username_change_count?: number | null
   username_auto_generated?: boolean | null
   maritime_profiles: PublicProfileRow['maritime_profiles']
+  current_organization?: unknown
   profile_skills: Array<{ skill: string }> | null
 }
 
@@ -96,6 +98,7 @@ const PROFILE_SELECT = `
       else json_build_object(
         'rank', mp.rank,
         'current_company', mp.current_company,
+        'current_company_id', mp.current_company_id,
         'current_vessel', mp.current_vessel,
         'sailing_experience_years', mp.sailing_experience_years,
         'vessel_types', mp.vessel_types,
@@ -104,6 +107,16 @@ const PROFILE_SELECT = `
         'availability', mp.availability
       )
     end as maritime_profiles,
+    case
+      when linked_org.id is null then null
+      else json_build_object(
+        'id', linked_org.id,
+        'slug', linked_org.slug,
+        'name', linked_org.name,
+        'has_logo', linked_org.logo_path is not null and btrim(linked_org.logo_path) <> '',
+        'verified', coalesce(linked_org.is_verified, false)
+      )
+    end as current_organization,
     coalesce(
       (
         select json_agg(
@@ -117,7 +130,10 @@ const PROFILE_SELECT = `
     ) as profile_skills
   from public.profiles p
   left join public.maritime_profiles mp on mp.user_id = p.id
-` as const
+  left join public.companies linked_org
+    on linked_org.id = mp.current_company_id
+   and ${listableOrganizationSql('linked_org')}
+`
 
 function isProfileType(value: unknown): value is ProfileType {
   return PROFILE_TYPES.includes(value as ProfileType)
@@ -164,6 +180,7 @@ function normalizePublicRow(row: ProfileRow): PublicProfileRow | null {
     headline: row.headline,
     summary: row.summary,
     maritime_profiles: row.maritime_profiles,
+    current_organization: row.current_organization ?? null,
     profile_skills: Array.isArray(row.profile_skills) ? row.profile_skills : [],
   }
 }
