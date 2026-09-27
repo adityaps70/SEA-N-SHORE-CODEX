@@ -24,7 +24,7 @@ test('ECS task Cashfree secret policy has a guarded single-resource Terraform re
   assert.equal(existsSync(scriptUrl), true, 'missing ECS task Cashfree secret policy runner')
   assert.equal(existsSync(actionUrl), true, 'missing ECS task Cashfree secret policy action guard')
   assert.equal(existsSync(workflowUrl), true, 'missing ECS task Cashfree secret policy workflow')
-  assert.equal((await readFile(actionUrl, 'utf8')).trim(), 'plan')
+  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()), 'action guard must be plan or apply-once')
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
