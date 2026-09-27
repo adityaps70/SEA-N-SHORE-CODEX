@@ -455,4 +455,44 @@ describe('messaging authorization and durability service', () => {
       'messaging_not_participant',
     )
   })
+
+  it('deletes a conversation only for a participant, and only their own view of it', async () => {
+    const clearConversationForParticipant = vi.fn(async () => true)
+    const context = await service({
+      messaging: makeMessagingRepository({ clearConversationForParticipant }),
+    })
+
+    await expect(context.service.deleteConversationForParticipant(VIEWER_ID, CONVERSATION_ID)).resolves.toBe(true)
+    expect(context.messaging.isParticipant).toHaveBeenCalledWith(VIEWER_ID, CONVERSATION_ID)
+    expect(clearConversationForParticipant).toHaveBeenCalledWith(VIEWER_ID, CONVERSATION_ID)
+    expect(context.transactionSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses to delete a conversation for someone who is not in it', async () => {
+    const clearConversationForParticipant = vi.fn(async () => true)
+    const context = await service({
+      messaging: makeMessagingRepository({
+        isParticipant: vi.fn(async () => false),
+        clearConversationForParticipant,
+      }),
+    })
+
+    await expectCode(
+      context.service.deleteConversationForParticipant(THIRD_ID, CONVERSATION_ID),
+      'messaging_not_participant',
+    )
+    expect(clearConversationForParticipant).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('reports a conversation that disappeared between the check and the update as unavailable', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({ clearConversationForParticipant: vi.fn(async () => false) }),
+    })
+
+    await expectCode(
+      context.service.deleteConversationForParticipant(VIEWER_ID, CONVERSATION_ID),
+      'messaging_not_participant',
+    )
+  })
 })

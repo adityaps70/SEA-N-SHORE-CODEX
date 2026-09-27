@@ -37,7 +37,7 @@ export async function PublicFooter() {
                     .filter((link) => signedIn || !link.signedInOnly)
                     .map((link) => (
                       <li key={link.href}>
-                        <Link href={link.href} className="inline-flex min-h-8 items-center text-sm font-semibold text-navy-900 hover:text-ocean-700">
+                        <Link href={link.href} className="inline-flex min-h-8 items-center text-sm font-semibold text-navy-900 hover:text-ocean-700 hover:underline">
                           {link.label}
                         </Link>
                       </li>

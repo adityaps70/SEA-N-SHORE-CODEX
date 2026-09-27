@@ -9,6 +9,15 @@ type FeedQuery = (text: string, values?: readonly unknown[]) => Promise<QueryRes
 type FeedRow = QueryResultRow & FeedPostRow
 type CommentRow = QueryResultRow & FeedCommentRow
 type PostInteractionRow = QueryResultRow & { id: string; author_id: string; post_type: FeedPostType }
+type PostManagementRow = QueryResultRow & {
+  id: string
+  author_id: string
+  company_id: string | null
+  post_type: FeedPostType
+  body: string
+}
+type CompanyIdentityRow = QueryResultRow & { id: string; slug: string; name: string; logo_path: string | null }
+type CompanyIdRow = QueryResultRow & { company_id: string | null }
 type CommentInteractionRow = QueryResultRow & {
   id: string
   post_id: string
@@ -48,6 +57,8 @@ export type ReactorRow = QueryResultRow & {
 export type FeedRowsLookup = {
   viewerProfileId: string
   category?: PostCategory
+  /** Only posts published as this organization. */
+  companyId?: string
   cursor?: FeedCursor
   limit: number
 }
@@ -77,8 +88,19 @@ const FEED_ROW_SELECT = `
     p.body,
     p.post_type::text as post_type,
     p.repost_of_post_id,
+    p.company_id,
     p.created_at,
     p.updated_at,
+    case when post_company.id is null then null else json_build_object(
+      'id', post_company.id,
+      'slug', post_company.slug,
+      'name', post_company.name,
+      'logo_path', post_company.logo_path
+    ) end as organization,
+    (post_company.id is not null and exists (
+      select 1 from public.organization_follows viewer_org_follow
+      where viewer_org_follow.follower_id = $1 and viewer_org_follow.company_id = post_company.id
+    )) as viewer_follows_organization,
     json_build_object(
       'id', author.id,
       'slug', author.slug,
@@ -145,6 +167,7 @@ const FEED_ROW_SELECT = `
   from public.posts p
   join public.profiles author on author.id = p.author_id
   left join public.maritime_profiles maritime on maritime.user_id = author.id
+  left join public.companies post_company on post_company.id = p.company_id
 ` as const
 
 function repostSourceVisibilitySql() {
@@ -244,6 +267,10 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       values.push(lookup.category)
       clauses.push(`p.category = $${values.length}`)
     }
+    if (lookup.companyId) {
+      values.push(lookup.companyId)
+      clauses.push(`p.company_id = $${values.length}`)
+    }
     if (lookup.cursor) {
       values.push(lookup.cursor.createdAt)
       const createdAtParameter = values.length
@@ -275,14 +302,20 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     ) as FeedRow[]
   }
 
-  async function listAuthorRows(lookup: { viewerProfileId: string; authorProfileId: string; limit?: number }): Promise<FeedPostRow[]> {
+  async function listAuthorRows(lookup: {
+    viewerProfileId: string
+    authorProfileId: string
+    limit?: number
+    /** Leave out posts published as an organization; they belong on the organization page. */
+    personalOnly?: boolean
+  }): Promise<FeedPostRow[]> {
     const values: unknown[] = [lookup.viewerProfileId, lookup.authorProfileId]
     const limitSql = lookup.limit === undefined ? '' : ' limit $3'
     if (lookup.limit !== undefined) values.push(lookup.limit)
     return await queryRows(
       `${FEED_ROW_SELECT}
        where p.author_id = $2
-         and p.deleted_at is null
+         and p.deleted_at is null${lookup.personalOnly ? '\n         and p.company_id is null' : ''}
          and ${visibilitySql()}
        order by p.created_at desc, p.id desc${limitSql}`,
       values,
@@ -637,6 +670,104 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     } : null
   }
 
+  /** The stored author and organization of a live post, for edit and delete checks. */
+  async function getPostForManagement(postId: string) {
+    const rows = await queryRows(
+      `select p.id, p.author_id, p.company_id, p.post_type::text as post_type, p.body
+       from public.posts p
+       where p.id = $1 and p.deleted_at is null
+       limit 1`,
+      [postId],
+    ) as PostManagementRow[]
+    const row = rows[0]
+    return row ? {
+      id: row.id,
+      authorId: row.author_id,
+      companyId: row.company_id ?? null,
+      postType: row.post_type,
+      body: row.body,
+    } : null
+  }
+
+  /** Organization of a post the author deleted and can still restore (null for personal posts). */
+  async function getRestorablePostCompanyId(ownerProfileId: string, postId: string) {
+    const rows = await queryRows(
+      `select p.company_id
+       from public.posts p
+       where p.author_id = $1
+         and p.id = $2
+         and p.deleted_by = $1
+         and p.deleted_at is not null
+         and p.purge_after > now()
+       limit 1`,
+      [ownerProfileId, postId],
+    ) as CompanyIdRow[]
+    return rows[0]?.company_id ?? null
+  }
+
+  /** Organization admins remove a post published as their organization. */
+  async function deleteOrganizationPost(actorProfileId: string, postId: string, companyId: string) {
+    const rows = await queryRows(
+      `update public.posts
+       set deleted_at = now(),
+           deleted_by = $1,
+           deletion_reason = 'Deleted by an organization administrator.',
+           purge_after = now() + interval '30 days',
+           updated_at = now()
+       where id = $2
+         and company_id = $3
+         and deleted_at is null
+       returning id`,
+      [actorProfileId, postId, companyId],
+    ) as DeletedPostRow[]
+    if (rows.length !== 1) return false
+    await queryRows(
+      `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+       values ($1, 'content.post_deleted_by_organization_admin', 'post', $2, jsonb_build_object('company_id', $3::text))`,
+      [actorProfileId, postId, companyId],
+    )
+    return true
+  }
+
+  async function updatePostBody(postId: string, body: string) {
+    const rows = await queryRows(
+      `update public.posts
+       set body = $2,
+           updated_at = now()
+       where id = $1 and deleted_at is null
+       returning id`,
+      [postId, body],
+    ) as IdRow[]
+    return rows.length === 1
+  }
+
+  async function replacePostMentions(actorId: string, postId: string, mentionedProfileIds: string[]) {
+    const previousRows = await queryRows(
+      `select mentioned_profile_id as id from public.content_mentions where post_id = $1`,
+      [postId],
+    ) as IdRow[]
+    const previousIds = new Set(previousRows.map((row) => row.id))
+    await queryRows(`delete from public.content_mentions where post_id = $1`, [postId])
+    const mentionProfileIds = await insertPostMentions(actorId, postId, mentionedProfileIds)
+    return {
+      mentionProfileIds,
+      newlyIntroducedProfileIds: mentionProfileIds.filter((profileId) => !previousIds.has(profileId)),
+    }
+  }
+
+  /** Name, slug and logo of the organizations a member may post for. */
+  async function listCompanyIdentities(companyIds: string[]) {
+    if (!companyIds.length) return []
+    const rows = await queryRows(
+      `select c.id, c.slug, c.name, c.logo_path
+       from public.companies c
+       where c.id = any($1::uuid[])
+       order by c.name asc, c.id asc`,
+      [companyIds],
+    ) as CompanyIdentityRow[]
+    return rows.map((row) => ({ id: row.id, slug: row.slug, name: row.name, logoPath: row.logo_path }))
+  }
+
   async function deleteOwnPost(ownerProfileId: string, postId: string) {
     const rows = await queryRows(
       `update public.posts
@@ -677,7 +808,14 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return mapCommentMutation(rows[0])
   }
 
-  async function insertStandardPost(input: { id: string; authorId: string; category: PostCategory; body: string }) {
+  async function insertStandardPost(input: { id: string; authorId: string; category: PostCategory; body: string; companyId?: string }) {
+    if (input.companyId) {
+      await queryRows(
+        `insert into public.posts (id, author_id, category, body, post_type, company_id) values ($1, $2, $3, $4, 'standard', $5)`,
+        [input.id, input.authorId, input.category, input.body, input.companyId],
+      )
+      return
+    }
     await queryRows(`insert into public.posts (id, author_id, category, body, post_type) values ($1, $2, $3, $4, 'standard')`, [input.id, input.authorId, input.category, input.body])
   }
 
@@ -694,8 +832,15 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return Boolean(rows[0]?.attached)
   }
 
-  async function insertPollPost(input: { id: string; authorId: string; category: PostCategory; body: string }) {
-    await queryRows(`insert into public.posts (id, author_id, category, body, post_type) values ($1, $2, $3, $4, 'poll')`, [input.id, input.authorId, input.category, input.body])
+  async function insertPollPost(input: { id: string; authorId: string; category: PostCategory; body: string; companyId?: string }) {
+    if (input.companyId) {
+      await queryRows(
+        `insert into public.posts (id, author_id, category, body, post_type, company_id) values ($1, $2, $3, $4, 'poll', $5)`,
+        [input.id, input.authorId, input.category, input.body, input.companyId],
+      )
+    } else {
+      await queryRows(`insert into public.posts (id, author_id, category, body, post_type) values ($1, $2, $3, $4, 'poll')`, [input.id, input.authorId, input.category, input.body])
+    }
     await queryRows(`insert into public.post_polls (post_id) values ($1)`, [input.id])
   }
 
@@ -896,6 +1041,12 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     canMentionProfile,
     getInteractablePost,
     getCommentForInteraction,
+    getPostForManagement,
+    getRestorablePostCompanyId,
+    deleteOrganizationPost,
+    updatePostBody,
+    replacePostMentions,
+    listCompanyIdentities,
     deleteOwnPost,
     updateOwnCommentWithinEditWindow,
     softDeleteOwnComment,

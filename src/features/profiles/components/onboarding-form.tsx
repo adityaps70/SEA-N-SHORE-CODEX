@@ -25,6 +25,7 @@ import {
 } from '../persona'
 import { DG_PROFILE_EXPLANATION, DG_PROFILE_VISIBILITY, type ProfileDocumentSummary } from '../profile-document-policy'
 import { DgProfileUpload } from './dg-profile-upload'
+import { OrganizationPicker } from './organization-picker'
 import { UsernameField } from './username-field'
 
 function firstError(state: ProfileActionState, field: string) {
@@ -159,7 +160,7 @@ function OnboardingFields({
                 className={`group relative rounded-2xl border p-4 text-left transition-all duration-200 ${
                   selected
                     ? 'border-ocean-600 bg-ocean-50 shadow-[0_12px_30px_rgba(15,113,151,0.10)] ring-1 ring-ocean-200'
-                    : 'border-mist-100 bg-white hover:-translate-y-0.5 hover:border-ocean-300 hover:shadow-md'
+                    : 'border-mist-200 bg-white hover:-translate-y-0.5 hover:border-ocean-300 hover:shadow-md'
                 }`}
               >
                 <span className={`mb-3 grid size-10 place-items-center rounded-xl transition ${
@@ -205,7 +206,7 @@ function OnboardingFields({
                   className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
                     selected
                       ? 'border-ocean-700 bg-ocean-700 text-white'
-                      : 'border-mist-100 bg-white text-navy-900 hover:border-ocean-300'
+                      : 'border-mist-200 bg-white text-navy-900 hover:border-ocean-300'
                   }`}
                 >
                   {selected ? '✓ ' : ''}{option.label}
@@ -259,12 +260,11 @@ function OnboardingFields({
                   error={firstError(state, 'rank')}
                   required
                 />
-                <Field
+                <OnboardingOrganizationPicker
                   label="Current / last organisation"
-                  name="currentCompany"
-                  defaultValue={values?.currentCompany}
-                  error={firstError(state, 'currentCompany')}
-                  autoComplete="organization"
+                  values={values}
+                  revision={state.revision}
+                  error={firstError(state, 'currentCompany') ?? firstError(state, 'currentCompanyId')}
                 />
               </>
             ) : null}
@@ -277,12 +277,11 @@ function OnboardingFields({
                   defaultValue={values?.headline}
                   error={firstError(state, 'headline')}
                 />
-                <Field
+                <OnboardingOrganizationPicker
                   label="Current organisation"
-                  name="currentCompany"
-                  defaultValue={values?.currentCompany}
-                  error={firstError(state, 'currentCompany')}
-                  autoComplete="organization"
+                  values={values}
+                  revision={state.revision}
+                  error={firstError(state, 'currentCompany') ?? firstError(state, 'currentCompanyId')}
                 />
               </>
             ) : null}
@@ -295,12 +294,11 @@ function OnboardingFields({
                   defaultValue={values?.headline}
                   error={firstError(state, 'headline')}
                 />
-                <Field
+                <OnboardingOrganizationPicker
                   label="Current organisation"
-                  name="currentCompany"
-                  defaultValue={values?.currentCompany}
-                  error={firstError(state, 'currentCompany')}
-                  autoComplete="organization"
+                  values={values}
+                  revision={state.revision}
+                  error={firstError(state, 'currentCompany') ?? firstError(state, 'currentCompanyId')}
                 />
               </>
             ) : null}
@@ -314,12 +312,11 @@ function OnboardingFields({
                   error={firstError(state, 'specialization')}
                   hint="For example: SIRE 2.0, navigation, human factors or marine engineering."
                 />
-                <Field
+                <OnboardingOrganizationPicker
                   label="Organisation / institute"
-                  name="currentCompany"
-                  defaultValue={values?.currentCompany}
-                  error={firstError(state, 'currentCompany')}
-                  autoComplete="organization"
+                  values={values}
+                  revision={state.revision}
+                  error={firstError(state, 'currentCompany') ?? firstError(state, 'currentCompanyId')}
                 />
               </>
             ) : null}
@@ -397,6 +394,36 @@ function OnboardingFields({
   )
 }
 
+const onboardingInputClass = 'min-h-12 w-full rounded-xl border border-mist-100 bg-white px-4 text-base text-ink shadow-sm outline-none placeholder:text-muted focus:border-ocean-700'
+
+/** Current organization field with the Sea N Shore organization type-ahead. */
+function OnboardingOrganizationPicker({
+  label,
+  values,
+  revision,
+  error,
+}: {
+  label: string
+  values: ProfileActionState['values']
+  /** Each server response restarts the picker from the values that were submitted. */
+  revision?: number
+  error?: string
+}) {
+  const name = values?.currentCompany ?? ''
+  const id = values?.currentCompanyId ?? ''
+  return (
+    <OrganizationPicker
+      key={revision ?? 0}
+      label={label}
+      defaultName={name}
+      defaultOrganization={id && name.trim() ? { id, name: name.trim() } : null}
+      error={error}
+      labelClassName="grid gap-2 text-sm font-medium text-navy-900"
+      inputClassName={onboardingInputClass}
+    />
+  )
+}
+
 const onboardingFieldLabels: Record<string, string> = {
   persona: 'Profile',
   profileIntents: 'What you are here to do',
@@ -429,6 +456,7 @@ function captureSubmittedActivationValues(formData: FormData): ProfileActionStat
     location: text('location'),
     rank: text('rank'),
     currentCompany: text('currentCompany'),
+    currentCompanyId: text('currentCompanyId'),
     headline: text('headline'),
     specialization: text('specialization'),
     institutionName: text('institutionName'),

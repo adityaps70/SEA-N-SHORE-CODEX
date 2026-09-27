@@ -301,3 +301,31 @@ describe('OnboardingForm username and DG profile', () => {
     expect(screen.getByText('dg.pdf')).toBeInTheDocument()
   })
 })
+
+describe('OnboardingForm current organization', () => {
+  it('uses the organization picker and keeps a linked organization after a failed submit', async () => {
+    actionMocks.completeActivation.mockResolvedValueOnce({
+      revision: 1,
+      fieldErrors: { slug: ['That username is already in use. Choose a different username and try again.'] },
+      values: {
+        persona: 'shore_professional',
+        profileIntents: JSON.stringify(['network']),
+        fullName: 'Asha Singh',
+        slug: 'asha-singh',
+        currentCompany: 'Oceanic Ship Management',
+        currentCompanyId: '22222222-2222-4222-8222-222222222222',
+        contactVisibility: 'members',
+      },
+    })
+
+    const { container } = render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Shore Professional' }))
+    expect(screen.getByRole('combobox', { name: 'Current organisation' })).toBeInTheDocument()
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Complete profile' }).closest('form')!)
+
+    await screen.findByText(/That username is already in use/)
+    expect(screen.getByRole('combobox', { name: 'Current organisation' })).toHaveValue('Oceanic Ship Management')
+    expect(container.querySelector<HTMLInputElement>('input[name="currentCompanyId"]')).toHaveValue('22222222-2222-4222-8222-222222222222')
+  })
+})

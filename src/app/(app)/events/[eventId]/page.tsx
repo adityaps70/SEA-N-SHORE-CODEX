@@ -177,7 +177,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.15em] text-muted">Hosted by</p>
               {event.publisherType === 'personal' && event.publisherSlug ? (
-                <Link href={`/profile/${event.publisherSlug}`} className="mt-1 block font-bold text-navy-950 hover:text-teal-700">
+                <Link href={`/profile/${event.publisherSlug}`} className="mt-1 block font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
                   {event.publisherName}
                 </Link>
               ) : (
@@ -198,7 +198,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
 
             {event.viewerIsHost ? (
               <div className="space-y-2">
-                <Link href={`/events/${event.id}/edit`} className="block min-h-12 rounded-xl bg-navy-950 px-4 py-3 text-center text-sm font-bold text-white">Manage event</Link>
+                <Link href={`/events/${event.id}/edit`} className="block min-h-12 rounded-xl bg-navy-950 px-4 py-3 text-center text-sm font-bold text-white hover:bg-navy-800 transition-colors">Manage event</Link>
                 {isPaidEvent ? (
                   <Link href={`/events/${event.id}/registrations`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 transition hover:border-teal-300 hover:bg-teal-50">
                     <ReceiptText className="h-4 w-4 text-teal-700" aria-hidden="true" />
@@ -270,7 +270,7 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
                 href={event.meetingUrl ?? undefined}
                 target="_blank"
                 rel="noreferrer"
-                className="block min-h-12 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-center text-sm font-bold text-teal-800"
+                className="block min-h-12 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-center text-sm font-bold text-teal-800 hover:bg-teal-100 hover:border-teal-300 transition-colors"
               >
                 Join online session
               </a>

@@ -64,20 +64,20 @@ export default async function AdminLearningAnalyticsPage() {
       <nav aria-label="Learning administration" className="flex flex-wrap gap-2">
         <Link
           href="/admin/learning"
-          className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
+          className="rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950"
         >
           Trainer verifications
         </Link>
         <Link
           href="/admin/learning/courses"
-          className="rounded-full border border-mist-100 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:text-navy-950"
+          className="rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-bold text-muted transition hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950"
         >
           Course review
         </Link>
         <Link
           href="/admin/learning/analytics"
           aria-current="page"
-          className="rounded-full bg-navy-950 px-4 py-2 text-sm font-bold text-white"
+          className="rounded-full bg-navy-950 px-4 py-2 text-sm font-bold text-white hover:bg-navy-800 transition-colors"
         >
           Analytics
         </Link>

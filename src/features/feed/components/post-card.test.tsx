@@ -48,82 +48,87 @@ const post: FeedPost = {
 afterEach(() => cleanup())
 
 describe('PostCard', () => {
-  it('renders one compact icon-only action row: Like · Comment · Repost/Share · Send, with the reaction total first', () => {
+  it('renders one action row: [Like 4] [Comment 2] [Repost] [Send] with the reaction types at the far right', () => {
     render(<PostCard post={post} />)
     expect(screen.getByRole('article')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Member A' })).toHaveAttribute('href', '/people/member-a')
 
     const actions = screen.getByRole('group', { name: 'Post actions' })
-    const primaryReactionControl = within(actions).getByRole('button', { name: /^Like$/i })
-    expect(primaryReactionControl.querySelector('svg.lucide-thumbs-up')).toBeInTheDocument()
-
-    // The reaction total sits on the left, above the action row (LinkedIn-style), count first.
-    const socialCounts = screen.getByTestId('post-social-counts')
-    const reactionCount = within(socialCounts).getByRole('button', { name: 'View 4 reactions' })
-    expect(reactionCount).toHaveTextContent(/^4👍$/)
-    expect(reactionCount).not.toHaveTextContent(/reaction/i)
-    expect(socialCounts.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(within(actions).queryByRole('button', { name: /View \d+ reactions/ })).not.toBeInTheDocument()
+    const likeButton = within(actions).getByRole('button', { name: /^Like$/i })
+    expect(likeButton.querySelector('svg.lucide-thumbs-up')).toBeInTheDocument()
+    // The total reaction count sits inside the Like button, after the label.
+    expect(likeButton).toHaveTextContent(/^Like4$/)
 
     const commentButton = within(actions).getByRole('button', { name: /^Comment$/i })
-    expect(commentButton).toHaveTextContent('2')
-    expect(commentButton).not.toHaveTextContent('Comment')
-
-    const shareButton = within(actions).getByRole('button', { name: /^Share$/i })
-    expect(shareButton).not.toHaveTextContent('Share')
-
+    expect(commentButton).toHaveTextContent(/^Comment2$/)
+    const repostButton = within(actions).getByRole('button', { name: /^Repost$/i })
+    expect(repostButton).toHaveTextContent('Repost')
     const sendButton = within(actions).getByRole('button', { name: /^Send$/i })
-    expect(sendButton).not.toHaveTextContent('Send')
+    expect(sendButton).toHaveTextContent('Send')
 
-    // Save and Report moved into the post header "⋯" menu.
+    // Far right of the same row: the reaction types only (no number); it opens the reactor list.
+    const reactionTypes = within(actions).getByRole('button', { name: 'View 4 reactions' })
+    expect(reactionTypes).toHaveTextContent(/^👍$/)
+    expect(within(actions).getByTestId('post-primary-actions')).not.toContainElement(reactionTypes)
+
+    // No separate summary line above the row any more.
+    expect(screen.queryByTestId('post-social-counts')).not.toBeInTheDocument()
+
+    // Save and Report stay in the post header "⋯" menu.
     expect(within(actions).queryByRole('button', { name: /^Save$/i })).not.toBeInTheDocument()
     expect(within(actions).queryByRole('button', { name: /report/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Post options' })).toBeInTheDocument()
 
-    const order = [reactionCount, primaryReactionControl, commentButton, shareButton, sendButton]
+    const order = [likeButton, commentButton, repostButton, sendButton, reactionTypes]
     for (let index = 1; index < order.length; index += 1) {
       expect(order[index - 1].compareDocumentPosition(order[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     }
 
-    expect(screen.queryByText('4 reactions')).not.toBeInTheDocument()
-    expect(screen.queryByText('2 comments')).not.toBeInTheDocument()
-
-    fireEvent.click(reactionCount)
+    fireEvent.click(reactionTypes)
     expect(screen.getByRole('dialog', { name: /reactions/i })).toBeInTheDocument()
 
     expect(screen.getByText((_, element) => element?.tagName === 'TIME')).toHaveAttribute('datetime', post.createdAt)
     expect(screen.queryByText(/Verified/i)).not.toBeInTheDocument()
   })
 
-  it('places the reaction total on the left of the reaction-type symbols', () => {
-    render(<PostCard post={{ ...post, reactionSummary: { like: 9, support: 2, respect: 0, on_point: 1 } }} />)
-    const summary = screen.getByRole('button', { name: 'View 12 reactions' })
-    expect(summary).toHaveTextContent(/^12👍❤️⚓$/)
-    const count = within(summary).getByTestId('reaction-summary-count')
-    expect(count).toHaveTextContent('12')
-    expect(summary.firstElementChild).toBe(count)
+  it('shows every reaction type present, stacked, and hides the types control when nobody reacted', () => {
+    const { rerender } = render(<PostCard post={{ ...post, reactionSummary: { like: 9, support: 2, respect: 0, on_point: 1 } }} />)
+    const types = screen.getByRole('button', { name: 'View 12 reactions' })
+    expect(types).toHaveTextContent(/^👍❤️⚓$/)
+    expect(screen.getByRole('button', { name: /^Like$/i })).toHaveTextContent(/^Like12$/)
+
+    rerender(<PostCard post={{ ...post, id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', likeCount: 0, commentCount: 0, reactionSummary: { like: 0, support: 0, respect: 0, on_point: 0 } }} />)
+    expect(screen.queryByRole('button', { name: /View \d+ reactions?/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Like$/i })).toHaveTextContent(/^Like$/)
+    expect(screen.getByRole('button', { name: /^Comment$/i })).toHaveTextContent(/^Comment$/)
   })
 
-  it('groups primary post actions on the left with LinkedIn-like spacing', () => {
+  it('shows the chosen reaction and its label in the accent colour on the Like button', () => {
+    render(<PostCard post={{ ...post, viewerReaction: 'support', reactionSummary: { like: 3, support: 1, respect: 0, on_point: 0 } }} />)
+    const reacted = within(screen.getByRole('group', { name: 'Post actions' })).getByRole('button', { name: 'Support' })
+    expect(reacted).toHaveTextContent(/^❤️Support4$/)
+    expect(reacted).toHaveClass('text-ocean-700')
+    expect(reacted).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('uses bordered, clickable action buttons whose labels hide on narrow rows but keep icons and counts', () => {
     render(<PostCard post={post} />)
 
     const actions = screen.getByRole('group', { name: 'Post actions' })
-    const primaryActions = within(actions).getByTestId('post-primary-actions')
-    const reactionButton = within(primaryActions).getByRole('button', { name: /^Like$/i })
-    const commentButton = within(primaryActions).getByRole('button', { name: /^Comment$/i })
-    const shareButton = within(primaryActions).getByRole('button', { name: /^Share$/i })
-    const sendButton = within(primaryActions).getByRole('button', { name: /^Send$/i })
-
-    expect(actions).toHaveClass('flex')
+    expect(actions).toHaveClass('@container')
     expect(actions).toHaveClass('justify-between')
-    expect(actions).toHaveClass('px-3')
-    expect(primaryActions).toHaveClass('flex')
-    expect(primaryActions).toHaveClass('gap-2')
-    expect(primaryActions).toHaveClass('sm:gap-3')
-    expect(reactionButton.querySelector('svg')).toHaveClass('size-5')
-    expect(commentButton.querySelector('svg')).toHaveClass('size-5')
-    expect(shareButton.querySelector('svg')).toHaveClass('size-5')
-    expect(sendButton.querySelector('svg')).toHaveClass('size-5')
+    const primaryActions = within(actions).getByTestId('post-primary-actions')
+    const buttons = ['Like', 'Comment', 'Repost', 'Send'].map((name) => within(primaryActions).getByRole('button', { name }))
+    for (const button of buttons) {
+      expect(button).toHaveClass('border')
+      expect(button).toHaveClass('cursor-pointer')
+      expect(button.querySelector('svg')).toHaveClass('size-5')
+    }
+    expect(within(buttons[0]).getByText('Like')).toHaveClass('hidden', '@min-[34rem]:inline')
+    expect(within(buttons[1]).getByText('Comment')).toHaveClass('hidden', '@min-[34rem]:inline')
+    expect(within(buttons[1]).getByTestId('comment-count')).not.toHaveClass('hidden')
+    expect(within(buttons[2]).getByText('Repost')).toHaveClass('hidden', '@min-[34rem]:inline')
+    expect(within(buttons[3]).getByText('Send')).toHaveClass('hidden', '@min-[34rem]:inline')
   })
 
   it('wraps long unbroken links inside the post card instead of bleeding outside the card', () => {
@@ -252,7 +257,8 @@ describe('PostCard', () => {
 
     const actions = screen.getByRole('group', { name: 'Post actions' })
     expect(within(actions).getByRole('button', { name: /^Support$/i })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'View 6 reactions' })).toHaveTextContent('6')
+    expect(within(actions).getByRole('button', { name: /^Support$/i })).toHaveTextContent('6')
+    expect(screen.getByRole('button', { name: 'View 6 reactions' })).toHaveTextContent(/^👍❤️$/)
     fireEvent.click(screen.getByRole('button', { name: 'Post options' }))
     expect(screen.getByRole('menuitem', { name: 'Remove from saved' })).toBeInTheDocument()
   })

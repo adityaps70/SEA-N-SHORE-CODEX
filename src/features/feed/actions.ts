@@ -26,7 +26,9 @@ import {
   reactionDetailsSchema,
   reactionSchema,
   repostInputSchema,
+  REPOST_COMMENTARY_MAX,
   updateCommentInputSchema,
+  updatePostInputSchema,
 } from './schemas'
 import {
   addPostCommentWithAurora,
@@ -45,11 +47,17 @@ import {
   setPostReactionWithAurora,
   setPostSavedWithAurora,
   updateCommentWithAurora,
+  updatePostWithAurora,
 } from './service'
-import { POST_CATEGORIES, type FeedComment, type FeedRequest, type PostCategory, type PostReactionType } from './types'
+import { POST_CATEGORIES, type FeedComment, type FeedPost, type FeedRequest, type PostCategory, type PostReactionType } from './types'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
 export type RepostActionResult = { ok: true; postId: string } | { ok: false; error: string }
+export type UpdatePostActionResult =
+  | { ok: true; post: Pick<FeedPost, 'id' | 'body' | 'mentions'> }
+  | { ok: false; error: string }
+
+const ORGANIZATION_POST_FORBIDDEN_MESSAGE = 'You can no longer post for this organization. Choose "Yourself" under "Post as", or ask an organization admin for a content role.'
 
 export type PostMediaUploadActionResult =
   | { ok: true; upload: Awaited<ReturnType<typeof createPendingPostMediaUpload>> }
@@ -125,6 +133,7 @@ function postInputFromFormData(formData: FormData) {
     pollOptions: formData.getAll('pollOption'),
     media: postMediaReferencesFromFormData(formData),
     mentionProfileIds: mentionIds(formData),
+    companyId: formData.get('companyId'),
   }
 }
 
@@ -165,6 +174,7 @@ async function flagAutomatedModeration(
 
 function revalidateSocialFeed() {
   revalidatePath('/home')
+  revalidatePath('/organizations/[slug]', 'page')
   revalidatePath('/activities')
   revalidatePath('/profile')
   revalidatePath('/people/[slug]', 'page')
@@ -293,11 +303,13 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         body: data.body,
         pollOptions: data.pollOptions,
         mentionProfileIds: data.mentionProfileIds,
+        ...(data.companyId ? { companyId: data.companyId } : {}),
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: false })
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', hasMedia: false, errorCode: safeErrorCode(error) })
+      if (safeErrorCode(error) === 'feed_organization_post_forbidden') return { error: ORGANIZATION_POST_FORBIDDEN_MESSAGE, values: safePostValues(formData) }
       return { error: 'We could not publish your poll. Your entries are still here.', values: safePostValues(formData) }
     }
   } else if (data.media?.length) {
@@ -332,11 +344,16 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
           pageCount: media.pageCount,
         })),
         mentionProfileIds: data.mentionProfileIds,
+        ...(data.companyId ? { companyId: data.companyId } : {}),
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: true, mediaCount: data.media.length })
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', postId, hasMedia: true, errorCode: safeErrorCode(error) })
+      if (safeErrorCode(error) === 'feed_organization_post_forbidden') {
+        // Keep the uploaded media: the member can switch to posting as themselves and publish it.
+        return { error: ORGANIZATION_POST_FORBIDDEN_MESSAGE, values: safePostValues(formData) }
+      }
       await Promise.allSettled(data.media.map((media) => removeFeedImage(media.storagePath)))
       return { error: 'We could not attach your media, so the post was not published.', values: safePostValues(formData) }
     }
@@ -346,11 +363,13 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         category: data.category,
         body: data.body,
         mentionProfileIds: data.mentionProfileIds,
+        ...(data.companyId ? { companyId: data.companyId } : {}),
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: false })
     } catch (error) {
       console.error('[feed_publish_failed]', { stage: 'aurora_create', hasMedia: false, errorCode: safeErrorCode(error) })
+      if (safeErrorCode(error) === 'feed_organization_post_forbidden') return { error: ORGANIZATION_POST_FORBIDDEN_MESSAGE, values: safePostValues(formData) }
       return { error: 'We could not publish your post. Your entries are still here.', values: safePostValues(formData) }
     }
   }
@@ -378,6 +397,7 @@ export async function loadReactionDetails(input: unknown) {
 }
 
 const postIdSchema = z.string().uuid()
+const REPOST_COMMENTARY_LIMIT_LABEL = REPOST_COMMENTARY_MAX.toLocaleString('en')
 const commentIdSchema = z.string().uuid()
 
 export async function deletePost(postId: string): Promise<FeedActionResult> {
@@ -391,6 +411,44 @@ export async function deletePost(postId: string): Promise<FeedActionResult> {
   return { ok: true }
 }
 
+/**
+ * Edits a post's text. Authors can edit their own posts; for organization posts the author
+ * must still post for that organization, and its owners and administrators can edit too.
+ */
+export async function updatePost(input: { postId: string; body: string; mentionProfileIds?: string[] }): Promise<UpdatePostActionResult> {
+  const parsed = updatePostInputSchema.safeParse(input)
+  if (!parsed.success) {
+    const fieldErrors = parsed.error.flatten().fieldErrors
+    return { ok: false, error: fieldErrors.body?.[0] ?? fieldErrors.mentionProfileIds?.[0] ?? 'This post could not be found. Refresh the page and try again.' }
+  }
+  const moderation = parsed.data.body ? assessPlatformText([parsed.data.body]) : null
+  if (moderation?.decision === 'block') return { ok: false, error: moderationBlockMessage() }
+  const user = await requireAwsUser()
+  try {
+    await updatePostWithAurora(user.id, parsed.data.postId, {
+      body: parsed.data.body,
+      mentionProfileIds: parsed.data.mentionProfileIds,
+    })
+  } catch (error) {
+    const code = safeErrorCode(error)
+    if (code === 'feed_post_edit_forbidden') return { ok: false, error: 'You can no longer edit this post. Only its author and the organization admins can change it.' }
+    if (code === 'feed_post_body_required') return { ok: false, error: 'Write something before saving.' }
+    if (code === 'feed_post_body_too_long') return { ok: false, error: `Keep your thoughts to ${REPOST_COMMENTARY_LIMIT_LABEL} characters or fewer.` }
+    if (code === 'feed_interaction_unavailable') return { ok: false, error: 'This post is no longer available. Refresh the page to see the latest feed.' }
+    return { ok: false, error: 'We could not save your changes. Your edits are still here; please try again.' }
+  }
+  if (moderation) await flagAutomatedModeration('post', parsed.data.postId, moderation)
+  revalidatePath('/saved')
+  revalidateSocialFeed()
+  const refreshed = await getPostById(parsed.data.postId).catch(() => null)
+  return {
+    ok: true,
+    post: refreshed
+      ? { id: refreshed.id, body: refreshed.body, mentions: refreshed.mentions ?? [] }
+      : { id: parsed.data.postId, body: parsed.data.body, mentions: [] },
+  }
+}
+
 export async function restoreDeletedPost(postId: string): Promise<FeedActionResult> {
   const parsedId = postIdSchema.safeParse(postId)
   if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
@@ -398,9 +456,13 @@ export async function restoreDeletedPost(postId: string): Promise<FeedActionResu
   try {
     await restoreDeletedPostWithAurora(user.id, parsedId.data)
   } catch (error) {
+    const code = safeErrorCode(error)
+    if (code === 'feed_post_restore_organization_forbidden') {
+      return { ok: false, error: 'This post was published as an organization you no longer post for, so it cannot be restored. Ask an organization admin for a content role first.' }
+    }
     return {
       ok: false,
-      error: safeErrorCode(error) === 'feed_post_restore_unavailable'
+      error: code === 'feed_post_restore_unavailable'
         ? 'This post can no longer be restored.'
         : 'We could not restore this post.',
     }

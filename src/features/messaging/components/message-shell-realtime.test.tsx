@@ -37,6 +37,10 @@ const realtime = vi.hoisted(() => {
   }
 })
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}))
+
 vi.mock('../unread-client', () => ({
   publishMessagingUnreadCount: unread.publishMessagingUnreadCount,
   getMessagingUnreadCountSnapshot: unread.getMessagingUnreadCountSnapshot,

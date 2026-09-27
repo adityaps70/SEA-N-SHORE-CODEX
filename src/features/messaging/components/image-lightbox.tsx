@@ -210,7 +210,7 @@ function LightboxDialog({
           aria-pressed={zoomed}
           aria-label={zoomed ? 'Fit photo to screen' : 'Zoom in'}
           title={zoomed ? 'Fit to screen' : 'Zoom in'}
-          className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"
+          className="cursor-pointer grid size-11 shrink-0 place-items-center rounded-full bg-white/10 transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-40"
         >
           {zoomed ? <Maximize2 aria-hidden="true" className="size-5" /> : <ZoomIn aria-hidden="true" className="size-5" />}
         </button>
@@ -231,7 +231,7 @@ function LightboxDialog({
           onClick={onClose}
           aria-label="Close photo viewer"
           title="Close (Esc)"
-          className="grid size-11 shrink-0 place-items-center rounded-full bg-white/10 transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          className="cursor-pointer grid size-11 shrink-0 place-items-center rounded-full bg-white/10 transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <X aria-hidden="true" className="size-5" />
         </button>
@@ -264,7 +264,7 @@ function LightboxDialog({
                     setFailedImageId(null)
                     setRetryCount((count) => count + 1)
                   }}
-                  className="mt-4 inline-flex min-h-10 items-center rounded-xl bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50"
+                  className="cursor-pointer mt-4 inline-flex min-h-10 items-center rounded-xl bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50"
                 >
                   Try again
                 </button>
@@ -293,7 +293,7 @@ function LightboxDialog({
             type="button"
             onClick={() => goTo(index - 1)}
             aria-label="Previous photo"
-            className="absolute left-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-navy-950/60 text-white ring-1 ring-white/20 transition hover:bg-navy-950/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:left-5"
+            className="cursor-pointer absolute left-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-navy-950/60 text-white ring-1 ring-white/20 transition hover:bg-navy-950/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:left-5"
           >
             <ChevronLeft aria-hidden="true" className="size-6" />
           </button>
@@ -303,7 +303,7 @@ function LightboxDialog({
             type="button"
             onClick={() => goTo(index + 1)}
             aria-label="Next photo"
-            className="absolute right-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-navy-950/60 text-white ring-1 ring-white/20 transition hover:bg-navy-950/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:right-5"
+            className="cursor-pointer absolute right-2 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-navy-950/60 text-white ring-1 ring-white/20 transition hover:bg-navy-950/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:right-5"
           >
             <ChevronRight aria-hidden="true" className="size-6" />
           </button>

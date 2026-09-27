@@ -5,6 +5,7 @@ import {
   PROFILE_INTENTS,
   personaUsesProfessionalCompany,
 } from './persona'
+import { optionalOrganizationIdSchema } from './organization-link'
 import { PROFILE_TYPES } from './types'
 import { usernameSchema } from './username'
 
@@ -80,6 +81,7 @@ const onboardingFieldsSchema = z
     skills: termsSchema,
     rank: optionalText(100, 'Keep your rank to 100 characters or fewer.'),
     currentCompany: optionalText(160, 'Keep the company or organisation name to 160 characters or fewer.'),
+    currentCompanyId: optionalOrganizationIdSchema,
     currentVessel: optionalText(160, 'Keep the vessel name to 160 characters or fewer.'),
     sailingExperienceYears: sailingExperienceSchema,
     vesselTypes: termsSchema,
@@ -126,6 +128,7 @@ const activationFieldsSchema = z.object({
   slug: usernameSchema,
   location: optionalText(120, 'Keep your location to 120 characters or fewer.'),
   currentCompany: optionalText(160, 'Keep the company or organisation name to 160 characters or fewer.'),
+  currentCompanyId: optionalOrganizationIdSchema,
   rank: optionalText(100, 'Keep your rank to 100 characters or fewer.'),
   headline: optionalText(160, 'Keep your professional headline to 160 characters or fewer.'),
   specialization: optionalText(500, 'Keep your specialization to 500 characters or fewer.'),
@@ -144,6 +147,7 @@ function discardIrrelevantPersonaValues(value: unknown) {
     ...source,
     rank: persona === 'seafarer' ? source.rank : undefined,
     currentCompany: personaUsesProfessionalCompany(persona) ? source.currentCompany : undefined,
+    currentCompanyId: personaUsesProfessionalCompany(persona) ? source.currentCompanyId : undefined,
     specialization: persona === 'trainer_instructor' ? source.specialization : undefined,
     institutionName: persona === 'student_cadet' ? source.institutionName : undefined,
     familyRelationship: persona === 'seafarer_family' ? source.familyRelationship : undefined,

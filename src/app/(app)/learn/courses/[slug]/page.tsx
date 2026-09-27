@@ -11,7 +11,6 @@ import {
   Globe2,
   GraduationCap,
   ShieldCheck,
-  Sparkles,
   Users,
 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -111,19 +110,19 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
         <div className="grid lg:grid-cols-[1.45fr_0.55fr]">
           <div className="p-6 sm:p-8 lg:p-10">
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-teal-100">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-teal-100">
                 <BookOpen aria-hidden="true" className="size-3.5" /> {course.category}
               </span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-white/80">
+              <span className="rounded-full bg-white/10 px-3 py-1 text-white/80">
                 {levelLabel(course.level)}
               </span>
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-white/80">
+              <span className="rounded-full bg-white/10 px-3 py-1 text-white/80">
                 {formatLabel(course.courseFormat)}
               </span>
             </div>
 
             <p className="mt-6 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.17em] text-teal-200">
-              <Sparkles aria-hidden="true" className="size-4" /> Sea N Shore Learning
+              Sea N Shore Learning
             </p>
             <h1 className="mt-3 max-w-4xl text-3xl font-bold tracking-tight sm:text-4xl lg:text-5xl">
               {course.title}
@@ -134,11 +133,11 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
             <CourseDescription text={course.description} />
 
             <div className="mt-7 flex flex-wrap gap-2 text-xs font-bold text-white/82">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
                 <Globe2 aria-hidden="true" className="size-3.5 text-teal-200" /> {course.language}
               </span>
               {course.certificateEnabled ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
                   <Award aria-hidden="true" className="size-3.5 text-teal-200" /> Certificate
                 </span>
               ) : null}

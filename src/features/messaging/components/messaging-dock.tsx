@@ -20,6 +20,11 @@ import {
   publishMessagingUnreadCount,
   subscribeMessagingUnreadCount,
 } from '../unread-client'
+import {
+  ConversationActionsMenu,
+  messagingProfileHref,
+  type DeletedConversationResult,
+} from './conversation-actions'
 import { ImageLightbox } from './image-lightbox'
 import { MessageComposer, type OptimisticMessagingMessage } from './message-composer'
 import { lightboxImagesFromMessages } from './message-thread'
@@ -136,6 +141,7 @@ function inboxItemFromSelection(
     otherName: selection.recipient.name,
     otherHeadline: selection.recipient.subtitle,
     otherAvatarUrl: selection.recipient.avatarUrl,
+    otherSlug: selection.recipient.slug || null,
     lastMessageId: null,
     lastMessageBody: null,
     lastMessageSenderId: null,
@@ -308,7 +314,8 @@ export function MessagingDock({
     bottomRef.current?.scrollIntoView?.({ block: 'end', behavior: 'auto' })
   }, [messages.length, otherTyping])
 
-  const title = active?.otherName ?? 'Messaging'
+  const title = active ? (active.otherName ?? 'Sea N Shore member') : 'Messaging'
+  const activeProfileHref = active ? messagingProfileHref(active.otherSlug) : null
   const peerReadCursor = active?.otherLastReadMessageId && active.otherLastReadAt
     ? {
         id: active.otherLastReadMessageId,
@@ -348,6 +355,19 @@ export function MessagingDock({
       .catch(() => undefined)
   }
 
+  function onActiveConversationDeleted(result: DeletedConversationResult) {
+    lastReadMessageIdRef.current = null
+    setActive(null)
+    setMessages([])
+    setOtherTyping(false)
+    setLightboxImageId(null)
+    setInbox((current) => current.filter((item) => item.conversationId !== result.conversationId))
+    if (result.unreadCount != null) {
+      publishMessagingUnreadCount(result.unreadCount)
+      setUnreadCount(result.unreadCount)
+    }
+  }
+
   function addOptimistic(message: OptimisticMessagingMessage) {
     setMessages((current) => [
       ...current.filter((item) => item.clientMessageId !== message.clientMessageId),
@@ -384,9 +404,9 @@ export function MessagingDock({
       {open ? (
         <section
           aria-label="Messaging dock"
-          className="flex h-[min(36rem,calc(100vh-7rem))] w-[23rem] flex-col overflow-hidden rounded-t-2xl border border-b-0 border-mist-100 bg-white shadow-2xl"
+          className="flex h-[min(36rem,calc(100vh-7rem))] w-[25rem] flex-col overflow-hidden rounded-t-2xl border border-b-0 border-mist-100 bg-white shadow-2xl"
         >
-          <header className="flex min-h-14 items-center gap-2 border-b border-mist-100 px-3">
+          <header className="flex min-h-14 items-center gap-1.5 border-b border-mist-100 px-3">
             {active ? (
               <button
                 type="button"
@@ -397,7 +417,7 @@ export function MessagingDock({
                   setMessages([])
                   setOtherTyping(false)
                 }}
-                className="grid size-8 place-items-center rounded-lg text-muted hover:bg-mist-50 hover:text-navy-950"
+                className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
               >
                 <ArrowLeft aria-hidden="true" className="size-4" />
               </button>
@@ -405,9 +425,26 @@ export function MessagingDock({
               <MessageCircleMore aria-hidden="true" className="size-5 text-ocean-700" />
             )}
 
-            {active ? avatar(active, 'dock-peer-avatar', 'size-8') : null}
+            {active && activeProfileHref ? (
+              <Link
+                href={activeProfileHref}
+                aria-label={`View ${title}'s profile`}
+                className="shrink-0 cursor-pointer rounded-full transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+              >
+                {avatar(active, 'dock-peer-avatar', 'size-8')}
+              </Link>
+            ) : active ? avatar(active, 'dock-peer-avatar', 'size-8') : null}
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-navy-950">{title}</p>
+              <p className="truncate text-sm font-bold text-navy-950">
+                {activeProfileHref ? (
+                  <Link
+                    href={activeProfileHref}
+                    className="cursor-pointer rounded-sm hover:text-ocean-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+                  >
+                    {title}
+                  </Link>
+                ) : title}
+              </p>
               {active?.otherHeadline ? (
                 <p className="truncate text-[11px] text-muted">{active.otherHeadline}</p>
               ) : null}
@@ -420,7 +457,7 @@ export function MessagingDock({
                 title="New message"
                 aria-haspopup="dialog"
                 onClick={() => setNewMessageOpen(true)}
-                className="grid size-8 place-items-center rounded-lg text-muted hover:bg-mist-50 hover:text-ocean-700"
+                className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
               >
                 <SquarePen aria-hidden="true" className="size-4" />
               </button>
@@ -429,16 +466,24 @@ export function MessagingDock({
               <Link
                 href={`/messages/${active.conversationId}`}
                 aria-label="Open full conversation"
-                className="grid size-8 place-items-center rounded-lg text-muted hover:bg-mist-50 hover:text-ocean-700"
+                className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
               >
                 <ExternalLink aria-hidden="true" className="size-4" />
               </Link>
+            ) : null}
+            {active ? (
+              <ConversationActionsMenu
+                conversationId={active.conversationId}
+                otherName={title}
+                onDeleted={onActiveConversationDeleted}
+                triggerClassName="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-mist-100 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600 aria-expanded:bg-ocean-50"
+              />
             ) : null}
             <button
               type="button"
               aria-label="Minimize messaging dock"
               onClick={() => setOpen(false)}
-              className="grid size-8 place-items-center rounded-lg text-muted hover:bg-mist-50 hover:text-navy-950"
+              className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
             >
               <Minus aria-hidden="true" className="size-4" />
             </button>
@@ -450,7 +495,7 @@ export function MessagingDock({
                 setOpen(false)
                 setActive(null)
               }}
-              className="grid size-8 place-items-center rounded-lg text-muted hover:bg-mist-50 hover:text-navy-950"
+              className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-lg border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
             >
               <X aria-hidden="true" className="size-4" />
             </button>
@@ -483,9 +528,19 @@ export function MessagingDock({
                           className={`flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}
                         >
                           {!mine ? (
-                            <span className="mb-4 self-end">
-                              {avatar(active, `dock-message-avatar-${message.id}`, 'size-6')}
-                            </span>
+                            activeProfileHref ? (
+                              <Link
+                                href={activeProfileHref}
+                                aria-label={`View ${title}'s profile`}
+                                className="mb-4 shrink-0 cursor-pointer self-end rounded-full transition hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+                              >
+                                {avatar(active, `dock-message-avatar-${message.id}`, 'size-6')}
+                              </Link>
+                            ) : (
+                              <span className="mb-4 self-end">
+                                {avatar(active, `dock-message-avatar-${message.id}`, 'size-6')}
+                              </span>
+                            )
                           ) : null}
                           <div className={`max-w-[78%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
                             <div className={`rounded-2xl px-3 py-2 text-xs leading-5 shadow-sm ${
@@ -513,7 +568,7 @@ export function MessagingDock({
                                 <a
                                   href={messageAttachmentRoute(message.id, { download: true })}
                                   download={message.attachment.name}
-                                  className="mb-1 block truncate text-[11px] font-semibold underline-offset-2 hover:underline"
+                                  className="mb-1 block truncate text-[11px] font-semibold underline underline-offset-2 hover:decoration-2"
                                 >
                                   📎 {message.attachment.name}
                                 </a>
@@ -576,7 +631,7 @@ export function MessagingDock({
                         type="button"
                         aria-label={`Open compact chat with ${name}`}
                         onClick={() => void openConversation(item)}
-                        className="flex w-full items-start gap-2.5 rounded-xl p-2.5 text-left transition hover:bg-mist-50"
+                        className="flex w-full cursor-pointer items-start gap-2.5 rounded-xl p-2.5 text-left transition hover:bg-mist-50"
                       >
                         {avatar(item)}
                         <span className="min-w-0 flex-1">
@@ -601,7 +656,7 @@ export function MessagingDock({
                     <button
                       type="button"
                       onClick={() => setNewMessageOpen(true)}
-                      className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-xl bg-navy-950 px-4 text-xs font-semibold text-white hover:bg-navy-900"
+                      className="mt-3 inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-xl bg-navy-950 px-4 text-xs font-semibold text-white hover:bg-navy-900"
                     >
                       <SquarePen aria-hidden="true" className="size-3.5" /> Start a conversation
                     </button>
@@ -622,7 +677,7 @@ export function MessagingDock({
             setLoading(true)
             setOpen(true)
           }}
-          className="flex min-h-12 min-w-48 items-center gap-2 rounded-t-2xl border border-b-0 border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 shadow-xl transition hover:bg-mist-50"
+          className="flex min-h-12 min-w-48 cursor-pointer items-center gap-2 rounded-t-2xl border border-b-0 border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 shadow-xl transition hover:bg-mist-50"
         >
           <MessageCircleMore aria-hidden="true" className="size-5 text-ocean-700" />
           <span className="flex-1 text-left">Messaging</span>

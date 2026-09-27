@@ -122,7 +122,7 @@ export function AdminEntitlementControlPanel({
           type="button"
           onClick={grant}
           disabled={pending || activeCapabilities.has(capability)}
-          className="min-h-11 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed"
         >
           Grant entitlement
         </button>

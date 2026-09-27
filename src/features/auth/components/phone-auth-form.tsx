@@ -105,12 +105,12 @@ export function PhoneAuthForm({
         {step === "confirm" && (
           <Link
             href={`/auth/phone?intent=${intent}`}
-            className="font-semibold text-ocean-700"
+            className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline"
           >
             Use a different number
           </Link>
         )}
-        <Link href={intent === "sign-up" ? "/auth/sign-up" : "/auth/sign-in"} className="font-semibold text-ocean-700">
+        <Link href={intent === "sign-up" ? "/auth/sign-up" : "/auth/sign-in"} className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
           Use email instead
         </Link>
       </div>

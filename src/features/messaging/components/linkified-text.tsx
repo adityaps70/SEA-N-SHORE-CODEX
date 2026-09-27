@@ -42,7 +42,7 @@ export function LinkifiedText({ text }: { text: string }) {
             href={part.href}
             target="_blank"
             rel="noopener noreferrer nofollow"
-            className="font-semibold underline decoration-1 underline-offset-2 [overflow-wrap:anywhere]"
+            className="font-semibold underline decoration-1 underline-offset-2 hover:decoration-2 [overflow-wrap:anywhere]"
           >
             {part.value}
           </a>

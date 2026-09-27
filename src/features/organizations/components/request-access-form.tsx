@@ -153,7 +153,7 @@ export function RequestAccessForm({
           type="button"
           onClick={submit}
           disabled={isPending}
-          className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white disabled:opacity-60"
+          className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed"
         >
           {isPending ? 'Sending…' : 'Send request'}
         </button>
@@ -161,7 +161,7 @@ export function RequestAccessForm({
           type="button"
           onClick={close}
           disabled={isPending}
-          className="min-h-10 rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950"
+          className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 transition-colors"
         >
           Cancel
         </button>

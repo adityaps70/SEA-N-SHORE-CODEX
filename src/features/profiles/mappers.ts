@@ -1,3 +1,4 @@
+import { mapLinkedOrganization } from './organization-link'
 import type { PublicProfile, PublicProfileRow } from './types'
 
 export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
@@ -26,6 +27,8 @@ export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
     summary: row.summary,
     rank: maritime?.rank ?? null,
     currentCompany: maritime?.current_company ?? null,
+    currentCompanyId: maritime?.current_company_id ?? null,
+    currentOrganization: mapLinkedOrganization(row.current_organization),
     currentVessel: maritime?.current_vessel ?? null,
     sailingExperienceYears: maritime?.sailing_experience_years ?? null,
     vesselTypes: maritime?.vessel_types ?? [],

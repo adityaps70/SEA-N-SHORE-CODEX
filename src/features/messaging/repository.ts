@@ -27,15 +27,24 @@ function canonicalPair(userA: string, userB: string) {
   return userA < userB ? [userA, userB] as const : [userB, userA] as const
 }
 
+/**
+ * "Delete conversation" is per participant: `cleared_before` on the viewer's
+ * participant row hides every message created at or before it from that
+ * viewer only. Queries using these fragments alias the viewer's participant
+ * row as `cp`.
+ */
+const VISIBLE_TO_VIEWER = `(cp.cleared_before is null or m.created_at > cp.cleared_before)`
+const HIDDEN_REPLY = `(reply.id is not null and cp.cleared_before is not null and reply.created_at <= cp.cleared_before)`
+
 const MESSAGE_COLUMNS = `
   m.id, m.conversation_id, m.sender_profile_id, m.client_message_id,
   m.body, m.reply_to_message_id,
   m.attachment_storage_path, m.attachment_name, m.attachment_mime_type, m.attachment_size,
   m.created_at, m.edited_at, m.deleted_at,
   reply.sender_profile_id as reply_sender_profile_id,
-  reply.body as reply_body,
-  reply.attachment_name as reply_attachment_name,
-  reply.deleted_at as reply_deleted_at,
+  case when ${HIDDEN_REPLY} then '' else reply.body end as reply_body,
+  case when ${HIDDEN_REPLY} then null else reply.attachment_name end as reply_attachment_name,
+  case when ${HIDDEN_REPLY} then coalesce(reply.deleted_at, cp.cleared_before) else reply.deleted_at end as reply_deleted_at,
   coalesce((
     select jsonb_agg(
       jsonb_build_object(
@@ -255,6 +264,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
          on cp.conversation_id = m.conversation_id
         and cp.profile_id = $1
        where m.id = $2
+         and ${VISIBLE_TO_VIEWER}
        limit 1`,
       [profileId, messageId],
     ) as MessageRow[]
@@ -356,15 +366,13 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     return await queryRows(
       `select ${MESSAGE_COLUMNS}
        from public.messages m
+       join public.conversation_participants cp
+         on cp.conversation_id = m.conversation_id
+        and cp.profile_id = $2
        left join public.messages reply on reply.id = m.reply_to_message_id
        where m.conversation_id = $1
          and m.deleted_at is null
-         and exists (
-           select 1
-           from public.conversation_participants cp
-           where cp.conversation_id = m.conversation_id
-             and cp.profile_id = $2
-         )${cursorSql}
+         and ${VISIBLE_TO_VIEWER}${cursorSql}
        order by m.created_at desc, m.id desc
        limit ${limitParam}`,
       values,
@@ -390,15 +398,13 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     return await queryRows(
       `select ${MESSAGE_COLUMNS}
        from public.messages m
+       join public.conversation_participants cp
+         on cp.conversation_id = m.conversation_id
+        and cp.profile_id = $2
        left join public.messages reply on reply.id = m.reply_to_message_id
        where m.conversation_id = $1
          and m.deleted_at is null
-         and exists (
-           select 1
-           from public.conversation_participants cp
-           where cp.conversation_id = m.conversation_id
-             and cp.profile_id = $2
-         )${afterSql}
+         and ${VISIBLE_TO_VIEWER}${afterSql}
        order by m.created_at asc, m.id asc
        limit ${limitParam}`,
       values,
@@ -458,6 +464,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
               p.full_name as other_name,
               p.headline as other_headline,
               p.avatar_path as other_avatar_path,
+              p.slug as other_slug,
               c.last_message_id,
               case
                 when nullif(lm.body, '') is not null then lm.body
@@ -476,6 +483,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
                 where unread_message.conversation_id = c.id
                   and unread_message.sender_profile_id <> mine.profile_id
                   and unread_message.deleted_at is null
+                  and (mine.cleared_before is null or unread_message.created_at > mine.cleared_before)
                   and (
                     read_cursor.id is null
                     or unread_message.created_at > read_cursor.created_at
@@ -496,6 +504,10 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
          on read_cursor.id = mine.last_read_message_id
         and read_cursor.conversation_id = mine.conversation_id
        where mine.profile_id = $1
+         and (
+           mine.cleared_before is null
+           or c.last_message_at > mine.cleared_before
+         )
        order by c.last_message_at desc nulls last, c.created_at desc, c.id desc
        limit $2`,
       [viewerProfileId, input.limit],
@@ -514,6 +526,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
        where mine.profile_id = $1
          and unread_message.sender_profile_id <> mine.profile_id
          and unread_message.deleted_at is null
+         and (mine.cleared_before is null or unread_message.created_at > mine.cleared_before)
          and (
            read_cursor.id is null
            or unread_message.created_at > read_cursor.created_at
@@ -525,6 +538,31 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
       [viewerProfileId],
     ) as CountRow[]
     return Number(rows[0]?.count ?? 0)
+  }
+
+  /**
+   * Deletes a conversation for one participant only (the other person keeps
+   * the full history). Everything up to now is hidden from this participant;
+   * a later message makes the conversation reappear with only newer messages.
+   * Returns false when the profile is not a participant.
+   */
+  async function clearConversationForParticipant(profileId: string, conversationId: string) {
+    const rows = await queryRows(
+      `update public.conversation_participants
+       set cleared_before = greatest(
+         now(),
+         coalesce((
+           select max(m.created_at)
+           from public.messages m
+           where m.conversation_id = $1
+         ), now())
+       )
+       where conversation_id = $1
+         and profile_id = $2
+       returning true as advanced`,
+      [conversationId, profileId],
+    ) as AdvancedRow[]
+    return Boolean(rows[0]?.advanced)
   }
 
   async function listDirectConversationsWithPeers(viewerProfileId: string, peerProfileIds: readonly string[]) {
@@ -576,6 +614,7 @@ export function createMessagingRepository(input: { query?: MessagingQuery } = {}
     advanceReadState,
     listInboxRows,
     countUnreadMessages,
+    clearConversationForParticipant,
   }
 }
 

@@ -69,7 +69,7 @@ export function CompanyAccessReviewActions({
           type="button"
           disabled={isPending}
           onClick={() => submit('approved')}
-          className="min-h-10 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+          className="min-h-10 rounded-xl bg-emerald-700 px-4 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-emerald-800 transition-colors disabled:cursor-not-allowed"
         >
           {isPending ? 'Saving…' : 'Approve access'}
         </button>
@@ -77,7 +77,7 @@ export function CompanyAccessReviewActions({
           type="button"
           disabled={isPending}
           onClick={() => submit('rejected')}
-          className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+          className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-red-800 transition-colors disabled:cursor-not-allowed"
         >
           Decline
         </button>

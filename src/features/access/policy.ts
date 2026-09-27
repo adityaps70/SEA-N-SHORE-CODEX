@@ -100,6 +100,50 @@ export function effectiveCapabilities(access: AccessContext): Capability[] {
   return personalCapabilities(access)
 }
 
+/**
+ * Organization capabilities that come from a member's role alone, with no paid plan.
+ * They are kept apart from CAPABILITIES because they are not plan entitlements and
+ * cannot be granted from the admin entitlement screens.
+ * - organization.post: publish, edit and delete feed posts as the organization.
+ * - organization.manage_posts: edit or delete any post published as the organization.
+ */
+export const ORGANIZATION_ROLE_CAPABILITIES = ['organization.post', 'organization.manage_posts'] as const
+export type OrganizationRoleCapability = (typeof ORGANIZATION_ROLE_CAPABILITIES)[number]
+
+const ORGANIZATION_ROLE_GRANTS: Record<OrganizationRoleCapability, {
+  roles: readonly OrganizationAccessRole[]
+  requiresVerifiedOrganization: boolean
+}> = {
+  'organization.post': { roles: ['owner', 'administrator', 'content_manager'], requiresVerifiedOrganization: true },
+  // Admins can always clean up their organization's posts, even while it is re-verified.
+  'organization.manage_posts': { roles: ['owner', 'administrator'], requiresVerifiedOrganization: false },
+}
+
+export function canUseOrganizationRoleCapability(
+  access: AccessContext,
+  capability: OrganizationRoleCapability,
+  companyId: string,
+): boolean {
+  if (!access.accountActive || !companyId) return false
+  const membership = access.organizationMemberships.find((entry) => entry.companyId === companyId)
+  if (!membership) return false
+  const grant = ORGANIZATION_ROLE_GRANTS[capability]
+  if (grant.requiresVerifiedOrganization && !membership.verified) return false
+  return grant.roles.includes(membership.role)
+}
+
+/** Approved member of a verified organization with an owner, administrator or content role. */
+export function canPostAsOrganization(access: AccessContext, companyId: string) {
+  return canUseOrganizationRoleCapability(access, 'organization.post', companyId)
+}
+
+/** Organization ids the member may publish feed posts for, in membership order. */
+export function organizationsMemberCanPostFor(access: AccessContext): string[] {
+  return access.organizationMemberships
+    .filter((membership) => canPostAsOrganization(access, membership.companyId))
+    .map((membership) => membership.companyId)
+}
+
 export function canUseCapability(
   access: AccessContext,
   capability: Capability,

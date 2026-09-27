@@ -39,10 +39,10 @@ const completePortfolio = { experienceCount: 1, credentialCount: 1 }
 afterEach(() => cleanup())
 
 describe('FeedProfileCard', () => {
-  it('shows View profile only when profile fields and portfolio evidence are complete', () => {
+  it('hides the completeness bar once profile fields and portfolio evidence are complete', () => {
     render(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} />)
-    expect(screen.getByRole('link', { name: /View profile/i })).toHaveAttribute('href', '/profile')
-    expect(screen.getByRole('progressbar', { name: /Profile completeness/i })).toHaveAttribute('aria-valuenow', '100')
+    expect(screen.getByRole('link', { name: 'Member A' })).toHaveAttribute('href', '/profile')
+    expect(screen.queryByRole('progressbar', { name: /Profile completeness/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /Complete profile/i })).not.toBeInTheDocument()
   })
 
@@ -52,10 +52,10 @@ describe('FeedProfileCard', () => {
     expect(screen.getByRole('link', { name: /Complete profile/i })).toHaveAttribute('href', '/profile/edit')
   })
 
-  it('replaces View profile with Complete profile when details are missing', () => {
+  it('shows Complete profile when details are missing', () => {
     render(<FeedProfileCard profile={incompleteProfile} portfolioCompletion={completePortfolio} />)
     expect(screen.getByRole('link', { name: /Complete profile/i })).toHaveAttribute('href', '/profile/edit')
-    expect(screen.queryByRole('link', { name: /View profile/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: /Profile completeness/i })).toBeInTheDocument()
   })
 
   it('renders the uploaded profile photo and banner when media URLs exist', () => {
@@ -71,6 +71,7 @@ describe('FeedProfileCard', () => {
 
     const profilePhoto = screen.getByRole('img', { name: 'Member A profile photo' })
     expect(profilePhoto.parentElement).toHaveClass('size-[74px]', '-mt-[37px]')
+    expect(profilePhoto.parentElement).toHaveAttribute('href', '/profile')
   })
 
   it('shows persona identity and hides seafarer-only details for a family member', () => {
@@ -106,5 +107,121 @@ describe('FeedProfileCard', () => {
     expect(screen.getByText('MA')).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Member A profile photo' })).not.toBeInTheDocument()
     expect(screen.queryByRole('img', { name: 'Member A cover photo' })).not.toBeInTheDocument()
+  })
+
+  it('shows a default headline once instead of repeating it as persona and descriptor', () => {
+    render(
+      <FeedProfileCard
+        profile={{
+          ...completeProfile,
+          profileType: 'maritime_professional',
+          persona: 'maritime_enthusiast',
+          headline: 'Maritime Enthusiast',
+          rank: null,
+          currentCompany: null,
+          currentVessel: null,
+          sailingExperienceYears: null,
+        }}
+        portfolioCompletion={completePortfolio}
+      />,
+    )
+
+    expect(screen.getAllByText(/maritime enthusiast/i)).toHaveLength(1)
+  })
+
+  it('does not repeat a seafarer rank that is also the headline, case-insensitively', () => {
+    render(
+      <FeedProfileCard
+        profile={{ ...completeProfile, persona: 'seafarer', headline: 'chief officer', rank: 'Chief Officer' }}
+        portfolioCompletion={completePortfolio}
+      />,
+    )
+
+    expect(screen.getAllByText(/chief officer/i)).toHaveLength(1)
+    expect(screen.getByText('Seafarer')).toBeInTheDocument()
+  })
+
+  it('drops a persona label or rank already visible inside the headline', () => {
+    render(
+      <FeedProfileCard
+        profile={{ ...completeProfile, persona: 'seafarer', headline: 'Chief Officer · Seafarer on LNG carriers', rank: 'Chief Officer' }}
+        portfolioCompletion={completePortfolio}
+      />,
+    )
+
+    expect(screen.getAllByText(/chief officer/i)).toHaveLength(1)
+    expect(screen.queryByText('Seafarer')).not.toBeInTheDocument()
+  })
+
+  it('shows the linked organization logo and name as a link to its page', () => {
+    render(
+      <FeedProfileCard
+        profile={{
+          ...completeProfile,
+          currentCompany: 'Oceanic Ship Management',
+          currentCompanyId: '22222222-2222-4222-8222-222222222222',
+          currentOrganization: {
+            id: '22222222-2222-4222-8222-222222222222',
+            slug: 'oceanic-ship-management',
+            name: 'Oceanic Ship Management',
+            logoUrl: '/api/company-logo/22222222-2222-4222-8222-222222222222',
+            verified: true,
+          },
+        }}
+        portfolioCompletion={completePortfolio}
+      />,
+    )
+
+    const organization = screen.getByTestId('profile-card-organization')
+    expect(organization.tagName).toBe('A')
+    expect(organization).toHaveAttribute('href', '/organizations/oceanic-ship-management')
+    expect(organization).toHaveTextContent('Oceanic Ship Management')
+    expect(organization.querySelector('img')).toHaveAttribute('src', '/api/company-logo/22222222-2222-4222-8222-222222222222')
+    expect(screen.getAllByText('Oceanic Ship Management')).toHaveLength(1)
+  })
+
+  it('shows an unlinked organization as plain text with the building tile', () => {
+    render(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} />)
+
+    const organization = screen.getByTestId('profile-card-organization')
+    expect(organization.tagName).toBe('P')
+    expect(organization).toHaveTextContent('Example Shipping')
+    expect(organization.querySelector('img')).toBeNull()
+  })
+
+  it('shows location and the verified badge only for verified members', () => {
+    const { rerender } = render(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} />)
+    expect(screen.getByText('Mumbai, India')).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Verified member' })).not.toBeInTheDocument()
+
+    rerender(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} verified />)
+    expect(screen.getByRole('img', { name: 'Verified member' })).toBeInTheDocument()
+  })
+
+  it('keeps seafarer facts compact with readable availability', () => {
+    render(<FeedProfileCard profile={{ ...completeProfile, availability: 'onboard' }} portfolioCompletion={completePortfolio} />)
+
+    expect(screen.getByText('Sea service')).toBeInTheDocument()
+    expect(screen.getByText('Onboard')).toBeInTheDocument()
+    expect(screen.getByText('MT Example')).toBeInTheDocument()
+  })
+
+  it('compact phone card de-duplicates the summary and only offers Complete profile while incomplete', () => {
+    const { rerender } = render(
+      <FeedProfileCard
+        profile={{ ...completeProfile, persona: 'maritime_enthusiast', headline: 'Maritime Enthusiast', currentCompany: null }}
+        portfolioCompletion={completePortfolio}
+        compact
+      />,
+    )
+    expect(screen.getAllByText(/maritime enthusiast/i)).toHaveLength(1)
+
+    rerender(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} compact verified />)
+    expect(screen.queryByRole('link', { name: /Complete profile/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Verified member' })).toBeInTheDocument()
+    expect(screen.getByTestId('profile-card-organization')).toHaveTextContent('Example Shipping')
+
+    rerender(<FeedProfileCard profile={incompleteProfile} portfolioCompletion={completePortfolio} compact />)
+    expect(screen.getByRole('link', { name: /Complete profile/i })).toHaveAttribute('href', '/profile/edit')
   })
 })

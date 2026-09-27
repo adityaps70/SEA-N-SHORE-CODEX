@@ -1,3 +1,4 @@
+import type { LinkedOrganization } from './organization-link'
 import type { Persona, ProfileIntent } from './persona'
 
 export const PROFILE_TYPES = [
@@ -37,6 +38,10 @@ export type PublicProfile = {
   summary: string | null
   rank: string | null
   currentCompany: string | null
+  /** Id of the Sea N Shore organization the current organization is linked to. */
+  currentCompanyId?: string | null
+  /** The linked organization page, only while Sea N Shore lists it. */
+  currentOrganization?: LinkedOrganization | null
   currentVessel: string | null
   sailingExperienceYears: number | null
   vesselTypes: string[]
@@ -76,6 +81,7 @@ export type PublicProfileRow = {
   maritime_profiles: {
     rank: string | null
     current_company: string | null
+    current_company_id?: string | null
     current_vessel: string | null
     sailing_experience_years: number | null
     vessel_types: string[]
@@ -83,6 +89,8 @@ export type PublicProfileRow = {
     shore_career_preference: boolean
     availability: string | null
   } | null
+  /** JSON object for the linked, listed organization (see mapLinkedOrganization). */
+  current_organization?: unknown
   profile_skills: Array<{ skill: string }>
 }
 

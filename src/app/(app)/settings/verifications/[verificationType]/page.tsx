@@ -72,7 +72,7 @@ export default async function CreatorVerificationApplicationPage({
             </div>
           </div>
         </section>
-        <Link href="/settings/verifications" className="inline-flex text-sm font-bold text-navy-950 hover:underline">
+        <Link href="/settings/verifications" className="inline-flex text-sm font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
           ← Back to Verifications
         </Link>
       </main>
@@ -99,7 +99,7 @@ export default async function CreatorVerificationApplicationPage({
         </section>
       ) : null}
       <CreatorVerificationForm type={type} initialValue={initialValue} />
-      <Link href="/settings/verifications" className="inline-flex text-sm font-bold text-navy-950 hover:underline">
+      <Link href="/settings/verifications" className="inline-flex text-sm font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
         ← Back to Verifications
       </Link>
     </main>

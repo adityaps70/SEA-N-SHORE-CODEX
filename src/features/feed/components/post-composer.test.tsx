@@ -31,6 +31,10 @@ vi.mock('../actions', () => ({
   discardPendingPostMedia: mocks.discardPendingPostMedia,
 }))
 
+vi.mock('../organization-post-actions', () => ({
+  loadPostingOrganizations: vi.fn(async () => ({ ok: true, organizations: [] })),
+}))
+
 vi.mock('../pdf-page-count', () => ({
   readPdfPageCount: mocks.readPdfPageCount,
 }))

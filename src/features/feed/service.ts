@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
+import { canPostAsOrganization, type AccessContext } from '@/features/access/policy'
+import { getAccessContext } from '@/features/access/server'
 import { withTransaction as databaseTransaction } from '@/lib/db/client'
 import { resolveFeedMediaUrls } from './media'
+import { postPermissions } from './post-permissions'
+import { REPOST_COMMENTARY_MAX } from './schemas'
 import {
   createFeedRepositoryForClient,
   type FeedMediaInput,
@@ -16,6 +20,13 @@ type StandardPostInput = {
   category: PostCategory
   body: string
   media?: FeedMediaInput[]
+  mentionProfileIds?: string[]
+  /** Publish as this organization; the actor must be allowed to post for it. */
+  companyId?: string
+}
+
+type UpdatePostInput = {
+  body: string
   mentionProfileIds?: string[]
 }
 
@@ -198,15 +209,36 @@ export function createFeedService(input: {
   withTransaction: FeedTransaction
   createId?: () => string
   resolveMediaUrls?: (paths: string[]) => Promise<Map<string, string>>
+  /** Roles and memberships, for posting as an organization. */
+  loadAccessContext?: (profileId: string) => Promise<AccessContext>
 }) {
   const createId = input.createId ?? randomUUID
   const resolveMediaUrls = input.resolveMediaUrls ?? resolveFeedMediaUrls
+  const loadAccessContext = input.loadAccessContext ?? getAccessContext
+
+  async function assertCanPostAsOrganization(actorId: string, companyId: string) {
+    const access = await loadAccessContext(actorId)
+    if (!canPostAsOrganization(access, companyId)) serviceError('feed_organization_post_forbidden')
+  }
+
+  /** Personal posts never need the access context: only their author may change them. */
+  async function permissionsFor(actorId: string, post: { authorId: string; companyId: string | null }) {
+    const access = post.companyId ? await loadAccessContext(actorId) : null
+    return postPermissions(access, actorId, post)
+  }
 
   async function createStandardPost(actorId: string, post: StandardPostInput) {
     return input.withTransaction(async (repository, social) => {
       await assertMemberReady(repository, actorId)
+      if (post.companyId) await assertCanPostAsOrganization(actorId, post.companyId)
       const id = post.id ?? createId()
-      await repository.insertStandardPost({ id, authorId: actorId, category: post.category, body: post.body.trim() })
+      await repository.insertStandardPost({
+        id,
+        authorId: actorId,
+        category: post.category,
+        body: post.body.trim(),
+        ...(post.companyId ? { companyId: post.companyId } : {}),
+      })
       for (const media of post.media ?? []) await repository.insertPostMedia(id, media)
       const mentions = post.mentionProfileIds?.length
         ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
@@ -228,9 +260,16 @@ export function createFeedService(input: {
   async function createPollPost(actorId: string, post: PollPostInput) {
     return input.withTransaction(async (repository, social) => {
       await assertMemberReady(repository, actorId)
+      if (post.companyId) await assertCanPostAsOrganization(actorId, post.companyId)
       const options = normalizePollOptions(post.pollOptions)
       const id = createId()
-      await repository.insertPollPost({ id, authorId: actorId, category: post.category, body: post.body.trim() })
+      await repository.insertPollPost({
+        id,
+        authorId: actorId,
+        category: post.category,
+        body: post.body.trim(),
+        ...(post.companyId ? { companyId: post.companyId } : {}),
+      })
       for (const [position, label] of options.entries()) await repository.insertPollOption(id, label, position)
       const mentions = post.mentionProfileIds?.length
         ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
@@ -275,14 +314,42 @@ export function createFeedService(input: {
   async function deletePost(actorId: string, postId: string) {
     return input.withTransaction(async (repository) => {
       await assertMemberReady(repository, actorId)
-      if (!await repository.deleteOwnPost(actorId, postId)) serviceError('feed_post_delete_forbidden')
+      if (await repository.deleteOwnPost(actorId, postId)) return true
+      // Not the author: organization admins may remove posts published as their organization.
+      const post = await repository.getPostForManagement(postId)
+      if (!post?.companyId) serviceError('feed_post_delete_forbidden')
+      const permissions = await permissionsFor(actorId, post)
+      if (!permissions.canDelete) serviceError('feed_post_delete_forbidden')
+      if (!await repository.deleteOrganizationPost(actorId, postId, post.companyId)) serviceError('feed_post_delete_forbidden')
       return true
+    })
+  }
+
+  async function updatePost(actorId: string, postId: string, update: UpdatePostInput) {
+    return input.withTransaction(async (repository, social) => {
+      await assertMemberReady(repository, actorId)
+      const post = await repository.getPostForManagement(postId)
+      if (!post) serviceError('feed_interaction_unavailable')
+      const permissions = await permissionsFor(actorId, post)
+      if (!permissions.canEdit) serviceError('feed_post_edit_forbidden')
+      const body = update.body.trim()
+      // Reposts may drop their commentary; standard posts and polls always keep text.
+      if (!body && post.postType !== 'repost') serviceError('feed_post_body_required')
+      if (post.postType === 'repost' && body.length > REPOST_COMMENTARY_MAX) serviceError('feed_post_body_too_long')
+      if (!await repository.updatePostBody(postId, body)) serviceError('feed_interaction_unavailable')
+      const mentions = await repository.replacePostMentions(actorId, postId, body ? update.mentionProfileIds ?? [] : [])
+      await notifyPostMentions(social, actorId, postId, mentions.newlyIntroducedProfileIds)
+      return { id: postId, postType: post.postType }
     })
   }
 
   async function restoreDeletedPost(actorId: string, postId: string) {
     return input.withTransaction(async (repository) => {
       await assertMemberReady(repository, actorId)
+      const companyId = await repository.getRestorablePostCompanyId(actorId, postId)
+      if (companyId && !canPostAsOrganization(await loadAccessContext(actorId), companyId)) {
+        serviceError('feed_post_restore_organization_forbidden')
+      }
       if (!await repository.restoreOwnDeletedPost(actorId, postId)) {
         serviceError('feed_post_restore_unavailable')
       }
@@ -556,6 +623,7 @@ export function createFeedService(input: {
     createPollPost,
     repostPost,
     deletePost,
+    updatePost,
     restoreDeletedPost,
     getReactionDetails,
     setPostReaction,
@@ -582,6 +650,7 @@ export const assertPendingMediaDiscardableWithAurora = productionService.assertP
 export const createPollPostWithAurora = productionService.createPollPost
 export const repostPostWithAurora = productionService.repostPost
 export const deletePostWithAurora = productionService.deletePost
+export const updatePostWithAurora = productionService.updatePost
 export const restoreDeletedPostWithAurora = productionService.restoreDeletedPost
 export const loadReactionDetailsWithAurora = productionService.getReactionDetails
 export const setPostReactionWithAurora = productionService.setPostReaction

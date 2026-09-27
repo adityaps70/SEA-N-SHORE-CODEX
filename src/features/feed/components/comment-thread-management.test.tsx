@@ -102,7 +102,7 @@ afterEach(() => {
 })
 
 describe('CommentThread management', () => {
-  it('shows owner menus on comments and replies, hides them from non-owners, and gates Edit by canEdit only', async () => {
+  it('shows owner menus on comments and replies, gives non-owners only Report, and gates Edit by canEdit only', async () => {
     const user = userEvent.setup()
     const ownedRoot = comment()
     const ownedExpiredReply = comment({ id: replyId, body: 'Older reply.', parentCommentId: rootId, canEdit: false })
@@ -110,13 +110,17 @@ describe('CommentThread management', () => {
     render(<CommentThread postId={postId} comments={[ownedRoot, ownedExpiredReply, nonOwnerReply]} />)
     expect(item(rootId).getByRole('button', { name: /comment actions/i })).toBeInTheDocument()
     expect(item(replyId).getByRole('button', { name: /comment actions/i })).toBeInTheDocument()
-    expect(item(otherId).queryByRole('button', { name: /comment actions/i })).not.toBeInTheDocument()
+    await user.click(item(otherId).getByRole('button', { name: /comment actions/i }))
+    expect(item(otherId).getByRole('menuitem', { name: 'Report comment' })).toBeInTheDocument()
+    expect(item(otherId).queryByRole('menuitem', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(item(otherId).queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument()
     await user.click(item(rootId).getByRole('button', { name: /comment actions/i }))
-    expect(item(rootId).getByRole('button', { name: 'Edit' })).toBeInTheDocument()
-    expect(item(rootId).getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+    expect(item(rootId).getByRole('menuitem', { name: 'Edit' })).toBeInTheDocument()
+    expect(item(rootId).getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+    expect(item(rootId).queryByRole('menuitem', { name: 'Report comment' })).not.toBeInTheDocument()
     await user.click(item(replyId).getByRole('button', { name: /comment actions/i }))
-    expect(item(replyId).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
-    expect(item(replyId).getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+    expect(item(replyId).queryByRole('menuitem', { name: 'Edit' })).not.toBeInTheDocument()
+    expect(item(replyId).getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
   })
 
   it('adds a root comment to the mounted thread without refreshing the route', async () => {
@@ -151,7 +155,7 @@ describe('CommentThread management', () => {
     mocks.updateComment.mockResolvedValueOnce({ ok: true, comment: updated } as never)
     render(<CommentThread postId={postId} comments={[comment()]} />)
     await user.click(item(rootId).getByRole('button', { name: /comment actions/i }))
-    await user.click(item(rootId).getByRole('button', { name: 'Edit' }))
+    await user.click(item(rootId).getByRole('menuitem', { name: 'Edit' }))
     const editor = item(rootId).getByRole('textbox', { name: /edit comment/i })
     expect(editor).toHaveValue('Useful point.')
     await user.clear(editor)
@@ -174,7 +178,7 @@ describe('CommentThread management', () => {
     mocks.updateComment.mockResolvedValueOnce({ error: 'Comments can only be edited for 15 minutes after posting.', value: 'Draft remains.' } as never)
     render(<CommentThread postId={postId} comments={[comment()]} />)
     await user.click(item(rootId).getByRole('button', { name: /comment actions/i }))
-    await user.click(item(rootId).getByRole('button', { name: 'Edit' }))
+    await user.click(item(rootId).getByRole('menuitem', { name: 'Edit' }))
     const editor = item(rootId).getByRole('textbox', { name: /edit comment/i })
     await user.clear(editor)
     await user.type(editor, 'Draft remains.')
@@ -189,13 +193,13 @@ describe('CommentThread management', () => {
     mocks.deleteComment.mockResolvedValueOnce({ ok: false, error: 'We could not delete this comment.' } as never)
     render(<CommentThread postId={postId} comments={[comment()]} />)
     await user.click(item(rootId).getByRole('button', { name: /comment actions/i }))
-    await user.click(item(rootId).getByRole('button', { name: 'Delete' }))
+    await user.click(item(rootId).getByRole('menuitem', { name: 'Delete' }))
     expect(await item(rootId).findByRole('alert')).toHaveTextContent('We could not delete this comment.')
     expect(mocks.deleteComment).toHaveBeenCalledWith(rootId)
     expect(mocks.refresh).not.toHaveBeenCalled()
     mocks.deleteComment.mockResolvedValueOnce({ ok: true, commentId: rootId, comment: null } as never)
     await user.click(item(rootId).getByRole('button', { name: /comment actions/i }))
-    await user.click(item(rootId).getByRole('button', { name: 'Delete' }))
+    await user.click(item(rootId).getByRole('menuitem', { name: 'Delete' }))
     await waitFor(() => expect(document.getElementById(`comment-${rootId}`)).not.toBeInTheDocument())
     expect(mocks.refresh).not.toHaveBeenCalled()
   })
@@ -218,12 +222,12 @@ describe('CommentThread management', () => {
     expect(item(replyId).getByText('Visible reply survives.')).toBeInTheDocument()
   })
 
-  it('opens reaction details from the combined far-right emoji and count control', async () => {
+  it('opens reaction details from the far-right reaction types control', async () => {
     const summary = { like: 2, support: 1, respect: 0, on_point: 1 }
     render(<CommentThread postId={postId} comments={[comment({ reactionSummary: summary, reactionCount: 4 })]} />)
     const details = item(rootId).getByRole('button', { name: /view 4 comment reactions/i })
-    expect(details).toHaveTextContent('4👍❤️⚓')
-    expect(details).not.toHaveTextContent(/reactions?/i)
+    expect(details).toHaveTextContent(/^👍❤️⚓$/)
+    expect(item(rootId).getByRole('button', { name: 'Like' })).toHaveTextContent(/^Like4$/)
     expect(item(rootId).queryByRole('button', { name: /view comment reaction types/i })).not.toBeInTheDocument()
     fireEvent.click(details)
     expect(screen.getByRole('dialog', { name: /reactions/i })).toBeInTheDocument()

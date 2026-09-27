@@ -99,7 +99,8 @@ describe('ProfileHeader', () => {
     fireEvent.click(edit)
     expect(screen.getByRole('textbox', { name: 'Full name' })).toHaveValue('Member A')
     expect(screen.getByRole('textbox', { name: 'Headline' })).toHaveValue('Chief Officer | Tankers')
-    expect(screen.getByRole('textbox', { name: 'Current organization' })).toHaveValue('Example Shipping')
+    // The organization field is the Sea N Shore organization type-ahead.
+    expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('Example Shipping')
     expect(screen.getByRole('button', { name: 'Change profile photo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Change cover photo' })).toBeInTheDocument()
   })
@@ -121,6 +122,36 @@ describe('ProfileHeader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
     expect(screen.queryByRole('textbox', { name: 'Company name' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Current organization' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Current organization' })).not.toBeInTheDocument()
   })
 
+  it('links the current organization to its Sea N Shore page with its logo', () => {
+    render(
+      <ProfileHeader
+        profile={{
+          ...profile,
+          currentCompany: 'Oceanic Ship Management',
+          currentOrganization: {
+            id: '22222222-2222-4222-8222-222222222222',
+            slug: 'oceanic-ship-management',
+            name: 'Oceanic Ship Management',
+            logoUrl: '/api/company-logo/22222222-2222-4222-8222-222222222222',
+            verified: true,
+          },
+        }}
+      />,
+    )
+
+    const link = screen.getByTestId('profile-header-organization')
+    expect(link).toHaveAttribute('href', '/organizations/oceanic-ship-management')
+    expect(link).toHaveTextContent('Oceanic Ship Management')
+    expect(link.querySelector('img')).toHaveAttribute('src', '/api/company-logo/22222222-2222-4222-8222-222222222222')
+  })
+
+  it('keeps an unlinked current organization as plain text', () => {
+    render(<ProfileHeader profile={profile} />)
+
+    expect(screen.getByText('Example Shipping').closest('a')).toBeNull()
+    expect(screen.queryByTestId('profile-header-organization')).not.toBeInTheDocument()
+  })
 })

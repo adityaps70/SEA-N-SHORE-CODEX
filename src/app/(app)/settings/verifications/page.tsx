@@ -57,7 +57,7 @@ function TrainerVerificationCard({ state }: { state: MentorApplicationState }) {
 
       <div className="mt-5">
         {actionable ? (
-          <Link href="/learn/teach" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white">
+          <Link href="/learn/teach" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
             {state.kind === 'none' ? 'Apply for verification' : 'Update and resubmit'}
           </Link>
         ) : state.kind === 'application' && state.status === 'pending' ? (
@@ -121,7 +121,7 @@ function VerificationCard({
 
       <div className="mt-5">
         {actionable ? (
-          <Link href={href} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white">
+          <Link href={href} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
             {state?.status === 'rejected' ? 'Update and resubmit' : 'Apply for verification'}
           </Link>
         ) : state?.status === 'pending' ? (
@@ -182,7 +182,7 @@ export default async function VerificationSettingsPage() {
         <TrainerVerificationCard state={trainer} />
       </section>
 
-      <Link href="/settings" className="inline-flex text-sm font-bold text-navy-950 hover:underline">
+      <Link href="/settings" className="inline-flex text-sm font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
         ← Back to Settings
       </Link>
     </main>

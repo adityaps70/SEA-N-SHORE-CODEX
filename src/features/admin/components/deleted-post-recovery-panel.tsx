@@ -63,7 +63,7 @@ export function DeletedPostRecoveryPanel({
         <button
           type="button"
           disabled
-          className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl bg-mist-100 px-3 text-sm font-bold text-muted"
+          className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-xl bg-mist-100 px-3 text-sm font-bold text-muted enabled:hover:bg-mist-200 transition-colors"
         >
           <RotateCcw aria-hidden="true" className="size-4" />
           Recovery expired

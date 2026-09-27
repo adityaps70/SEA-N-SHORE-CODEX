@@ -139,10 +139,10 @@ export default async function LearningAdminPage({
         <Link href="/admin/learning" aria-current="page" className="-mb-px border-b-2 border-ocean-700 px-3 py-2 text-ocean-800">
           Trainer verifications
         </Link>
-        <Link href="/admin/learning/courses" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:text-navy-950">
+        <Link href="/admin/learning/courses" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:border-mist-300 hover:text-navy-950">
           Course review
         </Link>
-        <Link href="/admin/learning/analytics" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:text-navy-950">
+        <Link href="/admin/learning/analytics" className="-mb-px border-b-2 border-transparent px-3 py-2 text-muted transition hover:border-mist-300 hover:text-navy-950">
           Analytics
         </Link>
       </nav>
@@ -153,7 +153,7 @@ export default async function LearningAdminPage({
             key={filter.value}
             href={`/admin/learning?status=${filter.value}`}
             aria-current={status === filter.value ? 'page' : undefined}
-            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-semibold transition ${status === filter.value ? 'border-navy-950 bg-navy-950 text-white' : 'border-mist-100 bg-white text-navy-900 hover:bg-mist-50'}`}
+            className={`inline-flex min-h-9 items-center rounded-lg border px-3 text-sm font-semibold transition ${status === filter.value ? 'border-navy-950 bg-navy-950 text-white' : 'border-mist-200 bg-white text-navy-900 hover:bg-mist-50'}`}
           >
             {filter.label}
           </Link>

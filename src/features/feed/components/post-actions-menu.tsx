@@ -1,19 +1,22 @@
 'use client'
 
-import { Bookmark, EyeOff, Flag, Link2, MoreHorizontal, Trash2, UserMinus } from 'lucide-react'
+import { Bookmark, EyeOff, Flag, Link2, MoreHorizontal, PencilLine, Trash2, UserMinus } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useFeedMenu } from './use-feed-menu'
 
-const itemClass = 'flex w-full items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50'
+const itemClass = 'flex w-full cursor-pointer items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50'
 
 /**
  * The post header "⋯" menu. Secondary actions live here so the action row stays
- * Like · Comment · Repost/Share · Send. Owners get Delete; other members get Hide,
- * Unfollow (only while following the author) and Report.
+ * Like · Comment · Repost · Send. Whoever may change the post (its author, or an admin of the
+ * organization it was posted as) gets Edit and Delete; other members get Hide, Unfollow (only
+ * while following the author) and Report.
  */
 export function PostActionsMenu({
   authorName,
   isOwner,
+  canEdit = isOwner,
+  canDelete = isOwner,
   saved,
   canUnfollow,
   pending,
@@ -23,10 +26,15 @@ export function PostActionsMenu({
   onUnfollow,
   onReport,
   onDelete,
+  onEdit,
   triggerRef: externalTriggerRef,
 }: {
   authorName: string
   isOwner: boolean
+  /** Defaults to isOwner. */
+  canEdit?: boolean
+  /** Defaults to isOwner. */
+  canDelete?: boolean
   saved: boolean
   canUnfollow: boolean
   pending: boolean
@@ -36,6 +44,7 @@ export function PostActionsMenu({
   onUnfollow(): void
   onReport(): void
   onDelete(): void
+  onEdit?(): void
   /** Receives the trigger element so dialogs opened from the menu can return focus to it. */
   triggerRef?: RefObject<HTMLButtonElement | null>
 }) {
@@ -58,7 +67,7 @@ export function PostActionsMenu({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={toggleMenu}
-        className="inline-flex size-9 items-center justify-center rounded-full text-muted transition hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+        className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted transition hover:border-mist-100 hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
       >
         <MoreHorizontal aria-hidden="true" className="size-5" />
       </button>
@@ -78,7 +87,13 @@ export function PostActionsMenu({
             <Link2 aria-hidden="true" className="size-4" />
             Copy link
           </button>
-          {isOwner ? (
+          {canEdit && onEdit ? (
+            <button type="button" role="menuitem" disabled={pending} onClick={run(onEdit)} className={itemClass}>
+              <PencilLine aria-hidden="true" className="size-4" />
+              Edit post
+            </button>
+          ) : null}
+          {canDelete ? (
             <>
               <div role="separator" className="my-1 h-px bg-mist-100" />
               <button type="button" role="menuitem" disabled={pending} onClick={run(onDelete)} className={`${itemClass} text-red-700 hover:bg-red-50 focus-visible:bg-red-50`}>
@@ -86,7 +101,8 @@ export function PostActionsMenu({
                 Delete post
               </button>
             </>
-          ) : (
+          ) : null}
+          {isOwner || canDelete ? null : (
             <>
               <button type="button" role="menuitem" disabled={pending} onClick={run(onHide)} className={itemClass}>
                 <EyeOff aria-hidden="true" className="size-4" />

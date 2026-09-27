@@ -6,6 +6,7 @@ import { FeedLayout } from '@/features/feed/components/feed-layout'
 import { FeedList } from '@/features/feed/components/feed-list'
 import { PostComposer } from '@/features/feed/components/post-composer'
 import { getPeopleYouMayKnow } from '@/features/network/queries'
+import { getHomeRailData } from '@/features/profiles/home-rail-queries'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
 
@@ -21,10 +22,11 @@ export default async function HomePage({
 
   const { category: categoryValue } = await searchParams
   const category = parseFeedCategory(categoryValue)
-  const [initialPage, suggestions, portfolio] = await Promise.all([
+  const [initialPage, suggestions, portfolio, rail] = await Promise.all([
     getFeedPage({ category }),
     getPeopleYouMayKnow(3),
     getOwnProfilePortfolio(),
+    getHomeRailData(profile.id),
   ])
   const portfolioCompletion = {
     experienceCount: portfolio.experiences.length,
@@ -44,7 +46,13 @@ export default async function HomePage({
     .join('|')
 
   return (
-    <FeedLayout profile={profile} portfolioCompletion={portfolioCompletion} suggestions={suggestions}>
+    <FeedLayout
+      profile={profile}
+      portfolioCompletion={portfolioCompletion}
+      suggestions={suggestions}
+      verified={rail.verified}
+      organizations={rail.organizations}
+    >
       <div id="feed-composer" className="scroll-mt-24">
         <PostComposer profile={profile} defaultCategory={category} />
       </div>

@@ -9,6 +9,8 @@ function repository(overrides: Partial<FeedRepository> = {}) {
   return {
     isMemberReady: vi.fn(async () => true),
     deleteOwnPost: vi.fn(async () => true),
+    // A personal post: nobody but its author may delete it.
+    getPostForManagement: vi.fn(async () => ({ id: postId, authorId: ownerId, companyId: null, postType: 'standard', body: 'Post' })),
     ...overrides,
   } as unknown as FeedRepository
 }

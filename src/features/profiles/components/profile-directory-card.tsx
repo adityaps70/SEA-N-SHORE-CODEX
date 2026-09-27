@@ -71,7 +71,7 @@ export function ProfileDirectoryCard({ profile }: { profile: PublicProfile }) {
 
       <Link
         href={`/people/${profile.slug}`}
-        className="mt-5 inline-flex min-h-10 items-center justify-between rounded-xl border border-mist-100 px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:text-ocean-700"
+        className="mt-5 inline-flex min-h-10 items-center justify-between rounded-xl border border-mist-200 px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:text-ocean-700"
       >
         View professional profile
         <ArrowUpRight aria-hidden="true" className="size-4" />

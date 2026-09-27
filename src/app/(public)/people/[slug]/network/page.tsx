@@ -78,7 +78,7 @@ export default async function PersonNetworkPage({
               href={profileNetworkListHref(entry, { isOwner: false, slug: profile.slug })}
               aria-current={selected ? 'page' : undefined}
               className={`inline-flex min-h-10 items-center gap-1.5 rounded-full border px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 ${
-                selected ? 'border-navy-950 bg-navy-950 text-white' : 'border-mist-100 bg-white text-navy-950 hover:border-ocean-300'
+                selected ? 'border-navy-950 bg-navy-950 text-white' : 'border-mist-200 bg-white text-navy-950 hover:border-ocean-300'
               }`}
             >
               {LIST_LABELS[entry]}

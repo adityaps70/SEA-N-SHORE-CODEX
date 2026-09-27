@@ -108,14 +108,20 @@ describe('premium hiring workspace contract', () => {
   it('routes legacy company management into the shared verified organization workspace', () => {
     const legacyPage = source('src/app/(app)/hiring/company/page.tsx')
     const workspace = source('src/app/(app)/organizations/[slug]/page.tsx')
+    // Round 4: the workspace tools moved from the public organization page to its Manage page.
+    const manage = source('src/app/(app)/organizations/[slug]/manage/page.tsx')
 
     expect(legacyPage).toContain("redirect('/organizations/' + company.slug)")
-    // The organization workspace (redesigned in round 3) shows verification, the viewer's access and the plan.
+    // The public page shows verification; Manage page shows the viewer's access and the plan.
     expect(workspace).toContain('Verified by Sea N Shore')
-    expect(workspace).toContain('Your workspace')
-    expect(workspace).toContain('Organization Pro')
-    expect(workspace).not.toContain('is_verified =')
-    expect(workspace).not.toContain('verified_by =')
+    expect(workspace).toContain('organizationManageHref')
+    expect(manage).toContain('Verified by Sea N Shore')
+    expect(manage).toContain('Your workspace')
+    expect(manage).toContain('Organization Pro')
+    for (const page of [workspace, manage]) {
+      expect(page).not.toContain('is_verified =')
+      expect(page).not.toContain('verified_by =')
+    }
   })
 
   it('uses one central Create entry while hiring authorization remains server-side', () => {

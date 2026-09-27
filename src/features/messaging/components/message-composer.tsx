@@ -333,7 +333,7 @@ export function MessageComposer({
             type="button"
             aria-label="Cancel reply"
             onClick={onCancelReply}
-            className="grid size-7 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-navy-950"
+            className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full border border-ocean-100 bg-white/70 text-muted transition hover:bg-white hover:text-navy-950"
           >
             <X aria-hidden="true" className="size-4" />
           </button>
@@ -377,7 +377,7 @@ export function MessageComposer({
               type="button"
               aria-label="Remove attachment"
               onClick={() => void discardAttachment()}
-              className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-red-700"
+              className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-muted transition hover:border-red-100 hover:bg-red-50 hover:text-red-700"
             >
               <X aria-hidden="true" className="size-4" />
             </button>
@@ -400,7 +400,7 @@ export function MessageComposer({
           title="Attach photo or file"
           onClick={() => fileInputRef.current?.click()}
           disabled={attachment?.status === 'uploading'}
-          className="grid size-10 shrink-0 place-items-center rounded-full text-ocean-700 transition hover:bg-white disabled:opacity-40"
+          className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-ocean-700 transition hover:border-ocean-200 hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {attachment?.status === 'uploading'
             ? <LoaderCircle aria-hidden="true" className="size-5 animate-spin" />
@@ -413,7 +413,7 @@ export function MessageComposer({
           title="Attach photo"
           onClick={() => fileInputRef.current?.click()}
           disabled={attachment?.status === 'uploading'}
-          className="hidden size-10 shrink-0 place-items-center rounded-full text-ocean-700 transition hover:bg-white disabled:opacity-40 sm:grid"
+          className="hidden size-10 shrink-0 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-ocean-700 transition hover:border-ocean-200 hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-40 sm:grid"
         >
           <ImageIcon aria-hidden="true" className="size-5" />
         </button>
@@ -448,7 +448,7 @@ export function MessageComposer({
           aria-label="Send message"
           title={sendingCount > 0 ? 'Sending message' : 'Send message'}
           disabled={!canSend || attachment?.status === 'uploading'}
-          className="grid size-11 shrink-0 place-items-center rounded-xl bg-ocean-700 text-white transition hover:bg-ocean-800 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted"
+          className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl bg-ocean-700 text-white transition hover:bg-ocean-800 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted"
         >
           <SendHorizontal aria-hidden="true" className="size-4.5" />
         </button>

@@ -6,8 +6,8 @@ import SavedPostsPage from './page'
 vi.mock('@/features/feed/queries', () => ({
   getSavedPosts: vi.fn(),
 }))
-vi.mock('@/features/feed/components/post-card', () => ({
-  PostCard: ({ post }: { post: { id: string } }) => <div>Saved post {post.id}</div>,
+vi.mock('./saved-posts-grid', () => ({
+  SavedPostsGrid: ({ posts }: { posts: Array<{ id: string }> }) => <div>{posts.map((post) => <p key={post.id}>Saved post {post.id}</p>)}</div>,
 }))
 
 const mockedGetSavedPosts = vi.mocked(getSavedPosts)
@@ -24,6 +24,7 @@ describe('Saved posts page', () => {
 
     expect(screen.getByRole('heading', { name: 'Saved posts' })).toBeInTheDocument()
     expect(screen.getByText(`Saved post ${postId}`)).toBeInTheDocument()
+    expect(screen.getByText('1 post')).toBeInTheDocument()
     expect(mockedGetSavedPosts).toHaveBeenCalledTimes(1)
   })
 

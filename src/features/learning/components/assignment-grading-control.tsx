@@ -97,7 +97,7 @@ export function AssignmentGradingControl({ attemptId, maxPoints, passingPercenta
           type="button"
           onClick={() => submit('pass')}
           disabled={pending || score === ''}
-          className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-teal-800 transition-colors disabled:cursor-not-allowed"
         >
           {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
           Pass
@@ -106,7 +106,7 @@ export function AssignmentGradingControl({ attemptId, maxPoints, passingPercenta
           type="button"
           onClick={() => submit('needs_revision')}
           disabled={pending || score === ''}
-          className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-900 disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-bold text-amber-900 disabled:opacity-50 enabled:hover:bg-amber-100 transition-colors disabled:cursor-not-allowed"
         >
           {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <RotateCcw className="size-4" aria-hidden="true" />}
           Needs revision

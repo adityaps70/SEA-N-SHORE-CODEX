@@ -135,9 +135,9 @@ export function RelationshipControls({
   }
 
   const buttonClass = compact
-    ? 'min-h-9 rounded-xl border border-mist-100 px-3 text-xs font-semibold text-navy-900 hover:border-ocean-500 disabled:opacity-50'
-    : 'min-h-10 rounded-xl border border-mist-100 px-3.5 text-sm font-semibold text-navy-900 hover:border-ocean-500 disabled:opacity-50'
-  const primaryClass = `${buttonClass} border-navy-950 bg-navy-950 text-white hover:border-navy-900`
+    ? 'min-h-9 rounded-xl border border-mist-200 bg-white px-3 text-xs font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50'
+    : 'min-h-10 rounded-xl border border-mist-200 bg-white px-3.5 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50'
+  const primaryClass = `${buttonClass} border-navy-950 bg-navy-950 text-white hover:border-navy-800 hover:bg-navy-800`
   const menuItemClass = 'min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-navy-900 hover:bg-mist-50 disabled:opacity-50'
 
   return (

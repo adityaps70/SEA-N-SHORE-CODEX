@@ -144,7 +144,7 @@ export function ScormPlayer({
               type="button"
               disabled={pending || !canStart}
               onClick={() => void startAttempt()}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed"
             >
               {pending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <PlayCircle className="size-4" aria-hidden="true" />}
               {canStart ? 'Start SCORM material' : 'Attempt limit reached'}
@@ -163,7 +163,7 @@ export function ScormPlayer({
         {completed ? (
           <span className="inline-flex items-center gap-1.5 font-bold text-emerald-700"><CheckCircle2 className="size-4" /> Complete</span>
         ) : (
-          <button type="button" onClick={() => { commit(); router.refresh() }} className="inline-flex items-center gap-1.5 font-bold text-teal-700">
+          <button type="button" onClick={() => { commit(); router.refresh() }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-teal-200 bg-white px-3 font-bold text-teal-700 transition-colors hover:border-teal-300 hover:bg-teal-50">
             <RefreshCw className="size-4" /> Save progress
           </button>
         )}

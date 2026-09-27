@@ -217,7 +217,7 @@ function NewMessageDialogPanel({
             type="button"
             onClick={onClose}
             aria-label="Close new message"
-            className="grid size-9 shrink-0 place-items-center rounded-full text-muted transition hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+            className="cursor-pointer grid size-9 shrink-0 place-items-center rounded-full text-muted transition hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
           >
             <X aria-hidden="true" className="size-4" />
           </button>
@@ -282,7 +282,7 @@ function NewMessageDialogPanel({
               <button
                 type="button"
                 onClick={() => setReloadToken((token) => token + 1)}
-                className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-navy-950 ring-1 ring-red-100 hover:bg-red-50"
+                className="cursor-pointer mt-3 inline-flex min-h-9 items-center gap-2 rounded-xl bg-white px-3 text-xs font-semibold text-navy-950 ring-1 ring-red-100 hover:bg-red-50"
               >
                 <RefreshCcw aria-hidden="true" className="size-3.5" /> Try again
               </button>

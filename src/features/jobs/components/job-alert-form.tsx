@@ -29,7 +29,7 @@ export function JobAlertForm({ queryString = 'mode=for-you' }: { queryString?: s
           setMessage('')
           const result = await createJobAlert({ name, queryString, frequency })
           if (result.ok) { setMessage('Alert created.'); setName('') } else setMessage(result.error)
-        })} className="min-h-11 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white disabled:opacity-50">{pending ? 'Creating…' : 'Create alert'}</button>
+        })} className="min-h-11 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white disabled:opacity-50 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">{pending ? 'Creating…' : 'Create alert'}</button>
       </div>
       {message ? <p role="status" className="mt-3 text-xs font-medium text-muted">{message}</p> : null}
     </div>
@@ -38,5 +38,5 @@ export function JobAlertForm({ queryString = 'mode=for-you' }: { queryString?: s
 
 export function DeleteJobAlertButton({ alertId }: { alertId: string }) {
   const [pending, startTransition] = useTransition()
-  return <button type="button" disabled={pending} onClick={() => startTransition(() => deleteJobAlert(alertId).then(() => undefined))} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-muted hover:bg-mist-50 hover:text-red-700 disabled:opacity-50"><Trash2 aria-hidden="true" className="size-3.5" />{pending ? 'Removing…' : 'Delete'}</button>
+  return <button type="button" disabled={pending} onClick={() => startTransition(() => deleteJobAlert(alertId).then(() => undefined))} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-mist-200 bg-white px-2.5 text-xs font-semibold text-navy-900 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"><Trash2 aria-hidden="true" className="size-3.5" />{pending ? 'Removing…' : 'Delete'}</button>
 }

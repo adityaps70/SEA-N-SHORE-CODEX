@@ -29,7 +29,7 @@ export default function OrganizationVerificationError({
           </button>
           <Link
             href="/auth/sign-in"
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-mist-100 px-5 py-2.5 text-sm font-bold text-navy-950 hover:bg-mist-50"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-mist-200 px-5 py-2.5 text-sm font-bold text-navy-950 hover:bg-mist-50"
           >
             Sign in again
           </Link>

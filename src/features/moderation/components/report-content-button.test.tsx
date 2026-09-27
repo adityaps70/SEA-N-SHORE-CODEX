@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ reportContent: vi.fn() }))
 vi.mock('../actions', () => ({ reportContent: mocks.reportContent }))
 
+import { ReportJobButton } from '@/features/jobs/components/report-job-button'
 import { ReportContentButton } from './report-content-button'
 
 describe('ReportContentButton', () => {
@@ -85,5 +86,31 @@ describe('ReportContentButton', () => {
 
     expect(screen.getByText(/identify the copyrighted work/i)).toBeVisible()
     expect(screen.getByText(/rights holder or authorised to act/i)).toBeVisible()
+  })
+
+  it('renders the trigger as a bordered button with a hover state, and Escape closes the form', () => {
+    render(
+      <ReportContentButton
+        targetType="event"
+        targetId="11111111-1111-4111-8111-111111111111"
+        label="Report event"
+      />,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'Report event' })
+    expect(trigger).toHaveClass('border', 'border-mist-200', 'bg-white', 'cursor-pointer', 'hover:bg-red-50')
+    fireEvent.click(trigger)
+    expect(screen.getByRole('dialog', { name: 'Report event' })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows "Report this job" as a clear secondary button, not plain text', () => {
+    render(<ReportJobButton jobId="11111111-1111-4111-8111-111111111111" />)
+
+    const trigger = screen.getByRole('button', { name: 'Report this job' })
+    expect(trigger).toHaveClass('border', 'border-mist-200', 'bg-white', 'rounded-xl', 'hover:bg-red-50')
+    fireEvent.click(trigger)
+    expect(screen.getByRole('dialog', { name: 'Report job' })).toBeInTheDocument()
   })
 })

@@ -26,8 +26,8 @@ export function SaveJobButton({ jobId, initialSaved, compact = false }: { jobId:
           })
         }}
         className={compact
-          ? 'inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950 transition hover:bg-mist-50 disabled:opacity-60'
-          : 'inline-flex min-h-11 items-center gap-2 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950 transition hover:border-ocean-700 hover:bg-mist-50 disabled:opacity-60'}
+          ? 'inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 transition hover:bg-mist-50 disabled:opacity-60'
+          : 'inline-flex min-h-11 items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 transition hover:border-ocean-700 hover:bg-mist-50 disabled:opacity-60'}
       >
         <Icon aria-hidden="true" className="size-4" /> {pending ? 'Saving…' : saved ? 'Saved' : 'Save'}
       </button>

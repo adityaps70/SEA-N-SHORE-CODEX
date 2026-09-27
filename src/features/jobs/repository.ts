@@ -356,6 +356,19 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     return rows.map(mapJob)
   }
 
+  /** Live jobs posted as one organization, newest first (organization page Jobs tab). */
+  async function listPublishedJobsForCompany(companyId: string, limit = 30): Promise<JobListing[]> {
+    const rows = await queryRows(
+      `${JOB_SELECT}
+       where ${OPEN_JOB_WHERE}
+         and j.company_id = $1
+       order by coalesce(j.published_at, j.created_at) desc, j.id desc
+       limit $2`,
+      [companyId, Math.min(Math.max(Math.trunc(limit), 1), 100)],
+    ) as JobRow[]
+    return rows.map(mapJob)
+  }
+
   async function getPublishedJob(jobId: string): Promise<JobListing | null> {
     const rows = await queryRows(
       `${JOB_SELECT}
@@ -656,6 +669,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
   return {
     listPublishedJobs,
     searchJobs,
+    listPublishedJobsForCompany,
     getPublishedJob,
     isAcceptingApplications,
     getCandidateProfile,

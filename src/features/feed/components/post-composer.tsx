@@ -1,16 +1,17 @@
 'use client'
 
-import { useActionState, useEffect, useId, useRef, useState } from 'react'
-import { BarChart3, FileText, ImagePlus, MessageCircleQuestion, PencilLine, X } from 'lucide-react'
+import { useActionState, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { BarChart3, Check, ChevronDown, FileText, ImagePlus, MessageCircleQuestion, PencilLine, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
-import type { OwnProfile } from '@/features/profiles/types'
+import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import {
   createPost,
   createPostMediaUploads,
   discardPendingPostMedia,
   type PostComposerState,
 } from '../actions'
+import { loadPostingOrganizations } from '../organization-post-actions'
 import {
   POST_DOCUMENT_MAX_PAGES,
   POST_IMAGE_MAX_COUNT,
@@ -19,7 +20,7 @@ import {
   type PostMediaMime,
 } from '../media-policy'
 import { readPdfPageCount } from '../pdf-page-count'
-import type { PostCategory } from '../types'
+import type { ComposerProfile, PostCategory, PostingOrganization } from '../types'
 import { EmojiPicker } from './emoji-picker'
 import { MentionInput, type SelectedMention } from './mention-input'
 import { uploadPostMediaFile } from './upload-post-media'
@@ -87,7 +88,7 @@ function mediaStatus(media: ComposerMedia) {
   return media.error ?? 'Upload failed'
 }
 
-function ProfileAvatar({ profile, size = 'size-12' }: { profile: OwnProfile; size?: string }) {
+function ProfileAvatar({ profile, size = 'size-12' }: { profile: ComposerProfile; size?: string }) {
   return (
     <div className={`grid ${size} shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100`}>
       {profile.avatarUrl ? (
@@ -98,7 +99,142 @@ function ProfileAvatar({ profile, size = 'size-12' }: { profile: OwnProfile; siz
   )
 }
 
-export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile; defaultCategory?: PostCategory }) {
+function OrganizationAvatar({ organization, size = 'size-12' }: { organization: PostingOrganization; size?: string }) {
+  return (
+    <div className={`grid ${size} shrink-0 place-items-center overflow-hidden rounded-xl bg-navy-950 text-xs font-black text-white ring-1 ring-mist-100`}>
+      {organization.logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- organization logos come from the signed-in first-party logo route
+        <img src={organization.logoUrl} alt={`${organization.name} logo`} className="h-full w-full bg-white object-contain p-1" />
+      ) : initials(organization.name)}
+    </div>
+  )
+}
+
+/**
+ * "Post as" chooser in the composer header: the member themself, or an organization they can
+ * post for (owner, administrator or content role of a verified organization).
+ */
+function PostAsChooser({ profile, organizations, value, onChange, disabled }: {
+  profile: ComposerProfile
+  organizations: PostingOrganization[]
+  value: string | null
+  onChange(companyId: string | null): void
+  disabled?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const close = useCallback(() => setOpen(false), [])
+  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close, { triggerRef })
+  const selected = organizations.find((organization) => organization.id === value) ?? null
+
+  useEffect(() => {
+    if (!open) return
+    const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]')
+    const checked = menuRef.current?.querySelector<HTMLElement>('[aria-checked="true"]')
+    ;(checked ?? items?.[0])?.focus()
+  }, [open])
+
+  function choose(companyId: string | null) {
+    onChange(companyId)
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
+
+  function onRootKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    // Close only this menu, not the whole composer dialog.
+    if (event.key === 'Escape' && open) {
+      event.preventDefault()
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
+  }
+
+  function onMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitemradio"]') ?? [])]
+    const index = items.indexOf(document.activeElement as HTMLElement)
+    let next: HTMLElement | undefined
+    if (event.key === 'ArrowDown') next = items[(index + 1) % items.length]
+    else if (event.key === 'ArrowUp') next = items[(index - 1 + items.length) % items.length]
+    else if (event.key === 'Home') next = items[0]
+    else if (event.key === 'End') next = items[items.length - 1]
+    if (next) {
+      event.preventDefault()
+      next.focus()
+    }
+  }
+
+  const optionClass = 'flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none'
+
+  return (
+    <div ref={rootRef} className="relative min-w-[min(100%,15rem)] flex-1" onKeyDown={onRootKeyDown}>
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Post as ${selected ? selected.name : `yourself, ${profile.fullName}`}. Change who this post is from`}
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border border-mist-200 bg-white p-1.5 pr-3 text-left transition hover:border-ocean-200 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {selected ? <OrganizationAvatar organization={selected} size="size-11" /> : <ProfileAvatar profile={profile} size="size-11" />}
+        <span className="min-w-0 flex-1">
+          <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted">Post as</span>
+          <span className="block truncate font-semibold text-navy-950">{selected ? selected.name : profile.fullName}</span>
+          <span className="block truncate text-xs text-muted">{selected ? 'Organization' : profile.rank ?? profile.headline ?? 'Maritime professional'}</span>
+        </span>
+        <ChevronDown aria-hidden="true" className={`size-4 shrink-0 text-muted transition ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open ? (
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label="Post as"
+          onKeyDown={onMenuKeyDown}
+          className="absolute left-0 top-full z-20 mt-1 w-[min(22rem,calc(100vw-3rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl"
+        >
+          <button type="button" role="menuitemradio" aria-checked={!selected} onClick={() => choose(null)} className={optionClass}>
+            <ProfileAvatar profile={profile} size="size-9" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-navy-950">{profile.fullName}</span>
+              <span className="block text-xs text-muted">Yourself</span>
+            </span>
+            {!selected ? <Check aria-hidden="true" className="size-4 shrink-0 text-ocean-700" /> : null}
+          </button>
+          <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Organizations you post for</p>
+          {organizations.map((organization) => (
+            <button key={organization.id} type="button" role="menuitemradio" aria-checked={selected?.id === organization.id} onClick={() => choose(organization.id)} className={optionClass}>
+              <OrganizationAvatar organization={organization} size="size-9" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-navy-950">{organization.name}</span>
+                <span className="block text-xs text-muted">Organization</span>
+              </span>
+              {selected?.id === organization.id ? <Check aria-hidden="true" className="size-4 shrink-0 text-ocean-700" /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function PostComposer({
+  profile,
+  defaultCategory,
+  postingOrganizations,
+  defaultOrganizationId,
+  onPosted,
+}: {
+  profile: ComposerProfile
+  defaultCategory?: PostCategory
+  /** Organizations the member can post for. Loaded when the composer first opens if not given. */
+  postingOrganizations?: PostingOrganization[]
+  /** Start with "Post as" set to this organization (organization pages). */
+  defaultOrganizationId?: string
+  /** Called after a post is published, e.g. to reload an organization's post list. */
+  onPosted?(): void
+}) {
   const router = useRouter()
   const pollIdPrefix = useId()
   const nextPollFieldNumber = useRef(3)
@@ -107,8 +243,14 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
   const documentInputRef = useRef<HTMLInputElement>(null)
   const mediaStateRef = useRef<ComposerMedia[]>([])
   const uploadSequenceRef = useRef(0)
-  const draftKey = `sea-n-shore:post-draft:${profile.id}`
+  const draftKey = `sea-n-shore:post-draft:${profile.id}${defaultOrganizationId ? `:${defaultOrganizationId}` : ''}`
   const [open, setOpen] = useState(false)
+  const [loadedOrganizations, setLoadedOrganizations] = useState<PostingOrganization[] | null>(null)
+  const [organizationsError, setOrganizationsError] = useState(false)
+  const organizationsRequestedRef = useRef(false)
+  const organizations = postingOrganizations ?? loadedOrganizations ?? []
+  const [postAs, setPostAs] = useState<string | null>(defaultOrganizationId ?? null)
+  const postAsOrganization = organizations.find((organization) => organization.id === postAs) ?? null
   const [body, setBody] = useState('')
   const [mentions, setMentions] = useState<SelectedMention[]>([])
   const [mode, setMode] = useState<ComposerMode>('update')
@@ -157,13 +299,31 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
     else window.localStorage.removeItem(draftKey)
   }, [body, draftHydrated, draftKey, mentions, mode, pollFields, topicTags])
 
+  // The home feed does not pass the list: load it the first time the composer opens.
+  useEffect(() => {
+    if (!open || postingOrganizations || organizationsRequestedRef.current) return
+    organizationsRequestedRef.current = true
+    const failed = () => {
+      organizationsRequestedRef.current = false
+      setOrganizationsError(true)
+    }
+    loadPostingOrganizations()
+      .then((result) => {
+        if (!result.ok) return failed()
+        setLoadedOrganizations(result.organizations)
+        setOrganizationsError(false)
+      })
+      .catch(failed)
+  }, [open, postingOrganizations])
+
   useEffect(() => {
     if (!open) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const focusTimer = window.setTimeout(() => document.getElementById('feed-post-body')?.focus(), 0)
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
+      // A menu inside the composer (Post as, emoji, mentions) already handled this Escape.
+      if (event.key === 'Escape' && !event.defaultPrevented) setOpen(false)
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
@@ -251,6 +411,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
       resetComposer({ discardMedia: false, clearDraft: true })
       setOpen(false)
       router.refresh()
+      onPosted?.()
     }
     return nextState
   }, initialState)
@@ -436,9 +597,9 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
     <>
       <Card className="border border-mist-100 p-4">
         <div className="flex items-center gap-3">
-          <ProfileAvatar profile={profile} size="size-11" />
-          <button type="button" onClick={() => openComposer()} className="min-h-12 flex-1 rounded-full border border-mist-200 bg-white px-5 text-left text-sm font-medium text-muted transition hover:bg-mist-50 hover:text-navy-950">
-            Start a post
+          {postAsOrganization ? <OrganizationAvatar organization={postAsOrganization} size="size-11" /> : <ProfileAvatar profile={profile} size="size-11" />}
+          <button type="button" onClick={() => openComposer()} className="min-h-12 min-w-0 flex-1 cursor-pointer truncate rounded-full border border-mist-200 bg-white px-5 text-left text-sm font-medium text-muted transition hover:border-ocean-200 hover:bg-mist-50 hover:text-navy-950">
+            {postAsOrganization ? `Start a post as ${postAsOrganization.name}` : 'Start a post'}
           </button>
         </div>
       </Card>
@@ -457,14 +618,21 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
             <form ref={formRef} action={formAction}>
               <input type="hidden" name="mode" value={mode === 'poll' ? 'poll' : 'standard'} />
               <input type="hidden" name="category" value={defaultCategory ?? 'technical_discussion'} />
+              <input type="hidden" name="companyId" value={postAsOrganization?.id ?? ''} />
               {mediaIsReady ? <input type="hidden" name="mediaManifest" value={mediaManifest} /> : null}
 
               <div className="flex flex-wrap items-center gap-3 px-5 pt-4">
-                <ProfileAvatar profile={profile} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-navy-950">{profile.fullName}</p>
-                  <p className="truncate text-xs text-muted">{profile.rank ?? profile.headline ?? 'Maritime professional'}</p>
-                </div>
+                {organizations.length ? (
+                  <PostAsChooser profile={profile} organizations={organizations} value={postAsOrganization?.id ?? null} onChange={setPostAs} disabled={pending} />
+                ) : (
+                  <>
+                    <ProfileAvatar profile={profile} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-navy-950">{profile.fullName}</p>
+                      <p className="truncate text-xs text-muted">{profile.rank ?? profile.headline ?? 'Maritime professional'}</p>
+                    </div>
+                  </>
+                )}
                 <label className="text-xs font-semibold text-navy-950">
                   Audience
                   <select aria-label="Audience" value="community" disabled className="ml-2 min-h-9 rounded-full border border-mist-100 bg-mist-50 px-3 text-xs font-semibold text-navy-950 disabled:opacity-100">
@@ -472,6 +640,17 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
                   </select>
                 </label>
               </div>
+
+              {organizationsError && !organizations.length ? (
+                <p role="status" className="mx-5 mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  We could not load the organizations you post for, so this post will be from you. Close and reopen the composer to try again.
+                </p>
+              ) : null}
+              {postAsOrganization ? (
+                <p className="mx-5 mt-3 text-xs text-muted">
+                  Shown as <span className="font-semibold text-navy-900">{postAsOrganization.name}</span> in the feed and on its organization page. Your name stays on record as the author.
+                </p>
+              ) : null}
 
               <div className="mx-5 mt-4 grid grid-cols-3 gap-1 rounded-xl bg-mist-50 p-1" aria-label="Post type">
                 {([
@@ -519,12 +698,12 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
                       <div key={field.id} className="flex gap-2">
                         <label className="sr-only" htmlFor={`poll-option-${field.id}`}>Poll option {index + 1}</label>
                         <input id={`poll-option-${field.id}`} name="pollOption" value={field.value} maxLength={120} onChange={(event) => setPollFields((current) => current.map((item) => item.id === field.id ? { ...item, value: event.target.value } : item))} placeholder={`Option ${index + 1}`} className="min-h-11 flex-1 rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink" />
-                        {pollFields.length > 2 ? <button type="button" onClick={() => setPollFields((current) => current.filter((item) => item.id !== field.id))} className="min-h-11 rounded-xl px-3 text-sm font-semibold text-muted hover:bg-white hover:text-navy-950">Remove</button> : null}
+                        {pollFields.length > 2 ? <button type="button" onClick={() => setPollFields((current) => current.filter((item) => item.id !== field.id))} className="min-h-11 rounded-xl px-3 text-sm font-semibold text-navy-900 border border-mist-200 bg-white transition-colors hover:border-ocean-300 hover:bg-mist-50">Remove</button> : null}
                       </div>
                     ))}
                   </div>
                   {state.fieldErrors?.pollOptions ? <p className="mt-2 text-sm text-red-700">{state.fieldErrors.pollOptions[0]}</p> : null}
-                  <button type="button" disabled={pollFields.length >= 6} onClick={addPollField} className="mt-3 min-h-10 rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-ocean-700 disabled:cursor-not-allowed disabled:opacity-50">Add option</button>
+                  <button type="button" disabled={pollFields.length >= 6} onClick={addPollField} className="mt-3 min-h-10 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-ocean-700 disabled:cursor-not-allowed disabled:opacity-50 enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 transition-colors">Add option</button>
                 </fieldset>
               ) : null}
 
@@ -644,7 +823,7 @@ export function PostComposer({ profile, defaultCategory }: { profile: OwnProfile
               ) : null}
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-mist-100 px-5 py-4">
-                <button type="button" onClick={() => resetComposer({ discardMedia: true, clearDraft: true })} className="min-h-10 rounded-full px-4 text-sm font-semibold text-muted hover:bg-mist-50 hover:text-navy-950">Discard draft</button>
+                <button type="button" onClick={() => resetComposer({ discardMedia: true, clearDraft: true })} className="min-h-10 rounded-full px-4 text-sm font-semibold text-navy-900 border border-mist-200 bg-white transition-colors hover:border-ocean-300 hover:bg-mist-50">Discard draft</button>
                 <button type="submit" disabled={pending || !canSubmit} className="inline-flex min-h-10 items-center rounded-full bg-navy-950 px-6 text-sm font-semibold text-white transition hover:bg-ocean-700 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted">
                   {pending ? 'Posting…' : mode === 'question' ? 'Ask Community' : mode === 'poll' ? 'Publish Poll' : 'Post Update'}
                 </button>

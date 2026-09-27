@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FeedComment } from '../types'
 import { CommentThread } from './comment-thread'
@@ -75,7 +75,7 @@ afterEach(() => {
 })
 
 describe('CommentThread social metrics', () => {
-  it('shows the reaction total on the left, right after Like and before Reply', () => {
+  it('shows [Like 3] · Reply on the left and the reaction types at the right end of the row', () => {
     render(<CommentThread postId={postId} comments={[
       comment(),
       comment({ id: replyOneId, body: 'First reply.', parentCommentId: rootId, reactionSummary: { like: 1, support: 0, respect: 0, on_point: 0 }, reactionCount: 1 }),
@@ -83,17 +83,30 @@ describe('CommentThread social metrics', () => {
     ]} />)
 
     const root = item(rootId)
-    const reactButton = root.getByRole('button', { name: 'Like' })
+    const likeButton = root.getByRole('button', { name: 'Like' })
     const replyButton = root.getByRole('button', { name: 'Reply' })
-    const reactionTotal = root.getByRole('button', { name: /view 3 comment reactions/i })
+    const reactionTypes = root.getByRole('button', { name: /view 3 comment reactions/i })
 
-    expect(root.queryByRole('button', { name: /view comment reaction types/i })).not.toBeInTheDocument()
-    expect(reactButton.compareDocumentPosition(reactionTotal) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(reactionTotal.compareDocumentPosition(replyButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(reactionTotal).not.toHaveClass('ml-auto')
-    expect(reactionTotal).toHaveTextContent('3👍❤️')
-    expect(reactionTotal).not.toHaveTextContent(/reactions?/i)
+    expect(likeButton).toHaveTextContent(/^Like3$/)
+    expect(likeButton.compareDocumentPosition(replyButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(replyButton.compareDocumentPosition(reactionTypes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(reactionTypes).toHaveClass('ml-auto')
+    expect(reactionTypes).toHaveTextContent(/^👍❤️$/)
     expect(root.getByLabelText('2 replies')).toHaveTextContent('2')
+
+    // Replies use the same layout; a reply with no reactions shows no types control.
+    expect(item(replyOneId).getByRole('button', { name: 'Like' })).toHaveTextContent(/^Like1$/)
+    expect(item(replyTwoId).getByRole('button', { name: 'Like' })).toHaveTextContent(/^Like$/)
+    expect(item(replyTwoId).queryByRole('button', { name: /view \d+ comment reactions?/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps Report out of the action row and inside the comment "⋯" menu for other members', () => {
+    render(<CommentThread postId={postId} comments={[comment()]} />)
+    const root = item(rootId)
+    expect(root.queryByRole('button', { name: /report/i })).not.toBeInTheDocument()
+    fireEvent.click(root.getByRole('button', { name: 'Comment actions' }))
+    fireEvent.click(root.getByRole('menuitem', { name: 'Report comment' }))
+    expect(screen.getByRole('dialog', { name: 'Report comment' })).toBeInTheDocument()
   })
 
   it('marks replies as connected thread rows and hides a zero reply metric on leaf replies', () => {

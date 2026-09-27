@@ -215,7 +215,7 @@ export function ApplyJobButton({
                 type="button"
                 disabled={pending}
                 onClick={() => setOpen(false)}
-                className="min-h-11 rounded-xl border border-mist-100 px-4 text-sm font-bold text-navy-950 hover:bg-mist-50"
+                className="min-h-11 rounded-xl border border-mist-200 px-4 text-sm font-bold text-navy-950 hover:bg-mist-50"
               >
                 Cancel
               </button>

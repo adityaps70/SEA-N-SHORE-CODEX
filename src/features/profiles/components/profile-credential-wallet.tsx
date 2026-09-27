@@ -96,7 +96,7 @@ function CredentialEditor({
             New credentials are self-reported until Sea N Shore&apos;s evidence review confirms them.
           </p>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close credential editor" className="grid size-9 shrink-0 place-items-center rounded-full border border-mist-100 bg-white text-muted hover:text-navy-950">
+        <button type="button" onClick={onClose} aria-label="Close credential editor" className="grid size-9 shrink-0 place-items-center rounded-full border border-mist-200 bg-white text-muted hover:text-navy-950">
           <X aria-hidden="true" className="size-4" />
         </button>
       </div>
@@ -136,8 +136,8 @@ function CredentialEditor({
       {state.error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
 
       <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onClose} className="min-h-10 rounded-xl border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950">Cancel</button>
-        <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60">
+        <button type="button" onClick={onClose} className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Cancel</button>
+        <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">
           {pending ? 'Saving…' : credential ? 'Save credential' : 'Add credential'}
         </button>
       </div>
@@ -189,10 +189,10 @@ function CredentialEntry({
 
         {editable ? (
           <div className="flex shrink-0 gap-1">
-            <button type="button" onClick={onEdit} aria-label={`Edit ${credential.name}`} className="grid size-9 place-items-center rounded-full border border-mist-100 text-muted hover:border-ocean-400 hover:text-ocean-700">
+            <button type="button" onClick={onEdit} aria-label={`Edit ${credential.name}`} className="grid size-9 place-items-center rounded-full border border-mist-200 text-muted hover:border-ocean-400 hover:text-ocean-700">
               <Pencil aria-hidden="true" className="size-4" />
             </button>
-            <button type="button" onClick={remove} disabled={deleting} aria-label={`Delete ${credential.name}`} className="grid size-9 place-items-center rounded-full border border-mist-100 text-muted hover:border-red-200 hover:text-red-700 disabled:opacity-50">
+            <button type="button" onClick={remove} disabled={deleting} aria-label={`Delete ${credential.name}`} className="grid size-9 place-items-center rounded-full border border-mist-200 text-muted hover:border-red-200 hover:text-red-700 disabled:opacity-50">
               <Trash2 aria-hidden="true" className="size-4" />
             </button>
           </div>
@@ -228,7 +228,7 @@ export function ProfileCredentialWallet({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-xl font-semibold tracking-tight text-navy-950">Licences &amp; Credentials</h2>
         {editable && !adding ? (
-          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white" aria-label="Add credential">
+          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors" aria-label="Add credential">
             <Plus aria-hidden="true" className="size-4" />
             Add credential
           </button>
@@ -254,7 +254,7 @@ export function ProfileCredentialWallet({
           <FileCheck2 aria-hidden="true" className="mx-auto size-7 text-ocean-600" />
           <p className="mt-2 text-sm font-semibold text-navy-950">Add your maritime credentials</p>
           <p className="mt-1 text-sm text-muted">New credentials are self-reported until a formal evidence review confirms them.</p>
-          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">
+          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
             <Plus aria-hidden="true" className="size-4" />
             Add your first credential
           </button>

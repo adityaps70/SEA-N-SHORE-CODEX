@@ -49,7 +49,7 @@ export function ProfileNetworkStats({
               {summary.canViewLists ? (
                 <Link
                   href={profileNetworkListHref(list, { isOwner: summary.isOwner, slug })}
-                  className="inline-flex items-baseline gap-1 rounded-md hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2"
+                  className="inline-flex items-baseline gap-1 rounded-md text-ocean-700 underline-offset-2 hover:underline [&>span]:text-ocean-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2"
                 >
                   {content}
                 </Link>

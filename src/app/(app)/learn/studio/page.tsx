@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, Eye, FilePenLine, Plus, Sparkles } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, Eye, FilePenLine, Plus } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
@@ -115,7 +115,7 @@ export default async function MentorStudioPage() {
   return (
     <div className="mx-auto w-full max-w-7xl py-6 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/learn/teach" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
+        <Link href="/learn/teach" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
           <ArrowLeft aria-hidden="true" className="size-4" /> Trainer verification
         </Link>
         <div className="flex flex-wrap items-center gap-2">
@@ -144,7 +144,7 @@ export default async function MentorStudioPage() {
         <div className="grid gap-7 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
-              <Sparkles aria-hidden="true" className="size-4" /> {hasActiveMentor ? 'Verified trainer workspace' : 'Organization LMS workspace'}
+              {hasActiveMentor ? 'Verified trainer workspace' : 'Organization LMS workspace'}
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Learning Studio</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">

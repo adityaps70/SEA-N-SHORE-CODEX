@@ -104,7 +104,7 @@ export function RepostDialog({
         {error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={pending} className="min-h-10 rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
+          <button type="button" onClick={onClose} disabled={pending} className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
             Cancel
           </button>
           <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900 disabled:opacity-60">

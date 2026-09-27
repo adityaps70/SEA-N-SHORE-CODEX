@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { CreateRequirementsBanner } from '@/components/creator/create-requirements-banner'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { EventForm } from '@/features/events/components/event-form'
@@ -29,7 +30,7 @@ export default async function CreateEventPage() {
           <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
             Sea N Shore needs an active personal profile before an event can be created.
           </p>
-          <Link href="/profile/edit" className="mt-5 inline-flex rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white">
+          <Link href="/profile/edit" className="mt-5 inline-flex rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
             Complete profile
           </Link>
         </section>
@@ -45,6 +46,7 @@ export default async function CreateEventPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6 py-2 sm:px-6 sm:py-6">
+      <CreateRequirementsBanner access={access} kind="event" />
       <EventNav active="hosting" />
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Hosting</p>

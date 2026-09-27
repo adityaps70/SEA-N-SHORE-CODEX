@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, Clock3, ShieldAlert, Sparkles } from 'lucide-react'
+import { ArrowLeft, Clock3, ShieldAlert } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MentorApplicationForm } from '@/features/learning/components/mentor-application-form'
 import type { MentorApplicationInput } from '@/features/learning/mentor-application'
@@ -131,14 +131,14 @@ export default async function TeachPage() {
         eyebrow="Approval processing"
         title="Your trainer verification is being finalized"
         copy="Your application has been approved and Sea N Shore is finalizing your verified trainer record. Learning Studio will unlock only after the approved mentor record is active."
-        icon={Sparkles}
+        icon={Clock3}
       />
     )
   }
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-      <Link href="/learn" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
+      <Link href="/learn" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
         <ArrowLeft aria-hidden="true" className="size-4" /> Back to Learning
       </Link>
 
@@ -146,7 +146,7 @@ export default async function TeachPage() {
         <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
-              <Sparkles aria-hidden="true" className="size-4" /> Verified maritime expertise
+              Verified maritime expertise
             </p>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Teach on Sea N Shore</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">

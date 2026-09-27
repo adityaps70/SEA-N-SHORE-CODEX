@@ -107,7 +107,7 @@ export function ProfilePreferencesForm({ profile }: { profile: OwnProfile }) {
                   className={`rounded-full border px-3.5 py-2 text-sm font-semibold transition ${
                     selected
                       ? 'border-ocean-700 bg-ocean-700 text-white'
-                      : 'border-mist-100 bg-mist-50 text-navy-900 hover:border-ocean-300'
+                      : 'border-mist-200 bg-mist-50 text-navy-900 hover:border-ocean-300'
                   }`}
                 >
                   {selected ? '✓ ' : ''}{PROFILE_INTENT_LABELS[intent]}
@@ -166,7 +166,7 @@ export function ProfilePreferencesForm({ profile }: { profile: OwnProfile }) {
           <button
             type="submit"
             disabled={pending || intents.length === 0}
-            className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-11 items-center rounded-xl bg-navy-950 px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50 enabled:hover:bg-navy-800 transition-colors"
           >
             {pending ? 'Saving…' : 'Save profile type & goals'}
           </button>

@@ -693,7 +693,7 @@ export function EventForm(props: Props) {
       ) : null}
 
       <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap gap-3 rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-xl backdrop-blur sm:p-4 md:bottom-3">
-        <button disabled={busy} type="submit" name="status" value="draft" className="rounded-xl border border-navy-200 bg-white px-5 py-3 text-sm font-bold text-navy-900 disabled:opacity-60">{bannerUploading ? 'Uploading banner…' : pending ? 'Saving…' : initial?.status === 'published' ? 'Unpublish to draft' : 'Save draft'}</button>
+        <button disabled={busy} type="submit" name="status" value="draft" className="rounded-xl border border-navy-200 bg-white px-5 py-3 text-sm font-bold text-navy-900 disabled:opacity-60 enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 transition-colors disabled:cursor-not-allowed">{bannerUploading ? 'Uploading banner…' : pending ? 'Saving…' : initial?.status === 'published' ? 'Unpublish to draft' : 'Save draft'}</button>
         <button disabled={busy} type="submit" name="status" value="published" className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-60">{pending ? 'Saving…' : initial?.status === 'published' ? 'Save & keep published' : 'Publish event'}</button>
         {props.mode === 'edit' ? <button disabled={busy} type="button" onClick={() => setConfirmingCancel(true)} aria-expanded={confirmingCancel} className="rounded-xl border border-rose-200 px-5 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-60 sm:ml-auto">Cancel event</button> : null}
       </div>

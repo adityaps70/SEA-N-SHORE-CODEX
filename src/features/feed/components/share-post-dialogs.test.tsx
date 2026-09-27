@@ -84,7 +84,7 @@ function post(overrides: Partial<FeedPost> = {}): FeedPost {
 }
 
 function openShareMenu() {
-  fireEvent.click(screen.getByRole('button', { name: 'Share' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Repost' }))
   return screen.getByRole('menu', { name: 'Share post' })
 }
 

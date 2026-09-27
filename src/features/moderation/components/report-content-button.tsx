@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { Flag, ShieldAlert, X } from 'lucide-react'
+import { iconButtonClass, primaryButtonClass, reportButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { reportContent } from '../actions'
 import {
   REPORT_REASON_LABELS,
@@ -45,6 +46,15 @@ export function ReportContentButton({
     onClose?.()
   }
 
+  useEffect(() => {
+    if (!open) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') close()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  })
+
   return (
     <>
       {hideTrigger ? null : <button
@@ -57,8 +67,8 @@ export function ReportContentButton({
           setOpen(true)
         }}
         className={className || (iconOnly
-          ? 'inline-flex min-h-10 items-center justify-center rounded-xl px-2 text-muted transition hover:bg-mist-50 hover:text-red-700'
-          : 'inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-100 bg-white px-3.5 text-sm font-semibold text-navy-950 transition hover:border-red-200 hover:bg-red-50 hover:text-red-800')}
+          ? 'inline-flex min-h-10 min-w-10 cursor-pointer items-center justify-center rounded-xl px-2 text-muted transition hover:bg-mist-100 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500'
+          : reportButtonClass)}
       >
         <Flag aria-hidden="true" className="size-4" />
         {iconOnly ? null : label}
@@ -83,7 +93,7 @@ export function ReportContentButton({
                   Reports are reviewed by Sea N Shore administrators. Reporting does not automatically remove content.
                 </p>
               </div>
-              <button type="button" aria-label="Close report form" onClick={close} className="grid size-9 shrink-0 place-items-center rounded-xl text-muted hover:bg-mist-50">
+              <button type="button" aria-label="Close report form" onClick={close} className={iconButtonClass}>
                 <X aria-hidden="true" className="size-4" />
               </button>
             </div>
@@ -133,7 +143,7 @@ export function ReportContentButton({
             ) : null}
 
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" disabled={pending} onClick={close} className="min-h-10 rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
+              <button type="button" disabled={pending} onClick={close} className={secondaryButtonClass}>
                 Cancel
               </button>
               <button
@@ -151,7 +161,7 @@ export function ReportContentButton({
                     }
                   })
                 }}
-                className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900 disabled:opacity-60"
+                className={primaryButtonClass}
               >
                 {pending ? 'Submitting…' : 'Submit report'}
               </button>

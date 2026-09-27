@@ -32,7 +32,7 @@ export default async function MentorAssignmentsPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl py-6 sm:px-6 lg:px-8">
-      <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-muted hover:text-navy-950">
+      <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
         <ArrowLeft className="size-4" aria-hidden="true" /> Learning Studio
       </Link>
       <section className="mt-5 rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">

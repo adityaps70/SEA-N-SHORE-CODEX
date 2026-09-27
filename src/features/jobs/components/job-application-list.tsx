@@ -13,7 +13,7 @@ export function JobApplicationList({ applications }: { applications: JobApplicat
       <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-10 text-center">
         <p className="font-semibold text-navy-950">You have not applied for a role yet.</p>
         <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Explore current maritime opportunities and your applications will appear here with their latest status.</p>
-        <Link href="/jobs" className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white">
+        <Link href="/jobs" className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
           Explore jobs <ArrowRight aria-hidden="true" className="size-4" />
         </Link>
       </div>
@@ -32,7 +32,7 @@ export function JobApplicationList({ applications }: { applications: JobApplicat
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   {(application.job.state ?? 'open') === 'open' ? (
-                    <Link href={`/jobs/${application.job.id}`} className="font-semibold text-navy-950 hover:text-ocean-700">
+                    <Link href={`/jobs/${application.job.id}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
                       {application.job.title}
                     </Link>
                   ) : (

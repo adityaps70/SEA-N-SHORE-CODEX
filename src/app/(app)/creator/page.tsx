@@ -60,7 +60,7 @@ export default async function CreatorPage() {
             Post jobs, host events and publish courses — for yourself or for your organization. Each option shows what you need before you can publish.
           </p>
         </div>
-        <Link href="/plans" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-mist-100 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+        <Link href="/plans" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">
           <Crown className="size-4" aria-hidden="true" /> View plans
         </Link>
       </header>
@@ -91,9 +91,9 @@ export default async function CreatorPage() {
               </div>
 
               <div className="mt-5 flex flex-wrap gap-2">
-                <Link href={item.href} className="rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white">{ready ? 'Start' : 'Start a draft'}</Link>
-                {!personalVerified ? <Link href={item.verificationHref} className="rounded-xl border border-mist-100 px-4 py-2.5 text-sm font-bold text-navy-950">Get verified</Link> : null}
-                {personalVerified && !personalReady ? <Link href="/plans" className="rounded-xl border border-mist-100 px-4 py-2.5 text-sm font-bold text-navy-950">Creator Pro</Link> : null}
+                <Link href={item.href} className="rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">{ready ? 'Start' : 'Start a draft'}</Link>
+                {!personalVerified ? <Link href={item.verificationHref} className="rounded-xl border border-mist-200 px-4 py-2.5 text-sm font-bold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Get verified</Link> : null}
+                {personalVerified && !personalReady ? <Link href="/plans" className="rounded-xl border border-mist-200 px-4 py-2.5 text-sm font-bold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Creator Pro</Link> : null}
               </div>
             </article>
           )

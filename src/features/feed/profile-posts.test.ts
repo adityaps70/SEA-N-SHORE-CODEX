@@ -52,6 +52,8 @@ describe('profile posts query', () => {
       viewerProfileId: viewerId,
       authorProfileId: profileId,
       limit: 30,
+      // Posts published as an organization show on the organization page, not the person's profile.
+      personalOnly: true,
     })
     expect(posts).toHaveLength(1)
     expect(posts[0]).toMatchObject({

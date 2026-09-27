@@ -628,9 +628,9 @@ function QuizEditor({
                   </label>
                   <input aria-label={`Question ${questionIndex + 1} option ${optionIndex + 1}`} className="min-h-10 rounded-lg border border-mist-200 bg-white px-3 py-2 text-sm text-navy-950 outline-none focus:border-teal-500" value={option.label} onChange={(event) => updateOption(questionIndex, optionIndex, event.target.value)} />
                   <div className="flex items-center justify-end gap-1">
-                    <button type="button" aria-label={`Move question ${questionIndex + 1} option ${optionIndex + 1} up`} disabled={optionIndex === 0} onClick={() => moveOption(questionIndex, optionIndex, 'up')} className="rounded-lg p-1.5 text-muted disabled:opacity-30"><ArrowUp className="size-3.5" /></button>
-                    <button type="button" aria-label={`Move question ${questionIndex + 1} option ${optionIndex + 1} down`} disabled={optionIndex === question.options.length - 1} onClick={() => moveOption(questionIndex, optionIndex, 'down')} className="rounded-lg p-1.5 text-muted disabled:opacity-30"><ArrowDown className="size-3.5" /></button>
-                    <button type="button" aria-label={`Remove question ${questionIndex + 1} option ${optionIndex + 1}`} onClick={() => removeOption(questionIndex, optionIndex)} className="rounded-lg p-1.5 text-rose-700"><Trash2 className="size-3.5" /></button>
+                    <button type="button" aria-label={`Move question ${questionIndex + 1} option ${optionIndex + 1} up`} disabled={optionIndex === 0} onClick={() => moveOption(questionIndex, optionIndex, 'up')} className="grid size-9 place-items-center rounded-lg text-muted transition-colors enabled:hover:bg-mist-100 enabled:hover:text-navy-950 disabled:cursor-not-allowed disabled:opacity-30"><ArrowUp className="size-3.5" /></button>
+                    <button type="button" aria-label={`Move question ${questionIndex + 1} option ${optionIndex + 1} down`} disabled={optionIndex === question.options.length - 1} onClick={() => moveOption(questionIndex, optionIndex, 'down')} className="grid size-9 place-items-center rounded-lg text-muted transition-colors enabled:hover:bg-mist-100 enabled:hover:text-navy-950 disabled:cursor-not-allowed disabled:opacity-30"><ArrowDown className="size-3.5" /></button>
+                    <button type="button" aria-label={`Remove question ${questionIndex + 1} option ${optionIndex + 1}`} onClick={() => removeOption(questionIndex, optionIndex)} className="grid size-9 place-items-center rounded-lg text-rose-700 transition-colors hover:bg-rose-50"><Trash2 className="size-3.5" /></button>
                   </div>
                 </div>
               ))}
@@ -898,8 +898,8 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                 {editingSectionId === section.id ? (
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <input aria-label={`Section title for ${section.title}`} className="min-h-10 min-w-64 flex-1 rounded-lg border border-mist-200 bg-white px-3 py-2 text-sm font-semibold text-navy-950 outline-none focus:border-teal-500" value={editingSectionTitle} onChange={(event) => setEditingSectionTitle(event.target.value)} />
-                    <button type="button" disabled={pending} onClick={() => runSave(saveSectionTitle)} className="rounded-lg bg-navy-950 px-3 py-2 text-xs font-bold text-white">Save title</button>
-                    <button type="button" onClick={() => setEditingSectionId(null)} className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-muted">Cancel</button>
+                    <button type="button" disabled={pending} onClick={() => runSave(saveSectionTitle)} className="rounded-lg bg-navy-950 px-3 py-2 text-xs font-bold text-white enabled:hover:bg-navy-800 transition-colors">Save title</button>
+                    <button type="button" onClick={() => setEditingSectionId(null)} className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-muted hover:border-ocean-300 hover:bg-mist-50 transition-colors">Cancel</button>
                   </div>
                 ) : <h3 className="mt-1 truncate text-lg font-bold text-navy-950">{section.title}</h3>}
               </div>
@@ -917,8 +917,8 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                 }} className="rounded-lg p-2 text-muted hover:bg-mist-50"><Pencil className="size-4" /></button>
                 {confirmDeleteSectionId === section.id ? (
                   <>
-                    <button type="button" aria-label={`Confirm delete ${section.title}`} disabled={pending} onClick={() => runAction(() => deleteCurriculumSection(courseId, section.id), 'Section deleted.', () => setConfirmDeleteSectionId(null))} className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white">Confirm delete</button>
-                    <button type="button" aria-label={`Cancel delete ${section.title}`} onClick={() => setConfirmDeleteSectionId(null)} className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-muted">Cancel</button>
+                    <button type="button" aria-label={`Confirm delete ${section.title}`} disabled={pending} onClick={() => runAction(() => deleteCurriculumSection(courseId, section.id), 'Section deleted.', () => setConfirmDeleteSectionId(null))} className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white enabled:hover:bg-rose-800 transition-colors">Confirm delete</button>
+                    <button type="button" aria-label={`Cancel delete ${section.title}`} onClick={() => setConfirmDeleteSectionId(null)} className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-muted hover:border-ocean-300 hover:bg-mist-50 transition-colors">Cancel</button>
                   </>
                 ) : <button type="button" aria-label={`Delete ${section.title}`} disabled={pending} onClick={() => setConfirmDeleteSectionId(section.id)} className="rounded-lg p-2 text-rose-700 hover:bg-rose-50"><Trash2 className="size-4" /></button>}
               </div>
@@ -949,8 +949,8 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                       {material.materialType === 'quiz' ? <button type="button" aria-label={`Edit quiz ${material.title}`} disabled={pending} onClick={() => beginQuizEdit(material)} className="rounded-lg p-2 text-sky-700 hover:bg-sky-50"><FileQuestion className="size-4" /></button> : null}
                       {confirmDeleteMaterialId === material.id ? (
                         <>
-                          <button type="button" aria-label={`Confirm delete ${material.title}`} disabled={pending} onClick={() => runAction(() => deleteCurriculumLesson(courseId, material.id), 'Material deleted.', () => setConfirmDeleteMaterialId(null))} className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white">Confirm delete</button>
-                          <button type="button" aria-label={`Cancel delete ${material.title}`} onClick={() => setConfirmDeleteMaterialId(null)} className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-muted">Cancel</button>
+                          <button type="button" aria-label={`Confirm delete ${material.title}`} disabled={pending} onClick={() => runAction(() => deleteCurriculumLesson(courseId, material.id), 'Material deleted.', () => setConfirmDeleteMaterialId(null))} className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white enabled:hover:bg-rose-800 transition-colors">Confirm delete</button>
+                          <button type="button" aria-label={`Cancel delete ${material.title}`} onClick={() => setConfirmDeleteMaterialId(null)} className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-muted hover:border-ocean-300 hover:bg-mist-50 transition-colors">Cancel</button>
                         </>
                       ) : <button type="button" aria-label={`Delete ${material.title}`} disabled={pending} onClick={() => setConfirmDeleteMaterialId(material.id)} className="rounded-lg p-2 text-rose-700 hover:bg-rose-50"><Trash2 className="size-4" /></button>}
                     </div>
@@ -960,8 +960,8 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                     <div className="mt-4 border-t border-mist-100 pt-4">
                       <MaterialFields courseId={courseId} prefix="Edit" form={editingMaterial} setForm={setEditingMaterial} availableMaterials={allMaterials} currentMaterialId={material.id} />
                       <div className="mt-4 flex justify-end gap-2">
-                        <button type="button" onClick={() => setEditingMaterialId(null)} className="rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-muted">Cancel</button>
-                        <button type="button" disabled={pending} onClick={() => runSave(saveMaterialEdit)} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"><Save className="size-4" /> Save material changes</button>
+                        <button type="button" onClick={() => setEditingMaterialId(null)} className="rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-muted hover:border-ocean-300 hover:bg-mist-50 transition-colors">Cancel</button>
+                        <button type="button" disabled={pending} onClick={() => runSave(saveMaterialEdit)} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed"><Save className="size-4" /> Save material changes</button>
                       </div>
                     </div>
                   ) : null}
@@ -982,11 +982,11 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
                 >
                   <div className="flex items-center justify-between gap-3">
                     <h4 className="font-bold text-navy-950">Add material</h4>
-                    <button type="button" aria-label={`Close add material for ${section.title}`} onClick={() => setAddingMaterialSectionId(null)} className="rounded-lg p-2 text-muted"><X className="size-4" /></button>
+                    <button type="button" aria-label={`Close add material for ${section.title}`} onClick={() => setAddingMaterialSectionId(null)} className="rounded-lg p-2 text-muted transition-colors hover:bg-mist-100 hover:text-navy-950"><X className="size-4" /></button>
                   </div>
                   <div className="mt-4"><MaterialFields courseId={courseId} prefix="New" form={newMaterial} setForm={setNewMaterial} availableMaterials={allMaterials} /></div>
                   <div className="mt-4 flex justify-end">
-                    <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"><Plus className="size-4" /> Create material</button>
+                    <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed"><Plus className="size-4" /> Create material</button>
                   </div>
                 </form>
               ) : readOnly ? null : (

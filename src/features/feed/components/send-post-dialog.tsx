@@ -92,7 +92,7 @@ export function SendPostDialog({
           <p>{authorName}&apos;s post was sent to <span className="font-semibold">{sent.recipient.fullName}</span> as a message.</p>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Link href={`/messages/${sent.conversationId}`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+          <Link href={`/messages/${sent.conversationId}`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">
             Open conversation
           </Link>
           <button type="button" data-autofocus onClick={onClose} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900">
@@ -213,7 +213,7 @@ export function SendPostDialog({
           {error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
           <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
-            <button type="button" onClick={onClose} disabled={pending} className="min-h-10 rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
+            <button type="button" onClick={onClose} disabled={pending} className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
               Cancel
             </button>
             <button

@@ -43,6 +43,14 @@ describe('primary navigation layout', () => {
     expect(screen.getByRole('menuitem', { name: /Create an event/ })).toHaveAttribute('href', '/events/create')
     expect(screen.getByRole('menuitem', { name: /Create a course/ })).toHaveAttribute('href', '/learn/studio/courses/new')
     expect(screen.getByRole('menuitem', { name: /All creator tools/ })).toHaveAttribute('href', '/creator')
+    // Posting an update happens in the Home composer, not from the Create menu.
+    expect(screen.queryByRole('menuitem', { name: /Post an update/ })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('menuitem').map((item) => item.getAttribute('href'))).toEqual([
+      '/hiring/jobs/new',
+      '/events/create',
+      '/learn/studio/courses/new',
+      '/creator',
+    ])
   })
 
   it('pins the desktop header to the top of the viewport and centres the navigation', () => {

@@ -6,7 +6,6 @@ import {
   Gauge,
   Map,
   Ship,
-  Sparkles,
 } from 'lucide-react'
 import { getProfileReadiness } from '../profile-readiness'
 import { profileAvailabilityLabel } from '../profile-availability'
@@ -66,7 +65,6 @@ export function ProfilePassportOverview({
               <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Professional snapshot</p>
               <h3 className="mt-1 text-lg font-semibold text-navy-950">What a maritime recruiter needs first</h3>
             </div>
-            <Sparkles aria-hidden="true" className="hidden size-5 text-teal-500 sm:block" />
           </div>
 
           {isMaritime ? (

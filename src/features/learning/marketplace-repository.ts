@@ -188,6 +188,20 @@ order by course.published_at desc, course.id desc`,
     return rows.map(mapCourse).filter(isPublicMarketplaceCourse)
   }
 
+  /** Catalog courses published as one organization (organization page Courses tab). */
+  async function listPublishedCoursesForCompany(companyId: string, limit = 30): Promise<MarketplaceCourse[]> {
+    const rows = await queryRows(
+      `${marketplaceSelect}
+where ${marketplaceDiscoveryVisibility}
+  and course.company_id = $1
+order by course.published_at desc, course.id desc
+limit $2`,
+      [companyId, Math.min(Math.max(Math.trunc(limit), 1), 100)],
+    ) as MarketplaceCourseRow[]
+
+    return rows.map(mapCourse).filter(isPublicMarketplaceCourse)
+  }
+
   async function getPublishedCourseBySlug(slug: string): Promise<MarketplaceCourse | null> {
     const normalizedSlug = slug.trim()
     if (!normalizedSlug) return null
@@ -206,6 +220,7 @@ limit 1`,
 
   return {
     listPublishedCourses,
+    listPublishedCoursesForCompany,
     getPublishedCourseBySlug,
   }
 }

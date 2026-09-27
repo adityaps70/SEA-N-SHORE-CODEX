@@ -89,4 +89,32 @@ describe('ProfileEditForm', () => {
     expect(screen.queryByRole('textbox', { name: /current organization/i })).not.toBeInTheDocument()
   })
 
+  it('lets members link their current organization with the organization picker', () => {
+    const { container } = render(
+      <ProfileEditForm
+        profile={{
+          ...profile,
+          persona: 'shore_professional',
+          currentCompany: 'Oceanic Ship Management',
+          currentCompanyId: '22222222-2222-4222-8222-222222222222',
+          currentOrganization: {
+            id: '22222222-2222-4222-8222-222222222222',
+            slug: 'oceanic-ship-management',
+            name: 'Oceanic Ship Management',
+            logoUrl: null,
+            verified: true,
+          },
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('Oceanic Ship Management')
+    expect(container.querySelector<HTMLInputElement>('input[name="currentCompanyId"]')).toHaveValue('22222222-2222-4222-8222-222222222222')
+    expect(screen.getByText('Linked to the Oceanic Ship Management page on Sea N Shore')).toBeInTheDocument()
+  })
+
+  it('does not ask for an organization when the persona has none', () => {
+    render(<ProfileEditForm profile={{ ...profile, persona: 'maritime_enthusiast' }} />)
+    expect(screen.queryByRole('combobox', { name: 'Current organization' })).not.toBeInTheDocument()
+  })
 })

@@ -5,7 +5,7 @@ import { Download, Eye } from 'lucide-react'
 import { ProfileShareControls } from './profile-share-controls'
 
 export function ProfilePassportToolbar({ slug, siteUrl }: { slug: string; siteUrl?: string }) {
-  const secondary = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-mist-100 bg-white px-3.5 text-sm font-semibold text-navy-950 transition hover:border-ocean-400 hover:text-ocean-700'
+  const secondary = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-3.5 text-sm font-semibold text-navy-950 transition hover:border-ocean-400 hover:bg-mist-50 hover:text-ocean-700'
 
   return (
     <div className="flex flex-wrap items-center gap-2" aria-label="Profile actions">

@@ -94,7 +94,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
                 <li key={row.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <div className="min-w-0">
                     <p className="truncate font-bold text-navy-950">
-                      {row.attendeeSlug ? <Link href={`/profile/${row.attendeeSlug}`} className="hover:text-teal-700">{row.attendeeName ?? 'Sea N Shore member'}</Link> : row.attendeeName ?? 'Former member'}
+                      {row.attendeeSlug ? <Link href={`/profile/${row.attendeeSlug}`} className="hover:text-teal-700 hover:underline">{row.attendeeName ?? 'Sea N Shore member'}</Link> : row.attendeeName ?? 'Former member'}
                     </p>
                     <p className="text-xs text-muted">
                       {row.status === 'refunded' ? `Refunded ${dateLabel(row.refundedAt)}` : row.paidAt ? `Paid ${dateLabel(row.paidAt)}` : `Started ${dateLabel(row.createdAt)}`}

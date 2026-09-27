@@ -80,7 +80,7 @@ export default async function AdminUserDetailPage({
 
   return (
     <main className="space-y-4">
-      <Link href="/admin/users" className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-navy-950">
+      <Link href="/admin/users" className="inline-flex items-center gap-1.5 text-sm font-semibold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
         <ArrowLeft aria-hidden="true" className="size-4" /> User accounts
       </Link>
 
@@ -117,7 +117,7 @@ export default async function AdminUserDetailPage({
             </dl>
 
             {user.slug && user.status === 'active' ? (
-              <Link href={`/people/${user.slug}`} className="mt-4 inline-flex min-h-9 w-full items-center justify-center rounded-lg border border-mist-100 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+              <Link href={`/people/${user.slug}`} className="mt-4 inline-flex min-h-9 w-full items-center justify-center rounded-lg border border-mist-200 text-sm font-semibold text-navy-950 hover:bg-mist-50">
                 View profile
               </Link>
             ) : null}
@@ -191,7 +191,7 @@ export default async function AdminUserDetailPage({
               {membership.verifications.length === 0 ? <li className="text-sm text-muted">No professional verification records.</li> : null}
             </ul>
             <details className="mt-4 border-t border-mist-100 pt-3">
-              <summary className="cursor-pointer text-sm font-semibold text-navy-950">Verification history ({membership.verificationHistory.length})</summary>
+              <summary className="cursor-pointer text-sm font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">Verification history ({membership.verificationHistory.length})</summary>
               <ul className="mt-2 divide-y divide-mist-100">
                 {membership.verificationHistory.map((event) => (
                   <li key={event.id} className="py-2 text-sm">

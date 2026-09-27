@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { MessagingInboxItem } from '../queries'
+import { ConversationActionsMenu, type DeletedConversationResult } from './conversation-actions'
 
 function initials(name: string | null) {
   if (!name) return 'SN'
@@ -29,12 +30,16 @@ function relativeTime(value: string | null) {
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
 
+const ROW_MENU_TRIGGER_CLASS = 'grid size-8 cursor-pointer place-items-center rounded-full border border-mist-100 bg-white text-navy-900 shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600 aria-expanded:opacity-100 aria-expanded:bg-ocean-50 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100'
+
 export function ConversationList({
   inbox,
   activeConversationId,
+  onConversationDeleted,
 }: {
   inbox: MessagingInboxItem[]
   activeConversationId?: string | null
+  onConversationDeleted?: (result: DeletedConversationResult) => void
 }) {
   const [query, setQuery] = useState('')
   const normalizedQuery = query.trim().toLowerCase()
@@ -46,7 +51,7 @@ export function ConversationList({
   }, [inbox, normalizedQuery])
 
   return (
-    <aside className="flex min-h-0 flex-col border-r border-mist-100 bg-white">
+    <aside className="flex h-full min-h-0 flex-col border-r border-mist-100 bg-white">
       <div className="border-b border-mist-100 p-4">
         <div className="relative">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
@@ -64,15 +69,17 @@ export function ConversationList({
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {filtered.length ? (
           <div className="space-y-1">
-            {filtered.map((item) => {
+            {filtered.map((item, index) => {
               const name = item.otherName ?? 'Sea N Shore member'
               const selected = item.conversationId === activeConversationId
+              const openMenuUp = index > 1 && index >= filtered.length - 1
               return (
+                <div key={item.conversationId} className="group relative">
                 <Link
-                  key={item.conversationId}
                   href={`/messages/${item.conversationId}`}
                   aria-label={`Open conversation with ${name}`}
-                  className={`flex min-h-20 items-start gap-3 rounded-2xl p-3 transition ${selected ? 'bg-ocean-50' : 'hover:bg-mist-50'}`}
+                  aria-current={selected ? 'page' : undefined}
+                  className={`flex min-h-20 cursor-pointer items-start gap-3 rounded-2xl p-3 pr-12 transition md:pr-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ocean-600 ${selected ? 'bg-ocean-50 hover:bg-ocean-100/70' : 'hover:bg-mist-50'}`}
                 >
                   {item.otherAvatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
@@ -91,7 +98,7 @@ export function ConversationList({
                       <span className={`truncate text-sm ${item.unread ? 'font-bold text-navy-950' : 'font-semibold text-navy-900'}`}>
                         {name}{item.unread ? ' · New' : ''}
                       </span>
-                      <span className="shrink-0 text-[11px] text-muted">{relativeTime(item.lastMessageAt)}</span>
+                      <span className={`shrink-0 text-[11px] text-muted ${onConversationDeleted ? 'md:group-focus-within:invisible md:group-hover:invisible' : ''}`}>{relativeTime(item.lastMessageAt)}</span>
                     </span>
                     {item.otherHeadline ? (
                       <span className="mt-0.5 block truncate text-xs text-muted">{item.otherHeadline}</span>
@@ -107,14 +114,34 @@ export function ConversationList({
                     />
                   ) : null}
                 </Link>
+                {onConversationDeleted ? (
+                  <ConversationActionsMenu
+                    conversationId={item.conversationId}
+                    otherName={name}
+                    onDeleted={onConversationDeleted}
+                    direction={openMenuUp ? 'up' : 'down'}
+                    className="absolute right-2.5 top-[calc(50%-1rem)] md:top-2"
+                    triggerClassName={ROW_MENU_TRIGGER_CLASS}
+                  />
+                ) : null}
+                </div>
               )
             })}
           </div>
         ) : (
           <div className="grid min-h-44 place-items-center px-4 text-center">
             <div>
-              <p className="text-sm font-semibold text-navy-950">No conversations found</p>
-              <p className="mt-1 text-xs leading-5 text-muted">Try another name, role or message keyword.</p>
+              {normalizedQuery ? (
+                <>
+                  <p className="text-sm font-semibold text-navy-950">No conversations found</p>
+                  <p className="mt-1 text-xs leading-5 text-muted">Try another name, role or message keyword.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-navy-950">No conversations yet</p>
+                  <p className="mt-1 text-xs leading-5 text-muted">Use New Message to write to one of your connections.</p>
+                </>
+              )}
             </div>
           </div>
         )}

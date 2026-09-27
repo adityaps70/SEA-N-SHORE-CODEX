@@ -192,7 +192,7 @@ export function CreatorVerificationForm({
         <button
           type="submit"
           disabled={pending}
-          className="min-h-11 shrink-0 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white disabled:opacity-50"
+          className="min-h-11 shrink-0 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white disabled:opacity-50 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed"
         >
           {pending ? 'Submitting…' : 'Submit for verification'}
         </button>

@@ -36,7 +36,7 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
 
   return (
     <div className="mx-auto w-full max-w-5xl py-6 sm:px-6 lg:px-8">
-      <Link href="/learn/studio/assignments" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
+      <Link href="/learn/studio/assignments" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
         <ArrowLeft className="size-4" aria-hidden="true" /> Assignment grading
       </Link>
 

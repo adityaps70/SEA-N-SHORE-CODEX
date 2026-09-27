@@ -17,9 +17,10 @@ function repositoryDouble(
   const updateCompletedProfile: ProfileEditRepository['updateCompletedProfile'] = vi.fn(async () => updateResult)
   const upsertMaritimeProfile: ProfileEditRepository['upsertMaritimeProfile'] = vi.fn(async () => undefined)
   const upsertActivationMaritimeProfile: ProfileEditRepository['upsertActivationMaritimeProfile'] = vi.fn(async () => undefined)
+  const upsertCurrentOrganization: ProfileEditRepository['upsertCurrentOrganization'] = vi.fn(async () => undefined)
   const deleteMaritimeProfile: ProfileEditRepository['deleteMaritimeProfile'] = vi.fn(async () => undefined)
   const replaceSkills: ProfileEditRepository['replaceSkills'] = vi.fn(async () => undefined)
-  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, upsertActivationMaritimeProfile, deleteMaritimeProfile, replaceSkills }
+  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, upsertActivationMaritimeProfile, upsertCurrentOrganization, deleteMaritimeProfile, replaceSkills }
 }
 
 function withRepository(repository: ProfileEditRepository) {
@@ -106,9 +107,40 @@ describe('completed profile edit service', () => {
 
     await service.updateProfile(actorId, data, true)
 
-    expect(vi.mocked(repository.upsertActivationMaritimeProfile)).toHaveBeenCalledWith(actorId, 'New Shipping Co')
+    // Only the organization columns change, so a legacy rank or vessel is never wiped.
+    expect(vi.mocked(repository.upsertCurrentOrganization)).toHaveBeenCalledWith(actorId, 'New Shipping Co', undefined)
+    expect(vi.mocked(repository.upsertActivationMaritimeProfile)).not.toHaveBeenCalled()
     expect(vi.mocked(repository.deleteMaritimeProfile)).not.toHaveBeenCalled()
     expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
+  })
+
+  it('stores the linked organization id with the organization name', async () => {
+    const repository = repositoryDouble()
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
+    const organizationId = '22222222-2222-4222-8222-222222222222'
+    const data = { ...input('mentor'), currentCompany: 'Oceanic Ship Management', currentCompanyId: organizationId }
+
+    await service.updateProfile(actorId, data, true)
+
+    expect(vi.mocked(repository.upsertCurrentOrganization)).toHaveBeenCalledWith(actorId, 'Oceanic Ship Management', organizationId)
+  })
+
+  it('clears the saved organization when the submitted field is empty', async () => {
+    const repository = repositoryDouble()
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
+
+    await service.updateProfile(actorId, input('mentor'), true, { currentCompanySubmitted: true })
+
+    expect(vi.mocked(repository.upsertCurrentOrganization)).toHaveBeenCalledWith(actorId, undefined, undefined)
+  })
+
+  it('leaves the saved organization alone when the form has no organization field', async () => {
+    const repository = repositoryDouble()
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
+
+    await service.updateProfile(actorId, input('mentor'), true, { currentCompanySubmitted: false })
+
+    expect(vi.mocked(repository.upsertCurrentOrganization)).not.toHaveBeenCalled()
   })
 
   it('preserves legacy maritime details when a non-seafarer profile is edited', async () => {

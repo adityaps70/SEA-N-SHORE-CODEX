@@ -14,6 +14,10 @@ vi.mock('../actions', () => ({
   discardPendingPostMedia: vi.fn(async () => ({ ok: true })),
 }))
 
+vi.mock('../organization-post-actions', () => ({
+  loadPostingOrganizations: vi.fn(async () => ({ ok: true, organizations: [] })),
+}))
+
 vi.mock('./upload-post-media', () => ({
   uploadPostMediaFile: vi.fn(),
 }))

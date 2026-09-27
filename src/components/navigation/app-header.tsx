@@ -10,7 +10,6 @@ import {
   LogOut,
   MessageCircleMore,
   MessagesSquare,
-  PenLine,
   Search,
   Settings,
   ShieldCheck,
@@ -47,7 +46,6 @@ const moreItems: HeaderMenuItem[] = [
 ]
 
 const createItems: HeaderMenuItem[] = [
-  { href: '/home#feed-composer', label: 'Post an update', description: 'Share news, photos, documents or a poll', icon: <PenLine className="size-4" /> },
   { href: '/hiring/jobs/new', label: 'Post a job', description: 'Sea or shore vacancy with structured requirements', icon: <BriefcaseBusiness className="size-4" /> },
   { href: '/events/create', label: 'Create an event', description: 'Webinar, masterclass, meetup or conference', icon: <CalendarDays className="size-4" /> },
   { href: '/learn/studio/courses/new', label: 'Create a course', description: 'Build maritime learning in Learning Studio', icon: <GraduationCap className="size-4" /> },

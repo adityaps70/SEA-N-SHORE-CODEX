@@ -59,7 +59,7 @@ export function PollCard({ postId, poll }: { postId: string; poll: FeedPoll }) {
           type="button"
           disabled={!choice || choice === selected || pending}
           onClick={vote}
-          className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 enabled:hover:bg-navy-800 transition-colors"
         >
           {pending ? 'Voting…' : selected ? 'Change vote' : 'Vote'}
         </button>
