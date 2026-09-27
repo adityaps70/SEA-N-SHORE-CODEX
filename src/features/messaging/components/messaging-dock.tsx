@@ -7,18 +7,24 @@ import {
   ExternalLink,
   MessageCircleMore,
   Minus,
+  SquarePen,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import { markConversationReadAction } from '../actions'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
+import { messageAttachmentRoute } from '../media-policy'
 import { isMessageSeen } from '../thread-realtime'
 import {
   publishMessagingUnreadCount,
   subscribeMessagingUnreadCount,
 } from '../unread-client'
+import { ImageLightbox } from './image-lightbox'
 import { MessageComposer, type OptimisticMessagingMessage } from './message-composer'
+import { lightboxImagesFromMessages } from './message-thread'
+import { NewMessageDialog, type NewMessageSelection } from './new-message-dialog'
+import { LinkifiedText } from './linkified-text'
 
 type DockMessage = MessagingMessageDto | OptimisticMessagingMessage
 
@@ -118,12 +124,36 @@ async function loadThread(conversationId: string) {
   return payload.messages as MessagingMessageDto[]
 }
 
+function inboxItemFromSelection(
+  selection: NewMessageSelection,
+  inbox: readonly MessagingInboxItem[],
+): MessagingInboxItem {
+  const existing = inbox.find((item) => item.conversationId === selection.conversationId)
+  if (existing) return existing
+  return {
+    conversationId: selection.conversationId,
+    otherProfileId: selection.recipient.profileId,
+    otherName: selection.recipient.name,
+    otherHeadline: selection.recipient.subtitle,
+    otherAvatarUrl: selection.recipient.avatarUrl,
+    lastMessageId: null,
+    lastMessageBody: null,
+    lastMessageSenderId: null,
+    lastMessageAt: null,
+    otherLastReadMessageId: null,
+    otherLastReadAt: null,
+    unread: false,
+  }
+}
+
 export function MessagingDock({
   viewerId,
   initialUnreadCount,
+  newMessageDebounceMs,
 }: {
   viewerId: string
   initialUnreadCount: number
+  newMessageDebounceMs?: number
 }) {
   const pathname = usePathname()
   const { subscribe } = useMessagingRealtime()
@@ -134,6 +164,11 @@ export function MessagingDock({
   const [unreadCount, setUnreadCount] = useState(initialUnreadCount)
   const [loading, setLoading] = useState(false)
   const [otherTyping, setOtherTyping] = useState(false)
+  const [threadError, setThreadError] = useState('')
+  const [newMessageOpen, setNewMessageOpen] = useState(false)
+  const [lightboxImageId, setLightboxImageId] = useState<string | null>(null)
+  const closeLightbox = useCallback(() => setLightboxImageId(null), [])
+  const closeNewMessage = useCallback(() => setNewMessageOpen(false), [])
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastReadMessageIdRef = useRef<string | null>(null)
@@ -262,7 +297,14 @@ export function MessagingDock({
     }
   }, [active, markLatestReceivedRead, subscribe, viewerId])
 
+  const lightboxOpenRef = useRef(false)
   useEffect(() => {
+    lightboxOpenRef.current = lightboxImageId !== null
+  }, [lightboxImageId])
+
+  useEffect(() => {
+    // Do not move the chat under an open photo; closing it returns to the same place.
+    if (lightboxOpenRef.current) return
     bottomRef.current?.scrollIntoView?.({ block: 'end', behavior: 'auto' })
   }, [messages.length, otherTyping])
 
@@ -279,6 +321,8 @@ export function MessagingDock({
     setActive(item)
     setMessages([])
     setOtherTyping(false)
+    setThreadError('')
+    setLightboxImageId(null)
     setLoading(true)
     try {
       const next = await loadThread(item.conversationId)
@@ -286,9 +330,22 @@ export function MessagingDock({
       void markLatestReceivedRead(item.conversationId, next)
     } catch {
       setMessages([])
+      setThreadError('This conversation did not load. Check your connection, then go back and open it again.')
     } finally {
       setLoading(false)
     }
+  }
+
+  function openSelectedConversation(selection: NewMessageSelection) {
+    setNewMessageOpen(false)
+    void openConversation(inboxItemFromSelection(selection, inbox))
+    // Refresh the list in the background so the new conversation appears on "Back".
+    void loadInbox()
+      .then((state) => {
+        setInbox(state.inbox)
+        setUnreadCount(state.unreadCount)
+      })
+      .catch(() => undefined)
   }
 
   function addOptimistic(message: OptimisticMessagingMessage) {
@@ -318,6 +375,7 @@ export function MessagingDock({
     )),
     [messages],
   )
+  const lightboxImages = useMemo(() => lightboxImagesFromMessages(activeMessages), [activeMessages])
 
   if (hidden) return null
 
@@ -355,6 +413,18 @@ export function MessagingDock({
               ) : null}
             </div>
 
+            {!active ? (
+              <button
+                type="button"
+                aria-label="New message"
+                title="New message"
+                aria-haspopup="dialog"
+                onClick={() => setNewMessageOpen(true)}
+                className="grid size-8 place-items-center rounded-lg text-muted hover:bg-mist-50 hover:text-ocean-700"
+              >
+                <SquarePen aria-hidden="true" className="size-4" />
+              </button>
+            ) : null}
             {active ? (
               <Link
                 href={`/messages/${active.conversationId}`}
@@ -391,6 +461,8 @@ export function MessagingDock({
               <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-mist-50/60 px-3 py-3">
                 {loading && !activeMessages.length ? (
                   <div className="grid h-full place-items-center text-xs text-muted">Loading conversation…</div>
+                ) : threadError && !activeMessages.length ? (
+                  <div role="alert" className="grid h-full place-items-center px-4 text-center text-xs leading-5 text-red-700">{threadError}</div>
                 ) : (
                   <div className="space-y-2">
                     {activeMessages.map((message) => {
@@ -421,19 +493,36 @@ export function MessagingDock({
                                 ? 'rounded-br-md bg-navy-900 text-white'
                                 : 'rounded-bl-md border border-mist-100 bg-white text-navy-950'
                             }`}>
-                              {message.attachment?.kind === 'image' && message.attachment.url ? (
-                                // eslint-disable-next-line @next/next/no-img-element -- signed S3 message media URL
-                                <img
-                                  src={message.attachment.url}
-                                  alt={message.attachment.name}
-                                  className="mb-1.5 max-h-44 rounded-xl object-cover"
-                                />
+                              {message.attachment?.kind === 'image' && message.attachment.url && !message.deletedAt ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setLightboxImageId(message.id)}
+                                  aria-label={`Open photo ${message.attachment.name}`}
+                                  aria-haspopup="dialog"
+                                  className="mb-1.5 block cursor-zoom-in overflow-hidden rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element -- authorised attachment route or local preview */}
+                                  <img
+                                    src={message.attachment.url}
+                                    alt={message.attachment.name}
+                                    loading="lazy"
+                                    className="max-h-44 rounded-xl object-cover"
+                                  />
+                                </button>
+                              ) : message.attachment && !message.deletedAt && !('deliveryState' in message) ? (
+                                <a
+                                  href={messageAttachmentRoute(message.id, { download: true })}
+                                  download={message.attachment.name}
+                                  className="mb-1 block truncate text-[11px] font-semibold underline-offset-2 hover:underline"
+                                >
+                                  📎 {message.attachment.name}
+                                </a>
                               ) : message.attachment ? (
                                 <p className="mb-1 text-[11px] font-semibold">
                                   📎 {message.attachment.name}
                                 </p>
                               ) : null}
-                              {message.body ? <p className="whitespace-pre-wrap break-words">{message.body}</p> : null}
+                              {message.body ? <p className="whitespace-pre-wrap break-words"><LinkifiedText text={message.body} /></p> : null}
                             </div>
                             <span className={`mt-0.5 px-1 text-[9px] ${state === 'failed' ? 'font-semibold text-red-700' : 'text-muted'}`}>
                               {clock(message.createdAt)}
@@ -509,7 +598,14 @@ export function MessagingDock({
                 <div className="grid h-full place-items-center px-6 text-center">
                   <div>
                     <p className="text-sm font-semibold text-navy-950">No conversations yet</p>
-                    <Link href="/messages" className="mt-2 inline-block text-xs font-semibold text-ocean-700 hover:underline">
+                    <button
+                      type="button"
+                      onClick={() => setNewMessageOpen(true)}
+                      className="mt-3 inline-flex min-h-9 items-center gap-2 rounded-xl bg-navy-950 px-4 text-xs font-semibold text-white hover:bg-navy-900"
+                    >
+                      <SquarePen aria-hidden="true" className="size-3.5" /> Start a conversation
+                    </button>
+                    <Link href="/messages" className="mt-2 block text-xs font-semibold text-ocean-700 hover:underline">
                       Open Messages
                     </Link>
                   </div>
@@ -537,6 +633,18 @@ export function MessagingDock({
           ) : null}
         </button>
       )}
+      <NewMessageDialog
+        open={open && newMessageOpen}
+        onClose={closeNewMessage}
+        onConversationReady={openSelectedConversation}
+        debounceMs={newMessageDebounceMs}
+      />
+      <ImageLightbox
+        images={lightboxImages}
+        activeId={open && active ? lightboxImageId : null}
+        onActiveIdChange={setLightboxImageId}
+        onClose={closeLightbox}
+      />
     </div>
   )
 }

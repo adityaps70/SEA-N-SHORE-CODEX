@@ -1,4 +1,4 @@
-import { ExternalLink, FileText } from 'lucide-react'
+import { Download, ExternalLink, FileText } from 'lucide-react'
 
 function formatBytes(bytes: number) {
   if (bytes >= 1024 * 1024) {
@@ -12,12 +12,17 @@ function formatBytes(bytes: number) {
   return `${bytes} B`
 }
 
+/** The authorized, first-party CV route. Every request is checked against the job's hiring team. */
+export function hiringCvHref(applicationId: string, download = false) {
+  return `/api/jobs/applications/${applicationId}/cv${download ? '?download=1' : ''}`
+}
+
 export function HiringCvLink({
-  href,
+  applicationId,
   fileName,
   sizeBytes,
 }: {
-  href: string
+  applicationId: string
   fileName: string
   sizeBytes: number
 }) {
@@ -32,15 +37,24 @@ export function HiringCvLink({
           <p className="mt-0.5 text-xs text-muted">{formatBytes(sizeBytes)} · PDF attachment</p>
         </div>
       </div>
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900"
-      >
-        View CV (PDF)
-        <ExternalLink aria-hidden="true" className="size-4" />
-      </a>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={hiringCvHref(applicationId)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex min-h-10 flex-1 basis-32 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2"
+        >
+          View CV (PDF)
+          <ExternalLink aria-hidden="true" className="size-4" />
+        </a>
+        <a
+          href={hiringCvHref(applicationId, true)}
+          className="inline-flex min-h-10 flex-1 basis-32 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2"
+        >
+          Download
+          <Download aria-hidden="true" className="size-4" />
+        </a>
+      </div>
     </div>
   )
 }

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { courseEditLockedCopy } from './course-workflow'
 import { processScormPackageForMentor } from './scorm-authoring'
 
 const uuid = z.string().uuid()
@@ -16,7 +17,7 @@ function message(error: unknown) {
   if (error instanceof Error) {
     if (error.message === 'material_not_found') return 'We could not find this SCORM material.'
     if (error.message === 'material_not_scorm') return 'This material is not configured as SCORM.'
-    if (error.message === 'course_edit_forbidden') return 'This course is read-only while it is under review or published.'
+    if (error.message === 'course_edit_forbidden') return courseEditLockedCopy(null, 'Your material changes')
     if (error.message.includes('manifest')) return 'The ZIP does not contain a valid root SCORM manifest.'
     if (error.message.includes('version')) return 'Only SCORM 1.2 and SCORM 2004 packages are supported.'
     if (error.message.includes('zip')) return 'The SCORM ZIP is invalid, unsafe, or exceeds the package limits.'

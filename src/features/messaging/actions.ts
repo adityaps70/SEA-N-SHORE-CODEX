@@ -71,8 +71,18 @@ export async function startDirectConversationAction(targetProfileId: string) {
   const parsed = directConversationInputSchema.safeParse({ targetProfileId })
   if (!parsed.success) return { ok: false as const, error: 'Invalid member.' }
 
+  let user: Awaited<ReturnType<typeof requireAwsUser>>
   try {
-    const user = await requireAwsUser()
+    user = await requireAwsUser()
+  } catch {
+    return { ok: false as const, error: 'Please sign in again to start a conversation.' }
+  }
+
+  if (user.id === parsed.data.targetProfileId) {
+    return { ok: false as const, error: messagingError('messaging_self_conversation') }
+  }
+
+  try {
     const conversationId = await messagingService.startDirectConversation(
       user.id,
       parsed.data.targetProfileId,
@@ -167,10 +177,12 @@ export async function sendMessageAction(rawInput: SendMessageInput) {
         conversationId: parsed.data.conversationId,
         ...parsed.data.attachment,
       })
-    } catch {
+    } catch (error) {
       return {
         ok: false as const,
-        error: 'We could not verify this attachment. Please attach it again.',
+        error: error instanceof Error && error.message === 'messaging_attachment_content_mismatch'
+          ? 'This file does not match its type. Choose a real photo, video or document and try again.'
+          : 'We could not verify this attachment. Please attach it again.',
       }
     }
   }

@@ -58,7 +58,7 @@ describe('CommentThread mentions', () => {
     const user = userEvent.setup()
     render(<CommentThread postId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" comments={[]} composerOpen />)
 
-    await user.type(screen.getByPlaceholderText('Add a professional comment…'), '@Rah')
+    await user.type(screen.getByPlaceholderText('Write a comment…'), '@Rah')
 
     expect(await screen.findByRole('option', { name: /Rahul Gupta/i }, { timeout: 1200 })).toBeInTheDocument()
     expect(mocks.searchMentionCandidates).toHaveBeenCalledWith('Rah')

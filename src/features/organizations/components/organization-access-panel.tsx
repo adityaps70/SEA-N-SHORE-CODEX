@@ -1,261 +1,199 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { Building2, CheckCircle2, Search, ShieldCheck } from 'lucide-react'
-import { requestOrganizationAccess, searchOrganizations } from '../actions'
-import type {
-  CompanyAccessRequestRole,
-  CompanyAccessRequestSummary,
-  CompanySearchResult,
-} from '../types'
+import { useRouter } from 'next/navigation'
+import { escalateOrganizationAccessRequest, withdrawOrganizationAccessRequest } from '../access-request-actions'
+import { accessRoleLabel, relativeDays } from '../access-request-labels'
+import { escalationEligibility } from '../access-request-policy'
+import type { CompanyAccessRequestSummary } from '../types'
 
-const roleLabels: Record<CompanyAccessRequestRole, string> = {
-  member: 'Member / employee',
-  recruiter: 'Recruiter / HR',
-  administrator: 'Organization administrator',
-  lms_manager: 'LMS Manager',
-  event_manager: 'Event Manager',
-  content_manager: 'Content Manager',
-  analyst: 'Analyst',
+type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+
+const toneClasses: Record<Tone, string> = {
+  neutral: 'border-mist-200 bg-mist-50 text-navy-900',
+  success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  warning: 'border-amber-200 bg-amber-50 text-amber-900',
+  danger: 'border-red-200 bg-red-50 text-red-800',
+  info: 'border-ocean-200 bg-ocean-50 text-ocean-800',
 }
 
-function requestStatusLabel(status: CompanyAccessRequestSummary['status']) {
-  if (status === 'approved') return 'Approved'
-  if (status === 'rejected') return 'Rejected'
-  if (status === 'cancelled') return 'Cancelled'
-  return 'Pending review'
+export function StatusChip({ tone, children }: { tone: Tone; children: React.ReactNode }) {
+  return (
+    <span className={`inline-flex items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-semibold ${toneClasses[tone]}`}>
+      {children}
+    </span>
+  )
 }
 
-export function OrganizationAccessPanel({
-  initialRequests,
-  initialTerm = '',
-  initialOrganizations = [],
-}: {
-  initialRequests: CompanyAccessRequestSummary[]
-  initialTerm?: string
-  initialOrganizations?: CompanySearchResult[]
-}) {
-  const [isPending, startTransition] = useTransition()
-  const [term, setTerm] = useState(initialTerm)
-  const [results, setResults] = useState<CompanySearchResult[]>(initialOrganizations)
-  const [selected, setSelected] = useState<CompanySearchResult | null>(null)
-  const [role, setRole] = useState<CompanyAccessRequestRole>('member')
-  const [message, setMessage] = useState('')
-  const [feedback, setFeedback] = useState<string | null>(null)
-  const [requests, setRequests] = useState(initialRequests)
-
-  function runSearch() {
-    setFeedback(null)
-    startTransition(async () => {
-      const result = await searchOrganizations(term)
-      if (!result.ok) {
-        setResults([])
-        setFeedback(result.error)
-        return
-      }
-      setResults(result.organizations)
-      setFeedback(result.organizations.length ? null : 'No matching organization found. You can create a new organization below.')
-    })
+/** What the requester sees about the state of their request. */
+export function requesterStatus(request: CompanyAccessRequestSummary, nowIso: string): { tone: Tone; label: string; detail: string } {
+  const org = request.company.name
+  if (request.status === 'approved') {
+    return {
+      tone: 'success',
+      label: `Approved as ${accessRoleLabel(request.grantedRole ?? request.requestedRole)}`,
+      detail: request.decidedVia === 'platform' ? `Approved by Sea N Shore ${relativeDays(request.reviewedAt, nowIso)}.` : `Approved by ${org} ${relativeDays(request.reviewedAt, nowIso)}.`,
+    }
   }
+  if (request.status === 'rejected') {
+    return {
+      tone: 'danger',
+      label: 'Not approved',
+      detail: request.decidedVia === 'platform'
+        ? `Sea N Shore reviewed this request ${relativeDays(request.reviewedAt, nowIso)} and did not approve it.`
+        : `${org} did not approve this request ${relativeDays(request.reviewedAt, nowIso)}.`,
+    }
+  }
+  if (request.status === 'cancelled') {
+    return { tone: 'neutral', label: 'Withdrawn', detail: 'You withdrew this request.' }
+  }
+  if (request.escalatedAt) {
+    return {
+      tone: 'info',
+      label: 'With Sea N Shore',
+      detail: `You asked Sea N Shore to review this ${relativeDays(request.escalatedAt, nowIso)}. We will update the status here.`,
+    }
+  }
+  return {
+    tone: 'warning',
+    label: 'Waiting for the organization',
+    detail: `Sent ${relativeDays(request.requestedAt, nowIso)} to the owner and administrators of ${org}.`,
+  }
+}
 
-  function submitRequest() {
-    if (!selected) return
-    setFeedback(null)
+function RequestRow({ request, nowIso }: { request: CompanyAccessRequestSummary; nowIso: string }) {
+  const router = useRouter()
+  const [mode, setMode] = useState<'idle' | 'withdraw' | 'escalate'>('idle')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const status = requesterStatus(request, nowIso)
+  const escalation = escalationEligibility({
+    status: request.status,
+    requesterId: 'self',
+    actorId: 'self',
+    requestedAt: request.requestedAt,
+    escalatedAt: request.escalatedAt,
+    decidedVia: request.decidedVia,
+    now: new Date(nowIso),
+  })
+
+  function run(work: () => Promise<{ ok: true } | { ok: false; error: string }>, success: string) {
+    setError(null)
     startTransition(async () => {
-      const result = await requestOrganizationAccess(selected.id, role, message)
-      if (!result.ok) {
-        setFeedback(result.error)
-        return
+      try {
+        const result = await work()
+        if (!result.ok) {
+          setError(result.error)
+          return
+        }
+        setDone(success)
+        setMode('idle')
+        setNote('')
+        router.refresh()
+      } catch {
+        setError('We could not save this change. Check your connection and try again.')
       }
-
-      setRequests((current) => [{
-        id: result.requestId,
-        status: 'pending',
-        requestedRole: role,
-        requestType: role === 'member'
-          ? 'join_company'
-          : role === 'recruiter' || role === 'administrator'
-            ? 'recruiter_access'
-            : 'role_access',
-        message: message.trim() || null,
-        requestedAt: new Date().toISOString(),
-        reviewedAt: null,
-        reviewerNote: null,
-        company: {
-          id: selected.id,
-          slug: selected.slug,
-          name: selected.name,
-          verified: selected.verified,
-        },
-      }, ...current])
-      setFeedback('Access request submitted for Sea N Shore review.')
-      setSelected(null)
-      setMessage('')
-      setRole('member')
     })
   }
 
   return (
-    <section className="space-y-5 rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-      <div className="flex gap-3">
-        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
-          <Search aria-hidden="true" className="size-5" />
-        </span>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Existing organization</p>
-          <h2 className="mt-1 text-xl font-bold text-navy-950">Find or claim an organization</h2>
-          <p className="mt-1 text-sm leading-6 text-muted">
-            Search first so Sea N Shore does not create duplicate company pages. Access is reviewed before membership is granted.
+    <li className="px-4 py-3" onKeyDown={(event) => {
+      if (event.key === 'Escape' && mode !== 'idle') {
+        event.stopPropagation()
+        setMode('idle')
+        setError(null)
+      }
+    }}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2">
+            <Link href={`/organizations/${request.company.slug}`} className="font-semibold text-navy-950 hover:underline">{request.company.name}</Link>
+            <StatusChip tone={status.tone}>{status.label}</StatusChip>
           </p>
+          <p className="mt-0.5 text-sm text-muted">Requested: {accessRoleLabel(request.requestedRole)} · {status.detail}</p>
+          {request.reviewerNote && request.status !== 'cancelled' ? (
+            <p className="mt-1 text-sm text-navy-900"><span className="font-semibold">Note from the reviewer:</span> {request.reviewerNote}</p>
+          ) : null}
+          {request.escalationNote && request.escalatedAt ? (
+            <p className="mt-1 text-sm text-muted"><span className="font-semibold text-navy-900">Your message to Sea N Shore:</span> {request.escalationNote}</p>
+          ) : null}
         </div>
+        {mode === 'idle' ? (
+          <div className="flex shrink-0 flex-wrap gap-2">
+            {request.status === 'approved' ? (
+              <Link href={`/organizations/${request.company.slug}`} className="inline-flex min-h-9 items-center rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 hover:bg-mist-50">Open workspace</Link>
+            ) : null}
+            {escalation.allowed ? (
+              <button type="button" onClick={() => setMode('escalate')} className="inline-flex min-h-9 items-center rounded-lg border border-ocean-200 bg-ocean-50 px-3 text-xs font-semibold text-ocean-800 hover:bg-ocean-100">
+                {escalation.kind === 'after_rejection' ? 'Ask Sea N Shore to review' : 'Ask Sea N Shore to step in'}
+              </button>
+            ) : null}
+            {request.status === 'pending' ? (
+              <button type="button" onClick={() => setMode('withdraw')} className="inline-flex min-h-9 items-center rounded-lg border border-mist-100 px-3 text-xs font-semibold text-navy-950 hover:bg-mist-50">Withdraw</button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          type="search"
-          value={term}
-          onChange={(event) => setTerm(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              runSearch()
-            }
-          }}
-          aria-label="Search existing organizations"
-          placeholder="Search company, institute or organization"
-          className="min-h-11 flex-1 rounded-xl border border-mist-100 bg-white px-4 text-sm text-navy-950 outline-none focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100"
-        />
-        <button
-          type="button"
-          onClick={runSearch}
-          disabled={isPending || term.trim().length < 2}
-          className="min-h-11 rounded-xl bg-navy-950 px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {isPending ? 'Searching…' : 'Search'}
-        </button>
-      </div>
-
-      {results.length ? (
-        <div className="grid gap-2">
-          {results.map((company) => (
-            <button
-              type="button"
-              key={company.id}
-              onClick={() => {
-                setSelected(company)
-                setFeedback(null)
-              }}
-              className="flex items-start justify-between gap-4 rounded-xl border border-mist-100 bg-mist-50/40 p-4 text-left transition hover:border-ocean-300 hover:bg-ocean-50/40"
-            >
-              <span>
-                <span className="flex flex-wrap items-center gap-2 font-bold text-navy-950">
-                  {company.name}
-                  {company.verified ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800">
-                      <ShieldCheck aria-hidden="true" className="size-3" /> Verified
-                    </span>
-                  ) : null}
-                </span>
-                <span className="mt-1 block text-xs leading-5 text-muted">
-                  {company.companyType ?? 'Maritime organization'}{company.website ? ` · ${company.website}` : ''}
-                </span>
-              </span>
-              <span className="text-xs font-bold text-ocean-700">Request access</span>
+      {mode === 'withdraw' ? (
+        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-mist-100 bg-mist-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-navy-900">Withdraw your request to {request.company.name}?</p>
+          <div className="flex gap-2">
+            <button type="button" disabled={isPending} onClick={() => run(() => withdrawOrganizationAccessRequest(request.id), 'Request withdrawn.')} className="min-h-9 rounded-lg bg-navy-950 px-3 text-xs font-bold text-white disabled:opacity-60">
+              {isPending ? 'Withdrawing…' : 'Yes, withdraw'}
             </button>
-          ))}
-        </div>
-      ) : null}
-
-      {selected ? (
-        <div className="rounded-2xl border border-ocean-200 bg-ocean-50/50 p-4">
-          <div className="flex items-start gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white text-ocean-700">
-              <Building2 aria-hidden="true" className="size-4" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-bold text-navy-950">{selected.name}</p>
-              <p className="mt-1 text-xs text-muted">Choose the access that matches what you actually do for this organization.</p>
-
-              <label className="mt-4 grid gap-1.5 text-sm font-semibold text-navy-900">
-                Requested role
-                <select
-                  value={role}
-                  onChange={(event) => setRole(event.target.value as CompanyAccessRequestRole)}
-                  className="min-h-11 rounded-xl border border-mist-100 bg-white px-3 text-sm"
-                >
-                  {Object.entries(roleLabels).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="mt-3 grid gap-1.5 text-sm font-semibold text-navy-900">
-                Verification note <span className="font-normal text-muted">(optional)</span>
-                <textarea
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  maxLength={2000}
-                  placeholder="Explain your relationship with the organization."
-                  className="min-h-24 rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm"
-                />
-              </label>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={submitRequest}
-                  disabled={isPending}
-                  className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white disabled:opacity-50"
-                >
-                  {isPending ? 'Submitting…' : 'Submit access request'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="min-h-10 rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+            <button type="button" disabled={isPending} onClick={() => setMode('idle')} className="min-h-9 rounded-lg border border-mist-100 bg-white px-3 text-xs font-bold text-navy-950">Keep request</button>
           </div>
         </div>
       ) : null}
 
-      {feedback ? <p role="status" className="rounded-xl bg-mist-50 px-4 py-3 text-sm text-navy-900">{feedback}</p> : null}
-
-      {requests.length ? (
-        <div className="border-t border-mist-100 pt-5">
-          <h3 className="font-bold text-navy-950">Your organization access requests</h3>
-          <div className="mt-3 grid gap-2">
-            {requests.map((request) => (
-              <article key={request.id} className="rounded-xl border border-mist-100 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-navy-950">{request.company.name}</p>
-                    <p className="mt-1 text-xs text-muted">{roleLabels[request.requestedRole]}</p>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                    request.status === 'approved'
-                      ? 'bg-emerald-50 text-emerald-800'
-                      : request.status === 'rejected'
-                        ? 'bg-red-50 text-red-800'
-                        : 'bg-amber-50 text-amber-800'
-                  }`}>
-                    {requestStatusLabel(request.status)}
-                  </span>
-                </div>
-                {request.reviewerNote ? <p className="mt-3 text-sm text-muted">Review note: {request.reviewerNote}</p> : null}
-                {request.status === 'approved' ? (
-                  <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800">
-                    <CheckCircle2 aria-hidden="true" className="size-4" /> Membership approved
-                  </p>
-                ) : null}
-              </article>
-            ))}
+      {mode === 'escalate' ? (
+        <div className="mt-3 space-y-2 rounded-lg border border-ocean-100 bg-ocean-50/40 p-3">
+          <label className="grid gap-1.5 text-sm font-semibold text-navy-900" htmlFor={`escalate-${request.id}`}>
+            What should Sea N Shore know?
+            <textarea
+              id={`escalate-${request.id}`}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={2000}
+              autoFocus
+              placeholder={escalation.allowed && escalation.kind === 'after_rejection'
+                ? 'Why you think the decision should be reviewed, for example proof of your employment.'
+                : 'How you are connected to the organization and anything you have tried already.'}
+              className="min-h-20 rounded-xl border border-mist-100 bg-white px-3 py-2 text-sm font-normal"
+            />
+          </label>
+          <p className="text-xs text-muted">Sea N Shore reviews escalated requests and its decision is final.</p>
+          <div className="flex gap-2">
+            <button type="button" disabled={isPending} onClick={() => run(() => escalateOrganizationAccessRequest(request.id, note), 'Sent to Sea N Shore. We will update the status here.')} className="min-h-9 rounded-lg bg-navy-950 px-3 text-xs font-bold text-white disabled:opacity-60">
+              {isPending ? 'Sending…' : 'Send to Sea N Shore'}
+            </button>
+            <button type="button" disabled={isPending} onClick={() => { setMode('idle'); setError(null) }} className="min-h-9 rounded-lg border border-mist-100 bg-white px-3 text-xs font-bold text-navy-950">Cancel</button>
           </div>
         </div>
       ) : null}
-    </section>
+
+      {error ? <p role="alert" className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p> : null}
+      {done ? <p role="status" className="mt-2 text-sm text-emerald-800">{done}</p> : null}
+    </li>
+  )
+}
+
+/** The requester's own organization access requests, with status, withdraw and escalation. */
+export function OrganizationAccessPanel({
+  initialRequests,
+  nowIso,
+}: {
+  initialRequests: CompanyAccessRequestSummary[]
+  nowIso: string
+}) {
+  if (!initialRequests.length) return null
+  return (
+    <ul className="divide-y divide-mist-100" aria-label="Your organization access requests">
+      {initialRequests.map((request) => <RequestRow key={request.id} request={request} nowIso={nowIso} />)}
+    </ul>
   )
 }

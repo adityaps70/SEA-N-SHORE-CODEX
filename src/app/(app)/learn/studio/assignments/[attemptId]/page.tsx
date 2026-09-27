@@ -35,7 +35,7 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
   const attachmentUrl = review.attachmentPath ? await createMediaReadUrl(review.attachmentPath) : null
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-5xl py-6 sm:px-6 lg:px-8">
       <Link href="/learn/studio/assignments" className="inline-flex items-center gap-2 text-sm font-bold text-muted transition hover:text-navy-950">
         <ArrowLeft className="size-4" aria-hidden="true" /> Assignment grading
       </Link>
@@ -131,6 +131,6 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
           )}
         </aside>
       </div>
-    </main>
+    </div>
   )
 }

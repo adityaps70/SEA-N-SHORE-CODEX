@@ -69,12 +69,23 @@ function SectionHeading({
   )
 }
 
-function EmptyVertical({ label }: { label: string }) {
+function EmptyVertical({ label, failed = false }: { label: string; failed?: boolean }) {
+  if (failed) {
+    return (
+      <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-6 text-center text-sm text-amber-900">
+        {label} results could not be loaded just now. Search again in a moment, or open {label} directly.
+      </div>
+    )
+  }
   return (
     <div className="rounded-2xl border border-dashed border-mist-200 bg-white px-5 py-8 text-center text-sm text-muted">
       No matching {label.toLowerCase()} found.
     </div>
   )
+}
+
+function settledValue<T>(result: PromiseSettledResult<T[]>, fallback: T[]): T[] {
+  return result.status === 'fulfilled' ? result.value : fallback
 }
 
 export default async function GlobalSearchPage({
@@ -110,13 +121,30 @@ export default async function GlobalSearchPage({
   }
 
   const user = await requireAwsUser()
-  const [network, organizations, jobs, courses, events] = await Promise.all([
+  // Each vertical loads independently: one failing source shows a notice in its
+  // section instead of taking down the whole results page.
+  const settled = await Promise.allSettled([
     getNetworkHub('discover', query),
     organizationRepository.searchCompanies(query),
     getJobsDiscovery({ q: query }),
     marketplaceRepository.listPublishedCourses({ search: query }),
     calendarEventRepository.listDiscoverEvents(user.id, { search: query }),
-  ])
+  ] as const)
+  const failed = {
+    people: settled[0].status === 'rejected',
+    organizations: settled[1].status === 'rejected',
+    jobs: settled[2].status === 'rejected',
+    courses: settled[3].status === 'rejected',
+    events: settled[4].status === 'rejected',
+  }
+  if (Object.values(failed).some(Boolean)) {
+    console.error('[global_search_partial_failure]', failed)
+  }
+  const network = { profiles: settled[0].status === 'fulfilled' ? settled[0].value.profiles : [] }
+  const organizations = settledValue(settled[1], [])
+  const jobs = { items: settled[2].status === 'fulfilled' ? settled[2].value.items : [] }
+  const courses = settledValue(settled[3], [])
+  const events = settledValue(settled[4], [])
 
   const peopleResults = network.profiles.slice(0, 6)
   const organizationResults = organizations.slice(0, 6)
@@ -144,7 +172,7 @@ export default async function GlobalSearchPage({
           <div id="global-people-heading">
             <SectionHeading icon={UsersRound} title="People" count={network.profiles.length} href={verticalHref(verticalPaths.people, query)} />
           </div>
-          {peopleResults.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{peopleResults.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}</div> : <EmptyVertical label="People" />}
+          {peopleResults.length ? <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{peopleResults.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}</div> : <EmptyVertical label="People" failed={failed.people} />}
         </section>
 
         <section aria-labelledby="global-organizations-heading" className="border-t border-mist-100 pt-7">
@@ -179,14 +207,14 @@ export default async function GlobalSearchPage({
                 </Link>
               ))}
             </div>
-          ) : <EmptyVertical label="Organizations" />}
+          ) : <EmptyVertical label="Organizations" failed={failed.organizations} />}
         </section>
 
         <section aria-labelledby="global-jobs-heading" className="border-t border-mist-100 pt-7">
           <div id="global-jobs-heading">
             <SectionHeading icon={BriefcaseBusiness} title="Jobs" count={jobs.items.length} href={verticalHref(verticalPaths.jobs, query)} />
           </div>
-          {jobResults.length ? <div className="grid gap-4 xl:grid-cols-2">{jobResults.map(({ job, match, isSaved }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} />)}</div> : <EmptyVertical label="Jobs" />}
+          {jobResults.length ? <div className="grid gap-4 xl:grid-cols-2">{jobResults.map(({ job, match, isSaved }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} />)}</div> : <EmptyVertical label="Jobs" failed={failed.jobs} />}
         </section>
 
         <section aria-labelledby="global-courses-heading" className="border-t border-mist-100 pt-7">
@@ -204,14 +232,14 @@ export default async function GlobalSearchPage({
                 </Link>
               ))}
             </div>
-          ) : <EmptyVertical label="Courses" />}
+          ) : <EmptyVertical label="Courses" failed={failed.courses} />}
         </section>
 
         <section aria-labelledby="global-events-heading" className="border-t border-mist-100 pt-7">
           <div id="global-events-heading">
             <SectionHeading icon={CalendarDays} title="Events" count={events.length} href={verticalHref(verticalPaths.events, query)} />
           </div>
-          {eventResults.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{eventResults.map((event) => <EventCard key={event.id} event={event} />)}</div> : <EmptyVertical label="Events" />}
+          {eventResults.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{eventResults.map((event) => <EventCard key={event.id} event={event} />)}</div> : <EmptyVertical label="Events" failed={failed.events} />}
         </section>
       </div>
     </section>

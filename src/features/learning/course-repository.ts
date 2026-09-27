@@ -2,6 +2,11 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { canMentorEditCourse, canTransitionCourseStatus, type CourseStatus } from './course-workflow'
 import { courseManagerAccessSql } from './course-access'
+import {
+  snapshotDetailsFromRow,
+  snapshotSectionsFromRows,
+  type CourseReviewSnapshot,
+} from './course-review-snapshot'
 
 type CourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type CourseTransaction = <T>(work: (query: CourseQuery) => Promise<T>) => Promise<T>
@@ -50,12 +55,24 @@ type OwnedCourseDetailRow = QueryResultRow & {
   company_id: string | null
   publisher_name: string
   publisher_slug: string | null
+  details_revision?: string | number | null
+  reviewed_at?: string | Date | null
+  last_review_outcome?: string | null
+  last_review_note?: string | null
+  last_review_at?: string | Date | null
+  pending_submitted_at?: string | Date | null
 }
 type LockedCourseRow = QueryResultRow & {
   id: string
   status: string
   mentor_id: string | null
   company_id: string | null
+  details_revision?: string | number | null
+}
+type UpdatedCourseRow = QueryResultRow & {
+  id: string
+  details_revision?: string | number | null
+  updated_at?: string | Date | null
 }
 type CoursePublisherScopeRow = QueryResultRow & {
   company_id: string | null
@@ -93,6 +110,10 @@ type SubmissionReadinessRow = QueryResultRow & {
   question_position: string | number | null
   option_id: string | null
   option_is_correct: boolean | null
+  lesson_summary?: string | null
+  quiz_instructions?: string | null
+  question_prompt?: string | null
+  option_label?: string | null
 }
 
 type ReadinessMaterial = {
@@ -167,6 +188,28 @@ export class CourseSubmissionReadinessError extends Error {
   }
 }
 
+/** A save or other change was refused because the course is not editable in its current status. */
+export class CourseEditLockedError extends Error {
+  readonly status: CourseStatus
+
+  constructor(status: CourseStatus) {
+    super('course_edit_forbidden')
+    this.name = 'CourseEditLockedError'
+    this.status = status
+  }
+}
+
+/** A details save was based on an older revision than the one stored (another tab or manager saved first). */
+export class CourseEditConflictError extends Error {
+  readonly currentRevision: number
+
+  constructor(currentRevision: number) {
+    super('course_edit_conflict')
+    this.name = 'CourseEditConflictError'
+    this.currentRevision = currentRevision
+  }
+}
+
 export type CourseDraftInput = {
   slug: string
   title: string
@@ -211,6 +254,12 @@ export type MentorCourseSummary = {
   publisherSlug: string | null
 }
 
+export type CourseLastReview = {
+  decision: 'changes_requested' | 'approved'
+  note: string | null
+  reviewedAt: string | null
+}
+
 export type MentorOwnedCourseDetail = CourseDraftInput & {
   id: string
   status: CourseStatus
@@ -220,6 +269,17 @@ export type MentorOwnedCourseDetail = CourseDraftInput & {
   companyId: string | null
   publisherName: string
   publisherSlug: string | null
+  /** Optimistic-concurrency token for the details form; send it back with every save. */
+  detailsRevision: number
+  /** The most recent reviewer decision, kept after the trainer resubmits. */
+  lastReview: CourseLastReview | null
+  /** When the course was last sent for review, while it is in review. */
+  submittedAt: string | null
+}
+
+export type CourseDetailsSaveResult = {
+  revision: number
+  updatedAt: string
 }
 
 function runtimeTransaction<T>(work: (query: CourseQuery) => Promise<T>) {
@@ -243,6 +303,35 @@ function asCourseStatus(value: string): CourseStatus {
 
 function isoDateTime(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value
+}
+
+function nullableIso(value: string | Date | null | undefined) {
+  if (value === null || value === undefined) return null
+  return isoDateTime(value)
+}
+
+function revisionNumber(value: string | number | null | undefined) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : 1
+}
+
+function lastReviewFromRow(row: OwnedCourseDetailRow): CourseLastReview | null {
+  if (row.last_review_outcome === 'changes_requested' || row.last_review_outcome === 'approved') {
+    return {
+      decision: row.last_review_outcome,
+      note: row.last_review_note ?? null,
+      reviewedAt: nullableIso(row.last_review_at),
+    }
+  }
+  // Courses reviewed before submission history existed keep their note on the course row.
+  if (row.admin_review_note && (row.status === 'changes_requested' || row.status === 'published' || row.status === 'approved')) {
+    return {
+      decision: row.status === 'changes_requested' ? 'changes_requested' : 'approved',
+      note: row.admin_review_note,
+      reviewedAt: nullableIso(row.reviewed_at),
+    }
+  }
+  return null
 }
 
 function courseValues(input: CourseDraftInput) {
@@ -673,11 +762,33 @@ export function createCourseRepository(input: {
          course.admin_review_note,
          course.updated_at,
          course.company_id,
+         course.details_revision,
+         course.reviewed_at,
+         last_review.outcome as last_review_outcome,
+         last_review.reviewer_note as last_review_note,
+         last_review.reviewed_at as last_review_at,
+         pending_submission.submitted_at as pending_submitted_at,
          case when course.company_id is null then creator.full_name else company.name end as publisher_name,
          case when course.company_id is null then creator.slug else company.slug end as publisher_slug
        from public.learning_courses course
        join public.profiles creator on creator.id = course.created_by_user_id
        left join public.companies company on company.id = course.company_id
+       left join lateral (
+         select submission.outcome, submission.reviewer_note, submission.reviewed_at
+         from public.learning_course_submissions submission
+         where submission.course_id = course.id
+           and submission.outcome in ('changes_requested', 'approved')
+         order by submission.reviewed_at desc nulls last, submission.submitted_at desc
+         limit 1
+       ) last_review on true
+       left join lateral (
+         select submission.submitted_at
+         from public.learning_course_submissions submission
+         where submission.course_id = course.id
+           and submission.outcome = 'pending'
+         order by submission.submitted_at desc
+         limit 1
+       ) pending_submission on true
        where course.id = $2
          and ${courseManagerAccessSql('course', '$1')}
        limit 1`,
@@ -713,6 +824,9 @@ export function createCourseRepository(input: {
       companyId: row.company_id ?? null,
       publisherName: row.publisher_name,
       publisherSlug: row.publisher_slug,
+      detailsRevision: revisionNumber(row.details_revision),
+      lastReview: lastReviewFromRow(row),
+      submittedAt: row.status === 'submitted' ? nullableIso(row.pending_submitted_at) : null,
     }
   }
 
@@ -730,19 +844,48 @@ export function createCourseRepository(input: {
     return row ? { companyId: row.company_id ?? null } : null
   }
 
-  async function updateCourse(actorId: string, courseId: string, draft: CourseDraftInput) {
+  async function lockManagedCourse(txQuery: CourseQuery, actorId: string, courseId: string) {
+    const lockedRows = await txQuery(
+      `select course.id, course.status, course.mentor_id, course.company_id, course.details_revision,
+              course.slug, course.title, course.subtitle, course.description, course.category, course.level,
+              course.language, course.thumbnail_path, course.trailer_path, course.learning_outcomes,
+              course.requirements, course.target_audience, course.price_minor, course.discount_price_minor,
+              course.currency, course.access_type, course.certificate_enabled, course.course_format
+       from public.learning_courses course
+       where course.id = $1
+         and ${courseManagerAccessSql('course', '$2')}
+       for update`,
+      [courseId, actorId],
+    ) as LockedCourseRow[]
+    const current = lockedRows[0]
+    if (!current) throw new Error('course_not_found')
+    return current
+  }
+
+  /**
+   * Saves the course details. Refuses (never silently drops) the save when the
+   * course is not editable, or when `expectedRevision` is older than the stored
+   * revision because someone saved in the meantime.
+   */
+  async function updateCourse(
+    actorId: string,
+    courseId: string,
+    draft: CourseDraftInput,
+    options: { expectedRevision?: number | null } = {},
+  ): Promise<CourseDetailsSaveResult> {
     return transaction(async (txQuery) => {
-      const lockedRows = await txQuery(
-        `select course.id, course.status, course.mentor_id, course.company_id
-         from public.learning_courses course
-         where course.id = $1
-           and ${courseManagerAccessSql('course', '$2')}
-         for update`,
-        [courseId, actorId],
-      ) as LockedCourseRow[]
-      const current = lockedRows[0]
-      if (!current) throw new Error('course_not_found')
-      if (!canMentorEditCourse(asCourseStatus(current.status))) throw new Error('course_edit_forbidden')
+      const current = await lockManagedCourse(txQuery, actorId, courseId)
+      const status = asCourseStatus(current.status)
+      if (!canMentorEditCourse(status)) throw new CourseEditLockedError(status)
+
+      const storedRevision = revisionNumber(current.details_revision)
+      if (
+        options.expectedRevision !== undefined
+        && options.expectedRevision !== null
+        && options.expectedRevision !== storedRevision
+      ) {
+        throw new CourseEditConflictError(storedRevision)
+      }
 
       const rows = await txQuery(
         `update public.learning_courses
@@ -764,32 +907,48 @@ export function createCourseRepository(input: {
              access_type = $17,
              certificate_enabled = $18,
              course_format = $19,
+             details_revision = details_revision + 1,
              updated_at = now()
          where id = $1
-         returning id`,
+         returning id, details_revision, updated_at`,
         [courseId, ...courseValues(draft)],
-      ) as ReturningIdRow[]
-      if (!rows[0]) throw new Error('course_update_failed')
-      return true
+      ) as UpdatedCourseRow[]
+      const updated = rows[0]
+      if (!updated) throw new Error('course_update_failed')
+      return {
+        revision: updated.details_revision === undefined || updated.details_revision === null
+          ? storedRevision + 1
+          : revisionNumber(updated.details_revision),
+        updatedAt: nullableIso(updated.updated_at) ?? new Date().toISOString(),
+      }
     })
   }
 
-  async function submitCourse(actorId: string, courseId: string) {
+  /**
+   * Sends the saved course for review. When `expectedRevision` is given, the
+   * submission is refused if the stored details are not the version the
+   * trainer just saved, so a review never runs against content they didn't see.
+   * A snapshot of exactly what was submitted is stored for the reviewer.
+   */
+  async function submitCourse(
+    actorId: string,
+    courseId: string,
+    options: { expectedRevision?: number | null } = {},
+  ) {
     return transaction(async (txQuery) => {
-      const lockedRows = await txQuery(
-        `select course.id, course.status, course.mentor_id, course.company_id
-         from public.learning_courses course
-         where course.id = $1
-           and ${courseManagerAccessSql('course', '$2')}
-         for update`,
-        [courseId, actorId],
-      ) as LockedCourseRow[]
-      const current = lockedRows[0]
-      if (!current) throw new Error('course_not_found')
+      const current = await lockManagedCourse(txQuery, actorId, courseId)
 
       const currentStatus = asCourseStatus(current.status)
       if (!canTransitionCourseStatus({ actor: 'mentor', current: currentStatus, next: 'submitted' })) {
         throw new Error('course_submit_forbidden')
+      }
+      const storedRevision = revisionNumber(current.details_revision)
+      if (
+        options.expectedRevision !== undefined
+        && options.expectedRevision !== null
+        && options.expectedRevision !== storedRevision
+      ) {
+        throw new CourseEditConflictError(storedRevision)
       }
 
       const readinessRows = await txQuery(
@@ -825,7 +984,11 @@ export function createCourseRepository(input: {
            question.id as question_id,
            question.position as question_position,
            option.id as option_id,
-           option.is_correct as option_is_correct
+           option.is_correct as option_is_correct,
+           lesson.summary as lesson_summary,
+           quiz.instructions as quiz_instructions,
+           question.prompt as question_prompt,
+           option.label as option_label
          from public.learning_course_sections section
          left join public.learning_lessons lesson
            on lesson.section_id = section.id
@@ -853,6 +1016,34 @@ export function createCourseRepository(input: {
       ) as SubmissionReadinessRow[]
       validateSubmissionReadiness(readinessRows)
 
+      const snapshot: CourseReviewSnapshot = {
+        version: 1,
+        details: snapshotDetailsFromRow(current),
+        sections: snapshotSectionsFromRows(readinessRows),
+      }
+      // Close any submission left open by an older flow before opening the new one.
+      await txQuery(
+        `update public.learning_course_submissions
+         set outcome = 'withdrawn',
+             updated_at = now()
+         where course_id = $1
+           and outcome = 'pending'`,
+        [courseId],
+      )
+      await txQuery(
+        `insert into public.learning_course_submissions (
+           course_id,
+           submitted_by,
+           submitted_at,
+           details_revision,
+           snapshot,
+           outcome,
+           updated_at
+         )
+         values ($1, $2, now(), $3, $4::jsonb, 'pending', now())`,
+        [courseId, actorId, storedRevision, JSON.stringify(snapshot)],
+      )
+
       const rows = await txQuery(
         `update public.learning_courses
          set status = 'submitted',
@@ -870,6 +1061,37 @@ export function createCourseRepository(input: {
     })
   }
 
+  /** Takes a course out of review so the trainer can edit it again. Content is kept as-is. */
+  async function withdrawCourse(actorId: string, courseId: string) {
+    return transaction(async (txQuery) => {
+      const current = await lockManagedCourse(txQuery, actorId, courseId)
+      const currentStatus = asCourseStatus(current.status)
+      if (!canTransitionCourseStatus({ actor: 'mentor', current: currentStatus, next: 'draft' })) {
+        throw new Error('course_withdraw_forbidden')
+      }
+
+      await txQuery(
+        `update public.learning_course_submissions
+         set outcome = 'withdrawn',
+             updated_at = now()
+         where course_id = $1
+           and outcome = 'pending'`,
+        [courseId],
+      )
+      const rows = await txQuery(
+        `update public.learning_courses
+         set status = 'draft',
+             updated_at = now()
+         where id = $1
+           and status = 'submitted'
+         returning id`,
+        [courseId],
+      ) as ReturningIdRow[]
+      if (!rows[0]) throw new Error('course_withdraw_forbidden')
+      return true
+    })
+  }
+
   return {
     createCourse,
     listOwnedCourses,
@@ -877,6 +1099,7 @@ export function createCourseRepository(input: {
     getManagedCoursePublisher,
     updateCourse,
     submitCourse,
+    withdrawCourse,
   }
 }
 

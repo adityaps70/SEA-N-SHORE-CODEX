@@ -19,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <MessagingRealtimeProvider viewerProfileId={user.id}>
-      <div className="min-h-screen bg-mist-50 pb-20 md:pb-0 md:pt-18">
+      <div className="group/shell min-h-screen bg-mist-50 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 md:pt-18">
         {legacyConversion?.status === 'pending' ? <LegacyOrganizationConversionBanner /> : null}
         <AppHeader
           recentNotifications={notificationChrome.recent}

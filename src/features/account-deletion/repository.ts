@@ -55,6 +55,10 @@ async function cleanupAccount(query: Query, profileId: string) {
        from public.job_applications a
        where a.applicant_id = $1
        union all
+       select d.storage_path
+       from public.profile_documents d
+       where d.profile_id = $1
+       union all
        select e.banner_url
        from public.events e
        where e.host_user_id = $1
@@ -160,6 +164,33 @@ async function cleanupAccount(query: Query, profileId: string) {
     [profileId],
   )
   await query(
+    `delete from public.post_hides
+     where user_id = $1`,
+    [profileId],
+  )
+  // Deleting an account withdraws newsletter consent. The consent history is kept (append-only)
+  // and the SES contact is removed by the newsletter worker, which picks up the pending sync.
+  await query(
+    `insert into public.newsletter_consent_events (subscriber_id, event_type, topics, source)
+     select id, 'unsubscribed', topics, 'account_deletion'
+     from public.newsletter_subscribers
+     where profile_id = $1 and status <> 'unsubscribed'`,
+    [profileId],
+  )
+  await query(
+    `update public.newsletter_subscribers
+     set status = 'unsubscribed',
+         unsubscribed_at = coalesce(unsubscribed_at, now()),
+         ses_sync_status = case when confirmed_at is not null or ses_sync_status <> 'not_required' then 'pending' else 'not_required' end,
+         ses_sync_attempts = 0,
+         ses_sync_error = null,
+         ses_next_attempt_at = now(),
+         profile_id = null,
+         updated_at = now()
+     where profile_id = $1`,
+    [profileId],
+  )
+  await query(
     `delete from public.post_poll_votes
      where user_id = $1`,
     [profileId],
@@ -259,6 +290,11 @@ async function cleanupAccount(query: Query, profileId: string) {
   await query(
     `delete from public.job_applications
      where applicant_id = $1`,
+    [profileId],
+  )
+  await query(
+    `delete from public.profile_documents
+     where profile_id = $1`,
     [profileId],
   )
   await query(

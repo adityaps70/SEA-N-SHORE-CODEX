@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   getConversationThread: vi.fn(),
   getUnreadMessageCount: vi.fn(),
   markConversationRead: vi.fn(),
+  getConversationPeer: vi.fn(),
   notFound: vi.fn(),
 }))
 
@@ -20,6 +21,9 @@ vi.mock('@/features/messaging/queries', () => ({
   getConversationInbox: mocks.getConversationInbox,
   getConversationThread: mocks.getConversationThread,
   getUnreadMessageCount: mocks.getUnreadMessageCount,
+}))
+vi.mock('@/features/messaging/recipient-queries', () => ({
+  getConversationPeer: mocks.getConversationPeer,
 }))
 vi.mock('@/features/messaging/service', () => ({
   createProductionMessagingService: () => ({
@@ -159,5 +163,22 @@ describe('Message conversation page', () => {
     })).rejects.toThrow('NEXT_NOT_FOUND')
 
     expect(mocks.notFound).toHaveBeenCalledTimes(1)
+  })
+
+  it('names the other member of a new conversation that is not in the first inbox page', async () => {
+    mocks.getConversationInbox.mockResolvedValueOnce([])
+    mocks.getConversationPeer.mockResolvedValueOnce({
+      otherProfileId: OTHER_ID,
+      otherName: 'Chief Engineer Ravi Kumar',
+      otherHeadline: 'Chief Engineer',
+      otherAvatarUrl: null,
+    })
+
+    render(await MessageConversationPage({
+      params: Promise.resolve({ conversationId: CONVERSATION_ID }),
+    }))
+
+    expect(mocks.getConversationPeer).toHaveBeenCalledWith(VIEWER_ID, CONVERSATION_ID)
+    expect(screen.getByText('Chief Engineer Ravi Kumar')).toBeInTheDocument()
   })
 })

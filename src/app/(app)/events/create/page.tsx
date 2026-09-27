@@ -6,21 +6,23 @@ import { EventForm } from '@/features/events/components/event-form'
 import { EventNav } from '@/features/events/components/event-nav'
 import { buildEventPublisherOptions } from '@/features/events/publishers'
 import { organizationRepository } from '@/features/organizations/repository'
+import { arePaymentsConfigured } from '@/features/payments/provider'
 import { getOwnProfileFromAurora } from '@/features/profiles/repository'
 
 export const metadata: Metadata = { title: 'Create an event' }
 
 export default async function CreateEventPage() {
   const user = await requireAwsUser()
-  const [access, profile, organizations] = await Promise.all([
+  const [access, profile, organizations, paymentsConfigured] = await Promise.all([
     getAccessContext(user.id),
     getOwnProfileFromAurora(user.id),
     organizationRepository.listUserOrganizations(user.id),
+    arePaymentsConfigured(),
   ])
 
   if (!profile) {
     return (
-      <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6">
+      <div className="mx-auto w-full max-w-4xl space-y-6 py-2 sm:px-6 sm:py-6">
         <EventNav active="hosting" />
         <section className="rounded-[1.75rem] border border-mist-100 bg-white p-8 text-center shadow-[var(--shadow-card)]">
           <h1 className="text-3xl font-bold text-navy-950">Complete your profile first</h1>
@@ -42,7 +44,7 @@ export default async function CreateEventPage() {
   )
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-4xl space-y-6 py-2 sm:px-6 sm:py-6">
       <EventNav active="hosting" />
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Hosting</p>
@@ -51,7 +53,7 @@ export default async function CreateEventPage() {
           Choose who is hosting, then create a webinar, masterclass, conference, workshop, meetup or professional community session.
         </p>
       </div>
-      <EventForm mode="create" publisherOptions={publisherOptions} />
+      <EventForm mode="create" publisherOptions={publisherOptions} paymentsConfigured={paymentsConfigured} />
     </div>
   )
 }

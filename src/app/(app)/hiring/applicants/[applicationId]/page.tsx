@@ -2,32 +2,52 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { applicantPhotoUrl } from '@/features/jobs/applicant-media'
+import { HIRING_APPLICATION_STATUS_BADGES, HIRING_APPLICATION_STATUS_LABELS } from '@/features/jobs/application-status'
+import { ApplicantAvatar } from '@/features/jobs/components/applicant-avatar'
 import { HiringCvLink } from '@/features/jobs/components/hiring-cv-link'
 import { HiringStatusAction } from '@/features/jobs/components/hiring-status-action'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
+import { JobCompanyIdentity } from '@/features/jobs/components/job-company-identity'
 import { RecruiterNoteForm } from '@/features/jobs/components/recruiter-note-form'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
-import { JOB_APPLICATION_STATUS_LABELS } from '@/features/jobs/types'
-import { createMediaReadUrl } from '@/lib/aws/storage'
 import { formatYears } from '@/lib/format'
+import { dgProfileDownloadHref } from '@/features/profiles/profile-document-policy'
+import { profileDocumentRepository } from '@/features/profiles/profile-document-repository'
 
 export const metadata: Metadata = { title: 'Applicant' }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Date not recorded'
+  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(date)
 }
 
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || 'SN'
+function formatDateTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Date not recorded'
+  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date)
+}
+
+function firstValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
 }
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-export default async function HiringApplicantReviewPage({ params }: { params: Promise<{ applicationId: string }> }) {
+export default async function HiringApplicantReviewPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ applicationId: string }>
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}) {
   const { applicationId } = await params
   if (!isUuid(applicationId)) notFound()
+  const query = searchParams ? await searchParams : {}
+  const cvProblem = firstValue(query.cv)
 
   const user = await requireAwsUser()
   const review = await hiringRepository.getApplicationReview(user.id, applicationId)
@@ -35,45 +55,59 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
 
   const candidate = review.candidate
   const profileHref = candidate.slug ? `/people/${candidate.slug}` : null
-  let cvUrl: string | null = null
-  if (review.cvAttachment) {
-    try {
-      cvUrl = await createMediaReadUrl(review.cvAttachment.storagePath, 600)
-    } catch {
-      cvUrl = null
-    }
-  }
+  const photoUrl = await applicantPhotoUrl(candidate.avatarPath)
+  const dgProfile = candidate.accountActive && review.status !== 'withdrawn'
+    ? await profileDocumentRepository.getDocument(candidate.id, 'dg_profile').catch(() => null)
+    : null
+  const isPersonalJob = review.job.companyId === null
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl space-y-6 py-8 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">{review.job.companyName}</p>
-          <h1 className="mt-2 text-3xl font-bold text-navy-950">Candidate review</h1>
+        <div className="min-w-0">
+          <JobCompanyIdentity
+            name={review.job.companyName}
+            companyId={review.job.companyId}
+            companySlug={review.job.companySlug}
+            logoPath={review.job.companyLogoPath}
+            location={review.job.companyLocation}
+            verified={review.job.companyVerified}
+            size="sm"
+            personalLabel="Personal recruiter"
+          />
+          <h1 className="mt-4 text-3xl font-bold text-navy-950">Candidate review</h1>
           <p className="mt-2 text-sm text-muted">{review.job.title} · Applied {formatDate(review.appliedAt)}</p>
         </div>
-        <Link href={`/hiring/jobs/${review.job.id}/applicants`} className="rounded-xl border border-mist-100 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 hover:bg-mist-50">
+        <Link href={`/hiring/jobs/${review.job.id}/applicants`} className="inline-flex min-h-10 items-center self-start rounded-xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">
           Back to applicants
         </Link>
       </div>
 
       <HiringSubnav active="jobs" />
 
+      {review.jobStatus !== 'published' ? (
+        <p role="status" className="rounded-2xl border border-mist-200 bg-mist-50 px-4 py-3 text-sm font-semibold text-navy-900">
+          {review.jobStatus === 'draft'
+            ? 'This job is back in draft, so it is not taking new applications. You can still review this applicant.'
+            : 'This job is archived, so it is not taking new applications. You can still review and update this applicant.'}
+        </p>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(19rem,0.75fr)]">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex min-w-0 gap-4">
-                <div className="grid size-14 shrink-0 place-items-center rounded-2xl bg-navy-950 text-base font-black text-white">
-                  {initials(candidate.fullName)}
-                </div>
-                <div>
+                <ApplicantAvatar name={candidate.fullName} photoUrl={photoUrl} size="lg" />
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-2xl font-bold text-navy-950">{candidate.fullName}</h2>
-                    <span className="rounded-full bg-mist-50 px-2.5 py-1 text-xs font-bold text-muted">{JOB_APPLICATION_STATUS_LABELS[review.status]}</span>
+                    <h2 className="min-w-0 break-words text-2xl font-bold text-navy-950">{candidate.fullName}</h2>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${HIRING_APPLICATION_STATUS_BADGES[review.status]}`}>{HIRING_APPLICATION_STATUS_LABELS[review.status]}</span>
                   </div>
                   {candidate.headline ? <p className="mt-1 text-sm text-muted">{candidate.headline}</p> : null}
+                  <p className="mt-1 text-xs font-semibold text-muted">Applied {formatDateTime(review.appliedAt)}</p>
                   {profileHref ? <Link href={profileHref} className="mt-2 inline-flex text-sm font-bold text-teal-700 hover:underline">View Maritime Profile</Link> : null}
+                  {!candidate.accountActive ? <p className="mt-2 text-sm font-semibold text-amber-900">This member’s account is no longer active, so their profile can’t be opened. The application is kept for your records.</p> : null}
                 </div>
               </div>
               <div className="rounded-2xl bg-navy-950 px-5 py-4 text-white sm:text-right">
@@ -104,6 +138,15 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
                 </div>
               </div>
             </div>
+          </section>
+
+          <section aria-labelledby="applicant-message-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+            <h2 id="applicant-message-heading" className="text-xl font-bold text-navy-950">Message from the applicant</h2>
+            {review.coverNote ? (
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink">{review.coverNote}</p>
+            ) : (
+              <p className="mt-2 text-sm text-muted">The applicant applied with their Sea N Shore profile and did not add a message.</p>
+            )}
           </section>
 
           <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
@@ -137,21 +180,21 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
 
           <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
             <h2 className="text-xl font-bold text-navy-950">Application timeline</h2>
-            <p className="mt-1 text-sm text-muted">Status history is retained as recruitment progresses.</p>
+            <p className="mt-1 text-sm text-muted">Every status change is kept. The applicant sees these steps, with your messages, on their own timeline.</p>
             <div className="mt-5 space-y-4 border-l-2 border-mist-100 pl-5">
               {review.events.length ? review.events.map((event) => (
                 <article key={event.id} className="relative">
                   <span className="absolute -left-[1.65rem] top-1.5 size-3 rounded-full border-2 border-white bg-teal-600" />
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="font-bold text-navy-950">{JOB_APPLICATION_STATUS_LABELS[event.status]}</h3>
-                    <time className="text-xs font-semibold text-muted">{formatDate(event.createdAt)}</time>
+                    <h3 className="font-bold text-navy-950">{HIRING_APPLICATION_STATUS_LABELS[event.status]}</h3>
+                    <time dateTime={event.createdAt} className="text-xs font-semibold text-muted">{formatDateTime(event.createdAt)}</time>
                   </div>
                   {event.note ? <p className="mt-1 text-sm leading-6 text-muted">{event.note}</p> : null}
                 </article>
               )) : (
                 <article className="relative">
                   <span className="absolute -left-[1.65rem] top-1.5 size-3 rounded-full border-2 border-white bg-teal-600" />
-                  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-navy-950">Applied</h3><time className="text-xs font-semibold text-muted">{formatDate(review.appliedAt)}</time></div>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-navy-950">{HIRING_APPLICATION_STATUS_LABELS.applied}</h3><time dateTime={review.appliedAt} className="text-xs font-semibold text-muted">{formatDateTime(review.appliedAt)}</time></div>
                 </article>
               )}
             </div>
@@ -160,7 +203,7 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
           <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
             <h2 className="text-xl font-bold text-navy-950">Private recruiter notes</h2>
             <p className="mt-1 text-sm text-muted">Internal screening context is never shown on the candidate-facing application timeline.</p>
-            <div className="mt-5"><RecruiterNoteForm applicationId={applicationId} /></div>
+            <div className="mt-5"><RecruiterNoteForm applicationId={applicationId} audience={isPersonalJob ? 'personal' : 'organization'} /></div>
             <div className="mt-5 space-y-3">
               {review.recruiterNotes.map((note) => (
                 <article key={note.id} className="rounded-xl bg-mist-50 p-4">
@@ -173,29 +216,54 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
           </section>
         </div>
 
-        <aside className="space-y-6">
+        <aside className="min-w-0 space-y-6">
           <HiringStatusAction applicationId={applicationId} currentStatus={review.status} />
 
-          {review.cvAttachment ? (
-            <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Candidate CV</p>
-              <h2 className="mt-1 text-lg font-bold text-navy-950">Attached application document</h2>
-              <p className="mt-1 text-sm leading-6 text-muted">Private to authorized hiring reviewers for this vacancy.</p>
-              <div className="mt-4">
-                {cvUrl ? (
+          <section aria-labelledby="candidate-cv-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Candidate CV</p>
+            <h2 id="candidate-cv-heading" className="mt-1 text-lg font-bold text-navy-950">Attached application document</h2>
+            {review.cvAttachment ? (
+              <>
+                <p className="mt-1 text-sm leading-6 text-muted">Private to authorized hiring reviewers for this vacancy.</p>
+                {cvProblem === 'unavailable' ? (
+                  <p role="alert" className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
+                    The CV could not be opened just now. Try again in a moment.
+                  </p>
+                ) : null}
+                {cvProblem === 'missing' ? (
+                  <p role="alert" className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
+                    This CV file is no longer stored on Sea N Shore. Message the applicant to ask for a new copy.
+                  </p>
+                ) : null}
+                <div className="mt-4">
                   <HiringCvLink
-                    href={cvUrl}
+                    applicationId={applicationId}
                     fileName={review.cvAttachment.fileName}
                     sizeBytes={review.cvAttachment.sizeBytes}
                   />
-                ) : (
-                  <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">
-                    CV is temporarily unavailable. Refresh the page and try again.
-                  </div>
-                )}
+                </div>
+              </>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-muted">
+                The applicant did not attach a CV. Their Sea N Shore profile details are shown on this page.
+              </p>
+            )}
+            {dgProfile ? (
+              <div className="mt-5 border-t border-mist-100 pt-4">
+                <h3 className="text-sm font-bold text-navy-950">DG Shipping profile</h3>
+                <p className="mt-1 text-sm leading-6 text-muted">The seafarer&apos;s profile PDF from the DG Shipping portal, shared privately with employers they apply to.</p>
+                <a
+                  href={dgProfileDownloadHref(candidate.id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 flex min-h-11 w-full min-w-0 flex-col justify-center rounded-xl border border-mist-100 px-4 py-2 text-sm font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50"
+                >
+                  <span>Open DG profile (PDF)</span>
+                  <span className="block truncate text-xs font-medium text-muted">{dgProfile.fileName}</span>
+                </a>
               </div>
-            </section>
-          ) : null}
+            ) : null}
+          </section>
 
           <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
             <h2 className="text-lg font-bold text-navy-950">Credentials & visas</h2>
@@ -230,6 +298,6 @@ export default async function HiringApplicantReviewPage({ params }: { params: Pr
           </section>
         </aside>
       </div>
-    </main>
+    </div>
   )
 }

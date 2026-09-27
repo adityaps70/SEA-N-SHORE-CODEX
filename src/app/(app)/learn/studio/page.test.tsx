@@ -113,6 +113,8 @@ describe('/learn/studio', () => {
       'href',
       '/learn/studio/courses/33333333-3333-4333-8333-333333333333/edit',
     )
+    // Courses in review stay reachable (read-only, with a withdraw option) instead of disappearing behind a redirect.
+    expect(screen.getByRole('link', { name: /view bridge leadership under pressure/i })).toHaveTextContent('View or withdraw')
     expect(mocks.listOwnedCourses).toHaveBeenCalledWith('user-1')
     expect(mocks.listForMentor).toHaveBeenCalledWith('user-1')
     expect(mocks.redirect).not.toHaveBeenCalled()

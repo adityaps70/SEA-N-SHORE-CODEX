@@ -71,7 +71,8 @@ function courseReviewError(error: unknown) {
   const code = error instanceof Error ? error.message : ''
   if (code === 'admin_forbidden') return 'You are not authorized to review learning courses.'
   if (code === 'course_not_found') return 'This learning course could not be found.'
-  if (code === 'course_transition_forbidden') return 'This course cannot move to that review state.'
+  if (code === 'course_withdrawn') return 'The trainer withdrew this course from review to make more changes. It will come back to the Submitted queue when they resubmit.'
+  if (code === 'course_transition_forbidden') return 'This course has already moved on from that review step. Reload the page to see its current status.'
   if (code === 'course_review_note_required') return 'A reviewer note is required when requesting course changes.'
   return 'The learning course review could not be saved. Please try again.'
 }

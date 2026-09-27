@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { JobListing, JobMatchResult } from '../types'
 
 vi.mock('./apply-job-button', () => ({
@@ -53,6 +53,8 @@ const match: JobMatchResult = {
   warnings: [],
 }
 
+afterEach(() => cleanup())
+
 describe('JobCard', () => {
   it('uses the real company logo surface and keeps the match treatment compact without a decorative star icon', () => {
     render(<JobCard job={job} match={match} />)
@@ -63,5 +65,19 @@ describe('JobCard', () => {
     expect(matchLabel.closest('[data-job-match]')?.querySelector('svg')).toBeNull()
     expect(screen.getByText('60%')).toBeVisible()
     expect(screen.getByText(job.summary)).toHaveClass('line-clamp-2')
+  })
+
+  it('links the posting organization to its page and shows where it is based', () => {
+    render(<JobCard job={{ ...job, companyLocation: 'Dubai' }} />)
+
+    expect(screen.getByRole('link', { name: 'Beaufort Marine FZE' })).toHaveAttribute('href', '/organizations/beaufort-marine-fze')
+    expect(screen.getByText('Employer based in Dubai')).toBeVisible()
+  })
+
+  it('says applications are closed instead of offering Easy Apply once the apply-by date has passed', () => {
+    render(<JobCard job={{ ...job, applyUntil: '2020-01-01' }} />)
+
+    expect(screen.getByText('Applications closed')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Easy Apply' })).toBeNull()
   })
 })

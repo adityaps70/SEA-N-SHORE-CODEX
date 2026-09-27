@@ -2,6 +2,7 @@
 
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { courseEditLockedCopy } from './course-workflow'
 import {
   createPendingLearningMediaUpload,
   removeLearningMediaObject,
@@ -37,7 +38,7 @@ type ReadResult = { ok: true; url: string } | { ok: false; error: string }
 function authorizationError(error: unknown) {
   if (error instanceof Error) {
     if (error.message === 'course_not_found') return 'Approved mentor access to this course is required.'
-    if (error.message === 'course_edit_forbidden') return 'Course media is read-only while this course is in review or published.'
+    if (error.message === 'course_edit_forbidden') return courseEditLockedCopy(null, 'Your uploaded files')
   }
   return 'We could not prepare this media request. Please try again.'
 }

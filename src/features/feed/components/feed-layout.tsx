@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { RailFooter } from '@/components/navigation/rail-footer'
 import type { NetworkProfile } from '@/features/network/types'
 import type { OwnProfile } from '@/features/profiles/types'
 import type { ProfilePortfolioCompletion } from '../profile-completion'
@@ -35,6 +36,7 @@ export function FeedLayout({
       <aside className="hidden xl:block">
         <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pb-4 pr-1">
           <FeedDiscoveryRail suggestions={suggestions} />
+          <RailFooter visibleFrom="xl" />
         </div>
       </aside>
     </section>

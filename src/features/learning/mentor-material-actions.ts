@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
 import { mentorMaterialRepository, type MentorMaterialDraft, type MaterialType } from './mentor-material-repository'
 import type { LearningMediaKind } from './media-policy'
@@ -103,7 +104,7 @@ type CreateResult = { ok: true; materialId: string } | { ok: false; error: strin
 function errorMessage(error: unknown) {
   if (error instanceof Error) {
     if (error.message === 'course_not_found') return 'We could not find this course in your Mentor Studio.'
-    if (error.message === 'course_edit_forbidden') return 'This course is read-only while it is under review or published.'
+    if (error.message === 'course_edit_forbidden') return courseEditLockedCopy(null, 'Your material changes')
     if (error.message === 'section_not_found') return 'We could not find this section.'
     if (error.message === 'material_not_found') return 'We could not find this material.'
     if (error.message === 'prerequisite_not_found') return 'The prerequisite must belong to this course.'

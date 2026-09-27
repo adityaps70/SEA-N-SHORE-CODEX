@@ -111,6 +111,13 @@ describe('learning course lifecycle repository', () => {
       companyId: null,
       publisherName: 'Capt. Mentor',
       publisherSlug: 'capt-mentor',
+      detailsRevision: 1,
+      lastReview: {
+        decision: 'changes_requested',
+        note: 'Please make the inspection evidence outcome more specific.',
+        reviewedAt: null,
+      },
+      submittedAt: null,
     })
 
     expect(seen[0]?.text).toContain('public.learning_mentors access_mentor')

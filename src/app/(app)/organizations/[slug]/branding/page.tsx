@@ -23,7 +23,7 @@ export default async function OrganizationBrandingPage({ params }: { params: Pro
   const canBrand = canUseCapability(access, 'organization.branding', { companyId: workspace.id })
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-5xl space-y-6 py-8 sm:px-6 lg:px-8">
       <div>
         <Link href={'/organizations/' + workspace.slug} className="text-sm font-bold text-muted hover:text-navy-950">← {workspace.name}</Link>
         <div className="mt-3 flex items-center gap-3">
@@ -54,6 +54,6 @@ export default async function OrganizationBrandingPage({ params }: { params: Pro
           </div>
         </section>
       )}
-    </main>
+    </div>
   )
 }

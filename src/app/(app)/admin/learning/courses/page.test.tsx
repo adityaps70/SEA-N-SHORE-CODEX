@@ -50,6 +50,8 @@ const course: CourseReviewItem = {
   adminReviewNote: null,
   updatedAt: '2026-09-14T12:00:00.000Z',
   curriculum: [],
+  publisherType: 'personal',
+  review: { submissionNumber: 1, submittedAt: '2026-09-14T12:00:00.000Z', previousReview: null, changesSinceLastReview: null },
 }
 
 afterEach(() => {
@@ -194,5 +196,68 @@ describe('/admin/learning/courses', () => {
     render(await LearningCoursesAdminPage({ searchParams: Promise.resolve({ status: 'archived' }) }))
 
     expect(screen.getByText('No courses in this review queue.')).toBeInTheDocument()
+  })
+
+  it('shows a resubmission with the previous note and exactly what changed since that review', async () => {
+    mocks.listCoursesForReview.mockResolvedValueOnce([{
+      ...course,
+      review: {
+        submissionNumber: 2,
+        submittedAt: '2026-09-27T09:02:00.000Z',
+        previousReview: {
+          decision: 'changes_requested',
+          note: 'Make the evidence outcome specific.',
+          reviewedAt: '2026-09-20T06:30:00.000Z',
+        },
+        changesSinceLastReview: [
+          { area: 'details', change: 'changed', label: 'Course details', fields: ['Subtitle', 'Learning outcomes'] },
+          { area: 'material', change: 'changed', label: 'Inspection evidence', fields: ['article content'] },
+          { area: 'material', change: 'added', label: 'Document checklist', fields: [] },
+        ],
+      },
+    }])
+
+    render(await LearningCoursesAdminPage({ searchParams: Promise.resolve({}) }))
+
+    const history = screen.getByRole('region', { name: 'Review history' })
+    expect(history).toHaveTextContent('Resubmission · round 2')
+    expect(history).toHaveTextContent('Changes you requested last time')
+    expect(history).toHaveTextContent('Make the evidence outcome specific.')
+    expect(history).toHaveTextContent('What changed since the last review')
+    expect(history).toHaveTextContent('Changed “Course details” — Subtitle, Learning outcomes')
+    expect(history).toHaveTextContent('Changed material “Inspection evidence” — article content')
+    expect(history).toHaveTextContent('Added material “Document checklist”')
+  })
+
+  it('says so when a resubmission has no changes since the last review', async () => {
+    mocks.listCoursesForReview.mockResolvedValueOnce([{
+      ...course,
+      review: {
+        submissionNumber: 2,
+        submittedAt: '2026-09-27T09:02:00.000Z',
+        previousReview: { decision: 'changes_requested', note: 'Fix the outcomes.', reviewedAt: '2026-09-20T06:30:00.000Z' },
+        changesSinceLastReview: [],
+      },
+    }])
+
+    render(await LearningCoursesAdminPage({ searchParams: Promise.resolve({}) }))
+
+    expect(screen.getByText('No changes since the last review.')).toBeInTheDocument()
+  })
+
+  it('labels organization courses by organization instead of a trainer record', async () => {
+    mocks.listCoursesForReview.mockResolvedValueOnce([{
+      ...course,
+      mentorId: null,
+      mentorUserId: null,
+      mentorName: 'Ocean Training Institute',
+      publisherType: 'organization',
+    }])
+
+    render(await LearningCoursesAdminPage({ searchParams: Promise.resolve({}) }))
+
+    expect(screen.getByText('Organization')).toBeInTheDocument()
+    expect(screen.getByText('Ocean Training Institute')).toBeInTheDocument()
+    expect(screen.queryByText(/Trainer record ID/)).not.toBeInTheDocument()
   })
 })

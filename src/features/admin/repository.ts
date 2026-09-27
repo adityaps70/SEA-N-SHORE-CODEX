@@ -1,6 +1,16 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import type { ModerationAction, ModerationReportStatus, ModerationTargetType } from '@/features/moderation/types'
+import {
+  activeAuthorityCountSql,
+  decideAccessRequestWithQuery,
+  needsPlatformSql,
+  organizationSuspendedSql,
+} from '@/features/organizations/access-request-repository'
+import { platformFallbackReason, type PlatformFallbackReason } from '@/features/organizations/access-request-policy'
+import { displayOrganizationType, resolveOrganizationType, type OrganizationTypeCode } from '@/features/organizations/organization-types'
+import { parseOrganizationDetails } from '@/features/organizations/schemas'
+import type { OrganizationDetails } from '@/features/organizations/types'
 
 export const ADMIN_ORGANIZATION_STATUSES = ['pending', 'changes_requested', 'approved', 'rejected', 'suspended'] as const
 export type AdminOrganizationStatus = (typeof ADMIN_ORGANIZATION_STATUSES)[number]
@@ -10,20 +20,39 @@ export const ADMIN_COMPANY_ACCESS_STATUSES = ['pending', 'approved', 'rejected',
 export type AdminCompanyAccessStatus = (typeof ADMIN_COMPANY_ACCESS_STATUSES)[number]
 export type AdminCompanyAccessDecision = Extract<AdminCompanyAccessStatus, 'approved' | 'rejected'>
 
+/**
+ * Admin queue views. Organizations decide their own requests; Sea N Shore acts
+ * only on the "needs_platform" view (no active owner/admin, waiting 7+ days, or
+ * escalated by the requester). Everything else is read-only oversight.
+ */
+export const ADMIN_COMPANY_ACCESS_FILTERS = ['needs_platform', 'with_organization', 'approved', 'rejected', 'cancelled'] as const
+export type AdminCompanyAccessFilter = (typeof ADMIN_COMPANY_ACCESS_FILTERS)[number]
+
+type AdminCompanyAccessRole = 'member' | 'recruiter' | 'administrator' | 'lms_manager' | 'event_manager' | 'content_manager' | 'analyst'
+
 export type AdminCompanyAccessRequest = {
   id: string
   status: AdminCompanyAccessStatus
-  requestedRole: 'member' | 'recruiter' | 'administrator' | 'lms_manager' | 'event_manager' | 'content_manager' | 'analyst'
+  requestedRole: AdminCompanyAccessRole
+  grantedRole: AdminCompanyAccessRole | null
   requestType: 'join_company' | 'recruiter_access' | 'role_access'
   message: string | null
   requestedAt: string
   reviewedAt: string | null
   reviewerNote: string | null
+  reviewer: { id: string; fullName: string } | null
+  decidedVia: 'organization' | 'platform' | null
+  escalatedAt: string | null
+  escalationNote: string | null
+  /** Set when Sea N Shore may act on this pending request; null means read-only. */
+  fallbackReason: PlatformFallbackReason | null
+  activeAuthorityCount: number
   company: {
     id: string
     name: string
     slug: string
     verified: boolean
+    suspended: boolean
   }
   requester: {
     id: string
@@ -151,7 +180,10 @@ export type AdminOrganizationReview = {
     id: string
     slug: string
     name: string
+    /** Display label for the organization type. */
     type: string | null
+    typeCode: OrganizationTypeCode
+    details: OrganizationDetails
     website: string | null
     description: string | null
     fleetSummary: string | null
@@ -272,6 +304,8 @@ type OrganizationReviewRow = QueryResultRow & {
   company_slug: string
   company_name: string
   company_type: string | null
+  organization_type?: string | null
+  organization_details?: unknown
   website: string | null
   company_description: string | null
   fleet_summary: string | null
@@ -294,11 +328,19 @@ type CompanyAccessRequestRow = QueryResultRow & {
   request_id: string
   request_status: string
   requested_role: string
+  granted_role: string | null
   request_type: string
   message: string | null
-  requested_at: string
-  reviewed_at: string | null
+  requested_at: string | Date
+  reviewed_at: string | Date | null
   reviewer_note: string | null
+  reviewer_id: string | null
+  reviewer_name: string | null
+  decided_via: string | null
+  escalated_at: string | Date | null
+  escalation_note: string | null
+  active_authority_count: number | string | null
+  company_suspended: boolean | null
   company_id: string
   company_name: string
   company_slug: string
@@ -307,13 +349,6 @@ type CompanyAccessRequestRow = QueryResultRow & {
   requester_name: string
   requester_slug: string | null
   requester_headline: string | null
-}
-type LockedCompanyAccessRequestRow = QueryResultRow & {
-  id: string
-  company_id: string
-  user_id: string
-  requested_role: string
-  status: string
 }
 
 const ORGANIZATION_REVIEW_SELECT = `
@@ -333,6 +368,8 @@ const ORGANIZATION_REVIEW_SELECT = `
     c.slug as company_slug,
     c.name as company_name,
     c.company_type,
+    c.organization_type,
+    c.organization_details,
     c.website,
     c.description as company_description,
     c.fleet_summary,
@@ -393,21 +430,45 @@ function adminCompanyAccessType(value: string): AdminCompanyAccessRequest['reque
   throw new Error('admin_company_access_type_invalid')
 }
 
+function adminTimestamp(value: string | Date): string
+function adminTimestamp(value: string | Date | null | undefined): string | null
+function adminTimestamp(value: string | Date | null | undefined) {
+  if (value === null || value === undefined) return null
+  return value instanceof Date ? value.toISOString() : value
+}
+
 function mapCompanyAccessRequest(row: CompanyAccessRequestRow): AdminCompanyAccessRequest {
+  const status = adminCompanyAccessStatus(row.request_status)
+  const activeAuthorityCount = numberValue(row.active_authority_count)
+  const suspended = Boolean(row.company_suspended)
   return {
     id: row.request_id,
-    status: adminCompanyAccessStatus(row.request_status),
+    status,
     requestedRole: adminCompanyAccessRole(row.requested_role),
+    grantedRole: row.granted_role ? adminCompanyAccessRole(row.granted_role) : null,
     requestType: adminCompanyAccessType(row.request_type),
     message: row.message ?? null,
-    requestedAt: row.requested_at,
-    reviewedAt: row.reviewed_at ?? null,
+    requestedAt: adminTimestamp(row.requested_at),
+    reviewedAt: adminTimestamp(row.reviewed_at),
     reviewerNote: row.reviewer_note ?? null,
+    reviewer: row.reviewer_id ? { id: row.reviewer_id, fullName: row.reviewer_name ?? 'Unknown reviewer' } : null,
+    decidedVia: row.decided_via === 'organization' || row.decided_via === 'platform' ? row.decided_via : null,
+    escalatedAt: adminTimestamp(row.escalated_at),
+    escalationNote: row.escalation_note ?? null,
+    fallbackReason: platformFallbackReason({
+      status,
+      requestedAt: row.requested_at,
+      escalatedAt: row.escalated_at,
+      activeAuthorityCount,
+      organizationSuspended: suspended,
+    }),
+    activeAuthorityCount,
     company: {
       id: row.company_id,
       name: row.company_name,
       slug: row.company_slug,
       verified: Boolean(row.company_verified),
+      suspended,
     },
     requester: {
       id: row.requester_id,
@@ -449,7 +510,9 @@ function mapOrganizationReview(row: OrganizationReviewRow): AdminOrganizationRev
       id: row.company_id,
       slug: row.company_slug,
       name: row.company_name,
-      type: row.company_type ?? null,
+      type: row.company_type || row.organization_type ? displayOrganizationType(row.organization_type, row.company_type) : null,
+      typeCode: resolveOrganizationType(row.organization_type, row.company_type).code,
+      details: parseOrganizationDetails(row.organization_details),
       website: row.website ?? null,
       description: row.company_description ?? null,
       fleetSummary: row.fleet_summary ?? null,
@@ -510,7 +573,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          count(*) filter (where oa.status = 'changes_requested') as changes_requested,
          count(*) filter (where oa.status = 'approved') as approved_organizations,
          count(*) filter (where oa.status = 'suspended') as suspended_organizations,
-         (select count(*) from public.company_access_requests car where car.status = 'pending') as pending_access_requests,
+         (select count(*) from public.company_access_requests car where ${needsPlatformSql('car')}) as pending_access_requests,
          (select count(*) from public.content_reports cr where cr.status = 'open') as open_reports,
          (select count(*) from public.content_reports cr where cr.status = 'reviewing') as reviewing_reports,
          (select count(*) from public.content_reports cr
@@ -1370,19 +1433,37 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
 
   async function listCompanyAccessRequests(
     adminId: string,
-    status: AdminCompanyAccessStatus,
+    filter: AdminCompanyAccessFilter,
   ): Promise<AdminCompanyAccessRequest[]> {
     await requirePlatformAdministrator(queryRows, adminId)
+    const where = {
+      needs_platform: needsPlatformSql('car'),
+      with_organization: `(car.status = 'pending' and not ${needsPlatformSql('car')})`,
+      approved: `car.status = 'approved'`,
+      rejected: `car.status = 'rejected'`,
+      cancelled: `car.status = 'cancelled'`,
+    }[filter]
+    const order = filter === 'needs_platform' || filter === 'with_organization'
+      ? 'car.escalated_at asc nulls last, car.requested_at asc, car.id asc'
+      : 'car.reviewed_at desc nulls last, car.id asc'
     const rows = await queryRows(
       `select
          car.id as request_id,
          car.status as request_status,
          car.requested_role::text as requested_role,
+         car.granted_role::text as granted_role,
          car.request_type,
          car.message,
          car.requested_at,
          car.reviewed_at,
          car.reviewer_note,
+         car.decided_via,
+         car.escalated_at,
+         car.escalation_note,
+         reviewer.id as reviewer_id,
+         reviewer.full_name as reviewer_name,
+         ${activeAuthorityCountSql('car.company_id', 'car.user_id')} as active_authority_count,
+         ${organizationSuspendedSql('car.company_id')} as company_suspended,
          c.id as company_id,
          c.name as company_name,
          c.slug as company_slug,
@@ -1394,71 +1475,55 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
        from public.company_access_requests car
        join public.companies c on c.id = car.company_id
        join public.profiles p on p.id = car.user_id
-       where car.status = $1
-       order by car.requested_at asc, car.id asc
+       left join public.profiles reviewer on reviewer.id = car.reviewed_by
+       where ${where}
+       order by ${order}
        limit 100`,
-      [status],
     ) as CompanyAccessRequestRow[]
     return rows.map(mapCompanyAccessRequest)
   }
 
+  async function countCompanyAccessRequests(adminId: string): Promise<Record<AdminCompanyAccessFilter, number>> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const rows = await queryRows(
+      `select
+         count(*) filter (where ${needsPlatformSql('car')}) as needs_platform,
+         count(*) filter (where car.status = 'pending' and not ${needsPlatformSql('car')}) as with_organization,
+         count(*) filter (where car.status = 'approved') as approved,
+         count(*) filter (where car.status = 'rejected') as rejected,
+         count(*) filter (where car.status = 'cancelled') as cancelled
+       from public.company_access_requests car`,
+    ) as Array<QueryResultRow & Record<AdminCompanyAccessFilter, unknown>>
+    const row = rows[0] ?? {}
+    return {
+      needs_platform: numberValue(row.needs_platform),
+      with_organization: numberValue(row.with_organization),
+      approved: numberValue(row.approved),
+      rejected: numberValue(row.rejected),
+      cancelled: numberValue(row.cancelled),
+    }
+  }
+
+  /**
+   * Platform decision on an access request. Only allowed under the fallback
+   * rules; decideAccessRequestWithQuery re-checks them against locked rows and
+   * writes the audit entry.
+   */
   async function reviewCompanyAccessRequest(
     adminId: string,
     requestId: string,
     decision: AdminCompanyAccessDecision,
     reviewerNote: string | null,
+    grantedRole: AdminCompanyAccessRole | null = null,
   ) {
     return transaction(async (txQuery) => {
       await requirePlatformAdministrator(txQuery, adminId, true)
-      const rows = await txQuery(
-        `select id, company_id, user_id, requested_role::text as requested_role, status
-         from public.company_access_requests
-         where id = $1
-         for update`,
-        [requestId],
-      ) as LockedCompanyAccessRequestRow[]
-      const request = rows[0]
-      if (!request) throw new Error('company_access_request_not_found')
-      if (request.status !== 'pending') throw new Error('company_access_request_review_forbidden')
-      const requestedRole = adminCompanyAccessRole(request.requested_role)
-
-      if (decision === 'approved') {
-        await txQuery(
-          `insert into public.company_members (company_id, user_id, role, approved_at, created_at)
-           values ($1, $2, $3::public.company_member_role, now(), now())
-           on conflict (company_id, user_id)
-           do update set
-             role = excluded.role,
-             approved_at = coalesce(public.company_members.approved_at, now())`,
-          [request.company_id, request.user_id, requestedRole],
-        )
-      }
-
-      await txQuery(
-        `update public.company_access_requests
-         set status = $2,
-             reviewed_by = $3,
-             reviewed_at = now(),
-             reviewer_note = $4
-         where id = $1`,
-        [requestId, decision, adminId, reviewerNote],
-      )
-
-      await txQuery(
-        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
-         values ($1, $2, 'company_access_request', $3, $4::jsonb)`,
-        [
-          adminId,
-          `organization_access.${decision}`,
-          requestId,
-          JSON.stringify({
-            companyId: request.company_id,
-            userId: request.user_id,
-            requestedRole,
-            reviewerNote,
-          }),
-        ],
-      )
+      await decideAccessRequestWithQuery(txQuery, adminId, {
+        requestId,
+        decision,
+        grantedRole,
+        note: reviewerNote,
+      })
       return true
     })
   }
@@ -1480,6 +1545,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     getOrganizationApplicationReview,
     reviewOrganizationApplication,
     listCompanyAccessRequests,
+    countCompanyAccessRequests,
     reviewCompanyAccessRequest,
   }
 }

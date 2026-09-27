@@ -2,15 +2,15 @@ import type { Metadata } from 'next'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MessageShell } from '@/features/messaging/components/message-shell'
 import { getConversationInbox } from '@/features/messaging/queries'
-import { getNetworkHub } from '@/features/network/queries'
 
 export const metadata: Metadata = { title: 'Messages' }
 
 export default async function MessagesPage() {
-  const [viewer, inbox, connections] = await Promise.all([
+  // New Message searches connections live (/api/messages/recipients), so the
+  // inbox page no longer preloads every connection or fails when that list does.
+  const [viewer, inbox] = await Promise.all([
     requireAwsUser(),
     getConversationInbox({ limit: 100 }),
-    getNetworkHub('connections'),
   ])
 
   return (
@@ -19,7 +19,6 @@ export default async function MessagesPage() {
         viewerId={viewer.id}
         inbox={inbox}
         activeConversation={null}
-        newMessageCandidates={connections.profiles}
       />
     </div>
   )

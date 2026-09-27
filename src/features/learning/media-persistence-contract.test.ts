@@ -97,7 +97,7 @@ describe('learning media persistence verification', () => {
   })
 
   it('HEAD-verifies an owned uploaded course image before persisting its storage path', async () => {
-    await expect(updateCourseDraft(courseId, courseInput())).resolves.toEqual({ ok: true })
+    await expect(updateCourseDraft(courseId, courseInput())).resolves.toMatchObject({ ok: true })
 
     expect(mocks.verifyLearningMediaObject).toHaveBeenCalledWith({
       userId: 'user-1',

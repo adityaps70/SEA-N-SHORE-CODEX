@@ -278,4 +278,51 @@ describe('MentorCurriculumEditor native materials', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm delete Evidence and crew preparation' }))
     await waitFor(() => expect(mocks.deleteMaterial).toHaveBeenCalledWith(courseId, articleMaterialId))
   })
+
+  it('does not silently discard an unsaved material edit when another editor is opened', async () => {
+    render(<MentorCurriculumEditor courseId={courseId} curriculum={curriculum} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Evidence and crew preparation' }))
+    fireEvent.change(screen.getByLabelText('Edit material title'), { target: { value: 'Unsaved new title' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit quiz SIRE knowledge check' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('You have unsaved changes to material “Evidence and crew preparation”. Save or cancel them first.')
+    expect(screen.getByLabelText('Edit material title')).toHaveValue('Unsaved new title')
+    expect(screen.queryByLabelText('Quiz pass percentage')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add material to Module 1 · Inspection readiness' }))
+    expect(screen.getByLabelText('Edit material title')).toHaveValue('Unsaved new title')
+    expect(screen.queryByLabelText('New material title')).not.toBeInTheDocument()
+  })
+
+  it('opens another editor freely when the open one has no changes', () => {
+    render(<MentorCurriculumEditor courseId={courseId} curriculum={curriculum} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Evidence and crew preparation' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit quiz SIRE knowledge check' }))
+    expect(screen.getByLabelText('Quiz pass percentage')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Edit material title')).not.toBeInTheDocument()
+  })
+
+  it('keeps the edit open with the error when a material save is refused', async () => {
+    mocks.updateMaterial.mockResolvedValueOnce({
+      ok: false,
+      error: 'Your material changes were not saved because this course is in review or published. Reload the page to see its current status.',
+    })
+    render(<MentorCurriculumEditor courseId={courseId} curriculum={curriculum} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Evidence and crew preparation' }))
+    fireEvent.change(screen.getByLabelText('Edit material title'), { target: { value: 'Edited title' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save material changes' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your material changes were not saved')
+    expect(screen.getByLabelText('Edit material title')).toHaveValue('Edited title')
+  })
+
+  it('renders a read-only curriculum for a course in review or published', () => {
+    render(<MentorCurriculumEditor courseId={courseId} curriculum={{ ...curriculum, status: 'submitted' }} readOnly />)
+
+    expect(screen.getByText('Evidence and crew preparation')).toBeInTheDocument()
+    expect(screen.queryByLabelText('New section title')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add material to Module 1 · Inspection readiness' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit Evidence and crew preparation' })).toBeDisabled()
+    expect(screen.getByLabelText('Course navigation mode')).toBeDisabled()
+  })
 })

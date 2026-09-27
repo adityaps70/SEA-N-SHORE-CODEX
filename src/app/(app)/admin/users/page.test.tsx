@@ -71,4 +71,21 @@ describe('/admin/users', () => {
     expect(screen.getByRole('heading', { name: 'User accounts' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Deletion records' })).toBeInTheDocument()
   })
+
+  it('can hide accounts that look like automated test accounts', async () => {
+    const realMember: AdminUserSummary = { ...deletedRecord, id: 'u-real', fullName: 'Meera Kulkarni', slug: 'meera-k', email: 'meera@example.net', status: 'active' }
+    const testMember: AdminUserSummary = { ...deletedRecord, id: 'u-test', fullName: 'E2E Recruiter 1', slug: 'e2e-recruiter-1', email: 'sea-n-shore-e2e-1@example.com', status: 'active' }
+    mocks.searchUsers.mockResolvedValue([realMember, testMember])
+
+    render(await AdminUsersPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.getByText('E2E Recruiter 1')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Hide them' })).toHaveAttribute('href', '/admin/users?test=hide')
+    cleanup()
+
+    render(await AdminUsersPage({ searchParams: Promise.resolve({ test: 'hide', status: 'active' }) }))
+    expect(screen.queryByText('E2E Recruiter 1')).not.toBeInTheDocument()
+    expect(screen.getByText('Meera Kulkarni')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Show them' })).toHaveAttribute('href', '/admin/users?status=active')
+    expect(screen.getByRole('link', { name: 'Suspended' })).toHaveAttribute('href', '/admin/users?status=suspended&test=hide')
+  })
 })

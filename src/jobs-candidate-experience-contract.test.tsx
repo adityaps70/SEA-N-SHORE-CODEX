@@ -44,7 +44,8 @@ describe('premium candidate jobs experience contract', () => {
     expect(page).toContain('missingRequirements')
     expect(page).toContain('SaveJobButton')
     expect(page).toContain('ReportJobButton')
-    expect(page).toContain('sticky bottom-0')
+    // The mobile apply bar sticks just above the fixed bottom navigation.
+    expect(page).toContain('sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))]')
   })
 
   it('provides dedicated saved, applications and alerts workspaces', () => {

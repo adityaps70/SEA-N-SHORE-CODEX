@@ -1,14 +1,19 @@
+import type { PaymentCurrency } from '@/features/payments/types'
+
 export const CALENDAR_EVENT_FORMATS = ['online', 'in_person', 'hybrid'] as const
 export const CALENDAR_EVENT_STATUSES = ['draft', 'published', 'cancelled'] as const
 export const CALENDAR_EVENT_CATEGORIES = ['training', 'safety', 'technical', 'regulatory', 'careers', 'leadership', 'networking', 'community'] as const
 export const CALENDAR_EVENT_TYPES = ['webinar', 'masterclass', 'conference', 'workshop', 'meetup', 'networking', 'community'] as const
 export const CALENDAR_REGISTRATION_MODES = ['open', 'closed'] as const
+export const CALENDAR_EVENT_PRICING = ['free', 'paid'] as const
 
 export type CalendarEventFormat = typeof CALENDAR_EVENT_FORMATS[number]
 export type CalendarEventStatus = typeof CALENDAR_EVENT_STATUSES[number]
 export type CalendarEventCategory = typeof CALENDAR_EVENT_CATEGORIES[number]
 export type CalendarEventType = typeof CALENDAR_EVENT_TYPES[number]
 export type CalendarRegistrationMode = typeof CALENDAR_REGISTRATION_MODES[number]
+export type CalendarEventPricing = typeof CALENDAR_EVENT_PRICING[number]
+export type CalendarEventCurrency = PaymentCurrency
 export type EditableCalendarEventStatus = Exclude<CalendarEventStatus, 'cancelled'>
 export type CalendarEventPublisherType = 'personal' | 'organization'
 
@@ -50,7 +55,15 @@ export type CalendarEventInput = {
   bannerUrl: string | null
   registrationMode: CalendarRegistrationMode
   registrationClosesAt: string | null
+  /** Free events use one-click registration; paid events take payment inside Sea N Shore. */
+  pricing: CalendarEventPricing
+  /** Ticket price in minor units (paise / cents). Null for free events. */
+  priceMinor: number | null
+  currency: CalendarEventCurrency | null
 }
+
+export type CalendarEventField = keyof CalendarEventInput | 'publisher'
+export type CalendarFieldErrors = Partial<Record<CalendarEventField, string>>
 
 export type CalendarEventCreateInput = CalendarEventInput & {
   publisherType: CalendarEventPublisherType
@@ -71,6 +84,8 @@ export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
   bannerStoragePath: string | null
   attendeeCount: number
   viewerIsAttending: boolean
+  /** The viewer's seat was bought through Sea N Shore checkout. */
+  viewerHasPaid: boolean
   viewerIsHost: boolean
   registrationOpen: boolean
   isPast: boolean
@@ -80,11 +95,11 @@ export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
 
 export type CalendarActionResult =
   | { ok: true }
-  | { ok: false; error: string }
+  | { ok: false; error: string; fieldErrors?: CalendarFieldErrors }
 
 export type CalendarCreateResult =
   | { ok: true; eventId: string }
-  | { ok: false; error: string }
+  | { ok: false; error: string; fieldErrors?: CalendarFieldErrors }
 
 export type EventBannerUploadResult =
   | { ok: true; upload: { storagePath: string; uploadUrl: string } }

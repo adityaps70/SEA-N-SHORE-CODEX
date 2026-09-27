@@ -18,7 +18,7 @@ describe('job application statuses', () => {
       'Shortlisted',
       'Interview',
       'Selected',
-      'Rejected',
+      'Not selected',
       'Withdrawn',
     ])
   })

@@ -42,7 +42,7 @@ export default async function AdminLearningAnalyticsPage() {
   ]
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <section className="overflow-hidden rounded-[1.6rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-7">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
@@ -180,6 +180,6 @@ export default async function AdminLearningAnalyticsPage() {
           </div>
         )}
       </section>
-    </main>
+    </div>
   )
 }

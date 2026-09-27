@@ -21,6 +21,9 @@ vi.mock('@/features/organizations/repository', () => ({
 vi.mock('@/features/learning/repository', () => ({
   learningRepository: { getMentorApplicationState: mocks.getMentorApplicationState },
 }))
+vi.mock('@/features/learning/components/course-edit-session', () => ({
+  CourseEditSession: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}))
 vi.mock('@/features/learning/components/course-form', () => ({
   CourseForm: ({ initialValue }: { initialValue: unknown }) => {
     mocks.capturedInitialValue = initialValue

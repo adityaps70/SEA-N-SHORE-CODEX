@@ -98,7 +98,9 @@ describe('premium hiring workspace contract', () => {
     expect(status).toContain('updateHiringApplicationStatus')
     expect(status).toContain('Shortlist')
     expect(status).toContain('Interview')
-    expect(status).toContain('Select')
+    // Owner-facing stages: New, Reviewed, Shortlisted, Interview, Hired, Rejected (Hired is stored as 'selected').
+    expect(status).toContain('Mark reviewed')
+    expect(status).toContain('Hire')
     expect(status).toContain('Reject')
     expect(notes).toContain('saveHiringRecruiterNote')
   })
@@ -108,8 +110,9 @@ describe('premium hiring workspace contract', () => {
     const workspace = source('src/app/(app)/organizations/[slug]/page.tsx')
 
     expect(legacyPage).toContain("redirect('/organizations/' + company.slug)")
-    expect(workspace).toContain('Verified organization')
-    expect(workspace).toContain('Your workspace access')
+    // The organization workspace (redesigned in round 3) shows verification, the viewer's access and the plan.
+    expect(workspace).toContain('Verified by Sea N Shore')
+    expect(workspace).toContain('Your workspace')
     expect(workspace).toContain('Organization Pro')
     expect(workspace).not.toContain('is_verified =')
     expect(workspace).not.toContain('verified_by =')

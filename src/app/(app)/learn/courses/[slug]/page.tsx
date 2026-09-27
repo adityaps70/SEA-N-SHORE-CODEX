@@ -18,6 +18,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { EnrollFreeControl } from '@/features/learning/components/enroll-free-control'
 import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
+import { splitDescription } from '@/features/learning/description'
 
 type PublishedCoursePageProps = {
   params: Promise<{ slug: string }>
@@ -57,6 +58,23 @@ function EvidenceList({ items }: { items: string[] }) {
         </li>
       ))}
     </ul>
+  )
+}
+
+function CourseDescription({ text }: { text: string }) {
+  const [intro, rest] = splitDescription(text)
+  return (
+    <div className="mt-5 max-w-3xl space-y-2 text-sm leading-7 text-white/66 sm:text-base">
+      <p>{intro}</p>
+      {rest ? (
+        <details className="group">
+          <summary className="cursor-pointer list-none text-sm font-bold text-teal-200 transition hover:text-white group-open:hidden">
+            Read the full description
+          </summary>
+          <p>{rest}</p>
+        </details>
+      ) : null}
+    </div>
   )
 }
 
@@ -113,7 +131,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
             {course.subtitle ? (
               <p className="mt-4 max-w-3xl text-base font-medium leading-7 text-white/78 sm:text-lg">{course.subtitle}</p>
             ) : null}
-            <p className="mt-5 max-w-3xl text-sm leading-7 text-white/66 sm:text-base">{course.description}</p>
+            <CourseDescription text={course.description} />
 
             <div className="mt-7 flex flex-wrap gap-2 text-xs font-bold text-white/82">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">

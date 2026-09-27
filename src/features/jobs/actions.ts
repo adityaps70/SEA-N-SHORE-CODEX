@@ -33,6 +33,7 @@ const cvReferenceSchema = cvMetadataSchema.extend({
   storagePath: z.string().trim().min(1).max(1024),
   mimeType: z.literal('application/pdf'),
 })
+const coverNoteSchema = z.string().trim().max(2000, 'Keep your message to the employer under 2,000 characters.').nullable().optional()
 const alertIdSchema = z.string().uuid()
 const alertSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -103,9 +104,15 @@ export async function prepareJobApplicationCvUpload(
 export async function applyToJob(
   jobId: string,
   cvInput?: JobApplicationCvReference | null,
+  coverNoteInput?: string | null,
 ): Promise<ApplyToJobResult> {
   const parsed = jobIdSchema.safeParse(jobId)
   if (!parsed.success) return { ok: false, error: 'Invalid job.' }
+  const parsedCoverNote = coverNoteSchema.safeParse(coverNoteInput ?? null)
+  if (!parsedCoverNote.success) {
+    return { ok: false, error: parsedCoverNote.error.issues[0]?.message ?? 'Check your message to the employer.' }
+  }
+  const coverNote = parsedCoverNote.data ? parsedCoverNote.data : null
 
   const user = await requireAwsUser()
   if (!await userCan(user.id, 'job.apply')) {
@@ -147,7 +154,7 @@ export async function applyToJob(
   }
 
   try {
-    await jobsRepository.createApplication(parsed.data, user.id, cv)
+    await jobsRepository.createApplication(parsed.data, user.id, cv, coverNote)
   } catch (error) {
     if (cv) {
       await removeJobApplicationCv(cv.storagePath).catch(() => undefined)

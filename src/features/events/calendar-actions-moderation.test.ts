@@ -18,6 +18,9 @@ vi.mock('@/features/access/server', () => ({ requireCapability: mocks.requireCap
 vi.mock('@/features/moderation/repository', () => ({
   moderationRepository: { flagContentAutomatically: mocks.flagContentAutomatically },
 }))
+vi.mock('@/features/payments/event-payment-repository', () => ({
+  eventPaymentRepository: { countPaidOrdersForEvent: vi.fn(async () => 0) },
+}))
 vi.mock('./event-banner-media', () => ({
   prepareEventBannerUpload: vi.fn(),
   verifyEventBannerReference: mocks.verifyEventBannerReference,
@@ -64,6 +67,9 @@ function input(overrides: Partial<CalendarEventCreateInput> = {}): CalendarEvent
     bannerUrl: null,
     registrationMode: 'open',
     registrationClosesAt: null,
+    pricing: 'free',
+    priceMinor: null,
+    currency: null,
     ...overrides,
   }
 }

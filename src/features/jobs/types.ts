@@ -12,13 +12,14 @@ export const JOB_APPLICATION_STATUSES = [
 
 export type JobApplicationStatus = (typeof JOB_APPLICATION_STATUSES)[number]
 
+/** Applicant-facing wording. Employers see HIRING_APPLICATION_STATUS_LABELS (application-status.ts). */
 export const JOB_APPLICATION_STATUS_LABELS: Record<JobApplicationStatus, string> = {
   applied: 'Applied',
   under_review: 'Under review',
   shortlisted: 'Shortlisted',
   interview: 'Interview',
   selected: 'Selected',
-  rejected: 'Rejected',
+  rejected: 'Not selected',
   withdrawn: 'Withdrawn',
 }
 
@@ -77,6 +78,9 @@ export type JobListing = {
   companyId: string | null
   companySlug: string | null
   companyLogoPath?: string | null
+  /** First office location on the organization page, when the job is posted by an organization. */
+  companyLocation?: string | null
+  companyType?: string | null
   companyVerified: boolean
   recruiterVerified: boolean
   location: string | null
@@ -112,13 +116,19 @@ export type JobApplicationEvent = {
   createdAt: string
 }
 
+/** Where the job behind an application stands, as the applicant should see it. */
+export type JobApplicationJobState = 'open' | 'closed' | 'removed'
+
 export type JobApplication = {
   id: string
   status: JobApplicationStatus
   appliedAt: string
   updatedAt: string
+  coverNote?: string | null
   events?: JobApplicationEvent[]
-  job: Pick<JobListing, 'id' | 'title' | 'companyName' | 'location'>
+  job: Pick<JobListing, 'id' | 'title' | 'companyName' | 'location'> & {
+    state?: JobApplicationJobState
+  }
 }
 
 export type JobAlert = {

@@ -5,6 +5,7 @@ import { PostCard } from './post-card'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
+  usePathname: () => '/home',
 }))
 
 vi.mock('../actions', () => ({
@@ -47,7 +48,7 @@ const post: FeedPost = {
 afterEach(() => cleanup())
 
 describe('PostCard', () => {
-  it('renders one compact icon-only post actions row with the reaction summary at the far right', () => {
+  it('renders one compact icon-only action row: Like · Comment · Repost/Share · Send, with the reaction total first', () => {
     render(<PostCard post={post} />)
     expect(screen.getByRole('article')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Member A' })).toHaveAttribute('href', '/people/member-a')
@@ -56,9 +57,13 @@ describe('PostCard', () => {
     const primaryReactionControl = within(actions).getByRole('button', { name: /^Like$/i })
     expect(primaryReactionControl.querySelector('svg.lucide-thumbs-up')).toBeInTheDocument()
 
-    const reactionCount = within(actions).getByRole('button', { name: 'View 4 reactions' })
-    expect(reactionCount).toHaveTextContent('4')
+    // The reaction total sits on the left, above the action row (LinkedIn-style), count first.
+    const socialCounts = screen.getByTestId('post-social-counts')
+    const reactionCount = within(socialCounts).getByRole('button', { name: 'View 4 reactions' })
+    expect(reactionCount).toHaveTextContent(/^4👍$/)
     expect(reactionCount).not.toHaveTextContent(/reaction/i)
+    expect(socialCounts.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(actions).queryByRole('button', { name: /View \d+ reactions/ })).not.toBeInTheDocument()
 
     const commentButton = within(actions).getByRole('button', { name: /^Comment$/i })
     expect(commentButton).toHaveTextContent('2')
@@ -67,11 +72,18 @@ describe('PostCard', () => {
     const shareButton = within(actions).getByRole('button', { name: /^Share$/i })
     expect(shareButton).not.toHaveTextContent('Share')
 
-    const saveButton = within(actions).getByRole('button', { name: /^Save$/i })
-    expect(saveButton).not.toHaveTextContent('Save')
+    const sendButton = within(actions).getByRole('button', { name: /^Send$/i })
+    expect(sendButton).not.toHaveTextContent('Send')
 
-    expect(primaryReactionControl.compareDocumentPosition(reactionCount) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(saveButton.compareDocumentPosition(reactionCount) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Save and Report moved into the post header "⋯" menu.
+    expect(within(actions).queryByRole('button', { name: /^Save$/i })).not.toBeInTheDocument()
+    expect(within(actions).queryByRole('button', { name: /report/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Post options' })).toBeInTheDocument()
+
+    const order = [reactionCount, primaryReactionControl, commentButton, shareButton, sendButton]
+    for (let index = 1; index < order.length; index += 1) {
+      expect(order[index - 1].compareDocumentPosition(order[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
 
     expect(screen.queryByText('4 reactions')).not.toBeInTheDocument()
     expect(screen.queryByText('2 comments')).not.toBeInTheDocument()
@@ -83,6 +95,15 @@ describe('PostCard', () => {
     expect(screen.queryByText(/Verified/i)).not.toBeInTheDocument()
   })
 
+  it('places the reaction total on the left of the reaction-type symbols', () => {
+    render(<PostCard post={{ ...post, reactionSummary: { like: 9, support: 2, respect: 0, on_point: 1 } }} />)
+    const summary = screen.getByRole('button', { name: 'View 12 reactions' })
+    expect(summary).toHaveTextContent(/^12👍❤️⚓$/)
+    const count = within(summary).getByTestId('reaction-summary-count')
+    expect(count).toHaveTextContent('12')
+    expect(summary.firstElementChild).toBe(count)
+  })
+
   it('groups primary post actions on the left with LinkedIn-like spacing', () => {
     render(<PostCard post={post} />)
 
@@ -91,7 +112,7 @@ describe('PostCard', () => {
     const reactionButton = within(primaryActions).getByRole('button', { name: /^Like$/i })
     const commentButton = within(primaryActions).getByRole('button', { name: /^Comment$/i })
     const shareButton = within(primaryActions).getByRole('button', { name: /^Share$/i })
-    const saveButton = within(primaryActions).getByRole('button', { name: /^Save$/i })
+    const sendButton = within(primaryActions).getByRole('button', { name: /^Send$/i })
 
     expect(actions).toHaveClass('flex')
     expect(actions).toHaveClass('justify-between')
@@ -102,7 +123,7 @@ describe('PostCard', () => {
     expect(reactionButton.querySelector('svg')).toHaveClass('size-5')
     expect(commentButton.querySelector('svg')).toHaveClass('size-5')
     expect(shareButton.querySelector('svg')).toHaveClass('size-5')
-    expect(saveButton.querySelector('svg')).toHaveClass('size-5')
+    expect(sendButton.querySelector('svg')).toHaveClass('size-5')
   })
 
   it('wraps long unbroken links inside the post card instead of bleeding outside the card', () => {
@@ -231,7 +252,8 @@ describe('PostCard', () => {
 
     const actions = screen.getByRole('group', { name: 'Post actions' })
     expect(within(actions).getByRole('button', { name: /^Support$/i })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(actions).getByRole('button', { name: 'View 6 reactions' })).toHaveTextContent('6')
-    expect(within(actions).getByRole('button', { name: /^Save$/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'View 6 reactions' })).toHaveTextContent('6')
+    fireEvent.click(screen.getByRole('button', { name: 'Post options' }))
+    expect(screen.getByRole('menuitem', { name: 'Remove from saved' })).toBeInTheDocument()
   })
 })

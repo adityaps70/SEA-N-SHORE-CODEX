@@ -43,9 +43,10 @@ function jobInput(overrides: Partial<HiringJobInput> = {}): HiringJobInput {
 }
 
 function jobUpdateInput(overrides: Partial<HiringJobUpdateInput> = {}): HiringJobUpdateInput {
-  const { companyId, publisherType, ...input } = jobInput()
+  const { companyId, publisherType, status, ...input } = jobInput()
   void companyId
   void publisherType
+  void status
   return { ...input, ...overrides }
 }
 
@@ -255,11 +256,17 @@ describe('jobs hiring repository', () => {
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
       if (text.includes('select j.id, j.company_id')) return [{ id: 'job-1', company_id: 'company-1' }]
+      if (text.includes('update public.jobs')) return [{ id: 'job-1' }]
       return []
     }
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
 
-    await repository.updateJob('user-1', 'job-1', jobUpdateInput({ title: 'Senior Chief Officer', certificates: ['STCW', 'Advanced Oil Tanker'], visas: [] }))
+    await repository.updateJob(
+      'user-1',
+      'job-1',
+      jobUpdateInput({ title: 'Senior Chief Officer', certificates: ['STCW', 'Advanced Oil Tanker'], visas: [] }),
+      { expectedStatus: 'draft', nextStatus: 'published' },
+    )
 
     const update = seen.find((entry) => entry.text.includes('update public.jobs'))
     expect(update?.text).toContain('title = $2')
@@ -268,8 +275,14 @@ describe('jobs hiring repository', () => {
     expect(update?.text).toContain("status = $8::public.job_listing_status")
     expect(update?.text).toContain("status <> 'published'::public.job_listing_status")
     expect(update?.text).toContain('then now()')
-    expect(update?.text).toContain("when $8::public.job_listing_status = 'published'::public.job_listing_status and $7::date < current_date then null")
-    expect(update?.text).toContain("else $7::date end")
+    // The apply-by date is stored as entered; the server action validates it instead of silently clearing it.
+    expect(update?.text).toContain('apply_until = $7::date,')
+    expect(update?.text).not.toContain('$7::date < current_date then null')
+    // Optimistic guard: the row must still be in the status the action validated.
+    expect(update?.text).toContain('and status = $24::public.job_listing_status')
+    expect(update?.text).toContain('and deleted_at is null')
+    expect(update?.values?.[7]).toBe('published')
+    expect(update?.values?.[23]).toBe('draft')
     expect(seen.some((entry) => entry.text.includes('delete from public.job_certificate_requirements'))).toBe(true)
     expect(seen.flatMap((entry) => entry.values ?? [])).toContain('Advanced Oil Tanker')
     expect(seen.some((entry) => entry.text.includes('delete from public.job_visa_requirements'))).toBe(true)
@@ -331,12 +344,16 @@ describe('jobs hiring repository', () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query = async (text: string, values?: readonly unknown[]) => {
       seen.push({ text, values })
-      if (text.includes('select j.company_id')) return [{ company_id: 'company-1' }]
+      if (text.includes('select j.company_id')) return [{ company_id: 'company-1', application_status: 'under_review' }]
+      if (text.includes('update public.job_applications')) return [{ id: 'application-1' }]
       return []
     }
     const repository = createHiringRepository({ query, transaction: async (work) => work(query) })
 
     await repository.updateApplicationStatus('user-1', 'application-1', 'shortlisted', 'Strong tanker fit')
+    const update = seen.find((entry) => entry.text.includes('update public.job_applications'))
+    expect(update?.text).toContain("status <> 'withdrawn'")
+    expect(update?.values).toEqual(['application-1', 'shortlisted', 'under_review'])
     expect(seen[0]?.text).toContain('public.company_members cm')
     expect(seen.some((entry) => entry.text.includes('update public.job_applications'))).toBe(true)
     expect(seen.some((entry) => entry.text.includes('insert into public.job_application_events'))).toBe(true)

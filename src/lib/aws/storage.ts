@@ -34,6 +34,40 @@ export async function createMediaReadUrl(
   return getSignedUrl(getS3Client(), command, { expiresIn: expiresInSeconds })
 }
 
+/**
+ * Short-lived read URL that also pins the response Content-Type and
+ * Content-Disposition, so a private file is always served as its verified
+ * type and with a safe file name.
+ */
+export async function createMediaDownloadUrl(input: {
+  key: string
+  contentType: string
+  contentDisposition: string
+  expiresInSeconds?: number
+}): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: getMediaBucketName(),
+    Key: input.key,
+    ResponseContentType: input.contentType,
+    ResponseContentDisposition: input.contentDisposition,
+    ResponseCacheControl: 'private, max-age=300',
+  })
+  return getSignedUrl(getS3Client(), command, { expiresIn: input.expiresInSeconds ?? 300 })
+}
+
+/** Reads only the first bytes of an object (for file-signature checks). */
+export async function readMediaObjectPrefix(key: string, byteCount: number): Promise<Uint8Array> {
+  const length = Math.max(1, Math.floor(byteCount))
+  const response = await getS3Client().send(new GetObjectCommand({
+    Bucket: getMediaBucketName(),
+    Key: key,
+    Range: `bytes=0-${length - 1}`,
+  }))
+  if (!response.Body) throw new Error('media_object_body_missing')
+  const body = await response.Body.transformToByteArray()
+  return body.byteLength > length ? body.slice(0, length) : body
+}
+
 export async function createMediaUploadUrl(
   input: { key: string; contentType: string },
   expiresInSeconds = 300,

@@ -35,12 +35,14 @@ vi.mock('@aws-sdk/client-s3', () => {
 vi.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl }))
 
 import {
+  createMediaDownloadUrl,
   createMediaReadUrl,
   createMediaUploadUrl,
   deleteMediaObject,
   getMediaBucketName,
   headMediaObject,
   putMediaObject,
+  readMediaObjectPrefix,
 } from './storage'
 
 const mediaBucket = 'sea-n-shore-staging-310356785722-media'
@@ -143,5 +145,30 @@ describe('AWS media storage boundary', () => {
     expect(send).toHaveBeenCalledTimes(1)
     const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
     expect(command.input).toMatchObject({ Bucket: mediaBucket, Key: 'profile/post/image.jpg' })
+  })
+
+  it('signs short-lived private downloads that pin the response type and disposition', async () => {
+    await createMediaDownloadUrl({
+      key: 'messages/a/b/c.pdf',
+      contentType: 'application/pdf',
+      contentDisposition: 'attachment; filename="c.pdf"',
+    })
+
+    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 300 })
+    const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+    expect(command.input).toMatchObject({
+      Bucket: mediaBucket,
+      Key: 'messages/a/b/c.pdf',
+      ResponseContentType: 'application/pdf',
+      ResponseContentDisposition: 'attachment; filename="c.pdf"',
+    })
+  })
+
+  it('reads only the requested leading bytes of an object', async () => {
+    send.mockResolvedValueOnce({ Body: { transformToByteArray: async () => new Uint8Array([1, 2, 3, 4, 5]) } })
+
+    await expect(readMediaObjectPrefix('messages/a/b/c.png', 4)).resolves.toEqual(new Uint8Array([1, 2, 3, 4]))
+    const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
+    expect(command.input).toEqual({ Bucket: mediaBucket, Key: 'messages/a/b/c.png', Range: 'bytes=0-3' })
   })
 })

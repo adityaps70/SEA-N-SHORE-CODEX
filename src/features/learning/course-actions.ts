@@ -5,14 +5,18 @@ import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { requireCapability } from '@/features/access/server'
 import {
+  CourseEditConflictError,
+  CourseEditLockedError,
   CourseSubmissionReadinessError,
   courseRepository,
   type CourseCreateInput,
   type CourseDraftInput,
 } from './course-repository'
+import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
 
 const courseIdSchema = z.string().uuid()
+const revisionSchema = z.number().int().min(1).nullable()
 const coursePublisherSchema = z.discriminatedUnion('publisherType', [
   z.object({ publisherType: z.literal('personal'), companyId: z.null() }),
   z.object({ publisherType: z.literal('organization'), companyId: z.string().uuid() }),
@@ -33,8 +37,8 @@ const courseCategories = new Set([
   'Exams & Assessments',
 ])
 
-function normalizedList(maxItems: number) {
-  return z.array(z.string()).max(maxItems * 2).transform((values, context) => {
+function normalizedList(maxItems: number, label: string) {
+  return z.array(z.string(), { error: `${label}: add one item per line.` }).max(maxItems * 2, `${label}: use no more than ${maxItems} items.`).transform((values, context) => {
     const seen = new Set<string>()
     const normalized: string[] = []
     for (const value of values) {
@@ -46,7 +50,7 @@ function normalizedList(maxItems: number) {
       normalized.push(item)
     }
     if (normalized.length > maxItems) {
-      context.addIssue({ code: 'custom', message: `Use no more than ${maxItems} items.` })
+      context.addIssue({ code: 'custom', message: `${label}: use no more than ${maxItems} items.` })
       return z.NEVER
     }
     return normalized
@@ -56,34 +60,48 @@ function normalizedList(maxItems: number) {
 const nullableShortText = z.union([
   z.null(),
   z.string().trim().transform((value) => value || null),
-]).pipe(z.union([z.null(), z.string().min(4).max(240)]))
+]).pipe(z.union([
+  z.null(),
+  z.string()
+    .min(4, 'Subtitle needs at least 4 characters, or leave it empty.')
+    .max(240, 'Subtitle can be at most 240 characters.'),
+]))
 
 const nullableAssetPath = z.union([
   z.null(),
   z.string().trim().transform((value) => value || null),
-]).pipe(z.union([z.null(), z.string().min(1).max(1024)]))
+]).pipe(z.union([z.null(), z.string().min(1).max(1024, 'The uploaded file path is too long. Upload the file again.')]))
 
 const courseDraftSchema = z.object({
   slug: z.string()
     .transform((value) => value.trim().toLowerCase())
-    .pipe(z.string().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Use a URL-safe course slug.')),
-  title: z.string().trim().min(4).max(180),
+    .pipe(z.string()
+      .min(1, 'Add a course URL slug, for example “sire-2-readiness”.')
+      .max(120, 'Course URL slug can be at most 120 characters.')
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Course URL slug can only use lowercase letters, numbers and single hyphens, for example “sire-2-readiness”.')),
+  title: z.string().trim()
+    .min(4, 'Course title needs at least 4 characters.')
+    .max(180, 'Course title can be at most 180 characters.'),
   subtitle: nullableShortText,
-  description: z.string().trim().min(40).max(12000),
-  category: z.string().trim().min(2).max(120).refine((value) => courseCategories.has(value), 'Choose a supported maritime learning category.'),
-  level: z.enum(['beginner', 'intermediate', 'advanced', 'all_levels']),
-  language: z.string().trim().min(2).max(80),
+  description: z.string().trim()
+    .min(40, 'Course description needs at least 40 characters so learners understand what the course covers.')
+    .max(12000, 'Course description can be at most 12,000 characters.'),
+  category: z.string().trim().min(2, 'Choose a category.').max(120).refine((value) => courseCategories.has(value), 'Choose a supported maritime learning category.'),
+  level: z.enum(['beginner', 'intermediate', 'advanced', 'all_levels'], 'Choose a course level.'),
+  language: z.string().trim()
+    .min(2, 'Language needs at least 2 characters, for example “English”.')
+    .max(80, 'Language can be at most 80 characters.'),
   thumbnailPath: nullableAssetPath,
   trailerPath: nullableAssetPath,
-  learningOutcomes: normalizedList(30),
-  requirements: normalizedList(30),
-  targetAudience: normalizedList(30),
-  accessType: z.enum(['free', 'paid']),
-  priceMinor: z.number().int().nonnegative(),
-  discountPriceMinor: z.number().int().nonnegative().nullable(),
-  currency: z.string().trim().transform((value) => value.toUpperCase()).pipe(z.string().regex(/^[A-Z]{3}$/, 'Use a three-letter currency code.')),
+  learningOutcomes: normalizedList(30, 'Learning outcomes'),
+  requirements: normalizedList(30, 'Requirements'),
+  targetAudience: normalizedList(30, 'Target audience'),
+  accessType: z.enum(['free', 'paid'], 'Choose free or paid access.'),
+  priceMinor: z.number('Enter the course price as a number.').int('Enter the course price in rupees and paise only.').nonnegative('Course price cannot be negative.'),
+  discountPriceMinor: z.number('Enter the discount price as a number.').int('Enter the discount price in rupees and paise only.').nonnegative('Discount price cannot be negative.').nullable(),
+  currency: z.string().trim().transform((value) => value.toUpperCase()).pipe(z.string().regex(/^[A-Z]{3}$/, 'Use a three-letter currency code, for example INR.')),
   certificateEnabled: z.boolean(),
-  courseFormat: z.enum(['recorded', 'live_cohort', 'hybrid']),
+  courseFormat: z.enum(['recorded', 'live_cohort', 'hybrid'], 'Choose a course format.'),
 }).superRefine((course, context) => {
   if (course.accessType === 'free' && course.priceMinor !== 0) {
     context.addIssue({ code: 'custom', path: ['priceMinor'], message: 'Free courses must have a zero price.' })
@@ -98,6 +116,10 @@ const courseDraftSchema = z.object({
 
 type CourseActionResult = { ok: true } | { ok: false; error: string }
 type CourseCreateActionResult = { ok: true; courseId: string } | { ok: false; error: string }
+export type CourseSaveActionResult =
+  | { ok: true; revision: number; savedAt: string; course: CourseDraftInput }
+  | { ok: false; error: string }
+export type CourseSubmitActionResult = CourseActionResult
 
 function validationError(error: z.ZodError) {
   return error.issues[0]?.message ?? 'Review the course details and try again.'
@@ -147,23 +169,38 @@ function readinessErrorCopy(error: CourseSubmissionReadinessError) {
   return 'Review the published curriculum materials and try again.'
 }
 
-function mutationError(error: unknown) {
+function mutationError(error: unknown, context: 'save' | 'submit' | 'withdraw' = 'save') {
   if (error instanceof CourseSubmissionReadinessError) return readinessErrorCopy(error)
+  if (error instanceof CourseEditLockedError) return courseEditLockedCopy(error.status)
+  if (error instanceof CourseEditConflictError) {
+    return context === 'submit'
+      ? 'The course details changed after your last save (in another tab or by another manager), so it was not submitted. Reload the page, check the details, and submit again.'
+      : 'Someone saved newer changes to this course (in another tab or another manager) after you opened it, so your changes were not saved. Copy anything you need, reload the page, and apply your changes again.'
+  }
   if (error instanceof Error) {
     if (error.message === 'mentor_required') return 'Approved mentor access is required to manage personal courses.'
     if (error.message === 'course_forbidden') return 'Approved Owner, Administrator or LMS Manager access is required to manage courses for this organization.'
     if (error.message === 'capability_required') return 'Creator Pro or Organization Pro with verified course publishing access is required to submit courses for publication.'
     if (error.message === 'course_not_found') return 'We could not find this course in your Mentor Studio.'
-    if (error.message === 'course_edit_forbidden') return 'This course cannot be edited while it is in review or published.'
-    if (error.message === 'course_submit_forbidden') return 'This course cannot be submitted for review in its current state.'
+    if (error.message === 'course_edit_forbidden') return courseEditLockedCopy(null)
+    if (error.message === 'course_submit_forbidden') return 'This course is already in review or published, so it can’t be submitted again. Reload the page to see its current status.'
+    if (error.message === 'course_withdraw_forbidden') return 'This course is no longer waiting for review, so there is nothing to withdraw. Reload the page to see its current status.'
   }
-  if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') return 'A course with this URL slug already exists.'
-  return 'We could not save the course. Please try again.'
+  if (typeof error === 'object' && error !== null && 'code' in error && error.code === '23505') return 'A course with this URL slug already exists. Choose a different slug.'
+  if (context === 'submit') return 'We could not submit the course for review. Your saved changes are safe. Please try again.'
+  if (context === 'withdraw') return 'We could not withdraw the course from review. Please try again.'
+  return 'We could not save the course. Your changes are still on this page. Please try again.'
 }
 
 function refreshStudio() {
   revalidatePath('/learn/studio')
   revalidatePath('/learn/studio/courses')
+}
+
+function refreshReviewQueues(courseId: string) {
+  refreshStudio()
+  revalidatePath(`/learn/studio/courses/${courseId}/edit`)
+  revalidatePath('/admin/learning/courses')
 }
 
 export async function createCourseDraft(input: CourseDraftInput | CourseCreateInput): Promise<CourseCreateActionResult> {
@@ -191,11 +228,23 @@ export async function createCourseDraft(input: CourseDraftInput | CourseCreateIn
   }
 }
 
-export async function updateCourseDraft(courseId: string, input: CourseDraftInput): Promise<CourseActionResult> {
+/**
+ * Saves the course details. `expectedRevision` is the revision the form was
+ * loaded or last saved with; a save based on an older revision is refused so it
+ * can't overwrite newer work. Returns the stored (normalized) values so the
+ * form shows exactly what was saved.
+ */
+export async function updateCourseDraft(
+  courseId: string,
+  input: CourseDraftInput,
+  expectedRevision: number | null = null,
+): Promise<CourseSaveActionResult> {
   const parsedId = courseIdSchema.safeParse(courseId)
   if (!parsedId.success) return { ok: false, error: 'Invalid course.' }
   const parsed = courseDraftSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
+  const parsedRevision = revisionSchema.safeParse(expectedRevision)
+  if (!parsedRevision.success) return { ok: false, error: 'Reload the page and try saving again.' }
 
   try {
     const user = await requireAwsUser()
@@ -213,17 +262,26 @@ export async function updateCourseDraft(courseId: string, input: CourseDraftInpu
         return { ok: false, error: 'We could not verify the uploaded course trailer. Please upload it again.' }
       }
     }
-    await courseRepository.updateCourse(user.id, parsedId.data, parsed.data)
+    const saved = await courseRepository.updateCourse(user.id, parsedId.data, parsed.data, { expectedRevision: parsedRevision.data })
     refreshStudio()
-    return { ok: true }
+    return { ok: true, revision: saved.revision, savedAt: saved.updatedAt, course: parsed.data }
   } catch (error) {
     return { ok: false, error: mutationError(error) }
   }
 }
 
-export async function submitCourseForReview(courseId: string): Promise<CourseActionResult> {
+/**
+ * Sends the course for review. The Studio saves every unsaved change first and
+ * passes the revision it just saved, so the review always sees the latest edits.
+ */
+export async function submitCourseForReview(
+  courseId: string,
+  expectedRevision: number | null = null,
+): Promise<CourseSubmitActionResult> {
   const parsedId = courseIdSchema.safeParse(courseId)
   if (!parsedId.success) return { ok: false, error: 'Invalid course.' }
+  const parsedRevision = revisionSchema.safeParse(expectedRevision)
+  if (!parsedRevision.success) return { ok: false, error: 'Reload the page and submit again.' }
 
   try {
     const user = await requireAwsUser()
@@ -234,11 +292,25 @@ export async function submitCourseForReview(courseId: string): Promise<CourseAct
     } else {
       await requireCapability(user.id, 'course.publish')
     }
-    await courseRepository.submitCourse(user.id, parsedId.data)
-    refreshStudio()
-    revalidatePath(`/learn/studio/courses/${parsedId.data}/edit`)
+    await courseRepository.submitCourse(user.id, parsedId.data, { expectedRevision: parsedRevision.data })
+    refreshReviewQueues(parsedId.data)
     return { ok: true }
   } catch (error) {
-    return { ok: false, error: mutationError(error) }
+    return { ok: false, error: mutationError(error, 'submit') }
+  }
+}
+
+/** Takes a course out of review so it can be edited again. Nothing is discarded. */
+export async function withdrawCourseFromReview(courseId: string): Promise<CourseActionResult> {
+  const parsedId = courseIdSchema.safeParse(courseId)
+  if (!parsedId.success) return { ok: false, error: 'Invalid course.' }
+
+  try {
+    const user = await requireAwsUser()
+    await courseRepository.withdrawCourse(user.id, parsedId.data)
+    refreshReviewQueues(parsedId.data)
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: mutationError(error, 'withdraw') }
   }
 }

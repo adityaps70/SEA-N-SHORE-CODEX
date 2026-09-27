@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { CheckCircle2, Circle, ClipboardCheck, MapPin } from 'lucide-react'
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { getMyJobApplications } from '@/features/jobs/queries'
-import { JOB_APPLICATION_STATUS_LABELS, type JobApplicationStatus } from '@/features/jobs/types'
+import { JOB_APPLICATION_STATUS_LABELS, type JobApplication, type JobApplicationStatus } from '@/features/jobs/types'
 
 export const metadata: Metadata = { title: 'My applications' }
 
@@ -11,6 +11,19 @@ const statusOrder: JobApplicationStatus[] = ['applied', 'under_review', 'shortli
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
+}
+
+const JOB_STATE_NOTE: Record<'closed' | 'removed', string> = {
+  closed: 'This job is no longer taking applications.',
+  removed: 'The employer removed this job. Your application is kept here for your records.',
+}
+
+function JobTitle({ application }: { application: JobApplication }) {
+  const state = application.job.state ?? 'open'
+  if (state === 'open') {
+    return <Link href={`/jobs/${application.job.id}`} className="text-xl font-semibold text-navy-950 hover:text-ocean-700">{application.job.title}</Link>
+  }
+  return <p className="text-xl font-semibold text-navy-950">{application.job.title}</p>
 }
 
 export default async function JobApplicationsPage() {
@@ -23,7 +36,9 @@ export default async function JobApplicationsPage() {
       {applications.length ? <div className="mt-5 space-y-4">{applications.map((application) => {
         const currentIndex = statusOrder.indexOf(application.status)
         return <article key={application.id} className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><Link href={`/jobs/${application.job.id}`} className="text-xl font-semibold text-navy-950 hover:text-ocean-700">{application.job.title}</Link><p className="mt-1 text-sm text-muted">{application.job.companyName}</p>{application.job.location ? <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-muted"><MapPin aria-hidden="true" className="size-3.5" />{application.job.location}</p> : null}</div><span className="self-start rounded-full bg-mist-50 px-3 py-1.5 text-xs font-semibold text-ocean-700">{JOB_APPLICATION_STATUS_LABELS[application.status]}</span></div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><JobTitle application={application} /><p className="mt-1 text-sm text-muted">{application.job.companyName}</p>{application.job.state && application.job.state !== 'open' ? <p className="mt-2 text-xs font-semibold text-amber-900">{JOB_STATE_NOTE[application.job.state]}</p> : null}{application.job.location ? <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-muted"><MapPin aria-hidden="true" className="size-3.5" />{application.job.location}</p> : null}</div><span className="self-start rounded-full bg-mist-50 px-3 py-1.5 text-xs font-semibold text-ocean-700">{JOB_APPLICATION_STATUS_LABELS[application.status]}</span></div>
+
+          {application.coverNote ? <div className="mt-4 rounded-xl bg-mist-50 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted">Your message to the employer</p><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink">{application.coverNote}</p></div> : null}
 
           <section className="mt-5 border-t border-mist-100 pt-5" aria-label="Application timeline"><div className="mb-3 flex items-center justify-between gap-3"><h2 className="font-semibold text-navy-950">Application timeline</h2><span className="text-xs text-muted">Applied {formatDate(application.appliedAt)}</span></div>
             {application.events?.length ? <ol className="space-y-3">{application.events.map((event, index) => <li key={event.id} className="flex gap-3"><div className="flex flex-col items-center"><CheckCircle2 aria-hidden="true" className="size-5 shrink-0 text-ocean-700" />{index < (application.events?.length ?? 0) - 1 ? <span className="mt-1 h-full min-h-5 w-px bg-mist-100" /> : null}</div><div className="pb-2"><p className="text-sm font-semibold text-navy-950">{JOB_APPLICATION_STATUS_LABELS[event.status]}</p><p className="mt-0.5 text-xs text-muted">{formatDate(event.createdAt)}</p>{event.note ? <p className="mt-1 text-sm leading-6 text-ink">{event.note}</p> : null}</div></li>)}</ol> : <ol className="grid gap-2 sm:grid-cols-5">{statusOrder.map((status, index) => { const completed = currentIndex >= index && currentIndex !== -1; return <li key={status} className={completed ? 'rounded-xl bg-mist-50 p-3 text-xs font-semibold text-navy-950' : 'rounded-xl border border-dashed border-mist-100 p-3 text-xs font-medium text-muted'}>{completed ? <CheckCircle2 aria-hidden="true" className="mb-2 size-4 text-ocean-700" /> : <Circle aria-hidden="true" className="mb-2 size-4" />}{JOB_APPLICATION_STATUS_LABELS[status]}</li> })}</ol>}

@@ -2,6 +2,8 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { scoreJobMatch } from './matching'
 import type { JobApplicationCvReference } from './application-media'
+import { validateApplicationStatusChange } from './application-status'
+import type { JobLifecycleSnapshot } from './job-lifecycle'
 import type {
   JobApplicationEvent,
   JobApplicationStatus,
@@ -62,9 +64,8 @@ export type HiringJobInput = {
   visas: string[]
 }
 
-export type HiringJobUpdateInput = Omit<HiringJobInput, 'publisherType' | 'companyId' | 'status'> & {
-  status: HiringJobStatus
-}
+/** Job details that can be edited. The lifecycle status only changes through job-lifecycle.ts. */
+export type HiringJobUpdateInput = Omit<HiringJobInput, 'publisherType' | 'companyId' | 'status'>
 
 export type HiringJobSummary = {
   id: string
@@ -83,6 +84,7 @@ export type HiringJobSummary = {
 export type HiringEditableJob = HiringJobUpdateInput & {
   id: string
   companyId: string | null
+  status: HiringJobStatus
 }
 
 export type HiringPersonalPublisher = {
@@ -93,11 +95,29 @@ export type HiringPersonalPublisher = {
 export type ManagedHiringJobSummary = HiringJobSummary & {
   companyId: string | null
   publisherName: string
+  companySlug: string | null
+  companyLogoPath: string | null
+  companyLocation: string | null
+  companyVerified: boolean
+  joiningUntil: string | null
+  createdAt: string | null
+  archivedAt: string | null
+  newApplicantCount: number
+  moderationRemoved: boolean
+  canDelete: boolean
+}
+
+export type HiringJobStateChange = {
+  from: HiringJobStatus
+  to: HiringJobStatus
+  applyUntil: string | null
 }
 
 export type HiringApplicantCandidate = {
   id: string
   slug: string | null
+  /** False when the member deactivated, was suspended or asked to delete their account. */
+  accountActive: boolean
   fullName: string
   avatarPath: string | null
   location: string | null
@@ -118,6 +138,7 @@ export type HiringApplicant = {
   status: JobApplicationStatus
   appliedAt: string
   updatedAt: string
+  coverNote: string | null
   candidate: HiringApplicantCandidate
   cvAttachment: JobApplicationCvReference | null
   match: JobMatchResult
@@ -132,8 +153,14 @@ export type HiringRecruiterNote = {
 
 export type HiringApplicationReview = HiringApplicant & {
   job: JobListing
+  jobStatus: HiringJobStatus
   events: JobApplicationEvent[]
   recruiterNotes: HiringRecruiterNote[]
+}
+
+export type HiringApplicationCvAccess = {
+  viewer: 'applicant' | 'hiring'
+  cv: JobApplicationCvReference | null
 }
 
 type HiringQuery = (
@@ -160,11 +187,24 @@ type HiringJobSummaryRow = QueryResultRow & {
   vessel_types: string[] | null
   location: string | null
   urgent: boolean | null
-  apply_until: string | null
-  published_at: string | null
+  apply_until: string | Date | null
+  published_at: string | Date | null
   applicant_count: string | number | null
   company_id?: string | null
   publisher_name?: string | null
+}
+
+type ManagedJobRow = HiringJobSummaryRow & {
+  company_slug?: string | null
+  company_logo_path?: string | null
+  company_location?: string | null
+  company_verified?: boolean | null
+  joining_until?: string | Date | null
+  created_at?: string | Date | null
+  archived_at?: string | Date | null
+  new_applicant_count?: string | number | null
+  moderation_removed?: boolean | null
+  can_delete?: boolean | null
 }
 
 type PersonalPublisherRow = QueryResultRow & {
@@ -207,19 +247,30 @@ type EventRow = { id: string | number; status: JobApplicationStatus; note: strin
 type RecruiterNoteRow = { id: string; recruiter_id: string; note: string; created_at: string }
 type ApplicationPublisherScopeRow = QueryResultRow & {
   company_id: string | null
+  application_status?: JobApplicationStatus | null
+}
+
+type ApplicationCvRow = QueryResultRow & {
+  cv_storage_path: string | null
+  cv_file_name: string | null
+  cv_mime_type: string | null
+  cv_size_bytes: string | number | null
+  is_applicant: boolean | null
 }
 
 type ApplicantRow = QueryResultRow & {
   application_id: string
   application_status: JobApplicationStatus
-  applied_at: string
-  updated_at: string
+  applied_at: string | Date
+  updated_at: string | Date
+  cover_note?: string | null
   cv_storage_path: string | null
   cv_file_name: string | null
   cv_mime_type: string | null
   cv_size_bytes: string | number | null
   candidate_id: string
   candidate_slug: string | null
+  candidate_account_status?: string | null
   candidate_name: string
   avatar_path: string | null
   candidate_location: string | null
@@ -238,23 +289,26 @@ type ApplicantRow = QueryResultRow & {
   company_name: string
   company_id: string | null
   company_slug: string | null
+  company_logo_path?: string | null
+  company_location?: string | null
   company_verified: boolean | null
   recruiter_verified: boolean | null
   job_location: string | null
   job_summary: string
   job_description: string
   job_requirements: string | null
-  apply_until: string | null
-  job_created_at: string
-  job_published_at: string | null
+  apply_until: string | Date | null
+  job_created_at: string | Date
+  job_published_at: string | Date | null
+  job_status?: HiringJobStatus | null
   job_domain: string | null
   department: string | null
   job_rank: string | null
   job_vessel_types: string[] | null
   experience_min_years: string | number | null
   experience_max_years: string | number | null
-  joining_from: string | null
-  joining_until: string | null
+  joining_from: string | Date | null
+  joining_until: string | Date | null
   salary_min: string | number | null
   salary_max: string | number | null
   salary_currency: string | null
@@ -283,18 +337,97 @@ const AUTHORIZED_COMPANY_SELECT = `
     and c.is_verified = true
 ` as const
 
+/**
+ * Who may manage a job: its poster (personal jobs), or an approved owner, administrator or
+ * recruiter of the verified organization that owns it. Requires `j`, `cm` (the viewer's
+ * membership of j.company_id) and `c` (the owning company) in scope.
+ */
+function manageAccessSql(userParam: string, rolesParam: string) {
+  return `(
+           (j.company_id is null and j.created_by_user_id = ${userParam})
+           or (
+             j.company_id is not null
+             and cm.approved_at is not null
+             and cm.role::text = any(${rolesParam}::text[])
+             and c.is_verified = true
+           )
+         )`
+}
+
+/** Who may delete a job: its poster, or an owner or administrator of the owning organization. */
+function deleteAccessSql(userParam: string, rolesParam: string) {
+  return `(
+           (j.company_id is null and j.created_by_user_id = ${userParam})
+           or (
+             j.company_id is not null
+             and cm.approved_at is not null
+             and c.is_verified = true
+             and (
+               cm.role::text in ('owner', 'administrator')
+               or (j.created_by_user_id = ${userParam} and cm.role::text = any(${rolesParam}::text[]))
+             )
+           )
+         )`
+}
+
+/** True when the most recent Sea N Shore moderation decision on the job removed it. */
+const MODERATION_REMOVED_SQL = `coalesce((
+           select ma.action = 'remove'
+           from public.moderation_actions ma
+           where ma.target_type = 'job'
+             and ma.target_id = j.id
+             and ma.action in ('remove', 'restore')
+           order by ma.created_at desc, ma.id desc
+           limit 1
+         ), false)` as const
+
+function managedJobSelect(userParam: string, rolesParam: string) {
+  return `select
+         j.id,
+         j.title,
+         j.status::text as status,
+         j.job_domain,
+         j.rank,
+         j.vessel_types,
+         j.location,
+         j.urgent,
+         j.apply_until,
+         j.joining_until,
+         j.published_at,
+         j.created_at,
+         j.archived_at,
+         j.company_id,
+         coalesce(c.name, j.company_name) as publisher_name,
+         c.slug as company_slug,
+         c.logo_path as company_logo_path,
+         c.office_locations[1] as company_location,
+         coalesce(c.is_verified, false) as company_verified,
+         (select count(*) from public.job_applications a where a.job_id = j.id) as applicant_count,
+         (select count(*) from public.job_applications a where a.job_id = j.id and a.status = 'applied') as new_applicant_count,
+         ${MODERATION_REMOVED_SQL} as moderation_removed,
+         ${deleteAccessSql(userParam, rolesParam)} as can_delete
+       from public.jobs j
+       left join public.companies c on c.id = j.company_id
+       left join public.company_members cm
+         on cm.company_id = j.company_id and cm.user_id = ${userParam}
+       where j.deleted_at is null
+         and ${manageAccessSql(userParam, rolesParam)}`
+}
+
 const APPLICANT_SELECT = `
   select
     a.id as application_id,
     a.status::text as application_status,
     a.applied_at,
     a.updated_at,
+    a.cover_note,
     a.cv_storage_path,
     a.cv_file_name,
     a.cv_mime_type,
     a.cv_size_bytes,
     p.id as candidate_id,
     p.slug as candidate_slug,
+    p.account_status::text as candidate_account_status,
     p.full_name as candidate_name,
     p.avatar_path,
     p.location as candidate_location,
@@ -328,9 +461,12 @@ const APPLICANT_SELECT = `
     ), '{}'::text[]) as visas,
     j.id as job_id,
     j.title as job_title,
-    j.company_name,
+    j.status::text as job_status,
+    coalesce(c.name, j.company_name) as company_name,
     j.company_id,
     c.slug as company_slug,
+    c.logo_path as company_logo_path,
+    c.office_locations[1] as company_location,
     coalesce(c.is_verified, false) as company_verified,
     case
       when j.company_id is null then exists (
@@ -420,6 +556,63 @@ function dateInputValue(value: string | Date | null | undefined): string | null 
   return match?.[1] ?? null
 }
 
+function timestampValue(value: string | Date): string {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value.toISOString()
+  return value
+}
+
+function nullableTimestampValue(value: string | Date | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  return timestampValue(value) || null
+}
+
+function mapHiringJobSummary(row: HiringJobSummaryRow): HiringJobSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    domain: jobDomain(row.job_domain),
+    rank: row.rank ?? null,
+    vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
+    location: row.location ?? null,
+    urgent: Boolean(row.urgent),
+    applyUntil: dateInputValue(row.apply_until),
+    publishedAt: nullableTimestampValue(row.published_at),
+    applicantCount: numberValue(row.applicant_count),
+  }
+}
+
+function mapManagedJob(row: ManagedJobRow): ManagedHiringJobSummary {
+  return {
+    ...mapHiringJobSummary(row),
+    companyId: row.company_id ?? null,
+    publisherName: row.publisher_name ?? 'Personal recruiter',
+    companySlug: row.company_slug ?? null,
+    companyLogoPath: row.company_logo_path ?? null,
+    companyLocation: row.company_location ?? null,
+    companyVerified: Boolean(row.company_verified),
+    joiningUntil: dateInputValue(row.joining_until),
+    createdAt: nullableTimestampValue(row.created_at),
+    archivedAt: nullableTimestampValue(row.archived_at),
+    newApplicantCount: numberValue(row.new_applicant_count),
+    moderationRemoved: Boolean(row.moderation_removed),
+    canDelete: Boolean(row.can_delete),
+  }
+}
+
+/** Lifecycle view of a managed job, for job-lifecycle.ts. */
+export function managedJobLifecycle(job: ManagedHiringJobSummary): JobLifecycleSnapshot {
+  return {
+    status: job.status,
+    deleted: false,
+    moderationRemoved: job.moderationRemoved,
+    applyUntil: job.applyUntil,
+    joiningUntil: job.joiningUntil,
+    applicantCount: job.applicantCount,
+    canDelete: job.canDelete,
+  }
+}
+
 function mapEditableJob(row: EditableJobRow): HiringEditableJob {
   return {
     id: row.id,
@@ -452,11 +645,13 @@ function mapEditableJob(row: EditableJobRow): HiringEditableJob {
 }
 
 function mapCandidate(row: ApplicantRow): HiringApplicantCandidate {
+  const accountActive = (row.candidate_account_status ?? 'active') === 'active'
   return {
     id: row.candidate_id,
-    slug: row.candidate_slug ?? null,
-    fullName: row.candidate_name,
-    avatarPath: row.avatar_path ?? null,
+    slug: accountActive ? row.candidate_slug ?? null : null,
+    accountActive,
+    fullName: accountActive ? row.candidate_name : 'Former Sea N Shore member',
+    avatarPath: accountActive ? row.avatar_path ?? null : null,
     location: row.candidate_location ?? null,
     headline: row.headline ?? null,
     rank: row.candidate_rank ?? null,
@@ -498,23 +693,25 @@ function mapApplicantJob(row: ApplicantRow): JobListing {
     companyName: row.company_name,
     companyId: row.company_id ?? null,
     companySlug: row.company_slug ?? null,
+    companyLogoPath: row.company_logo_path ?? null,
+    companyLocation: row.company_location ?? null,
     companyVerified: Boolean(row.company_verified),
     recruiterVerified: Boolean(row.recruiter_verified),
     location: row.job_location ?? null,
     summary: row.job_summary,
     description: row.job_description,
     requirements: row.job_requirements ?? null,
-    applyUntil: row.apply_until ?? null,
-    createdAt: row.job_created_at,
-    publishedAt: row.job_published_at ?? null,
+    applyUntil: dateInputValue(row.apply_until),
+    createdAt: timestampValue(row.job_created_at),
+    publishedAt: nullableTimestampValue(row.job_published_at),
     domain: jobDomain(row.job_domain),
     department: row.department ?? null,
     rank: row.job_rank ?? null,
     vesselTypes: Array.isArray(row.job_vessel_types) ? row.job_vessel_types : [],
     experienceMinYears: numberOrNull(row.experience_min_years),
     experienceMaxYears: numberOrNull(row.experience_max_years),
-    joiningFrom: row.joining_from ?? null,
-    joiningUntil: row.joining_until ?? null,
+    joiningFrom: dateInputValue(row.joining_from),
+    joiningUntil: dateInputValue(row.joining_until),
     salaryMin: numberOrNull(row.salary_min),
     salaryMax: numberOrNull(row.salary_max),
     salaryCurrency: row.salary_currency ?? null,
@@ -533,22 +730,33 @@ function mapHiringApplicant(row: ApplicantRow): HiringApplicant {
   return {
     applicationId: row.application_id,
     status: row.application_status,
-    appliedAt: row.applied_at,
-    updatedAt: row.updated_at,
+    appliedAt: timestampValue(row.applied_at),
+    updatedAt: timestampValue(row.updated_at),
+    coverNote: row.cover_note?.trim() ? row.cover_note : null,
     candidate,
-    cvAttachment: row.cv_storage_path
-      && row.cv_file_name
-      && row.cv_mime_type === 'application/pdf'
-      && numberOrNull(row.cv_size_bytes) !== null
-      ? {
-          storagePath: row.cv_storage_path,
-          fileName: row.cv_file_name,
-          mimeType: 'application/pdf',
-          sizeBytes: numberOrNull(row.cv_size_bytes) ?? 0,
-        }
-      : null,
+    cvAttachment: cvReference(row),
     match: scoreJobMatch(job, candidateProfile(candidate)),
   }
+}
+
+function cvReference(
+  row: Pick<ApplicantRow, 'cv_storage_path' | 'cv_file_name' | 'cv_mime_type' | 'cv_size_bytes'>,
+): JobApplicationCvReference | null {
+  const sizeBytes = numberOrNull(row.cv_size_bytes)
+  if (!row.cv_storage_path || !row.cv_file_name || row.cv_mime_type !== 'application/pdf' || sizeBytes === null) return null
+  return {
+    storagePath: row.cv_storage_path,
+    fileName: row.cv_file_name,
+    mimeType: 'application/pdf',
+    sizeBytes,
+  }
+}
+
+/** Best match first, then the most recent application. Dates are ISO strings at this point. */
+function compareApplicants(left: HiringApplicant, right: HiringApplicant) {
+  return right.match.score - left.match.score
+    || right.appliedAt.localeCompare(left.appliedAt)
+    || left.applicationId.localeCompare(right.applicationId)
 }
 
 function defaultTransaction<T>(work: (query: HiringQuery) => Promise<T>) {
@@ -673,9 +881,9 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
          count(a.id) filter (where a.status = 'interview') as interviews,
          count(a.id) filter (where a.status = 'selected') as selected
        from authorised_company ac
-       left join public.jobs j on j.company_id = ac.company_id
+       join public.jobs j on j.company_id = ac.company_id and j.deleted_at is null
        left join public.job_applications a on a.job_id = j.id
-       where j.company_id = $3 or j.company_id is null`,
+       where j.company_id = $3`,
       [userId, [...HIRING_ROLES], companyId],
     )
     const row = rows[0] ?? {}
@@ -716,24 +924,13 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
        join authorised_company ac on ac.company_id = j.company_id
        left join public.job_applications a on a.job_id = j.id
        where j.company_id = $3
+         and j.deleted_at is null
        group by j.id
        order by j.created_at desc, j.id desc`,
       [userId, [...HIRING_ROLES], companyId],
     ) as HiringJobSummaryRow[]
 
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      status: row.status,
-      domain: jobDomain(row.job_domain),
-      rank: row.rank ?? null,
-      vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
-      location: row.location ?? null,
-      urgent: Boolean(row.urgent),
-      applyUntil: row.apply_until ?? null,
-      publishedAt: row.published_at ?? null,
-      applicantCount: numberValue(row.applicant_count),
-    }))
+    return rows.map(mapHiringJobSummary)
   }
 
   async function getManagedDashboardMetrics(userId: string): Promise<HiringDashboardMetrics> {
@@ -741,17 +938,19 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
       `with authorised_jobs as (
          select j.id
          from public.jobs j
-         where
-           (j.company_id is null and j.created_by_user_id = $1)
-           or exists (
-             select 1
-             from public.company_members cm
-             join public.companies c on c.id = cm.company_id
-             where cm.company_id = j.company_id
-               and cm.user_id = $1
-               and cm.approved_at is not null
-               and cm.role::text = any($2::text[])
-               and c.is_verified = true
+         where j.deleted_at is null
+           and (
+             (j.company_id is null and j.created_by_user_id = $1)
+             or exists (
+               select 1
+               from public.company_members cm
+               join public.companies c on c.id = cm.company_id
+               where cm.company_id = j.company_id
+                 and cm.user_id = $1
+                 and cm.approved_at is not null
+                 and cm.role::text = any($2::text[])
+                 and c.is_verified = true
+             )
            )
        )
        select
@@ -775,121 +974,32 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     }
   }
 
+  /** Every job the viewer may manage (personal and organization), newest first, excluding deleted jobs. */
   async function listManagedJobs(userId: string): Promise<ManagedHiringJobSummary[]> {
     const rows = await queryRows(
-      `select
-         j.id,
-         j.title,
-         j.status::text as status,
-         j.job_domain,
-         j.rank,
-         j.vessel_types,
-         j.location,
-         j.urgent,
-         j.apply_until,
-         j.published_at,
-         j.company_id,
-         j.company_name as publisher_name,
-         count(a.id) as applicant_count
-       from public.jobs j
-       left join public.job_applications a on a.job_id = j.id
-       where
-         (j.company_id is null and j.created_by_user_id = $1)
-         or exists (
-           select 1
-           from public.company_members cm
-           join public.companies c on c.id = cm.company_id
-           where cm.company_id = j.company_id
-             and cm.user_id = $1
-             and cm.approved_at is not null
-             and cm.role::text = any($2::text[])
-             and c.is_verified = true
-         )
-       group by j.id
+      `${managedJobSelect('$1', '$2')}
        order by j.created_at desc, j.id desc`,
       [userId, [...HIRING_ROLES]],
-    ) as HiringJobSummaryRow[]
-
-    return rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      status: row.status,
-      domain: jobDomain(row.job_domain),
-      rank: row.rank ?? null,
-      vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
-      location: row.location ?? null,
-      urgent: Boolean(row.urgent),
-      applyUntil: row.apply_until ?? null,
-      publishedAt: row.published_at ?? null,
-      applicantCount: numberValue(row.applicant_count),
-      companyId: row.company_id ?? null,
-      publisherName: row.publisher_name ?? 'Personal recruiter',
-    }))
+    ) as ManagedJobRow[]
+    return rows.map(mapManagedJob)
   }
 
-  async function getManagedEditableJob(userId: string, jobId: string): Promise<HiringEditableJob | null> {
-    const rows = await queryRows(
-      `select
-         j.id,
-         j.company_id,
-         j.title,
-         j.status::text as status,
-         j.job_domain,
-         j.department,
-         j.rank,
-         j.vessel_types,
-         j.location,
-         j.sailing_regions,
-         j.summary,
-         j.description,
-         j.requirements,
-         j.experience_min_years,
-         j.experience_max_years,
-         j.joining_from,
-         j.joining_until,
-         j.salary_min,
-         j.salary_max,
-         j.salary_currency,
-         j.salary_period,
-         j.urgent,
-         j.easy_apply,
-         j.apply_until,
-         coalesce((
-           select array_agg(cr.certificate_name order by cr.certificate_name)
-           from public.job_certificate_requirements cr
-           where cr.job_id = j.id and cr.required = true
-         ), '{}'::text[]) as certificates,
-         coalesce((
-           select array_agg(vr.visa_name order by vr.visa_name)
-           from public.job_visa_requirements vr
-           where vr.job_id = j.id and vr.required = true
-         ), '{}'::text[]) as visas
-       from public.jobs j
-       left join public.company_members cm
-         on cm.company_id = j.company_id and cm.user_id = $1
-       left join public.companies c on c.id = j.company_id
-       where j.id = $2
-         and (
-           (j.company_id is null and j.created_by_user_id = $1)
-           or (
-             j.company_id is not null
-             and cm.approved_at is not null
-             and cm.role::text = any($3::text[])
-             and c.is_verified = true
-           )
-         )
+  async function getManagedJobWithQuery(query: HiringQuery, userId: string, jobId: string) {
+    const rows = await query(
+      `${managedJobSelect('$1', '$2')}
+         and j.id = $3
        limit 1`,
-      [userId, jobId, [...HIRING_ROLES]],
-    ) as EditableJobRow[]
-    return rows[0] ? mapEditableJob(rows[0]) : null
+      [userId, [...HIRING_ROLES], jobId],
+    ) as ManagedJobRow[]
+    return rows[0] ? mapManagedJob(rows[0]) : null
   }
 
-  async function getEditableJob(
-    userId: string,
-    companyId: string | null,
-    jobId: string,
-  ): Promise<HiringEditableJob | null> {
-    const fields = `
+  /** One job the viewer may manage, with its lifecycle facts, or null when not authorized or deleted. */
+  async function getManagedJob(userId: string, jobId: string): Promise<ManagedHiringJobSummary | null> {
+    return getManagedJobWithQuery(queryRows, userId, jobId)
+  }
+
+  const EDITABLE_JOB_FIELDS = `
       select
         j.id,
         j.company_id,
@@ -928,12 +1038,33 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
       from public.jobs j
     `
 
+  async function getManagedEditableJob(userId: string, jobId: string): Promise<HiringEditableJob | null> {
+    const rows = await queryRows(
+      `${EDITABLE_JOB_FIELDS}
+       left join public.company_members cm
+         on cm.company_id = j.company_id and cm.user_id = $1
+       left join public.companies c on c.id = j.company_id
+       where j.id = $2
+         and j.deleted_at is null
+         and ${manageAccessSql('$1', '$3')}
+       limit 1`,
+      [userId, jobId, [...HIRING_ROLES]],
+    ) as EditableJobRow[]
+    return rows[0] ? mapEditableJob(rows[0]) : null
+  }
+
+  async function getEditableJob(
+    userId: string,
+    companyId: string | null,
+    jobId: string,
+  ): Promise<HiringEditableJob | null> {
     if (companyId === null) {
       const rows = await queryRows(
-        `${fields}
+        `${EDITABLE_JOB_FIELDS}
          where j.created_by_user_id = $1
            and j.id = $2
            and j.company_id is null
+           and j.deleted_at is null
          limit 1`,
         [userId, jobId],
       ) as EditableJobRow[]
@@ -941,12 +1072,13 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     }
 
     const rows = await queryRows(
-      `${fields}
+      `${EDITABLE_JOB_FIELDS}
        join public.company_members cm on cm.company_id = j.company_id
        join public.companies c on c.id = j.company_id
        where cm.user_id = $1
          and j.company_id = $2
          and j.id = $3
+         and j.deleted_at is null
          and cm.approved_at is not null
          and cm.role::text = any($4::text[])
          and c.is_verified = true
@@ -1019,39 +1151,43 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
 
   async function requireAuthorizedJob(query: HiringQuery, userId: string, jobId: string) {
     const rows = await query(
-      `select j.id, j.company_id, j.created_by_user_id
+      `select j.id, j.company_id, j.created_by_user_id, j.status::text as status
        from public.jobs j
        left join public.company_members cm
          on cm.company_id = j.company_id and cm.user_id = $2
        left join public.companies c on c.id = j.company_id
        where j.id = $1
-         and (
-           (j.company_id is null and j.created_by_user_id = $2)
-           or (
-             j.company_id is not null
-             and cm.approved_at is not null
-             and cm.role::text = any($3::text[])
-             and c.is_verified = true
-           )
-         )
-       limit 1`,
+         and j.deleted_at is null
+         and ${manageAccessSql('$2', '$3')}
+       limit 1
+       for update of j`,
       [jobId, userId, [...HIRING_ROLES]],
     )
     if (!rows[0]) throw new Error('hiring_forbidden')
     return rows[0]
   }
 
-  async function updateJob(userId: string, jobId: string, job: HiringJobUpdateInput) {
+  /**
+   * Saves job details. `change.expectedStatus` guards against a concurrent lifecycle change;
+   * `change.nextStatus` is decided by job-lifecycle.ts in the server action (usually unchanged,
+   * or 'published' for "Save and publish").
+   */
+  async function updateJob(
+    userId: string,
+    jobId: string,
+    job: HiringJobUpdateInput,
+    change: { expectedStatus: HiringJobStatus; nextStatus: HiringJobStatus },
+  ) {
     return transaction(async (txQuery) => {
       await requireAuthorizedJob(txQuery, userId, jobId)
-      await txQuery(
+      const updated = await txQuery(
         `update public.jobs
          set title = $2,
              location = $3,
              summary = $4,
              description = $5,
              requirements = $6,
-             apply_until = case when $8::public.job_listing_status = 'published'::public.job_listing_status and $7::date < current_date then null else $7::date end,
+             apply_until = $7::date,
              status = $8::public.job_listing_status,
              job_domain = $9,
              department = $10,
@@ -1072,16 +1208,91 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
                when $8::public.job_listing_status = 'published'::public.job_listing_status and (status <> 'published'::public.job_listing_status or published_at is null) then now()
                else published_at
              end,
+             archived_at = case
+               when $8::public.job_listing_status = 'closed'::public.job_listing_status then coalesce(archived_at, now())
+               else null
+             end,
              updated_at = now()
-         where id = $1`,
+         where id = $1
+           and status = $24::public.job_listing_status
+           and deleted_at is null
+         returning id`,
         [
-          jobId, job.title, job.location, job.summary, job.description, job.requirements, job.applyUntil, job.status,
+          jobId, job.title, job.location, job.summary, job.description, job.requirements, job.applyUntil, change.nextStatus,
           job.domain, job.department, job.rank, job.vesselTypes, job.experienceMinYears, job.experienceMaxYears,
           job.joiningFrom, job.joiningUntil, job.salaryMin, job.salaryMax, job.salaryCurrency, job.salaryPeriod,
-          job.regions, job.urgent, job.easyApply,
+          job.regions, job.urgent, job.easyApply, change.expectedStatus,
         ],
       )
+      if (!updated[0]) throw new Error('job_state_changed')
       await replaceJobRequirements(txQuery, jobId, job.certificates, job.visas)
+    })
+  }
+
+  /** Moves a job along the lifecycle. The caller validates the transition with job-lifecycle.ts. */
+  async function changeJobStatus(userId: string, jobId: string, change: HiringJobStateChange) {
+    return transaction(async (txQuery) => {
+      await requireAuthorizedJob(txQuery, userId, jobId)
+      const updated = await txQuery(
+        `update public.jobs
+         set status = $3::public.job_listing_status,
+             apply_until = $4::date,
+             published_at = case
+               when $3::public.job_listing_status = 'published'::public.job_listing_status then now()
+               else published_at
+             end,
+             archived_at = case
+               when $3::public.job_listing_status = 'closed'::public.job_listing_status then now()
+               else null
+             end,
+             updated_at = now()
+         where id = $1
+           and status = $2::public.job_listing_status
+           and deleted_at is null
+         returning id`,
+        [jobId, change.from, change.to, change.applyUntil],
+      )
+      if (!updated[0]) throw new Error('job_state_changed')
+    })
+  }
+
+  /**
+   * Soft-deletes a draft or archived job. Applications, their history and moderation evidence stay,
+   * so applicants keep a record; the job disappears from search and from the hiring workspace.
+   */
+  async function deleteJob(userId: string, jobId: string, expectedStatus: HiringJobStatus) {
+    return transaction(async (txQuery) => {
+      const allowed = await txQuery(
+        `select j.id
+         from public.jobs j
+         left join public.company_members cm
+           on cm.company_id = j.company_id and cm.user_id = $2
+         left join public.companies c on c.id = j.company_id
+         where j.id = $1
+           and j.deleted_at is null
+           and ${deleteAccessSql('$2', '$3')}
+         limit 1
+         for update of j`,
+        [jobId, userId, [...HIRING_ROLES]],
+      )
+      if (!allowed[0]) throw new Error('hiring_forbidden')
+
+      const deleted = await txQuery(
+        `update public.jobs
+         set status = 'closed'::public.job_listing_status,
+             archived_at = coalesce(archived_at, now()),
+             deleted_at = now(),
+             deleted_by = $2,
+             updated_at = now()
+         where id = $1
+           and status = $3::public.job_listing_status
+           and status <> 'published'::public.job_listing_status
+           and deleted_at is null
+         returning id`,
+        [jobId, userId, expectedStatus],
+      )
+      if (!deleted[0]) throw new Error('job_state_changed')
+      await txQuery('delete from public.job_saves where job_id = $1', [jobId])
     })
   }
 
@@ -1100,21 +1311,14 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
        left join public.companies c on c.id = j.company_id
        left join public.company_members rcm on rcm.company_id = j.company_id and rcm.user_id = j.created_by_user_id
        where j.id = $2
-         and (
-           (j.company_id is null and j.created_by_user_id = $1)
-           or (
-             j.company_id is not null
-             and cm.role::text = any($3::text[])
-             and cm.approved_at is not null
-             and c.is_verified = true
-           )
-         )
+         and j.deleted_at is null
+         and ${manageAccessSql('$1', '$3')}
          ${statusFilter}
        order by a.applied_at desc, a.id desc`,
       values,
     ) as ApplicantRow[]
 
-    return rows.map(mapHiringApplicant).sort((left, right) => right.match.score - left.match.score || right.appliedAt.localeCompare(left.appliedAt))
+    return rows.map(mapHiringApplicant).sort(compareApplicants)
   }
 
   async function getApplicationReview(userId: string, applicationId: string): Promise<HiringApplicationReview | null> {
@@ -1149,6 +1353,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
        left join public.companies c on c.id = j.company_id
        left join public.company_members rcm on rcm.company_id = j.company_id and rcm.user_id = j.created_by_user_id
        where a.id = $2
+         and j.deleted_at is null
          and (
            (j.company_id is null and j.created_by_user_id = $1)
            or (
@@ -1167,6 +1372,7 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     return {
       ...applicant,
       job: mapApplicantJob(row),
+      jobStatus: row.job_status ?? 'published',
       events: Array.isArray(row.events)
         ? row.events.map((event) => ({
             id: String(event.id),
@@ -1192,27 +1398,22 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     applicationId: string,
   ) {
     const rows = await query(
-      `select j.company_id
+      `select j.company_id, a.status::text as application_status
        from public.job_applications a
        join public.jobs j on j.id = a.job_id
        left join public.company_members cm
          on cm.company_id = j.company_id and cm.user_id = $2
        left join public.companies c on c.id = j.company_id
        where a.id = $1
-         and (
-           (j.company_id is null and j.created_by_user_id = $2)
-           or (
-             j.company_id is not null
-             and cm.approved_at is not null
-             and cm.role::text = any($3::text[])
-             and c.is_verified = true
-           )
-         )
+         and j.deleted_at is null
+         and ${manageAccessSql('$2', '$3')}
        limit 1`,
       [applicationId, userId, [...HIRING_ROLES]],
     ) as ApplicationPublisherScopeRow[]
     const row = rows[0]
-    return row ? { companyId: row.company_id ?? null } : null
+    return row
+      ? { companyId: row.company_id ?? null, status: (row.application_status ?? 'applied') as JobApplicationStatus }
+      : null
   }
 
   async function getApplicationPublisherScope(userId: string, applicationId: string) {
@@ -1232,13 +1433,19 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     note: string | null,
   ) {
     return transaction(async (txQuery) => {
-      await requireAuthorizedApplication(txQuery, userId, applicationId)
-      await txQuery(
+      const scope = await requireAuthorizedApplication(txQuery, userId, applicationId)
+      const allowed = validateApplicationStatusChange(scope.status, status)
+      if (!allowed.ok) throw new Error('application_status_not_allowed')
+      const updated = await txQuery(
         `update public.job_applications
          set status = $2, updated_at = now()
-         where id = $1`,
-        [applicationId, status],
+         where id = $1
+           and status = $3
+           and status <> 'withdrawn'
+         returning id`,
+        [applicationId, status, scope.status],
       )
+      if (!updated[0]) throw new Error('application_state_changed')
       await txQuery(
         `insert into public.job_application_events (application_id, status, note, actor_id)
          values ($1, $2, $3, $4)`,
@@ -1258,6 +1465,39 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     })
   }
 
+  /**
+   * CV access for the download route: the applicant themselves, or someone who may manage the
+   * job (while it is not deleted). Returns null when the viewer has no access.
+   */
+  async function getApplicationCvAccess(userId: string, applicationId: string): Promise<HiringApplicationCvAccess | null> {
+    const rows = await queryRows(
+      `select
+         a.cv_storage_path,
+         a.cv_file_name,
+         a.cv_mime_type,
+         a.cv_size_bytes,
+         (a.applicant_id = $2) as is_applicant
+       from public.job_applications a
+       join public.jobs j on j.id = a.job_id
+       left join public.company_members cm
+         on cm.company_id = j.company_id and cm.user_id = $2
+       left join public.companies c on c.id = j.company_id
+       where a.id = $1
+         and (
+           a.applicant_id = $2
+           or (j.deleted_at is null and ${manageAccessSql('$2', '$3')})
+         )
+       limit 1`,
+      [applicationId, userId, [...HIRING_ROLES]],
+    ) as ApplicationCvRow[]
+    const row = rows[0]
+    if (!row) return null
+    return {
+      viewer: row.is_applicant ? 'applicant' : 'hiring',
+      cv: cvReference(row),
+    }
+  }
+
   return {
     getAuthorizedCompany,
     listAuthorizedCompanies,
@@ -1266,15 +1506,19 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
     getDashboardMetrics,
     listCompanyJobs,
     listManagedJobs,
+    getManagedJob,
     getEditableJob,
     getManagedEditableJob,
     createJob,
     updateJob,
+    changeJobStatus,
+    deleteJob,
     listApplicants,
     getApplicationReview,
     getApplicationPublisherScope,
     updateApplicationStatus,
     saveRecruiterNote,
+    getApplicationCvAccess,
   }
 }
 

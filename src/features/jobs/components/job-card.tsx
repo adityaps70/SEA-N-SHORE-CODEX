@@ -1,13 +1,15 @@
 import Link from 'next/link'
 import { ArrowRight, BadgeCheck, CalendarClock, MapPin, Ship, WalletCards } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { isApplyUntilOpen, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
 import { ApplyJobButton } from './apply-job-button'
+import { JobCompanyLogo } from './job-company-identity'
 import { SaveJobButton } from './save-job-button'
 
 function formatDate(value: string | null, prefix: string) {
   if (!value) return null
-  return `${prefix} ${new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short' }).format(new Date(`${value}T00:00:00Z`))}`
+  return `${prefix} ${new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`))}`
 }
 
 function formatSalary(job: JobListing) {
@@ -24,15 +26,6 @@ function formatSalary(job: JobListing) {
   return `${amount}${job.salaryPeriod ? `/${job.salaryPeriod}` : ''}`
 }
 
-function companyInitials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('') || 'SN'
-}
-
 export function JobCard({
   job,
   match = null,
@@ -45,6 +38,7 @@ export function JobCard({
   alreadyApplied?: boolean
 }) {
   const salary = formatSalary(job)
+  const acceptingApplications = isApplyUntilOpen(job.applyUntil, todayIsoDate())
   const joining = formatDate(job.joiningFrom, 'Joining')
   const strongestReason = match?.reasons[0] ?? null
   const warning = match?.missingRequirements[0] ?? match?.warnings[0] ?? null
@@ -54,27 +48,24 @@ export function JobCard({
     .slice(0, 2)
 
   return (
-    <Card className="group flex h-full flex-col border border-mist-100 p-5 transition duration-200 hover:-translate-y-0.5 hover:border-ocean-200 hover:shadow-lg">
+    <Card className="group flex h-full min-w-0 flex-col border border-mist-100 p-5 transition duration-200 hover:-translate-y-0.5 hover:border-ocean-200 hover:shadow-lg">
       <div className="flex items-start gap-3.5">
-        {job.companyLogoPath && job.companyId ? (
-          // eslint-disable-next-line @next/next/no-img-element -- authenticated company media is served through a first-party route
-          <img
-            src={`/api/company-logo/${job.companyId}`}
-            alt={`${job.companyName} logo`}
-            loading="lazy"
-            className="size-12 shrink-0 rounded-2xl border border-mist-100 bg-white object-contain p-1.5 shadow-sm"
-          />
-        ) : (
-          <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-navy-950 text-sm font-black text-white shadow-sm">
-            {companyInitials(job.companyName)}
-          </div>
-        )}
+        <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={job.companyLogoPath} size="md" />
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate text-[11px] font-bold uppercase tracking-[0.11em] text-ocean-700">
-              {job.companyName}
-            </p>
+            {job.companyId && job.companySlug ? (
+              <Link
+                href={`/organizations/${job.companySlug}`}
+                className="relative z-10 min-w-0 max-w-full truncate text-[11px] font-bold uppercase tracking-[0.11em] text-ocean-700 hover:underline"
+              >
+                {job.companyName}
+              </Link>
+            ) : (
+              <p className="min-w-0 max-w-full truncate text-[11px] font-bold uppercase tracking-[0.11em] text-ocean-700">
+                {job.companyName}
+              </p>
+            )}
             {job.companyVerified ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                 <BadgeCheck aria-hidden="true" className="size-3.5" />
@@ -94,6 +85,9 @@ export function JobCard({
           >
             {job.title}
           </Link>
+          {job.companyId && job.companyLocation ? (
+            <p className="mt-1 truncate text-xs text-muted">Employer based in {job.companyLocation}</p>
+          ) : null}
         </div>
       </div>
 
@@ -155,7 +149,11 @@ export function JobCard({
       ) : null}
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-5">
-        {job.easyApply ? (
+        {!acceptingApplications && !alreadyApplied ? (
+          <span className="inline-flex min-h-10 items-center rounded-xl bg-amber-50 px-4 text-sm font-semibold text-amber-900">
+            Applications closed
+          </span>
+        ) : job.easyApply ? (
           <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact />
         ) : (
           <Link

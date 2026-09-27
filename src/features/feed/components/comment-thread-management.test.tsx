@@ -222,7 +222,7 @@ describe('CommentThread management', () => {
     const summary = { like: 2, support: 1, respect: 0, on_point: 1 }
     render(<CommentThread postId={postId} comments={[comment({ reactionSummary: summary, reactionCount: 4 })]} />)
     const details = item(rootId).getByRole('button', { name: /view 4 comment reactions/i })
-    expect(details).toHaveTextContent('👍❤️⚓4')
+    expect(details).toHaveTextContent('4👍❤️⚓')
     expect(details).not.toHaveTextContent(/reactions?/i)
     expect(item(rootId).queryByRole('button', { name: /view comment reaction types/i })).not.toBeInTheDocument()
     fireEvent.click(details)

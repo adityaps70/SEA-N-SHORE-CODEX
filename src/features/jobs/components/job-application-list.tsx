@@ -31,10 +31,16 @@ export function JobApplicationList({ applications }: { applications: JobApplicat
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <Link href={`/jobs/${application.job.id}`} className="font-semibold text-navy-950 hover:text-ocean-700">
-                    {application.job.title}
-                  </Link>
+                  {(application.job.state ?? 'open') === 'open' ? (
+                    <Link href={`/jobs/${application.job.id}`} className="font-semibold text-navy-950 hover:text-ocean-700">
+                      {application.job.title}
+                    </Link>
+                  ) : (
+                    <p className="font-semibold text-navy-950">{application.job.title}</p>
+                  )}
                   <p className="mt-0.5 text-sm text-muted">{application.job.companyName}</p>
+                  {application.job.state === 'closed' ? <p className="mt-1 text-xs font-semibold text-amber-900">No longer taking applications</p> : null}
+                  {application.job.state === 'removed' ? <p className="mt-1 text-xs font-semibold text-amber-900">Removed by the employer</p> : null}
                 </div>
                 <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-semibold text-ocean-700">
                   {JOB_APPLICATION_STATUS_LABELS[application.status]}

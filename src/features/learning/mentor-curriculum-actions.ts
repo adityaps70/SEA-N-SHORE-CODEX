@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
 import {
   mentorCurriculumRepository,
@@ -97,7 +98,7 @@ function validationError(error: z.ZodError) {
 function mutationError(error: unknown) {
   if (error instanceof Error) {
     if (error.message === 'course_not_found') return 'We could not find this course in your Mentor Studio.'
-    if (error.message === 'course_edit_forbidden') return 'This curriculum is frozen while the course is in review or published.'
+    if (error.message === 'course_edit_forbidden') return courseEditLockedCopy(null, 'Your curriculum changes')
     if (error.message === 'section_not_found') return 'We could not find this section in the course.'
     if (error.message === 'lesson_not_found') return 'We could not find this lesson in the course.'
     if (error.message === 'lesson_not_quiz') return 'This lesson is not configured as a quiz.'

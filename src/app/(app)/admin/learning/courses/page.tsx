@@ -5,7 +5,9 @@ import {
   BadgeCheck,
   BookOpenCheck,
   CircleDollarSign,
+  GitCompareArrows,
   GraduationCap,
+  History,
   ShieldCheck,
   UserRoundCheck,
 } from 'lucide-react'
@@ -15,6 +17,7 @@ import {
   type CourseReviewItem,
 } from '@/features/learning/admin-repository'
 import { CourseReviewControls } from '@/features/learning/components/course-review-controls'
+import type { CourseReviewChange } from '@/features/learning/course-review-snapshot'
 import type { CourseStatus } from '@/features/learning/course-workflow'
 
 export const metadata: Metadata = { title: 'Course review · Admin' }
@@ -69,6 +72,89 @@ function pricingLabel(course: CourseReviewItem) {
 
 function isActionable(status: CourseStatus) {
   return status === 'submitted' || status === 'approved' || status === 'published'
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return null
+  return new Intl.DateTimeFormat('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  }).format(date)
+}
+
+function changeVerb(change: CourseReviewChange) {
+  if (change.change === 'added') return 'Added'
+  if (change.change === 'removed') return 'Removed'
+  if (change.change === 'moved') return 'Moved'
+  return 'Changed'
+}
+
+function changeArea(change: CourseReviewChange) {
+  if (change.area === 'section') return 'section'
+  if (change.area === 'material') return 'material'
+  return ''
+}
+
+function ReviewHistory({ course }: { course: CourseReviewItem }) {
+  const { review } = course
+  // Only the Submitted queue needs history; other queues already show the current note.
+  if (course.status !== 'submitted' || (!review.submissionNumber && !review.previousReview)) return null
+  const submittedAt = formatDateTime(review.submittedAt)
+  const previousAt = formatDateTime(review.previousReview?.reviewedAt ?? null)
+  const isResubmission = review.submissionNumber > 1 || Boolean(review.previousReview)
+
+  return (
+    <section aria-label="Review history" className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/60 p-4">
+      <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-sky-800">
+        <History aria-hidden="true" className="size-4" />
+        {isResubmission ? `Resubmission · round ${Math.max(review.submissionNumber, 2)}` : 'First submission'}
+      </p>
+      {submittedAt ? (
+        <p className="mt-1 text-sm text-sky-950">Submitted {submittedAt}</p>
+      ) : null}
+
+      {review.previousReview ? (
+        <div className="mt-3 rounded-xl border border-sky-100 bg-white p-3">
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
+            {review.previousReview.decision === 'changes_requested' ? 'Changes you requested last time' : 'Last approval note'}
+            {previousAt ? ` · ${previousAt}` : ''}
+          </p>
+          <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-navy-950">
+            {review.previousReview.note ?? 'No note was left.'}
+          </p>
+        </div>
+      ) : null}
+
+      {review.previousReview ? (
+        <div className="mt-3">
+          <p className="inline-flex items-center gap-2 text-sm font-bold text-navy-950">
+            <GitCompareArrows aria-hidden="true" className="size-4 text-sky-700" /> What changed since the last review
+          </p>
+          {review.changesSinceLastReview === null ? (
+            <p className="mt-1 text-sm text-muted">A comparison isn’t available for this submission. Review the full course below.</p>
+          ) : review.changesSinceLastReview.length === 0 ? (
+            <p className="mt-1 text-sm font-semibold text-amber-800">No changes since the last review.</p>
+          ) : (
+            <ul className="mt-2 space-y-1.5">
+              {review.changesSinceLastReview.map((change, index) => (
+                <li key={`${change.area}-${change.label}-${index}`} className="break-words rounded-lg bg-white px-3 py-2 text-sm text-navy-950">
+                  <span className="font-bold">{changeVerb(change)}</span>
+                  {changeArea(change) ? ` ${changeArea(change)}` : ''} “{change.label}”
+                  {change.fields.length && !(change.fields.length === 1 && change.fields[0] === 'order') ? <span className="text-muted"> — {change.fields.join(', ')}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </section>
+  )
 }
 
 function Chip({ children }: { children: React.ReactNode }) {
@@ -209,10 +295,14 @@ function CourseCard({ course }: { course: CourseReviewItem }) {
           </div>
 
           <section className="mt-5 rounded-2xl border border-mist-100 bg-mist-50/70 p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Verified trainer</p>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">
+              {course.publisherType === 'organization' ? 'Organization' : 'Verified trainer'}
+            </p>
             <p className="mt-2 text-sm font-bold text-navy-950">{course.mentorName}</p>
-            <p className="mt-1 text-xs font-semibold text-muted">Trainer record ID {course.mentorId}</p>
+            {course.mentorId ? <p className="mt-1 break-all text-xs font-semibold text-muted">Trainer record ID {course.mentorId}</p> : null}
           </section>
+
+          <ReviewHistory course={course} />
 
           <div className="mt-5 grid gap-5 lg:grid-cols-3">
             <EvidenceList
@@ -263,7 +353,7 @@ export default async function LearningCoursesAdminPage({
   const courses = await learningAdminRepository.listCoursesForReview(user.id, status)
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <section className="overflow-hidden rounded-[1.6rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-7">
         <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
           <div>
@@ -346,6 +436,6 @@ export default async function LearningCoursesAdminPage({
           </div>
         )}
       </section>
-    </main>
+    </div>
   )
 }

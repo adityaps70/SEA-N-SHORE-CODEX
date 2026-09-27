@@ -87,7 +87,7 @@ describe('calendar event repository', () => {
       title: 'Event', summary: 'Summary', description: '', category: 'community' as const, eventType: 'community' as const,
       format: 'online' as const, status: 'draft' as const, startAt: '2026-10-10T09:00:00.000Z', endAt: '2026-10-10T10:00:00.000Z',
       timezone: 'UTC', locationName: null, locationAddress: null, city: null, country: null, meetingUrl: 'https://example.com',
-      topics: [], agenda: [], speakers: [], speakerDetails: [], capacity: null, bannerUrl: null, registrationMode: 'open' as const, registrationClosesAt: null,
+      topics: [], agenda: [], speakers: [], speakerDetails: [], capacity: null, bannerUrl: null, registrationMode: 'open' as const, registrationClosesAt: null, pricing: 'free' as const, priceMinor: null, currency: null,
     }
     await expect(calendarEventRepository.updateEvent(viewerId, eventId, input)).rejects.toThrow('event_forbidden')
     await expect(calendarEventRepository.cancelEvent(viewerId, eventId)).rejects.toThrow('event_forbidden')
@@ -150,6 +150,9 @@ describe('calendar event repository', () => {
       bannerUrl: null,
       registrationMode: 'open' as const,
       registrationClosesAt: null,
+      pricing: 'free' as const,
+      priceMinor: null,
+      currency: null,
     }
 
     db.query
@@ -197,6 +200,9 @@ describe('calendar event repository', () => {
       bannerUrl: null,
       registrationMode: 'open',
       registrationClosesAt: null,
+      pricing: 'free',
+      priceMinor: null,
+      currency: null,
     })).rejects.toThrow('event_forbidden')
   })
 
@@ -231,6 +237,9 @@ describe('calendar event repository', () => {
       bannerUrl: null,
       registrationMode: 'open' as const,
       registrationClosesAt: null,
+      pricing: 'free' as const,
+      priceMinor: null,
+      currency: null,
     }
 
     db.query.mockReset()

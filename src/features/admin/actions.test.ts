@@ -97,10 +97,22 @@ describe('platform admin company access review actions', () => {
       requestId,
       'approved',
       'Verified relationship.',
+      null,
     )
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/admin')
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/admin/access')
-    expect(mocks.revalidatePath).toHaveBeenCalledWith('/hiring/organization')
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/organizations')
+  })
+
+  it('passes the role chosen by Sea N Shore and explains read-only requests', async () => {
+    await expect(reviewCompanyAccessRequest(requestId, 'approved', null, 'member')).resolves.toEqual({ ok: true })
+    expect(mocks.reviewCompanyAccessRequest).toHaveBeenLastCalledWith('admin-1', requestId, 'approved', null, 'member')
+
+    mocks.reviewCompanyAccessRequest.mockRejectedValueOnce(new Error('company_access_request_platform_read_only'))
+    await expect(reviewCompanyAccessRequest(requestId, 'approved', null, 'member')).resolves.toEqual({
+      ok: false,
+      error: expect.stringContaining('active owner or administrator, so they decide this request'),
+    })
   })
 
   it('returns safe copy when the access request was already reviewed', async () => {

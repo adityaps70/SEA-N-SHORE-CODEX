@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { CourseSubmissionReadinessError, type CourseDraftInput } from './course-repository'
+import {
+  CourseEditConflictError,
+  CourseEditLockedError,
+  CourseSubmissionReadinessError,
+  type CourseDraftInput,
+} from './course-repository'
 
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   createCourse: vi.fn(),
   updateCourse: vi.fn(),
   submitCourse: vi.fn(),
+  withdrawCourse: vi.fn(),
   getManagedCoursePublisher: vi.fn(),
   revalidatePath: vi.fn(),
   requireCapability: vi.fn(async () => undefined),
@@ -22,12 +28,13 @@ vi.mock('./course-repository', async (importOriginal) => {
       createCourse: mocks.createCourse,
       updateCourse: mocks.updateCourse,
       submitCourse: mocks.submitCourse,
+      withdrawCourse: mocks.withdrawCourse,
       getManagedCoursePublisher: mocks.getManagedCoursePublisher,
     },
   }
 })
 
-import { createCourseDraft, submitCourseForReview, updateCourseDraft } from './course-actions'
+import { createCourseDraft, submitCourseForReview, updateCourseDraft, withdrawCourseFromReview } from './course-actions'
 
 const courseId = '33333333-3333-4333-8333-333333333333'
 
@@ -60,8 +67,9 @@ describe('learning course server actions', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1', cognitoSub: 'sub-1', email: 'captain@example.com' })
     mocks.createCourse.mockResolvedValue({ courseId })
-    mocks.updateCourse.mockResolvedValue(true)
+    mocks.updateCourse.mockResolvedValue({ revision: 4, updatedAt: '2026-09-27T09:02:00.000Z' })
     mocks.submitCourse.mockResolvedValue(true)
+    mocks.withdrawCourse.mockResolvedValue(true)
     mocks.getManagedCoursePublisher.mockResolvedValue({ companyId: null })
     mocks.requireCapability.mockResolvedValue(undefined)
   })
@@ -130,12 +138,22 @@ describe('learning course server actions', () => {
   })
 
   it('updates an owned draft with authenticated identity and refreshes Studio', async () => {
-    await expect(updateCourseDraft(courseId, validInput())).resolves.toEqual({ ok: true })
+    await expect(updateCourseDraft(courseId, validInput(), 3)).resolves.toEqual({
+      ok: true,
+      revision: 4,
+      savedAt: '2026-09-27T09:02:00.000Z',
+      course: expect.objectContaining({
+        slug: 'sire-2-readiness-for-tanker-officers',
+        title: 'SIRE 2.0 Readiness for Tanker Officers',
+        learningOutcomes: ['Understand SIRE 2.0 expectations', 'Prepare practical onboard evidence'],
+        currency: 'INR',
+      }),
+    })
 
     expect(mocks.updateCourse).toHaveBeenCalledWith('user-1', courseId, expect.objectContaining({
       slug: 'sire-2-readiness-for-tanker-officers',
       title: 'SIRE 2.0 Readiness for Tanker Officers',
-    }))
+    }), { expectedRevision: 3 })
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/studio')
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/studio/courses')
   })
@@ -179,7 +197,7 @@ describe('learning course server actions', () => {
   it('submits an owned editable course for review and refreshes its Studio surfaces', async () => {
     await expect(submitCourseForReview(courseId)).resolves.toEqual({ ok: true })
 
-    expect(mocks.submitCourse).toHaveBeenCalledWith('user-1', courseId)
+    expect(mocks.submitCourse).toHaveBeenCalledWith('user-1', courseId, { expectedRevision: null })
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/studio')
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/learn/studio/courses')
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/learn/studio/courses/${courseId}/edit`)
@@ -199,7 +217,57 @@ describe('learning course server actions', () => {
 
     await expect(updateCourseDraft(courseId, validInput())).resolves.toEqual({
       ok: false,
-      error: 'This course cannot be edited while it is in review or published.',
+      error: 'Your changes were not saved because this course is in review or published. Reload the page to see its current status.',
+    })
+  })
+
+  it.each([
+    ['submitted', /not saved because this course is in review\. Withdraw it from review/],
+    ['published', /not saved because this course is published/],
+    ['archived', /not saved because this course is archived/],
+  ] as const)('tells the trainer exactly why a save on a %s course was refused', async (status, copy) => {
+    mocks.updateCourse.mockRejectedValueOnce(new CourseEditLockedError(status))
+
+    const result = await updateCourseDraft(courseId, validInput(), 2)
+
+    expect(result.ok).toBe(false)
+    expect(result.ok ? '' : result.error).toMatch(copy)
+  })
+
+  it('refuses a stale save instead of overwriting newer changes', async () => {
+    mocks.updateCourse.mockRejectedValueOnce(new CourseEditConflictError(5))
+
+    await expect(updateCourseDraft(courseId, validInput(), 3)).resolves.toEqual({
+      ok: false,
+      error: expect.stringMatching(/saved newer changes to this course .* your changes were not saved/i),
+    })
+  })
+
+  it('names the field when course details are invalid', async () => {
+    await expect(updateCourseDraft(courseId, validInput({ description: 'Too short' }), 1)).resolves.toEqual({
+      ok: false,
+      error: 'Course description needs at least 40 characters so learners understand what the course covers.',
+    })
+    await expect(updateCourseDraft(courseId, validInput({ subtitle: 'ab' }), 1)).resolves.toEqual({
+      ok: false,
+      error: 'Subtitle needs at least 4 characters, or leave it empty.',
+    })
+    expect(mocks.updateCourse).not.toHaveBeenCalled()
+  })
+
+  it('submits against the revision the trainer just saved', async () => {
+    await expect(submitCourseForReview(courseId, 7)).resolves.toEqual({ ok: true })
+
+    expect(mocks.submitCourse).toHaveBeenCalledWith('user-1', courseId, { expectedRevision: 7 })
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/admin/learning/courses')
+  })
+
+  it('refuses to submit when the stored details are newer than what the trainer saved', async () => {
+    mocks.submitCourse.mockRejectedValueOnce(new CourseEditConflictError(8))
+
+    await expect(submitCourseForReview(courseId, 7)).resolves.toEqual({
+      ok: false,
+      error: expect.stringMatching(/changed after your last save .* was not submitted/i),
     })
   })
 
@@ -208,8 +276,26 @@ describe('learning course server actions', () => {
 
     await expect(submitCourseForReview(courseId)).resolves.toEqual({
       ok: false,
-      error: 'This course cannot be submitted for review in its current state.',
+      error: 'This course is already in review or published, so it can’t be submitted again. Reload the page to see its current status.',
     })
+  })
+
+  it('withdraws an in-review course for the authenticated manager and refreshes both queues', async () => {
+    await expect(withdrawCourseFromReview(courseId)).resolves.toEqual({ ok: true })
+
+    expect(mocks.withdrawCourse).toHaveBeenCalledWith('user-1', courseId)
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/learn/studio/courses/${courseId}/edit`)
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/admin/learning/courses')
+  })
+
+  it('explains when there is nothing to withdraw', async () => {
+    mocks.withdrawCourse.mockRejectedValueOnce(new Error('course_withdraw_forbidden'))
+
+    await expect(withdrawCourseFromReview(courseId)).resolves.toEqual({
+      ok: false,
+      error: 'This course is no longer waiting for review, so there is nothing to withdraw. Reload the page to see its current status.',
+    })
+    await expect(withdrawCourseFromReview('nope')).resolves.toEqual({ ok: false, error: 'Invalid course.' })
   })
 
   it.each([

@@ -212,7 +212,7 @@ describe('mentor curriculum server actions', () => {
 
     await expect(updateCurriculumSection(courseId, sectionId, 'Module')).resolves.toEqual({
       ok: false,
-      error: 'This curriculum is frozen while the course is in review or published.',
+      error: 'Your curriculum changes were not saved because this course is in review or published. Reload the page to see its current status.',
     })
   })
 })

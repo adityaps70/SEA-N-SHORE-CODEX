@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { BookOpenCheck, BriefcaseBusiness, CalendarDays, MapPin, MessageSquareText, PenSquare, Trash2 } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
+import { RailFooter } from '@/components/navigation/rail-footer'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { Card } from '@/components/ui/card'
 import { EventCard } from '@/features/events/components/event-card'
@@ -202,7 +203,7 @@ export default async function ActivitiesPage({
       </main>
 
       <aside className="hidden min-w-0 xl:block">
-        <div className="sticky top-24 space-y-4">
+        <div className="sticky top-24 max-h-[calc(100vh-7rem)] space-y-4 overflow-y-auto pr-1">
           <Card className="border border-mist-100 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -225,6 +226,7 @@ export default async function ActivitiesPage({
           </Card>
 
           <PeopleYouMayKnow profiles={recommendations} />
+          <RailFooter visibleFrom="xl" />
         </div>
       </aside>
     </section>

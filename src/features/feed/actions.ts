@@ -25,6 +25,7 @@ import {
   pollVoteSchema,
   reactionDetailsSchema,
   reactionSchema,
+  repostInputSchema,
   updateCommentInputSchema,
 } from './schemas'
 import {
@@ -40,6 +41,7 @@ import {
   setCommentReactionWithAurora,
   setPollVoteWithAurora,
   setPostLikedWithAurora,
+  setPostHiddenWithAurora,
   setPostReactionWithAurora,
   setPostSavedWithAurora,
   updateCommentWithAurora,
@@ -407,12 +409,27 @@ export async function restoreDeletedPost(postId: string): Promise<FeedActionResu
   return { ok: true }
 }
 
-export async function repostPost(postId: string): Promise<RepostActionResult> {
-  const parsedId = postIdSchema.safeParse(postId)
-  if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
+export async function repostPost(
+  postId: string,
+  input: { body?: string; mentionProfileIds?: string[] } = {},
+): Promise<RepostActionResult> {
+  const parsed = repostInputSchema.safeParse({ postId, body: input.body, mentionProfileIds: input.mentionProfileIds })
+  if (!parsed.success) {
+    const bodyError = parsed.error.flatten().fieldErrors.body?.[0]
+    return { ok: false, error: bodyError ?? 'Invalid post.' }
+  }
+  const commentary = parsed.data.body
+  const moderation = commentary ? assessPlatformText([commentary]) : null
+  if (moderation?.decision === 'block') return { ok: false, error: moderationBlockMessage() }
   const user = await requireAwsUser()
   try {
-    const repostId = await repostPostWithAurora(user.id, parsedId.data)
+    const repostId = commentary
+      ? await repostPostWithAurora(user.id, parsed.data.postId, {
+        body: commentary,
+        mentionProfileIds: parsed.data.mentionProfileIds,
+      })
+      : await repostPostWithAurora(user.id, parsed.data.postId)
+    if (moderation) await flagAutomatedModeration('post', repostId, moderation)
     revalidateSocialFeed()
     return { ok: true, postId: repostId }
   } catch (error) {
@@ -463,6 +480,28 @@ export async function setPostSaved(postId: string, saved: boolean): Promise<Feed
   catch { return { ok: false, error: 'We could not update your saved posts.' } }
   revalidatePath('/home')
   revalidatePath('/saved')
+  return { ok: true }
+}
+
+/**
+ * Hides a post from the signed-in member's own feed. Deliberately does not revalidate the
+ * feed route: the card stays mounted so the member can undo straight away.
+ */
+export async function setPostHidden(postId: string, hidden: boolean): Promise<FeedActionResult> {
+  const parsedId = postIdSchema.safeParse(postId)
+  if (!parsedId.success || typeof hidden !== 'boolean') return { ok: false, error: 'Invalid post.' }
+  const user = await requireAwsUser()
+  try {
+    await setPostHiddenWithAurora(user.id, parsedId.data, hidden)
+  } catch (error) {
+    if (safeErrorCode(error) === 'feed_hide_own_post') return { ok: false, error: 'You cannot hide your own post. Delete it instead if you no longer want it shown.' }
+    return {
+      ok: false,
+      error: hidden
+        ? 'We could not hide this post. Please try again.'
+        : 'We could not show this post again. Please try again.',
+    }
+  }
   return { ok: true }
 }
 

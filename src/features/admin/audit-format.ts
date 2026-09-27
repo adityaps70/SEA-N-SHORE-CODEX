@@ -24,6 +24,7 @@ export function auditSummary(targetType: string, action: string) {
 const TARGET_LABELS: Record<string, string> = {
   organization_application: 'Organization',
   user_account: 'Account',
+  company_access_request: 'Access request',
   post: 'Post',
   comment: 'Comment',
   job: 'Job',

@@ -15,7 +15,7 @@ export default async function PublicProfileLayout({ children }: { children: Reac
   if (viewer) {
     const chrome = await getAppChromeData(viewer)
     return (
-      <div className="min-h-screen bg-mist-50 pb-20 md:pb-0 md:pt-18">
+      <div className="group/shell min-h-screen bg-mist-50 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 md:pt-18">
         <AppHeader
           recentNotifications={chrome.notificationChrome.recent}
           unreadCount={chrome.notificationChrome.unreadCount}

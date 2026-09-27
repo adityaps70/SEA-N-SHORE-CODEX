@@ -54,11 +54,15 @@ describe('remaining website quality audit contract', () => {
     const page = source('src/app/(app)/messages/page.tsx')
     const shell = source('src/features/messaging/components/message-shell.tsx')
     const picker = source('src/features/messaging/components/new-message-button.tsx')
-    expect(page).toContain("getNetworkHub('connections')")
+    const dialog = source('src/features/messaging/components/new-message-dialog.tsx')
+    // Round 3: connections are searched live instead of preloaded into a <select>.
+    expect(page).toContain('MessageShell')
     expect(shell).toContain('NewMessageButton')
     expect(picker).toContain('New Message')
-    expect(picker).toContain('Choose a connection')
-    expect(picker).toContain('StartConversationButton')
+    expect(picker).toContain('NewMessageDialog')
+    expect(dialog).toContain('Choose a connection')
+    expect(dialog).toContain('/api/messages/recipients')
+    expect(dialog).toContain('startDirectConversationAction')
     expect(source('src/features/messaging/components/conversation-list.tsx')).toContain('item.unread')
   })
 

@@ -2,12 +2,15 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
-import { CalendarDays, CalendarPlus, Download, MapPin, Monitor, Users } from 'lucide-react'
+import { CalendarDays, CalendarPlus, Download, MapPin, Monitor, ReceiptText, Ticket, Users } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { AttendanceControl } from '@/features/events/components/attendance-control'
 import { EventNav } from '@/features/events/components/event-nav'
 import { EventShareButton } from '@/features/events/components/event-share-button'
+import { eventFormatLabel, eventPriceLabel } from '@/features/events/event-labels'
+import { EventCheckoutButton } from '@/features/payments/components/event-checkout-button'
+import { arePaymentsConfigured } from '@/features/payments/provider'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 
 function dateTime(value: string, timeZone: string) {
@@ -16,6 +19,18 @@ function dateTime(value: string, timeZone: string) {
   } catch {
     return new Intl.DateTimeFormat('en', { dateStyle: 'full', timeStyle: 'short' }).format(new Date(value))
   }
+}
+
+function dateRange(start: string, end: string, timeZone: string) {
+  const options: Intl.DateTimeFormatOptions = { dateStyle: 'full', timeStyle: 'short' }
+  for (const zone of [timeZone, undefined]) {
+    try {
+      return new Intl.DateTimeFormat('en', { ...options, timeZone: zone }).formatRange(new Date(start), new Date(end))
+    } catch {
+      // Unknown timezone or no formatRange support: try the next option.
+    }
+  }
+  return `${dateTime(start, timeZone)} – ${dateTime(end, timeZone)}`
 }
 
 function titleCase(value: string) {
@@ -79,9 +94,12 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
   })
   const canJoinOnline = Boolean(event.meetingUrl && !event.isPast && event.status === 'published')
   const showAttendanceControl = !event.viewerIsHost && !event.isPast && event.status !== 'cancelled'
+  const isPaidEvent = event.pricing === 'paid'
+  const priceLabel = eventPriceLabel(event)
+  const paymentsConfigured = isPaidEvent ? await arePaymentsConfigured() : true
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:px-6 sm:py-6">
       <EventNav active="discover" />
       <article className="overflow-hidden rounded-[2rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
         {event.bannerUrl ? (
@@ -91,7 +109,8 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
         <div className="grid gap-8 p-6 sm:p-8 lg:grid-cols-[1fr_300px]">
           <div>
             <div className="flex flex-wrap gap-2">
-              <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-bold text-teal-800">{titleCase(event.format)}</span>
+              <span className="rounded-full bg-teal-50 px-3 py-1 text-xs font-bold text-teal-800">{eventFormatLabel(event.format)}</span>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${isPaidEvent ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'}`}>{isPaidEvent ? `Paid · ${priceLabel}` : 'Free'}</span>
               <span className="rounded-full bg-navy-50 px-3 py-1 text-xs font-bold text-navy-700">{titleCase(event.category)}</span>
               <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-bold text-navy-700">{titleCase(event.eventType)}</span>
               <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-bold capitalize text-navy-700">{event.status}</span>
@@ -101,10 +120,11 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
             <p className="mt-3 text-lg leading-8 text-navy-700">{event.summary}</p>
 
             <div className="mt-6 grid gap-3 rounded-2xl bg-mist-50 p-5 text-sm text-navy-800 sm:grid-cols-2">
-              <span className="flex gap-2"><CalendarDays className="h-4 w-4 shrink-0 text-teal-700" />{dateTime(event.startAt, event.timezone)} – {dateTime(event.endAt, event.timezone)}</span>
-              <span className="flex gap-2">{event.format === 'online' ? <Monitor className="h-4 w-4 shrink-0 text-teal-700" /> : <MapPin className="h-4 w-4 shrink-0 text-teal-700" />}{event.format === 'online' ? 'Online' : place || 'Venue to be confirmed'}</span>
+              <span className="flex gap-2"><CalendarDays className="h-4 w-4 shrink-0 text-teal-700" />{dateRange(event.startAt, event.endAt, event.timezone)}</span>
+              <span className="flex gap-2">{event.format === 'online' ? <Monitor className="h-4 w-4 shrink-0 text-teal-700" /> : <MapPin className="h-4 w-4 shrink-0 text-teal-700" />}{event.format === 'online' ? 'Online' : `${place || 'Venue to be confirmed'}${event.format === 'hybrid' ? ' · also online' : ''}`}</span>
               <span className="flex gap-2"><Users className="h-4 w-4 text-teal-700" />{event.attendeeCount}{event.capacity ? ` / ${event.capacity}` : ''} attending</span>
               <span>Timezone: {event.timezone}</span>
+              <span className="flex gap-2"><Ticket className="h-4 w-4 shrink-0 text-teal-700" aria-hidden="true" />{isPaidEvent ? `Ticket: ${priceLabel}` : 'Free to attend'}</span>
             </div>
 
             {event.description ? <div className="mt-8 whitespace-pre-wrap text-sm leading-7 text-navy-800">{event.description}</div> : null}
@@ -173,12 +193,44 @@ export default async function EventDetailPage({ params }: { params: Promise<{ ev
               <p className={registrationState === 'open' ? 'font-semibold text-emerald-700' : 'font-semibold text-navy-800'}>{registrationLabel}</p>
               {seatsLeft !== null && !event.isPast ? <p>{seatsLeft} seats left</p> : null}
               {event.registrationClosesAt && !event.isPast ? <p>Registration closes {dateTime(event.registrationClosesAt, event.timezone)}</p> : null}
+              <p className="mt-1 font-semibold text-navy-900">{isPaidEvent ? `Ticket price: ${priceLabel}` : 'Free event'}</p>
             </div>
 
             {event.viewerIsHost ? (
-              <Link href={`/events/${event.id}/edit`} className="block min-h-12 rounded-xl bg-navy-950 px-4 py-3 text-center text-sm font-bold text-white">Manage event</Link>
+              <div className="space-y-2">
+                <Link href={`/events/${event.id}/edit`} className="block min-h-12 rounded-xl bg-navy-950 px-4 py-3 text-center text-sm font-bold text-white">Manage event</Link>
+                {isPaidEvent ? (
+                  <Link href={`/events/${event.id}/registrations`} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-900 transition hover:border-teal-300 hover:bg-teal-50">
+                    <ReceiptText className="h-4 w-4 text-teal-700" aria-hidden="true" />
+                    Paid registrations
+                  </Link>
+                ) : null}
+                {isPaidEvent && !paymentsConfigured ? (
+                  <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                    Payments aren&apos;t switched on for Sea N Shore yet, so attendees see &ldquo;Registration opens soon&rdquo; instead of a Pay button. Nothing else is needed from you.
+                  </p>
+                ) : null}
+              </div>
             ) : showAttendanceControl ? (
-              <AttendanceControl eventId={event.id} attending={event.viewerIsAttending} disabled={registrationState !== 'open' && !event.viewerIsAttending} />
+              isPaidEvent && !event.viewerIsAttending ? (
+                <EventCheckoutButton
+                  eventId={event.id}
+                  eventTitle={event.title}
+                  priceLabel={priceLabel}
+                  paymentsConfigured={paymentsConfigured}
+                  disabled={registrationState !== 'open'}
+                  unavailableLabel={registrationLabel}
+                />
+              ) : (
+                <AttendanceControl
+                  eventId={event.id}
+                  attending={event.viewerIsAttending}
+                  disabled={registrationState !== 'open' && !event.viewerIsAttending}
+                  paid={event.viewerHasPaid}
+                  paidLabel={event.viewerHasPaid ? priceLabel : undefined}
+                  unavailableLabel={registrationLabel}
+                />
+              )
             ) : null}
 
             {!event.viewerIsHost && !event.viewerIsAttending && registrationState !== 'open' ? (

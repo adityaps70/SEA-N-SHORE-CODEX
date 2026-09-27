@@ -47,10 +47,13 @@ import type {
 import { processCurriculumScormPackage } from '../scorm-authoring-actions'
 import { learningMediaAccept, type LearningMediaKind } from '../media-policy'
 import { LearningMediaUploadField } from './learning-media-upload-field'
+import { useUnsavedChanges, type SaveOutcome } from './course-edit-session'
 
 type Props = {
   courseId: string
   curriculum: MentorMaterialCurriculum
+  /** Course is in review, published or archived: show the curriculum without letting it change. */
+  readOnly?: boolean
 }
 
 type MaterialFormState = {
@@ -647,7 +650,7 @@ function QuizEditor({
   )
 }
 
-export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
+export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false }: Props) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<Message>(null)
@@ -665,6 +668,39 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
 
   const allMaterials = useMemo(() => curriculum.sections.flatMap((section) => section.materials), [curriculum.sections])
 
+  // Open drafts that have not been saved yet. Each is registered with the page so
+  // "Submit for review" saves it first and leaving the page warns about it.
+  const editingSection = curriculum.sections.find((section) => section.id === editingSectionId) ?? null
+  const editingMaterialRecord = allMaterials.find((material) => material.id === editingMaterialId) ?? null
+  const quizMaterialRecord = allMaterials.find((material) => material.id === quizEditingMaterialId) ?? null
+  const addingSection = curriculum.sections.find((section) => section.id === addingMaterialSectionId) ?? null
+  const sectionTitleDirty = Boolean(editingSection) && editingSectionTitle.trim() !== editingSection?.title
+  const materialDirty = Boolean(editingMaterialRecord)
+    && JSON.stringify(editingMaterial) !== JSON.stringify(materialStateFromPersisted(editingMaterialRecord!))
+  const quizDirty = Boolean(quizMaterialRecord)
+    && JSON.stringify(quizDraft) !== JSON.stringify(quizStateFromPersisted(quizMaterialRecord!.quiz))
+  const newMaterialDirty = Boolean(addingSection) && JSON.stringify(newMaterial) !== JSON.stringify(emptyMaterialState())
+  const newSectionDirty = newSectionTitle.trim().length > 0
+
+  useUnsavedChanges('curriculum-new-section', !readOnly && newSectionDirty, `New section “${newSectionTitle.trim()}”`, saveNewSection)
+  useUnsavedChanges('curriculum-section-title', !readOnly && sectionTitleDirty, `Section title “${editingSection?.title ?? ''}”`, saveSectionTitle)
+  useUnsavedChanges('curriculum-material', !readOnly && materialDirty, `Material “${editingMaterialRecord?.title ?? ''}”`, saveMaterialEdit)
+  useUnsavedChanges('curriculum-quiz', !readOnly && quizDirty, `Quiz “${quizMaterialRecord?.title ?? ''}”`, saveQuizEdit)
+  useUnsavedChanges('curriculum-new-material', !readOnly && newMaterialDirty, `New material in “${addingSection?.title ?? ''}”`, saveNewMaterial)
+
+  /** Opening another editor would replace an unsaved draft, so ask the trainer to save or cancel it first. */
+  function unsavedDraftBlocks(except: 'section-title' | 'material' | 'quiz' | 'new-material' | null) {
+    const blocking = [
+      except !== 'section-title' && sectionTitleDirty ? `the title of section “${editingSection?.title}”` : null,
+      except !== 'material' && materialDirty ? `material “${editingMaterialRecord?.title}”` : null,
+      except !== 'quiz' && quizDirty ? `quiz “${quizMaterialRecord?.title}”` : null,
+      except !== 'new-material' && newMaterialDirty ? `the new material in “${addingSection?.title}”` : null,
+    ].find(Boolean)
+    if (!blocking) return false
+    setMessage({ tone: 'error', copy: `You have unsaved changes to ${blocking}. Save or cancel them first.` })
+    return true
+  }
+
   function runAction(action: () => Promise<ActionResult>, successCopy?: string, afterSuccess?: () => void) {
     setMessage(null)
     startTransition(async () => {
@@ -679,70 +715,127 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
     })
   }
 
+  function runSave(save: () => Promise<SaveOutcome>) {
+    startTransition(async () => {
+      await save()
+    })
+  }
+
+  async function saveNewSection(): Promise<SaveOutcome> {
+    setMessage(null)
+    const result = await createCurriculumSection(courseId, newSectionTitle)
+    if (!result.ok) {
+      setMessage({ tone: 'error', copy: result.error })
+      return { ok: false, error: result.error }
+    }
+    setNewSectionTitle('')
+    setMessage({ tone: 'success', copy: 'Section added.' })
+    router.refresh()
+    return { ok: true }
+  }
+
+  async function saveSectionTitle(): Promise<SaveOutcome> {
+    if (!editingSectionId) return { ok: true }
+    setMessage(null)
+    const result = await updateCurriculumSection(courseId, editingSectionId, editingSectionTitle)
+    if (!result.ok) {
+      setMessage({ tone: 'error', copy: result.error })
+      return { ok: false, error: result.error }
+    }
+    setEditingSectionId(null)
+    setMessage({ tone: 'success', copy: 'Section title saved.' })
+    router.refresh()
+    return { ok: true }
+  }
+
+  async function saveQuizEdit(): Promise<SaveOutcome> {
+    if (!quizEditingMaterialId) return { ok: true }
+    setMessage(null)
+    const result = await saveCurriculumQuiz(courseId, quizEditingMaterialId, quizPayload(quizDraft))
+    if (!result.ok) {
+      setMessage({ tone: 'error', copy: result.error })
+      return { ok: false, error: result.error }
+    }
+    setQuizEditingMaterialId(null)
+    setMessage({ tone: 'success', copy: 'Quiz saved.' })
+    router.refresh()
+    return { ok: true }
+  }
+
   function beginMaterialEdit(material: MentorMaterial) {
+    if (editingMaterialId === material.id) return
+    if (unsavedDraftBlocks(null)) return
+    setMessage(null)
     setEditingMaterialId(material.id)
     setEditingMaterial(materialStateFromPersisted(material))
     setQuizEditingMaterialId(null)
   }
 
   function beginQuizEdit(material: MentorMaterial) {
+    if (quizEditingMaterialId === material.id) return
+    if (unsavedDraftBlocks(null)) return
+    setMessage(null)
     setQuizEditingMaterialId(material.id)
     setQuizDraft(quizStateFromPersisted(material.quiz))
     setEditingMaterialId(null)
   }
 
-  function createMaterial(sectionId: string, form: MaterialFormState) {
+  async function saveNewMaterial(): Promise<SaveOutcome> {
+    if (!addingMaterialSectionId) return { ok: true }
     setMessage(null)
-    startTransition(async () => {
-      const draft = materialPayload(form)
-      const result = await createCurriculumMaterial(courseId, sectionId, draft)
-      if (!result.ok) {
-        setMessage({ tone: 'error', copy: result.error })
-        return
+    const draft = materialPayload(newMaterial)
+    const result = await createCurriculumMaterial(courseId, addingMaterialSectionId, draft)
+    if (!result.ok) {
+      setMessage({ tone: 'error', copy: result.error })
+      return { ok: false, error: result.error }
+    }
+    setAddingMaterialSectionId(null)
+    setNewMaterial(emptyMaterialState())
+    if (draft.materialType === 'scorm' && draft.assetPath) {
+      const processed = await processCurriculumScormPackage(courseId, result.materialId, draft.assetPath)
+      if (!processed.ok) {
+        const copy = `Material saved, but SCORM processing failed: ${processed.error}`
+        setMessage({ tone: 'error', copy })
+        router.refresh()
+        return { ok: false, error: copy }
       }
-      if (draft.materialType === 'scorm' && draft.assetPath) {
-        const processed = await processCurriculumScormPackage(courseId, result.materialId, draft.assetPath)
-        if (!processed.ok) {
-          setMessage({ tone: 'error', copy: `Material saved, but SCORM processing failed: ${processed.error}` })
-          router.refresh()
-          return
-        }
-      }
-      setAddingMaterialSectionId(null)
-      setNewMaterial(emptyMaterialState())
-      setMessage({ tone: 'success', copy: 'Material created.' })
-      router.refresh()
-    })
+    }
+    setMessage({ tone: 'success', copy: 'Material created.' })
+    router.refresh()
+    return { ok: true }
   }
 
-  function updateMaterial(material: MentorMaterial, form: MaterialFormState) {
+  async function saveMaterialEdit(): Promise<SaveOutcome> {
+    const material = editingMaterialRecord
+    if (!material) return { ok: true }
     setMessage(null)
-    startTransition(async () => {
-      const draft = materialPayload(form)
-      const result = await updateCurriculumMaterial(courseId, material.id, draft)
-      if (!result.ok) {
-        setMessage({ tone: 'error', copy: result.error })
-        return
+    const draft = materialPayload(editingMaterial)
+    const result = await updateCurriculumMaterial(courseId, material.id, draft)
+    if (!result.ok) {
+      setMessage({ tone: 'error', copy: result.error })
+      return { ok: false, error: result.error }
+    }
+    setEditingMaterialId(null)
+    const scormNeedsProcessing = draft.materialType === 'scorm'
+      && Boolean(draft.assetPath)
+      && (material.scorm?.sourceZipPath !== draft.assetPath || material.scorm?.status !== 'ready')
+    if (scormNeedsProcessing && draft.assetPath) {
+      const processed = await processCurriculumScormPackage(courseId, material.id, draft.assetPath)
+      if (!processed.ok) {
+        const copy = `Material saved, but SCORM processing failed: ${processed.error}`
+        setMessage({ tone: 'error', copy })
+        router.refresh()
+        return { ok: false, error: copy }
       }
-      const scormNeedsProcessing = draft.materialType === 'scorm'
-        && Boolean(draft.assetPath)
-        && (material.scorm?.sourceZipPath !== draft.assetPath || material.scorm?.status !== 'ready')
-      if (scormNeedsProcessing && draft.assetPath) {
-        const processed = await processCurriculumScormPackage(courseId, material.id, draft.assetPath)
-        if (!processed.ok) {
-          setMessage({ tone: 'error', copy: `Material saved, but SCORM processing failed: ${processed.error}` })
-          router.refresh()
-          return
-        }
-      }
-      setEditingMaterialId(null)
-      setMessage({ tone: 'success', copy: 'Material changes saved.' })
-      router.refresh()
-    })
+    }
+    setMessage({ tone: 'success', copy: 'Material changes saved.' })
+    router.refresh()
+    return { ok: true }
   }
 
   return (
     <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6" aria-label="Curriculum authoring">
+      <fieldset disabled={readOnly} className="m-0 min-w-0 border-0 p-0">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Learning experience</p>
@@ -771,11 +864,12 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
         </div>
       ) : null}
 
+      {readOnly ? null : (
       <form
         className="mt-5 flex flex-col gap-3 rounded-2xl border border-dashed border-mist-200 bg-mist-50/50 p-4 sm:flex-row sm:items-end"
         onSubmit={(event) => {
           event.preventDefault()
-          runAction(() => createCurriculumSection(courseId, newSectionTitle), 'Section added.', () => setNewSectionTitle(''))
+          runSave(saveNewSection)
         }}
       >
         <label className="flex-1 text-sm font-semibold text-navy-950">
@@ -786,6 +880,7 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
           {pending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Add section
         </button>
       </form>
+      )}
 
       <div className="mt-5 space-y-5">
         {curriculum.sections.length === 0 ? (
@@ -803,7 +898,7 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
                 {editingSectionId === section.id ? (
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <input aria-label={`Section title for ${section.title}`} className="min-h-10 min-w-64 flex-1 rounded-lg border border-mist-200 bg-white px-3 py-2 text-sm font-semibold text-navy-950 outline-none focus:border-teal-500" value={editingSectionTitle} onChange={(event) => setEditingSectionTitle(event.target.value)} />
-                    <button type="button" disabled={pending} onClick={() => runAction(() => updateCurriculumSection(courseId, section.id, editingSectionTitle), 'Section title saved.', () => setEditingSectionId(null))} className="rounded-lg bg-navy-950 px-3 py-2 text-xs font-bold text-white">Save title</button>
+                    <button type="button" disabled={pending} onClick={() => runSave(saveSectionTitle)} className="rounded-lg bg-navy-950 px-3 py-2 text-xs font-bold text-white">Save title</button>
                     <button type="button" onClick={() => setEditingSectionId(null)} className="rounded-lg border border-mist-200 bg-white px-3 py-2 text-xs font-bold text-muted">Cancel</button>
                   </div>
                 ) : <h3 className="mt-1 truncate text-lg font-bold text-navy-950">{section.title}</h3>}
@@ -811,7 +906,15 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
               <div className="flex flex-wrap items-center gap-1">
                 <button type="button" aria-label={`Move ${section.title} up`} disabled={pending || sectionIndex === 0} onClick={() => runAction(() => moveCurriculumSection(courseId, section.id, 'up'))} className="rounded-lg p-2 text-muted hover:bg-mist-50 disabled:opacity-35"><ArrowUp className="size-4" /></button>
                 <button type="button" aria-label={`Move ${section.title} down`} disabled={pending || sectionIndex === curriculum.sections.length - 1} onClick={() => runAction(() => moveCurriculumSection(courseId, section.id, 'down'))} className="rounded-lg p-2 text-muted hover:bg-mist-50 disabled:opacity-35"><ArrowDown className="size-4" /></button>
-                <button type="button" aria-label={`Rename ${section.title}`} disabled={pending} onClick={() => { setEditingSectionId(section.id); setEditingSectionTitle(section.title) }} className="rounded-lg p-2 text-muted hover:bg-mist-50"><Pencil className="size-4" /></button>
+                <button type="button" aria-label={`Rename ${section.title}`} disabled={pending} onClick={() => {
+                  if (editingSectionId === section.id || unsavedDraftBlocks('section-title')) return
+                  if (sectionTitleDirty) {
+                    setMessage({ tone: 'error', copy: `You have unsaved changes to the title of section “${editingSection?.title}”. Save or cancel them first.` })
+                    return
+                  }
+                  setEditingSectionId(section.id)
+                  setEditingSectionTitle(section.title)
+                }} className="rounded-lg p-2 text-muted hover:bg-mist-50"><Pencil className="size-4" /></button>
                 {confirmDeleteSectionId === section.id ? (
                   <>
                     <button type="button" aria-label={`Confirm delete ${section.title}`} disabled={pending} onClick={() => runAction(() => deleteCurriculumSection(courseId, section.id), 'Section deleted.', () => setConfirmDeleteSectionId(null))} className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-bold text-white">Confirm delete</button>
@@ -858,13 +961,13 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
                       <MaterialFields courseId={courseId} prefix="Edit" form={editingMaterial} setForm={setEditingMaterial} availableMaterials={allMaterials} currentMaterialId={material.id} />
                       <div className="mt-4 flex justify-end gap-2">
                         <button type="button" onClick={() => setEditingMaterialId(null)} className="rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-muted">Cancel</button>
-                        <button type="button" disabled={pending} onClick={() => updateMaterial(material, editingMaterial)} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"><Save className="size-4" /> Save material changes</button>
+                        <button type="button" disabled={pending} onClick={() => runSave(saveMaterialEdit)} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"><Save className="size-4" /> Save material changes</button>
                       </div>
                     </div>
                   ) : null}
 
                   {quizEditingMaterialId === material.id ? (
-                    <QuizEditor courseId={courseId} material={material} draft={quizDraft} setDraft={setQuizDraft} pending={pending} onCancel={() => setQuizEditingMaterialId(null)} onSave={(currentCourseId, materialId, input) => runAction(() => saveCurriculumQuiz(currentCourseId, materialId, input), 'Quiz saved.', () => setQuizEditingMaterialId(null))} />
+                    <QuizEditor courseId={courseId} material={material} draft={quizDraft} setDraft={setQuizDraft} pending={pending} onCancel={() => setQuizEditingMaterialId(null)} onSave={() => runSave(saveQuizEdit)} />
                   ) : null}
                 </article>
               ))}
@@ -874,7 +977,7 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
                   className="rounded-2xl border border-teal-200 bg-teal-50/50 p-4"
                   onSubmit={(event) => {
                     event.preventDefault()
-                    createMaterial(section.id, newMaterial)
+                    runSave(saveNewMaterial)
                   }}
                 >
                   <div className="flex items-center justify-between gap-3">
@@ -886,11 +989,13 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
                     <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"><Plus className="size-4" /> Create material</button>
                   </div>
                 </form>
-              ) : (
+              ) : readOnly ? null : (
                 <button
                   type="button"
                   aria-label={`Add material to ${section.title}`}
                   onClick={() => {
+                    if (unsavedDraftBlocks(null)) return
+                    setMessage(null)
                     setAddingMaterialSectionId(section.id)
                     setNewMaterial(emptyMaterialState())
                     setEditingMaterialId(null)
@@ -910,6 +1015,7 @@ export function MentorCurriculumEditor({ courseId, curriculum }: Props) {
         <ChevronDown className="mt-0.5 size-4 shrink-0" />
         <p>Use the arrow controls to set the persisted learning order. Availability, prerequisites, release rules and completion behavior are saved with each material.</p>
       </div>
+      </fieldset>
     </section>
   )
 }

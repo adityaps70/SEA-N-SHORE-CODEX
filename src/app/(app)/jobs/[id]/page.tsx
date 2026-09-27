@@ -2,15 +2,18 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { cache } from 'react'
-import { ArrowLeft, BadgeCheck, BriefcaseBusiness, CalendarClock, CheckCircle2, MapPin, Ship, Sparkles, TriangleAlert, WalletCards } from 'lucide-react'
+import { RailFooter } from '@/components/navigation/rail-footer'
+import { ArrowLeft, BadgeCheck, CalendarClock, CheckCircle2, MapPin, Ship, Sparkles, TriangleAlert, WalletCards } from 'lucide-react'
 import { ApplyJobButton } from '@/features/jobs/components/apply-job-button'
+import { JobCompanyIdentity, JobCompanyLogo } from '@/features/jobs/components/job-company-identity'
 import { ReportJobButton } from '@/features/jobs/components/report-job-button'
 import { SaveJobButton } from '@/features/jobs/components/save-job-button'
+import { isApplyUntilOpen, todayIsoDate } from '@/features/jobs/job-lifecycle'
 import { getJobDetailState } from '@/features/jobs/queries'
 
 function formatDate(value: string | null) {
   if (!value) return null
-  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${value}T00:00:00Z`))
+  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`))
 }
 
 function formatSalary(value: number | null, currency: string | null) {
@@ -35,18 +38,23 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const salaryMin = formatSalary(job.salaryMin, job.salaryCurrency)
   const salaryMax = formatSalary(job.salaryMax, job.salaryCurrency)
   const salary = salaryMin && salaryMax ? `${salaryMin}–${salaryMax}` : salaryMin ?? salaryMax
+  const acceptingApplications = isApplyUntilOpen(job.applyUntil, todayIsoDate())
+  const companyHref = job.companyId && job.companySlug ? `/organizations/${job.companySlug}` : null
+  const closedNotice = alreadyApplied
+    ? null
+    : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">Applications for this job closed on {formatDate(job.applyUntil)}.</p>
 
   return (
     <section className="mx-auto w-full max-w-5xl py-2 pb-24 sm:py-5 sm:pb-8">
       <Link href="/jobs" className="mb-4 inline-flex min-h-10 items-center gap-2 rounded-xl px-2 text-sm font-semibold text-muted hover:bg-mist-50 hover:text-navy-950"><ArrowLeft aria-hidden="true" className="size-4" />Back to jobs</Link>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <article className="rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-8">
+        <article className="min-w-0 rounded-[1.75rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-8">
           <div className="flex items-start gap-4">
-            <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-navy-950 text-white"><BriefcaseBusiness aria-hidden="true" className="size-5" /></div>
+            <JobCompanyLogo name={job.companyName} companyId={job.companyId} logoPath={job.companyLogoPath} size="lg" />
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">{job.companyName}</p>{job.companyVerified ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800"><BadgeCheck aria-hidden="true" className="size-3.5" />Verified employer</span> : null}{job.urgent ? <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Urgent joining</span> : null}</div>
-              <h1 className="mt-1 text-3xl font-semibold tracking-[-.035em] text-navy-950 sm:text-4xl">{job.title}</h1>
+              <div className="flex flex-wrap items-center gap-2">{companyHref ? <Link href={companyHref} className="min-w-0 break-words text-xs font-semibold uppercase tracking-[.14em] text-ocean-700 hover:underline">{job.companyName}</Link> : <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">{job.companyName}</p>}{job.companyVerified ? <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800"><BadgeCheck aria-hidden="true" className="size-3.5" />Verified employer</span> : null}{job.urgent ? <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">Urgent joining</span> : null}</div>
+              <h1 className="mt-1 break-words text-2xl font-semibold tracking-[-.035em] text-navy-950 sm:text-4xl">{job.title}</h1>
               <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium text-muted">
                 <span className="inline-flex items-center gap-1.5"><Ship aria-hidden="true" className="size-4" />{job.domain === 'sea' ? 'Sea job' : 'Shore job'}{job.vesselTypes[0] ? ` · ${job.vesselTypes[0]}` : ''}</span>
                 {job.location ? <span className="inline-flex items-center gap-1.5"><MapPin aria-hidden="true" className="size-4" />{job.location}</span> : null}
@@ -85,13 +93,30 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           </div>
         </article>
 
-        <aside className="space-y-4 self-start lg:sticky lg:top-20">
-          <div className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]"><p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Apply with Sea N Shore</p><p className="mt-2 text-sm leading-6 text-muted">Your professional identity and Maritime Passport stay connected to this application.</p><div className="mt-4 flex flex-wrap gap-2"><ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} /><SaveJobButton jobId={job.id} initialSaved={isSaved} /></div></div>
+        <aside className="min-w-0 space-y-4 self-start lg:sticky lg:top-20">
+          <div className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]"><p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Apply with Sea N Shore</p><p className="mt-2 text-sm leading-6 text-muted">Your professional identity and Maritime Passport stay connected to this application.</p><div className="mt-4 flex flex-wrap gap-2">{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} /> : closedNotice}<SaveJobButton jobId={job.id} initialSaved={isSaved} /></div></div>
+          <section aria-labelledby="job-company-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
+            <h2 id="job-company-heading" className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">{job.companyId ? 'Posted by' : 'Posted by a recruiter'}</h2>
+            <div className="mt-3">
+              <JobCompanyIdentity
+                name={job.companyName}
+                companyId={job.companyId}
+                companySlug={job.companySlug}
+                logoPath={job.companyLogoPath}
+                location={job.companyLocation ?? null}
+                companyType={job.companyType ?? null}
+                verified={job.companyVerified}
+                personalLabel={job.recruiterVerified ? 'Verified independent recruiter' : 'Independent recruiter'}
+              />
+            </div>
+            {companyHref ? <Link href={companyHref} className="mt-4 inline-flex min-h-10 items-center rounded-xl border border-mist-100 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">View organization</Link> : null}
+          </section>
           <ReportJobButton jobId={job.id} />
+          <RailFooter visibleFrom="lg" />
         </aside>
       </div>
 
-      <div className="sticky bottom-0 z-20 -mx-3 mt-5 flex items-center justify-between gap-2 border-t border-mist-100 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,.08)] backdrop-blur sm:hidden"><SaveJobButton jobId={job.id} initialSaved={isSaved} compact /><ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} /></div>
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-5 flex items-center justify-between gap-2 border-t border-mist-100 bg-white/95 px-4 py-3 shadow-[0_-8px_24px_rgba(15,23,42,.08)] backdrop-blur sm:hidden"><SaveJobButton jobId={job.id} initialSaved={isSaved} compact />{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} /> : <span className="text-sm font-semibold text-amber-900">Applications closed</span>}</div>
     </section>
   )
 }

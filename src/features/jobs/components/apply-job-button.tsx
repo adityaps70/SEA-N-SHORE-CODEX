@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useId, useState, useTransition } from 'react'
 import { CheckCircle2, FileText, Send, Upload, X } from 'lucide-react'
 import { applyToJob, prepareJobApplicationCvUpload } from '../actions'
 import { MAX_JOB_APPLICATION_CV_BYTES } from '../application-media-policy'
@@ -17,8 +17,19 @@ export function ApplyJobButton({
   const [submitted, setSubmitted] = useState(alreadyApplied)
   const [open, setOpen] = useState(false)
   const [cvFile, setCvFile] = useState<File | null>(null)
+  const [coverNote, setCoverNote] = useState('')
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
+  const coverNoteId = useId()
+
+  useEffect(() => {
+    if (!open) return
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !pending) setOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [open, pending])
 
   if (submitted) {
     return (
@@ -89,7 +100,7 @@ export function ApplyJobButton({
         }
       }
 
-      const result = await applyToJob(jobId, cvReference)
+      const result = await applyToJob(jobId, cvReference, coverNote.trim() || null)
       if (result.ok) {
         setSubmitted(true)
         setOpen(false)
@@ -178,6 +189,23 @@ export function ApplyJobButton({
                   </button>
                 </div>
               ) : null}
+            </div>
+
+            <div className="mt-4">
+              <label htmlFor={coverNoteId} className="block text-sm font-bold text-navy-950">
+                Message to the employer <span className="font-medium text-muted">(optional)</span>
+              </label>
+              <textarea
+                id={coverNoteId}
+                value={coverNote}
+                disabled={pending}
+                maxLength={2000}
+                rows={3}
+                onChange={(event) => setCoverNote(event.target.value)}
+                placeholder="For example: your availability, current contract end date, or why this role fits you."
+                className="mt-2 w-full rounded-xl border border-mist-200 bg-white px-3 py-2.5 text-sm text-navy-950 outline-none transition focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100"
+              />
+              <p className="mt-1 text-right text-xs text-muted">{coverNote.length}/2000</p>
             </div>
 
             {error ? <p role="alert" className="mt-3 text-sm font-semibold text-red-700">{error}</p> : null}

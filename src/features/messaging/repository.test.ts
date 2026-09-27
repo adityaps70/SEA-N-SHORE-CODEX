@@ -305,4 +305,31 @@ describe('Aurora messaging repository', () => {
     expect(text).toContain('order by')
     expect(values).toEqual([VIEWER_ID, 30])
   })
+
+  it('finds existing direct conversations with a set of peers, scoped to the viewer as participant', async () => {
+    const query = vi.fn(async () => [{
+      conversation_id: CONVERSATION_ID,
+      peer_profile_id: TARGET_ID,
+      last_message_at: new Date('2026-09-20T10:00:00.000Z'),
+    }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    const result = await repository.listDirectConversationsWithPeers(VIEWER_ID, [TARGET_ID])
+
+    expect(result.get(TARGET_ID)).toEqual({
+      conversationId: CONVERSATION_ID,
+      lastMessageAt: '2026-09-20T10:00:00.000Z',
+    })
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('join public.conversation_participants cp')
+    expect(text).toContain('cp.profile_id = $1')
+    expect(text).toContain('any($2::uuid[])')
+    expect(values).toEqual([VIEWER_ID, [TARGET_ID]])
+
+    query.mockClear()
+    await expect(repository.listDirectConversationsWithPeers(VIEWER_ID, [])).resolves.toEqual(new Map())
+    expect(query).not.toHaveBeenCalled()
+  })
 })

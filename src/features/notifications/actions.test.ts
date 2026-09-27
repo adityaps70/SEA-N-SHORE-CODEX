@@ -64,9 +64,23 @@ describe('Aurora notification actions', () => {
 
     await expect(markNotificationRead(NOTIFICATION_ID)).resolves.toEqual({
       ok: false,
-      error: 'We could not update this notification.',
+      error: 'This notification is no longer available. Refresh the page to see your latest notifications.',
     })
     expect(mockedRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('returns a sign-in message instead of throwing when the session has expired', async () => {
+    const expired = Object.assign(new Error('Authentication required.'), { name: 'AwsAuthenticationRequiredError' })
+    mockedRequireAwsUser.mockRejectedValueOnce(expired)
+    await expect(markNotificationRead(NOTIFICATION_ID)).resolves.toEqual({
+      ok: false,
+      error: 'Your session has expired. Sign in again, then retry.',
+    })
+    mockedRequireAwsUser.mockRejectedValueOnce(expired)
+    await expect(markAllNotificationsRead()).resolves.toEqual({
+      ok: false,
+      error: 'Your session has expired. Sign in again, then retry.',
+    })
   })
 
   it('marks all notifications read only for the permanent recipient UUID', async () => {

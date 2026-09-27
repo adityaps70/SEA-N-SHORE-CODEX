@@ -141,7 +141,7 @@ describe('applyToJob', () => {
       jobId,
       ...cv,
     })
-    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', cv)
+    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', cv, null)
   })
 
   it('blocks an application when the uploaded CV cannot be verified', async () => {
@@ -163,7 +163,7 @@ describe('applyToJob', () => {
   it('creates the first application and revalidates jobs and activity routes', async () => {
     await expect(applyToJob(jobId)).resolves.toEqual({ ok: true, alreadyApplied: false })
 
-    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', null)
+    expect(mocks.createApplication).toHaveBeenCalledWith(jobId, 'viewer-1', null, null)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/jobs')
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/jobs/${jobId}`)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/activities')

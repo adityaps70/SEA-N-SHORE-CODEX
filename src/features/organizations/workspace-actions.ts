@@ -8,6 +8,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import type { OrganizationAccessRole } from '@/features/access/policy'
 import { deleteMediaObject, putMediaObject } from '@/lib/aws/storage'
 import { organizationWorkspaceRepository } from './workspace-repository'
+import { WELLBEING_SERVICE_VALUES, isWellbeingType } from './organization-types'
 
 const uuidSchema = z.string().uuid()
 const assignableRoles = [
@@ -51,6 +52,20 @@ const brandingSchema = z.object({
       ? value.split(',').map((entry) => entry.trim()).filter(Boolean)
       : [],
     z.array(z.string().min(1).max(160)).max(20),
+  ),
+})
+
+const supportSchema = z.object({
+  servicesOffered: z.array(z.enum(WELLBEING_SERVICE_VALUES as [string, ...string[]], { message: 'Choose services from the list.' })).max(WELLBEING_SERVICE_VALUES.length),
+  languages: z.preprocess(
+    (value) => typeof value === 'string'
+      ? [...new Set(value.split(',').map((entry) => entry.trim()).filter(Boolean))]
+      : [],
+    z.array(z.string().min(2, 'Enter each language using at least 2 characters.').max(60, 'Keep each language to 60 characters or fewer.')).max(20, 'Add no more than 20 languages.'),
+  ),
+  helpline24x7: z.preprocess(
+    (value) => value === 'yes' ? true : value === 'no' ? false : null,
+    z.boolean().nullable(),
   ),
 })
 
@@ -141,6 +156,22 @@ export async function updateOrganizationBranding(
     const workspace = await organizationWorkspaceRepository.getById(parsed.data.companyId)
     if (!workspace) return { error: 'This organization workspace could not be found.' }
 
+    let supportDetails: { servicesOffered: string[]; languages: string[]; helpline24x7: boolean | null } | undefined
+    if (isWellbeingType(workspace.organizationType)) {
+      const support = supportSchema.safeParse({
+        servicesOffered: formData.getAll('servicesOffered').map(String),
+        languages: formData.get('languages'),
+        helpline24x7: formData.get('helpline24x7'),
+      })
+      if (!support.success) {
+        return {
+          error: 'Please correct the highlighted organization information.',
+          fieldErrors: support.error.flatten().fieldErrors as Record<string, string[]>,
+        }
+      }
+      supportDetails = support.data
+    }
+
     const logo = formData.get('logo')
     let nextLogoPath: string | null = null
     let newLogoUploaded = false
@@ -166,6 +197,7 @@ export async function updateOrganizationBranding(
         fleetSummary: parsed.data.fleetSummary,
         vesselTypes: parsed.data.vesselTypes,
         officeLocations: parsed.data.officeLocations,
+        supportDetails,
       })
       if (newLogoUploaded && nextLogoPath) {
         await organizationWorkspaceRepository.updateLogoPath(parsed.data.companyId, nextLogoPath)

@@ -83,6 +83,8 @@ describe('learning admin course review repository', () => {
       adminReviewNote: null,
       updatedAt: '2026-09-14T12:00:00.000Z',
       curriculum: [],
+      publisherType: 'personal',
+      review: { submissionNumber: 0, submittedAt: null, previousReview: null, changesSinceLastReview: null },
     }])
 
     const listQuery = seen.find((entry) => entry.text.includes('from public.learning_courses course'))
@@ -343,5 +345,54 @@ describe('learning admin course review repository', () => {
     const repository = createLearningAdminRepository({ query, transaction: async (work) => work(query) })
 
     await expect(repository.reviewCourse(administratorId, courseId, 'published', null)).rejects.toThrow('course_transition_forbidden')
+  })
+
+  it('includes organization courses, which have no trainer record, in the review queue', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('from public.user_roles')) return [{ allowed: true }]
+      if (text.includes('from public.learning_courses course')) {
+        return [{ ...courseRow(), mentor_id: null, mentor_user_id: null, mentor_name: 'Ocean Training Institute', company_id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' }]
+      }
+      return []
+    }
+    const repository = createLearningAdminRepository({ query })
+
+    const [item] = await repository.listCoursesForReview(administratorId, 'submitted')
+
+    expect(item).toMatchObject({ mentorId: null, mentorName: 'Ocean Training Institute', publisherType: 'organization' })
+    const listQuery = seen.find((entry) => entry.text.includes('from public.learning_courses course'))
+    expect(listQuery?.text).toContain('left join public.learning_mentors mentor')
+    expect(listQuery?.text).not.toContain('inner join public.learning_mentors')
+  })
+
+  it('records the decision and note on the open submission when requesting changes', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('from public.user_roles')) return [{ allowed: true }]
+      if (text.includes('for update')) return [{ id: courseId, mentor_id: mentorId, status: 'submitted' }]
+      if (text.includes('update public.learning_courses')) return [{ id: courseId }]
+      return []
+    }
+    const repository = createLearningAdminRepository({ query, transaction: async (work) => work(query) })
+
+    await repository.reviewCourse(administratorId, courseId, 'changes_requested', 'Add a checklist.')
+
+    const submissionUpdate = seen.find((entry) => entry.text.includes('update public.learning_course_submissions'))
+    expect(submissionUpdate?.text).toContain("outcome = 'pending'")
+    expect(submissionUpdate?.values).toEqual([courseId, 'changes_requested', administratorId, 'Add a checklist.'])
+  })
+
+  it('tells the reviewer when the trainer has withdrawn the course from review', async () => {
+    const query = async (text: string) => {
+      if (text.includes('from public.user_roles')) return [{ allowed: true }]
+      if (text.includes('for update')) return [{ id: courseId, mentor_id: mentorId, status: 'draft' }]
+      return []
+    }
+    const repository = createLearningAdminRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.reviewCourse(administratorId, courseId, 'approved', null)).rejects.toThrow('course_withdrawn')
   })
 })

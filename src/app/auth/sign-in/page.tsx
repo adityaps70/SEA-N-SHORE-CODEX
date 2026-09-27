@@ -5,14 +5,21 @@ import { AuthForm } from "@/features/auth/components/auth-form";
 import { AuthMethodLinks } from "@/features/auth/components/auth-method-links";
 import { signIn } from "@/features/auth/actions";
 import { getCognitoEnvironment } from "@/lib/env";
+import { OAuthErrorNotice } from "@/components/feedback/oauth-error-notice";
 
 export const metadata: Metadata = { title: 'Sign in' }
 
-export default function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ oauthError?: string | string[] }>;
+}) {
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;
+  const { oauthError } = await searchParams;
 
   return (
     <AuthPage>
+      <OAuthErrorNotice code={oauthError} />
       <AuthForm mode="sign-in" action={signIn} />
       <AuthMethodLinks intent="sign-in" googleEnabled={googleEnabled} />
       <p className="mt-6 text-sm text-muted">

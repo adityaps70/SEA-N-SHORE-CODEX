@@ -55,7 +55,7 @@ describe('ApplyJobButton', () => {
       fileName: 'resume.pdf',
       mimeType: 'application/pdf',
       sizeBytes: 5,
-    })
+    }, null)
     expect(await screen.findByText('Applied')).toBeVisible()
   })
 
