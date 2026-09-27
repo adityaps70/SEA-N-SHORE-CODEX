@@ -32,7 +32,7 @@ export function OrganizationPageTabs({
     if (next === null) return
     event.preventDefault()
     links[next]?.focus()
-    links[next]?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    links[next]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }
 
   return (
