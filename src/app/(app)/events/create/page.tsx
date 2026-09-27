@@ -7,18 +7,18 @@ import { EventForm } from '@/features/events/components/event-form'
 import { EventNav } from '@/features/events/components/event-nav'
 import { buildEventPublisherOptions } from '@/features/events/publishers'
 import { organizationRepository } from '@/features/organizations/repository'
-import { arePaymentsConfigured } from '@/features/payments/provider'
+import { getPaymentCapabilities } from '@/features/payments/provider'
 import { getOwnProfileFromAurora } from '@/features/profiles/repository'
 
 export const metadata: Metadata = { title: 'Create an event' }
 
 export default async function CreateEventPage() {
   const user = await requireAwsUser()
-  const [access, profile, organizations, paymentsConfigured] = await Promise.all([
+  const [access, profile, organizations, payments] = await Promise.all([
     getAccessContext(user.id),
     getOwnProfileFromAurora(user.id),
     organizationRepository.listUserOrganizations(user.id),
-    arePaymentsConfigured(),
+    getPaymentCapabilities(),
   ])
 
   if (!profile) {
@@ -55,7 +55,7 @@ export default async function CreateEventPage() {
           Choose who is hosting, then create a webinar, masterclass, conference, workshop, meetup or professional community session.
         </p>
       </div>
-      <EventForm mode="create" publisherOptions={publisherOptions} paymentsConfigured={paymentsConfigured} />
+      <EventForm mode="create" publisherOptions={publisherOptions} paymentsConfigured={payments.configured} paymentCurrencies={payments.currencies} />
     </div>
   )
 }

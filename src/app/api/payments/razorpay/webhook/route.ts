@@ -1,10 +1,6 @@
 import { revalidatePath } from 'next/cache'
-import {
-  createEventPaymentService,
-  PaymentsNotConfiguredError,
-  PaymentVerificationError,
-} from '@/features/payments/event-payment-service'
-import { getPaymentProvider } from '@/features/payments/provider'
+import { eventPaymentService } from '@/features/payments/event-payment-runtime'
+import { eventPaths, PaymentsNotConfiguredError, PaymentVerificationError } from '@/features/payments/event-payment-service'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -12,8 +8,6 @@ export const dynamic = 'force-dynamic'
 /** Razorpay webhook bodies are small JSON documents; refuse anything unreasonable. */
 const MAX_BODY_BYTES = 256 * 1024
 const NO_STORE_HEADERS = { 'Cache-Control': 'private, no-store' }
-
-const service = createEventPaymentService({ getProvider: getPaymentProvider })
 
 function json(payload: Record<string, unknown>, status: number) {
   return Response.json(payload, { status, headers: NO_STORE_HEADERS })
@@ -33,19 +27,18 @@ export async function POST(request: Request) {
   if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) return json({ ok: false, error: 'payload_too_large' }, 413)
 
   try {
-    const result = await service.handleWebhook({
-      rawBody,
-      signature: request.headers.get('x-razorpay-signature'),
-      deliveryId: request.headers.get('x-razorpay-event-id'),
-    })
-    if (result.handled && 'outcome' in result && result.outcome?.order.eventId) {
-      const eventId = result.outcome.order.eventId
-      try {
-        revalidatePath(`/events/${eventId}`)
-        revalidatePath(`/events/${eventId}/registrations`)
-        revalidatePath('/events/my')
-      } catch {
-        // Cache refresh is best effort; the payment itself is already recorded.
+    // Signature header: x-razorpay-signature; delivery id header: x-razorpay-event-id.
+    const result = await eventPaymentService.handleRazorpayWebhook({ rawBody, headers: request.headers })
+    const eventId = result.handled
+      ? ('outcome' in result && result.outcome ? result.outcome.order.eventId : 'eventId' in result ? result.eventId : null)
+      : null
+    if (eventId) {
+      for (const path of eventPaths(eventId)) {
+        try {
+          revalidatePath(path)
+        } catch {
+          // Cache refresh is best effort; the payment itself is already recorded.
+        }
       }
     }
     return json({ ok: true, handled: result.handled }, 200)

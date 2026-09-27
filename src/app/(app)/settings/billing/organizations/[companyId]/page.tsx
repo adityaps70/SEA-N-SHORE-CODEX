@@ -2,43 +2,58 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
-import { Building2, CalendarClock, CreditCard, ShieldCheck } from 'lucide-react'
-import { CapabilityRequiredError, requireCapability } from '@/features/access/server'
+import { ShieldCheck } from 'lucide-react'
+import { canUseCapability } from '@/features/access/policy'
+import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { canManageOrganizationBilling } from '@/features/billing/billing-access'
+import { BillingHistory, CheckoutNotice, PlanBillingPanel } from '@/features/billing/components/plan-billing-panel'
+import { loadCheckoutNotice, loadPlanBillingView } from '@/features/billing/page-data'
 import { billingRepository } from '@/features/billing/repository'
 
 export const metadata: Metadata = { title: 'Organization billing · Settings' }
 
-function dateLabel(value: string | null) {
-  if (!value) return 'Not recorded'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+type SearchParams = Promise<Record<string, string | string[] | undefined>>
+
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value
 }
 
-function statusLabel(value: string) {
-  return value.replaceAll('_', ' ').replace(/w/g, (letter) => letter.toUpperCase())
-}
-
+/**
+ * Organization Pro for one workspace. Only its approved owner or administrators can see
+ * this page and buy, cancel or change the plan (checked again in every server action).
+ */
 export default async function OrganizationBillingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ companyId: string }>
+  searchParams?: SearchParams
 }) {
   const { companyId } = await params
   if (!z.string().uuid().safeParse(companyId).success) notFound()
 
   const user = await requireAwsUser()
-  try {
-    await requireCapability(user.id, 'billing.manage', { companyId })
-  } catch (error) {
-    if (error instanceof CapabilityRequiredError) notFound()
-    throw error
-  }
+  const access = await getAccessContext(user.id)
+  // billing.manage comes with Organization Pro; owners and administrators of a free
+  // organization must also be able to reach this page to buy it.
+  if (!canManageOrganizationBilling(access, companyId) && !canUseCapability(access, 'billing.manage', { companyId })) notFound()
 
   const billing = await billingRepository.getOrganizationBillingOverview(companyId)
   if (!billing) notFound()
+
+  const query = (await searchParams) ?? {}
+  const subject = { kind: 'company' as const, companyId }
+  const [view, checkoutNotice] = await Promise.all([
+    loadPlanBillingView(subject),
+    loadCheckoutNotice(first(query.checkout), subject),
+  ])
+  const canBuy = canManageOrganizationBilling(access, companyId)
+  const blockedMessage = !canBuy
+    ? 'Only the organization’s owner or an administrator can buy or change this plan.'
+    : !billing.company.verified
+      ? 'Organization Pro can be bought once Sea N Shore has verified this organization, because its features only work for verified organizations.'
+      : null
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:py-5">
@@ -47,14 +62,14 @@ export default async function OrganizationBillingPage({
           ← Membership & billing
         </Link>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Organization billing</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy-950">{billing.company.name}</h1>
+            <h1 className="mt-1 break-words text-3xl font-semibold tracking-tight text-navy-950">{billing.company.name}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              Review the provider-neutral subscription record for this workspace. Billing access is limited to authorized organization managers.
+              Organization Pro for this workspace, renewing automatically through our payment provider, Cashfree. Only the owner and administrators can manage it.
             </p>
           </div>
-          <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+          <span className={`w-fit shrink-0 rounded-full px-3 py-1.5 text-xs font-bold ${
             billing.company.verified ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'
           }`}>
             {billing.company.verified ? 'Verified organization' : 'Organization verification required'}
@@ -62,92 +77,28 @@ export default async function OrganizationBillingPage({
         </div>
       </header>
 
-      <section className="grid gap-4 md:grid-cols-2">
-        <article className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <span className="grid size-10 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
-            <Building2 aria-hidden="true" className="size-5" />
-          </span>
-          <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-muted">Current organization plan</p>
-          <h2 className="mt-1 text-xl font-bold text-navy-950">
-            {billing.currentPlan === 'organization_pro' ? 'Organization Pro' : 'Sea N Shore Member — FREE'}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted">
-            Organization plan access belongs to the workspace. Individual members receive capabilities through their approved organization role.
-          </p>
-        </article>
+      {checkoutNotice ? <CheckoutNotice notice={checkoutNotice.notice} checkoutId={checkoutNotice.checkoutId} /> : null}
 
-        <article className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-          <span className="grid size-10 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
-            <CreditCard aria-hidden="true" className="size-5" />
-          </span>
-          <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-muted">Subscription status</p>
-          <h2 className="mt-1 text-xl font-bold text-navy-950">
-            {billing.subscription ? statusLabel(billing.subscription.status) : 'No subscription record'}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted">
-            Billing provider: {billing.subscription?.billingProvider ?? 'Not configured'}
-          </p>
-        </article>
-      </section>
+      <PlanBillingPanel
+        view={view}
+        target={{ kind: 'organization', companyId }}
+        eyebrow="Organization plan"
+        description="Organization Pro unlocks the organization page, jobs, events and courses, multiple admins, applicant and student management, analytics, branding and team permissions."
+        blockedMessage={blockedMessage}
+        noticeCheckoutId={checkoutNotice?.checkoutId ?? null}
+        anchorId="organization-pro"
+        highlight={first(query.plan) === 'organization_pro'}
+      />
 
-      <section className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <div className="flex items-start gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-mist-50 text-ocean-700">
-            <CalendarClock aria-hidden="true" className="size-5" />
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold text-navy-950">Subscription record</h2>
-            <p className="mt-1 text-sm leading-6 text-muted">
-              This page intentionally exposes only the operational subscription state needed by an organization billing manager.
-            </p>
-          </div>
-        </div>
-
-        {billing.subscription ? (
-          <dl className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Subscription status</dt>
-              <dd className="mt-1 text-sm font-semibold text-navy-950">{statusLabel(billing.subscription.status)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Plan record</dt>
-              <dd className="mt-1 text-sm font-semibold text-navy-950">
-                {billing.subscription.plan === 'organization_pro' ? 'Organization Pro' : 'Free'}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Period started</dt>
-              <dd className="mt-1 text-sm font-semibold text-navy-950">{dateLabel(billing.subscription.currentPeriodStartedAt)}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Period ends</dt>
-              <dd className="mt-1 text-sm font-semibold text-navy-950">{dateLabel(billing.subscription.currentPeriodEndsAt)}</dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Cancellation</dt>
-              <dd className="mt-1 text-sm font-semibold text-navy-950">
-                {billing.subscription.cancelAtPeriodEnd ? 'Scheduled to cancel at period end' : 'No cancellation scheduled'}
-              </dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Billing provider</dt>
-              <dd className="mt-1 text-sm font-semibold text-navy-950">{billing.subscription.billingProvider ?? 'Not configured'}</dd>
-            </div>
-          </dl>
-        ) : (
-          <p className="mt-5 rounded-xl bg-mist-50 px-4 py-3 text-sm text-muted">
-            No organization subscription has been recorded yet.
-          </p>
-        )}
-      </section>
+      {view.history.length ? <BillingHistory rows={view.history} /> : null}
 
       <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
         <div className="flex gap-3">
           <ShieldCheck aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-800" />
           <div>
-            <h2 className="font-bold text-amber-950">Checkout is not enabled</h2>
+            <h2 className="font-bold text-amber-950">Payment does not replace verification</h2>
             <p className="mt-1 text-sm leading-6 text-amber-900">
-              Organization checkout is not enabled until Sea N Shore approves plan pricing, currency/tax behavior and a payment provider. No payment action or invented price is shown here.
+              Organization Pro unlocks features for a verified organization. Members still use them through their approved workspace role.
             </p>
             <Link href="/plans" className="mt-3 inline-flex text-sm font-bold text-amber-950 hover:underline">
               Compare plan capabilities →

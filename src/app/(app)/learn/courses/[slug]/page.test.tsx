@@ -7,9 +7,15 @@ const mocks = vi.hoisted(() => ({
   getLearnerEnrollment: vi.fn(),
   requireAwsUser: vi.fn(),
   notFound: vi.fn(),
+  loadCoursePurchaseState: vi.fn(),
+  push: vi.fn(),
+  refresh: vi.fn(),
 }))
 
-vi.mock('next/navigation', () => ({ notFound: mocks.notFound }))
+vi.mock('next/navigation', () => ({ notFound: mocks.notFound, useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }))
+vi.mock('@/features/learning/course-purchase-state', () => ({ loadCoursePurchaseState: mocks.loadCoursePurchaseState }))
+vi.mock('@/features/learning/course-payment-actions', () => ({ startCourseCheckoutAction: vi.fn(), confirmCoursePaymentAction: vi.fn() }))
+vi.mock('@/features/learning/enrollment-actions', () => ({ openCourseAsTeamMember: vi.fn(), enrollInFreeCourse: vi.fn() }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/learning/marketplace-repository')>()
@@ -128,16 +134,88 @@ describe('/learn/courses/[slug]', () => {
     expect(screen.queryByText('Course curriculum')).not.toBeInTheDocument()
   })
 
-  it('shows the configured price for a paid published course without offering free enrollment', async () => {
+  it('shows a paid course price and a clear "Purchases open soon" state while payments are not set up', async () => {
     mocks.getPublishedCourseBySlug.mockResolvedValueOnce(paidCourse)
+    mocks.loadCoursePurchaseState.mockResolvedValueOnce({ kind: 'buy', priceLabel: '₹20,000', configured: false, pending: null })
 
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
 
     expect(screen.getByRole('heading', { name: paidCourse.title })).toBeInTheDocument()
     expect(screen.getByText('₹20,000')).toBeInTheDocument()
-    expect(screen.getByText('Paid enrollment is not available yet.')).toBeInTheDocument()
+    expect(mocks.loadCoursePurchaseState).toHaveBeenCalledWith({ userId: 'learner-1', course: paidCourse, enrollment: null })
+    expect(screen.getByRole('button', { name: 'Purchases open soon' })).toBeDisabled()
+    expect(screen.getByText(/You'll be able to buy this course here as soon as they are/)).toBeInTheDocument()
     expect(screen.queryByTestId('enroll-free-control')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Enroll free' })).not.toBeInTheDocument()
+  })
+
+  it('shows the discount with the original price struck through and offers Buy course at the discounted price', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce({ ...paidCourse, discountPriceMinor: 1_600_000 })
+    mocks.loadCoursePurchaseState.mockResolvedValueOnce({ kind: 'buy', priceLabel: '₹16,000', configured: true, pending: null })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
+
+    expect(screen.getByText('₹16,000')).toBeInTheDocument()
+    const original = screen.getByText('₹20,000')
+    expect(original.closest('.line-through')).not.toBeNull()
+    expect(screen.getByText('Save 20%')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Buy course — ₹16,000' })).toBeEnabled()
+  })
+
+  it('offers Check payment status for a checkout the learner started but did not finish', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce(paidCourse)
+    mocks.loadCoursePurchaseState.mockResolvedValueOnce({
+      kind: 'buy',
+      priceLabel: '₹20,000',
+      configured: true,
+      pending: { orderId: '55555555-5555-4555-8555-555555555555', amountLabel: '₹20,000', startedLabel: '27 Sept 2026, 10:05 am' },
+    })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
+
+    const pending = screen.getByRole('region', { name: 'Payment not confirmed yet' })
+    expect(within(pending).getByText(/You opened checkout for ₹20,000 at 27 Sept 2026, 10:05 am/)).toBeInTheDocument()
+    expect(within(pending).getByRole('button', { name: 'Check payment status' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Buy course — ₹20,000' })).toBeInTheDocument()
+  })
+
+  it('sends a learner who bought the course straight to Continue learning', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce(paidCourse)
+    mocks.loadCoursePurchaseState.mockResolvedValueOnce({ kind: 'enrolled', viaTeam: false, completed: false })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
+
+    expect(screen.getByText('You own this course.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Continue learning/ })).toHaveAttribute('href', `/learn/courses/${paidCourse.slug}/learn`)
+    expect(screen.queryByRole('button', { name: /Buy course/ })).not.toBeInTheDocument()
+  })
+
+  it('lets the course team open the course without buying it', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce(paidCourse)
+    mocks.loadCoursePurchaseState.mockResolvedValueOnce({ kind: 'team', reason: 'You manage this course' })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
+
+    expect(screen.getByText('You manage this course')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Open course' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /Buy course/ })).not.toBeInTheDocument()
+  })
+
+  it('explains a payment that arrived but could not unlock the course', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValueOnce(paidCourse)
+    mocks.loadCoursePurchaseState.mockResolvedValueOnce({
+      kind: 'refund_due', amountLabel: '₹20,000', paidLabel: '27 Sept 2026, 10:05 am', reason: 'You already had this course, so this was a duplicate payment.', refundInProgress: false,
+    })
+
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
+
+    const notice = screen.getByRole('region', { name: 'Refund on its way' })
+    expect(notice).toHaveTextContent('We received ₹20,000 on 27 Sept 2026, 10:05 am but could not unlock the course. You already had this course, so this was a duplicate payment. The Sea N Shore team will refund the full amount to your original payment method.')
+  })
+
+  it('does not load purchase state for free courses', async () => {
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    expect(mocks.loadCoursePurchaseState).not.toHaveBeenCalled()
   })
 
   it('shows the persisted enrolled state instead of another enrollment action', async () => {

@@ -5,7 +5,10 @@ import type { LearnerCourseEnrollment } from '@/features/learning/enrollment-rep
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   listLearnerEnrollments: vi.fn(),
+  listLearnerPurchases: vi.fn(),
 }))
+
+vi.mock('@/features/learning/course-payment-repository', () => ({ coursePaymentRepository: { listLearnerPurchases: mocks.listLearnerPurchases } }))
 
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/enrollment-repository', async (importOriginal) => {
@@ -50,6 +53,7 @@ describe('/learn/my-learning', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
     mocks.listLearnerEnrollments.mockResolvedValue([enrollment])
+    mocks.listLearnerPurchases.mockResolvedValue([])
   })
 
   it('loads only the signed-in learner enrollments and shows real course progress', async () => {
@@ -147,5 +151,50 @@ describe('/learn/my-learning', () => {
     expect(screen.getByText(/courses you enroll in will appear here/i)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Explore courses' })).toHaveAttribute('href', '/learn')
     expect(screen.queryByRole('article')).not.toBeInTheDocument()
+  })
+
+  it('lists the learner’s course purchases like receipts', async () => {
+    mocks.listLearnerPurchases.mockResolvedValueOnce([{
+      id: '66666666-6666-4666-8666-666666666666',
+      courseId: enrollment.courseId,
+      profileId: 'learner-1',
+      courseTitle: 'SIRE 2.0 Paid Masterclass',
+      listPriceMinor: 499900,
+      discountPriceMinor: null,
+      amountMinor: 499900,
+      currency: 'INR',
+      provider: 'cashfree',
+      providerOrderId: 'crs_66666666666646668666666666666666',
+      providerPaymentId: 'cf_1',
+      providerSessionId: null,
+      status: 'paid',
+      enrollmentId: enrollment.enrollmentId,
+      enrollmentConfirmedAt: '2026-09-14T12:00:00.000Z',
+      refundDueReason: null,
+      failureReason: null,
+      paidAt: '2026-09-14T12:00:00.000Z',
+      refundedAt: null,
+      refundStatus: null,
+      refundAttempts: 0,
+      providerRefundId: null,
+      createdAt: '2026-09-14T11:58:00.000Z',
+      courseSlug: 'sire-2-paid-masterclass',
+    }])
+
+    render(await MyLearningPage())
+
+    expect(mocks.listLearnerPurchases).toHaveBeenCalledWith('learner-1')
+    const purchases = screen.getByRole('region', { name: 'Purchases' })
+    expect(within(purchases).getByText('₹4,999')).toBeInTheDocument()
+    expect(within(purchases).getByText('crs_66666666666646668666666666666666')).toBeInTheDocument()
+    expect(within(purchases).getByText('14 Sept 2026')).toBeInTheDocument()
+    expect(within(purchases).getByText('Paid')).toBeInTheDocument()
+  })
+
+  it('keeps My Learning working when purchases cannot be loaded', async () => {
+    mocks.listLearnerPurchases.mockRejectedValueOnce(new Error('relation does not exist'))
+    render(await MyLearningPage())
+    expect(screen.getByRole('article', { name: enrollment.title })).toBeInTheDocument()
+    expect(screen.getByText(/We couldn't load your purchases just now/)).toBeInTheDocument()
   })
 })

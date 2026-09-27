@@ -46,3 +46,9 @@ test('outbox worker also performs bounded deleted-post retention sweeps', () => 
   assert.match(publisher, /60 \* 60 \* 1000/)
   assert.match(publisher, /deleted_post_retention_sweep/)
 })
+
+test('outbox worker also runs the hourly, idempotent billing sweep for plan subscriptions', () => {
+  assert.match(publisher, /subscriptionService\.runSweep\(\)/)
+  assert.match(publisher, /BILLING_SWEEP_MS = 60 \* 60 \* 1000/)
+  assert.match(publisher, /billing_sweep_error/)
+})

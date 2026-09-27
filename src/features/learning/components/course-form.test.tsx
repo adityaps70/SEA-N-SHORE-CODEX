@@ -93,12 +93,14 @@ describe('CourseForm', () => {
     expect(mocks.push).toHaveBeenCalledWith(`/learn/studio/courses/${courseId}/edit`)
   })
 
-  it('converts paid course rupee metadata into integer minor units and explains that checkout is not active yet', async () => {
-    render(<CourseForm initialValue={{ ...initial, accessType: 'paid', priceMinor: 149900, discountPriceMinor: 99900 }} />)
+  it('converts paid course rupee metadata into integer minor units and shows what the seller receives per sale', async () => {
+    render(<CourseForm initialValue={{ ...initial, accessType: 'paid', priceMinor: 149900, discountPriceMinor: 99900 }} sellerFees={{ default: { percent: '10.00', holdDays: 7 } }} />)
 
     expect(screen.getByLabelText('Course price (INR)')).toHaveValue(1499)
     expect(screen.getByLabelText('Discount price (INR)')).toHaveValue(999)
-    expect(screen.getByText(/paid enrollment will activate in the commerce phase/i)).toBeInTheDocument()
+    // Worked out on the ₹999 discount price: fee ₹99.90, seller ₹899.10.
+    expect(screen.getByText(/Sea N Shore keeps 10% — you receive/)).toHaveTextContent('Sea N Shore keeps 10% — you receive ₹899.10 per sale, paid out after 7 days. Worked out on the discount price, which is what learners pay.')
+    expect(screen.queryByText(/paid enrollment will activate in the commerce phase/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Create draft course' }))
     await waitFor(() => expect(mocks.createCourseDraft).toHaveBeenCalledTimes(1))

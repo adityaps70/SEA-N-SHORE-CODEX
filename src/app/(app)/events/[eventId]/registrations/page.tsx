@@ -7,6 +7,7 @@ import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { EventNav } from '@/features/events/components/event-nav'
 import { eventPriceLabel } from '@/features/events/event-labels'
 import { formatMoney } from '@/features/payments/currency'
+import { EventRefundButton } from '@/features/payments/components/event-refund-button'
 import { eventPaymentRepository, type OrganizerPaymentRow } from '@/features/payments/event-payment-repository'
 import { paymentStatusLabel, refundReasonLabel } from '@/features/payments/event-payment-rules'
 import { arePaymentsConfigured } from '@/features/payments/provider'
@@ -16,6 +17,11 @@ export const metadata: Metadata = { title: 'Paid registrations' }
 function dateLabel(value: string | null) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
+}
+
+function canRefund(row: OrganizerPaymentRow) {
+  if (!row.providerPaymentId || row.refundStatus === 'requested') return false
+  return row.status === 'paid' || (row.status === 'refunded' && row.refundStatus === 'failed')
 }
 
 function totalsByCurrency(rows: OrganizerPaymentRow[]) {
@@ -59,7 +65,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
         <Info className="mt-1 h-4 w-4 shrink-0 text-teal-700" aria-hidden="true" />
         <div>
           <p className="font-bold text-navy-950">How payouts and refunds work</p>
-          <p>Attendees pay Sea N Shore when they register. Payouts to you and any refunds are handled by the Sea N Shore team outside the site for now — this page does not send money. <Link href="/help" className="font-bold text-teal-700 hover:underline">Contact the Sea N Shore team</Link> about a payout or a refund.</p>
+          <p>Attendees pay Sea N Shore when they register. You can refund a ticket in full from the list below: the money goes back to the attendee&apos;s original payment method and their seat is released. Your share (the ticket price minus the Sea N Shore platform fee) is paid out to your saved payout details after the event. Track it in <Link href={event.companyId ? `/settings/earnings?for=company:${event.companyId}` : '/settings/earnings'} className="font-bold text-teal-700 hover:underline">Earnings</Link> and manage where it goes in <Link href="/settings/payouts" className="font-bold text-teal-700 hover:underline">Payout details</Link>.</p>
         </div>
       </section>
 
@@ -100,12 +106,26 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
                       {row.status === 'refunded' ? `Refunded ${dateLabel(row.refundedAt)}` : row.paidAt ? `Paid ${dateLabel(row.paidAt)}` : `Started ${dateLabel(row.createdAt)}`}
                     </p>
                     {row.status === 'paid' && !row.registrationConfirmedAt ? (
-                      <p className="mt-1 text-xs leading-5 text-amber-900">{refundReasonLabel(row.refundDueReason)} The Sea N Shore team will refund this payment.</p>
+                      <p className="mt-1 text-xs leading-5 text-amber-900">{refundReasonLabel(row.refundDueReason)} Refund it here, or the Sea N Shore team will refund it.</p>
+                    ) : null}
+                    {row.refundStatus === 'failed' ? (
+                      <p className="mt-1 text-xs leading-5 text-rose-700">The payment provider did not accept the last refund attempt. Nothing was refunded yet — try again, or contact the Sea N Shore team.</p>
                     ) : null}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                    <span className="text-sm font-bold text-navy-950">{formatMoney(row.amountMinor, row.currency)}</span>
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${status.tone}`}>{status.label}</span>
+                  <div className="flex flex-col gap-2 sm:items-end">
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      <span className="text-sm font-bold text-navy-950">{formatMoney(row.amountMinor, row.currency)}</span>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${status.tone}`}>{status.label}</span>
+                    </div>
+                    {canRefund(row) ? (
+                      <EventRefundButton
+                        orderId={row.id}
+                        amountLabel={formatMoney(row.amountMinor, row.currency)}
+                        attendeeName={row.attendeeName ?? 'this attendee'}
+                        seatConfirmed={row.status === 'paid' && Boolean(row.registrationConfirmedAt)}
+                        retry={row.refundStatus === 'failed'}
+                      />
+                    ) : null}
                   </div>
                 </li>
               )

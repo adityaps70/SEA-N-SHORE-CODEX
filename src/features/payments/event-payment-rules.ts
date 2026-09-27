@@ -3,14 +3,27 @@ import type { PaymentCurrency } from './types'
 
 /** How long an unfinished checkout holds a seat for its attendee. */
 export const CHECKOUT_HOLD_MINUTES = 20
-/** Razorpay Checkout closes itself after this long (a little under the hold). */
+/**
+ * How long a gateway order can be paid. Longer than the seat hold so a buyer who is
+ * mid-payment is not cut off; a late payment is still checked against capacity.
+ * Cashfree expects order_expiry_time at least 15 minutes ahead.
+ */
+export const GATEWAY_ORDER_LIFETIME_MINUTES = 30
+/** The payment window closes itself after this long (a little under the hold). */
 export const CHECKOUT_TIMEOUT_SECONDS = 15 * 60
 
 export const PAYMENTS_NOT_CONFIGURED_MESSAGE = "Registration opens soon — payments aren't set up yet."
 
+/** Buyers: the event is priced in a currency the payment gateway cannot take yet. */
+export const CURRENCY_UNAVAILABLE_BUYER_MESSAGE = "Tickets for this event are priced in US dollars, which Sea N Shore can't accept yet. Ask the organiser to switch the price to Indian rupees (INR)."
+/** Organisers choosing a currency the gateway cannot take yet. */
+export const CURRENCY_UNAVAILABLE_ORGANIZER_MESSAGE = "Sea N Shore can only take payments in Indian rupees (INR) right now. You can save a US dollar price, but attendees won't be able to pay until US dollar payments are switched on. Choose INR to start selling tickets now."
+
 export type PaidEventSnapshot = {
   id: string
   hostUserId: string
+  /** Set when the event is hosted as an organization; that organization is the seller. */
+  companyId?: string | null
   title: string
   status: 'draft' | 'published' | 'cancelled'
   endAt: Date
@@ -32,6 +45,7 @@ export type EventRegistrationBlocker =
   | 'event_registration_closed'
   | 'event_full'
   | 'already_registered'
+  | 'event_currency_unsupported'
 
 export function eventPrice(event: PaidEventSnapshot): { amountMinor: number; currency: PaymentCurrency } | null {
   if (!event.isPaid || !event.priceMinor || event.priceMinor <= 0 || !isPaymentCurrency(event.currency)) return null
@@ -100,6 +114,7 @@ export function registrationBlockerMessage(code: string) {
     case 'event_registration_closed': return 'Registration for this event has closed.'
     case 'event_full': return 'This event has reached its attendee capacity. No seats are available right now.'
     case 'already_registered': return 'You are already registered for this event.'
+    case 'event_currency_unsupported': return CURRENCY_UNAVAILABLE_BUYER_MESSAGE
     default: return 'Registration is not open for this event.'
   }
 }
@@ -119,7 +134,11 @@ export function refundReasonLabel(code: string | null) {
 }
 
 /** Organiser-facing status for one payment order. */
-export function paymentStatusLabel(row: { status: string; registrationConfirmedAt: string | null }) {
+export function paymentStatusLabel(row: { status: string; registrationConfirmedAt: string | null; refundStatus?: string | null }) {
+  if (row.refundStatus === 'requested') return { label: 'Refund in progress', tone: 'bg-amber-50 text-amber-900' }
+  if (row.status === 'refunded' && row.refundStatus === 'failed') return { label: 'Refund failed', tone: 'bg-rose-50 text-rose-700' }
+  if (row.status === 'refunded' && row.refundStatus === 'pending') return { label: 'Refund on its way', tone: 'bg-mist-50 text-navy-700' }
+  if (row.status === 'paid' && row.refundStatus === 'failed') return { label: 'Refund failed', tone: 'bg-rose-50 text-rose-700' }
   if (row.status === 'paid' && row.registrationConfirmedAt) return { label: 'Paid', tone: 'bg-emerald-50 text-emerald-800' }
   if (row.status === 'paid') return { label: 'Refund due', tone: 'bg-amber-50 text-amber-900' }
   if (row.status === 'refunded') return { label: 'Refunded', tone: 'bg-mist-50 text-navy-700' }

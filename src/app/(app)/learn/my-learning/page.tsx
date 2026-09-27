@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Download, ExternalLink, GraduationCap } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { CoursePurchasesList } from '@/features/learning/components/course-purchases-list'
+import { coursePaymentRepository } from '@/features/learning/course-payment-repository'
 import {
   enrollmentRepository,
   type LearnerCourseEnrollment,
@@ -118,7 +120,13 @@ function EnrollmentCard({ enrollment }: { enrollment: LearnerCourseEnrollment })
 
 export default async function MyLearningPage() {
   const user = await requireAwsUser()
-  const enrollments = await enrollmentRepository.listLearnerEnrollments(user.id)
+  const [enrollments, purchases] = await Promise.all([
+    enrollmentRepository.listLearnerEnrollments(user.id),
+    coursePaymentRepository.listLearnerPurchases(user.id).catch((error: unknown) => {
+      console.error('learner_purchases_load_failed', { message: error instanceof Error ? error.message : null })
+      return null
+    }),
+  ])
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -152,6 +160,14 @@ export default async function MyLearningPage() {
             Explore courses <ArrowRight aria-hidden="true" className="size-4" />
           </Link>
         </section>
+      )}
+
+      {purchases ? (
+        <CoursePurchasesList purchases={purchases} />
+      ) : (
+        <p role="status" className="mt-10 rounded-[1.4rem] border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
+          We couldn&apos;t load your purchases just now. Refresh the page to try again — your courses and payments are safe.
+        </p>
       )}
     </main>
   )

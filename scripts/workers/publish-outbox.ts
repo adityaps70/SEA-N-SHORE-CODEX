@@ -2,6 +2,7 @@ import { createEventBridgePublisher } from '../../src/lib/aws/eventbridge'
 import { createOutboxPublisher } from '../../src/features/events/outbox-publisher'
 import { deletedPostRetention } from '../../src/features/feed/deleted-post-retention'
 import { createNewsletterWorker } from '../../src/features/newsletter/worker'
+import { subscriptionService } from '../../src/features/billing/subscription-service'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -15,6 +16,10 @@ let nextRetentionSweepAt = 0
 const NEWSLETTER_SWEEP_MS = 60 * 1000
 let nextNewsletterSweepAt = 0
 const newsletterWorker = createNewsletterWorker()
+// Plan subscriptions: expire lapsed plans, reconcile open Cashfree mandates, raise due
+// charges in merchant charge mode. Hourly; the job is idempotent.
+const BILLING_SWEEP_MS = 60 * 60 * 1000
+let nextBillingSweepAt = 0
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -56,6 +61,19 @@ async function runNewsletterSweepIfDue() {
   }
 }
 
+async function runBillingSweepIfDue() {
+  const now = Date.now()
+  if (now < nextBillingSweepAt) return
+  nextBillingSweepAt = now + BILLING_SWEEP_MS
+
+  try {
+    const result = await subscriptionService.runSweep()
+    console.info('[billing_sweep]', result)
+  } catch (error) {
+    console.error('[billing_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   while (!stopping) {
     try {
@@ -63,6 +81,7 @@ async function main() {
       console.info('[social_outbox_batch]', result)
       await runRetentionSweepIfDue()
       await runNewsletterSweepIfDue()
+      await runBillingSweepIfDue()
       if (result.claimed === 0) await sleep(1000)
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

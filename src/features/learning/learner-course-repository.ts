@@ -33,6 +33,7 @@ export type EmbedKind = 'youtube' | 'vimeo' | 'generic' | null
 export type LearnerCourseRow = QueryResultRow & {
   enrollment_id: string
   enrollment_status: string
+  enrollment_source?: string | null
   enrolled_at: string | Date
   course_id: string
   slug: string
@@ -134,6 +135,8 @@ export type LearnerCourseSection = {
 export type LearnerCourse = {
   enrollmentId: string
   enrollmentStatus: EnrollmentStatus
+  /** 'admin' = course team access (owner, organization learning manager, platform admin). */
+  enrollmentSource?: 'free' | 'purchase' | 'admin'
   courseId: string
   slug: string
   title: string
@@ -236,6 +239,7 @@ export function createLearnerCourseRepository(input: {
       `select
          enrollment.id as enrollment_id,
          enrollment.status as enrollment_status,
+         enrollment.enrollment_source,
          enrollment.enrolled_at,
          course.id as course_id,
          course.slug,
@@ -440,6 +444,7 @@ export function createLearnerCourseRepository(input: {
     return {
       enrollmentId: first.enrollment_id,
       enrollmentStatus: asEnrollmentStatus(first.enrollment_status),
+      enrollmentSource: first.enrollment_source === 'purchase' || first.enrollment_source === 'admin' ? first.enrollment_source : 'free',
       courseId: first.course_id,
       slug: first.slug,
       title: first.title,

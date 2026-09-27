@@ -24,6 +24,7 @@ type MarketplaceCourseRow = QueryResultRow & {
   course_format: MarketplaceCourse['courseFormat']
   access_type: MarketplaceCourse['accessType']
   price_minor: string | number
+  discount_price_minor?: string | number | null
   currency: string
   published_at: string | Date
 }
@@ -48,6 +49,8 @@ export type MarketplaceCourse = {
   courseFormat: 'recorded' | 'live_cohort' | 'hybrid'
   accessType: 'free' | 'paid'
   priceMinor: number
+  /** Lower sale price the trainer set, if any (see course-pricing.ts for when it applies). */
+  discountPriceMinor?: number | null
   currency: string
   publishedAt: string
 }
@@ -80,6 +83,7 @@ const marketplaceSelect = `select
   course.course_format,
   course.access_type,
   course.price_minor,
+  course.discount_price_minor,
   course.currency,
   course.published_at
 from public.learning_courses course
@@ -132,6 +136,7 @@ function mapCourse(row: MarketplaceCourseRow): MarketplaceCourse {
     courseFormat: row.course_format,
     accessType: row.access_type,
     priceMinor: Number(row.price_minor),
+    discountPriceMinor: row.discount_price_minor === null || row.discount_price_minor === undefined ? null : Number(row.discount_price_minor),
     currency: row.currency,
     publishedAt: isoDateTime(row.published_at),
   }

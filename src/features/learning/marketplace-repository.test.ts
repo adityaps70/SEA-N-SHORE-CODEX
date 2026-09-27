@@ -58,6 +58,7 @@ describe('learning marketplace repository', () => {
       courseFormat: 'recorded',
       accessType: 'paid',
       priceMinor: 2_000_000,
+      discountPriceMinor: null,
       currency: 'INR',
       publishedAt: '2026-09-14T12:00:00.000Z',
     }])

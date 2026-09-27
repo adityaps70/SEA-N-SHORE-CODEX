@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, Eye, FilePenLine, Plus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, Eye, FilePenLine, Plus, Receipt, Wallet } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
@@ -57,7 +57,7 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-mist-100 pt-4">
         <div className="flex items-center gap-3 text-xs font-semibold text-muted">
           <span>{course.courseFormat.replace('_', ' ')}</span>
-          <span>{course.accessType === 'free' ? 'Free' : 'Paid metadata'}</span>
+          <span>{course.accessType === 'free' ? 'Free' : 'Paid'}</span>
         </div>
         {editable ? (
           <Link
@@ -124,6 +124,18 @@ export default async function MentorStudioPage() {
             className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
           >
             <BarChart3 aria-hidden="true" className="size-4" /> Analytics
+          </Link>
+          <Link
+            href="/learn/studio/sales"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+          >
+            <Receipt aria-hidden="true" className="size-4" /> Course sales
+          </Link>
+          <Link
+            href="/settings/earnings"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+          >
+            <Wallet aria-hidden="true" className="size-4" /> Earnings &amp; payouts
           </Link>
           <Link
             href="/learn/studio/assignments"

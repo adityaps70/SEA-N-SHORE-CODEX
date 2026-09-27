@@ -7,6 +7,7 @@ import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CourseEditSession } from '@/features/learning/components/course-edit-session'
 import { CourseForm } from '@/features/learning/components/course-form'
+import { loadSellerFeeTerms } from '@/features/learning/course-seller-fees'
 import { buildCoursePublisherOptions } from '@/features/learning/publishers'
 import type { CourseDraftInput } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
@@ -61,6 +62,14 @@ export default async function NewMentorCoursePage() {
     { profileId: profile.id, name: profile.fullName },
     eligibleOrganizations,
   ).filter((option) => hasActiveMentor || option.kind === 'organization')
+  const feeEntries = await Promise.all(publisherOptions.map(async (option) => [
+    option.key,
+    await loadSellerFeeTerms(option.kind === 'organization' ? { companyId: option.id } : { profileId: option.id }),
+  ] as const))
+  const sellerFees = {
+    default: feeEntries[0]?.[1] ?? null,
+    byPublisherKey: Object.fromEntries(feeEntries),
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl py-6 sm:px-6 lg:px-8">
@@ -91,7 +100,7 @@ export default async function NewMentorCoursePage() {
 
       <div className="mt-5">
         <CourseEditSession>
-          <CourseForm initialValue={initialCourse} publisherOptions={publisherOptions} />
+          <CourseForm initialValue={initialCourse} publisherOptions={publisherOptions} sellerFees={sellerFees} />
         </CourseEditSession>
       </div>
     </div>

@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { coursePrice, formatCourseAmount, isPaidCourse } from '@/features/learning/course-pricing'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
@@ -58,13 +59,17 @@ function formatLabel(format: MarketplaceCourse['courseFormat']) {
   return 'Recorded'
 }
 
-function pricingLabel(course: MarketplaceCourse) {
-  if (course.accessType === 'free' || course.priceMinor === 0) return 'Free'
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: course.currency,
-    maximumFractionDigits: 0,
-  }).format(course.priceMinor / 100)
+function PricingLabel({ course }: { course: MarketplaceCourse }) {
+  if (!isPaidCourse(course)) return <>Free</>
+  const price = coursePrice(course)
+  if (!price) return <>{formatCourseAmount(course.priceMinor, course.currency)}</>
+  if (price.discountPriceMinor === null) return <>{formatCourseAmount(price.amountMinor, price.currency)}</>
+  return (
+    <>
+      {formatCourseAmount(price.amountMinor, price.currency)}{' '}
+      <span className="font-semibold text-muted line-through"><span className="sr-only">was </span>{formatCourseAmount(price.listPriceMinor, price.currency)}</span>
+    </>
+  )
 }
 
 function CourseCard({ course }: { course: MarketplaceCourse }) {
@@ -98,7 +103,7 @@ function CourseCard({ course }: { course: MarketplaceCourse }) {
               <BookOpen aria-hidden="true" className="size-3.5" /> {course.category}
             </span>
             <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.1em] text-navy-950">
-              {pricingLabel(course)}
+              <PricingLabel course={course} />
             </span>
           </div>
           {thumbnailPath ? null : (

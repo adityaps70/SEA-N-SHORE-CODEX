@@ -15,6 +15,9 @@ import {
 } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { EnrollFreeControl } from '@/features/learning/components/enroll-free-control'
+import { CoursePurchasePanel, type CoursePurchaseState } from '@/features/learning/components/course-purchase-panel'
+import { coursePrice, discountPercent, formatCourseAmount, isPaidCourse } from '@/features/learning/course-pricing'
+import { loadCoursePurchaseState } from '@/features/learning/course-purchase-state'
 import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
 import { splitDescription } from '@/features/learning/description'
@@ -34,13 +37,26 @@ function formatLabel(format: MarketplaceCourse['courseFormat']) {
   return 'Recorded'
 }
 
-function pricingLabel(course: MarketplaceCourse) {
-  if (course.accessType === 'free' || course.priceMinor === 0) return 'Free'
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: course.currency,
-    maximumFractionDigits: 0,
-  }).format(course.priceMinor / 100)
+function PriceBlock({ course }: { course: MarketplaceCourse }) {
+  if (!isPaidCourse(course)) return <p className="mt-2 text-3xl font-extrabold tracking-tight">Free</p>
+  const price = coursePrice(course)
+  if (!price) return <p className="mt-2 text-3xl font-extrabold tracking-tight">{formatCourseAmount(course.priceMinor, course.currency)}</p>
+  if (price.discountPriceMinor === null) {
+    return <p className="mt-2 text-3xl font-extrabold tracking-tight">{formatCourseAmount(price.amountMinor, price.currency)}</p>
+  }
+  return (
+    <div className="mt-2">
+      <p className="text-3xl font-extrabold tracking-tight">
+        <span className="sr-only">Now </span>{formatCourseAmount(price.amountMinor, price.currency)}
+      </p>
+      <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-white/60 line-through decoration-white/60">
+          <span className="sr-only">Was </span>{formatCourseAmount(price.listPriceMinor, price.currency)}
+        </span>
+        <span className="rounded-full bg-teal-400/15 px-2.5 py-0.5 text-xs font-bold text-teal-100">Save {discountPercent(price)}%</span>
+      </p>
+    </div>
+  )
 }
 
 function EvidenceList({ items }: { items: string[] }) {
@@ -95,7 +111,8 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
   const user = await requireAwsUser()
   const enrollment = await enrollmentRepository.getLearnerEnrollment(user.id, course.id)
   const initiallyEnrolled = enrollment?.status === 'active' || enrollment?.status === 'completed'
-  const isFree = course.accessType === 'free' || course.priceMinor === 0
+  const isFree = !isPaidCourse(course)
+  const purchase: CoursePurchaseState | null = isFree ? null : await loadCoursePurchaseState({ userId: user.id, course, enrollment })
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -144,18 +161,22 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
             </div>
           </div>
 
-          <aside className="border-t border-white/10 bg-white/[0.055] p-6 sm:p-8 lg:border-l lg:border-t-0 lg:p-8">
+          <aside className="border-t border-white/10 bg-white/[0.055] p-6 sm:p-8 lg:border-l lg:border-t-0 lg:p-6">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-200">Course access</p>
-            <p className="mt-2 text-3xl font-extrabold tracking-tight">{pricingLabel(course)}</p>
+            <PriceBlock course={course} />
             <p className="mt-2 text-sm leading-6 text-white/65">
               {isFree
                 ? 'Learning access is free for signed-in Sea N Shore members. Enroll with your existing account.'
-                : 'Paid enrollment is not available yet.'}
+                : 'One-time payment for your Sea N Shore account. The course unlocks as soon as your payment is confirmed.'}
             </p>
 
             {isFree ? (
               <div className="mt-6">
                 <EnrollFreeControl courseId={course.id} initiallyEnrolled={initiallyEnrolled} />
+              </div>
+            ) : purchase ? (
+              <div className="mt-6">
+                <CoursePurchasePanel course={{ id: course.id, slug: course.slug, title: course.title }} state={purchase} />
               </div>
             ) : null}
 
