@@ -66,7 +66,7 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   --arg sesConfigurationSet "$SES_CONFIGURATION_SET_ARN" \
   --arg cognitoPool "$COGNITO_POOL_ARN" '
   .Statement = (
-    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bCognitoRead")]
+    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesAccountWrite" and .Sid != "Phase5bCognitoRead")]
     + [{
       Sid: "ManageStagingMediaCors",
       Effect: "Allow",
@@ -93,15 +93,30 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
       Action: ["ses:GetEmailIdentity", "ses:GetConfigurationSet"],
       Resource: [$sesIdentity, $sesConfigurationSet]
     }, {
-      Sid: "Phase5bSesIdentityCreate",
+      Sid: "Phase5bSesIdentityManage",
       Effect: "Allow",
-      Action: ["ses:CreateEmailIdentity"],
-      Resource: $sesIdentity
+      Action: [
+        "ses:CreateEmailIdentity",
+        "ses:PutEmailIdentityConfigurationSetAttributes",
+        "ses:PutEmailIdentityDkimSigningAttributes",
+        "ses:UpdateEmailIdentityPolicy"
+      ],
+      Resource: [$sesIdentity, $sesConfigurationSet]
+    }, {
+      Sid: "Phase5bSesConfigurationSetCreate",
+      Effect: "Allow",
+      Action: ["ses:CreateConfigurationSet"],
+      Resource: $sesConfigurationSet
+    }, {
+      Sid: "Phase5bSesAccountWrite",
+      Effect: "Allow",
+      Action: ["ses:PutAccountDetails"],
+      Resource: "*"
     }]
   )
 ' "$CURRENT" > "$DESIRED"
 
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bCognitoRead"))' "$CURRENT" > "$CURRENT_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesAccountWrite" and .Sid != "Phase5bCognitoRead"))' "$CURRENT" > "$CURRENT_UNMANAGED"
 
 verify_cors_statement() {
   local file="$1"
@@ -158,14 +173,41 @@ verify_phase5b_ses_resource_read_statement() {
   ' "$file" >/dev/null
 }
 
-verify_phase5b_ses_identity_create_statement() {
+verify_phase5b_ses_identity_manage_statement() {
   local file="$1"
-  jq -e --arg identity "$SES_IDENTITY_ARN" '
-    [.Statement[] | select(.Sid == "Phase5bSesIdentityCreate")] as $matches
+  jq -e --arg identity "$SES_IDENTITY_ARN" --arg configurationSet "$SES_CONFIGURATION_SET_ARN" '
+    [.Statement[] | select(.Sid == "Phase5bSesIdentityManage")] as $matches
     | ($matches | length) == 1
     and $matches[0].Effect == "Allow"
-    and $matches[0].Action == ["ses:CreateEmailIdentity"]
-    and $matches[0].Resource == $identity
+    and (($matches[0].Action | sort) == ([
+      "ses:CreateEmailIdentity",
+      "ses:PutEmailIdentityConfigurationSetAttributes",
+      "ses:PutEmailIdentityDkimSigningAttributes",
+      "ses:UpdateEmailIdentityPolicy"
+    ] | sort))
+    and (($matches[0].Resource | sort) == ([$identity, $configurationSet] | sort))
+  ' "$file" >/dev/null
+}
+
+verify_phase5b_ses_configuration_set_create_statement() {
+  local file="$1"
+  jq -e --arg configurationSet "$SES_CONFIGURATION_SET_ARN" '
+    [.Statement[] | select(.Sid == "Phase5bSesConfigurationSetCreate")] as $matches
+    | ($matches | length) == 1
+    and $matches[0].Effect == "Allow"
+    and $matches[0].Action == ["ses:CreateConfigurationSet"]
+    and $matches[0].Resource == $configurationSet
+  ' "$file" >/dev/null
+}
+
+verify_phase5b_ses_account_write_statement() {
+  local file="$1"
+  jq -e '
+    [.Statement[] | select(.Sid == "Phase5bSesAccountWrite")] as $matches
+    | ($matches | length) == 1
+    and $matches[0].Effect == "Allow"
+    and $matches[0].Action == ["ses:PutAccountDetails"]
+    and $matches[0].Resource == "*"
   ' "$file" >/dev/null
 }
 
@@ -175,7 +217,9 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
   verify_cognito_signup_capacity_statement "$CURRENT"
   verify_phase5b_cognito_pool_statement "$CURRENT"
   verify_phase5b_ses_resource_read_statement "$CURRENT"
-  verify_phase5b_ses_identity_create_statement "$CURRENT"
+  verify_phase5b_ses_identity_manage_statement "$CURRENT"
+  verify_phase5b_ses_configuration_set_create_statement "$CURRENT"
+  verify_phase5b_ses_account_write_statement "$CURRENT"
   echo "GITHUB_DEPLOY_IAM_ALREADY_RECONCILED"
   if [[ "$ACTION" == "plan" ]]; then
     echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
@@ -184,7 +228,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
 fi
 
 if [[ "$ACTION" == "plan" ]]; then
-  echo "GITHUB_DEPLOY_IAM_PLAN change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate resource=${MEDIA_BUCKET_ARN} cognito_pool=${COGNITO_POOL_ARN}"
+  echo "GITHUB_DEPLOY_IAM_PLAN change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate,Phase5bSesAccountWrite resource=${MEDIA_BUCKET_ARN} cognito_pool=${COGNITO_POOL_ARN}"
   echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
   exit 0
 fi
@@ -208,8 +252,10 @@ verify_pass_role_statement "$VERIFIED" || { echo "ECS worker PassRole IAM verifi
 verify_cognito_signup_capacity_statement "$VERIFIED" || { echo "Cognito signup capacity read IAM verification failed." >&2; exit 1; }
 verify_phase5b_cognito_pool_statement "$VERIFIED" || { echo "Phase 5B Cognito pool IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_resource_read_statement "$VERIFIED" || { echo "Phase 5B SES read IAM verification failed." >&2; exit 1; }
-verify_phase5b_ses_identity_create_statement "$VERIFIED" || { echo "Phase 5B SES identity-create IAM verification failed." >&2; exit 1; }
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bCognitoRead"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
+verify_phase5b_ses_identity_manage_statement "$VERIFIED" || { echo "Phase 5B SES identity-manage IAM verification failed." >&2; exit 1; }
+verify_phase5b_ses_configuration_set_create_statement "$VERIFIED" || { echo "Phase 5B SES configuration-set-create IAM verification failed." >&2; exit 1; }
+verify_phase5b_ses_account_write_statement "$VERIFIED" || { echo "Phase 5B SES account-write IAM verification failed." >&2; exit 1; }
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesAccountWrite" and .Sid != "Phase5bCognitoRead"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
 cmp -s "$CURRENT_UNMANAGED" "$VERIFIED_UNMANAGED" || { echo "Unexpected unmanaged IAM policy drift detected." >&2; exit 1; }
 
 echo "GITHUB_DEPLOY_IAM_APPLY_COMPLETE resource=${MEDIA_BUCKET_ARN}"
