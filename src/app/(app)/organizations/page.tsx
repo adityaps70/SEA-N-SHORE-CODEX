@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { Clock3, Search, ShieldAlert } from 'lucide-react'
-import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { canUpgradeOrganization, isOrganizationBillingContact } from '@/features/billing/billing-access'
 import { accessRoleLabel } from '@/features/organizations/access-request-labels'
 import { organizationAccessRequestRepository } from '@/features/organizations/access-request-repository'
 import { OrganizationAccessPanel, StatusChip } from '@/features/organizations/components/organization-access-panel'
@@ -13,7 +13,7 @@ import { OrganizationCard, VerifiedMark } from '@/features/organizations/compone
 import { OrganizationLogo } from '@/features/organizations/components/organization-logo'
 import { NewOrganizationPanel } from '@/features/organizations/components/new-organization-panel'
 import { RequestAccessForm, type RequestAccessState } from '@/features/organizations/components/request-access-form'
-import { organizationManageHref } from '@/features/organizations/organization-page-profile'
+import { organizationManageHref, organizationPlanBillingHref } from '@/features/organizations/organization-page-profile'
 import { organizationRepository } from '@/features/organizations/repository'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
 
@@ -135,8 +135,18 @@ export default async function OrganizationsPage({
                           <Link href={'/organizations/' + organization.slug} className={secondaryButton} aria-label={`View ${organization.name} page`}>View page</Link>
                           <Link href={organizationManageHref(organization.slug)} className={primaryButton} aria-label={`Manage ${organization.name}`}>Manage</Link>
                         </div>
-                        {canUseCapability(access, 'billing.manage', { companyId: organization.id }) ? (
-                          <Link href={`/settings/billing/organizations/${organization.id}`} className="block text-center text-xs font-semibold text-ocean-700 hover:underline">Billing</Link>
+                        {canUpgradeOrganization(access, organization.id) ? (
+                          <Link
+                            href={organizationPlanBillingHref(organization.slug)}
+                            className="flex min-h-9 items-center justify-center rounded-lg bg-teal-600 px-3 text-xs font-bold text-white transition hover:bg-teal-700"
+                            aria-label={`Upgrade ${organization.name} to Organization Pro`}
+                          >
+                            Upgrade to Organization Pro
+                          </Link>
+                        ) : isOrganizationBillingContact(access, organization.id) ? (
+                          <Link href={organizationPlanBillingHref(organization.slug)} className="block text-center text-xs font-semibold text-ocean-700 hover:underline" aria-label={`Plan & billing for ${organization.name}`}>
+                            Plan & billing
+                          </Link>
                         ) : null}
                       </div>
                     )}

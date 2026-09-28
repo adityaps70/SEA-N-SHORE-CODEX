@@ -1,6 +1,7 @@
 import {
   BookOpenCheck,
   Bookmark,
+  Building2,
   BriefcaseBusiness,
   CalendarDays,
   Ellipsis,
@@ -22,9 +23,30 @@ import { signOut } from '@/features/auth/actions'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import { NotificationBell } from '@/features/notifications/components/notification-bell'
 import type { NetworkNotification } from '@/features/notifications/types'
+import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
 import { ActiveNavLink } from './active-nav-link'
 import { HeaderMenu, type HeaderMenuItem } from './header-menu'
 import { ViewerAvatar, type HeaderViewer } from './viewer-avatar'
+
+/** Account-menu entries for the member's organizations (at most a few; the rest are one click away). */
+export function organizationMenuItems(organizations: HeaderOrganization[], total = organizations.length): HeaderMenuItem[] {
+  if (!organizations.length) return []
+  const group = 'Your organizations'
+  return [
+    ...organizations.map((organization): HeaderMenuItem => ({
+      href: `/organizations/${organization.slug}`,
+      label: organization.name,
+      icon: <OrganizationLogo logoUrl={organization.logoUrl} size="xs" />,
+      group,
+      secondary: organization.canManage
+        ? { href: `/organizations/${organization.slug}/manage`, label: 'Manage', accessibleLabel: `Manage ${organization.name}` }
+        : undefined,
+    })),
+    ...(total > organizations.length
+      ? [{ href: '/organizations#your-pages', label: `See all ${total} organizations`, group, tone: 'link' as const }]
+      : []),
+  ]
+}
 
 /**
  * Six primary destinations fit at 1024px without clipping; everything else
@@ -39,9 +61,22 @@ const destinations = [
   { href: '/events', label: 'Events', icon: CalendarDays },
 ] as const
 
+/** An organization the member belongs to, for the account menu. */
+export type HeaderOrganization = {
+  id: string
+  slug: string
+  name: string
+  logoUrl: string | null
+  /** Any role other than plain member opens the Manage page (roles, requests, plan). */
+  canManage: boolean
+}
+
+const ORGANIZATIONS_DESCRIPTION = 'Your pages, access requests and discovery'
+
 const moreItems: HeaderMenuItem[] = [
   { href: '/activities', label: 'My Activities', description: 'Your posts, comments, applications and learning', icon: <History className="size-4" /> },
   { href: '/saved', label: 'Saved posts', description: 'Posts you saved for later', icon: <Bookmark className="size-4" /> },
+  { href: '/organizations', label: 'Organizations', description: ORGANIZATIONS_DESCRIPTION, icon: <Building2 className="size-4" /> },
   { href: '/community', label: 'Community', description: 'Professional groups — opening soon', icon: <MessagesSquare className="size-4" />, badge: 'Preview' },
 ]
 
@@ -61,15 +96,22 @@ export function AppHeader({
   messagingUnreadCount = 0,
   canAccessAdmin = false,
   viewer = { name: 'Member', avatarUrl: null },
+  organizations = [],
+  organizationCount = organizations.length,
 }: {
   recentNotifications: NetworkNotification[]
   unreadCount: number
   messagingUnreadCount?: number
   canAccessAdmin?: boolean
   viewer?: HeaderViewer
+  /** The first few organizations the member belongs to (owners and administrators first). */
+  organizations?: HeaderOrganization[]
+  organizationCount?: number
 }) {
   const accountItems: HeaderMenuItem[] = [
     { href: '/profile', label: 'Profile', description: 'View and edit your Maritime Passport', icon: <UserRound className="size-4" /> },
+    { href: '/organizations', label: 'Organizations', description: ORGANIZATIONS_DESCRIPTION, icon: <Building2 className="size-4" /> },
+    ...organizationMenuItems(organizations, organizationCount),
     ...(canAccessAdmin
       ? [{ href: '/admin', label: 'Admin', description: 'Platform administration', icon: <ShieldCheck className="size-4" /> }]
       : []),
@@ -143,6 +185,7 @@ export function AppHeader({
           <HeaderMenu
             label="Account menu"
             items={accountItems}
+            menuWidthClassName="w-72"
             showChevron
             triggerClassName="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-1.5 text-navy-900 transition hover:bg-mist-50"
             activeTriggerClassName="bg-ocean-50 text-ocean-700"

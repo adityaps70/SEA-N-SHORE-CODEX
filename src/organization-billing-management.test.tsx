@@ -12,11 +12,15 @@ function source(path: string) {
 describe('organization billing management experience', () => {
   it('shows billing-management links only for organizations the member owns or administers', () => {
     const page = source('src/app/(app)/settings/billing/page.tsx')
-
     expect(page).toContain('listUserOrganizations')
-    expect(page).toContain('canManageOrganizationBilling')
-    expect(page).toContain('/settings/billing/organizations/')
-    expect(page).toContain('Get Organization Pro')
+    expect(page).toContain('organizationProCandidates')
+
+    // Round 6: the list (owner/administrator organizations only) lives in the chooser.
+    const path = source('src/features/billing/organization-pro-path.ts')
+    expect(path).toContain("membership.role !== 'owner' && membership.role !== 'administrator'")
+    expect(path).toContain('/settings/billing/organizations/')
+    const chooser = source('src/features/billing/components/organization-pro-chooser.tsx')
+    expect(chooser).toContain('Upgrade to Organization Pro')
 
     const rules = source('src/features/billing/billing-access.ts')
     expect(rules).toContain("membership?.role === 'owner' || membership?.role === 'administrator'")

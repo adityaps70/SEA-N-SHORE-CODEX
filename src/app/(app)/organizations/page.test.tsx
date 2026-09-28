@@ -100,6 +100,39 @@ describe('/organizations hub', () => {
     expect(screen.queryByRole('form', { name: 'Register a new organization' })).not.toBeInTheDocument()
   })
 
+  it('gives owners of a free organization an Upgrade button to its Plan & billing', async () => {
+    render(await OrganizationsPage({ searchParams: Promise.resolve({}) }))
+
+    const organizations = screen.getByRole('region', { name: 'Your pages' })
+    expect(within(organizations).getByRole('link', { name: 'Upgrade Oceanic Shipping to Organization Pro' }))
+      .toHaveAttribute('href', '/organizations/oceanic/manage?section=billing')
+  })
+
+  it('shows Plan & billing instead of Upgrade once the organization has Organization Pro', async () => {
+    mocks.getAccessContext.mockResolvedValue({
+      personalPlan: 'free', personalEntitlements: [], verifications: [], accountActive: true,
+      organizationMemberships: [{ companyId: 'c1', plan: 'organization_pro', role: 'owner', verified: true, entitlements: [] }],
+    })
+    render(await OrganizationsPage({ searchParams: Promise.resolve({}) }))
+
+    const organizations = screen.getByRole('region', { name: 'Your pages' })
+    expect(within(organizations).getByText('Organization Pro')).toBeInTheDocument()
+    expect(within(organizations).queryByRole('link', { name: /Upgrade/ })).not.toBeInTheDocument()
+    expect(within(organizations).getByRole('link', { name: 'Plan & billing for Oceanic Shipping' })).toHaveAttribute('href', '/organizations/oceanic/manage?section=billing')
+  })
+
+  it('does not offer the upgrade to members who cannot buy', async () => {
+    mocks.getAccessContext.mockResolvedValue({
+      personalPlan: 'free', personalEntitlements: [], verifications: [], accountActive: true,
+      organizationMemberships: [{ companyId: 'c1', plan: 'free', role: 'recruiter', verified: true, entitlements: [] }],
+    })
+    mocks.listUserOrganizations.mockResolvedValue([{ id: 'c1', slug: 'oceanic', name: 'Oceanic Shipping', verified: true, role: 'recruiter' }])
+    render(await OrganizationsPage({ searchParams: Promise.resolve({}) }))
+
+    const organizations = screen.getByRole('region', { name: 'Your pages' })
+    expect(within(organizations).queryByRole('link', { name: /Upgrade|Plan & billing/ })).not.toBeInTheDocument()
+  })
+
   it('searches once and lets the member request access from each result', async () => {
     mocks.searchCompanies.mockResolvedValue([
       { id: 'c1', slug: 'oceanic', name: 'Oceanic Shipping', companyType: 'Ship manager', verified: true, website: null },

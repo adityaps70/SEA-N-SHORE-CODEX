@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Wordmark } from '@/components/brand/wordmark'
 import { getVerifiedUser } from '@/features/auth/queries'
 import { NewsletterFooterSignup } from '@/features/newsletter/components/newsletter-footer-signup'
-import { CONTENT_OWNERSHIP_NOTE, FOOTER_LINK_GROUPS, FooterSocialLinks, copyrightLine } from './app-footer'
+import { CONTENT_OWNERSHIP_NOTE, FOOTER_LINK_GROUPS, FooterSocialLinks, OPERATOR_LINE, copyrightLine } from './app-footer'
 
 /**
  * Footer for signed-out public and marketing pages. Same link set as the app
@@ -52,6 +52,7 @@ export async function PublicFooter() {
 
         <div className="mt-8 border-t border-mist-100 pt-5 text-xs text-muted">
           <p>{copyrightLine()}</p>
+          <p className="mt-1">{OPERATOR_LINE}</p>
           <p className="mt-1 max-w-3xl leading-5">{CONTENT_OWNERSHIP_NOTE}</p>
         </div>
       </div>

@@ -1,4 +1,6 @@
+import type { AccessContext, PlanCode } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
+import { canUpgradeOrganization } from '@/features/billing/billing-access'
 import { organizationRepository } from '@/features/organizations/repository'
 import type { OrganizationApplicationStatus, UserOrganizationState } from '@/features/organizations/types'
 import { organizationLinkRepository, type MemberOrganizationShortcut } from './organization-link-repository'
@@ -11,9 +13,24 @@ export type HomeOrganizationApplication = {
   linkLabel: string
 }
 
+/** A Home shortcut with the organization's plan, for the "Free plan · Upgrade" line. */
+export type HomeOrganizationShortcut = MemberOrganizationShortcut & {
+  plan: PlanCode
+  /** Owner or administrator of a verified organization on the free plan. */
+  canUpgrade: boolean
+}
+
 export type HomeOrganizationShortcuts = {
-  memberships: MemberOrganizationShortcut[]
+  memberships: HomeOrganizationShortcut[]
   application: HomeOrganizationApplication | null
+}
+
+export function withOrganizationPlans(memberships: readonly MemberOrganizationShortcut[], access: AccessContext | null): HomeOrganizationShortcut[] {
+  return memberships.map((organization) => ({
+    ...organization,
+    plan: access?.organizationMemberships.find((entry) => entry.companyId === organization.id)?.plan ?? 'free',
+    canUpgrade: access ? canUpgradeOrganization(access, organization.id) : false,
+  }))
 }
 
 export type HomeRailData = {
@@ -62,7 +79,9 @@ export function createHomeRailQueries(dependencies: HomeRailDependencies) {
 
     return {
       verified: Boolean(access?.verifications.length),
-      organizations,
+      organizations: organizations
+        ? { memberships: withOrganizationPlans(organizations.memberships, access), application: organizations.application }
+        : null,
     }
   }
 

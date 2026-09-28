@@ -22,12 +22,13 @@ describe('PublicFooter', () => {
     render(await PublicFooter())
 
     const nav = screen.getByRole('navigation', { name: 'Footer' })
-    for (const [name, href] of [['About', '/about'], ['Jobs', '/jobs'], ['Learn', '/learn'], ['Events', '/events'], ['Community', '/community'], ['Contact & support', '/help'], ['Privacy Policy', '/privacy'], ['Terms', '/terms'], ['Copyright & IP', '/copyright'], ['Newsletter', '/newsletter']]) {
+    for (const [name, href] of [['About', '/about'], ['Jobs', '/jobs'], ['Learn', '/learn'], ['Events', '/events'], ['Community', '/community'], ['Help', '/help'], ['Contact us', '/contact'], ['Pricing', '/pricing'], ['Refunds & cancellation', '/refunds'], ['Shipping & delivery', '/shipping'], ['Privacy Policy', '/privacy'], ['Terms', '/terms'], ['Copyright & IP', '/copyright'], ['Newsletter', '/newsletter']]) {
       expect(within(nav).getByRole('link', { name })).toHaveAttribute('href', href)
     }
     expect(within(nav).queryByRole('link', { name: 'Your data & privacy' })).not.toBeInTheDocument()
     expect(screen.getByRole('form', { name: 'Newsletter sign-up' })).toBeInTheDocument()
     expect(screen.getByText(/All rights reserved/)).toBeInTheDocument()
+    expect(screen.getByText('Sea N Shore is operated by Beaufort Marine Services LLP · Navi Mumbai, India')).toBeInTheDocument()
   })
 
   it('adds the data and privacy controls link for signed-in members', async () => {

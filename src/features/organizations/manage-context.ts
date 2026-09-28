@@ -1,4 +1,5 @@
 import { canUseCapability, type AccessContext } from '@/features/access/policy'
+import { isOrganizationBillingContact } from '@/features/billing/billing-access'
 import { accessRoleLabel } from './access-request-labels'
 import { organizationAccessRequestRepository } from './access-request-repository'
 
@@ -15,6 +16,7 @@ export async function loadManageShellContext(userId: string, companyId: string, 
     summary: membership
       ? `${accessRoleLabel(membership.role)} · ${membership.plan === 'organization_pro' ? 'Organization Pro' : 'Free plan'}`
       : null,
+    showBilling: isOrganizationBillingContact(access, companyId),
     locked: {
       team: !canUseCapability(access, 'organization.team', { companyId }),
       branding: !canUseCapability(access, 'organization.branding', { companyId }),

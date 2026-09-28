@@ -44,14 +44,27 @@ describe('footer links', () => {
     const hrefs = links.map((link) => link.href)
     expect(new Set(hrefs).size).toBe(hrefs.length)
     expect(new Set(links.map((link) => link.label)).size).toBe(links.length)
-    for (const href of ['/about', '/jobs', '/learn', '/events', '/community', '/help', '/privacy', '/terms', '/copyright', '/newsletter', '/settings#your-data']) {
+    for (const href of ['/about', '/jobs', '/learn', '/events', '/community', '/help', '/privacy', '/terms', '/copyright', '/newsletter', '/settings#your-data', '/contact', '/pricing', '/refunds', '/shipping']) {
       expect(hrefs).toContain(href)
     }
   })
 
-  it('sends Contact & support to /help and data controls to the Settings data section', () => {
+  it('links the payment-gateway policy pages for everyone, signed in or not', () => {
+    for (const signedIn of [true, false]) {
+      const links = footerLinks({ signedIn })
+      const byLabel = (label: string) => links.find((link) => link.label === label)?.href
+      expect(byLabel('Contact us')).toBe('/contact')
+      expect(byLabel('Pricing')).toBe('/pricing')
+      expect(byLabel('Refunds & cancellation')).toBe('/refunds')
+      expect(byLabel('Shipping & delivery')).toBe('/shipping')
+      expect(byLabel('Terms')).toBe('/terms')
+      expect(byLabel('Privacy Policy')).toBe('/privacy')
+    }
+  })
+
+  it('sends Help to /help and data controls to the Settings data section', () => {
     const links = footerLinks({ signedIn: true })
-    expect(links.find((link) => link.label === 'Contact & support')?.href).toBe('/help')
+    expect(links.find((link) => link.label === 'Help')?.href).toBe('/help')
     const data = links.find((link) => link.label === 'Your data & privacy')
     expect(data?.href).toBe('/settings#your-data')
     expect(readFileSync(join(appDir, '(app)/settings/page.tsx'), 'utf8')).toContain('id="your-data"')
@@ -61,9 +74,13 @@ describe('footer links', () => {
     expect(footerLinks({ signedIn: false }).map((link) => link.href)).not.toContain('/settings#your-data')
   })
 
-  it('renders no social links until real URLs are configured', () => {
-    expect(Object.values(SOCIAL_LINKS).every((value) => value === '')).toBe(true)
-    expect(configuredSocialLinks()).toEqual([])
+  it('renders only the configured official social profiles, never empty or invalid ones', () => {
+    expect(SOCIAL_LINKS.linkedin).toBe('')
+    expect(configuredSocialLinks()).toEqual([
+      { key: 'instagram', href: 'https://www.instagram.com/seaandshore.in', label: 'Instagram' },
+      { key: 'facebook', href: 'https://www.facebook.com/seaandshore.in', label: 'Facebook' },
+      { key: 'x', href: 'https://x.com/inseaandshore', label: 'X' },
+    ])
     expect(configuredSocialLinks({ linkedin: 'https://www.linkedin.com/company/example', instagram: 'not-a-url', youtube: '', facebook: '', x: '' }))
       .toEqual([{ key: 'linkedin', href: 'https://www.linkedin.com/company/example', label: 'LinkedIn' }])
   })

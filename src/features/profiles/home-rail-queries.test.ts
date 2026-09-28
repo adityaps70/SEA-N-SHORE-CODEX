@@ -10,8 +10,8 @@ import { createHomeRailQueries, homeOrganizationApplication } from './home-rail-
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
 
-function access(verifications: AccessContext['verifications']): AccessContext {
-  return { personalPlan: 'free', personalEntitlements: [], verifications, organizationMemberships: [], accountActive: true }
+function access(verifications: AccessContext['verifications'], organizationMemberships: AccessContext['organizationMemberships'] = []): AccessContext {
+  return { personalPlan: 'free', personalEntitlements: [], verifications, organizationMemberships, accountActive: true }
 }
 
 function application(status: 'pending' | 'changes_requested' | 'rejected' | 'suspended' | 'approved', companyId = 'c-1'): UserOrganizationState {
@@ -46,8 +46,26 @@ describe('home rail queries', () => {
 
     await expect(queries.getHomeRailData(USER_ID)).resolves.toEqual({
       verified: true,
-      organizations: { memberships: [membership], application: null },
+      organizations: { memberships: [{ ...membership, plan: 'free', canUpgrade: false }], application: null },
     })
+  })
+
+  it('adds each organization plan and whether this member can upgrade it', async () => {
+    const other = { ...membership, id: 'c-3', slug: 'harbour-crew', name: 'Harbour Crew', role: 'recruiter' as const }
+    const queries = createHomeRailQueries({
+      getAccessContext: vi.fn(async () => access([], [
+        { companyId: 'c-2', plan: 'free', role: 'owner', verified: true, entitlements: [] },
+        { companyId: 'c-3', plan: 'organization_pro', role: 'recruiter', verified: true, entitlements: [] },
+      ])),
+      listMemberOrganizations: vi.fn(async () => [membership, other]),
+      getUserOrganizationState: vi.fn(async () => ({ kind: 'none' as const })),
+    })
+
+    const data = await queries.getHomeRailData(USER_ID)
+    expect(data.organizations?.memberships.map((entry) => [entry.id, entry.plan, entry.canUpgrade])).toEqual([
+      ['c-2', 'free', true],
+      ['c-3', 'organization_pro', false],
+    ])
   })
 
   it('degrades to unverified and a load failure instead of breaking Home', async () => {

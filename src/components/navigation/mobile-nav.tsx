@@ -1,5 +1,6 @@
 import {
   BookOpenCheck,
+  Building2,
   BriefcaseBusiness,
   CalendarDays,
   Ellipsis,
@@ -32,6 +33,7 @@ export function MobileNav({ canAccessAdmin = false }: { canAccessAdmin?: boolean
     { href: '/events', label: 'Events', icon: <CalendarDays className="size-4" /> },
     { href: '/activities', label: 'My Activities', icon: <History className="size-4" /> },
     { href: '/saved', label: 'Saved posts', icon: <Bookmark className="size-4" /> },
+    { href: '/organizations', label: 'Organizations', description: 'Your pages, access requests and discovery', icon: <Building2 className="size-4" /> },
     { href: '/community', label: 'Community', badge: 'Preview', icon: <MessagesSquare className="size-4" /> },
     ...(canAccessAdmin ? [{ href: '/admin', label: 'Admin', icon: <ShieldCheck className="size-4" /> }] : []),
     { href: '/settings', label: 'Settings', icon: <Settings className="size-4" /> },
