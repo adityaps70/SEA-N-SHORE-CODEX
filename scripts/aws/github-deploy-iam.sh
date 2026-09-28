@@ -26,9 +26,14 @@ command -v git >/dev/null 2>&1 || { echo "git is required." >&2; exit 1; }
 [[ -f "$ACTION_FILE" ]] || { echo "Missing IAM action guard." >&2; exit 1; }
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
-case "$ACTION" in plan|apply-once) ;;
+case "$ACTION" in plan|apply-once|apply-production-access-once) ;;
   *) echo "Unsupported deploy IAM action: $ACTION" >&2; exit 1 ;;
 esac
+
+TEMP_PRODUCTION_ACCESS=false
+if [[ "$ACTION" == "apply-production-access-once" ]]; then
+  TEMP_PRODUCTION_ACCESS=true
+fi
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 [[ "$ACCOUNT_ID" == "$EXPECTED_ACCOUNT" ]] || { echo "Refusing unexpected AWS account: $ACCOUNT_ID" >&2; exit 1; }
@@ -64,9 +69,10 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
   --argjson passRoles "$PASS_ROLE_RESOURCES" \
   --arg sesIdentity "$SES_IDENTITY_ARN" \
   --arg sesConfigurationSet "$SES_CONFIGURATION_SET_ARN" \
-  --arg cognitoPool "$COGNITO_POOL_ARN" '
+  --arg cognitoPool "$COGNITO_POOL_ARN" \
+  --argjson temporaryProductionAccess "$TEMP_PRODUCTION_ACCESS" '
   .Statement = (
-    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bCognitoRead")]
+    [.Statement[] | select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead")]
     + [{
       Sid: "ManageStagingMediaCors",
       Effect: "Allow",
@@ -112,10 +118,16 @@ jq --arg resource "$MEDIA_BUCKET_ARN" \
       Action: ["ses:CreateConfigurationSet"],
       Resource: $sesConfigurationSet
     }]
+    + (if $temporaryProductionAccess then [{
+      Sid: "Phase5bSesProductionAccessRequest",
+      Effect: "Allow",
+      Action: ["ses:PutAccountDetails"],
+      Resource: "*"
+    }] else [] end)
   )
 ' "$CURRENT" > "$DESIRED"
 
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bCognitoRead"))' "$CURRENT" > "$CURRENT_UNMANAGED"
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead"))' "$CURRENT" > "$CURRENT_UNMANAGED"
 
 verify_cors_statement() {
   local file="$1"
@@ -209,6 +221,24 @@ verify_phase5b_ses_configuration_set_create_statement() {
   ' "$file" >/dev/null
 }
 
+verify_phase5b_ses_production_access_request_statement() {
+  local file="$1"
+  jq -e '
+    [.Statement[] | select(.Sid == "Phase5bSesProductionAccessRequest")] as $matches
+    | ($matches | length) == 1
+    and $matches[0].Effect == "Allow"
+    and $matches[0].Action == ["ses:PutAccountDetails"]
+    and $matches[0].Resource == "*"
+  ' "$file" >/dev/null
+}
+
+verify_no_phase5b_ses_production_access_request_statement() {
+  local file="$1"
+  jq -e '
+    [.Statement[] | select(.Sid == "Phase5bSesProductionAccessRequest")] | length == 0
+  ' "$file" >/dev/null
+}
+
 if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
   verify_cors_statement "$CURRENT"
   verify_pass_role_statement "$CURRENT"
@@ -218,6 +248,11 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
   verify_phase5b_ses_identity_create_statement "$CURRENT"
   verify_phase5b_ses_identity_manage_statement "$CURRENT"
   verify_phase5b_ses_configuration_set_create_statement "$CURRENT"
+  if [[ "$TEMP_PRODUCTION_ACCESS" == true ]]; then
+    verify_phase5b_ses_production_access_request_statement "$CURRENT"
+  else
+    verify_no_phase5b_ses_production_access_request_statement "$CURRENT"
+  fi
   echo "GITHUB_DEPLOY_IAM_ALREADY_RECONCILED"
   if [[ "$ACTION" == "plan" ]]; then
     echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
@@ -226,7 +261,7 @@ if cmp -s <(jq -S . "$CURRENT") <(jq -S . "$DESIRED"); then
 fi
 
 if [[ "$ACTION" == "plan" ]]; then
-  echo "GITHUB_DEPLOY_IAM_PLAN change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate resource=${MEDIA_BUCKET_ARN} cognito_pool=${COGNITO_POOL_ARN}"
+  echo "GITHUB_DEPLOY_IAM_PLAN action=${ACTION} change_required=ManageStagingMediaCors,PassEcsRoles,ReviewCognitoSignupCapacity,Phase5bCognitoRead,Phase5bSesResourceRead,Phase5bSesIdentityCreate,Phase5bSesIdentityManage,Phase5bSesConfigurationSetCreate,Phase5bSesProductionAccessRequest resource=${MEDIA_BUCKET_ARN} cognito_pool=${COGNITO_POOL_ARN}"
   echo "GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE"
   exit 0
 fi
@@ -253,7 +288,12 @@ verify_phase5b_ses_resource_read_statement "$VERIFIED" || { echo "Phase 5B SES r
 verify_phase5b_ses_identity_create_statement "$VERIFIED" || { echo "Phase 5B SES identity-create IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_identity_manage_statement "$VERIFIED" || { echo "Phase 5B SES identity-manage IAM verification failed." >&2; exit 1; }
 verify_phase5b_ses_configuration_set_create_statement "$VERIFIED" || { echo "Phase 5B SES configuration-set-create IAM verification failed." >&2; exit 1; }
-jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bCognitoRead"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
+if [[ "$TEMP_PRODUCTION_ACCESS" == true ]]; then
+  verify_phase5b_ses_production_access_request_statement "$VERIFIED" || { echo "Phase 5B SES production-access request IAM verification failed." >&2; exit 1; }
+else
+  verify_no_phase5b_ses_production_access_request_statement "$VERIFIED" || { echo "Phase 5B SES production-access request permission was not removed." >&2; exit 1; }
+fi
+jq -S '.Statement |= map(select(.Sid != "ManageStagingMediaCors" and .Sid != "PassEcsRoles" and .Sid != "ReviewCognitoSignupCapacity" and .Sid != "Phase5bSesResourceRead" and .Sid != "Phase5bSesIdentityCreate" and .Sid != "Phase5bSesIdentityManage" and .Sid != "Phase5bSesConfigurationSetCreate" and .Sid != "Phase5bSesProductionAccessRequest" and .Sid != "Phase5bCognitoRead"))' "$VERIFIED" > "$VERIFIED_UNMANAGED"
 cmp -s "$CURRENT_UNMANAGED" "$VERIFIED_UNMANAGED" || { echo "Unexpected unmanaged IAM policy drift detected." >&2; exit 1; }
 
 echo "GITHUB_DEPLOY_IAM_APPLY_COMPLETE resource=${MEDIA_BUCKET_ARN}"
