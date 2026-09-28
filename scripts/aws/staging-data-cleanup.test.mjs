@@ -35,6 +35,7 @@ assert.match(script, /STAGING_DATA_CLEANUP_PLAN_VERIFIED=true/)
 assert.match(script, /STAGING_DATA_CLEANUP_APPLY_VERIFIED=true/)
 assert.match(script, /COMPLETED_LEGACY_CONVERSIONS_PRESERVED/)
 assert.doesNotMatch(script, /delete from public\.profiles/i, 'cleanup must retain an anonymized profile row rather than hard-delete profiles')
+assert.doesNotMatch(script, /from lateral/i, 'cleanup SQL must not use an UPDATE target through a lateral FROM reference')
 assert.match(script, /admin-delete-user/)
 
 assert.match(workflow, /feat\/aws-native-phase-0-1/)
