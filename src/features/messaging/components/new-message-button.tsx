@@ -1,6 +1,6 @@
 'use client'
 
-import { MessageSquarePlus } from 'lucide-react'
+import { MessageSquarePlus, Pencil } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState, useTransition } from 'react'
 import { NewMessageDialog, type NewMessageSelection } from './new-message-dialog'
@@ -14,10 +14,13 @@ import { NewMessageDialog, type NewMessageSelection } from './new-message-dialog
 export function NewMessageButton({
   activeConversationId = null,
   debounceMs,
+  variant = 'default',
 }: {
   /** Conversation already open on the page; choosing it again just closes the picker. */
   activeConversationId?: string | null
   debounceMs?: number
+  /** `icon`: the phone page bar's pencil button. */
+  variant?: 'default' | 'icon'
 } = {}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -50,15 +53,28 @@ export function NewMessageButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
-      >
-        <MessageSquarePlus aria-hidden="true" className="size-4" /> New Message
-      </button>
+      {variant === 'icon' ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-label="Write a new message"
+          className="grid size-11 cursor-pointer place-items-center rounded-full text-navy-950 transition hover:bg-mist-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+        >
+          <Pencil aria-hidden="true" className="size-6" />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+        >
+          <MessageSquarePlus aria-hidden="true" className="size-4" /> New Message
+        </button>
+      )}
       <NewMessageDialog
         open={open}
         onClose={close}

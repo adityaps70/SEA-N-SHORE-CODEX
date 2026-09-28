@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProfileActionState } from '../actions'
@@ -376,5 +376,95 @@ describe('OnboardingForm organization registration round trip', () => {
     expect(screen.getByRole('textbox', { name: 'Location' })).toHaveValue('Kochi, India')
     expect(document.querySelector<HTMLInputElement>('input[name="currentCompanyId"]')?.value).toBe('55555555-5555-4555-8555-555555555555')
     expect(window.sessionStorage.getItem('sns:onboarding-draft')).toBeNull()
+  })
+})
+
+describe('OnboardingForm on phones (one step at a time below md)', () => {
+  function phoneSteps(container: HTMLElement) {
+    const persona = screen.getByRole('group', { name: 'Which best describes you?' })
+    const intents = screen.queryByRole('group', { name: 'What are you here to do?' })
+    const basics = screen.queryByRole('group', { name: 'Your profile basics' })
+    const submitRow = screen.getByRole('button', { name: 'Complete profile' }).parentElement as HTMLElement
+    const progress = container.querySelector('[data-onboarding-progress]') as HTMLElement
+    return { persona, intents, basics, submitRow, progress }
+  }
+
+  it('shows a progress bar and moves through the steps with Continue and Back', () => {
+    const { container } = render(<OnboardingForm initialFullName="Asha Singh" />)
+    let steps = phoneSteps(container)
+
+    expect(steps.progress).toHaveClass('md:hidden')
+    const bar = within(steps.progress).getByRole('progressbar', { name: 'Profile setup progress' })
+    expect(bar).toHaveAttribute('aria-valuenow', '1')
+    expect(bar).toHaveAttribute('aria-valuemax', '3')
+    expect(within(steps.progress).getByText(/Step 1 of 3/)).toBeInTheDocument()
+    expect(within(steps.progress).queryByRole('button', { name: 'Back' })).not.toBeInTheDocument()
+    expect(steps.persona).not.toHaveClass('max-md:hidden')
+    expect(steps.submitRow).toHaveClass('max-md:hidden')
+
+    const continueToGoals = within(steps.persona).getByRole('button', { name: 'Continue' })
+    expect(continueToGoals).toHaveClass('md:hidden')
+    expect(continueToGoals).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    expect(continueToGoals).toBeEnabled()
+    fireEvent.click(continueToGoals)
+
+    steps = phoneSteps(container)
+    expect(within(steps.progress).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2')
+    expect(steps.persona).toHaveClass('max-md:hidden')
+    expect(steps.intents).not.toHaveClass('max-md:hidden')
+    expect(steps.basics).toHaveClass('max-md:hidden')
+
+    fireEvent.click(within(steps.intents as HTMLElement).getByRole('button', { name: 'Continue' }))
+    steps = phoneSteps(container)
+    expect(within(steps.progress).getByText(/Step 3 of 3/)).toBeInTheDocument()
+    expect(steps.intents).toHaveClass('max-md:hidden')
+    expect(steps.basics).not.toHaveClass('max-md:hidden')
+    expect(steps.submitRow).not.toHaveClass('max-md:hidden')
+
+    fireEvent.click(within(steps.progress).getByRole('button', { name: 'Back' }))
+    steps = phoneSteps(container)
+    expect(within(steps.progress).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '2')
+    expect(steps.intents).not.toHaveClass('max-md:hidden')
+    fireEvent.click(within(steps.progress).getByRole('button', { name: 'Back' }))
+    expect(phoneSteps(container).persona).not.toHaveClass('max-md:hidden')
+    // Answers survive moving between steps.
+    expect(screen.getByRole('button', { name: 'Seafarer' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps every step in the one form so all answers are submitted', async () => {
+    const { container } = render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    fireEvent.click(screen.getByRole('button', { name: /Find jobs/i }))
+    const form = container.querySelector('form') as HTMLFormElement
+    const data = new FormData(form)
+    expect(data.get('persona')).toBe('seafarer')
+    expect(data.get('profileIntents')).toBe(JSON.stringify(['find_jobs']))
+    expect(data.get('fullName')).toBe('Asha Singh')
+  })
+
+  it('jumps to the step with the first rejected field after a failed submit', async () => {
+    actionMocks.completeActivation.mockResolvedValueOnce({
+      revision: 1,
+      fieldErrors: { slug: ['That username is already in use. Choose a different username and try again.'] },
+      values: { persona: 'seafarer', profileIntents: JSON.stringify(['network']), fullName: 'Asha Singh', slug: 'asha', contactVisibility: 'members' },
+    })
+    const { container } = render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Seafarer' }))
+    fireEvent.submit(container.querySelector('form') as HTMLFormElement)
+
+    await screen.findByText(/That username is already in use/, { selector: 'li, p, span, a' })
+    await waitFor(() => expect(within(phoneSteps(container).progress).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '3'))
+    expect(phoneSteps(container).basics).not.toHaveClass('max-md:hidden')
+  })
+
+  it('opens the organization search full screen on phones', () => {
+    render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Shore Professional' }))
+    const combobox = screen.getByRole('combobox', { name: 'Current organisation' })
+    fireEvent.pointerDown(combobox)
+    const sheet = combobox.closest('[data-phone-fullscreen="true"]') as HTMLElement
+    expect(sheet).not.toBeNull()
+    expect(sheet).toHaveClass('max-md:fixed', 'max-md:inset-0')
   })
 })

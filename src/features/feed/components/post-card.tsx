@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { MessageCircle, X } from 'lucide-react'
+import { Globe, MessageCircle, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
@@ -9,8 +9,11 @@ import { followProfile, unfollowProfile } from '@/features/network/actions'
 import { deletePost, setPostHidden, setPostReaction, setPostSaved } from '../actions'
 import {
   EMPTY_REACTION_SUMMARY,
+  POST_REACTIONS,
+  POST_REACTION_META,
   reactionCount,
   type FeedAuthor,
+  type FeedComment,
   type FeedMention,
   type FeedOrganization,
   type FeedPost,
@@ -18,7 +21,7 @@ import {
   type PostReactionType,
   type ReactionSummary,
 } from '../types'
-import { AuthorAvatarLink, OrganizationLogoLink, publishedAsHref } from './author-avatar'
+import { AuthorAvatarLink, OrganizationLogoLink, initials, publishedAsHref } from './author-avatar'
 import { CommentThread } from './comment-thread'
 import { EditPostDialog } from './edit-post-dialog'
 import { FeedDialog } from './feed-dialog'
@@ -151,7 +154,50 @@ function PostNotice({ notice, onDismiss }: { notice: FeedNotice; onDismiss(): vo
   )
 }
 
-export function PostCard({ post, detail = false, readOnly = false }: { post: FeedPost; detail?: boolean; readOnly?: boolean }) {
+/** The comment the phone feed previews under a post: the newest top-level comment, as the thread shows first. */
+export function topComment(comments: FeedComment[]) {
+  const roots = comments.filter((comment) => !comment.parentCommentId && !comment.deleted)
+  return roots[roots.length - 1] ?? null
+}
+
+/** Phone feed: one comment under the post, as a bubble that opens the post. */
+function TopCommentPreview({ postId, comment }: { postId: string; comment: FeedComment }) {
+  return (
+    <Link
+      href={`/posts/${postId}#comment-${comment.id}`}
+      aria-label={`Comment by ${comment.author.fullName}: ${comment.body.slice(0, 80)}. Open the post`}
+      data-testid="top-comment-preview"
+      className="flex items-start gap-2.5 px-4 pb-3 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500 md:hidden"
+    >
+      <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-[11px] font-semibold text-navy-950">
+        {comment.author.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- signed profile photo URLs are short-lived
+          <img src={comment.author.avatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+        ) : <span aria-hidden="true">{initials(comment.author.fullName)}</span>}
+      </span>
+      <span className="min-w-0 rounded-2xl bg-mist-100 px-3 py-2">
+        <span className="block truncate text-[13px] font-semibold text-navy-950">{comment.author.fullName}</span>
+        <span className="line-clamp-2 break-words text-sm leading-5 text-ink [overflow-wrap:anywhere]">{comment.body}</span>
+      </span>
+    </Link>
+  )
+}
+
+export function PostCard({
+  post,
+  detail = false,
+  readOnly = false,
+  flushOnPhones = false,
+}: {
+  post: FeedPost
+  detail?: boolean
+  readOnly?: boolean
+  /**
+   * Phone layout of the Home feed and the post page: a square edge-to-edge card without side
+   * borders, and "+ Follow" in the header. Profile and organization post lists keep cards.
+   */
+  flushOnPhones?: boolean
+}) {
   const [canonicalPost, setCanonicalPost] = useState(post)
   const [reaction, setReaction] = useState<PostReactionType | null>(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
   const [summary, setSummary] = useState<ReactionSummary>(() => initialSummary(post))
@@ -264,6 +310,20 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
     })
   }
 
+  function followAuthor() {
+    if (readOnly || pending) return
+    setNotice(null)
+    startTransition(async () => {
+      const result = await followProfile(post.author.id)
+      if (!result.ok) {
+        setNotice({ text: result.error, tone: 'error' })
+        return
+      }
+      setFollowing(true)
+      setNotice({ text: `You are now following ${post.author.fullName}.`, tone: 'success' })
+    })
+  }
+
   function removePost() {
     if (readOnly || pending) return
     setDeleteError('')
@@ -278,9 +338,11 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
     })
   }
 
+  const cardShape = flushOnPhones ? 'max-md:rounded-none max-md:border-x-0 max-md:shadow-none' : ''
+
   if (deleted) {
     return (
-      <Card className="border border-mist-100">
+      <Card className={`border border-mist-100 ${cardShape}`}>
         <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-4 text-sm text-navy-900 sm:px-5">
           <span className="font-semibold">Post deleted.</span>
           {post.viewerOwns ? (
@@ -298,7 +360,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
 
   if (hidden) {
     return (
-      <Card className="border border-mist-100">
+      <Card className={`border border-mist-100 ${cardShape}`}>
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
           <div role="status" className="min-w-0">
             <p className="text-sm font-semibold text-navy-950">Post hidden</p>
@@ -333,9 +395,13 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
     : { id: post.id, authorName: displayName, body }
   const canRepost = !isRepost || Boolean(post.repostOf)
   const totalReactions = reactionCount(summary)
+  // Phones: "+ Follow" in the header for people the viewer does not follow yet (organizations are followed on their page).
+  const canFollow = flushOnPhones && !readOnly && !isOwner && !organization && post.viewerFollowsAuthor !== undefined && !following
+  const previewComment = !detail && !readOnly ? topComment(post.comments) : null
+  const activeReactions = POST_REACTIONS.filter((type) => summary[type] > 0)
 
   return (
-    <Card className="overflow-visible border border-mist-100">
+    <Card className={`overflow-visible border border-mist-100 ${cardShape}`}>
       <article aria-labelledby={`post-author-${post.id}`}>
         <header className="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
           {organization
@@ -359,10 +425,26 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
                   : isOwner ? 'Organization · Posted by you' : 'Organization'
                 : authorContext(post.author)}
             </p>
-            <time suppressHydrationWarning dateTime={post.createdAt} title={new Date(post.createdAt).toISOString()} className="mt-1 block text-xs text-muted">
-              {relativeTime(post.createdAt)}
-            </time>
+            <p className="mt-1 flex items-center gap-1 text-xs text-muted">
+              <time suppressHydrationWarning dateTime={post.createdAt} title={new Date(post.createdAt).toISOString()}>
+                {relativeTime(post.createdAt)}
+              </time>
+              <span aria-hidden="true" className="md:hidden">·</span>
+              <Globe role="img" aria-label="Visible to the Sea N Shore community" className="size-3.5 md:hidden" />
+            </p>
           </div>
+          {canFollow ? (
+            <button
+              type="button"
+              onClick={followAuthor}
+              disabled={pending}
+              aria-label={`Follow ${post.author.fullName}`}
+              className="-my-1 inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 text-[15px] font-semibold text-ocean-700 hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 disabled:opacity-60 md:hidden"
+            >
+              <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />
+              Follow
+            </button>
+          ) : null}
           {!readOnly ? (
             <PostActionsMenu
               authorName={displayName}
@@ -406,7 +488,7 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
                 defaultExpanded={detail}
                 className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
               />
-              {postMedia.some((item) => item.signedUrl) ? <PostMedia media={postMedia} authorName={displayName} /> : null}
+              {postMedia.some((item) => item.signedUrl) ? <PostMedia media={postMedia} authorName={displayName} flush={flushOnPhones} /> : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
             </>
           )}
@@ -418,52 +500,87 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
             <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
           </div>
         ) : (
-          <div
-            role="group"
-            aria-label="Post actions"
-            className="@container flex items-center justify-between gap-2 border-t border-mist-100 px-3 py-2 sm:px-4"
-          >
-            <div data-testid="post-primary-actions" className="flex min-w-0 items-center gap-1.5 @min-[26rem]:gap-2">
-              <ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} count={totalReactions} variant="post" />
-              <button
-                type="button"
-                onClick={() => setComposerOpen(true)}
-                aria-label="Comment"
-                aria-expanded={composerOpen}
-                aria-controls={`comments-${post.id}`}
-                title="Comment"
-                className={POST_ACTION_BUTTON_CLASS}
-              >
-                <MessageCircle aria-hidden="true" className="size-5" />
-                <span className={POST_ACTION_LABEL_CLASS}>Comment</span>
-                {post.commentCount > 0 ? <span data-testid="comment-count" aria-hidden="true" className="tabular-nums">{post.commentCount}</span> : null}
-              </button>
-              <SharePostButton
-                postId={post.id}
-                repostPostId={shareSource.id}
-                authorName={shareSource.authorName}
-                source={{ authorName: shareSource.authorName, body: shareSource.body }}
-                variant="action"
-                allowRepost={canRepost}
-                menuAlign="start"
-                onNotice={setNotice}
-              />
-              <SendPostButton postId={post.id} authorName={displayName} onNotice={setNotice} variant="action" />
+          <>
+            {totalReactions > 0 || post.commentCount > 0 ? (
+              <div data-testid="post-counts" className="flex min-h-10 items-center gap-1.5 px-4 text-[13px] text-muted md:hidden">
+                {totalReactions > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setReactionsOpen(true)}
+                    aria-label={`${totalReactions} ${totalReactions === 1 ? 'reaction' : 'reactions'}, see who reacted`}
+                    className="inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+                  >
+                    <span aria-hidden="true" className="inline-flex items-center -space-x-1">
+                      {activeReactions.map((type) => <span key={type} className="text-sm leading-none">{POST_REACTION_META[type].emoji}</span>)}
+                    </span>
+                    <span className="tabular-nums">{totalReactions}</span>
+                  </button>
+                ) : null}
+                {totalReactions > 0 && post.commentCount > 0 ? <span aria-hidden="true">·</span> : null}
+                {post.commentCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setComposerOpen(true)}
+                    className="inline-flex min-h-10 cursor-pointer items-center rounded-lg hover:text-ocean-700 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+                  >
+                    {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <div
+              role="group"
+              aria-label="Post actions"
+              // No query container on phones: the Repost sheet inside must stay fixed to the screen, not to this row.
+              className="@container flex items-center justify-between gap-2 border-t border-mist-100 px-3 py-2 sm:px-4 max-md:px-1 max-md:py-0.5 max-md:[container-type:normal]"
+            >
+              <div data-testid="post-primary-actions" className="flex min-w-0 items-center gap-1.5 @min-[26rem]:gap-2 max-md:grid max-md:w-full max-md:grid-cols-4 max-md:gap-0">
+                <ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} count={totalReactions} variant="post" />
+                <button
+                  type="button"
+                  onClick={() => setComposerOpen(true)}
+                  aria-label="Comment"
+                  aria-expanded={composerOpen}
+                  aria-controls={`comments-${post.id}`}
+                  title="Comment"
+                  className={POST_ACTION_BUTTON_CLASS}
+                >
+                  <MessageCircle aria-hidden="true" className="size-5" />
+                  <span className={POST_ACTION_LABEL_CLASS}>Comment</span>
+                  {post.commentCount > 0 ? <span data-testid="comment-count" aria-hidden="true" className="tabular-nums max-md:hidden">{post.commentCount}</span> : null}
+                </button>
+                <SharePostButton
+                  postId={post.id}
+                  repostPostId={shareSource.id}
+                  authorName={shareSource.authorName}
+                  source={{ authorName: shareSource.authorName, body: shareSource.body }}
+                  variant="action"
+                  allowRepost={canRepost}
+                  menuAlign="start"
+                  onNotice={setNotice}
+                />
+                <SendPostButton postId={post.id} authorName={displayName} onNotice={setNotice} variant="action" />
+              </div>
+              {/* Phones show the reactions in the counts line above instead. */}
+              <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} className="max-md:hidden" />
             </div>
-            <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
-          </div>
+          </>
         )}
 
         {notice ? <PostNotice notice={notice} onDismiss={() => setNotice(null)} /> : null}
+        {previewComment && !composerOpen ? <TopCommentPreview postId={post.id} comment={previewComment} /> : null}
         {(post.commentCount > 0 || composerOpen) ? (
-          <CommentThread
-            postId={post.id}
-            postAuthorId={post.author.id}
-            comments={post.comments}
-            readOnly={readOnly}
-            composerOpen={composerOpen}
-            expandReplies={detail}
-          />
+          // Phones: the feed shows the one-comment preview above until Comment is tapped.
+          <div className={previewComment && !composerOpen ? 'max-md:hidden' : undefined}>
+            <CommentThread
+              postId={post.id}
+              postAuthorId={post.author.id}
+              comments={post.comments}
+              readOnly={readOnly}
+              composerOpen={composerOpen}
+              expandReplies={detail}
+            />
+          </div>
         ) : null}
         <ReactionDetailsModal
           open={reactionsOpen}

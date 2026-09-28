@@ -8,14 +8,14 @@ import type { FaqItem } from './faq-data'
  */
 export function FaqAccordion({ items, idPrefix = 'faq' }: { items: FaqItem[]; idPrefix?: string }) {
   return (
-    <div className="grid gap-3" data-faq-list="">
+    <div className="grid gap-3 max-md:gap-2" data-faq-list="">
       {items.map((item) => (
         <details
           key={item.id}
           id={`${idPrefix}-${item.id}`}
           className="group scroll-mt-28 rounded-2xl border border-mist-200 bg-white shadow-[0_12px_32px_-28px_rgb(7_27_45/0.5)] transition-colors open:border-ocean-200 open:bg-ocean-50/40 hover:border-ocean-200"
         >
-          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-2xl px-5 py-4 text-left text-base font-bold text-navy-950 focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-teal-500 sm:text-[17px] [&::-webkit-details-marker]:hidden">
+          <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-4 rounded-2xl px-5 py-4 text-left text-base font-bold max-md:min-h-12 max-md:gap-3 max-md:px-4 max-md:py-3 max-md:text-[15px] text-navy-950 focus-visible:outline focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-teal-500 sm:text-[17px] [&::-webkit-details-marker]:hidden">
             <span>{item.question}</span>
             <span
               aria-hidden="true"
@@ -24,7 +24,7 @@ export function FaqAccordion({ items, idPrefix = 'faq' }: { items: FaqItem[]; id
               <Plus className="size-4" />
             </span>
           </summary>
-          <p className="px-5 pb-5 text-[15px] leading-7 text-navy-800">{item.answer}</p>
+          <p className="px-5 pb-5 text-[15px] leading-7 text-navy-800 max-md:px-4 max-md:pb-4 max-md:text-base max-md:leading-6">{item.answer}</p>
         </details>
       ))}
     </div>

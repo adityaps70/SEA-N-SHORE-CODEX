@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { BadgeCheck, BookOpen, BriefcaseBusiness, Building2, CalendarDays, CheckCircle2, Crown, ShieldAlert } from 'lucide-react'
 import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
@@ -52,20 +53,21 @@ export default async function CreatorPage() {
   const access = await getAccessContext(user.id)
 
   return (
-    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+    <main className="mx-auto w-full max-w-6xl space-y-6 px-4 py-8 max-md:space-y-3 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/home" title="Creator tools" />
+      <header className="flex flex-wrap items-end justify-between gap-4 max-md:items-center max-md:gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-navy-950 sm:text-3xl">Create on Sea N Shore</h1>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+          <h1 className="text-2xl font-bold tracking-tight text-navy-950 max-md:text-lg sm:text-3xl">Create on Sea N Shore</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-muted max-md:hidden">
             Post jobs, host events and publish courses — for yourself or for your organization. Each option shows what you need before you can publish.
           </p>
         </div>
-        <Link href="/plans" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+        <Link href="/plans" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 max-md:min-h-11 max-md:rounded-full">
           <Crown className="size-4" aria-hidden="true" /> View plans
         </Link>
       </header>
 
-      <section className="grid gap-4 lg:grid-cols-3">
+      <section className="grid gap-4 max-md:gap-3 lg:grid-cols-3">
         {capabilities.map((item) => {
           const Icon = item.icon
           const personalVerified = access.verifications.includes(item.verification)
@@ -75,7 +77,7 @@ export default async function CreatorPage() {
           const ready = personalReady || organizationReady
 
           return (
-            <article key={item.capability} className="rounded-xl border border-mist-100 bg-white p-5">
+            <article key={item.capability} className="rounded-xl border border-mist-100 bg-white p-5 max-md:p-4">
               <span className="grid size-11 place-items-center rounded-xl bg-ocean-50 text-ocean-700"><Icon className="size-5" aria-hidden="true" /></span>
               <h2 className="mt-4 text-xl font-bold text-navy-950">{item.title}</h2>
               <p className="mt-2 text-sm leading-6 text-muted">{item.description}</p>

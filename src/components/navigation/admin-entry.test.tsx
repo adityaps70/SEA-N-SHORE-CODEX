@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/components/brand/wordmark', () => ({
@@ -51,15 +51,16 @@ describe('authorized admin navigation entry', () => {
     expect(screen.getByRole('menuitem', { name: /Admin/ })).toHaveAttribute('href', '/admin')
   })
 
-  it('shows the mobile Admin entry inside the phone account menu only to administrators', () => {
-    const { rerender } = render(<MobileAppHeader unreadCount={0} canAccessAdmin={false} />)
+  it('shows Admin under Work tools in the phone side drawer only to administrators', () => {
+    const { rerender } = render(<MobileAppHeader canAccessAdmin={false} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
-    expect(screen.queryByRole('menuitem', { name: /Admin/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument()
 
-    rerender(<MobileAppHeader unreadCount={0} canAccessAdmin />)
+    rerender(<MobileAppHeader canAccessAdmin />)
 
-    expect(screen.getByRole('menuitem', { name: /Admin/ })).toHaveAttribute('href', '/admin')
+    const tools = screen.getByRole('region', { name: 'Work tools' })
+    expect(within(tools).getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin')
   })
 
   it('never lists Admin as a primary destination', () => {

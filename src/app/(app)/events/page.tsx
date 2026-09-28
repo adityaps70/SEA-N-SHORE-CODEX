@@ -13,6 +13,9 @@ import {
   type CalendarEventType,
 } from '@/features/events/calendar-types'
 import { EventCard } from '@/features/events/components/event-card'
+import { EventNav } from '@/features/events/components/event-nav'
+import { EventsPhoneSearch } from '@/features/events/components/events-phone-search'
+import { PastEventsToggle } from '@/features/events/components/past-events-toggle'
 import { eventFormatLabel } from '@/features/events/event-labels'
 
 export const metadata: Metadata = { title: 'Events' }
@@ -60,7 +63,24 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
   ])
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6 py-2 sm:px-6 sm:py-6 lg:px-8">
+    <div className="mx-auto w-full max-w-7xl space-y-6 py-2 sm:px-6 sm:py-6 lg:px-8 max-md:space-y-3 max-md:py-0">
+      {/* Phones: chips + Create and one search box with a Filters sheet replace the hero and the filter form. */}
+      <EventNav active="discover" className="max-md:-mt-4 md:hidden" />
+      <EventsPhoneSearch
+        search={searchText}
+        category={filters.category}
+        eventType={filters.eventType}
+        format={filters.format}
+        categories={CALENDAR_EVENT_CATEGORIES.map((value) => ({ value, label: titleCase(value) }))}
+        eventTypes={CALENDAR_EVENT_TYPES.map((value) => ({ value, label: titleCase(value) }))}
+        formats={CALENDAR_EVENT_FORMATS.map((value) => ({ value, label: eventFormatLabel(value) }))}
+      />
+      {placeFilter ? (
+        <p className="text-[13px] text-muted md:hidden">
+          Only events in or near “{placeFilter}”. <Link href={withoutPlaceHref} className="font-semibold text-ocean-700 hover:underline">Remove place filter</Link>
+        </p>
+      ) : null}
+      <div className="max-md:hidden">
       <PremiumPageHero
         eyebrow="Maritime events"
         title="Learn, meet and move the maritime industry forward."
@@ -73,8 +93,9 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
           <Link href="/events/create" className="ml-auto rounded-xl bg-teal-400 px-4 py-2 text-sm font-bold text-navy-950 hover:bg-teal-300">Create event</Link>
         </div>
       </PremiumPageHero>
+      </div>
 
-      <form method="get" role="search" aria-label="Find events" className="grid gap-3 rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5 lg:grid-cols-3 xl:grid-cols-[2.4fr_repeat(3,1fr)_auto]">
+      <form method="get" role="search" aria-label="Find events" className="max-md:hidden grid gap-3 rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5 lg:grid-cols-3 xl:grid-cols-[2.4fr_repeat(3,1fr)_auto]">
         <label className="relative lg:col-span-3 xl:col-span-1">
           <span className="sr-only">Search events</span>
           <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -91,15 +112,17 @@ export default async function EventsPage({ searchParams }: { searchParams: Promi
         ) : null}
       </form>
 
-      <section className="space-y-4">
-        <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Discover</p><h2 className="text-2xl font-bold text-navy-950">Upcoming events</h2></div><span className="text-sm text-muted">{upcoming.length} found</span></div>
-        {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">{hasFilters ? 'No matching upcoming events' : 'No upcoming events yet'}</h3><p className="mt-1 text-sm text-muted">{hasFilters ? 'Try other filters, or host the session your community needs.' : 'Be the first to host a webinar, masterclass or meetup for the community.'}</p><div className="mt-4 flex justify-center gap-2">{hasFilters ? <Link href="/events" className="rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-800 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Clear filters</Link> : null}<Link href="/events/create" className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white hover:bg-teal-700 transition-colors">Create event</Link></div></div>}
+      <section className="space-y-4 max-md:space-y-2">
+        <div className="flex items-end justify-between gap-4 max-md:items-baseline"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700 max-md:hidden">Discover</p><h2 className="text-2xl font-bold text-navy-950 max-md:text-[17px]">Upcoming events</h2></div><span className="text-sm text-muted max-md:text-[13px]">{upcoming.length} found</span></div>
+        {upcoming.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 max-md:gap-2">{upcoming.map((event) => <EventCard key={event.id} event={event} />)}</div> : <div className="rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center"><h3 className="font-bold text-navy-950">{hasFilters ? 'No matching upcoming events' : 'No upcoming events yet'}</h3><p className="mt-1 text-sm text-muted">{hasFilters ? 'Try other filters, or host the session your community needs.' : 'Be the first to host a webinar, masterclass or meetup for the community.'}</p><div className="mt-4 flex justify-center gap-2">{hasFilters ? <Link href="/events" className="rounded-xl border border-mist-200 px-4 py-2 text-sm font-bold text-navy-800 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Clear filters</Link> : null}<Link href="/events/create" className="rounded-xl bg-teal-600 px-4 py-2 text-sm font-bold text-white hover:bg-teal-700 transition-colors">Create event</Link></div></div>}
       </section>
 
-      <section className="space-y-4 border-t border-mist-100 pt-6">
-        <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-navy-500">Knowledge library</p><h2 className="text-2xl font-bold text-navy-950">Event archive</h2><p className="mt-1 text-sm text-muted">Past maritime sessions remain discoverable as a record of community learning and engagement.</p></div>
-        {archive.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{archive.map((event) => <EventCard key={event.id} event={event} showStatus />)}</div> : <div className="rounded-2xl bg-mist-50 p-5 text-sm text-muted">No past events match these filters yet.</div>}
+      <PastEventsToggle>
+      <section className="space-y-4 border-t border-mist-100 pt-6 max-md:space-y-2 max-md:border-t-0 max-md:pt-0">
+        <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-navy-500 max-md:hidden">Knowledge library</p><h2 className="text-2xl font-bold text-navy-950 max-md:text-[17px]">Event archive</h2><p className="mt-1 text-sm text-muted max-md:hidden">Past maritime sessions remain discoverable as a record of community learning and engagement.</p></div>
+        {archive.length ? <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 max-md:gap-2">{archive.map((event) => <EventCard key={event.id} event={event} showStatus />)}</div> : <div className="rounded-2xl bg-mist-50 p-5 text-sm text-muted">No past events match these filters yet.</div>}
       </section>
+      </PastEventsToggle>
     </div>
   )
 }

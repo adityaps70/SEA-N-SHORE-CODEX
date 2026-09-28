@@ -99,3 +99,43 @@ describe('ProfileCareerTimeline', () => {
     expect(screen.queryByRole('heading', { name: 'Experience' })).not.toBeInTheDocument()
   })
 })
+
+describe('ProfileCareerTimeline on phones', () => {
+  const many: ProfileExperienceRecord[] = [0, 1, 2, 3].map((index) => ({
+    ...experiences[index % 2]!,
+    id: `3333333${index}-3333-4333-8333-333333333333`,
+    title: `Role ${index + 1}`,
+  }))
+
+  it('shows two entries then "Show all n experience", expanding in place', () => {
+    render(<ProfileCareerTimeline experiences={many} />)
+    const hidden = screen.getByRole('heading', { name: 'Role 3' }).closest('[data-phone-overflow]')
+    expect(hidden).toHaveAttribute('data-phone-overflow', 'hidden')
+    expect(hidden).toHaveClass('max-md:hidden')
+    expect(screen.getByRole('heading', { name: 'Role 2' }).closest('[data-phone-overflow]')).toBeNull()
+
+    const showAll = screen.getByRole('button', { name: 'Show all 4 experience' })
+    expect(showAll).toHaveClass('md:hidden')
+    fireEvent.click(showAll)
+    expect(screen.getByRole('heading', { name: 'Role 3' }).closest('[data-phone-overflow]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show less' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('has no Show all row when two or fewer entries exist', () => {
+    render(<ProfileCareerTimeline experiences={experiences} />)
+    expect(screen.queryByRole('button', { name: /Show all/ })).not.toBeInTheDocument()
+  })
+
+  it('puts a plus and a pencil at the section top right for the owner; the pencil reveals per-entry edit buttons on phones', () => {
+    render(<ProfileCareerTimeline experiences={experiences} editable />)
+    expect(screen.getByRole('button', { name: 'Add experience' })).toBeInTheDocument()
+    const pencil = screen.getByRole('button', { name: 'Edit experience entries' })
+    expect(pencil).toHaveClass('md:hidden')
+    expect(pencil).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Edit Master' }).parentElement).toHaveClass('max-md:hidden')
+
+    fireEvent.click(pencil)
+    expect(pencil).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Edit Master' }).parentElement).not.toHaveClass('max-md:hidden')
+  })
+})

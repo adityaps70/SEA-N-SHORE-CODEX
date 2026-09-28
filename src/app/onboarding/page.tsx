@@ -21,17 +21,18 @@ export default async function OnboardingPage({
   return (
     <main
       id="main-content"
-      className="min-h-screen bg-[linear-gradient(180deg,var(--mist-50)_0%,white_42%,var(--mist-50)_100%)] px-4 py-4 sm:px-6 sm:py-6"
+      className="min-h-screen bg-[linear-gradient(180deg,var(--mist-50)_0%,white_42%,var(--mist-50)_100%)] px-4 py-4 sm:px-6 sm:py-6 max-md:bg-white max-md:py-2"
     >
       <div className="mx-auto max-w-5xl">
-        <div className="flex min-h-16 items-center justify-between gap-4 border-b border-mist-100">
+        <div className="flex min-h-16 items-center justify-between gap-4 border-b border-mist-100 max-md:min-h-14">
           <Wordmark compact />
-          <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm">
+          <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm max-md:hidden">
             Professional onboarding
           </span>
         </div>
 
-        <header className="max-w-3xl py-8 sm:py-10">
+        {/* Phones skip the intro: the form's own progress bar and step titles replace it. */}
+        <header className="max-w-3xl py-8 sm:py-10 max-md:hidden">
           <div className="inline-flex items-center rounded-full bg-ocean-50 px-3 py-1.5 text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">
             Your maritime identity
           </div>
@@ -43,8 +44,8 @@ export default async function OnboardingPage({
           </p>
         </header>
 
-        <Card className="rounded-[1.75rem] border border-mist-100 p-5 shadow-[0_18px_60px_rgba(15,38,58,0.08)] sm:p-7 lg:p-8">
-          <div className="mb-7 flex flex-wrap items-center justify-between gap-3 border-b border-mist-100 pb-5">
+        <Card className="rounded-[1.75rem] border border-mist-100 p-5 shadow-[0_18px_60px_rgba(15,38,58,0.08)] sm:p-7 lg:p-8 max-md:mt-3 max-md:rounded-none max-md:border-0 max-md:px-0 max-md:py-2 max-md:shadow-none">
+          <div className="mb-7 flex flex-wrap items-center justify-between gap-3 border-b border-mist-100 pb-5 max-md:hidden">
             <div>
               <p className="text-sm font-semibold text-navy-950">Build your maritime presence</p>
               <p className="mt-1 text-sm text-muted">Choose your identity first. You can add more depth after joining.</p>

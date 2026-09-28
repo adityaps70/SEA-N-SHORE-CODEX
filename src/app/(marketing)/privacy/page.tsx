@@ -12,6 +12,11 @@ export default function PrivacyPage() {
       eyebrow="Privacy"
       title="Privacy on Sea N Shore"
       updated="28 September 2026"
+      sections={[
+        { href: '#how-we-use', label: 'How we use it' },
+        { href: '#payments', label: 'Payments' },
+        { href: '#your-rights', label: 'Your requests' },
+      ]}
       intro={
         <p>
           {BUSINESS.brandName} is operated by <strong className="text-navy-950">{BUSINESS.legalName}</strong>, {businessAddressLine()}, which is responsible for the personal information described here.

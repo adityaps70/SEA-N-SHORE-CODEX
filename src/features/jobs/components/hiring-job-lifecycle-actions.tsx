@@ -20,7 +20,12 @@ export type HiringJobLifecycleActionsProps = {
   today: string
   /** Where to go after the job is deleted. */
   afterDeleteHref?: string
+  /** 'sheet' renders the actions as full-width rows for the phone "…" sheet. */
+  layout?: 'buttons' | 'sheet'
 }
+
+const SHEET_ROW_CLASS =
+  'flex min-h-14 w-full cursor-pointer items-center gap-4 rounded-2xl px-4 text-left text-[15px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-50 aria-expanded:bg-mist-50 [&>svg]:size-5 [&>svg]:shrink-0'
 
 const ACTION_BUTTON: Record<JobLifecycleAction, { label: string; className: string; Icon: typeof Send }> = {
   publish: { label: 'Publish', Icon: Send, className: 'bg-navy-950 text-white hover:bg-navy-900' },
@@ -45,7 +50,9 @@ export function HiringJobLifecycleActions({
   lifecycle,
   today,
   afterDeleteHref = '/hiring/jobs?notice=deleted',
+  layout = 'buttons',
 }: HiringJobLifecycleActionsProps) {
+  const asSheet = layout === 'sheet'
   const router = useRouter()
   const actions = availableJobActions(lifecycle)
   const [pendingAction, setPendingAction] = useState<JobLifecycleAction | null>(null)
@@ -129,7 +136,7 @@ export function HiringJobLifecycleActions({
   return (
     <div className="w-full">
       {actions.length ? (
-        <div className="flex flex-wrap gap-2" role="group" aria-label={`Manage ${jobTitle}`}>
+        <div className={asSheet ? 'flex flex-col' : 'flex flex-wrap gap-2'} role="group" aria-label={`Manage ${jobTitle}`}>
           {actions.map((action) => {
             const { label, className, Icon } = ACTION_BUTTON[action]
             return (
@@ -141,7 +148,9 @@ export function HiringJobLifecycleActions({
                 aria-controls={pendingAction === action ? panelId : undefined}
                 disabled={isPending}
                 onClick={() => (pendingAction === action ? close() : open(action))}
-                className={`inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 aria-expanded:ring-2 aria-expanded:ring-ocean-200 aria-expanded:ring-offset-1 ${className}`}
+                className={asSheet
+                  ? `${SHEET_ROW_CLASS} ${action === 'delete' ? 'text-red-700 hover:bg-red-50' : 'text-navy-950 hover:bg-mist-50'}`
+                  : `inline-flex min-h-10 items-center gap-2 rounded-xl px-4 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 aria-expanded:ring-2 aria-expanded:ring-ocean-200 aria-expanded:ring-offset-1 ${className}`}
               >
                 <Icon aria-hidden="true" className="size-4" />
                 {label}

@@ -44,6 +44,16 @@ vi.mock('@/features/network/components/network-person-list-row', () => ({
   NetworkPersonListRow: ({ profile: item, kind }: { profile: typeof profile; kind: string }) => <div>{kind} row {item.fullName}</div>,
 }))
 
+vi.mock('@/features/network/components/network-invitation-row', () => ({
+  NetworkInvitationRow: ({ profile: item }: { profile: typeof profile }) => <div>Phone invitation {item.fullName}</div>,
+}))
+
+vi.mock('@/features/network/components/manage-network-row', () => ({
+  ManageNetworkRow: ({ incomingRequestCount }: { incomingRequestCount: number }) => (
+    <button type="button">Manage my network ({incomingRequestCount})</button>
+  ),
+}))
+
 vi.mock('@/features/network/components/connection-request-card', () => ({
   ConnectionRequestCard: ({ profile: item, direction }: { profile: typeof profile; direction: string }) => <div>{direction} request {item.fullName}</div>,
 }))
@@ -60,6 +70,30 @@ describe('Maritime Network page', () => {
     const discoverCard = screen.getByText('Discover card Capt. Meera Nair')
     expect(discoverCard).toBeInTheDocument()
     expect(discoverCard.parentElement).toHaveClass('xl:grid-cols-4')
+  })
+
+  it('on phones leads Discover with Manage my network and invitations, then a 2-column suggestion grid', async () => {
+    render(await NetworkPage({ searchParams: Promise.resolve({ tab: 'discover' }) }))
+
+    expect(screen.getByRole('button', { name: /Manage my network/ })).toBeInTheDocument()
+    // The desktop tab row stays, hidden below md where Manage my network replaces it.
+    expect(screen.getByRole('navigation', { name: 'My Network' }).parentElement).toHaveClass('max-md:hidden')
+
+    const invitations = screen.getByRole('region', { name: 'Invitations (1)' })
+    expect(invitations).toHaveClass('md:hidden')
+    expect(invitations).toHaveTextContent('Phone invitation Capt. Meera Nair')
+    expect(screen.getByRole('link', { name: 'Show all' })).toHaveAttribute('href', '/network?tab=requests')
+
+    const grid = screen.getByTestId('network-suggestion-grid')
+    expect(grid).toHaveClass('max-md:grid-cols-2', 'max-md:gap-2')
+    // The page intro is hidden on phones.
+    expect(screen.getByRole('heading', { name: 'People worth knowing at sea and ashore.' }).closest('.max-md\\:hidden')).not.toBeNull()
+  })
+
+  it('hides the connections search hint on phones', async () => {
+    render(await NetworkPage({ searchParams: Promise.resolve({ tab: 'connections' }) }))
+    expect(screen.getByText('Search also matches rank, company & location')).toHaveClass('max-md:hidden')
+    expect(screen.queryByRole('button', { name: /Manage my network/ })).not.toBeInTheDocument()
   })
 
   it('renders Connections as a searchable recently-added list with a connection count', async () => {

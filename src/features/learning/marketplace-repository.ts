@@ -56,6 +56,27 @@ export type MarketplaceCourse = {
   publishedAt: string
 }
 
+/** Public facts shown on a course page: section/lesson counts, length, learners and the publisher link. */
+export type PublishedCourseOverview = {
+  sections: { title: string; lessonCount: number }[]
+  lessonCount: number
+  durationSeconds: number
+  learnerCount: number
+  publisher: { kind: 'person' | 'organization'; slug: string } | null
+}
+
+type OverviewSectionRow = QueryResultRow & {
+  section_title: string | null
+  lesson_count: string | number | null
+  duration_seconds: string | number | null
+}
+
+type OverviewCourseRow = QueryResultRow & {
+  learner_count: string | number | null
+  publisher_kind: 'person' | 'organization'
+  publisher_slug: string | null
+}
+
 export type MarketplaceCourseFilters = {
   category?: string | null
   search?: string | null
@@ -230,10 +251,60 @@ limit 1`,
     return row ? mapCourse(row) : null
   }
 
+  /**
+   * Curriculum summary (published lessons only, no lesson content), learner count and the
+   * publisher's profile or organization slug for a course the caller already loaded as published.
+   */
+  async function getPublishedCourseOverview(courseId: string): Promise<PublishedCourseOverview> {
+    const [sectionRows, courseRows] = await Promise.all([
+      queryRows(
+        `select
+  section.title as section_title,
+  count(lesson.id) as lesson_count,
+  coalesce(sum(lesson.duration_seconds), 0) as duration_seconds
+from public.learning_course_sections section
+left join public.learning_lessons lesson
+  on lesson.section_id = section.id
+ and lesson.is_published = true
+where section.course_id = $1
+group by section.id, section.title, section.position
+order by section.position asc`,
+        [courseId],
+      ) as Promise<OverviewSectionRow[]>,
+      queryRows(
+        `select
+  (select count(*) from public.learning_enrollments enrollment
+    where enrollment.course_id = course.id
+      and enrollment.status in ('active', 'completed')) as learner_count,
+  case when course.company_id is null then 'person' else 'organization' end as publisher_kind,
+  case when course.company_id is null then creator.slug else company.slug end as publisher_slug
+from public.learning_courses course
+left join public.profiles creator on creator.id = course.created_by_user_id
+left join public.companies company on company.id = course.company_id
+where course.id = $1
+limit 1`,
+        [courseId],
+      ) as Promise<OverviewCourseRow[]>,
+    ])
+
+    const sections = sectionRows
+      .map((row) => ({ title: row.section_title ?? '', lessonCount: Number(row.lesson_count ?? 0) }))
+      .filter((section) => section.lessonCount > 0)
+    const course = courseRows[0]
+    return {
+      sections,
+      lessonCount: sections.reduce((total, section) => total + section.lessonCount, 0),
+      durationSeconds: sectionRows.reduce((total, row) => total + Number(row.duration_seconds ?? 0), 0),
+      learnerCount: Number(course?.learner_count ?? 0),
+      publisher: course?.publisher_slug ? { kind: course.publisher_kind, slug: course.publisher_slug } : null,
+    }
+  }
+
   return {
     listPublishedCourses,
     listPublishedCoursesForCompany,
     getPublishedCourseBySlug,
+    getPublishedCourseOverview,
   }
 }
 

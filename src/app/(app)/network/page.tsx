@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { Search } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { ConnectionRequestCard } from '@/features/network/components/connection-request-card'
+import { ManageNetworkRow } from '@/features/network/components/manage-network-row'
+import { NetworkInvitationRow } from '@/features/network/components/network-invitation-row'
 import { NetworkPersonListRow } from '@/features/network/components/network-person-list-row'
 import { NetworkProfileCard } from '@/features/network/components/network-profile-card'
 import { NetworkTabs } from '@/features/network/components/network-tabs'
@@ -11,6 +13,10 @@ import { parseNetworkTab } from '@/features/network/schemas'
 import type { NetworkFollowView, NetworkProfile } from '@/features/network/types'
 
 export const metadata: Metadata = { title: 'My Network' }
+
+const PHONE_INVITATION_LIMIT = 3
+/** Phones: list sections run edge to edge under the top bar instead of floating cards. */
+const PHONE_FULL_BLEED = 'max-md:-mx-4 max-md:mt-2 max-md:rounded-none max-md:border-x-0 max-md:shadow-none'
 
 const emptyCopy = {
   discover: {
@@ -94,11 +100,18 @@ export default async function NetworkPage({
   const sort = rawSort === 'name' ? 'name' : 'recent'
   const followView: NetworkFollowView = rawView === 'followers' ? 'followers' : 'following'
   const requestView = rawView === 'sent' ? 'sent' : 'received'
-  const hub = await getNetworkHub(tab, query, followView)
+  const [hub, invitations] = await Promise.all([
+    getNetworkHub(tab, query, followView),
+    // Phones show pending invitations above suggestions on Discover.
+    tab === 'discover' ? getNetworkHub('requests').then((requests) => requests.receivedRequests).catch(() => []) : Promise.resolve([]),
+  ])
   const profiles = sortProfiles(hub.profiles, sort)
+  const phoneInvitations = invitations.slice(0, PHONE_INVITATION_LIMIT)
 
   return (
-    <section className="py-2 sm:py-5">
+    <section className="py-2 max-md:-mt-4 max-md:py-0 sm:py-5">
+      {/* Phones: no page intro; member search is the top bar search (People chip). */}
+      <div className="max-md:hidden">
       <PremiumPageHero
         eyebrow="Maritime network"
         title="People worth knowing at sea and ashore."
@@ -121,22 +134,42 @@ export default async function NetworkPage({
           </form>
         ) : null}
       </PremiumPageHero>
+      </div>
 
-      <NetworkTabs active={tab} incomingRequestCount={hub.incomingRequestCount} />
+      {tab === 'discover' ? <ManageNetworkRow incomingRequestCount={hub.incomingRequestCount} /> : null}
+      <div className={tab === 'discover' ? 'max-md:hidden' : undefined}>
+        <NetworkTabs active={tab} incomingRequestCount={hub.incomingRequestCount} />
+      </div>
+
+      {tab === 'discover' && phoneInvitations.length ? (
+        <section aria-labelledby="phone-invitations-heading" className="-mx-4 mt-2 border-y border-mist-100 bg-white px-4 md:hidden">
+          <div className="flex min-h-14 items-center justify-between gap-3 border-b border-mist-100">
+            <h2 id="phone-invitations-heading" className="text-[17px] font-bold text-navy-950">
+              Invitations ({invitations.length})
+            </h2>
+            <Link href="/network?tab=requests" className="inline-flex min-h-11 items-center text-[15px] font-semibold text-ocean-700 hover:underline">
+              Show all
+            </Link>
+          </div>
+          <div className="divide-y divide-mist-100">
+            {phoneInvitations.map((profile) => <NetworkInvitationRow key={profile.id} profile={profile} />)}
+          </div>
+        </section>
+      ) : null}
 
       {tab === 'discover' ? (
         profiles.length ? (
-          <section className="mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm" aria-labelledby="people-you-may-know-heading">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist-100 px-5 py-4">
+          <section className={`mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm ${PHONE_FULL_BLEED}`} aria-labelledby="people-you-may-know-heading">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-mist-100 px-5 py-4 max-md:border-b-0 max-md:px-4 max-md:pb-3">
               <div>
-                <h2 id="people-you-may-know-heading" className="text-xl font-semibold text-navy-950">People you may know</h2>
-                <p className="mt-1 text-sm text-muted">
+                <h2 id="people-you-may-know-heading" className="text-xl font-semibold text-navy-950 max-md:text-[17px] max-md:font-bold">People you may know</h2>
+                <p className="mt-1 text-sm text-muted max-md:hidden">
                   {query ? `${profiles.length} relevant result${profiles.length === 1 ? '' : 's'} for “${query}”.` : 'Recommended members based on your profile and network.'}
                 </p>
               </div>
               {query ? <Link href="/network?tab=discover" className="text-sm font-semibold text-ocean-700 hover:text-navy-950">Clear search</Link> : null}
             </div>
-            <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div data-testid="network-suggestion-grid" className="grid gap-4 p-4 max-md:grid-cols-2 max-md:gap-2 max-md:px-3 max-md:pb-4 max-md:pt-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {profiles.map((profile) => <NetworkProfileCard key={profile.id} profile={profile} />)}
             </div>
           </section>
@@ -148,7 +181,7 @@ export default async function NetworkPage({
       ) : null}
 
       {tab === 'connections' ? (
-        <section className="mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm" aria-labelledby="connections-heading">
+        <section className={`mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm ${PHONE_FULL_BLEED}`} aria-labelledby="connections-heading">
           <div className="border-b border-mist-100 px-5 py-4 sm:px-6">
             <h2 id="connections-heading" className="text-xl font-semibold text-navy-950">{countLabel(hub.totalCount, 'connection')}</h2>
             <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -166,7 +199,7 @@ export default async function NetworkPage({
               </div>
               <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
                 <SearchField tab="connections" query={query} sort={sort} ariaLabel="Search connections" placeholder="Search by name" />
-                <span className="text-xs font-semibold text-ocean-700">Search also matches rank, company & location</span>
+                <span className="text-xs font-semibold text-ocean-700 max-md:hidden">Search also matches rank, company & location</span>
               </div>
             </div>
           </div>
@@ -184,7 +217,7 @@ export default async function NetworkPage({
       ) : null}
 
       {tab === 'following' ? (
-        <section className="mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm" aria-labelledby="network-follow-heading">
+        <section className={`mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm ${PHONE_FULL_BLEED}`} aria-labelledby="network-follow-heading">
           <div className="border-b border-mist-100 px-5 py-4 sm:px-6">
             <h2 id="network-follow-heading" className="text-xl font-semibold text-navy-950">Your Network</h2>
           </div>
@@ -228,7 +261,7 @@ export default async function NetworkPage({
       ) : null}
 
       {tab === 'requests' ? (
-        <section className="mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm" aria-labelledby="invitations-heading">
+        <section className={`mt-5 overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-sm ${PHONE_FULL_BLEED}`} aria-labelledby="invitations-heading">
           <div className="border-b border-mist-100 px-5 py-4 sm:px-6">
             <h2 id="invitations-heading" className="text-xl font-semibold text-navy-950">Invitations</h2>
             <p className="mt-1 text-sm text-muted">Manage people who want to connect with you and requests you have sent.</p>

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { ShieldCheck } from 'lucide-react'
@@ -56,13 +57,14 @@ export default async function OrganizationBillingPage({
       : null
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:py-5">
+    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+      <MobilePageBar backHref="/settings/billing" title={billing.company.name} />
       <header>
-        <Link href="/settings/billing" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
+        <Link href="/settings/billing" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
           ← Membership & billing
         </Link>
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
+        <div className="mt-4 flex flex-col gap-3 max-md:mt-0 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 max-md:hidden">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Organization billing</p>
             <h1 className="mt-1 break-words text-3xl font-semibold tracking-tight text-navy-950">{billing.company.name}</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">

@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic'
 function sellerHref(line: { sellerIdentity: PayoutLine['sellerIdentity'] }) {
   const { slug, kind } = line.sellerIdentity
   if (!slug) return null
-  return kind === 'organization' ? `/organizations/${slug}` : `/profile/${slug}`
+  return kind === 'organization' ? `/organizations/${slug}` : `/people/${slug}`
 }
 
 function SellerName({ line }: { line: { sellerIdentity: PayoutLine['sellerIdentity'] } }) {

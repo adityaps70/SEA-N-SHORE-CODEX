@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Download, ExternalLink, GraduationCap } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CoursePurchasesList } from '@/features/learning/components/course-purchases-list'
@@ -129,8 +130,10 @@ export default async function MyLearningPage() {
   ])
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <section className="overflow-hidden rounded-[1.9rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8 lg:p-10">
+    <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/learn" title="My learning" />
+      {/* Phones: the page bar is the title, so the intro card is desktop-only. */}
+      <section className="overflow-hidden rounded-[1.9rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:hidden sm:p-8 lg:p-10">
         <p className="text-xs font-bold uppercase tracking-[0.17em] text-teal-200">Sea N Shore Learning</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight sm:text-4xl">My Learning</h1>
         <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70 sm:text-base">
@@ -139,13 +142,13 @@ export default async function MyLearningPage() {
       </section>
 
       {enrollments.length ? (
-        <section className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <section className="mt-6 grid gap-5 max-md:mt-0 max-md:gap-3 md:grid-cols-2 xl:grid-cols-3">
           {enrollments.map((enrollment) => (
             <EnrollmentCard key={enrollment.enrollmentId} enrollment={enrollment} />
           ))}
         </section>
       ) : (
-        <section className="mt-6 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center shadow-[var(--shadow-card)] sm:p-10">
+        <section className="mt-6 rounded-[1.5rem] border border-dashed border-mist-200 bg-white p-8 text-center shadow-[var(--shadow-card)] max-md:mt-0 sm:p-10">
           <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-teal-50 text-teal-800">
             <GraduationCap aria-hidden="true" className="size-5" />
           </span>

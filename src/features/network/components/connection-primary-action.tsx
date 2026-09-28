@@ -14,10 +14,13 @@ export function ConnectionPrimaryAction({
   profileId,
   initialRelationship,
   className = '',
+  variant = 'block',
 }: {
   profileId: string
   initialRelationship: RelationshipState
   className?: string
+  /** `pill`: one compact ocean outline pill (Connect, Pending, Accept or Message) for list rows. */
+  variant?: 'block' | 'pill'
 }) {
   const router = useRouter()
   const [relationship, setRelationship] = useState(initialRelationship)
@@ -56,13 +59,15 @@ export function ConnectionPrimaryAction({
     })
   }
 
-  const buttonClass = `inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-ocean-600 px-4 text-sm font-semibold text-ocean-700 transition hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-60 ${className}`
+  const buttonClass = variant === 'pill'
+    ? `relative inline-flex min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-ocean-700 bg-white px-3.5 text-[13px] font-semibold text-ocean-700 transition before:absolute before:inset-x-0 before:-inset-y-1 before:content-[''] hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60 ${className}`
+    : `inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full border border-ocean-600 px-4 text-sm font-semibold text-ocean-700 transition hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-60 ${className}`
 
   return (
     <div className="space-y-1.5">
       {relationship.connection.kind === 'none' ? (
         <button type="button" disabled={pending} onClick={sendRequest} className={buttonClass}>
-          <UserPlus aria-hidden="true" className="size-4" />
+          {variant === 'pill' ? null : <UserPlus aria-hidden="true" className="size-4" />}
           Connect
         </button>
       ) : null}
@@ -76,10 +81,12 @@ export function ConnectionPrimaryAction({
       ) : null}
 
       {relationship.connection.kind === 'connected' ? (
-        <StartConversationButton targetProfileId={profileId} className="w-full rounded-full" />
+        variant === 'pill'
+          ? <StartConversationButton targetProfileId={profileId} variant="pill" />
+          : <StartConversationButton targetProfileId={profileId} className="w-full rounded-full" />
       ) : null}
 
-      {error ? <p role="alert" className="text-center text-xs font-medium text-red-700">{error}</p> : null}
+      {error ? <p role="alert" className={`text-center text-xs font-medium text-red-700 ${variant === 'pill' ? 'max-w-40' : ''}`}>{error}</p> : null}
     </div>
   )
 }

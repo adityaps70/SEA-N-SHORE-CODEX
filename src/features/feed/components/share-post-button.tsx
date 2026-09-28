@@ -2,6 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import { ExternalLink, Link2, MessageSquareQuote, Repeat2, Send, Share2 } from 'lucide-react'
+import {
+  MobileSheetBackdrop,
+  MobileSheetCancel,
+  MobileSheetGrab,
+  SHEET_MENU_ITEM_CLASS,
+  SHEET_MENU_PANEL_CLASS,
+} from '@/components/ui/mobile-sheet'
 import { repostPost } from '../actions'
 import { FeedDialog } from './feed-dialog'
 import { RepostDialog, type RepostSourcePreview } from './repost-dialog'
@@ -19,7 +26,7 @@ import { useFeedMenu } from './use-feed-menu'
 
 const SHARE_TEXT = 'View this maritime discussion on Sea N Shore.'
 
-const itemClass = 'flex w-full cursor-pointer items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50'
+const itemClass = `flex w-full cursor-pointer items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50 ${SHEET_MENU_ITEM_CLASS}`
 
 function ExternalShareDialog({ url, onClose, onCopy }: { url: string; onClose(): void; onCopy(): void }) {
   return (
@@ -79,7 +86,7 @@ export function SharePostButton({
   /** Shows results in the post card. Without it the button shows its own status line. */
   onNotice?(notice: FeedNotice): void
 }) {
-  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, rootRef: menuRootRef, triggerRef: menuTriggerRef, menuRef, onMenuKeyDown } = useFeedMenu()
+  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, closeAndFocusTrigger, rootRef: menuRootRef, triggerRef: menuTriggerRef, menuRef, onMenuKeyDown } = useFeedMenu()
   const [dialog, setDialog] = useState<'repost' | 'send' | 'external' | null>(null)
   const [ownNotice, setOwnNotice] = useState<FeedNotice | null>(null)
   const [pending, startTransition] = useTransition()
@@ -158,14 +165,16 @@ export function SharePostButton({
         </button>
       )}
 
+      {menuOpen ? <MobileSheetBackdrop onClose={closeMenu} /> : null}
       {menuOpen ? (
         <div
           ref={menuRef}
           role="menu"
           aria-label="Share post"
           onKeyDown={onMenuKeyDown}
-          className={`absolute bottom-full z-50 mb-2 w-[min(17.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl ${menuAlign === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2'}`}
+          className={`absolute bottom-full z-50 mb-2 w-[min(17.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl ${menuAlign === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2 max-md:translate-x-0'} ${SHEET_MENU_PANEL_CLASS}`}
         >
+          <MobileSheetGrab />
           {allowRepost ? (
             <>
               <button type="button" role="menuitem" disabled={pending} onClick={repost} className={itemClass}>
@@ -192,6 +201,7 @@ export function SharePostButton({
             <Link2 aria-hidden="true" className="size-4" />
             Copy link
           </button>
+          <MobileSheetCancel onClick={closeAndFocusTrigger} />
         </div>
       ) : null}
 

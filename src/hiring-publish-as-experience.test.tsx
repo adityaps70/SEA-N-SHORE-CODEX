@@ -62,14 +62,15 @@ describe('hiring publish-as experience', () => {
 
   it('keeps the central Create workspace visible without module-specific hiring gates', () => {
     const desktopHeader = source('src/components/navigation/app-header.tsx')
-    const mobileHeader = source('src/components/navigation/mobile-app-header.tsx')
+    // Phones: the Post tab opens the Create sheet, whose last entry is the same /creator workspace.
+    const phoneCreateSheet = source('src/components/navigation/create-sheet.tsx')
     const layout = source('src/app/(app)/layout.tsx')
 
     // The desktop Create control is a menu whose last entry opens the central /creator workspace.
     expect(desktopHeader).toMatch(/href: '\/creator'/)
     expect(desktopHeader).toContain('Create')
-    expect(mobileHeader).toContain('href="/creator"')
-    expect(mobileHeader).toContain('Create')
+    expect(phoneCreateSheet).toContain("href: '/creator'")
+    expect(phoneCreateSheet).toContain('title="Create"')
     expect(layout).not.toContain('canStartHiring')
     expect(layout).not.toContain('getAuthorizedCompany')
   })

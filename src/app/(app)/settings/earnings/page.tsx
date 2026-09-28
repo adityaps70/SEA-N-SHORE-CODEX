@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { ArrowLeft } from 'lucide-react'
 import { withTransaction } from '@/lib/db/client'
 import { backLinkClass, textLinkClass } from '@/components/ui/interactive-styles'
@@ -40,12 +41,14 @@ export default async function EarningsPage({ searchParams }: { searchParams: Sea
   const payoutDetailsHref = '/settings/payouts'
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:py-5">
+    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+      <MobilePageBar backHref="/settings" title={active.kind === 'organization' ? `Earnings · ${active.name}` : 'Earnings'} />
       <header className="space-y-3">
-        <Link href="/settings" className={backLinkClass}>
+        <Link href="/settings" className={`${backLinkClass} max-md:hidden`}>
           <ArrowLeft aria-hidden="true" className="size-4" /> Settings
         </Link>
-        <div>
+        {/* Phones: title in the page bar; Payout details is its own row in Settings. */}
+        <div className="max-md:hidden">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Account</p>
           <h1 className="mt-1 break-words text-3xl font-semibold tracking-tight text-navy-950">
             {active.kind === 'organization' ? `Earnings · ${active.name}` : 'Earnings'}

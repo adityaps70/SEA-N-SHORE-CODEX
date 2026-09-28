@@ -146,6 +146,16 @@ describe('/organizations/[slug]/manage', () => {
     expect(within(nav).getByRole('link', { name: 'Plan & billing' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
   })
 
+  it('shows a phone page bar back to the page titled with the section, and a scroll hint on the section row', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('owner'))
+    mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })
+    render(await OrganizationManagePage({ params, searchParams: section('billing') }))
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/organizations/harbour-minds')
+    expect(screen.getByText('Manage · Plan & billing')).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Manage page sections' })
+    expect(nav.querySelector('[aria-hidden="true"].bg-gradient-to-l')).not.toBeNull()
+  })
+
   it('shows the Requests section to owners so they can decide', async () => {
     mocks.getAccessContext.mockResolvedValue(access('owner'))
     mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })

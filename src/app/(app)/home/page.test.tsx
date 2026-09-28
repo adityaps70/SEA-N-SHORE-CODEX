@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import HomePage from './page'
 import { getFeedPage } from '@/features/feed/queries'
 import { getPeopleYouMayKnow } from '@/features/network/queries'
@@ -21,16 +21,25 @@ vi.mock('@/features/profiles/home-rail-queries', () => ({
 }))
 
 vi.mock('@/features/feed/components/feed-layout', () => ({
-  FeedLayout: ({ portfolioCompletion, children }: { portfolioCompletion: { experienceCount: number; credentialCount: number }; children: React.ReactNode }) => (
+  FeedLayout: ({ portfolioCompletion, suggestions, children }: { portfolioCompletion: { experienceCount: number; credentialCount: number }; suggestions: unknown[]; children: React.ReactNode }) => (
     <section>
       <span>Experience count {portfolioCompletion.experienceCount}</span>
       <span>Credential count {portfolioCompletion.credentialCount}</span>
+      <span>Rail suggestions {suggestions.length}</span>
       {children}
     </section>
   ),
 }))
-vi.mock('@/features/feed/components/feed-list', () => ({ FeedList: () => <div>Feed list</div> }))
-vi.mock('@/features/feed/components/post-composer', () => ({ PostComposer: () => <div>Post composer</div> }))
+vi.mock('@/features/feed/components/feed-list', () => ({
+  FeedList: ({ category, suggestions }: { category?: string; suggestions: unknown[] }) => (
+    <div>Feed list {category ?? 'all'} with {suggestions.length} suggestions</div>
+  ),
+}))
+vi.mock('@/features/feed/components/post-composer', () => ({
+  PostComposer: ({ composeRequest, hideTriggerOnPhones }: { composeRequest?: string; hideTriggerOnPhones?: boolean }) => (
+    <div>Post composer {composeRequest ?? 'closed'}{hideTriggerOnPhones ? ' without phone trigger' : ''}</div>
+  ),
+}))
 
 const mockedGetOwnProfile = vi.mocked(getOwnProfile)
 const mockedGetOwnProfilePortfolio = vi.mocked(getOwnProfilePortfolio)
@@ -60,6 +69,8 @@ const profile = {
 }
 
 describe('HomePage profile completeness evidence', () => {
+  afterEach(() => cleanup())
+
   beforeEach(() => {
     vi.clearAllMocks()
     mockedGetOwnProfile.mockResolvedValue(profile)
@@ -77,5 +88,40 @@ describe('HomePage profile completeness evidence', () => {
     expect(mockedGetOwnProfilePortfolio).toHaveBeenCalledTimes(1)
     expect(screen.getByText('Experience count 1')).toBeInTheDocument()
     expect(screen.getByText('Credential count 1')).toBeInTheDocument()
+  })
+
+  it('renders the topic chips above the feed and filters the feed by the chosen category', async () => {
+    render(await HomePage({ searchParams: Promise.resolve({ category: 'safety_lessons' }) }))
+
+    expect(mockedGetFeedPage).toHaveBeenCalledWith({ category: 'safety_lessons' })
+    const chips = screen.getByRole('navigation', { name: 'Filter maritime feed' })
+    expect(chips.compareDocumentPosition(screen.getByText(/^Feed list/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Safety Lessons' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'All' })).toHaveAttribute('href', '/home')
+    expect(screen.getByText('Feed list safety_lessons with 0 suggestions')).toBeInTheDocument()
+  })
+
+  it('ignores an unknown category', async () => {
+    render(await HomePage({ searchParams: Promise.resolve({ category: 'gossip' }) }))
+    expect(mockedGetFeedPage).toHaveBeenCalledWith({ category: undefined })
+    expect(screen.getByRole('link', { name: 'All' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('passes ?compose= to the composer and hides its trigger card on phones', async () => {
+    render(await HomePage({ searchParams: Promise.resolve({ compose: 'poll' }) }))
+    expect(screen.getByText('Post composer poll without phone trigger')).toBeInTheDocument()
+  })
+
+  it('ignores an unknown compose value', async () => {
+    render(await HomePage({ searchParams: Promise.resolve({ compose: 'essay' }) }))
+    expect(screen.getByText('Post composer closed without phone trigger')).toBeInTheDocument()
+  })
+
+  it('gives the phone feed up to five suggestions and keeps three for the desktop rail', async () => {
+    mockedGetPeopleYouMayKnow.mockResolvedValue([1, 2, 3, 4, 5].map((id) => ({ id: `p${id}` })) as never)
+    render(await HomePage({ searchParams: Promise.resolve({}) }))
+    expect(mockedGetPeopleYouMayKnow).toHaveBeenCalledWith(5)
+    expect(screen.getByText('Rail suggestions 3')).toBeInTheDocument()
+    expect(screen.getByText('Feed list all with 5 suggestions')).toBeInTheDocument()
   })
 })

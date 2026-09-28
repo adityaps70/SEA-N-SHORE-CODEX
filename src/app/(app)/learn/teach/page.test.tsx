@@ -105,6 +105,19 @@ describe('/learn/teach', () => {
     expect(screen.getByTestId('mentor-form')).toHaveTextContent('new-application')
   })
 
+  it('keeps phones focused: page bar back to Learn, promo cards and "What we review" folded into one collapsed panel', async () => {
+    render(await TeachPage())
+
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/learn')
+    expect(screen.getByText('Trainer standard').closest('aside')).toHaveClass('max-md:hidden')
+    expect(screen.getByText('What we review').closest('div')).toHaveClass('max-md:hidden')
+    const panel = screen.getByText('How trainer review works').closest('details') as HTMLElement
+    expect(panel).toHaveClass('md:hidden')
+    expect(panel).not.toHaveAttribute('open')
+    expect(panel).toHaveTextContent('Professional background, credentials, practical expertise')
+    expect(panel).toHaveTextContent('Built for maritime careers')
+  })
+
   it('shows an under-review state without an editable form while pending', async () => {
     mocks.getMentorApplicationState.mockResolvedValue({
       kind: 'application', applicationId, status: 'pending', submittedAt: '2026-09-14T12:00:00.000Z', updatedAt: '2026-09-14T12:00:00.000Z', adminReviewNote: null, mentorId: null, mentorStatus: null,

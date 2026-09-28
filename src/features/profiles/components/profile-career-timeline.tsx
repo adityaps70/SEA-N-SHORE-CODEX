@@ -19,9 +19,11 @@ import {
   type ProfilePortfolioActionState,
 } from '../profile-portfolio-actions'
 import type { ProfileExperienceRecord, ProfileExperienceTrack } from '../profile-portfolio-types'
-import { ProfileSection } from './profile-section'
+import { PHONE_ICON_ADD_BUTTON_CLASS, ProfileSection, ProfileSectionEditButton } from './profile-section'
+import { PhoneShowAll } from './profile-show-all'
 
 const initialActionState: ProfilePortfolioActionState = {}
+
 
 const trackLabels: Record<ProfileExperienceTrack, string> = {
   sea_service: 'Sea service',
@@ -188,10 +190,13 @@ function ExperienceEditor({
 function ExperienceEntry({
   record,
   editable,
+  phoneEditing = false,
   onEdit,
 }: {
   record: ProfileExperienceRecord
   editable: boolean
+  /** Phones hide the per-entry edit/delete buttons until the section pencil is on. */
+  phoneEditing?: boolean
   onEdit: () => void
 }) {
   const [deleting, startDelete] = useTransition()
@@ -208,9 +213,9 @@ function ExperienceEntry({
   }
 
   return (
-    <article className="relative pl-8 sm:pl-10">
-      <span className="absolute left-[7px] top-1.5 size-3 rounded-full border-2 border-white bg-ocean-600 shadow-[0_0_0_3px_rgba(14,116,144,.13)]" aria-hidden="true" />
-      <div className="rounded-2xl border border-mist-100 bg-white p-4 shadow-sm sm:p-5">
+    <article className="relative pl-8 max-md:pl-0 sm:pl-10">
+      <span className="absolute left-[7px] top-1.5 size-3 rounded-full border-2 border-white bg-ocean-600 shadow-[0_0_0_3px_rgba(14,116,144,.13)] max-md:hidden" aria-hidden="true" />
+      <div className="rounded-2xl border border-mist-100 bg-white p-4 shadow-sm max-md:rounded-none max-md:border-0 max-md:p-0 max-md:shadow-none sm:p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -232,7 +237,7 @@ function ExperienceEntry({
           </div>
 
           {editable ? (
-            <div className="flex shrink-0 gap-1">
+            <div className={`flex shrink-0 gap-1 ${phoneEditing ? '' : 'max-md:hidden'}`}>
               <button type="button" onClick={onEdit} aria-label={`Edit ${record.title}`} className="grid size-9 place-items-center rounded-full border border-mist-200 text-muted hover:border-ocean-400 hover:text-ocean-700">
                 <Pencil aria-hidden="true" className="size-4" />
               </button>
@@ -268,6 +273,7 @@ export function ProfileCareerTimeline({
 }) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [phoneEditing, setPhoneEditing] = useState(false)
 
   if (!editable && experiences.length === 0) return null
 
@@ -276,26 +282,39 @@ export function ProfileCareerTimeline({
       id="profile-experience"
       title="Experience"
       action={editable && !adding ? (
-        <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors" aria-label="Add experience">
-          <Plus aria-hidden="true" className="size-4" />
-          Add experience
-        </button>
+        <>
+          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add experience">
+            <Plus aria-hidden="true" className="size-4 max-md:size-5" />
+            <span className="max-md:sr-only">Add experience</span>
+          </button>
+          {experiences.length ? (
+            <ProfileSectionEditButton
+              label="Edit experience entries"
+              pressed={phoneEditing}
+              onClick={() => setPhoneEditing((value) => !value)}
+              className="md:hidden"
+            />
+          ) : null}
+        </>
       ) : null}
     >
       {adding ? <ExperienceEditor onClose={() => setAdding(false)} /> : null}
 
       {experiences.length ? (
-        <div className="relative mt-6 space-y-4 before:absolute before:bottom-6 before:left-3 before:top-2 before:w-px before:bg-mist-100">
+        <PhoneShowAll
+          noun="experience"
+          className="relative mt-6 space-y-4 before:absolute before:bottom-6 before:left-3 before:top-2 before:w-px before:bg-mist-100 max-md:mt-4 max-md:space-y-5 max-md:before:hidden"
+        >
           {experiences.map((record) => (
             editingId === record.id ? (
               <div key={record.id} className="pl-0 sm:pl-2">
                 <ExperienceEditor record={record} onClose={() => setEditingId(null)} />
               </div>
             ) : (
-              <ExperienceEntry key={record.id} record={record} editable={editable} onEdit={() => { setEditingId(record.id); setAdding(false) }} />
+              <ExperienceEntry key={record.id} record={record} editable={editable} phoneEditing={phoneEditing} onEdit={() => { setEditingId(record.id); setAdding(false) }} />
             )
           ))}
-        </div>
+        </PhoneShowAll>
       ) : editable && !adding ? (
         <div className="mt-6 rounded-2xl border border-dashed border-mist-100 bg-mist-50/50 p-6 text-center">
           <Briefcase aria-hidden="true" className="mx-auto size-7 text-ocean-600" />

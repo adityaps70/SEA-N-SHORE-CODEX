@@ -39,8 +39,8 @@ export default async function OwnProfilePage() {
   const isSeafarer = profile.persona ? profile.persona === 'seafarer' : profile.profileType === 'seafarer'
 
   return (
-    <section className="grid gap-4 py-2 sm:py-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="grid min-w-0 gap-4">
+    <section className="grid gap-4 py-2 max-md:-mt-4 max-md:gap-2 max-md:py-0 sm:py-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="grid min-w-0 gap-4 max-md:gap-2">
         <ProfileHeader
           profile={profile}
           editHref="inline"
@@ -60,10 +60,14 @@ export default async function OwnProfilePage() {
         <ProfileCareerTimeline experiences={portfolio.experiences} editable />
         <ProfileCredentialWallet credentials={portfolio.credentials} editable />
         {isSeafarer || dgProfile ? <ProfileDgDocumentCard profileId={profile.id} document={dgProfile} /> : null}
-        <ProfileMembershipCard profile={profile} access={access} />
+        {/* Phones: membership and verifications live in Settings → Plan & billing. */}
+        <div className="min-w-0 max-md:hidden">
+          <ProfileMembershipCard profile={profile} access={access} />
+        </div>
       </div>
 
-      <aside className="min-w-0 lg:sticky lg:top-24 lg:self-start">
+      {/* Phones: People you may know lives on the Network tab. */}
+      <aside className="min-w-0 max-md:hidden lg:sticky lg:top-24 lg:self-start">
         <PeopleYouMayKnow profiles={recommendations} />
         <RailFooter visibleFrom="lg" />
       </aside>

@@ -12,6 +12,7 @@ export function AttendanceControl({
   paid = false,
   paidLabel,
   unavailableLabel,
+  variant = 'panel',
 }: {
   eventId: string
   attending: boolean
@@ -21,6 +22,8 @@ export function AttendanceControl({
   paidLabel?: string
   /** Button text while registration is unavailable, e.g. "Event full". */
   unavailableLabel?: string
+  /** `bar`: just the Register pill for the phone sticky bar (attendees see their status on the page). */
+  variant?: 'panel' | 'bar'
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -38,6 +41,22 @@ export function AttendanceControl({
       }
       router.refresh()
     })
+  }
+
+  if (variant === 'bar' && !attending) {
+    return (
+      <div className="min-w-0 flex-1">
+        {error ? <p role="alert" className="mb-1.5 text-xs font-medium leading-4 text-rose-700">{error}</p> : null}
+        <button
+          type="button"
+          disabled={disabled || pending}
+          onClick={run}
+          className={`inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-full px-5 text-[15px] font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed ${disabled ? 'bg-mist-100 text-navy-700' : 'bg-ocean-700 text-white hover:bg-ocean-800 disabled:opacity-60'}`}
+        >
+          {pending ? 'Registering…' : disabled && unavailableLabel ? unavailableLabel : 'Register for event'}
+        </button>
+      </div>
+    )
   }
 
   return (

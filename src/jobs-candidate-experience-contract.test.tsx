@@ -63,4 +63,22 @@ describe('premium candidate jobs experience contract', () => {
     expect(alerts).toContain('JobAlertForm')
     expect(alertForm).toContain('Create an alert')
   })
+
+  it('gives phones compact jobs screens without removing desktop surfaces (round 8)', () => {
+    const page = source('src/app/(app)/jobs/page.tsx')
+    expect(page).toContain('<JobsMobileToolbar')
+    expect(page).toContain('<JobListRow')
+    expect(page).toContain('href="/hiring"')
+    expect(page).toContain('JobsDiscoveryControls filters={filters} resultCount={items.length} className="max-md:hidden"')
+
+    for (const route of ['saved', 'applications', 'alerts']) {
+      const myJobs = source(`src/app/(app)/jobs/${route}/page.tsx`)
+      expect(myJobs).toContain('<MobilePageBar backHref="/jobs" title="My jobs" />')
+      expect(myJobs).toContain('<MyJobsChips')
+    }
+    const applications = source('src/app/(app)/jobs/applications/page.tsx')
+    expect(applications).toContain('WithdrawApplicationButton')
+    expect(applications).toContain('ApplicationRowMenu')
+    expect(source('src/app/(app)/jobs/alerts/page.tsx')).toContain('CreateJobAlertSheet')
+  })
 })

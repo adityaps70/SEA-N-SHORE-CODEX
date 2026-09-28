@@ -28,6 +28,11 @@ const memberRoleSchema = z.object({
   role: z.enum(assignableRoles),
 })
 
+const removeMemberSchema = z.object({
+  companyId: uuidSchema,
+  memberId: uuidSchema,
+})
+
 const brandingSchema = z.object({
   companyId: uuidSchema,
   website: z.preprocess(
@@ -159,6 +164,46 @@ export async function updateOrganizationMemberRole(input: {
       return { ok: false, error: 'This organization member could not be found.' }
     }
     return { ok: false, error: 'We could not update this team role. Please try again.' }
+  }
+}
+
+/**
+ * Removes a person from the organization's team. Only owners and administrators with team
+ * management can do this; the repository re-checks the actor's role inside the transaction,
+ * only owners can remove an owner, and the last owner can never be removed (including by
+ * leaving themselves).
+ */
+export async function removeOrganizationMember(input: {
+  companyId: string
+  memberId: string
+}): Promise<OrganizationWorkspaceActionResult & { left?: boolean }> {
+  const parsed = removeMemberSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Choose a valid organization team member.' }
+
+  try {
+    const user = await requireAwsUser()
+    await requireCapability(user.id, 'organization.team', { companyId: parsed.data.companyId })
+    const workspace = await organizationWorkspaceRepository.getById(parsed.data.companyId)
+    if (!workspace) return { ok: false, error: 'This organization workspace could not be found.' }
+
+    await organizationWorkspaceRepository.removeMember(user.id, parsed.data.companyId, parsed.data.memberId)
+    refreshOrganizationWorkspace(workspace.slug)
+    return { ok: true, left: parsed.data.memberId === user.id }
+  } catch (error) {
+    const code = error instanceof Error ? error.message : ''
+    if (code === 'capability_required') {
+      return { ok: false, error: 'Organization Pro team-management access is required to remove team members.' }
+    }
+    if (code === 'organization_member_remove_forbidden') {
+      return { ok: false, error: 'Only the owner and administrators can remove team members, and only an owner can remove an owner.' }
+    }
+    if (code === 'organization_last_owner') {
+      return { ok: false, error: 'The organization needs at least one owner, so its last owner cannot be removed.' }
+    }
+    if (code === 'organization_member_not_found') {
+      return { ok: false, error: 'This organization member could not be found.' }
+    }
+    return { ok: false, error: 'We could not remove this team member. Please try again.' }
   }
 }
 

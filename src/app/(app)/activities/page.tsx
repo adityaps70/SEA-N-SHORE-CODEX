@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { ArrowRight, BookOpenCheck, BriefcaseBusiness, CalendarDays, EyeOff, MapPin, MessageSquareText, PenSquare, Trash2, type LucideIcon } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { ActivityTabs } from './activity-tabs'
 import { RailFooter } from '@/components/navigation/rail-footer'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -108,7 +109,7 @@ export default async function ActivitiesPage({
   const activeTab = ACTIVITY_TABS.find((item) => item.id === tab) ?? ACTIVITY_TABS[0]
 
   return (
-    <section className="grid gap-5 py-2 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_300px] xl:gap-6">
+    <section className="grid gap-5 py-2 max-md:gap-0 max-md:py-0 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_300px] xl:gap-6">
       <aside className="hidden lg:block">
         <div className="sticky top-24">
           <FeedProfileCard profile={profile} portfolioCompletion={portfolioCompletion} />
@@ -116,7 +117,9 @@ export default async function ActivitiesPage({
       </aside>
 
       <main className="min-w-0">
-        <div className="mb-4 lg:hidden">
+        <MobilePageBar backHref="/settings" title="My Activities" />
+        {/* Phones: the page bar replaces the intro; the profile card is one tap away in the drawer. */}
+        <div className="mb-4 max-md:hidden lg:hidden">
           <FeedProfileCard profile={profile} portfolioCompletion={portfolioCompletion} compact />
         </div>
 
@@ -124,11 +127,12 @@ export default async function ActivitiesPage({
           eyebrow="Member workspace"
           title="My Activities"
           description="Your posts, comments, applications, events, courses, hidden and recently deleted posts in one place."
+          className="max-md:hidden"
         />
 
         <ActivityTabs tabs={ACTIVITY_TABS.map((item) => ({ id: item.id, label: item.label, href: `/activities?tab=${item.id}` }))} activeId={tab} />
 
-        <section aria-labelledby="activity-panel-heading" className="mt-4">
+        <section aria-labelledby="activity-panel-heading" className="mt-4 max-md:mt-3">
           <h2 id="activity-panel-heading" className="sr-only">{activeTab.heading}</h2>
           {tab === 'posts' ? (
             posts.length ? <div className="space-y-4">{posts.map((post) => <PostCard key={post.id} post={post} />)}</div> : (

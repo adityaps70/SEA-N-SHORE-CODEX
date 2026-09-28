@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { getPostById } from '@/features/feed/queries'
 import { PostCard } from '@/features/feed/components/post-card'
 
@@ -15,8 +16,12 @@ export default async function PostPage({
   if (!post) notFound()
 
   return (
-    <section className="mx-auto w-full max-w-3xl py-2 sm:py-5">
-      <PostCard post={post} detail />
-    </section>
+    <>
+      <MobilePageBar backHref="/home" title="Post" />
+      {/* Phones: the post runs edge to edge under the page bar. */}
+      <section className="mx-auto w-full max-w-3xl py-2 sm:py-5 max-md:-mx-4 max-md:w-auto max-md:py-0">
+        <PostCard post={post} detail flushOnPhones />
+      </section>
+    </>
   )
 }

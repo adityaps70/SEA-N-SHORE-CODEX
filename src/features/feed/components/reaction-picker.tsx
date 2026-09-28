@@ -4,7 +4,7 @@ import { ThumbsUp } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import { POST_REACTIONS, POST_REACTION_META, type PostReactionType } from '../types'
-import { POST_ACTION_LABEL_CLASS } from './post-action-styles'
+import { POST_ACTION_LABEL_CLASS, POST_ACTION_PHONE_CLASS } from './post-action-styles'
 
 /** How long a finger has to rest on the Like button before the reaction choices open. */
 export const LONG_PRESS_MS = 450
@@ -12,7 +12,7 @@ export const LONG_PRESS_MS = 450
 const TOUCH_MOUSE_GRACE_MS = 800
 
 const TRIGGER_STYLES = {
-  post: 'min-h-9 gap-1.5 px-2 text-sm @min-[26rem]:px-2.5',
+  post: `min-h-9 gap-1.5 px-2 text-sm @min-[26rem]:px-2.5 ${POST_ACTION_PHONE_CLASS}`,
   comment: 'min-h-8 gap-1 px-2 text-xs',
 } as const
 
@@ -129,13 +129,13 @@ export function ReactionPicker({
   }
 
   const reactedStyles = value
-    ? 'border-ocean-200 bg-ocean-50 text-ocean-700 hover:border-ocean-300 hover:bg-ocean-100'
+    ? `border-ocean-200 bg-ocean-50 text-ocean-700 hover:border-ocean-300 hover:bg-ocean-100 ${variant === 'post' ? 'max-md:bg-white' : ''}`
     : 'border-mist-200 bg-white text-navy-900 hover:border-ocean-300 hover:bg-mist-50 hover:text-navy-950'
 
   return (
     <div
       ref={rootRef}
-      className="relative inline-flex min-w-0 shrink-0 items-center"
+      className={`relative inline-flex min-w-0 shrink-0 items-center ${variant === 'post' ? 'max-md:flex' : ''}`}
       onMouseEnter={() => { if (!recentlyTouched()) openPicker() }}
       onMouseLeave={() => { if (!recentlyTouched()) scheduleClose() }}
       onFocus={() => { if (!recentlyTouched() && !skipFocusOpenRef.current) openPicker() }}
@@ -168,7 +168,8 @@ export function ReactionPicker({
         )}
         <span data-reaction-label className={variant === 'post' ? POST_ACTION_LABEL_CLASS : undefined}>{current.label}</span>
         {count > 0 ? (
-          <span data-testid="reaction-count" aria-hidden="true" className="tabular-nums">{count}</span>
+          // Phones show the total in the post's counts line instead.
+          <span data-testid="reaction-count" aria-hidden="true" className={variant === 'post' ? 'tabular-nums max-md:hidden' : 'tabular-nums'}>{count}</span>
         ) : null}
       </button>
       {open ? (

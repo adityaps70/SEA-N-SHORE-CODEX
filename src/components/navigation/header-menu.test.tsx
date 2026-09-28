@@ -74,10 +74,13 @@ describe('HeaderMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('keeps Messages out of the phone account menu (it is an icon in the phone header)', () => {
-    render(<MobileAppHeader unreadCount={0} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
-    expect(screen.queryByRole('menuitem', { name: /Messages/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: /Settings/ })).toHaveAttribute('href', '/settings')
+  it('is desktop only: the phone top bar has no header menus (the side drawer replaces the account menu)', () => {
+    render(<MobileAppHeader />)
+    expect(screen.queryByRole('button', { name: 'Account menu' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Create' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Messages' })).toHaveAttribute('href', '/messages')
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 })

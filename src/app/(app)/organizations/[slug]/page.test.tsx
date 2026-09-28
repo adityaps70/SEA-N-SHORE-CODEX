@@ -183,14 +183,98 @@ describe('/organizations/[slug] public page', () => {
 
   it('offers copy link, share and request to join from the more menu, and Escape closes it', async () => {
     render(await OrganizationPage({ params }))
-    const trigger = screen.getByRole('button', { name: 'More actions for Harbour Minds' })
-    fireEvent.click(trigger)
+    // The phone page bar and the header both have a "…" button; they open the same menu.
+    const [barTrigger, headerTrigger] = screen.getAllByRole('button', { name: 'More actions for Harbour Minds' })
+    fireEvent.click(headerTrigger!)
     const menu = screen.getByRole('menu')
     expect(within(menu).getByRole('menuitem', { name: 'Copy link' })).toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: 'Share page' })).toBeInTheDocument()
     expect(within(menu).getByRole('menuitem', { name: 'Request to join' })).toHaveAttribute('href', '#work-here')
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+    fireEvent.click(barTrigger!)
+    expect(screen.getByRole('menu', { name: 'More actions for Harbour Minds' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  })
+
+  it('shows a phone page bar that goes back to Organizations', async () => {
+    render(await OrganizationPage({ params }))
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/organizations')
+  })
+
+  describe('"…" sheet items per role', () => {
+    async function openMenu() {
+      render(await OrganizationPage({ params }))
+      fireEvent.click(screen.getAllByRole('button', { name: 'More actions for Harbour Minds' })[1]!)
+      return within(screen.getByRole('menu'))
+    }
+    const labels = (menu: ReturnType<typeof within>) => menu.getAllByRole('menuitem').map((item: HTMLElement) => item.textContent?.replace('(opens in a new tab)', '').trim())
+
+    it('visitor: website, copy, share and request to join', async () => {
+      const menu = await openMenu()
+      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page', 'Request to join'])
+      expect(menu.getByRole('menuitem', { name: /Visit website/ })).toHaveAttribute('href', 'https://harbourminds.org/')
+      // Phone-only rows: the header shows these as buttons on desktop.
+      expect(menu.getByRole('menuitem', { name: /Visit website/ })).toHaveClass('md:hidden')
+    })
+
+    it('visitor with a pending request: See your request', async () => {
+      mocks.listUserAccessRequests.mockResolvedValue([{ id: 'r1', status: 'pending', company: { id: 'c1', slug: 'harbour-minds', name: 'Harbour Minds' } }])
+      const menu = await openMenu()
+      expect(menu.getByRole('menuitem', { name: 'See your request' })).toHaveAttribute('href', '/organizations#your-requests')
+      expect(menu.queryByRole('menuitem', { name: 'Request to join' })).not.toBeInTheDocument()
+    })
+
+    it('unclaimed page: Claim this page', async () => {
+      mocks.getBySlug.mockResolvedValue({ ...workspace, verified: false, unclaimed: true, website: null })
+      const menu = await openMenu()
+      expect(labels(menu)).toEqual(['Copy link', 'Share page', 'Claim this page'])
+      expect(menu.getByRole('menuitem', { name: 'Claim this page' })).toHaveAttribute('href', '/organizations/harbour-minds/claim')
+    })
+
+    it('owner of a free organization: Upgrade to Organization Pro, no join row', async () => {
+      mocks.getAccessContext.mockResolvedValue(access('owner'))
+      mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })
+      const menu = await openMenu()
+      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page', 'Upgrade to Organization Pro'])
+      expect(menu.getByRole('menuitem', { name: 'Upgrade to Organization Pro' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
+    })
+
+    it('recruiter: no upgrade and no join row', async () => {
+      mocks.getAccessContext.mockResolvedValue(access('recruiter'))
+      const menu = await openMenu()
+      expect(labels(menu)).toEqual(['Visit website', 'Copy link', 'Share page'])
+    })
+  })
+
+  it('turns "Work here?" into one phone row that opens the request flow, also from the menu', async () => {
+    render(await OrganizationPage({ params }))
+    const join = screen.getByRole('region', { name: 'Work at Harbour Minds?' })
+    const row = within(join).getByRole('button', { name: 'Work here? Request access' })
+    expect(row).toHaveAttribute('aria-expanded', 'false')
+    const panel = document.getElementById(row.getAttribute('aria-controls') ?? '')
+    expect(panel).toHaveClass('max-md:hidden')
+    expect(within(panel!).getByRole('button', { name: 'Request access' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'More actions for Harbour Minds' })[1]!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Request to join' }))
+    expect(row).toHaveAttribute('aria-expanded', 'true')
+    expect(panel).not.toHaveClass('max-md:hidden')
+  })
+
+  it('hides duplicate side cards on phones', async () => {
+    mocks.listSimilarOrganizations.mockResolvedValue([{
+      id: 'c2', slug: 'sailors-care', name: 'Sailors Care', logoPath: null, coverPath: null, tagline: null, description: null,
+      companyType: null, organizationType: 'mental_health_provider', headquarters: null, verified: true, followerCount: 1, following: false,
+    }])
+    mocks.getAccessContext.mockResolvedValue(access('owner'))
+    mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })
+    render(await OrganizationPage({ params }))
+    expect(screen.getByRole('region', { name: 'You are part of Harbour Minds' })).toHaveClass('max-md:hidden')
+    expect(screen.getByRole('region', { name: 'Pages people also viewed' })).toHaveClass('max-md:hidden')
+    expect(screen.getByRole('link', { name: 'Upgrade to Organization Pro' })).toHaveClass('max-md:hidden')
   })
 
   it('shows the About tab with overview facts, specialities, verification and wellbeing support', async () => {

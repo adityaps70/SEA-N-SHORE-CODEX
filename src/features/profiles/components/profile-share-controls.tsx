@@ -12,6 +12,10 @@ export function getPublicProfileUrl(slug: string, siteUrl?: string) {
   return `/people/${cleanSlug}`
 }
 
+/** Phones: Share is the filled ocean pill and QR the outline pill of the profile header. */
+const PHONE_FILLED_PILL = 'max-md:min-h-11 max-md:flex-1 max-md:rounded-full max-md:border-ocean-700 max-md:bg-ocean-700 max-md:text-[15px] max-md:text-white max-md:hover:bg-ocean-800 max-md:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
+const PHONE_OUTLINE_PILL = 'max-md:min-h-11 max-md:flex-1 max-md:rounded-full max-md:border-ocean-700 max-md:text-[15px] max-md:text-ocean-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
+
 export function ProfileShareControls({
   slug,
   siteUrl,
@@ -61,13 +65,14 @@ export function ProfileShareControls({
 
   return (
     <>
-      <button type="button" onClick={shareProfile} className={secondary} aria-label="Share profile">
-        <Share2 aria-hidden="true" className="size-4" />
-        Share profile
+      <button type="button" onClick={shareProfile} className={`${secondary} ${PHONE_FILLED_PILL}`} aria-label="Share profile">
+        <Share2 aria-hidden="true" className="size-4 max-md:size-5" />
+        {/* One flex item, so desktop keeps a single space ("Share profile") instead of the gap. */}
+        <span>Share<span className="max-md:hidden"> profile</span></span>
       </button>
-      <button type="button" onClick={() => setQrOpen(true)} className={secondary} aria-label="QR profile">
-        <QrCode aria-hidden="true" className="size-4" />
-        QR profile
+      <button type="button" onClick={() => setQrOpen(true)} className={`${secondary} ${PHONE_OUTLINE_PILL}`} aria-label="QR profile">
+        <QrCode aria-hidden="true" className="size-4 max-md:size-5" />
+        <span>QR<span className="max-md:hidden"> profile</span></span>
       </button>
 
       {qrOpen ? (

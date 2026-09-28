@@ -4,6 +4,8 @@ import { redirect } from 'next/navigation'
 import { ArrowLeft, BookOpen, ShieldCheck } from 'lucide-react'
 import { CreateRequirementsBanner } from '@/components/creator/create-requirements-banner'
 import { getAccessContext } from '@/features/access/server'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
+import { WorksBestOnComputer } from '@/features/learning/components/works-best-on-computer'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CourseEditSession } from '@/features/learning/components/course-edit-session'
 import { CourseForm } from '@/features/learning/components/course-form'
@@ -72,9 +74,11 @@ export default async function NewMentorCoursePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/learn/studio" title="Create course" />
+      <WorksBestOnComputer>The course editor and SCORM upload work best on a computer. Everything still works here.</WorksBestOnComputer>
       <CreateRequirementsBanner access={access} kind="course" organizations={organizations} className="mb-5" />
-      <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
+      <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> Learning Studio
       </Link>
 

@@ -29,9 +29,9 @@ export default async function OrganizationBrandingPage({ params }: { params: Pro
   return (
     <OrganizationManageShell workspace={workspace} active="branding" {...shell}>
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700">Organization Pro</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950">Page details & branding</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700 max-md:hidden">Organization Pro</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:sr-only">Page details & branding</h1>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted max-md:hidden">
           What members see on the {workspace.name} page and on its jobs, events and courses: logo, cover image, tagline, description, size and locations.
         </p>
       </div>

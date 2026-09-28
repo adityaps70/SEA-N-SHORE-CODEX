@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   lines: [] as unknown[],
   account: null as unknown,
   open: null as unknown,
+  payments: [] as unknown[],
   release: vi.fn(async () => 0),
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
 }))
@@ -52,12 +53,16 @@ vi.mock('@/features/payouts/payout-queries', () => ({
   listFeeOverrides: async () => [],
   getSellerIdentity: async () => ({ seller: { profileId: USER }, name: 'Arjun Rao', slug: 'arjun', kind: 'profile' }),
   listPayableEarningLines: async () => mocks.lines,
+  listRecentPayments: async () => ({ lines: mocks.payments, unavailable: [] }),
+  PAYMENT_TYPES: ['event', 'course', 'plan'],
+  PAYMENT_STATUSES: ['paid', 'pending', 'failed', 'refunded', 'cancelled'],
 }))
 
 import AdminPaymentsOverviewPage from './page'
 import AdminPaymentFeesPage from './fees/page'
 import AdminPayoutsQueuePage from './payouts/page'
 import ReviewPayoutPage from './payouts/review/page'
+import AdminPaymentsListPage from './transactions/page'
 
 const bankAccount = {
   id: 'a', seller: { profileId: USER }, method: 'bank', holderName: 'Arjun Rao', ifsc: 'HDFC0000001', last4: '1772', vpa: null,
@@ -81,6 +86,7 @@ beforeEach(() => {
   mocks.lines = []
   mocks.account = null
   mocks.open = null
+  mocks.payments = []
   vi.clearAllMocks()
 })
 afterEach(() => cleanup())
@@ -119,6 +125,24 @@ describe('Admin → Payments', () => {
     expect(screen.getByText('Waiting for payout details')).toBeInTheDocument()
     expect(screen.getByText('Below the ₹100.00 minimum')).toBeInTheDocument()
     expect(screen.getByText(/Owes ₹44.91 from refunds/)).toBeInTheDocument()
+  })
+
+  it('links a person seller in the payout queue to their public profile at /people/<slug>', async () => {
+    mocks.queue = [queueLine()]
+    render(await AdminPayoutsQueuePage())
+    expect(screen.getByRole('link', { name: 'Arjun Rao' })).toHaveAttribute('href', '/people/arjun')
+  })
+
+  it('transactions link the payer to /people/<slug> (there is no /profile/<slug> page)', async () => {
+    mocks.payments = [
+      { type: 'event', id: 'o-1', occurredAt: '2026-09-01T10:00:00.000Z', amountMinor: 49900, currency: 'INR', status: 'paid', provider: 'cashfree', reference: 'cf_1', title: 'Tanker Safety Workshop', payerName: 'Arjun Rao', payerSlug: 'arjun' },
+      { type: 'course', id: 'o-2', occurredAt: '2026-09-02T10:00:00.000Z', amountMinor: 19960, currency: 'INR', status: 'paid', provider: 'razorpay', reference: null, title: 'ECDIS Refresher', payerName: 'Former member', payerSlug: null },
+    ]
+    render(await AdminPaymentsListPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.getByRole('link', { name: 'Arjun Rao' })).toHaveAttribute('href', '/people/arjun')
+    expect(screen.getByText(/Former member/)).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Former member' })).not.toBeInTheDocument()
+    expect(document.querySelector('a[href^="/profile/"]')).toBeNull()
   })
 
   it('queue explains when Cashfree Payouts is not set up', async () => {

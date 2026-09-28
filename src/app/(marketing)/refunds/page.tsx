@@ -15,6 +15,14 @@ export default function RefundsPage() {
       eyebrow="Refunds & cancellation"
       title="Refund & cancellation policy"
       updated="28 September 2026"
+      sections={[
+        { href: '#event-tickets', label: 'Event tickets' },
+        { href: '#courses', label: 'Courses' },
+        { href: '#plans', label: 'Plans' },
+        { href: '#how-to-request', label: 'How to ask' },
+        { href: '#sellers', label: 'For sellers' },
+        { href: '#questions', label: 'Questions' },
+      ]}
       intro={
         <p>
           This policy covers everything you can pay for on {BUSINESS.brandName}: paid event tickets, paid courses and the Creator Pro and Organization Pro plans. {BUSINESS.brandName} is operated by {BUSINESS.legalName}, {BUSINESS.city}, {BUSINESS.country}. All payments are in Indian rupees (INR) and are processed securely by our payment gateway, Cashfree Payments.

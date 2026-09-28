@@ -4,7 +4,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { createElement, useActionState, useState } from 'react'
+import { createContext, createElement, useActionState, useState } from 'react'
 import { Building2, MapPin, Pencil, type LucideProps } from 'lucide-react'
 import { organizationPageHref } from '../organization-link'
 import { updateProfileIdentitySection, type ProfileInlineActionState } from '../profile-inline-actions'
@@ -26,6 +26,12 @@ const profileTypeLabels: Record<PublicProfile['profileType'], string> = {
 }
 
 const initialState: ProfileInlineActionState = {}
+
+/**
+ * Opens the owner's inline "basic information" editor (name, headline, location, organization,
+ * contact visibility). Provided by ProfileHeader so its `actions` (the phone "…" sheet) can open it.
+ */
+export const ProfileIdentityEditorContext = createContext<(() => void) | null>(null)
 
 function initials(name: string) {
   return name
@@ -90,8 +96,9 @@ export function ProfileHeader({
   const labelClass = 'block text-sm font-semibold text-navy-950'
 
   return (
-    <section data-testid="profile-header-shell" className="overflow-visible rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
-      <div data-testid="profile-header-cover" className="relative h-36 overflow-hidden rounded-t-[1.75rem] bg-[linear-gradient(115deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))] sm:h-48">
+    <ProfileIdentityEditorContext.Provider value={editHref ? () => setEditing(true) : null}>
+    <section data-testid="profile-header-shell" className="overflow-visible rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:shadow-none">
+      <div data-testid="profile-header-cover" className="relative h-36 overflow-hidden rounded-t-[1.75rem] bg-[linear-gradient(115deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))] max-md:h-28 max-md:rounded-none sm:h-48">
         {profile.coverUrl ? (
           <img
             src={profile.coverUrl}
@@ -102,7 +109,7 @@ export function ProfileHeader({
         {mediaControls ? <div className="absolute right-4 top-4 z-10">{mediaControls}</div> : null}
       </div>
 
-      <div className="px-5 pb-6 sm:px-8 sm:pb-8">
+      <div className="px-5 pb-6 max-md:px-4 max-md:pb-5 sm:px-8 sm:pb-8">
         <div className="-mt-12 flex items-end justify-between gap-4 sm:-mt-16">
           <div className="relative shrink-0">
             <div
@@ -130,7 +137,7 @@ export function ProfileHeader({
           </span>
 
           <div className="mt-2 flex min-w-0 items-center gap-2">
-            <h1 className="min-w-0 text-[1.75rem] font-semibold leading-[1.15] tracking-[-.025em] text-navy-950 sm:text-[2rem]">
+            <h1 className="min-w-0 text-[1.75rem] font-semibold leading-[1.15] tracking-[-.025em] text-navy-950 max-md:text-2xl max-md:font-bold sm:text-[2rem]">
               {profile.fullName}
             </h1>
             {editHref ? (
@@ -138,7 +145,7 @@ export function ProfileHeader({
                 type="button"
                 onClick={() => setEditing(true)}
                 aria-label="Edit basic information"
-                className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-mist-200 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-full border border-mist-200 text-navy-950 hover:border-ocean-500 hover:text-ocean-700 max-md:ml-auto max-md:size-11 max-md:border-transparent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
               >
                 <Pencil aria-hidden="true" className="size-4" />
               </button>
@@ -192,7 +199,7 @@ export function ProfileHeader({
         </div>
 
         {actions ? (
-          <div data-testid="profile-header-actions" className="mt-5 w-full">
+          <div data-testid="profile-header-actions" className="mt-5 w-full max-md:mt-4">
             {actions}
           </div>
         ) : null}
@@ -259,5 +266,6 @@ export function ProfileHeader({
         ) : null}
       </div>
     </section>
+    </ProfileIdentityEditorContext.Provider>
   )
 }

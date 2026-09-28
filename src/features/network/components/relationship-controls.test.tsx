@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RelationshipControls } from './relationship-controls'
@@ -7,6 +7,13 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock('@/features/messaging/components/start-conversation-button', () => ({
   StartConversationButton: ({ targetProfileId }: { targetProfileId: string }) => (
     <button type="button" data-profile-id={targetProfileId}>Message</button>
+  ),
+}))
+vi.mock('@/features/moderation/components/report-content-button', () => ({
+  ReportContentButton: ({ targetType, targetId, onClose }: { targetType: string; targetId: string; onClose?: () => void }) => (
+    <div role="dialog" aria-label={`Report ${targetType}`} data-target-id={targetId}>
+      <button type="button" onClick={onClose}>Close report</button>
+    </div>
   ),
 }))
 vi.mock('../actions', () => ({
@@ -121,5 +128,77 @@ describe('RelationshipControls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'More' }))
     expect(screen.getByRole('menuitem', { name: 'Block' })).toBeInTheDocument()
     expect(screen.queryByText(/Verified|Reputation/i)).not.toBeInTheDocument()
+  })
+
+  describe('public profile variant (phone sheet)', () => {
+    it('lists Follow, Cancel request, Block and Report profile in the "…" sheet', () => {
+      render(
+        <RelationshipControls
+          profileId={profileId}
+          initialRelationship={{ following: false, connection: { kind: 'outgoing_pending', connectionId } }}
+          variant="profile"
+          reportProfile
+        />,
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'More' }))
+      const menu = screen.getByRole('menu', { name: 'Relationship actions' })
+      expect(menu.className).toContain('max-md:!fixed')
+      expect(screen.getByRole('menuitem', { name: 'Follow' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Cancel request' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Block' })).toBeInTheDocument()
+      const report = screen.getByRole('menuitem', { name: 'Report profile' })
+      // Desktop keeps its separate Report profile button, so this row is phone-only.
+      expect(report).toHaveClass('md:hidden')
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    })
+
+    it('shows Decline for an incoming request and Remove connection when connected', () => {
+      const { unmount } = render(
+        <RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'incoming_pending', connectionId } }} variant="profile" reportProfile />,
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'More' }))
+      expect(screen.getByRole('menuitem', { name: 'Decline' })).toBeInTheDocument()
+      unmount()
+
+      render(
+        <RelationshipControls profileId={profileId} initialRelationship={{ following: true, connection: { kind: 'connected', connectionId } }} variant="profile" reportProfile />,
+      )
+      expect(screen.getByRole('button', { name: 'Message' })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'More' }))
+      expect(screen.getByRole('menuitem', { name: 'Following' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Remove connection' })).toBeInTheDocument()
+    })
+
+    it('opens the report dialog for this profile from Report profile', () => {
+      render(
+        <RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} variant="profile" reportProfile />,
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'More' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Report profile' }))
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'Report profile' })).toHaveAttribute('data-target-id', profileId)
+      fireEvent.click(screen.getByRole('button', { name: 'Close report' }))
+      expect(screen.queryByRole('dialog', { name: 'Report profile' })).not.toBeInTheDocument()
+    })
+
+    it('blocks from the sheet', async () => {
+      const actions = await import('../actions')
+      render(
+        <RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} variant="profile" reportProfile />,
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'More' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Block' }))
+      await waitFor(() => expect(actions.blockProfile).toHaveBeenCalledWith(profileId))
+    })
+
+    it('opens the sheet from the page bar "…" event', () => {
+      render(
+        <RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} variant="profile" openMenuEvent="sns:test-open" />,
+      )
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      act(() => { window.dispatchEvent(new Event('sns:test-open')) })
+      expect(screen.getByRole('menu', { name: 'Relationship actions' })).toBeInTheDocument()
+      expect(screen.queryByRole('menuitem', { name: 'Report profile' })).not.toBeInTheDocument()
+    })
   })
 })

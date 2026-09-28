@@ -92,7 +92,7 @@ export function PhoneAuthForm({
           </p>
         )}
 
-        <Button type="submit" disabled={pending}>
+        <Button type="submit" disabled={pending} className="max-md:min-h-13 max-md:rounded-full max-md:text-base">
           {pending
             ? "Please wait…"
             : step === "confirm"
@@ -101,16 +101,16 @@ export function PhoneAuthForm({
         </Button>
       </form>
 
-      <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+      <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm max-md:justify-center max-md:gap-y-0 max-md:text-base">
         {step === "confirm" && (
           <Link
             href={`/auth/phone?intent=${intent}`}
-            className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline"
+            className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
           >
             Use a different number
           </Link>
         )}
-        <Link href={intent === "sign-up" ? "/auth/sign-up" : "/auth/sign-in"} className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
+        <Link href={intent === "sign-up" ? "/auth/sign-up" : "/auth/sign-in"} className="font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center">
           Use email instead
         </Link>
       </div>

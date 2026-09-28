@@ -7,15 +7,18 @@ import {
   Check,
   CheckCheck,
   Clock3,
+  Copy,
   Download,
   Ellipsis,
   FileText,
   Pencil,
   RefreshCcw,
   Reply,
+  Smile,
   Trash2,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
 import {
   deleteMessageAction,
   editMessageAction,
@@ -34,10 +37,19 @@ import {
 } from './conversation-actions'
 import { ImageLightbox, type LightboxImage } from './image-lightbox'
 import type { OptimisticMessagingMessage } from './message-composer'
-import { MessageEmojiPicker } from './message-emoji-picker'
+import { MessageEmojiPicker, QUICK_REACTIONS } from './message-emoji-picker'
 import { LinkifiedText } from './linkified-text'
 
 export type MessageThreadItem = MessagingMessageDto | OptimisticMessagingMessage
+
+/** Phones: press and hold a message this long to open its action sheet. */
+export const MESSAGE_LONG_PRESS_MS = 450
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10
+const PHONE_MEDIA_QUERY = '(max-width: 767.98px)'
+
+function isPhoneViewport() {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(PHONE_MEDIA_QUERY).matches
+}
 
 /** Photos in a thread, in order, for the in-app viewer (prev/next across the conversation). */
 export function lightboxImagesFromMessages(messages: readonly MessageThreadItem[]): LightboxImage[] {
@@ -206,6 +218,7 @@ export function MessageThread({
   onReply,
   otherTyping = false,
   onConversationDeleted,
+  hideHeaderOnPhones = false,
 }: {
   viewerId: string
   conversationId: string
@@ -221,6 +234,8 @@ export function MessageThread({
   otherTyping?: boolean
   /** Called after "Delete conversation" succeeds. Without it the thread returns to /messages itself. */
   onConversationDeleted?: (result: DeletedConversationResult) => void
+  /** The messages page shows its own phone page bar (back, peer, "…") instead of this header. */
+  hideHeaderOnPhones?: boolean
 }) {
   const router = useRouter()
   const name = otherName ?? 'Sea N Shore member'
@@ -236,6 +251,12 @@ export function MessageThread({
   const [lightboxImageId, setLightboxImageId] = useState<string | null>(null)
   const lightboxOpenRef = useRef(false)
   const lightboxImages = useMemo(() => lightboxImagesFromMessages(messages), [messages])
+  const [sheetMessageId, setSheetMessageId] = useState<string | null>(null)
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null)
+  const longPressRef = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null)
+  const longPressFiredRef = useRef(false)
+  const closeSheet = useCallback(() => setSheetMessageId(null), [])
+  const sheetMessage = sheetMessageId ? messages.find((message) => message.id === sheetMessageId) ?? null : null
   const closeLightbox = useCallback(() => setLightboxImageId(null), [])
   const latestReceived = useMemo(
     () => [...messages].reverse().find((message) => message.senderProfileId !== viewerId && !message.deletedAt),
@@ -390,6 +411,71 @@ export function MessageThread({
     }
   }
 
+  function openMessageSheet(messageId: string) {
+    if (editingMessageId) return
+    setInteractionError('')
+    setSheetMessageId(messageId)
+  }
+
+  function clearLongPress() {
+    if (longPressRef.current) clearTimeout(longPressRef.current.timer)
+    longPressRef.current = null
+  }
+
+  /** Touch and pen only: a press-and-hold opens the phone action sheet; mouse keeps hover buttons. */
+  function startLongPress(event: ReactPointerEvent<HTMLElement>, messageId: string) {
+    if (event.pointerType === 'mouse') return
+    clearLongPress()
+    longPressFiredRef.current = false
+    const { clientX: x, clientY: y } = event
+    longPressRef.current = {
+      x,
+      y,
+      timer: setTimeout(() => {
+        longPressRef.current = null
+        longPressFiredRef.current = true
+        navigator.vibrate?.(10)
+        openMessageSheet(messageId)
+      }, MESSAGE_LONG_PRESS_MS),
+    }
+  }
+
+  function moveLongPress(event: ReactPointerEvent<HTMLElement>) {
+    const press = longPressRef.current
+    if (!press) return
+    if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > LONG_PRESS_MOVE_TOLERANCE_PX) clearLongPress()
+  }
+
+  /** Android fires contextmenu on long-press; on phones it opens the sheet instead of the browser menu. */
+  function onBubbleContextMenu(event: ReactMouseEvent<HTMLElement>, messageId: string) {
+    if (!isPhoneViewport()) return
+    event.preventDefault()
+    clearLongPress()
+    longPressFiredRef.current = true
+    openMessageSheet(messageId)
+  }
+
+  /** The tap that ends a long-press must not also open a photo or follow a link. */
+  function onBubbleClickCapture(event: ReactMouseEvent<HTMLElement>) {
+    if (!longPressFiredRef.current) return
+    longPressFiredRef.current = false
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  async function copyMessageText(message: MessageThreadItem) {
+    if (!message.body || !navigator.clipboard) return
+    try {
+      await navigator.clipboard.writeText(message.body)
+      setCopiedMessageId(message.id)
+      setTimeout(() => setCopiedMessageId((current) => (current === message.id ? null : current)), 1600)
+    } catch {
+      setInteractionError('We could not copy this message.')
+    }
+  }
+
+  useEffect(() => () => clearLongPress(), [])
+
   const incomingAvatar = (messageId: string) => (otherAvatarUrl ? (
     // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
     <img
@@ -418,7 +504,7 @@ export function MessageThread({
 
   return (
     <section ref={threadRef} className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,white,var(--mist-50))]">
-      <header className="flex min-h-18 items-center gap-3 border-b border-mist-100 bg-white px-4 py-3 sm:px-5">
+      <header className={`flex min-h-18 items-center gap-3 border-b border-mist-100 bg-white px-4 py-3 sm:px-5 ${hideHeaderOnPhones ? 'max-md:hidden' : ''}`}>
         <Link
           href="/messages"
           aria-label="Back to messages"
@@ -518,7 +604,7 @@ export function MessageThread({
 
                   <div className={`group flex items-end gap-1.5 ${mine ? 'justify-end' : 'justify-start'}`}>
                     {!mine ? (
-                      <div className="mb-5 flex items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                      <div className="mb-5 flex items-center gap-1 opacity-100 transition max-md:hidden sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         <MessageEmojiPicker
                           mode="reaction"
                           align="start"
@@ -558,10 +644,19 @@ export function MessageThread({
                     ) : null}
 
                     <div className={`max-w-[86%] sm:max-w-[72%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
-                      <div className={`w-full rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ${
+                      <div
+                        data-testid={`message-bubble-${message.id}`}
+                        onPointerDown={isEditing || message.deletedAt ? undefined : (event) => startLongPress(event, message.id)}
+                        onPointerMove={moveLongPress}
+                        onPointerUp={clearLongPress}
+                        onPointerCancel={clearLongPress}
+                        onPointerLeave={clearLongPress}
+                        onContextMenu={isEditing || message.deletedAt ? undefined : (event) => onBubbleContextMenu(event, message.id)}
+                        onClickCapture={onBubbleClickCapture}
+                        className={`w-full rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm max-md:text-[15px] max-md:[-webkit-touch-callout:none] max-md:select-none ${
                         mine
-                          ? 'rounded-br-md bg-navy-900 text-white'
-                          : 'rounded-bl-md border border-mist-100 bg-white text-navy-950'
+                          ? 'rounded-br-md bg-navy-900 text-white max-md:bg-ocean-700'
+                          : 'rounded-bl-md border border-mist-100 bg-white text-navy-950 max-md:border-transparent max-md:bg-mist-100'
                       }`}>
                         <ReplyPreview message={message} mine={mine} />
                         <AttachmentCard message={message} mine={mine} onOpenImage={setLightboxImageId} />
@@ -629,10 +724,22 @@ export function MessageThread({
                         {canonicalStatus === 'Sent' ? <><Check aria-hidden="true" className="size-3" /><span>Sent</span></> : null}
                         {canonicalStatus === 'Seen' ? <><CheckCheck aria-hidden="true" className="size-3" /><span>Seen</span></> : null}
                       </div>
+                      {!message.deletedAt && !isEditing ? (
+                        // Phones: screen-reader and switch users reach the long-press sheet from here.
+                        <button
+                          type="button"
+                          aria-haspopup="dialog"
+                          aria-label={`Options for message ${message.id}`}
+                          onClick={() => openMessageSheet(message.id)}
+                          className="sr-only focus:not-sr-only focus:mt-1 focus:rounded-full focus:border focus:border-mist-200 focus:px-3 focus:py-1 focus:text-xs md:hidden"
+                        >
+                          Message options
+                        </button>
+                      ) : null}
                     </div>
 
                     {mine ? (
-                      <div className="mb-5 flex items-center gap-1 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                      <div className="mb-5 flex items-center gap-1 opacity-100 transition max-md:hidden sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         {canonicalForReply && onReply ? (
                           <button
                             type="button"
@@ -694,6 +801,10 @@ export function MessageThread({
                 </div>
               )
             })}
+            <p data-testid="message-long-press-hint" className="mx-auto mt-3 flex items-center gap-2 rounded-full border border-dashed border-mist-300 px-3.5 py-1.5 text-xs text-muted md:hidden">
+              <Smile aria-hidden="true" className="size-4 shrink-0" />
+              Long-press a message to react, reply, edit or unsend
+            </p>
             {otherTyping ? (
               <div data-testid="typing-indicator" className="mt-2 flex items-end gap-2">
                 {otherAvatarUrl ? (
@@ -736,6 +847,83 @@ export function MessageThread({
         )}
         <div ref={bottomRef} aria-hidden="true" className="h-px" />
       </div>
+      <BottomSheet open={Boolean(sheetMessage)} onClose={closeSheet} title="Message" desktop="hidden">
+        {sheetMessage ? (() => {
+          const mine = sheetMessage.senderProfileId === viewerId
+          const canonical = !('deliveryState' in sheetMessage) ? sheetMessage : null
+          const myReaction = (sheetMessage.reactions ?? []).find((reaction) => reaction.profileId === viewerId)?.emoji ?? null
+          const canEdit = Boolean(mine && canonical && sheetMessage.body && isWithinMessageEditWindow(sheetMessage.createdAt, editWindowNow))
+          const busy = pendingMessageId === sheetMessage.id
+          return (
+            <div role="menu" aria-label="Message actions">
+              {canonical ? (
+                <div role="group" aria-label="Reactions" className="flex items-center justify-between gap-1 px-2 pb-2 pt-1">
+                  {QUICK_REACTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      aria-label={`React with ${emoji}`}
+                      aria-pressed={myReaction === emoji}
+                      disabled={busy}
+                      onClick={() => {
+                        closeSheet()
+                        void react(sheetMessage.id, myReaction === emoji ? null : emoji)
+                      }}
+                      className="grid size-12 cursor-pointer place-items-center rounded-full text-2xl transition hover:bg-mist-100 focus-visible:outline-2 focus-visible:outline-ocean-500 disabled:opacity-50 aria-pressed:bg-ocean-50"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {canonical && onReply ? (
+                <SheetRow
+                  role="menuitem"
+                  icon={<Reply aria-hidden="true" />}
+                  label="Reply"
+                  onClick={() => {
+                    closeSheet()
+                    onReply(canonical)
+                  }}
+                />
+              ) : null}
+              {sheetMessage.body ? (
+                <SheetRow
+                  role="menuitem"
+                  icon={<Copy aria-hidden="true" />}
+                  label={copiedMessageId === sheetMessage.id ? 'Copied' : 'Copy text'}
+                  onClick={() => void copyMessageText(sheetMessage)}
+                />
+              ) : null}
+              {canEdit && canonical ? (
+                <SheetRow
+                  role="menuitem"
+                  icon={<Pencil aria-hidden="true" />}
+                  label="Edit message"
+                  disabled={busy}
+                  onClick={() => {
+                    closeSheet()
+                    beginEdit(canonical)
+                  }}
+                />
+              ) : null}
+              {mine && canonical ? (
+                <SheetRow
+                  role="menuitem"
+                  tone="danger"
+                  icon={<Trash2 aria-hidden="true" />}
+                  label="Unsend message"
+                  disabled={busy}
+                  onClick={() => {
+                    closeSheet()
+                    void unsend(sheetMessage.id)
+                  }}
+                />
+              ) : null}
+            </div>
+          )
+        })() : null}
+      </BottomSheet>
       <ImageLightbox
         images={lightboxImages}
         activeId={lightboxImageId}

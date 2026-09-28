@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { CalendarDays, CheckCircle2, Clock3, GraduationCap, ShieldAlert, UserSearch } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { learningRepository, type MentorApplicationState } from '@/features/learning/repository'
@@ -151,8 +152,9 @@ export default async function VerificationSettingsPage() {
   ])
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
-      <div>
+    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 max-md:space-y-4 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/settings" title="Verifications" />
+      <div className="max-md:hidden">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Trust & professional capabilities</p>
         <h1 className="mt-2 text-3xl font-bold text-navy-950">Verifications</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">

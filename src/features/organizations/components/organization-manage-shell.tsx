@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { BarChart3, CreditCard, ExternalLink, Inbox, LayoutDashboard, Lock, Palette, UsersRound } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { organizationManageHref, organizationPlanBillingHref } from '../organization-page-profile'
 import { OrganizationLogo } from './organization-logo'
 
@@ -54,37 +55,44 @@ export function OrganizationManageShell({
     { id: 'analytics', label: 'Analytics', href: `/organizations/${slug}/analytics`, icon: BarChart3, locked: locked.analytics },
   ]
 
+  const activeLabel = items.find((item) => item.id === active)?.label ?? 'Overview'
+
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4 py-2 sm:py-4">
-      <div className="flex flex-col gap-3 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto w-full max-w-6xl space-y-4 py-2 sm:py-4 max-md:space-y-3 max-md:py-0">
+      {/* Phones: back to the public page, and the section name in the bar. */}
+      <MobilePageBar backHref={`/organizations/${slug}`} title={`Manage · ${activeLabel}`} />
+      <div className="flex flex-col gap-3 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:flex-row sm:items-center sm:justify-between max-md:gap-0 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none">
         <div className="flex min-w-0 items-center gap-3">
-          <OrganizationLogo company={workspace} size="md" />
+          <OrganizationLogo company={workspace} size="md" className="max-md:size-10 max-md:rounded-lg" />
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700">Manage page</p>
-            <p className="truncate text-lg font-bold text-navy-950">{workspace.name}</p>
-            {summary ? <p className="truncate text-sm text-muted">{summary}</p> : null}
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700 max-md:hidden">Manage page</p>
+            <p className="truncate text-lg font-bold text-navy-950 max-md:text-[15px] max-md:font-semibold">{workspace.name}</p>
+            {summary ? <p className="truncate text-sm text-muted max-md:text-[13px]">{summary}</p> : null}
           </div>
         </div>
+        {/* The back arrow in the phone bar returns to the page. */}
         <Link
           href={`/organizations/${slug}`}
-          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50"
+          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50 max-md:hidden"
         >
           View page <ExternalLink aria-hidden="true" className="size-4" />
         </Link>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[14rem_minmax(0,1fr)] lg:items-start">
-        <nav aria-label="Manage page sections" className="min-w-0 rounded-2xl border border-mist-100 bg-white p-1.5 shadow-[var(--shadow-card)] lg:sticky lg:top-24">
-          <ul className="flex gap-1 overflow-x-auto [scrollbar-width:none] lg:flex-col lg:overflow-visible">
+        <nav aria-label="Manage page sections" className="relative min-w-0 rounded-2xl border border-mist-100 bg-white p-1.5 shadow-[var(--shadow-card)] lg:sticky lg:top-24 max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:px-2 max-md:shadow-none">
+          {/* Phones: a fade at the right edge hints that the row scrolls sideways. */}
+          <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-white to-transparent md:hidden" />
+          <ul className="flex gap-1 overflow-x-auto [scrollbar-width:none] lg:flex-col lg:overflow-visible max-md:snap-x max-md:scroll-px-2 max-md:pr-8">
             {items.map((item) => {
               const current = item.id === active
               const Icon = item.icon
               return (
-                <li key={item.id} className="shrink-0">
+                <li key={item.id} className="shrink-0 max-md:snap-start">
                   <Link
                     href={item.href}
                     aria-current={current ? 'page' : undefined}
-                    className={`flex min-h-10 cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-xl px-3 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 ${current
+                    className={`flex min-h-10 cursor-pointer items-center gap-2.5 whitespace-nowrap rounded-xl px-3 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 max-md:min-h-11 max-md:rounded-full ${current
                       ? 'bg-ocean-50 text-ocean-800'
                       : 'text-navy-900 hover:bg-mist-50'}`}
                   >

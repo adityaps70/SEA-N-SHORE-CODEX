@@ -17,6 +17,7 @@ export function OrganizationFollowButton({
   initialFollowerCount,
   appearance = 'default',
   organizationName,
+  phoneTone,
 }: {
   companyId: string
   initialFollowing: boolean
@@ -24,6 +25,8 @@ export function OrganizationFollowButton({
   appearance?: Appearance
   /** Used for the accessible name where several follow buttons share a screen. */
   organizationName?: string
+  /** `page` only: phone styling (below md) — filled ocean pill, or the outline pill beside another main button. */
+  phoneTone?: 'primary' | 'outline'
 }) {
   const [following, setFollowing] = useState(initialFollowing)
   const [followerCount, setFollowerCount] = useState(initialFollowerCount)
@@ -74,8 +77,13 @@ export function OrganizationFollowButton({
     : (following
         ? 'border border-mist-200 bg-white text-navy-950 hover:border-navy-300 hover:bg-mist-50'
         : 'border border-ocean-600 bg-white text-ocean-800 hover:bg-ocean-50')
+  const phone = appearance === 'page' && phoneTone
+    ? `max-md:min-h-11 max-md:w-full max-md:rounded-full max-md:text-[15px] ${phoneTone === 'primary' && !following
+        ? 'max-md:border-ocean-700 max-md:bg-ocean-700 max-md:text-white max-md:hover:bg-ocean-800'
+        : 'max-md:border-ocean-700 max-md:bg-white max-md:text-ocean-700'}`
+    : ''
   const size = appearance === 'page'
-    ? 'min-h-10 rounded-xl px-4 text-sm'
+    ? `min-h-10 rounded-xl px-4 text-sm ${phone}`
     : appearance === 'card'
       ? 'min-h-9 w-full rounded-lg px-3 text-xs'
       : ''
@@ -96,7 +104,7 @@ export function OrganizationFollowButton({
 
   if (appearance !== 'default') {
     return (
-      <div className={appearance === 'card' ? 'w-full' : 'min-w-0'}>
+      <div className={appearance === 'card' ? 'w-full' : phoneTone ? 'min-w-0 max-md:flex-1' : 'min-w-0'}>
         {button}
         {error ? <p role="alert" className="mt-1 max-w-xs text-xs font-medium text-red-700">{error}</p> : null}
       </div>

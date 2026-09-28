@@ -214,6 +214,87 @@ describe('public landing page', () => {
   })
 })
 
+describe('landing page on phones (below 768px)', () => {
+  it('shows the partners as one logo strip with "See all partners" opening the full grid in place', async () => {
+    const { container } = await renderHome()
+    const partners = container.querySelector('section#partners') as HTMLElement
+
+    const strip = within(partners).getByRole('list', { name: 'Maritime companies on Sea N Shore' })
+    expect(strip).toHaveClass('pstrip', 'swipe')
+    expect(within(strip).getAllByRole('listitem').length).toBeGreaterThanOrEqual(6)
+    expect(within(strip).getByRole('img', { name: 'Wallem' })).toBeInTheDocument()
+
+    const seeAll = within(partners).getByRole('link', { name: /See all 40\+ partners/ })
+    expect(seeAll).toHaveClass('pall-open')
+    expect(seeAll).toHaveAttribute('href', '#partners-all')
+
+    // The full grid is still rendered (desktop shows it; phones open it with the link above).
+    const all = partners.querySelector('#partners-all') as HTMLElement
+    expect(all).toHaveClass('pall')
+    for (const title of ['Partners', 'Global partners', 'Companies hiring']) {
+      expect(within(all).getByRole('heading', { level: 3, name: title })).toBeInTheDocument()
+    }
+    expect(within(all).getByRole('img', { name: 'Beaufort Marine Services LLP' })).toBeInTheDocument()
+    expect(within(all).getByText('Nordships Maritime')).toBeInTheDocument()
+    expect(within(all).getByRole('link', { name: 'Show fewer partners' })).toHaveAttribute('href', '#partners')
+  })
+
+  it('lays the feature cards, audiences and plans out as swipe rows', async () => {
+    const { container } = await renderHome()
+
+    const overview = container.querySelector('#features .ov-grid') as HTMLElement
+    expect(overview).toHaveClass('swipe')
+    expect([...overview.querySelectorAll('a.ov')].map((link) => link.getAttribute('href'))).toEqual(['#jobs', '#passport', '#learn', '#events', '#feed', '#organizations'])
+
+    const audiences = container.querySelector('#who .aud-grid') as HTMLElement
+    expect(audiences).toHaveClass('swipe')
+    expect(audiences.querySelectorAll('article.who')).toHaveLength(4)
+
+    const plans = container.querySelector('#pricing .prices') as HTMLElement
+    expect(plans).toHaveClass('swipe')
+    expect(plans.querySelectorAll('.price')).toHaveLength(3)
+    expect(plans.querySelector('.price.pop')).toHaveTextContent('Creator Pro')
+  })
+
+  it('collapses the footer link groups into tap-to-open rows and keeps contact and social visible', async () => {
+    await renderHome()
+    const footer = screen.getByRole('contentinfo')
+    const groups = within(footer).getByRole('navigation', { name: 'Footer links' })
+    expect(groups).toHaveClass('fgroups')
+    const details = groups.querySelectorAll('details')
+    expect([...details].map((item) => item.querySelector('summary')?.textContent)).toEqual(['Platform', 'Company', 'Legal'])
+    for (const item of details) expect(item).not.toHaveAttribute('open')
+    const hrefs = within(groups).getAllByRole('link', { hidden: true }).map((link) => link.getAttribute('href'))
+    for (const href of ['/pricing', '/about', '/help', '/contact', '/terms', '/privacy', '/refunds', '/shipping', '/copyright', '/accessibility', '#faq']) {
+      expect(hrefs).toContain(href)
+    }
+    // Desktop columns are unchanged and marked so phones can hide them.
+    for (const name of ['Platform', 'Company', 'Legal']) {
+      expect(within(footer).getByRole('navigation', { name })).toHaveClass('fnav')
+    }
+    expect(within(footer).getByRole('link', { name: 'info@beaufortmarine.in' }).closest('.fnav')).toBeNull()
+  })
+
+  it('keeps the phone rules in one max-width 767.98px block with scroll-snap rows and :target partners', () => {
+    const css = fs.readFileSync(path.join(process.cwd(), 'src/components/marketing/landing/landing.css'), 'utf8')
+    const start = css.indexOf('@media (max-width:767.98px){')
+    expect(start).toBeGreaterThan(0)
+    const phone = css.slice(start)
+    expect(phone).toMatch(/\.lp \.swipe\{display:flex;[^}]*overflow-x:auto;[^}]*scroll-snap-type:x mandatory/)
+    expect(phone).toMatch(/\.lp \.swipe > \*\{[^}]*scroll-snap-align:start/)
+    expect(phone).toContain('.lp .pall{display:none')
+    expect(phone).toContain('.lp .pall:target{display:block}')
+    expect(phone).toContain('.lp .sns.mpanel,.lp .sns.pdfchip,.lp .sns.certchip{display:none}')
+    expect(phone).toContain('.lp .ticks li:nth-child(n+4){display:none}')
+    expect(phone).toContain('.lp .sns .cmts{display:none}')
+    expect(phone).toContain('.lp .aud .steps{display:none}')
+    expect(phone).toContain('.lp .prices > .price.pop{order:-1}')
+    expect(phone).toContain('.lp footer .fnav{display:none}')
+    // Outside the phone block the phone-only pieces are hidden, so desktop is unchanged.
+    expect(css.slice(0, start)).toContain('.lp .pstrip,.lp .pall-open,.lp .pall-close,.lp .fgroups{display:none}')
+  })
+})
+
 describe('landing page source contract', () => {
   const read = (file: string) => fs.readFileSync(path.join(process.cwd(), file), 'utf8')
 

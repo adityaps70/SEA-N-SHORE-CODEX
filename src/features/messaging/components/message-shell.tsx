@@ -1,7 +1,9 @@
 'use client'
 
+import Link from 'next/link'
 import { MessageCircleMore } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMessagingRealtime } from '@/features/realtime/provider'
 import type { MessagingInboxItem, MessagingMessageDto } from '../queries'
@@ -18,7 +20,7 @@ import {
   syncThreadMessagesWithCanonicalSnapshot,
   type MessagingReadCursor,
 } from '../thread-realtime'
-import type { DeletedConversationResult } from './conversation-actions'
+import { ConversationActionsMenu, messagingProfileHref, type DeletedConversationResult } from './conversation-actions'
 import { ConversationList } from './conversation-list'
 import { MessageComposer, type OptimisticMessagingMessage } from './message-composer'
 import { MessageThread, type MessageThreadItem } from './message-thread'
@@ -43,6 +45,72 @@ function peerCursorFromConversation(conversation: MessagingActiveConversation): 
     createdAt: conversation.otherLastReadAt,
     id: conversation.otherLastReadMessageId,
   }
+}
+
+function initials(name: string | null) {
+  if (!name) return 'SN'
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
+}
+
+const PAGE_BAR_MENU_TRIGGER_CLASS = 'grid size-11 cursor-pointer place-items-center rounded-full text-navy-950 transition hover:bg-mist-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 aria-expanded:bg-mist-50 [&>svg]:size-6'
+
+/** Phone chat page bar: back · photo + name (opens their profile) · "…" (Report, Block, Delete). */
+function ConversationPageBar({
+  conversation,
+  onDeleted,
+  onBlocked,
+}: {
+  conversation: MessagingActiveConversation
+  onDeleted: (result: DeletedConversationResult) => void
+  onBlocked: () => void
+}) {
+  const name = conversation.otherName ?? 'Sea N Shore member'
+  const profileHref = messagingProfileHref(conversation.otherSlug)
+  const identity = (
+    <>
+      {conversation.otherAvatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
+        <img src={conversation.otherAvatarUrl} alt="" className="size-9 shrink-0 rounded-full object-cover ring-1 ring-mist-100" />
+      ) : (
+        <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-ocean-50 text-xs font-bold text-ocean-800">
+          {initials(conversation.otherName)}
+        </span>
+      )}
+      <span className="min-w-0">
+        <span className="block truncate text-base font-bold leading-5 text-navy-950">{name}</span>
+        {conversation.otherHeadline ? (
+          <span className="block truncate text-xs font-normal leading-4 text-muted">{conversation.otherHeadline}</span>
+        ) : null}
+      </span>
+    </>
+  )
+
+  return (
+    <MobilePageBar
+      backHref="/messages"
+      className="!mb-0"
+      title={profileHref ? (
+        <Link
+          href={profileHref}
+          aria-label={`${name}, open profile`}
+          className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+        >
+          {identity}
+        </Link>
+      ) : (
+        <span className="flex min-h-11 min-w-0 items-center gap-2.5">{identity}</span>
+      )}
+      right={(
+        <ConversationActionsMenu
+          conversationId={conversation.conversationId}
+          otherName={name}
+          onDeleted={onDeleted}
+          triggerClassName={PAGE_BAR_MENU_TRIGGER_CLASS}
+          safety={conversation.otherProfileId ? { otherProfileId: conversation.otherProfileId, onBlocked } : undefined}
+        />
+      )}
+    />
+  )
 }
 
 function ActiveConversationWorkspace({
@@ -220,6 +288,7 @@ function ActiveConversationWorkspace({
   return (
     <>
       <MessageThread
+        hideHeaderOnPhones
         viewerId={viewerId}
         conversationId={conversation.conversationId}
         otherName={conversation.otherName}
@@ -246,6 +315,9 @@ function ActiveConversationWorkspace({
     </>
   )
 }
+
+/** Phones: the open thread fills the screen under the 56px page bar; the composer sits at the bottom. */
+const PHONE_THREAD_HEIGHT = 'max-md:h-[calc(100dvh-3.5rem-env(safe-area-inset-top,0px))]'
 
 export function MessageShell({
   viewerId,
@@ -354,9 +426,29 @@ export function MessageShell({
     }
   }, [subscribe, viewerId])
 
+  const handleBlocked = useCallback(() => {
+    router.push('/messages')
+    router.refresh()
+  }, [router])
+
   return (
-    <div className="space-y-4">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className={`space-y-4 max-md:space-y-0 ${activeConversation ? 'max-md:-mb-4' : ''}`}>
+      {activeConversation ? (
+        <ConversationPageBar
+          conversation={activeConversation}
+          onDeleted={handleConversationDeleted}
+          onBlocked={handleBlocked}
+        />
+      ) : (
+        <MobilePageBar
+          backHref="/home"
+          title="Messaging"
+          className="!mb-0"
+          right={<NewMessageButton variant="icon" />}
+        />
+      )}
+      {/* Phones: the page bar replaces this header (title + New message pencil). */}
+      <header className="flex flex-col gap-3 max-md:hidden sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Professional conversations</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 sm:text-3xl">Messages</h1>
@@ -367,8 +459,11 @@ export function MessageShell({
         </div>
       </header>
 
-      <div className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
-        <div className="grid min-h-[38rem] grid-cols-[minmax(0,1fr)] md:h-[calc(100vh-13rem)] md:min-h-[38rem] md:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
+      <div className={`overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:rounded-none max-md:border-0 max-md:shadow-none ${activeConversation ? 'max-md:-mx-4' : 'max-md:overflow-visible max-md:bg-transparent'}`}>
+        <div
+          data-testid="message-shell-grid"
+          className={`grid min-h-[38rem] grid-cols-[minmax(0,1fr)] md:h-[calc(100vh-13rem)] md:min-h-[38rem] md:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] max-md:min-h-0 ${activeConversation ? PHONE_THREAD_HEIGHT : ''}`}
+        >
           <div className={activeConversation ? 'hidden min-h-0 md:block' : 'min-h-0'}>
             <ConversationList
               inbox={displayedInbox}

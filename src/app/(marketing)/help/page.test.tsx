@@ -47,3 +47,22 @@ describe('/help FAQ', () => {
     expect(data.mainEntity[0]).toMatchObject({ '@type': 'Question', acceptedAnswer: { '@type': 'Answer' } })
   })
 })
+
+describe('/help on phones', () => {
+  it('starts with a "Jump to" chip row for the topics, every FAQ group and contact', () => {
+    const { container } = render(<HelpPage />)
+    const jump = screen.getByRole('navigation', { name: 'Jump to' })
+    expect(jump).toHaveClass('md:hidden')
+    expect(container.querySelector('main')?.firstElementChild).toBe(jump)
+    const links = within(jump).getAllByRole('link')
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '#topics',
+      ...[...container.querySelectorAll('#faq > div > div[id^="faq-"]')].map((group) => `#${group.id}`),
+      '#contact',
+    ])
+    for (const link of links) expect(container.querySelector(link.getAttribute('href') as string)).not.toBeNull()
+    expect(within(jump).getByRole('link', { name: 'Payments & plans' })).toHaveAttribute('href', '#faq-payments')
+    // The in-card topic chips stay for desktop.
+    expect(screen.getByRole('navigation', { name: 'FAQ topics' })).toHaveClass('max-md:hidden')
+  })
+})

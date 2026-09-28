@@ -13,6 +13,7 @@ import { OrganizationCard, VerifiedMark } from '@/features/organizations/compone
 import { OrganizationStatusBadge } from '@/features/profiles/components/organization-status-badge'
 import { OrganizationLogo } from '@/features/organizations/components/organization-logo'
 import { NewOrganizationPanel } from '@/features/organizations/components/new-organization-panel'
+import { PhoneShowMoreList } from '@/features/organizations/components/phone-show-more-list'
 import { RequestAccessForm, type RequestAccessState } from '@/features/organizations/components/request-access-form'
 import { organizationManageHref, organizationPlanBillingHref } from '@/features/organizations/organization-page-profile'
 import { organizationRepository } from '@/features/organizations/repository'
@@ -20,17 +21,21 @@ import { organizationWorkspaceRepository } from '@/features/organizations/worksp
 
 export const metadata: Metadata = { title: 'Organizations' }
 
-function SectionHeader({ id, title, description, meta }: { id: string; title: string; description?: string; meta?: ReactNode }) {
+function SectionHeader({ id, title, description, meta, className = '' }: { id: string; title: string; description?: string; meta?: ReactNode; className?: string }) {
   return (
-    <div className="mb-3">
+    <div className={`mb-3 ${className}`}>
       <div className="flex flex-wrap items-baseline gap-x-3">
-        <h2 id={id} className="text-lg font-bold text-navy-950">{title}</h2>
+        <h2 id={id} className="text-lg font-bold text-navy-950 max-md:text-[17px]">{title}</h2>
         {meta}
       </div>
-      {description ? <p className="mt-0.5 max-w-3xl text-sm leading-6 text-muted">{description}</p> : null}
+      {/* Phones: section intros are hidden (no page intros on phones). */}
+      {description ? <p className="mt-0.5 max-w-3xl text-sm leading-6 text-muted max-md:hidden">{description}</p> : null}
     </div>
   )
 }
+
+const REGISTER_INTRO = 'For shipping and maritime companies, wellbeing and support services, training bodies, public bodies, associations and more. Sea N Shore verifies each organization before its workspace can publish.'
+const VERIFICATION_NOTE = 'Verification confirms an organization is genuine. It does not start an Organization Pro subscription or give anyone extra permissions.'
 
 const primaryButton = 'inline-flex min-h-9 flex-1 items-center justify-center rounded-lg bg-navy-950 px-3 text-xs font-bold text-white transition hover:bg-navy-900'
 const secondaryButton = 'inline-flex min-h-9 flex-1 items-center justify-center rounded-lg border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50'
@@ -83,13 +88,14 @@ export default async function OrganizationsPage({
   const applicationCard = applicationInProgress && state.kind === 'application' ? cardById.get(state.company.id) : null
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8 py-2 sm:py-4">
-      <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <h1 className="text-2xl font-bold tracking-tight text-navy-950">Organizations</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+    // Phones: one column in this order: Your pages, Find an organization, then the rest.
+    <div className="mx-auto w-full max-w-6xl space-y-8 py-2 sm:py-4 max-md:flex max-md:flex-col max-md:gap-6 max-md:space-y-0 max-md:py-0">
+      <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none">
+        <h1 className="text-2xl font-bold tracking-tight text-navy-950 max-md:text-lg">Organizations</h1>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted max-md:hidden">
           Join the organizations you work with, or register a new one. Your personal account stays yours: each organization&apos;s owner and administrators decide who joins and with which role.
         </p>
-        <nav aria-label="On this page" className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold">
+        <nav aria-label="On this page" className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold max-md:-mx-4 max-md:mt-2 max-md:flex-nowrap max-md:gap-2 max-md:overflow-x-auto max-md:px-4 max-md:[scrollbar-width:none] max-md:[&>a]:inline-flex max-md:[&>a]:min-h-8 max-md:[&>a]:shrink-0 max-md:[&>a]:items-center max-md:[&>a]:whitespace-nowrap max-md:[&>a]:rounded-full max-md:[&>a]:border max-md:[&>a]:border-mist-300 max-md:[&>a]:bg-white max-md:[&>a]:px-3.5 max-md:[&>a]:text-navy-800 max-md:[&>a]:no-underline">
           <a href="#your-pages" className="text-ocean-700 hover:underline">Your pages</a>
           {requests.length ? <a href="#your-requests" className="text-ocean-700 hover:underline">Your requests</a> : null}
           <a href="#find" className="text-ocean-700 hover:underline">Find an organization</a>
@@ -209,7 +215,7 @@ export default async function OrganizationsPage({
       </section>
 
       {requests.length ? (
-        <section aria-labelledby="your-requests-heading" id="your-requests" className="scroll-mt-24">
+        <section aria-labelledby="your-requests-heading" id="your-requests" className="scroll-mt-24 max-md:order-2">
           <SectionHeader id="your-requests-heading" title="Your requests" description="Requests go to each organization's owner and administrators. If nobody responds within 7 days, or you disagree with a decision, you can ask Sea N Shore to review it." />
           <div className="overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-[var(--shadow-card)]">
             <OrganizationAccessPanel initialRequests={requests} nowIso={nowIso} />
@@ -217,9 +223,9 @@ export default async function OrganizationsPage({
         </section>
       ) : null}
 
-      <section aria-labelledby="find-organization" id="find" className="scroll-mt-24 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5">
-        <h2 id="find-organization" className="text-lg font-bold text-navy-950">Find your organization</h2>
-        <p className="mt-0.5 max-w-3xl text-sm leading-6 text-muted">Search before registering so the same organization is not listed twice.</p>
+      <section aria-labelledby="find-organization" id="find" className="scroll-mt-24 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5 max-md:order-1">
+        <h2 id="find-organization" className="text-lg font-bold text-navy-950 max-md:text-[17px]">Find your organization</h2>
+        <p className="mt-0.5 max-w-3xl text-sm leading-6 text-muted max-md:hidden">Search before registering so the same organization is not listed twice.</p>
         <form method="get" action="/organizations" className="mt-3 flex flex-col gap-2 sm:flex-row" role="search">
           <label className="relative flex-1">
             <span className="sr-only">Search organizations</span>
@@ -283,13 +289,13 @@ export default async function OrganizationsPage({
         ) : null}
       </section>
 
-      <section aria-labelledby="register-organization" id="update-application" className="scroll-mt-24">
+      <section aria-labelledby="register-organization" id="update-application" className="scroll-mt-24 max-md:order-2">
         <SectionHeader
           id="register-organization"
           title={editable ? 'Update your organization application' : 'Register a new organization'}
-          description={editable
-            ? undefined
-            : 'For shipping and maritime companies, wellbeing and support services, training bodies, public bodies, associations and more. Sea N Shore verifies each organization before its workspace can publish.'}
+          description={editable ? undefined : REGISTER_INTRO}
+          // Phones: the collapsed "Register a new organization" button is the whole section until opened.
+          className={!editable && canRegister ? 'max-md:hidden' : ''}
         />
         {editable ? (
           <div className="space-y-4">
@@ -301,7 +307,7 @@ export default async function OrganizationsPage({
             <OrganizationApplicationForm mode="resubmit" applicationId={state.kind === 'application' ? state.applicationId : ''} initial={editable} />
           </div>
         ) : canRegister ? (
-          <NewOrganizationPanel initiallyOpen={registerRequested} prefillName={prefillName} />
+          <NewOrganizationPanel initiallyOpen={registerRequested} prefillName={prefillName} phoneIntro={`${REGISTER_INTRO} ${VERIFICATION_NOTE}`} />
         ) : state.kind === 'application' && state.status === 'pending' ? (
           <p className="text-sm leading-6 text-muted">You can register another organization once Sea N Shore has reviewed {state.company.name}.</p>
         ) : (
@@ -309,7 +315,7 @@ export default async function OrganizationsPage({
         )}
       </section>
 
-      <section aria-labelledby="following">
+      <section aria-labelledby="following" className="max-md:order-2">
         <SectionHeader id="following" title="Following" meta={followedOrganizations.length ? <p className="text-sm font-medium text-muted">{followedOrganizations.length}</p> : null} />
         {followedOrganizations.length ? (
           <ul className="flex flex-wrap gap-2">
@@ -331,7 +337,7 @@ export default async function OrganizationsPage({
         )}
       </section>
 
-      <section aria-labelledby="discover-heading" id="discover" className="scroll-mt-24">
+      <section aria-labelledby="discover-heading" id="discover" className="scroll-mt-24 max-md:order-2">
         <SectionHeader
           id="discover-heading"
           title="Discover organizations"
@@ -340,16 +346,20 @@ export default async function OrganizationsPage({
         {discover === null ? (
           <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">Suggestions could not be loaded right now. Reload the page to try again.</p>
         ) : discover.length ? (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {discover.map((organization) => <li key={organization.id} className="min-w-0"><OrganizationCard organization={organization} /></li>)}
-          </ul>
+          <PhoneShowMoreList
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            initial={3}
+            moreLabel="See more organizations"
+            items={discover.map((organization) => ({ key: organization.id, node: <OrganizationCard organization={organization} /> }))}
+          />
         ) : (
           <p className="text-sm leading-6 text-muted">You already follow every verified organization we can suggest. Use search to find more.</p>
         )}
       </section>
 
-      <p className="text-xs leading-5 text-muted">
-        Verification confirms an organization is genuine. It does not start an Organization Pro subscription or give anyone extra permissions.
+      {/* Phones: hidden; the same note is shown with the registration form. */}
+      <p className="text-xs leading-5 text-muted max-md:hidden">
+        {VERIFICATION_NOTE}
       </p>
     </div>
   )

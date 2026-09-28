@@ -10,6 +10,7 @@ import {
 import type { DgProfileAccessReason } from '../profile-document-service'
 import { firstNameOf } from '../display-name'
 import { DgProfileUpload } from './dg-profile-upload'
+import { PROFILE_SECTION_PHONE_CLASS } from './profile-section'
 
 /** The owner's DG Shipping profile section on My Profile: add, view, replace or remove. */
 export function ProfileDgDocumentCard({
@@ -20,7 +21,7 @@ export function ProfileDgDocumentCard({
   document: ProfileDocumentSummary | null
 }) {
   return (
-    <Card className="border border-mist-100 p-5 sm:p-6">
+    <Card className={`border border-mist-100 p-5 sm:p-6 ${PROFILE_SECTION_PHONE_CLASS}`}>
       <section aria-labelledby="dg-profile-card-heading">
         <p className="text-xs font-semibold uppercase tracking-wide text-ocean-700">Private document</p>
         <h2 id="dg-profile-card-heading" className="mt-1 text-lg font-bold text-navy-950">DG Shipping profile</h2>
@@ -54,7 +55,7 @@ export function ProfileDgDocumentViewerCard({
     : `You can open this because ${firstNameOf(fullName, 'this member')} applied to a job you manage.`
 
   return (
-    <Card className="border border-mist-100 p-5 sm:p-6">
+    <Card className={`border border-mist-100 p-5 sm:p-6 ${PROFILE_SECTION_PHONE_CLASS}`}>
       <section aria-labelledby="dg-profile-viewer-heading">
         <p className="text-xs font-semibold uppercase tracking-wide text-ocean-700">Private document</p>
         <h2 id="dg-profile-viewer-heading" className="mt-1 text-lg font-bold text-navy-950">DG Shipping profile</h2>

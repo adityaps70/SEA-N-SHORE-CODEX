@@ -273,10 +273,17 @@ const PEOPLE_SOURCE_SQL = `
   from public.maritime_profiles listed
   where listed.current_company_id = $1`
 
+type WorkspaceTransaction = <T>(fn: (client: DatabaseQueryClient) => Promise<T>) => Promise<T>
+
+/** Roles allowed to remove people from an organization's team. */
+const TEAM_REMOVER_ROLES = new Set(['owner', 'administrator'])
+
 export function createOrganizationWorkspaceRepository(input: {
   query?: WorkspaceQuery
+  transaction?: WorkspaceTransaction
 } = {}) {
   const queryRows: WorkspaceQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
+  const transaction: WorkspaceTransaction = input.transaction ?? databaseTransaction
 
   async function getBySlug(slug: string): Promise<OrganizationWorkspace | null> {
     const rows = await queryRows(
@@ -338,7 +345,7 @@ export function createOrganizationWorkspaceRepository(input: {
     memberId: string,
     nextRole: Exclude<OrganizationAccessRole, 'owner'>,
   ) {
-    return databaseTransaction(async (client: DatabaseQueryClient) => {
+    return transaction(async (client: DatabaseQueryClient) => {
       const target = await client.query<{ role: string }>(
         `select role::text as role
          from public.company_members
@@ -366,6 +373,49 @@ export function createOrganizationWorkspaceRepository(input: {
           companyId,
           JSON.stringify({ memberId, previousRole: target.rows[0].role, nextRole }),
         ],
+      )
+      return true
+    })
+  }
+
+  /**
+   * Removes an approved member from the organization's team. The actor must be an approved
+   * owner or administrator of the organization; only owners can remove an owner, and the
+   * organization always keeps at least one approved owner (so the last owner cannot leave).
+   */
+  async function removeMember(actorId: string, companyId: string, memberId: string) {
+    return transaction(async (client: DatabaseQueryClient) => {
+      // Lock every approved membership row of this organization so two removals cannot race
+      // past the last-owner check.
+      const members = await client.query<{ user_id: string; role: string }>(
+        `select user_id, role::text as role
+         from public.company_members
+         where company_id = $1 and approved_at is not null
+         for update`,
+        [companyId],
+      )
+      const actor = members.rows.find((row) => row.user_id === actorId)
+      if (!actor || !TEAM_REMOVER_ROLES.has(actor.role)) throw new Error('organization_member_remove_forbidden')
+      const target = members.rows.find((row) => row.user_id === memberId)
+      if (!target) throw new Error('organization_member_not_found')
+      if (target.role === 'owner') {
+        if (actor.role !== 'owner') throw new Error('organization_member_remove_forbidden')
+        const owners = members.rows.filter((row) => row.role === 'owner').length
+        if (owners <= 1) throw new Error('organization_last_owner')
+      }
+
+      const removed = await client.query<{ user_id: string }>(
+        `delete from public.company_members
+         where company_id = $1 and user_id = $2 and approved_at is not null
+         returning user_id`,
+        [companyId, memberId],
+      )
+      if (!removed.rows[0]) throw new Error('organization_member_not_found')
+
+      await client.query(
+        `insert into public.audit_events (actor_id, action, target_type, target_id, metadata)
+         values ($1, 'organization.member_removed', 'company', $2, $3::jsonb)`,
+        [actorId, companyId, JSON.stringify({ memberId, previousRole: target.role, self: memberId === actorId })],
       )
       return true
     })
@@ -666,6 +716,7 @@ export function createOrganizationWorkspaceRepository(input: {
     getById,
     listMembers,
     updateMemberRole,
+    removeMember,
     updateBranding,
     updateLogoPath,
     updateCoverPath,

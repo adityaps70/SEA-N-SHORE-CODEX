@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { BRAND_ICONS } from '@/components/brand/brand-assets'
 import './globals.css'
 
@@ -11,6 +11,14 @@ function siteUrl() {
 }
 
 const DESCRIPTION = 'The professional community for the global maritime industry.'
+
+/** Phones: the page resizes above the on-screen keyboard so pinned composers stay visible. */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
+}
 
 export const metadata: Metadata = {
   metadataBase: siteUrl(),

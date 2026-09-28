@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { CheckCircle2, Loader2, PlayCircle, RefreshCw } from 'lucide-react'
+import { CheckCircle2, Expand, Loader2, Monitor, PlayCircle, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { commitLearningScormAttempt, startLearningScormAttempt } from '../scorm-actions'
 
@@ -41,6 +41,7 @@ export function ScormPlayer({
   const [error, setError] = useState<string | null>(null)
   const valuesRef = useRef<Record<string, string>>({})
   const lastErrorRef = useRef('0')
+  const frameRef = useRef<HTMLIFrameElement | null>(null)
 
   const attemptsRemaining = maxAttempts === null ? null : Math.max(0, maxAttempts - attemptsUsed)
   const canStart = maxAttempts === null || attemptsUsed < maxAttempts || initiallyCompleted
@@ -127,8 +128,23 @@ export function ScormPlayer({
     }
   }
 
+  // Full screen keeps the SCORM runtime (window.API) attached, unlike opening the package in a new tab.
+  function openFullScreen() {
+    const frame = frameRef.current
+    if (frame?.requestFullscreen) void frame.requestFullscreen().catch(() => undefined)
+  }
+
+  const phoneNotice = (
+    <div role="note" className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900 md:hidden">
+      <Monitor aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-amber-800" />
+      <p>Interactive SCORM material works best on a computer. You can still take it here{started ? ' — open it full screen for more room.' : '.'}</p>
+    </div>
+  )
+
   if (!started) {
     return (
+      <div className="space-y-3">
+      {phoneNotice}
       <div className="rounded-2xl border border-mist-200 bg-mist-50 p-5">
         <div className="flex items-start gap-3">
           <PlayCircle className="mt-0.5 size-5 text-teal-700" aria-hidden="true" />
@@ -153,11 +169,13 @@ export function ScormPlayer({
           </div>
         </div>
       </div>
+      </div>
     )
   }
 
   return (
     <div className="space-y-3">
+      {phoneNotice}
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-mist-200 bg-mist-50 px-4 py-3 text-sm">
         <span className="font-semibold text-navy-950">SCORM {version}{attemptNumber ? ` · Attempt ${attemptNumber}` : ' · Review mode'}</span>
         {completed ? (
@@ -168,10 +186,18 @@ export function ScormPlayer({
           </button>
         )}
       </div>
+      <button
+        type="button"
+        onClick={openFullScreen}
+        className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-full border border-ocean-700 bg-white px-4 text-[15px] font-semibold text-ocean-700 hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 md:hidden"
+      >
+        <Expand aria-hidden="true" className="size-5" /> Open full screen
+      </button>
       <iframe
+        ref={frameRef}
         title="SCORM learning material"
         src={frameUrl}
-        className="min-h-[640px] w-full rounded-2xl border border-mist-200 bg-white"
+        className="min-h-[640px] w-full rounded-2xl border border-mist-200 bg-white max-md:min-h-[70dvh]"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
         allow="fullscreen"
       />

@@ -24,7 +24,7 @@ export function NetworkPersonListRow({
   const connectedOn = kind === 'connection' ? formatConnectedDate(profile.relationshipSince) : null
 
   return (
-    <article className="flex items-center gap-4 px-5 py-4 sm:px-6">
+    <article className="flex items-center gap-4 px-5 py-4 max-md:gap-3 max-md:px-4 max-md:py-3 sm:px-6">
       <Link href={`/people/${profile.slug}`} className="shrink-0" aria-label={`View ${profile.fullName} profile photo`}>
         {profile.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
@@ -32,10 +32,10 @@ export function NetworkPersonListRow({
             src={profile.avatarUrl}
             alt={`${profile.fullName} profile`}
             loading="lazy"
-            className="size-16 rounded-full object-cover ring-1 ring-mist-100"
+            className="size-16 rounded-full object-cover ring-1 ring-mist-100 max-md:size-12"
           />
         ) : (
-          <span className="grid size-16 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
+          <span className="grid size-16 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100 max-md:size-12">
             {initials(profile.fullName)}
           </span>
         )}
@@ -45,10 +45,10 @@ export function NetworkPersonListRow({
         <Link href={`/people/${profile.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
           {profile.fullName}
         </Link>
-        <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-ink">
+        <p className="mt-0.5 line-clamp-2 text-sm leading-5 text-ink max-md:text-[13px] max-md:leading-[18px]">
           {profile.headline || [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
         </p>
-        {connectedOn ? <p className="mt-0.5 text-sm text-muted">Connected on {connectedOn}</p> : null}
+        {connectedOn ? <p className="mt-0.5 text-sm text-muted max-md:text-xs">Connected on {connectedOn}</p> : null}
         {kind !== 'connection' && profile.location ? <p className="mt-0.5 truncate text-xs text-muted">{profile.location}</p> : null}
       </div>
 

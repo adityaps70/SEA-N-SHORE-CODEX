@@ -67,3 +67,18 @@ export function validateApplicationStatusChange(
   }
   return { ok: true }
 }
+
+/**
+ * Stages from which an applicant may withdraw their own application. Once the employer has
+ * decided (Hired / Rejected) or it is already withdrawn, it stays as it is.
+ */
+export const APPLICANT_WITHDRAWABLE_STATUSES = [
+  'applied',
+  'under_review',
+  'shortlisted',
+  'interview',
+] as const satisfies readonly JobApplicationStatus[]
+
+export function canWithdrawApplication(status: JobApplicationStatus): boolean {
+  return (APPLICANT_WITHDRAWABLE_STATUSES as readonly string[]).includes(status)
+}

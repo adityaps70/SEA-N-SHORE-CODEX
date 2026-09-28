@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { ProfileEditForm } from '@/features/profiles/components/profile-edit-form'
 import { ProfilePreferencesForm } from '@/features/profiles/components/profile-preferences-form'
 import { getOwnProfile, getOwnRegisteredOrganization } from '@/features/profiles/queries'
@@ -17,11 +18,12 @@ export default async function EditProfilePage({
   const registeredOrganization = await getOwnRegisteredOrganization((await searchParams)?.registered)
 
   return (
-    <section className="grid gap-5 py-2 sm:py-5">
+    <section className="grid gap-5 py-2 max-md:gap-4 max-md:py-0 sm:py-5">
+      <MobilePageBar backHref="/profile" title="Edit profile" className="!mb-0" />
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[.14em] text-ocean-700">Your Sea N Shore identity</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-navy-950">Edit profile & goals</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+        <p className="text-sm font-semibold uppercase tracking-[.14em] text-ocean-700 max-md:hidden">Your Sea N Shore identity</p>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-navy-950 max-md:sr-only">Edit profile & goals</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted max-md:hidden">
           Keep your persona, goals and profile details current. Publishing permissions are managed separately through verification, plan access and organization roles.
         </p>
       </div>

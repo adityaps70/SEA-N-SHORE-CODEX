@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import PrivacyPage from './page'
 
@@ -15,5 +15,16 @@ describe('/privacy', () => {
     expect(screen.getByRole('link', { name: 'info@beaufortmarine.in' })).toHaveAttribute('href', 'mailto:info@beaufortmarine.in')
     expect(screen.getByRole('link', { name: /Your data & privacy/ })).toHaveAttribute('href', '/settings#your-data')
     expect(screen.getByRole('link', { name: 'Contact us' })).toHaveAttribute('href', '/contact')
+  })
+})
+
+describe('/privacy on phones', () => {
+  it('has a "Jump to" chip row for its sections', () => {
+    const { container } = render(<PrivacyPage />)
+    const jump = screen.getByRole('navigation', { name: 'Jump to' })
+    expect(jump).toHaveClass('md:hidden')
+    const hrefs = within(jump).getAllByRole('link').map((link) => link.getAttribute('href'))
+    expect(hrefs).toEqual(['#how-we-use', '#payments', '#your-rights'])
+    for (const href of hrefs) expect(container.querySelector(href as string)).not.toBeNull()
   })
 })

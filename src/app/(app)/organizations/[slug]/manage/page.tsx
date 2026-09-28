@@ -117,8 +117,8 @@ export default async function OrganizationManagePage({
       {activeSection === 'billing' ? (
         <>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-navy-950">Plan & billing</h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+            <h1 className="text-2xl font-bold tracking-tight text-navy-950 max-md:sr-only">Plan & billing</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted max-md:mt-0 max-md:text-[13px] max-md:leading-5">
               The {workspace.name} plan, renewing automatically through our payment provider, Cashfree. Only the owner and administrators can see and change it.
             </p>
           </div>
@@ -158,8 +158,8 @@ export default async function OrganizationManagePage({
       ) : (
         <>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-navy-950">Overview</h1>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+            <h1 className="text-2xl font-bold tracking-tight text-navy-950 max-md:sr-only">Overview</h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted max-md:hidden">
               Everything for running the {workspace.name} page: who can join, team roles, page details and activity.
             </p>
           </div>

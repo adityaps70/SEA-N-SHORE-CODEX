@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OrganizationPicker } from './organization-picker'
 
@@ -228,5 +228,57 @@ describe('OrganizationPicker', () => {
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'harb' } })
     await screen.findByRole('option', { name: /Harbour Crew Services/ })
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  })
+})
+
+describe('OrganizationPicker full-screen search on phones', () => {
+  it('opens full screen when tapped, with a Done button and Escape to close', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ query: 'ocean', organizations: [oceanic, harbour] }))
+    const { container } = render(<OrganizationPicker label="Current organisation" phoneFullScreen />)
+    const input = screen.getByRole('combobox', { name: 'Current organisation' })
+    expect(container.querySelector('[data-phone-fullscreen]')).toBeNull()
+
+    fireEvent.focus(input)
+    expect(container.querySelector('[data-phone-fullscreen]')).toBeNull()
+    fireEvent.pointerDown(input)
+    const sheet = screen.getByRole('group', { name: 'Search Current organisation' })
+    expect(sheet).toHaveAttribute('data-phone-fullscreen', 'true')
+    expect(sheet).toHaveClass('max-md:fixed', 'max-md:inset-0', 'max-md:z-50', 'max-md:bg-white')
+    expect(sheet).toContainElement(input)
+
+    fireEvent.change(input, { target: { value: 'ocean' } })
+    const option = await screen.findByRole('option', { name: /Oceanic Ship Management/ })
+    // Results sit under the input inside the sheet instead of in a floating dropdown.
+    expect(sheet).toContainElement(option)
+    expect(option.closest('.max-md\\:static')).not.toBeNull()
+
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Done' }))
+    expect(container.querySelector('[data-phone-fullscreen]')).toBeNull()
+    expect(input).toHaveValue('ocean')
+
+    fireEvent.pointerDown(input)
+    expect(container.querySelector('[data-phone-fullscreen]')).not.toBeNull()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await waitFor(() => expect(container.querySelector('[data-phone-fullscreen]')).toBeNull())
+  })
+
+  it('closes the full-screen search after choosing a result and links it', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ query: 'ocean', organizations: [oceanic] }))
+    const { container } = render(<OrganizationPicker label="Current organisation" phoneFullScreen />)
+    const input = screen.getByRole('combobox', { name: 'Current organisation' })
+    fireEvent.change(input, { target: { value: 'ocean' } })
+    expect(container.querySelector('[data-phone-fullscreen]')).not.toBeNull()
+    fireEvent.click(await screen.findByRole('option', { name: /Oceanic Ship Management/ }))
+
+    expect(container.querySelector('[data-phone-fullscreen]')).toBeNull()
+    expect(hiddenId(container)).toBe(oceanic.id)
+  })
+
+  it('stays an inline dropdown unless phoneFullScreen is set (profile editing)', () => {
+    const { container } = render(<OrganizationPicker label="Current organization" />)
+    const input = screen.getByRole('combobox', { name: 'Current organization' })
+    fireEvent.pointerDown(input)
+    fireEvent.change(input, { target: { value: 'oc' } })
+    expect(container.querySelector('[data-phone-fullscreen]')).toBeNull()
   })
 })

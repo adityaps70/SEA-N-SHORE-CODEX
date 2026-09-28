@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ArrowLeft, Clock3 } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { OrganizationApplicationForm } from '@/features/organizations/components/organization-application-form'
 import { organizationRepository } from '@/features/organizations/repository'
@@ -35,13 +36,14 @@ export default async function RegisterOrganizationPage({
   const canRegister = state.kind === 'none' || state.status === 'approved'
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 py-2 sm:py-4">
-      <Link href={back.href} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-ocean-700 hover:underline">
+    <div className="mx-auto w-full max-w-3xl space-y-4 py-2 sm:py-4 max-md:space-y-3 max-md:py-0">
+      <MobilePageBar backHref={back.href} title="Register an organization" />
+      <Link href={back.href} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-ocean-700 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> {back.label}
       </Link>
-      <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-        <h1 className="text-2xl font-bold tracking-tight text-navy-950">Register {prefillName ?? 'your organization'}</h1>
-        <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
+      <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none">
+        <h1 className="text-2xl font-bold tracking-tight text-navy-950 max-md:text-lg">Register {prefillName ?? 'your organization'}</h1>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-muted max-md:text-[13px] max-md:leading-5">
           You told us you own or manage this organization. Sea N Shore verifies every organization before its page can publish jobs, events, courses or updates.
           {returnTo ? ' When you submit, we take you back and link it as your current organization.' : null}
         </p>

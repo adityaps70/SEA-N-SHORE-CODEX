@@ -14,6 +14,7 @@ type FollowerRow = QueryResultRow & { follower_id: string }
 type BooleanRow = QueryResultRow & { ready?: boolean; blocked?: boolean; created?: boolean; deleted?: boolean; updated?: boolean }
 type IdRow = QueryResultRow & { id: string }
 type ConnectionRow = QueryResultRow & NetworkConnectionRow
+type CountRow = QueryResultRow & { count: number | string }
 
 function canonicalPair(userA: string, userB: string) {
   return userA < userB ? [userA, userB] as const : [userB, userA] as const
@@ -43,6 +44,19 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
       followedIds: new Set(follows.map((row) => row.following_id)),
       connections: connections as NetworkConnectionRow[],
     }
+  }
+
+  /** Pending connection requests other members sent to the viewer (the Network tab badge). */
+  async function countIncomingRequests(viewerId: string) {
+    const rows = await queryRows(
+      `select count(*)::int as count
+       from public.connections
+       where (user_low_id = $1 or user_high_id = $1)
+         and status = 'pending'
+         and requested_by <> $1`,
+      [viewerId],
+    ) as CountRow[]
+    return Number(rows[0]?.count ?? 0)
   }
 
   async function loadFollowerIds(viewerId: string) {
@@ -242,6 +256,7 @@ export function createNetworkRepository(input: { query?: NetworkQuery } = {}) {
 
   return {
     loadViewerGraph,
+    countIncomingRequests,
     loadFollowerIds,
     isMemberReady,
     isPairBlocked,

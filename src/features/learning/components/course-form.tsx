@@ -504,7 +504,7 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
       ) : null}
 
       {readOnly ? null : isEditing ? (
-        <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-[var(--shadow-card)] backdrop-blur md:bottom-4">
+        <div className="sticky bottom-[calc(0.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-[var(--shadow-card)] backdrop-blur md:bottom-4">
           <button type="submit" disabled={saving} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-60">
             {saving ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
             {saving ? 'Saving…' : 'Save course changes'}

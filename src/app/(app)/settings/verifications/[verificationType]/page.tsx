@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { notFound } from 'next/navigation'
 import { CheckCircle2, Clock3, ShieldAlert } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -16,8 +17,12 @@ function verificationTypeFromSlug(value: string): CreatorVerificationType | null
   return null
 }
 
+function verificationName(type: CreatorVerificationType) {
+  return type === 'recruiter' ? 'Recruiter' : 'Event Host'
+}
+
 function statusCopy(type: CreatorVerificationType, status: 'pending' | 'approved' | 'suspended') {
-  const name = type === 'recruiter' ? 'Recruiter' : 'Event Host'
+  const name = verificationName(type)
   if (status === 'approved') {
     return {
       title: `${name} verification approved`,
@@ -61,7 +66,8 @@ export default async function CreatorVerificationApplicationPage({
     const status = statusCopy(type, state.status)
     const Icon = status.icon
     return (
-      <main className="mx-auto w-full max-w-4xl space-y-5 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-4xl space-y-5 px-4 py-8 max-md:space-y-4 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
+        <MobilePageBar backHref="/settings/verifications" title={`${verificationName(type)} verification`} />
         <section className={`rounded-[1.5rem] p-6 ${status.tone}`}>
           <div className="flex items-start gap-3">
             <Icon aria-hidden="true" className="mt-1 size-6 shrink-0" />
@@ -91,7 +97,8 @@ export default async function CreatorVerificationApplicationPage({
   }
 
   return (
-    <main className="mx-auto w-full max-w-4xl space-y-5 px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto w-full max-w-4xl space-y-5 px-4 py-8 max-md:space-y-4 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/settings/verifications" title={`${verificationName(type)} verification`} />
       {state?.status === 'rejected' ? (
         <section className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm leading-6 text-orange-950">
           <strong>Changes are needed before approval.</strong>

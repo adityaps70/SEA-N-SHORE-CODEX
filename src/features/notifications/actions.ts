@@ -6,6 +6,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { userFacingError } from '@/lib/errors/user-messages'
 import { getNotificationChrome, getNotifications } from './queries'
 import {
+  deleteNotificationInAurora,
   markAllNotificationsReadInAurora,
   markNotificationReadInAurora,
 } from './repository'
@@ -61,6 +62,23 @@ export async function markAllNotificationsRead(): Promise<NotificationActionResu
     await markAllNotificationsReadInAurora(user.id)
   } catch (error) {
     return { ok: false, error: userFacingError(error, 'We could not mark your notifications as read. Please try again.') }
+  }
+
+  revalidateNotificationSurfaces()
+  return { ok: true }
+}
+
+/** Deletes one of the signed-in member's own notifications (the phone row "…" sheet). */
+export async function deleteNotification(id: string): Promise<NotificationActionResult> {
+  const parsed = notificationIdSchema.safeParse(id)
+  if (!parsed.success) return { ok: false, error: 'Invalid notification.' }
+
+  try {
+    const user = await requireAwsUser()
+    const deleted = await deleteNotificationInAurora(user.id, parsed.data)
+    if (!deleted) return { ok: false, error: 'This notification is no longer available. Refresh the page to see your latest notifications.' }
+  } catch (error) {
+    return { ok: false, error: userFacingError(error, 'We could not delete this notification. Please try again.') }
   }
 
   revalidateNotificationSurfaces()

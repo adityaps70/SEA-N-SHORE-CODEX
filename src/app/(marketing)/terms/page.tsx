@@ -11,6 +11,14 @@ export default function TermsPage() {
       eyebrow="Terms"
       title="Responsible use of Sea N Shore"
       updated="28 September 2026"
+      sections={[
+        { href: '#responsible-use', label: 'Lawful use' },
+        { href: '#user-content', label: 'Your content' },
+        { href: '#platform-ip', label: 'Our materials' },
+        { href: '#copyright-complaints', label: 'Copyright' },
+        { href: '#payments', label: 'Payments & plans' },
+        { href: '#contact', label: 'Contact' },
+      ]}
       intro={
         <p>
           {BUSINESS.brandName} ({BUSINESS.brandTagline}) is operated by <strong className="text-navy-950">{BUSINESS.legalName}</strong>, {businessAddressLine()}. In these terms, &quot;{BUSINESS.brandName}&quot;, &quot;we&quot; and &quot;us&quot; mean {BUSINESS.legalName}.

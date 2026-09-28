@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 const RECENT_EMOJI_KEY = 'sea-n-shore:message-recent-emojis'
 const RECENT_EMOJI_LIMIT = 24
-const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '🙏', '👍'] as const
+export const QUICK_REACTIONS = ['❤️', '😂', '😮', '😢', '🙏', '👍'] as const
 
 const EMOJI_CATEGORIES = {
   smileys: {

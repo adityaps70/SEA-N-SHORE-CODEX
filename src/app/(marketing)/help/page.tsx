@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { FaqAccordion } from '@/components/marketing/faq/faq-accordion'
+import { JumpToChips } from '@/components/marketing/jump-to-chips'
 import { faqGroups, faqJsonLd, jsonLdScript } from '@/components/marketing/faq/faq-data'
 import { SUPPORT_EMAIL } from '@/components/navigation/social-links'
 import { BUSINESS, OPERATOR_LINE, telHref } from '@/config/business'
@@ -39,22 +40,29 @@ export default function HelpPage() {
   const groups = faqGroups({ googleEnabled: isGoogleSignInEnabled() })
 
   return (
-    <main className="px-4 py-8 sm:px-6 sm:py-12">
+    <main className="px-4 py-8 sm:px-6 sm:py-12 max-md:py-4">
+      <JumpToChips
+        links={[
+          { href: '#topics', label: 'Topics' },
+          ...groups.map((group) => ({ href: `#faq-${group.id}`, label: group.title })),
+          { href: '#contact', label: 'Contact support' },
+        ]}
+      />
       <section className="mx-auto grid max-w-3xl gap-5">
-        <div className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Help</p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-navy-950">Get help with your Sea N Shore account and professional activity.</h1>
-          <p className="mt-4 text-sm leading-7 text-muted">
+        <div className="rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8 max-md:p-5">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700 max-md:hidden">Help</p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-2xl">Get help with your Sea N Shore account and professional activity.</h1>
+          <p className="mt-4 text-sm leading-7 text-muted max-md:text-base">
             Start with the topic below that matches what you are trying to do. Most pages also explain what to do next beside the action itself, including when something could not be saved.
           </p>
         </div>
 
-        <ul className="grid gap-3 sm:grid-cols-2">
+        <ul id="topics" className="grid scroll-mt-24 gap-3 sm:grid-cols-2">
           {topics.map((topic) => (
             <li key={topic.title} className="rounded-2xl border border-mist-100 bg-white p-4">
               <p className="font-semibold text-navy-950">{topic.title}</p>
-              <p className="mt-1 text-sm leading-6 text-muted">{topic.body}</p>
-              <Link href={topic.href} className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-ocean-700 hover:text-navy-950">
+              <p className="mt-1 text-sm leading-6 text-muted max-md:text-base">{topic.body}</p>
+              <Link href={topic.href} className="mt-2 inline-flex min-h-9 items-center text-sm font-semibold text-ocean-700 hover:text-navy-950 max-md:min-h-11 max-md:text-base">
                 {topic.cta} →
               </Link>
             </li>
@@ -65,7 +73,8 @@ export default function HelpPage() {
           <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(faqJsonLd(groups.flatMap((group) => group.items))) }} />
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">FAQ</p>
           <h2 id="faq-title" className="mt-2 text-2xl font-bold tracking-tight text-navy-950">Frequently asked questions</h2>
-          <nav aria-label="FAQ topics" className="mt-4">
+          {/* Phones use the "Jump to" chips at the top of the page instead. */}
+          <nav aria-label="FAQ topics" className="mt-4 max-md:hidden">
             <ul className="flex flex-wrap gap-2">
               {groups.map((group) => (
                 <li key={group.id}>
@@ -91,7 +100,7 @@ export default function HelpPage() {
         <div id="contact" className="scroll-mt-24 rounded-2xl border border-mist-100 bg-white p-5">
           <h2 className="text-lg font-semibold text-navy-950">Contact support</h2>
           {supportEmail ? (
-            <p className="mt-2 text-sm leading-6 text-muted">
+            <p className="mt-2 text-sm leading-6 text-muted max-md:text-base">
               Email <a href={`mailto:${supportEmail}`} className="font-semibold text-ocean-700 hover:underline">{supportEmail}</a>
               {BUSINESS.phone.display ? (
                 <> or call <a href={telHref(BUSINESS.phone.tel)} className="font-semibold text-ocean-700 hover:underline">{BUSINESS.phone.display}</a></>
@@ -99,7 +108,7 @@ export default function HelpPage() {
               {BUSINESS.supportHours ? <> ({BUSINESS.supportHours})</> : null}. Include the page, what you were trying to do and any message you saw — and the order ID for a payment question — so we can help faster. We reply {BUSINESS.responseTime}.
             </p>
           ) : (
-            <p className="mt-2 text-sm leading-6 text-muted">
+            <p className="mt-2 text-sm leading-6 text-muted max-md:text-base">
               A dedicated support inbox is being set up and will be listed here. Until then, use the Report option on the affected content for safety or content issues, and check the topics above for account tasks.
             </p>
           )}

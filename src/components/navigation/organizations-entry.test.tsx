@@ -79,11 +79,24 @@ describe('Organizations in the navigation', () => {
     expect(within(menu).getByRole('menuitem', { name: /^Organizations/ })).toHaveTextContent('Your pages, access requests and discovery')
   })
 
-  it('lists Organizations and the member’s organizations in the phone account menu', () => {
-    render(<MobileAppHeader unreadCount={0} organizations={organizations} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
-    const menu = screen.getByRole('menu', { name: 'Account menu' })
-    expect(within(menu).getByRole('menuitem', { name: /^Organizations/ })).toHaveAttribute('href', '/organizations')
-    expect(within(menu).getByRole('menuitem', { name: 'Manage Oceanic Ship Management' })).toHaveAttribute('href', '/organizations/oceanic-ship-management/manage')
+  it('lists the member’s organizations in the phone side drawer, with Manage, See all and Create', () => {
+    render(<MobileAppHeader organizations={organizations} organizationCount={5} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    const section = screen.getByRole('region', { name: 'Your organizations' })
+    expect(within(section).getByRole('link', { name: 'Oceanic Ship Management' })).toHaveAttribute('href', '/organizations/oceanic-ship-management')
+    expect(within(section).getByRole('link', { name: 'Manage Oceanic Ship Management' })).toHaveAttribute('href', '/organizations/oceanic-ship-management/manage')
+    expect(within(section).getByRole('link', { name: 'Harbour Crew Services' })).toHaveAttribute('href', '/organizations/harbour-crew')
+    expect(within(section).queryByRole('link', { name: 'Manage Harbour Crew Services' })).not.toBeInTheDocument()
+    expect(within(section).getByRole('link', { name: 'See all 5 organizations' })).toHaveAttribute('href', '/organizations#your-pages')
+    expect(within(section).getByRole('link', { name: 'Create an organization page' })).toHaveAttribute('href', '/organizations?register=1#update-application')
+  })
+
+  it('keeps organization discovery reachable from the phone drawer for members without an organization', () => {
+    render(<MobileAppHeader />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    const section = screen.getByRole('region', { name: 'Your organizations' })
+    expect(within(section).getByRole('link', { name: 'Browse organizations' })).toHaveAttribute('href', '/organizations#your-pages')
+    expect(within(section).getByRole('link', { name: 'Create an organization page' })).toBeInTheDocument()
+    expect(within(section).queryByRole('link', { name: /^Manage/ })).not.toBeInTheDocument()
   })
 })

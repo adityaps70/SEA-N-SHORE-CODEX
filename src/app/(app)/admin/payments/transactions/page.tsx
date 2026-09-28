@@ -87,7 +87,7 @@ export default async function AdminPaymentsListPage({ searchParams }: { searchPa
                     <p className="break-words font-semibold text-navy-950">{line.title}</p>
                     <p className="break-words text-xs text-muted">
                       {TYPE_LABELS[line.type]}
-                      {line.payerName ? <> · {line.payerSlug ? <Link href={`/profile/${line.payerSlug}`} className={textLinkClass}>{line.payerName}</Link> : line.payerName}</> : null}
+                      {line.payerName ? <> · {line.payerSlug ? <Link href={`/people/${line.payerSlug}`} className={textLinkClass}>{line.payerName}</Link> : line.payerName}</> : null}
                       {line.provider ? ` · ${line.provider === 'cashfree' ? 'Cashfree' : line.provider === 'razorpay' ? 'Razorpay' : line.provider}` : ''}
                       {line.reference ? <> · <span className="break-all">{line.reference}</span></> : null}
                     </p>

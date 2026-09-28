@@ -1,4 +1,4 @@
-import { Building2, CalendarDays, LogOut, Settings, ShieldCheck, UserRound } from 'lucide-react'
+import { Building2, LogOut, Settings, ShieldCheck, UserRound } from 'lucide-react'
 import { signOut } from '@/features/auth/actions'
 import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
 import type { HeaderMenuItem } from './header-menu'
@@ -36,25 +36,20 @@ export function organizationMenuItems(organizations: HeaderOrganization[], total
 }
 
 /**
- * The account menu, shared by the desktop header and the phone header.
- * Phones have no Events tab in the bottom bar, so `includeEvents` adds it here.
+ * The desktop account menu. On phones the side drawer (side-drawer.tsx) carries these
+ * entries, and more, instead.
  */
 export function accountMenuItems({
   canAccessAdmin = false,
   organizations = [],
   organizationCount = organizations.length,
-  includeEvents = false,
 }: {
   canAccessAdmin?: boolean
   organizations?: HeaderOrganization[]
   organizationCount?: number
-  includeEvents?: boolean
 }): HeaderMenuItem[] {
   return [
     { href: '/profile', label: 'Profile', description: 'View and edit your Maritime Passport', icon: <UserRound className="size-4" /> },
-    ...(includeEvents
-      ? [{ href: '/events', label: 'Events', description: 'Webinars, meetups and conferences', icon: <CalendarDays className="size-4" /> }]
-      : []),
     { href: '/organizations', label: 'Organizations', description: ORGANIZATIONS_DESCRIPTION, icon: <Building2 className="size-4" /> },
     ...organizationMenuItems(organizations, organizationCount),
     ...(canAccessAdmin
@@ -64,15 +59,22 @@ export function accountMenuItems({
   ]
 }
 
-export function AccountMenuSignOut() {
+/**
+ * Sign out. `menu` is the desktop account-menu row; `drawer` is the 52px row in the phone
+ * side drawer (a dialog, so it is a plain button there, not a menu item).
+ */
+export function AccountMenuSignOut({ variant = 'menu' }: { variant?: 'menu' | 'drawer' }) {
+  const drawer = variant === 'drawer'
   return (
     <form action={signOut}>
       <button
         type="submit"
-        role="menuitem"
-        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+        role={drawer ? undefined : 'menuitem'}
+        className={drawer
+          ? 'flex min-h-13 w-full cursor-pointer items-center gap-4 px-5 text-left text-base font-semibold text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500'
+          : 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'}
       >
-        <LogOut aria-hidden="true" className="size-4 text-muted" />
+        <LogOut aria-hidden="true" className={drawer ? 'size-6 shrink-0 text-navy-900' : 'size-4 text-muted'} strokeWidth={drawer ? 1.75 : undefined} />
         Sign out
       </button>
     </form>

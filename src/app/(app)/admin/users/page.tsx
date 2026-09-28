@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Search, ShieldCheck } from 'lucide-react'
+import { ExternalLink, Search, ShieldCheck, UserCog } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { withAdminAvatarUrls } from '@/features/admin/avatars'
 import {
@@ -16,6 +16,7 @@ import {
   readAdminPage,
   type AdminChipTone,
 } from '@/features/admin/components/admin-ui'
+import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
 import {
   ADMIN_USER_STATUSES,
   adminRepository,
@@ -130,7 +131,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <AdminFilterBar label="User status filters" options={filterOptions} />
-        <form method="get" action="/admin/users" className="flex gap-2 lg:w-96">
+        <form method="get" action="/admin/users" className="flex gap-2 max-md:order-first lg:w-96">
           <label className="relative flex-1">
             <span className="sr-only">Search users</span>
             <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
@@ -140,12 +141,12 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
               defaultValue={query}
               maxLength={120}
               placeholder="Name, username, headline or email"
-              className="min-h-9 w-full rounded-lg border border-mist-100 bg-white py-1.5 pl-9 pr-3 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100"
+              className="min-h-9 w-full rounded-lg border border-mist-100 bg-white py-1.5 pl-9 pr-3 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100 max-md:min-h-11 max-md:rounded-xl max-md:bg-mist-50 max-md:text-[15px]"
             />
           </label>
           {status !== 'all' ? <input type="hidden" name="status" value={status} /> : null}
           {hideTestAccounts ? <input type="hidden" name="test" value="hide" /> : null}
-          <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900">
+          <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900 max-md:min-h-11 max-md:rounded-xl max-md:px-4">
             Search
           </button>
         </form>
@@ -155,7 +156,34 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
         {users.length === 0 ? (
           <AdminEmptyState title="No users match this view." description="Try a different search term or account-status filter." />
         ) : (
-          <div className="relative overflow-x-auto">
+          <>
+          <AdminMobileList label="User accounts">
+            {users.map((user) => {
+              const deleted = user.status === 'deletion_requested'
+              const isTest = !deleted && looksLikeTestAccount(user)
+              return (
+                <AdminMobileCard
+                  key={user.id}
+                  title={user.fullName}
+                  href={`/admin/users/${user.id}`}
+                  leading={<AdminAvatar name={user.fullName} url={deleted ? null : user.avatarUrl} className="size-11" />}
+                  subtitle={deleted ? 'Audit tombstone only' : [user.headline, user.slug ? `@${user.slug}` : null].filter(Boolean).join(' · ') || '—'}
+                  badges={isTest ? <AdminChip tone="warning">Test account</AdminChip> : null}
+                  fields={[
+                    { label: 'Role', value: user.isAdministrator ? 'Admin' : 'Member' },
+                    { label: 'Status', value: <AdminChip tone={statusTone[user.status]}>{statusLabels[user.status]}</AdminChip> },
+                    { label: 'Joined', value: formatAdminDate(user.createdAt) },
+                    { label: 'Email', value: user.email ?? (deleted ? '—' : 'None') },
+                  ]}
+                  actions={[
+                    { kind: 'link', href: `/admin/users/${user.id}`, label: deleted ? 'View deletion record' : 'Manage user', icon: <UserCog aria-hidden="true" /> },
+                    ...(!deleted && user.slug ? [{ kind: 'link' as const, href: `/people/${user.slug}`, label: 'View public profile', icon: <ExternalLink aria-hidden="true" /> }] : []),
+                  ]}
+                />
+              )
+            })}
+          </AdminMobileList>
+          <div className={ADMIN_TABLE_DESKTOP_CLASS}>
             <table className="w-full min-w-[44rem] table-fixed text-left text-sm">
               <colgroup>
                 <col className="w-[38%]" />
@@ -215,6 +243,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
               </tbody>
             </table>
           </div>
+          </>
         )}
       </AdminPanel>
 

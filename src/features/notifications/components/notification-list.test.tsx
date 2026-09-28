@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   markNotificationRead: vi.fn(async () => ({ ok: true as const })),
   markAllNotificationsRead: vi.fn(async () => ({ ok: true as const })),
   loadNotifications: vi.fn(async () => ({ ok: true as const, notifications: [] })),
+  deleteNotification: vi.fn(async (): Promise<{ ok: true } | { ok: false; error: string }> => ({ ok: true })),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -19,6 +20,7 @@ vi.mock('../actions', () => ({
   markNotificationRead: mocks.markNotificationRead,
   markAllNotificationsRead: mocks.markAllNotificationsRead,
   loadNotifications: mocks.loadNotifications,
+  deleteNotification: mocks.deleteNotification,
 }))
 
 const notification: NetworkNotification = {
@@ -73,7 +75,7 @@ describe('NotificationList timestamps', () => {
     await waitFor(() => expect(mocks.markNotificationRead).toHaveBeenCalledWith(notification.id))
     expect(mocks.push).toHaveBeenCalledWith(notification.destination)
     expect(mocks.refresh).not.toHaveBeenCalled()
-    expect(screen.getByText('All caught up')).toBeInTheDocument()
+    expect(await screen.findByText('All caught up')).toBeInTheDocument()
   })
 
   it('makes unread rows unmistakable without over-emphasizing read rows', () => {
@@ -131,5 +133,91 @@ describe('NotificationList timestamps', () => {
 
     expect(mocks.markNotificationRead).toHaveBeenCalledWith(photo.id)
     expect(screen.getByText('All caught up')).toBeInTheDocument()
+  })
+})
+
+describe('NotificationList on phones', () => {
+  const mention: NetworkNotification = {
+    ...notification,
+    id: '77777777-7777-4777-8777-777777777777',
+    type: 'post_mention',
+    readAt: '2026-09-10T09:28:00.000Z',
+    message: 'Rahul Gupta mentioned you in a post.',
+  }
+  const follower: NetworkNotification = {
+    ...notification,
+    id: '66666666-6666-4666-8666-666666666666',
+    type: 'new_follower',
+    readAt: '2026-09-10T09:28:00.000Z',
+    message: 'Rahul Gupta started following you.',
+    postId: null,
+  }
+
+  beforeEach(() => {
+    mocks.deleteNotification.mockClear()
+    mocks.refresh.mockClear()
+  })
+
+  afterEach(() => cleanup())
+
+  function rowOf(message: RegExp) {
+    return screen.getByRole('button', { name: message }).closest('[data-notification-state]')
+  }
+
+  it('has a compact title row with Mark all read and filter chips (phones only)', () => {
+    render(<NotificationList notifications={[notification, mention, follower]} />)
+    expect(screen.getByRole('heading', { level: 1, name: 'Notifications' }).parentElement).toHaveClass('md:hidden')
+    const markAll = screen.getAllByRole('button', { name: /Mark all read/ })
+    expect(markAll).toHaveLength(2)
+    const chips = screen.getByRole('group', { name: 'Filter notifications' })
+    expect(chips).toHaveClass('md:hidden')
+    expect(Array.from(chips.querySelectorAll('button')).map((chip) => chip.textContent)).toEqual(['All', 'Jobs', 'My posts', 'Mentions'])
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('filters rows by chip on phones without hiding anything on desktop', () => {
+    render(<NotificationList notifications={[notification, mention, follower]} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mentions' }))
+    expect(rowOf(/mentioned you/)).not.toHaveClass('max-md:hidden')
+    expect(rowOf(/commented on your post/)).toHaveClass('max-md:hidden')
+    expect(rowOf(/started following you/)).toHaveClass('max-md:hidden')
+
+    fireEvent.click(screen.getByRole('button', { name: 'My posts' }))
+    expect(rowOf(/commented on your post/)).not.toHaveClass('max-md:hidden')
+    expect(rowOf(/mentioned you/)).toHaveClass('max-md:hidden')
+  })
+
+  it('keeps the Jobs chip with an empty state (no job notification types exist yet)', () => {
+    render(<NotificationList notifications={[notification, mention]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Jobs' }))
+    expect(screen.getByRole('status')).toHaveTextContent('Job updates will show up here.')
+    expect(screen.getByRole('link', { name: 'Browse jobs' })).toHaveAttribute('href', '/jobs')
+  })
+
+  it('deletes a notification from the row "…" sheet', async () => {
+    render(<NotificationList notifications={[notification, mention]} />)
+    const [firstOptions] = screen.getAllByRole('button', { name: 'Notification options' })
+    expect(firstOptions).toHaveClass('md:hidden')
+    fireEvent.click(firstOptions!)
+
+    const sheet = screen.getByRole('dialog', { name: 'Notification' })
+    expect(sheet).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete notification' }))
+
+    expect(screen.queryByRole('button', { name: /commented on your post/ })).not.toBeInTheDocument()
+    await waitFor(() => expect(mocks.deleteNotification).toHaveBeenCalledWith(notification.id))
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
+    expect(screen.getByRole('button', { name: /mentioned you/ })).toBeInTheDocument()
+  })
+
+  it('restores the row and explains when the delete fails', async () => {
+    mocks.deleteNotification.mockResolvedValueOnce({ ok: false, error: 'This notification is no longer available.' })
+    render(<NotificationList notifications={[notification]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Notification options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete notification' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This notification is no longer available.')
+    expect(screen.getByRole('button', { name: /commented on your post/ })).toBeInTheDocument()
   })
 })

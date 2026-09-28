@@ -31,15 +31,15 @@ export default async function OrganizationAnalyticsPage({ params }: { params: Pr
   return (
     <OrganizationManageShell workspace={workspace} active="analytics" {...shell}>
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700">Organization Pro</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950">Workspace analytics</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700 max-md:hidden">Organization Pro</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:sr-only">Workspace analytics</h1>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted max-md:hidden">
           One cross-module view of the organization’s activity across Jobs, Events and Learning.
         </p>
       </div>
 
       {metrics ? (
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <section aria-label="Workspace metrics" className="grid gap-4 max-md:grid-cols-2 max-md:gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {[
             { label: 'Published jobs', value: metrics.publishedJobs, icon: BriefcaseBusiness },
             { label: 'Job applications', value: metrics.applications, icon: UsersRound },
@@ -50,10 +50,10 @@ export default async function OrganizationAnalyticsPage({ params }: { params: Pr
           ].map((metric) => {
             const Icon = metric.icon
             return (
-              <article key={metric.label} className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
-                <Icon aria-hidden="true" className="size-5 text-ocean-700" />
-                <p className="mt-4 text-3xl font-bold text-navy-950">{metric.value}</p>
-                <p className="mt-1 text-sm font-semibold text-muted">{metric.label}</p>
+              <article key={metric.label} className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:rounded-xl max-md:p-3">
+                <Icon aria-hidden="true" className="size-5 text-ocean-700 max-md:size-4" />
+                <p className="mt-4 text-3xl font-bold text-navy-950 max-md:mt-2 max-md:text-2xl">{metric.value}</p>
+                <p className="mt-1 text-sm font-semibold text-muted max-md:mt-0.5 max-md:text-xs">{metric.label}</p>
               </article>
             )
           })}

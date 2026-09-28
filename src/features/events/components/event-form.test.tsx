@@ -188,3 +188,27 @@ describe('event form: cancelling', () => {
     expect(confirmSpy).not.toHaveBeenCalled()
   })
 })
+
+describe('event form: optional sections on phones', () => {
+  it('starts Content & speakers and the banner collapsed on a new event, keeping their fields in the form', () => {
+    render(<EventForm mode="create" publisherOptions={[publisher]} paymentsConfigured />)
+    const content = screen.getByRole('button', { name: /Content & speakers/ })
+    const banner = screen.getByRole('button', { name: /Event banner/ })
+    expect(content).toHaveAttribute('aria-expanded', 'false')
+    expect(banner).toHaveAttribute('aria-expanded', 'false')
+    const panel = document.getElementById(content.getAttribute('aria-controls') ?? '')
+    expect(panel).toHaveClass('max-md:hidden')
+    // Still mounted, so the values are submitted.
+    expect(within(panel!).getByLabelText(/^Agenda/)).toBeInTheDocument()
+    fireEvent.click(content)
+    expect(content).toHaveAttribute('aria-expanded', 'true')
+    expect(panel).not.toHaveClass('max-md:hidden')
+    expect(screen.getByRole('heading', { name: 'Content & speakers' })).toBeInTheDocument()
+  })
+
+  it('opens them when editing an event that already has a programme or a banner', () => {
+    render(<EventForm mode="edit" eventId="e1" initial={existing({ agenda: ['Welcome'], bannerUrl: 'https://cdn.example/banner.jpg' })} paymentsConfigured />)
+    expect(screen.getByRole('button', { name: /Content & speakers/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: /Event banner/ })).toHaveAttribute('aria-expanded', 'true')
+  })
+})

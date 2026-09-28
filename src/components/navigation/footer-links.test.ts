@@ -2,6 +2,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FOOTER_LINK_GROUPS, footerLinks } from './app-footer'
+import { CREATE_SHEET_GROUPS } from './create-sheet'
+import { drawerFooterLinks } from './side-drawer'
 import { SOCIAL_LINKS, configuredSocialLinks } from './social-links'
 
 const appDir = join(process.cwd(), 'src/app')
@@ -83,5 +85,24 @@ describe('footer links', () => {
     ])
     expect(configuredSocialLinks({ linkedin: 'https://www.linkedin.com/company/example', instagram: 'not-a-url', youtube: '', facebook: '', x: '' }))
       .toEqual([{ key: 'linkedin', href: 'https://www.linkedin.com/company/example', label: 'LinkedIn' }])
+  })
+
+  it('gives the phone side drawer every footer link that has no row of its own in the drawer', () => {
+    expect(drawerFooterLinks().map((link) => link.label)).toEqual([
+      'About', 'Pricing', 'Contact us', 'Newsletter', 'Accessibility',
+      'Terms', 'Privacy Policy', 'Refunds & cancellation', 'Shipping & delivery', 'Copyright & IP', 'Your data & privacy',
+    ])
+  })
+
+  it('points every phone drawer row, footer link and Create sheet entry at a page that exists', () => {
+    const drawerSource = readFileSync(join(process.cwd(), 'src/components/navigation/side-drawer.tsx'), 'utf8')
+    const drawerHrefs = [...drawerSource.matchAll(/href="([^"]+)"/g)].map((match) => match[1])
+    expect(drawerHrefs.length).toBeGreaterThan(10)
+    const hrefs = [
+      ...drawerHrefs,
+      ...drawerFooterLinks().map((link) => link.href),
+      ...CREATE_SHEET_GROUPS.flat().map((item) => item.href),
+    ]
+    expect(hrefs.filter((href) => !resolves(href))).toEqual([])
   })
 })

@@ -3,6 +3,13 @@
 import { ChevronDown, ChevronUp, CornerDownRight, Ellipsis, Flag, MessageCircle, PencilLine, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type RefObject } from 'react'
+import {
+  MobileSheetBackdrop,
+  MobileSheetCancel,
+  MobileSheetGrab,
+  SHEET_MENU_ITEM_CLASS,
+  SHEET_MENU_PANEL_CLASS,
+} from '@/components/ui/mobile-sheet'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import * as feedActions from '../actions'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
@@ -120,10 +127,10 @@ function ReplyComposer({ postId, target, onCreated, onDone }: {
   )
 }
 
-const menuItemClass = 'flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-xs font-semibold hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60'
+const menuItemClass = `flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-xs font-semibold hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 max-md:rounded-xl ${SHEET_MENU_ITEM_CLASS}`
 
 /**
- * The comment "⋯" menu. Owners get Edit (inside the edit window) and Delete; everyone else gets
+ * The comment "⋯" menu (a bottom sheet on phones, a dropdown from md). Owners get Edit (inside the edit window) and Delete; everyone else gets
  * Report, so the action row only holds Like and Reply.
  */
 function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onReport, triggerRef }: {
@@ -152,7 +159,7 @@ function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onRepor
   }
 
   return (
-    <div ref={rootRef} className="absolute right-1.5 top-1.5">
+    <div ref={rootRef} className="absolute right-1.5 top-1.5 max-md:right-0.5 max-md:top-0.5">
       <button
         ref={triggerRef}
         type="button"
@@ -161,12 +168,19 @@ function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onRepor
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="grid size-7 cursor-pointer place-items-center rounded-full text-muted transition hover:bg-white hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+        className="grid size-7 max-md:size-9 cursor-pointer place-items-center rounded-full text-muted transition hover:bg-white hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
       >
         <Ellipsis className="size-4" aria-hidden="true" />
       </button>
+      {open ? <MobileSheetBackdrop onClose={close} /> : null}
       {open ? (
-        <div ref={menuRef} role="menu" aria-label="Comment actions" className="absolute right-0 z-20 mt-1 w-max min-w-32 overflow-hidden rounded-xl border border-mist-100 bg-white py-1 shadow-lg">
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label="Comment actions"
+          className={`absolute right-0 z-20 mt-1 w-max min-w-32 overflow-hidden rounded-xl border border-mist-100 bg-white py-1 shadow-lg ${SHEET_MENU_PANEL_CLASS}`}
+        >
+          <MobileSheetGrab />
           {owner ? (
             <>
               {canEdit ? (
@@ -183,6 +197,7 @@ function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onRepor
               <Flag aria-hidden="true" className="size-3.5" /> Report comment
             </button>
           )}
+          <MobileSheetCancel onClick={() => { setOpen(false); triggerRef.current?.focus() }} />
         </div>
       ) : null}
     </div>
@@ -305,7 +320,7 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
       <AuthorAvatarLink author={comment.author} className={`relative z-[1] ${avatarSize}`} />
       <div className="min-w-0 flex-1">
         <div className={`relative rounded-2xl px-3 py-2.5 ${isReply ? 'bg-mist-50/70 ring-1 ring-mist-100' : 'bg-mist-50'}`}>
-          <div className="flex flex-wrap items-baseline gap-x-2 pr-7">
+          <div className="flex flex-wrap items-baseline gap-x-2 pr-7 max-md:pr-9">
             <Link href={profileHref(comment.author.slug)} className="text-sm font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{comment.author.fullName}</Link>
             {isPostAuthor ? <span className="rounded-full bg-ocean-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ocean-800">Author</span> : null}
             <span className="min-w-0 truncate text-xs text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
