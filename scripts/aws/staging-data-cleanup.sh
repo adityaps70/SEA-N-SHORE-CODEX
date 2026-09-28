@@ -380,8 +380,7 @@ tx() {
 
 # Preserve active organization pages by moving creator attribution to a real approved owner/admin.
 tx "update public.companies c
-    set created_by = replacement.user_id, updated_at = now()
-    from lateral (
+    set created_by = (
       select cm.user_id
       from public.company_members cm
       join public.profiles p on p.id=cm.user_id
@@ -392,9 +391,20 @@ tx "update public.companies c
         and cm.user_id not in ($PROFILE_SQL)
       order by case when cm.role::text='owner' then 0 else 1 end, cm.created_at asc
       limit 1
-    ) replacement
+    ),
+    updated_at = now()
     where c.created_by in ($PROFILE_SQL)
-      and c.id not in ($COMPANY_SQL)"
+      and c.id not in ($COMPANY_SQL)
+      and exists (
+        select 1
+        from public.company_members cm
+        join public.profiles p on p.id=cm.user_id
+        where cm.company_id=c.id
+          and cm.approved_at is not null
+          and cm.role::text in ('owner','administrator')
+          and p.account_status::text='active'
+          and cm.user_id not in ($PROFILE_SQL)
+      )"
 
 # Remove stale visible product/content first.
 tx "delete from public.jobs where id in ($JOB_SQL)"
