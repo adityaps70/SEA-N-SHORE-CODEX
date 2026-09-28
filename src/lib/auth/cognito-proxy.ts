@@ -5,7 +5,8 @@ import { createCognitoPrincipalResolver } from './cognito-principal-cache'
 import { getCognitoEnvironment } from '@/lib/env'
 
 // About, Help, Accessibility, Privacy, Terms and Copyright are public so signed-out visitors (and
-// newsletter consent links) can read them.
+// newsletter consent links) can read them. Contact, Pricing, Refunds and Shipping must stay public
+// too: the payment gateway (Cashfree) verifies them without signing in. Never add them here.
 const PROTECTED_PREFIXES = [
   '/activities',
   '/admin',

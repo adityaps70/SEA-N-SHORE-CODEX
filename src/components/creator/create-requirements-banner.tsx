@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { ArrowRight, Info } from 'lucide-react'
 import { canUseCapability, type AccessContext, type Capability, type VerificationType } from '@/features/access/policy'
+import { canUpgradeOrganization } from '@/features/billing/billing-access'
+import { organizationPlanBillingHref } from '@/features/organizations/organization-page-profile'
 
 export type CreateKind = 'job' | 'event' | 'course'
 
@@ -37,8 +39,11 @@ const RULES: Record<CreateKind, CreateRule> = {
   },
 }
 
+/** Organizations the member belongs to (name and slug for the upgrade link). */
+export type CreateRequirementOrganization = { id: string; name: string; slug: string }
+
 export type CreateRequirement = {
-  id: 'account' | 'verification' | 'plan'
+  id: 'account' | 'verification' | 'plan' | 'organization'
   label: string
   href: string
   linkLabel: string
@@ -49,7 +54,11 @@ export type CreateRequirement = {
  * workspace: publishing is possible personally (verified + entitled) or for any organization
  * they manage. Returns an empty list when they can already publish either way.
  */
-export function getCreateRequirements(access: AccessContext, kind: CreateKind): CreateRequirement[] {
+export function getCreateRequirements(
+  access: AccessContext,
+  kind: CreateKind,
+  organizations: readonly CreateRequirementOrganization[] = [],
+): CreateRequirement[] {
   const rule = RULES[kind]
   const personalReady = canUseCapability(access, rule.capability)
   const organizationReady = access.organizationMemberships.some((membership) =>
@@ -71,6 +80,17 @@ export function getCreateRequirements(access: AccessContext, kind: CreateKind): 
   if (!access.personalEntitlements.includes(rule.capability)) {
     missing.push({ id: 'plan', label: 'Creator Pro to publish under your own name', href: '/plans', linkLabel: 'See plans' })
   }
+  // An owner or administrator of a verified organization on the free plan can publish as
+  // that organization once it has Organization Pro (their role already includes publishing).
+  const upgradable = organizations.find((organization) => canUpgradeOrganization(access, organization.id))
+  if (upgradable) {
+    missing.push({
+      id: 'organization',
+      label: `Or upgrade ${upgradable.name} to Organization Pro`,
+      href: organizationPlanBillingHref(upgradable.slug),
+      linkLabel: 'Upgrade',
+    })
+  }
   return missing
 }
 
@@ -78,8 +98,19 @@ export function getCreateRequirements(access: AccessContext, kind: CreateKind): 
  * Slim notice at the top of a create page listing only what the member is missing to publish,
  * each with a direct link. Renders nothing when the member can already publish.
  */
-export function CreateRequirementsBanner({ access, kind, className = '' }: { access: AccessContext; kind: CreateKind; className?: string }) {
-  const missing = getCreateRequirements(access, kind)
+export function CreateRequirementsBanner({
+  access,
+  kind,
+  organizations = [],
+  className = '',
+}: {
+  access: AccessContext
+  kind: CreateKind
+  /** The member's organizations; lets the banner offer "Or upgrade <organization>". */
+  organizations?: readonly CreateRequirementOrganization[]
+  className?: string
+}) {
+  const missing = getCreateRequirements(access, kind, organizations)
   if (!missing.length) return null
   const headingId = `create-requirements-${kind}`
 

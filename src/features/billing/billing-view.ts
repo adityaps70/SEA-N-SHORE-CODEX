@@ -89,6 +89,15 @@ function priceLabel(amountMinor: number, interval: BillingInterval) {
   return `${formatRupees(amountMinor)} ${INTERVAL_LABELS[interval].per}`
 }
 
+/** "₹1,000.00 per month or ₹10,000.00 per year" from the active prices; null when none. */
+export function planPriceLine(prices: readonly PlanPrice[], plan: PaidPlanCode) {
+  const parts = (['month', 'year'] as const).flatMap((interval) => {
+    const price = prices.find((entry) => entry.planCode === plan && entry.interval === interval && entry.active)
+    return price ? [priceLabel(price.amountMinor, interval)] : []
+  })
+  return parts.length ? parts.join(' or ') : null
+}
+
 function historyRow(payment: PaymentRecord, plan: PaidPlanCode, intervalFor: (checkoutId: string) => BillingInterval | null): BillingHistoryRow {
   const date = formatBillingDate(payment.paidAt ?? payment.scheduledFor ?? payment.createdAt) ?? ''
   const interval = intervalFor(payment.checkoutId)

@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import { ExternalLink, Settings2 } from 'lucide-react'
 import { canPostAsOrganization, canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
+import { canUpgradeOrganization } from '@/features/billing/billing-access'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { EventCard } from '@/features/events/components/event-card'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
@@ -39,6 +40,7 @@ import {
   formatCount,
   organizationCoverUrl,
   organizationManageHref,
+  organizationPlanBillingHref,
   organizationTabHref,
   organizationTagline,
   parseOrganizationPageTab,
@@ -177,6 +179,8 @@ export default async function OrganizationPage({
   const myPendingRequest = myRequests.find((request) => request.company.id === workspace.id && request.status === 'pending')
   const canManagePage = Boolean(viewer) || Boolean(ownApplication) || Boolean(membership && MANAGING_ROLES.has(membership.role))
   const canPost = canPostAsOrganization(access, workspace.id)
+  // Owner or administrator of this verified organization on the free plan.
+  const canUpgrade = canUpgradeOrganization(access, workspace.id)
   const canPublish = {
     jobs: canUseCapability(access, 'job.publish', { companyId: workspace.id }),
     events: canUseCapability(access, 'event.publish', { companyId: workspace.id }),
@@ -319,6 +323,11 @@ export default async function OrganizationPage({
                 {canManagePage ? (
                   <Link href={organizationManageHref(workspace.slug)} className={`${manageLinkClass} gap-2`}>
                     <Settings2 aria-hidden="true" className="size-4" /> Manage page
+                  </Link>
+                ) : null}
+                {canUpgrade ? (
+                  <Link href={organizationPlanBillingHref(workspace.slug)} className="inline-flex min-h-10 cursor-pointer items-center px-1 text-sm font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
+                    Upgrade to Organization Pro
                   </Link>
                 ) : null}
                 <OrganizationPageMenu

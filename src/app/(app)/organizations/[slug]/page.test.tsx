@@ -243,6 +243,25 @@ describe('/organizations/[slug] public page', () => {
     expect(screen.getByTestId('org-posts')).toHaveAttribute('data-limit', '3')
   })
 
+  it('shows the owner of a free organization a subtle Upgrade to Organization Pro link next to Manage page', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('owner'))
+    mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })
+    render(await OrganizationPage({ params }))
+
+    expect(screen.getByRole('link', { name: 'Upgrade to Organization Pro' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
+  })
+
+  it('does not show the upgrade link to roles that cannot buy or to Organization Pro workspaces', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('recruiter'))
+    render(await OrganizationPage({ params }))
+    expect(screen.queryByRole('link', { name: 'Upgrade to Organization Pro' })).not.toBeInTheDocument()
+    cleanup()
+
+    mocks.getAccessContext.mockResolvedValue({ ...access('owner'), organizationMemberships: [{ companyId: 'c1', plan: 'organization_pro', role: 'owner', verified: true, entitlements: [] }] })
+    render(await OrganizationPage({ params }))
+    expect(screen.queryByRole('link', { name: 'Upgrade to Organization Pro' })).not.toBeInTheDocument()
+  })
+
   it('lets plain members reach their workspace without showing the Manage page button', async () => {
     mocks.getAccessContext.mockResolvedValue(access('member'))
     render(await OrganizationPage({ params }))

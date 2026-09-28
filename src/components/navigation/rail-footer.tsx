@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { FooterSocialLinks, footerLinks } from './app-footer'
+import { FooterSocialLinks, OPERATOR_LINE, footerLinks } from './app-footer'
 
 type RailBreakpoint = 'lg' | 'xl'
 
@@ -37,6 +37,7 @@ export function RailFooter({ visibleFrom = 'xl' }: { visibleFrom?: RailBreakpoin
       <p className="mt-2">
         <span className="font-bold text-navy-900">Sea N Shore</span> © {new Date().getFullYear()}
       </p>
+      <p className="mt-1">{OPERATOR_LINE}</p>
     </footer>
   )
 }

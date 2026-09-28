@@ -139,3 +139,57 @@ describe('CreateRequirementsBanner', () => {
     }
   })
 })
+
+const OCEANIC = { id: '99999999-9999-4999-8999-999999999999', name: 'Oceanic Ship Management', slug: 'oceanic-ship-management' }
+const FREE_ORG: Capability[] = ['organization.manage']
+
+describe('Or upgrade <organization> to Organization Pro', () => {
+  it('offers the upgrade to the owner of a verified organization on the free plan', () => {
+    const member = access({ organizationMemberships: [membership({ plan: 'free', entitlements: FREE_ORG })] })
+    for (const kind of ['job', 'event', 'course'] as const) {
+      const option = getCreateRequirements(member, kind, [OCEANIC]).find((item) => item.id === 'organization')
+      expect(option).toEqual({
+        id: 'organization',
+        label: 'Or upgrade Oceanic Ship Management to Organization Pro',
+        href: '/organizations/oceanic-ship-management/manage?section=billing',
+        linkLabel: 'Upgrade',
+      })
+    }
+  })
+
+  it('offers it to administrators too, but only when upgrading would unlock publishing', () => {
+    const admin = access({ organizationMemberships: [membership({ plan: 'free', role: 'administrator', entitlements: FREE_ORG })] })
+    expect(getCreateRequirements(admin, 'job', [OCEANIC]).map((item) => item.id)).toContain('organization')
+
+    const recruiter = access({ organizationMemberships: [membership({ plan: 'free', role: 'recruiter', entitlements: FREE_ORG })] })
+    expect(getCreateRequirements(recruiter, 'job', [OCEANIC]).map((item) => item.id)).not.toContain('organization')
+
+    const unverified = access({ organizationMemberships: [membership({ plan: 'free', verified: false, entitlements: FREE_ORG })] })
+    expect(getCreateRequirements(unverified, 'job', [OCEANIC]).map((item) => item.id)).not.toContain('organization')
+
+    const restricted = access({ accountActive: false, organizationMemberships: [membership({ plan: 'free', entitlements: FREE_ORG })] })
+    expect(getCreateRequirements(restricted, 'job', [OCEANIC]).map((item) => item.id)).not.toContain('organization')
+
+    // Already on Organization Pro: the member can publish as the organization, so no banner at all.
+    expect(getCreateRequirements(access({ organizationMemberships: [membership()] }), 'job', [OCEANIC])).toEqual([])
+  })
+
+  it('shows the option in the banner with a direct Upgrade link', () => {
+    render(
+      <CreateRequirementsBanner
+        access={access({ organizationMemberships: [membership({ plan: 'free', entitlements: FREE_ORG })] })}
+        kind="job"
+        organizations={[OCEANIC]}
+      />,
+    )
+    const banner = screen.getByRole('region', { name: 'To publish this job, you still need:' })
+    const option = within(banner).getByText('Or upgrade Oceanic Ship Management to Organization Pro').closest('li') as HTMLElement
+    expect(within(option).getByRole('link', { name: 'Upgrade' })).toHaveAttribute('href', '/organizations/oceanic-ship-management/manage?section=billing')
+  })
+
+  it('passes the member’s organizations from all three create pages', () => {
+    for (const path of ['src/app/(app)/hiring/jobs/new/page.tsx', 'src/app/(app)/events/create/page.tsx', 'src/app/(app)/learn/studio/courses/new/page.tsx']) {
+      expect(readFileSync(resolve(process.cwd(), path), 'utf8')).toContain('organizations={organizations}')
+    }
+  })
+})

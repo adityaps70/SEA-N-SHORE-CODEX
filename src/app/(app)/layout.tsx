@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getAppChromeData(user),
     legacyOrganizationConversionRepository.getConversion(user.id).catch(() => null),
   ])
-  const { notificationChrome, messagingUnreadCount, canAccessAdmin, viewer } = chrome
+  const { notificationChrome, messagingUnreadCount, canAccessAdmin, viewer, organizations, organizationCount } = chrome
 
   return (
     <MessagingRealtimeProvider viewerProfileId={user.id}>
@@ -27,6 +27,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           messagingUnreadCount={messagingUnreadCount}
           canAccessAdmin={canAccessAdmin}
           viewer={viewer}
+          organizations={organizations}
+          organizationCount={organizationCount}
         />
         <MobileAppHeader
           unreadCount={notificationChrome.unreadCount}

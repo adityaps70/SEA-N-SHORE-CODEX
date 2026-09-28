@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Crown } from 'lucide-react'
 import { canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { isOrganizationBillingContact } from '@/features/billing/billing-access'
 import { OrganizationManageShell } from '@/features/organizations/components/organization-manage-shell'
+import { OrganizationUpgradeAction } from '@/features/organizations/components/organization-upgrade-action'
 import { OrganizationTeamPanel } from '@/features/organizations/components/organization-team-panel'
 import { loadManageShellContext } from '@/features/organizations/manage-context'
 import { organizationWorkspaceRepository } from '@/features/organizations/workspace-repository'
@@ -46,7 +47,7 @@ export default async function OrganizationTeamPage({ params }: { params: Promise
               <p className="mt-2 text-sm leading-6 text-amber-900">
                 Team permissions require Organization Pro and an Owner or Administrator role. Verification alone does not unlock this capability.
               </p>
-              <Link href="/plans" className="mt-4 inline-flex rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-900">View Organization Pro</Link>
+              <OrganizationUpgradeAction slug={workspace.slug} canBuy={isOrganizationBillingContact(access, workspace.id)} plan={membership.plan} verified={membership.verified} />
             </div>
           </div>
         </section>

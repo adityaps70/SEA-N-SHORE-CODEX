@@ -39,16 +39,21 @@ export function organizationTabHref(slug: string, tab: OrganizationPageTab) {
   return tab === 'home' ? `/organizations/${slug}` : `/organizations/${slug}?tab=${tab}`
 }
 
-export const MANAGE_SECTIONS = ['overview', 'requests'] as const
+export const MANAGE_SECTIONS = ['overview', 'requests', 'billing'] as const
 export type ManageSection = (typeof MANAGE_SECTIONS)[number]
 
 export function parseManageSection(value: string | string[] | undefined): ManageSection {
   const first = Array.isArray(value) ? value[0] : value
-  return first === 'requests' ? 'requests' : 'overview'
+  return (MANAGE_SECTIONS as readonly string[]).includes(first ?? '') ? first as ManageSection : 'overview'
 }
 
 export function organizationManageHref(slug: string, section: ManageSection = 'overview') {
   return section === 'overview' ? `/organizations/${slug}/manage` : `/organizations/${slug}/manage?section=${section}`
+}
+
+/** The Manage page's "Plan & billing" section: current plan, Organization Pro checkout, renewal. */
+export function organizationPlanBillingHref(slug: string) {
+  return organizationManageHref(slug, 'billing')
 }
 
 export const TAGLINE_MAX_LENGTH = 160

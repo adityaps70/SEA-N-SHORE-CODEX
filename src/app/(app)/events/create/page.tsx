@@ -46,7 +46,7 @@ export default async function CreateEventPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6 py-2 sm:px-6 sm:py-6">
-      <CreateRequirementsBanner access={access} kind="event" />
+      <CreateRequirementsBanner access={access} kind="event" organizations={organizations} />
       <EventNav active="hosting" />
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Hosting</p>

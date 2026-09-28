@@ -18,6 +18,28 @@ export function canManageOrganizationBilling(access: AccessContext, companyId: s
   return membership?.role === 'owner' || membership?.role === 'administrator'
 }
 
+/**
+ * Who sees an organization's "Plan & billing" (Manage page, Home, Organizations hub):
+ * its owner and administrators, on the free plan too. Buying is still checked with
+ * canManageOrganizationBilling (active account) and organizationIsVerified on the server.
+ */
+export function isOrganizationBillingContact(access: AccessContext, companyId: string) {
+  const membership = access.organizationMemberships.find((entry) => entry.companyId === companyId)
+  return membership?.role === 'owner' || membership?.role === 'administrator'
+}
+
+/**
+ * True when this member can buy Organization Pro for the organization right now: owner or
+ * administrator, active account, verified organization, not already on Organization Pro.
+ */
+export function canUpgradeOrganization(access: AccessContext, companyId: string) {
+  const membership = access.organizationMemberships.find((entry) => entry.companyId === companyId)
+  return Boolean(membership)
+    && canManageOrganizationBilling(access, companyId)
+    && Boolean(membership?.verified)
+    && membership?.plan !== 'organization_pro'
+}
+
 /** Organization Pro features need a verified organization, so checkout waits for verification. */
 export function organizationIsVerified(access: AccessContext, companyId: string) {
   return Boolean(access.organizationMemberships.find((entry) => entry.companyId === companyId)?.verified)

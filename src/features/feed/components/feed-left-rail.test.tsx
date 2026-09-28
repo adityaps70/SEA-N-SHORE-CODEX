@@ -1,7 +1,9 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { OwnProfile } from '@/features/profiles/types'
+import type { HomeOrganizationShortcut } from '@/features/profiles/home-rail-queries'
 import { FeedLeftRail } from './feed-left-rail'
+import { FeedLeftRailOrganizations } from './feed-left-rail-organizations'
 
 const profile: OwnProfile = {
   id: '11111111-1111-4111-8111-111111111111',
@@ -58,8 +60,8 @@ describe('FeedLeftRail organization shortcuts', () => {
         portfolioCompletion={portfolio}
         organizations={{
           memberships: [
-            { id: 'c-1', slug: 'oceanic-ship-management', name: 'Oceanic Ship Management', logoUrl: '/api/company-logo/c-1', verified: true, role: 'owner' },
-            { id: 'c-2', slug: 'harbour-crew', name: 'Harbour Crew Services', logoUrl: null, verified: false, role: 'member' },
+            { id: 'c-1', slug: 'oceanic-ship-management', name: 'Oceanic Ship Management', logoUrl: '/api/company-logo/c-1', verified: true, role: 'owner', plan: 'free', canUpgrade: true },
+            { id: 'c-2', slug: 'harbour-crew', name: 'Harbour Crew Services', logoUrl: null, verified: false, role: 'member', plan: 'free', canUpgrade: false },
           ],
           application: null,
         }}
@@ -117,11 +119,62 @@ describe('FeedLeftRail organization shortcuts', () => {
 
   it('shows at most three organizations and links to the rest', () => {
     const memberships = ['A', 'B', 'C', 'D'].map((letter) => ({
-      id: `c-${letter}`, slug: `org-${letter.toLowerCase()}`, name: `Organization ${letter}`, logoUrl: null, verified: false, role: 'administrator' as const,
+      id: `c-${letter}`, slug: `org-${letter.toLowerCase()}`, name: `Organization ${letter}`, logoUrl: null, verified: false, role: 'administrator' as const, plan: 'free' as const, canUpgrade: false,
     }))
     render(<FeedLeftRail profile={profile} portfolioCompletion={portfolio} organizations={{ memberships, application: null }} />)
 
     expect(within(screen.getByRole('list', { name: 'Your organizations' })).getAllByRole('listitem')).toHaveLength(3)
     expect(screen.getByRole('link', { name: 'See all 4 organizations' })).toHaveAttribute('href', '/organizations#your-organizations')
+  })
+})
+
+function shortcut(overrides: Partial<HomeOrganizationShortcut> = {}): HomeOrganizationShortcut {
+  return { id: 'c-1', slug: 'oceanic-ship-management', name: 'Oceanic Ship Management', logoUrl: null, verified: true, role: 'owner', plan: 'free', canUpgrade: true, ...overrides }
+}
+
+describe('FeedLeftRail organization plans', () => {
+  it('shows "Free plan · Upgrade" to an owner who can upgrade, linking to Plan & billing', () => {
+    render(<FeedLeftRailOrganizations organizations={{ memberships: [shortcut()], application: null }} />)
+
+    const item = within(screen.getByRole('list', { name: 'Your organizations' })).getByRole('listitem')
+    expect(within(item).getByText('Free plan')).toBeInTheDocument()
+    expect(within(item).getByRole('link', { name: 'Upgrade Oceanic Ship Management to Organization Pro' }))
+      .toHaveAttribute('href', '/organizations/oceanic-ship-management/manage?section=billing')
+  })
+
+  it('shows the Organization Pro badge when the plan is active and no upgrade link', () => {
+    render(<FeedLeftRailOrganizations organizations={{ memberships: [shortcut({ plan: 'organization_pro', canUpgrade: false })], application: null }} />)
+
+    expect(screen.getByText('Organization Pro')).toBeInTheDocument()
+    expect(screen.queryByText('Free plan')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Upgrade/ })).not.toBeInTheDocument()
+  })
+
+  it('shows the free plan without an upgrade link to members who cannot buy', () => {
+    render(<FeedLeftRailOrganizations organizations={{ memberships: [shortcut({ role: 'recruiter', canUpgrade: false })], application: null }} />)
+
+    expect(screen.getByText('Free plan')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Upgrade/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('FeedLeftRail compact organizations (phones)', () => {
+  it('renders a small card with plan, Upgrade and Manage for each organization', () => {
+    render(<FeedLeftRailOrganizations compact organizations={{ memberships: [shortcut(), shortcut({ id: 'c-2', slug: 'harbour-crew', name: 'Harbour Crew Services', role: 'member', canUpgrade: false })], application: null }} />)
+
+    const list = screen.getByRole('list', { name: 'Your organizations' })
+    const [owner, member] = within(list).getAllByRole('listitem')
+    expect(within(owner!).getByRole('link', { name: 'Oceanic Ship Management' })).toHaveAttribute('href', '/organizations/oceanic-ship-management')
+    expect(within(owner!).getByRole('link', { name: /Upgrade Oceanic Ship Management/ })).toHaveAttribute('href', '/organizations/oceanic-ship-management/manage?section=billing')
+    expect(within(owner!).getByRole('link', { name: 'Manage: Oceanic Ship Management' })).toHaveAttribute('href', '/organizations/oceanic-ship-management/manage')
+    expect(within(member!).queryByRole('link', { name: /Manage/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'All organizations' })).toHaveAttribute('href', '/organizations#your-pages')
+  })
+
+  it('renders nothing on phones when there is nothing to show or the load failed', () => {
+    const { container, rerender } = render(<FeedLeftRailOrganizations compact organizations={{ memberships: [], application: null }} />)
+    expect(container).toBeEmptyDOMElement()
+    rerender(<FeedLeftRailOrganizations compact organizations={null} />)
+    expect(container).toBeEmptyDOMElement()
   })
 })

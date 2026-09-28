@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { OPERATOR_LINE } from '@/config/business'
 import { configuredSocialLinks } from './social-links'
 
 export type FooterLink = {
@@ -28,16 +29,20 @@ export const FOOTER_LINK_GROUPS: FooterLinkGroup[] = [
     title: 'Sea N Shore',
     links: [
       { href: '/about', label: 'About' },
+      { href: '/pricing', label: 'Pricing' },
+      { href: '/help', label: 'Help' },
+      { href: '/contact', label: 'Contact us' },
       { href: '/newsletter', label: 'Newsletter' },
-      { href: '/help', label: 'Contact & support' },
       { href: '/accessibility', label: 'Accessibility' },
     ],
   },
   {
     title: 'Legal & privacy',
     links: [
-      { href: '/privacy', label: 'Privacy Policy' },
       { href: '/terms', label: 'Terms' },
+      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/refunds', label: 'Refunds & cancellation' },
+      { href: '/shipping', label: 'Shipping & delivery' },
       { href: '/copyright', label: 'Copyright & IP' },
       { href: '/settings#your-data', label: 'Your data & privacy', signedInOnly: true },
     ],
@@ -51,6 +56,9 @@ export function footerLinks({ signedIn }: { signedIn: boolean }): FooterLink[] {
 export function copyrightLine(year = new Date().getFullYear()) {
   return `© ${year} Sea N Shore · Global Shipping Community · All rights reserved.`
 }
+
+/** "Sea N Shore is operated by Beaufort Marine Services LLP · Navi Mumbai, India" — in every footer. */
+export { OPERATOR_LINE }
 
 export const CONTENT_OWNERSHIP_NOTE =
   'User-generated content remains owned by its respective creators or rights holders and is used on Sea N Shore under the permissions described in our Terms.'
@@ -100,6 +108,7 @@ export function AppFooter() {
         </nav>
         <FooterSocialLinks className="mt-2" />
         <p className="mt-3">{copyrightLine()}</p>
+        <p className="mt-1">{OPERATOR_LINE}</p>
         <p className="mt-1 max-w-3xl leading-5">{CONTENT_OWNERSHIP_NOTE}</p>
       </div>
     </footer>

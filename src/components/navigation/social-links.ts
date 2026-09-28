@@ -1,3 +1,5 @@
+import { BUSINESS } from '@/config/business'
+
 /**
  * Official Sea N Shore social profiles.
  *
@@ -6,18 +8,19 @@
  * Use full https:// URLs, e.g. 'https://www.linkedin.com/company/<handle>'.
  */
 export const SOCIAL_LINKS = {
+  // LinkedIn page address not confirmed yet — add it here when known.
   linkedin: '',
-  instagram: '',
+  instagram: 'https://www.instagram.com/seaandshore.in',
   youtube: '',
-  facebook: '',
-  x: '',
+  facebook: 'https://www.facebook.com/seaandshore.in',
+  x: 'https://x.com/inseaandshore',
 } as const
 
 /**
- * Public support inbox shown on /help (the footer's "Contact & support" link).
- * Leave empty until the address exists; the help page then explains how to get help without it.
+ * Public support inbox shown on /help and /contact. Comes from src/config/business.ts.
+ * If it is ever emptied, the help page explains how to get help without it.
  */
-export const SUPPORT_EMAIL = ''
+export const SUPPORT_EMAIL: string = BUSINESS.email
 
 const SOCIAL_LABELS: Record<keyof typeof SOCIAL_LINKS, string> = {
   linkedin: 'LinkedIn',

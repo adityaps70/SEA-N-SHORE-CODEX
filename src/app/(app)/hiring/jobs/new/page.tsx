@@ -6,15 +6,18 @@ import { HiringJobForm } from '@/features/jobs/components/hiring-job-form'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { buildHiringPublisherOptions } from '@/features/jobs/publishers'
+import { organizationRepository } from '@/features/organizations/repository'
 
 export const metadata: Metadata = { title: 'Post a job' }
 
 export default async function NewHiringJobPage() {
   const user = await requireAwsUser()
-  const [access, personal, companies] = await Promise.all([
+  const [access, personal, companies, organizations] = await Promise.all([
     getAccessContext(user.id),
     hiringRepository.getPersonalPublisher(user.id),
     hiringRepository.listAuthorizedCompanies(user.id),
+    // Only for the banner's "Or upgrade <organization>" option; the form works without it.
+    organizationRepository.listUserOrganizations(user.id).catch(() => []),
   ])
 
   if (!personal) {
@@ -34,7 +37,7 @@ export default async function NewHiringJobPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6 py-8 sm:px-6 lg:px-8">
-      <CreateRequirementsBanner access={access} kind="job" />
+      <CreateRequirementsBanner access={access} kind="job" organizations={organizations} />
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Sea N Shore Hiring</p>
         <h1 className="mt-2 text-3xl font-bold text-navy-950">Post a maritime job</h1>

@@ -6,6 +6,7 @@ import type { OwnProfile } from '@/features/profiles/types'
 import type { ProfilePortfolioCompletion } from '../profile-completion'
 import { FeedDiscoveryRail } from './feed-discovery-rail'
 import { FeedLeftRail } from './feed-left-rail'
+import { FeedLeftRailOrganizations } from './feed-left-rail-organizations'
 import { FeedProfileCard } from './feed-profile-card'
 
 export function FeedLayout({
@@ -32,8 +33,9 @@ export function FeedLayout({
       </aside>
 
       <main className="min-w-0">
-        <div className="mb-4 lg:hidden">
+        <div className="mb-4 space-y-3 lg:hidden">
           <FeedProfileCard profile={profile} portfolioCompletion={portfolioCompletion} verified={verified} compact />
+          {organizations !== undefined ? <FeedLeftRailOrganizations organizations={organizations} compact /> : null}
         </div>
         {children}
       </main>

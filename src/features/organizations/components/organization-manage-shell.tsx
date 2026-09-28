@@ -1,11 +1,11 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { BarChart3, ExternalLink, Inbox, LayoutDashboard, Lock, Palette, UsersRound } from 'lucide-react'
-import { organizationManageHref } from '../organization-page-profile'
+import { BarChart3, CreditCard, ExternalLink, Inbox, LayoutDashboard, Lock, Palette, UsersRound } from 'lucide-react'
+import { organizationManageHref, organizationPlanBillingHref } from '../organization-page-profile'
 import { OrganizationLogo } from './organization-logo'
 
-export type ManageNavId = 'overview' | 'requests' | 'team' | 'branding' | 'analytics'
+export type ManageNavId = 'overview' | 'requests' | 'team' | 'branding' | 'analytics' | 'billing'
 
 type NavItem = {
   id: ManageNavId
@@ -27,6 +27,7 @@ export function OrganizationManageShell({
   showRequests,
   pendingRequests = 0,
   locked = {},
+  showBilling = false,
   children,
 }: {
   workspace: { id: string; slug: string; name: string; logoPath: string | null }
@@ -38,12 +39,16 @@ export function OrganizationManageShell({
   pendingRequests?: number
   /** Sections the viewer cannot use yet; they stay reachable and explain why. */
   locked?: Partial<Record<'team' | 'branding' | 'analytics', boolean>>
+  /** "Plan & billing" is shown to the owner and administrators, on the free plan too. */
+  showBilling?: boolean
   children: ReactNode
 }) {
   const slug = workspace.slug
   const items: NavItem[] = [
     { id: 'overview', label: 'Overview', href: organizationManageHref(slug), icon: LayoutDashboard },
     ...(showRequests ? [{ id: 'requests' as const, label: 'Requests', href: organizationManageHref(slug, 'requests'), icon: Inbox, badge: pendingRequests }] : []),
+    // Early in the list so it is visible without scrolling the phone section row.
+    ...(showBilling ? [{ id: 'billing' as const, label: 'Plan & billing', href: organizationPlanBillingHref(slug), icon: CreditCard }] : []),
     { id: 'team', label: 'Team & roles', href: `/organizations/${slug}/team`, icon: UsersRound, locked: locked.team },
     { id: 'branding', label: 'Branding', href: `/organizations/${slug}/branding`, icon: Palette, locked: locked.branding },
     { id: 'analytics', label: 'Analytics', href: `/organizations/${slug}/analytics`, icon: BarChart3, locked: locked.analytics },

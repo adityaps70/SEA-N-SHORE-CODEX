@@ -1,11 +1,16 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Building2, ShieldCheck } from 'lucide-react'
+import { ShieldCheck } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAccessContext } from '@/features/access/server'
-import { canManageOrganizationBilling } from '@/features/billing/billing-access'
+import { planPriceLine } from '@/features/billing/billing-view'
+import { CollapsiblePlanSection } from '@/features/billing/components/collapsible-plan-section'
+import { OrganizationProChooser } from '@/features/billing/components/organization-pro-chooser'
 import { BillingHistory, CheckoutNotice, PlanBillingPanel } from '@/features/billing/components/plan-billing-panel'
+import { organizationProCandidates, resolveOrganizationProPath } from '@/features/billing/organization-pro-path'
 import { loadCheckoutNotice, loadPlanBillingView } from '@/features/billing/page-data'
+import { subscriptionRepository } from '@/features/billing/subscription-repository'
+import type { PlanPrice } from '@/features/billing/subscription-types'
 import { organizationRepository } from '@/features/organizations/repository'
 
 export const metadata: Metadata = { title: 'Membership & billing · Settings' }
@@ -16,32 +21,85 @@ function first(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value
 }
 
-function roleLabel(role: string) {
-  return role === 'owner' ? 'Owner' : role === 'administrator' ? 'Administrator' : role
-}
+const CREATOR_PRO_DESCRIPTION = 'Creator Pro is for independent recruiters, trainers, consultants, coaches and event organizers: post jobs, create events and publish courses.'
 
 /**
- * Personal plan (Creator Pro, auto-renewing through the payment provider Cashfree) and
- * links to the organization plans this member can manage. /plans "Get Creator Pro" lands
- * here with ?plan=creator_pro; Cashfree's return route adds ?checkout=<id>.
+ * Personal plan (Creator Pro) and the organization plans this member manages, both
+ * renewing through the payment provider Cashfree.
+ * - ?plan=organization_pro (from /plans): the organizations first, each with its plan and
+ *   "Upgrade to Organization Pro"; Creator Pro stays a summary card until asked for.
+ * - ?plan=creator_pro: the Creator Pro checkout first, as before.
+ * - no plan: both as summaries; Creator Pro opens by itself when the member has no
+ *   organization, or when it needs attention (a payment problem or a mandate in progress).
+ * Cashfree's return route adds ?checkout=<id>. The organization checkout itself lives on
+ * /settings/billing/organizations/<id> (canManageOrganizationBilling is checked there and
+ * in every billing action).
  */
 export default async function BillingSettingsPage({ searchParams }: { searchParams?: SearchParams }) {
   const user = await requireAwsUser()
   const params = (await searchParams) ?? {}
   const requestedPlan = first(params.plan)
   const subject = { kind: 'profile' as const, profileId: user.id }
-  const [access, organizations, view, checkoutNotice] = await Promise.all([
+  const [access, organizationData, view, checkoutNotice, prices] = await Promise.all([
     getAccessContext(user.id),
-    organizationRepository.listUserOrganizations(user.id),
+    Promise.all([
+      organizationRepository.listUserOrganizations(user.id),
+      organizationRepository.getUserOrganizationState(user.id),
+    ]).catch((error: unknown) => {
+      console.error('billing_organizations_unavailable', { message: error instanceof Error ? error.message : null })
+      return null
+    }),
     loadPlanBillingView(subject),
     loadCheckoutNotice(first(params.checkout), subject),
+    subscriptionRepository.listActivePrices().catch(() => [] as PlanPrice[]),
   ])
-  const organizationProCount = access.organizationMemberships.filter(
-    (membership) => membership.plan === 'organization_pro',
-  ).length
-  const managedBillingOrganizations = organizations.filter((organization) => canManageOrganizationBilling(access, organization.id))
-  const planByOrganization = new Map(access.organizationMemberships.map((membership) => [membership.companyId, membership.plan]))
+  const [organizations, application] = organizationData ?? [[], { kind: 'none' as const }]
+  const organizationPath = organizationData ? resolveOrganizationProPath({ access, organizations, application }) : null
+  const candidates = organizationProCandidates(access, organizations)
+
   const wantsOrganizationPro = requestedPlan === 'organization_pro'
+  const wantsCreatorPro = requestedPlan === 'creator_pro'
+  const hasOrganizations = organizations.length > 0 || (application.kind === 'application' && application.status !== 'approved')
+  const personalNeedsAttention = view.state === 'past_due' || Boolean(view.pending)
+  const creatorOpen = Boolean(checkoutNotice)
+    || wantsCreatorPro
+    || (!wantsOrganizationPro && (!hasOrganizations || personalNeedsAttention))
+
+  const creatorPanel = (
+    <PlanBillingPanel
+      view={view}
+      target={{ kind: 'personal' }}
+      eyebrow="Personal plan"
+      description={CREATOR_PRO_DESCRIPTION}
+      highlight={wantsCreatorPro}
+      blockedMessage={access.accountActive ? null : 'Your account is restricted right now, so plans can’t be bought. Contact the Sea N Shore team for help.'}
+      noticeCheckoutId={checkoutNotice?.checkoutId ?? null}
+      anchorId="creator-pro"
+    />
+  )
+  const creatorSection = (
+    <CollapsiblePlanSection
+      anchorId="creator-pro"
+      eyebrow="Personal plan"
+      title={view.planLabel}
+      statusLabel={view.statusLabel}
+      summary="For independent recruiters, trainers, consultants, coaches and event organizers who publish under their own name."
+      priceLine={view.state === 'free' ? planPriceLine(prices, 'creator_pro') : view.current?.priceLabel ?? null}
+      openLabel={view.state === 'free' ? 'Get Creator Pro' : 'Manage Creator Pro'}
+      defaultOpen={creatorOpen}
+    >
+      {creatorPanel}
+    </CollapsiblePlanSection>
+  )
+  const organizationSection = (
+    <OrganizationProChooser
+      path={organizationPath}
+      candidates={candidates}
+      priceLine={planPriceLine(prices, 'organization_pro')}
+      highlight={wantsOrganizationPro}
+    />
+  )
+  const history = view.history.length ? <BillingHistory rows={view.history} /> : null
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:py-5">
@@ -55,68 +113,19 @@ export default async function BillingSettingsPage({ searchParams }: { searchPara
 
       {checkoutNotice ? <CheckoutNotice notice={checkoutNotice.notice} checkoutId={checkoutNotice.checkoutId} /> : null}
 
-      <PlanBillingPanel
-        view={view}
-        target={{ kind: 'personal' }}
-        eyebrow="Personal plan"
-        description="Creator Pro is for independent recruiters, trainers, consultants, coaches and event organizers: post jobs, create events and publish courses."
-        highlight={requestedPlan === 'creator_pro'}
-        blockedMessage={access.accountActive ? null : 'Your account is restricted right now, so plans can’t be bought. Contact the Sea N Shore team for help.'}
-        noticeCheckoutId={checkoutNotice?.checkoutId ?? null}
-        anchorId="creator-pro"
-      />
-
-      {view.history.length ? <BillingHistory rows={view.history} /> : null}
-
-      <section
-        id="organization-pro"
-        className={`scroll-mt-24 rounded-2xl border bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 ${wantsOrganizationPro ? 'border-teal-300 ring-2 ring-teal-100' : 'border-mist-100'}`}
-      >
-        <div className="flex gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
-            <Building2 aria-hidden="true" className="size-5" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Organization access</p>
-            <h2 className="mt-0.5 text-xl font-bold text-navy-950">
-              {organizationProCount > 0
-                ? organizationProCount + ' Organization Pro workspace' + (organizationProCount === 1 ? '' : 's')
-                : 'Organization Pro'}
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-muted">
-              Organization Pro belongs to the organization workspace and is paid for by its owner or an administrator. Members get access through their workspace role.
-            </p>
-          </div>
-        </div>
-        {managedBillingOrganizations.length ? (
-          <ul className="mt-4 space-y-2 border-t border-mist-100 pt-4">
-            {managedBillingOrganizations.map((organization) => {
-              const pro = planByOrganization.get(organization.id) === 'organization_pro'
-              return (
-                <li key={organization.id}>
-                  <Link
-                    href={`/settings/billing/organizations/${organization.id}`}
-                    className="flex cursor-pointer flex-col gap-1 rounded-xl border border-mist-200 bg-mist-50/50 px-3 py-3 text-sm transition hover:border-ocean-300 hover:bg-ocean-50/40 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold text-navy-950">{organization.name}</span>
-                      <span className="text-xs text-muted">{roleLabel(organization.role)} · {pro ? 'Organization Pro' : 'Free plan'}</span>
-                    </span>
-                    <span className="shrink-0 text-xs font-bold text-ocean-700">{pro ? 'Manage plan →' : 'Get Organization Pro →'}</span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
-        ) : (
-          <div className="mt-4 border-t border-mist-100 pt-4 text-sm leading-6 text-muted">
-            <p>Only an organization’s owner or administrators can buy or manage Organization Pro, and you aren’t one for any organization yet.</p>
-            <Link href="/organizations" className="mt-2 inline-flex font-bold text-ocean-700 hover:underline">
-              Create or join an organization →
-            </Link>
-          </div>
-        )}
-      </section>
+      {wantsOrganizationPro ? (
+        <>
+          {organizationSection}
+          {creatorSection}
+          {history}
+        </>
+      ) : (
+        <>
+          {creatorSection}
+          {history}
+          {organizationSection}
+        </>
+      )}
 
       <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
         <div className="flex gap-3">

@@ -86,7 +86,7 @@ describe('Cognito protected route proxy', () => {
     expect(getVerifiedPrincipal).toHaveBeenCalledTimes(1)
   })
 
-  it.each(['/about', '/accessibility', '/help', '/privacy', '/terms', '/copyright', '/newsletter'])('%s is public', async (path) => {
+  it.each(['/about', '/accessibility', '/help', '/privacy', '/terms', '/copyright', '/newsletter', '/contact', '/pricing', '/refunds', '/shipping'])('%s is public', async (path) => {
     const getVerifiedPrincipal = vi.fn(async () => null)
     const handler = createCognitoProxyHandler({
       getVerifiedPrincipal,

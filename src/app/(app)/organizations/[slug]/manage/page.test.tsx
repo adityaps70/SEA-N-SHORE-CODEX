@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   getViewer: vi.fn(),
   listForOrganization: vi.fn(),
   getUserOrganizationState: vi.fn(),
+  loadPlanBillingView: vi.fn(),
   notFound: vi.fn(() => { throw new Error('NEXT_NOT_FOUND') }),
   redirect: vi.fn((path: string) => { throw new Error(`NEXT_REDIRECT:${path}`) }),
 }))
@@ -26,8 +27,46 @@ vi.mock('@/features/organizations/repository', () => ({
   organizationRepository: { getUserOrganizationState: mocks.getUserOrganizationState },
 }))
 vi.mock('@/features/organizations/access-request-actions', () => ({ decideOrganizationAccessRequest: vi.fn() }))
+vi.mock('@/features/billing/page-data', () => ({ loadPlanBillingView: mocks.loadPlanBillingView }))
+vi.mock('@/features/billing/actions', () => ({
+  startPlanCheckoutAction: vi.fn(),
+  checkPlanCheckoutAction: vi.fn(),
+  cancelAutoRenewAction: vi.fn(),
+}))
 
+import { buildPlanBillingView } from '@/features/billing/billing-view'
+import { testPrice } from '@/features/billing/testing/memory-billing-store'
+import type { AccessRecord, CheckoutRecord } from '@/features/billing/subscription-types'
 import OrganizationManagePage from './page'
+
+const orgPrices = [
+  testPrice({ id: 'om', planCode: 'organization_pro', amountMinor: 500000 }),
+  testPrice({ id: 'oy', planCode: 'organization_pro', interval: 'year', amountMinor: 5000000 }),
+]
+const emptyBilling = { access: null, accessIsCurrent: false, checkout: null, pendingCheckout: null, payments: [] }
+const freeOrganizationView = buildPlanBillingView({ plan: 'organization_pro', billing: emptyBilling, prices: orgPrices, configured: true })
+
+const NOW = new Date('2026-10-10T06:00:00.000Z')
+const subject = { kind: 'company' as const, companyId: 'c1' }
+const proCheckout: CheckoutRecord = {
+  id: 'k1', subject, createdBy: 'user-1', planCode: 'organization_pro', planPriceId: 'om',
+  interval: 'month', amountMinor: 500000, currency: 'INR', environment: 'sandbox', providerSubscriptionId: 'snss_k1', cfSubscriptionId: null,
+  sessionId: null, status: 'active', providerStatus: 'ACTIVE', paymentMethod: 'upi', startsAt: null, nextChargeAt: '2026-11-01T06:00:00.000Z',
+  paidThroughAt: '2026-11-01T06:00:00.000Z', replacesCheckoutId: null, failureReason: null, lastCheckedAt: null, lastStatusEventAt: null,
+  activatedAt: '2026-10-01T06:00:00.000Z', cancelledAt: null, createdAt: '2026-10-01T06:00:00.000Z', updatedAt: '2026-10-01T06:00:00.000Z',
+}
+const proAccess: AccessRecord = {
+  id: 'a1', subject, planCode: 'organization_pro', status: 'active', billingProvider: 'cashfree',
+  providerSubscriptionId: 'snss_k1', periodStartedAt: '2026-10-01T06:00:00.000Z', periodEndsAt: '2026-11-04T06:00:00.000Z',
+  cancelAtPeriodEnd: false, createdAt: '2026-10-01T06:00:00.000Z', updatedAt: '2026-10-01T06:00:00.000Z',
+}
+const proOrganizationView = buildPlanBillingView({
+  plan: 'organization_pro',
+  billing: { ...emptyBilling, access: proAccess, accessIsCurrent: true, checkout: proCheckout },
+  prices: orgPrices,
+  configured: true,
+  now: NOW,
+})
 
 const workspace = {
   id: 'c1',
@@ -75,6 +114,7 @@ beforeEach(() => {
   mocks.getUserOrganizationState.mockResolvedValue({ kind: 'none' })
   mocks.getViewer.mockResolvedValue(null)
   mocks.listForOrganization.mockResolvedValue({ viewer: { kind: 'organization', role: 'owner' }, requests: [pendingRequest] })
+  mocks.loadPlanBillingView.mockResolvedValue(freeOrganizationView)
 })
 
 describe('/organizations/[slug]/manage', () => {
@@ -97,9 +137,13 @@ describe('/organizations/[slug]/manage', () => {
     expect(screen.getByRole('link', { name: /Review requests/ })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=requests')
     const tools = screen.getByRole('region', { name: 'Your workspace' })
     expect(within(tools).getByText('Owner · Free plan')).toBeInTheDocument()
-    expect(within(tools).queryByRole('link', { name: /Team & roles/ })).not.toBeInTheDocument()
-    expect(within(tools).getByText('Needs Organization Pro and an admin role')).toBeInTheDocument()
-    expect(within(tools).getByRole('link', { name: 'Compare plans' })).toHaveAttribute('href', '/plans')
+    // Locked tools lead the owner to Plan & billing, never back to /plans.
+    expect(within(tools).getByRole('link', { name: /Team & roles/ })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
+    expect(within(tools).getAllByText('Included with Organization Pro')).toHaveLength(6)
+    expect(within(tools).getByRole('link', { name: 'Upgrade to Organization Pro' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
+    expect(screen.queryByRole('link', { name: 'Compare plans' })).not.toBeInTheDocument()
+    expect(document.querySelector('a[href="/plans"]')).toBeNull()
+    expect(within(nav).getByRole('link', { name: 'Plan & billing' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
   })
 
   it('shows the Requests section to owners so they can decide', async () => {
@@ -147,6 +191,71 @@ describe('/organizations/[slug]/manage', () => {
     expect(screen.getByText('Note from Sea N Shore: Add your registration number.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Go to your application' })).toHaveAttribute('href', '/organizations#update-application')
     expect(screen.queryByRole('region', { name: 'Your workspace' })).not.toBeInTheDocument()
+  })
+
+  it('shows Plan & billing to administrators on the free plan with the Organization Pro checkout inline', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('administrator'))
+    render(await OrganizationManagePage({ params, searchParams: section('billing') }))
+
+    expect(mocks.loadPlanBillingView).toHaveBeenCalledWith({ kind: 'company', companyId: 'c1' })
+    expect(screen.getByRole('heading', { level: 1, name: 'Plan & billing' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Plan & billing' })).toHaveAttribute('aria-current', 'page')
+    const plan = screen.getByRole('region', { name: 'Organization Pro' })
+    expect(within(plan).getByText('Free plan')).toBeInTheDocument()
+    expect(within(plan).getByRole('heading', { level: 3, name: 'Get Organization Pro' })).toBeInTheDocument()
+    expect(within(plan).getByRole('group', { name: /How often do you want to pay/ })).toBeInTheDocument()
+    expect(within(plan).getByRole('button', { name: /Set up auto-pay/ })).toBeInTheDocument()
+  })
+
+  it('shows an Organization Pro workspace its status, next renewal and Cancel auto-renew', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('owner', 'organization_pro'))
+    mocks.loadPlanBillingView.mockResolvedValue(proOrganizationView)
+    render(await OrganizationManagePage({ params, searchParams: section('billing') }))
+
+    const plan = screen.getByRole('region', { name: 'Organization Pro' })
+    expect(within(plan).getByText('Active — renews automatically')).toBeInTheDocument()
+    expect(within(plan).getByText('Next payment')).toBeInTheDocument()
+    expect(within(plan).getByRole('button', { name: 'Cancel auto-renew' })).toBeInTheDocument()
+    expect(within(plan).queryByRole('group', { name: /How often do you want to pay/ })).not.toBeInTheDocument()
+  })
+
+  it('explains why an organization that is not verified cannot buy yet', async () => {
+    mocks.getAccessContext.mockResolvedValue({ ...access('owner'), organizationMemberships: [{ companyId: 'c1', plan: 'free', role: 'owner', verified: false, entitlements: [] }] })
+    mocks.getBySlug.mockResolvedValue({ ...workspace, verified: false })
+    render(await OrganizationManagePage({ params, searchParams: section('billing') }))
+
+    expect(screen.getByText(/Organization Pro can be bought once Sea N Shore has verified this organization/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Set up auto-pay/ })).not.toBeInTheDocument()
+  })
+
+  it('shows a clear message when the plan cannot be loaded', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    mocks.getAccessContext.mockResolvedValue(access('owner'))
+    mocks.loadPlanBillingView.mockRejectedValue(new Error('db down'))
+    render(await OrganizationManagePage({ params, searchParams: section('billing') }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('We couldn’t load this organization’s plan just now.')
+    error.mockRestore()
+  })
+
+  it('hides Plan & billing from roles that cannot buy and tells them who can upgrade', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('recruiter'))
+    render(await OrganizationManagePage({ params, searchParams: section('billing') }))
+
+    expect(mocks.loadPlanBillingView).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Plan & billing/ })).not.toBeInTheDocument()
+    const tools = screen.getByRole('region', { name: 'Your workspace' })
+    expect(within(tools).getByText(/Ask an owner or administrator to upgrade to Organization Pro/)).toBeInTheDocument()
+    expect(within(tools).queryByRole('link', { name: /Team & roles/ })).not.toBeInTheDocument()
+  })
+
+  it('always gives the owner of an Organization Pro workspace a Plan & billing link, even without billing.manage', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('owner', 'organization_pro'))
+    render(await OrganizationManagePage({ params }))
+
+    const tools = screen.getByRole('region', { name: 'Your workspace' })
+    expect(within(tools).getByRole('link', { name: /Plan & billing/ })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
   })
 
   it('sends people without a role back to the public page', async () => {

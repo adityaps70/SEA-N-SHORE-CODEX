@@ -20,9 +20,15 @@ describe('AppFooter (compact end-of-content footer)', () => {
     expect(within(nav).getByRole('link', { name: 'Copyright & IP' })).toHaveAttribute('href', '/copyright')
     expect(within(nav).getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
     expect(within(nav).getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/privacy')
-    expect(within(nav).getByRole('link', { name: 'Contact & support' })).toHaveAttribute('href', '/help')
+    expect(within(nav).getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
+    expect(within(nav).getByRole('link', { name: 'Contact us' })).toHaveAttribute('href', '/contact')
+    expect(within(nav).getByRole('link', { name: 'Pricing' })).toHaveAttribute('href', '/pricing')
+    expect(within(nav).getByRole('link', { name: 'Refunds & cancellation' })).toHaveAttribute('href', '/refunds')
+    expect(within(nav).getByRole('link', { name: 'Shipping & delivery' })).toHaveAttribute('href', '/shipping')
     expect(within(nav).getByRole('link', { name: 'Your data & privacy' })).toHaveAttribute('href', '/settings#your-data')
     expect(within(nav).getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', '/jobs')
+    expect(screen.getByText('Sea N Shore is operated by Beaufort Marine Services LLP · Navi Mumbai, India')).toBeVisible()
+    expect(screen.getByRole('link', { name: /Instagram/ })).toHaveAttribute('href', 'https://www.instagram.com/seaandshore.in')
   })
 
   it('hides itself at the rail breakpoint when the page renders a rail footer', () => {
@@ -39,7 +45,10 @@ describe('RailFooter (LinkedIn-style right-rail footer)', () => {
     expect(footer).toHaveAttribute('data-rail-footer', 'lg')
     expect(footer).toHaveClass('hidden', 'lg:block', 'sticky', 'bottom-0')
     expect(within(footer as HTMLElement).getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about')
-    expect(within(footer as HTMLElement).getByText(/Sea N Shore/)).toBeInTheDocument()
+    expect(within(footer as HTMLElement).getByText('Sea N Shore')).toBeInTheDocument()
+    expect(within(footer as HTMLElement).getByRole('link', { name: 'Refunds & cancellation' })).toHaveAttribute('href', '/refunds')
+    expect(within(footer as HTMLElement).getByRole('link', { name: 'Contact us' })).toHaveAttribute('href', '/contact')
+    expect(within(footer as HTMLElement).getByText('Sea N Shore is operated by Beaufort Marine Services LLP · Navi Mumbai, India')).toBeInTheDocument()
   })
 
   it('defaults to the xl breakpoint used by the home feed rail', () => {
