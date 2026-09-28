@@ -297,6 +297,25 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in"
       },
       {
+        Sid    = "Phase5bSesIdentityManage"
+        Effect = "Allow"
+        Action = [
+          "ses:PutEmailIdentityConfigurationSetAttributes",
+          "ses:PutEmailIdentityDkimSigningAttributes",
+          "ses:UpdateEmailIdentityPolicy"
+        ]
+        Resource = [
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in",
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
+        ]
+      },
+      {
+        Sid      = "Phase5bSesConfigurationSetCreate"
+        Effect   = "Allow"
+        Action   = ["ses:CreateConfigurationSet"]
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
+      },
+      {
         Sid    = "Phase5bCognitoRead"
         Effect = "Allow"
         Action = [
