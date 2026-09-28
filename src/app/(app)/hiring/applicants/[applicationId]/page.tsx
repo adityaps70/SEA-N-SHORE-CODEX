@@ -117,10 +117,9 @@ export default async function HiringApplicantReviewPage({
               </div>
             </div>
 
-            <dl className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <dl className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Rank</dt><dd className="mt-1 font-semibold text-navy-950">{candidate.rank ?? 'Not listed'}</dd></div>
               <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Sea experience</dt><dd className="mt-1 font-semibold text-navy-950">{formatYears(candidate.sailingExperienceYears)}</dd></div>
-              <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Availability</dt><dd className="mt-1 font-semibold text-navy-950">{candidate.availability ?? 'Not listed'}</dd></div>
               <div className="rounded-xl bg-mist-50 p-3"><dt className="text-xs font-bold uppercase tracking-wide text-muted">Location</dt><dd className="mt-1 font-semibold text-navy-950">{candidate.location ?? 'Not listed'}</dd></div>
             </dl>
 

@@ -2,13 +2,19 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { ProfileEditForm } from '@/features/profiles/components/profile-edit-form'
 import { ProfilePreferencesForm } from '@/features/profiles/components/profile-preferences-form'
-import { getOwnProfile } from '@/features/profiles/queries'
+import { getOwnProfile, getOwnRegisteredOrganization } from '@/features/profiles/queries'
 
 export const metadata: Metadata = { title: 'Edit profile' }
 
-export default async function EditProfilePage() {
+export default async function EditProfilePage({
+  searchParams,
+}: {
+  /** `registered`: an organization the member just registered from the organization picker. */
+  searchParams?: Promise<{ registered?: string | string[] }>
+} = {}) {
   const profile = await getOwnProfile()
   if (!profile) redirect('/onboarding')
+  const registeredOrganization = await getOwnRegisteredOrganization((await searchParams)?.registered)
 
   return (
     <section className="grid gap-5 py-2 sm:py-5">
@@ -21,7 +27,7 @@ export default async function EditProfilePage() {
       </div>
 
       <ProfilePreferencesForm profile={profile} />
-      <ProfileEditForm profile={profile} />
+      <ProfileEditForm profile={profile} registeredOrganization={registeredOrganization} />
     </section>
   )
 }

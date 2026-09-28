@@ -51,7 +51,6 @@ export default async function HomePage({
       portfolioCompletion={portfolioCompletion}
       suggestions={suggestions}
       verified={rail.verified}
-      organizations={rail.organizations}
     >
       <div id="feed-composer" className="scroll-mt-24">
         <PostComposer profile={profile} defaultCategory={category} />

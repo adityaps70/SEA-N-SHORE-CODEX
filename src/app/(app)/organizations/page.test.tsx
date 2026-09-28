@@ -148,6 +148,25 @@ describe('/organizations hub', () => {
     expect(within(results).getByRole('button', { name: 'Request access' })).toBeInTheDocument()
   })
 
+  it('marks unclaimed results and offers to claim them instead of requesting to join', async () => {
+    mocks.searchCompanies.mockResolvedValue([
+      { id: 'c9', slug: 'blue-anchor-abc123', name: 'Blue Anchor Marine', companyType: 'Ship manager', verified: false, unclaimed: true, website: null },
+    ])
+    render(await OrganizationsPage({ searchParams: Promise.resolve({ q: 'blue' }) }))
+
+    const results = screen.getByText(/Organization search results for/).parentElement!.parentElement!
+    expect(within(results).getByText('Unclaimed')).toBeInTheDocument()
+    expect(within(results).getByRole('link', { name: 'Claim this page' })).toHaveAttribute('href', '/organizations/blue-anchor-abc123/claim')
+    expect(within(results).queryByRole('button', { name: 'Request access' })).not.toBeInTheDocument()
+  })
+
+  it('marks unclaimed organizations on cards', async () => {
+    mocks.listDiscoverOrganizations.mockResolvedValue([card({ id: 'c8', slug: 'harbour-crew', name: 'Harbour Crew', verified: false, unclaimed: true, followerCount: 0 })])
+    render(await OrganizationsPage({ searchParams: Promise.resolve({}) }))
+    const discover = screen.getByRole('region', { name: 'Discover organizations' })
+    expect(within(discover).getByText('Unclaimed')).toBeInTheDocument()
+  })
+
   it('shows the requester\'s own requests with plain status, never "Sea N Shore review"', async () => {
     mocks.listUserAccessRequests.mockResolvedValue([{
       id: 'r1',

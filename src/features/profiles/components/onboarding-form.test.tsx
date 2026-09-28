@@ -329,3 +329,52 @@ describe('OnboardingForm current organization', () => {
     expect(container.querySelector<HTMLInputElement>('input[name="currentCompanyId"]')).toHaveValue('22222222-2222-4222-8222-222222222222')
   })
 })
+
+describe('OnboardingForm organization registration round trip', () => {
+  afterEach(() => {
+    window.sessionStorage.clear()
+    vi.unstubAllGlobals()
+  })
+
+  it('links the organization the member just registered, marked as waiting for verification', () => {
+    render(
+      <OnboardingForm
+        initialFullName="Asha Singh"
+        registeredOrganization={{ id: '55555555-5555-4555-8555-555555555555', name: 'Blue Anchor Marine', pending: true }}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Shore Professional' }))
+
+    expect(screen.getByRole('combobox', { name: 'Current organisation' })).toHaveValue('Blue Anchor Marine')
+    expect(document.querySelector<HTMLInputElement>('input[name="currentCompanyId"]')?.value).toBe('55555555-5555-4555-8555-555555555555')
+    expect(screen.getByText('Waiting for Sea N Shore verification')).toBeInTheDocument()
+  })
+
+  it('keeps the answers while the member registers their organization and restores them on return', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ query: 'Blue Anchor Marine', organizations: [] }) })))
+    const first = render(<OnboardingForm initialFullName="Asha Singh" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Shore Professional' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Network$/i }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Location' }), { target: { value: 'Kochi, India' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Current organisation' }), { target: { value: 'Blue Anchor Marine' } })
+
+    const owner = await screen.findByRole('link', { name: /I own or manage this organization/ })
+    expect(owner).toHaveAttribute('href', '/organizations/register?name=Blue+Anchor+Marine&returnTo=%2Fonboarding')
+    fireEvent.click(owner)
+    expect(window.sessionStorage.getItem('sns:onboarding-draft')).toContain('Kochi, India')
+    first.unmount()
+
+    render(
+      <OnboardingForm
+        initialFullName="Asha Singh"
+        registeredOrganization={{ id: '55555555-5555-4555-8555-555555555555', name: 'Blue Anchor Marine', pending: true }}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Shore Professional' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByRole('button', { name: /^Network$/i })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('textbox', { name: 'Location' })).toHaveValue('Kochi, India')
+    expect(document.querySelector<HTMLInputElement>('input[name="currentCompanyId"]')?.value).toBe('55555555-5555-4555-8555-555555555555')
+    expect(window.sessionStorage.getItem('sns:onboarding-draft')).toBeNull()
+  })
+})

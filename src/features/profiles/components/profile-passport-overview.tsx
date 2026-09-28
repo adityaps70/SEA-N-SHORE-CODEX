@@ -8,7 +8,6 @@ import {
   Ship,
 } from 'lucide-react'
 import { getProfileReadiness } from '../profile-readiness'
-import { profileAvailabilityLabel } from '../profile-availability'
 import type { PublicProfile } from '../types'
 import { formatYears } from '@/lib/format'
 
@@ -33,7 +32,6 @@ export function ProfilePassportOverview({
 }) {
   const isMaritime = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
   const readiness = getProfileReadiness(profile)
-  const availability = profileAvailabilityLabel(profile.availability)
 
   return (
     <section id="passport" className="overflow-hidden rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)]">
@@ -49,12 +47,6 @@ export function ProfilePassportOverview({
               A structured view of your maritime identity, experience and professional focus.
             </p>
           </div>
-          {availability ? (
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold backdrop-blur">
-              <span className="size-2 rounded-full bg-teal-300" aria-hidden="true" />
-              {availability}
-            </div>
-          ) : null}
         </div>
       </div>
 

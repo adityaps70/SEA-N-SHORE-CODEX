@@ -6,7 +6,7 @@ import { orderUuidFromGatewayOrderId } from '@/features/payments/order-ids'
 import type { EventPaymentOrderStatus, PaymentCurrency, PaymentProviderName } from '@/features/payments/types'
 import { courseManagerAccessSql } from './course-access'
 import { coursePrice, type CoursePrice } from './course-pricing'
-import { publishedCourseVisibilitySql } from './course-publication'
+import { courseOpenToNewLearnersSql } from './course-publication'
 import { COURSE_CHECKOUT_REUSE_MINUTES, COURSE_PENDING_CHECK_MINUTES, type CoursePurchaseBlocker, type CourseRefundDueReason } from './course-payment-rules'
 
 /**
@@ -204,7 +204,7 @@ export async function lockCourseForPurchase(client: DatabaseQueryClient, courseI
   const result = await client.query<CourseRow>(`
     select course.id, course.title, course.access_type, course.price_minor, course.discount_price_minor, course.currency,
       course.company_id, coalesce(mentor.user_id, course.created_by_user_id) as seller_profile_id,
-      (${publishedCourseVisibilitySql()}) as visible,
+      (${courseOpenToNewLearnersSql()}) as visible,
       ${courseManagerAccessSql('course', '$2::uuid')} as is_manager
     from public.learning_courses course
     left join public.learning_mentors mentor on mentor.id = course.mentor_id

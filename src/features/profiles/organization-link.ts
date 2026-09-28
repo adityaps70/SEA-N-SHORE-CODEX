@@ -8,6 +8,11 @@ export type LinkedOrganization = {
   /** Same-origin logo URL, or null when the organization has no logo. */
   logoUrl: string | null
   verified: boolean
+  /**
+   * Added by a member who works there; nobody manages it yet. Unclaimed pages
+   * cannot publish until they are claimed and verified.
+   */
+  unclaimed?: boolean
 }
 
 /** One type-ahead result from the organization picker search. */
@@ -40,6 +45,36 @@ export function createOrganizationHref(name?: string | null) {
   return `/organizations?${params.toString()}#register-organization`
 }
 
+/** Pages the organization registration and claim flows may send a member back to. */
+export const ORGANIZATION_RETURN_PATHS = ['/onboarding', '/profile/edit', '/profile'] as const
+export type OrganizationReturnPath = (typeof ORGANIZATION_RETURN_PATHS)[number]
+
+/** Only known in-app pages; anything else (external or unknown URLs) is dropped. */
+export function safeOrganizationReturnPath(value: unknown): OrganizationReturnPath | null {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (typeof raw !== 'string') return null
+  return (ORGANIZATION_RETURN_PATHS as readonly string[]).includes(raw) ? raw as OrganizationReturnPath : null
+}
+
+/**
+ * "I own or manage this organization": the registration flow (verified by
+ * Sea N Shore) with the name filled in, returning to `returnTo` afterwards.
+ */
+export function registerOrganizationHref(name?: string | null, returnTo?: OrganizationReturnPath | null) {
+  const params = new URLSearchParams()
+  const trimmed = name?.trim().slice(0, 160)
+  if (trimmed) params.set('name', trimmed)
+  if (returnTo) params.set('returnTo', returnTo)
+  const query = params.toString()
+  return `/organizations/register${query ? `?${query}` : ''}`
+}
+
+/** Where the registration flow sends the member back to, with the new organization to link. */
+export function organizationReturnHref(returnTo: OrganizationReturnPath, companyId: string) {
+  const hash = returnTo === '/profile/edit' ? '#identity' : ''
+  return `${returnTo}?registered=${encodeURIComponent(companyId)}${hash}`
+}
+
 export function normalizeOrganizationSearchTerm(value: unknown) {
   if (typeof value !== 'string') return ''
   return value.replace(/\s+/g, ' ').trim().slice(0, ORGANIZATION_SEARCH_MAX_LENGTH)
@@ -61,6 +96,7 @@ type LinkedOrganizationJson = {
   name?: unknown
   has_logo?: unknown
   verified?: unknown
+  unclaimed?: unknown
 }
 
 /** Maps the `current_organization` JSON object selected with a profile. */
@@ -74,5 +110,6 @@ export function mapLinkedOrganization(value: unknown): LinkedOrganization | null
     name: row.name,
     logoUrl: organizationLogoUrl(row.id, row.has_logo === true),
     verified: row.verified === true,
+    unclaimed: row.unclaimed === true,
   }
 }

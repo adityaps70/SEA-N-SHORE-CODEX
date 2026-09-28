@@ -106,6 +106,10 @@ describe('starting a plan checkout', () => {
     const gateway = await startPlanCheckoutAction({ target: { kind: 'personal' }, interval: 'month' })
     expect(!gateway.ok && gateway.error).toBe('Our payment partner couldn’t start auto-pay just now (Plan limit reached). No money was taken. Please try again in a few minutes.')
 
+    mocks.startCheckout.mockRejectedValueOnce(new BillingGatewayError('Profile is inactive', 'subscriptions_unavailable'))
+    const unavailable = await startPlanCheckoutAction({ target: { kind: 'personal' }, interval: 'month' })
+    expect(!unavailable.ok && unavailable.error).toBe('Auto-pay isn’t available yet. We’re finishing setup with our payment provider — please try again later or contact info@beaufortmarine.in.')
+
     mocks.startCheckout.mockRejectedValueOnce(new Error('boom'))
     const unknown = await startPlanCheckoutAction({ target: { kind: 'personal' }, interval: 'month' })
     expect(!unknown.ok && unknown.error).toContain('No money was taken')

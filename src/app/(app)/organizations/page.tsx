@@ -10,6 +10,7 @@ import { organizationAccessRequestRepository } from '@/features/organizations/ac
 import { OrganizationAccessPanel, StatusChip } from '@/features/organizations/components/organization-access-panel'
 import { OrganizationApplicationForm } from '@/features/organizations/components/organization-application-form'
 import { OrganizationCard, VerifiedMark } from '@/features/organizations/components/organization-card'
+import { OrganizationStatusBadge } from '@/features/profiles/components/organization-status-badge'
 import { OrganizationLogo } from '@/features/organizations/components/organization-logo'
 import { NewOrganizationPanel } from '@/features/organizations/components/new-organization-panel'
 import { RequestAccessForm, type RequestAccessState } from '@/features/organizations/components/request-access-form'
@@ -251,14 +252,24 @@ export default async function OrganizationsPage({
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-2">
                         <Link href={'/organizations/' + organization.slug} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{organization.name}</Link>
-                        {organization.verified ? <StatusChip tone="success">Verified</StatusChip> : null}
+                        {organization.verified ? <StatusChip tone="success">Verified</StatusChip> : <OrganizationStatusBadge organization={organization} />}
                       </p>
                       <p className="mt-0.5 truncate text-sm text-muted">
                         {organization.companyType ?? 'Organization'}{organization.website ? ` · ${organization.website.replace(/^https?:\/\//, '')}` : ''}
                       </p>
                     </div>
                     <div className="sm:max-w-sm sm:shrink-0">
-                      <RequestAccessForm company={organization} initialState={requestState(organization.id)} compact />
+                      {organization.unclaimed ? (
+                        // Nobody manages an unclaimed page, so nobody could approve a request to join.
+                        <div className="text-sm sm:text-right">
+                          <Link href={`/organizations/${organization.slug}/claim`} className="inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-xs font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50">
+                            Claim this page
+                          </Link>
+                          <p className="mt-1 text-xs text-muted">Nobody manages this page yet.</p>
+                        </div>
+                      ) : (
+                        <RequestAccessForm company={organization} initialState={requestState(organization.id)} compact />
+                      )}
                     </div>
                   </li>
                 ))}

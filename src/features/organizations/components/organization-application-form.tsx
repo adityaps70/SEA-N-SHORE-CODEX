@@ -4,7 +4,9 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, ShieldCheck } from 'lucide-react'
 import { FormErrorSummary, focusFirstFormError } from '@/components/ui/form-error-summary'
+import { organizationReturnHref, type OrganizationReturnPath } from '@/features/profiles/organization-link'
 import { resubmitOrganizationApplication, submitOrganizationApplication } from '../actions'
+import { submitOrganizationClaim } from '../unclaimed-organization-actions'
 import {
   WELLBEING_SERVICES,
   getOrganizationType,
@@ -19,8 +21,18 @@ import {
 import type { OrganizationApplicationInput } from '../types'
 
 type OrganizationApplicationFormProps =
-  | { mode: 'create'; initial?: never; applicationId?: never; onCancel?: () => void; prefillName?: string }
+  | {
+      mode: 'create'
+      initial?: never
+      applicationId?: never
+      onCancel?: () => void
+      prefillName?: string
+      /** Send the member back here after submitting, with the new organization to link. */
+      returnTo?: OrganizationReturnPath | null
+    }
   | { mode: 'resubmit'; applicationId: string; initial: OrganizationApplicationInput; onCancel?: never }
+  /** Claim an existing unclaimed page: the same verification review as registering. */
+  | { mode: 'claim'; companyId: string; initial: OrganizationApplicationInput; applicationId?: never; onCancel?: never }
 
 type FieldErrors = Record<string, string[] | undefined>
 
@@ -137,7 +149,7 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
   const [message, setMessage] = useState<string | null>(null)
   const [isError, setIsError] = useState(false)
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
-  const initial = props.mode === 'resubmit' ? props.initial : undefined
+  const initial = props.mode === 'create' ? undefined : props.initial
   const [typeCode, setTypeCode] = useState<OrganizationTypeCode | ''>(
     initial && isOrganizationTypeCode(initial.organizationType) ? initial.organizationType : '',
   )
@@ -164,7 +176,9 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
       try {
         const result = props.mode === 'create'
           ? await submitOrganizationApplication(input)
-          : await resubmitOrganizationApplication(props.applicationId, input)
+          : props.mode === 'claim'
+            ? await submitOrganizationClaim(props.companyId, input)
+            : await resubmitOrganizationApplication(props.applicationId, input)
 
         if (!result.ok) {
           setIsError(true)
@@ -173,9 +187,18 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
           return
         }
 
+        const companyId = 'companyId' in result && typeof result.companyId === 'string' ? result.companyId : null
+        if (props.mode === 'create' && props.returnTo && companyId) {
+          setMessage('Organization submitted. Sea N Shore will review it. Taking you back…')
+          router.push(organizationReturnHref(props.returnTo, companyId))
+          return
+        }
+
         setMessage(props.mode === 'create'
           ? 'Organization submitted. Sea N Shore will review it and you will see the result on this page.'
-          : 'Changes sent. Sea N Shore will review the updated details.')
+          : props.mode === 'claim'
+            ? 'Claim sent. Sea N Shore will review it and you will see the result on your Organizations page.'
+            : 'Changes sent. Sea N Shore will review the updated details.')
         router.refresh()
       } catch {
         setIsError(true)
@@ -190,7 +213,7 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
       ref={formRef}
       className="space-y-4"
       noValidate
-      aria-label={props.mode === 'create' ? 'Register a new organization' : 'Update organization application'}
+      aria-label={props.mode === 'create' ? 'Register a new organization' : props.mode === 'claim' ? 'Claim organization page' : 'Update organization application'}
       onSubmit={(event) => {
         event.preventDefault()
         submit(new FormData(event.currentTarget))
@@ -413,7 +436,7 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
           disabled={isPending}
           className="min-h-11 rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isPending ? 'Submitting…' : props.mode === 'create' ? 'Submit for verification' : 'Update application & resubmit'}
+          {isPending ? 'Submitting…' : props.mode === 'create' ? 'Submit for verification' : props.mode === 'claim' ? 'Send claim for verification' : 'Update application & resubmit'}
         </button>
       </div>
 

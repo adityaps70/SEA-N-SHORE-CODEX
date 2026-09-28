@@ -1,5 +1,6 @@
 import type { OrganizationAccessRole } from '@/features/access/policy'
 import { displayOrganizationType } from '@/features/organizations/organization-types'
+import { organizationClaimStatusSql } from '@/features/organizations/unclaimed-organization-policy'
 import { query as databaseQuery } from '@/lib/db/client'
 import {
   normalizeOrganizationSearchTerm,
@@ -22,6 +23,7 @@ type OrganizationRow = {
   company_type?: string | null
   organization_type?: string | null
   office_locations?: string[] | null
+  claim_status?: string | null
 }
 
 type MembershipRow = OrganizationRow & { member_role: string }
@@ -30,23 +32,42 @@ export type MemberOrganizationShortcut = LinkedOrganization & {
   role: OrganizationAccessRole
 }
 
+/** An organization shown in the Organizations section of a profile. */
+export type ProfileOrganization = OrganizationSearchResult & {
+  role: OrganizationAccessRole
+  /** Owners and administrators manage the page; everyone else works there. */
+  relation: 'manages' | 'works_at'
+}
+
 /**
  * SQL condition for an organization that Sea N Shore lists to members: verified
- * organizations and public legacy pages that never went through an application.
- * Organizations whose application is pending, awaiting changes, rejected or
- * suspended are never listed or linked.
+ * organizations, public legacy pages that never went through an application and
+ * unclaimed pages added by people who work there. Organizations whose
+ * application is pending, awaiting changes, rejected or suspended are never
+ * listed or linked, except that an unclaimed page stays listed while someone's
+ * claim of it is reviewed (colleagues keep their link); a suspended one does not.
  */
 export function listableOrganizationSql(alias: string) {
   return `(
-    (coalesce(${alias}.is_verified, false)
-      or not exists (
-        select 1 from public.organization_applications listing_application
-        where listing_application.company_id = ${alias}.id
-      ))
-    and not exists (
-      select 1 from public.organization_applications blocked_application
-      where blocked_application.company_id = ${alias}.id
-        and blocked_application.status <> 'approved'
+    (
+      ${organizationClaimStatusSql(alias)} = 'unclaimed'
+      and not exists (
+        select 1 from public.organization_applications suspended_application
+        where suspended_application.company_id = ${alias}.id
+          and suspended_application.status = 'suspended'
+      )
+    )
+    or (
+      (coalesce(${alias}.is_verified, false)
+        or not exists (
+          select 1 from public.organization_applications listing_application
+          where listing_application.company_id = ${alias}.id
+        ))
+      and not exists (
+        select 1 from public.organization_applications blocked_application
+        where blocked_application.company_id = ${alias}.id
+          and blocked_application.status <> 'approved'
+      )
     )
   )`
 }
@@ -75,6 +96,7 @@ function mapOrganization(row: OrganizationRow): LinkedOrganization {
     name: row.name,
     logoUrl: organizationLogoUrl(row.id, row.has_logo === true),
     verified: row.is_verified === true,
+    unclaimed: row.claim_status === 'unclaimed',
   }
 }
 
@@ -99,7 +121,8 @@ const ORGANIZATION_COLUMNS = `
   coalesce(c.is_verified, false) as is_verified,
   c.company_type,
   c.organization_type,
-  c.office_locations
+  c.office_locations,
+  ${organizationClaimStatusSql('c')} as claim_status
 `
 
 export function createOrganizationLinkRepository(input: { query?: LinkQuery } = {}) {
@@ -140,6 +163,25 @@ export function createOrganizationLinkRepository(input: { query?: LinkQuery } = 
     return rows[0] ? mapOrganization(rows[0]) : null
   }
 
+  /**
+   * An organization the member registered or claimed that Sea N Shore is still
+   * reviewing. It is not listed yet, but its applicant may already name it as
+   * their current organization; the link shows once the page is verified.
+   */
+  async function getOwnPendingOrganization(userId: string, companyId: string): Promise<LinkedOrganization | null> {
+    const rows = await query(
+      `select ${ORGANIZATION_COLUMNS}
+       from public.companies c
+       join public.organization_applications application on application.company_id = c.id
+       where c.id = $1
+         and application.submitted_by = $2
+         and application.status in ('pending', 'changes_requested')
+       limit 1`,
+      [companyId, userId],
+    ) as unknown as OrganizationRow[]
+    return rows[0] ? mapOrganization(rows[0]) : null
+  }
+
   /** Organizations the member belongs to (approved memberships), with logo details. */
   async function listMemberOrganizations(userId: string): Promise<MemberOrganizationShortcut[]> {
     const rows = await query(
@@ -158,7 +200,44 @@ export function createOrganizationLinkRepository(input: { query?: LinkQuery } = 
     return rows.map((row) => ({ ...mapOrganization(row), role: role(row.member_role) }))
   }
 
-  return { searchListableOrganizations, getListableOrganization, listMemberOrganizations }
+  /**
+   * Organizations on a member's profile: approved memberships of organizations
+   * Sea N Shore lists, owners and administrators first. The organization's People
+   * tab shows the same memberships to everyone.
+   */
+  async function listProfileOrganizations(profileId: string, limit = 12): Promise<ProfileOrganization[]> {
+    const rows = await query(
+      `select ${ORGANIZATION_COLUMNS}, cm.role::text as member_role
+       from public.company_members cm
+       join public.companies c on c.id = cm.company_id
+       where cm.user_id = $1
+         and cm.approved_at is not null
+         and ${listableOrganizationSql('c')}
+       order by
+         case cm.role::text when 'owner' then 0 when 'administrator' then 1 else 2 end,
+         coalesce(c.is_verified, false) desc,
+         c.name asc,
+         c.id asc
+       limit $2`,
+      [profileId, Math.min(Math.max(1, Math.trunc(limit)), 50)],
+    ) as unknown as MembershipRow[]
+    return rows.map((row) => {
+      const memberRole = role(row.member_role)
+      return {
+        ...mapSearchResult(row),
+        role: memberRole,
+        relation: memberRole === 'owner' || memberRole === 'administrator' ? 'manages' : 'works_at',
+      }
+    })
+  }
+
+  return {
+    searchListableOrganizations,
+    getListableOrganization,
+    getOwnPendingOrganization,
+    listMemberOrganizations,
+    listProfileOrganizations,
+  }
 }
 
 export type OrganizationLinkRepository = ReturnType<typeof createOrganizationLinkRepository>

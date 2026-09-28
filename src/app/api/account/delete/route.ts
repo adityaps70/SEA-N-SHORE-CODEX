@@ -1,5 +1,12 @@
 import { cookies } from 'next/headers'
 import { z } from 'zod'
+import {
+  deleteIdentityByUsername,
+  deleteIdentityWithAccessToken,
+  getDeletionReauth,
+  runtimeDeletionCodeService,
+} from '@/features/account-deletion/reauth-runtime'
+import { RECENT_SIGN_IN_MINUTES } from '@/features/account-deletion/reauth'
 import { runtimeAccountDeletionService } from '@/features/account-deletion/runtime-service'
 import { AccountDeletionError } from '@/features/account-deletion/service'
 import { AwsAuthenticationRequiredError, requireAwsUser } from '@/features/auth/aws-queries'
@@ -14,7 +21,10 @@ const requestSchema = z.object({
   confirmation: z.literal('DELETE', {
     message: 'Type DELETE exactly to confirm permanent account deletion.',
   }),
-  password: z.string().min(1, 'Enter your password to continue.').max(256),
+  /** Email sign-in. */
+  password: z.string().max(256).optional(),
+  /** Mobile-only sign-in: the one-time code texted for this deletion. */
+  code: z.string().max(12).optional(),
 })
 
 function json(payload: { ok: boolean; error?: string; redirectTo?: string }, status: number) {
@@ -37,7 +47,13 @@ function safeError(error: unknown) {
     if (error.code === 'account_deletion_reauthentication_unavailable') {
       return json({
         ok: false,
-        error: 'Password re-authentication is unavailable for this account. Sign in again or use account recovery before deleting it.',
+        error: 'We can’t confirm it’s you for this account right now. Sign in again, or contact info@beaufortmarine.in to delete it.',
+      }, 409)
+    }
+    if (error.code === 'account_deletion_billing_cancel_failed') {
+      return json({
+        ok: false,
+        error: 'We couldn’t turn off auto-renew for your plan, so nothing was deleted. Please try again in a few minutes, or turn off auto-renew in Membership & billing first.',
       }, 409)
     }
     if (error.code === 'account_deletion_cleanup_failed') {
@@ -77,11 +93,38 @@ export async function POST(request: Request) {
   }
 
   try {
-    await runtimeAccountDeletionService.deleteAccount({
-      profileId: user.id,
-      email: user.email,
-      password: parsed.data.password,
-    })
+    const reauth = await getDeletionReauth(user)
+    if (reauth.method === 'password') {
+      if (!parsed.data.password) return json({ ok: false, error: 'Enter your password to continue.' }, 400)
+      await runtimeAccountDeletionService.deleteAccount({
+        profileId: user.id,
+        email: user.email,
+        password: parsed.data.password,
+        cognitoSub: user.cognitoSub,
+      })
+    } else if (reauth.method === 'phone_code') {
+      const verified = await (await runtimeDeletionCodeService()).verifyCode({ id: user.id, cognitoSub: user.cognitoSub }, parsed.data.code)
+      if (!verified.ok) return json({ ok: false, error: verified.error }, 401)
+      await runtimeAccountDeletionService.deleteVerifiedAccount({
+        profileId: user.id,
+        cognitoSub: user.cognitoSub,
+        deleteIdentity: () => deleteIdentityWithAccessToken(verified.accessToken),
+      })
+    } else if (reauth.method === 'recent_sign_in') {
+      if (!reauth.fresh) {
+        return json({
+          ok: false,
+          error: `For your security, sign in with Google again, then delete your account within ${RECENT_SIGN_IN_MINUTES} minutes.`,
+        }, 401)
+      }
+      await runtimeAccountDeletionService.deleteVerifiedAccount({
+        profileId: user.id,
+        cognitoSub: user.cognitoSub,
+        deleteIdentity: () => deleteIdentityByUsername(reauth.username),
+      })
+    } else {
+      throw new AccountDeletionError('account_deletion_reauthentication_unavailable')
+    }
     await clearAuthCookies()
     return json({ ok: true, redirectTo: '/account-deleted' }, 200)
   } catch (error) {

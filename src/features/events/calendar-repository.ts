@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { resolveEventBannerReference } from './event-banner-media'
 import { isPaymentCurrency } from '@/features/payments/currency'
 import { isEventBannerStoragePath } from './event-banner-policy'
@@ -52,6 +53,7 @@ type CalendarEventRow = QueryResultRow & {
   viewer_is_attending: boolean
   viewer_has_paid?: boolean | null
   viewer_is_host: boolean
+  hidden_for_plan?: boolean | null
   registration_open: boolean
   is_past: boolean
   created_at: string | Date
@@ -75,6 +77,19 @@ export const EVENT_MANAGER_ACCESS_SQL = `
     )
   )
 `
+
+/**
+ * SQL predicate: others may see event `e` (its owner's plan has not ended; see
+ * billing/plan-visibility). Hosts, organization event managers and ticket holders
+ * still reach a hidden event through getEvent.
+ */
+const EVENT_PLAN_VISIBLE_SQL = planVisibleSql('event', 'e')
+
+/**
+ * Listed and open to new registrations: not removed with its owner's account (removed_at,
+ * kept only for existing ticket holders) and the owner's plan has not ended.
+ */
+const EVENT_OPEN_SQL = `(e.removed_at is null and ${EVENT_PLAN_VISIBLE_SQL})`
 
 type EventPublisherScopeRow = QueryResultRow & {
   company_id: string | null
@@ -154,8 +169,10 @@ const EVENT_SELECT = `
       where paid_ea.event_id = e.id and paid_ea.user_id = $1::uuid and paid_ea.payment_order_id is not null
     ) as viewer_has_paid,
     ${EVENT_MANAGER_ACCESS_SQL} as viewer_is_host,
+    not ${EVENT_PLAN_VISIBLE_SQL} as hidden_for_plan,
     (
       e.status = 'published'
+      and ${EVENT_OPEN_SQL}
       and e.end_at > now()
       and e.registration_mode = 'open'
       and (e.registration_closes_at is null or e.registration_closes_at > now())
@@ -244,6 +261,7 @@ function mapEvent(row: CalendarEventRow): CalendarEvent {
     viewerIsAttending: row.viewer_is_attending,
     viewerHasPaid: Boolean(row.viewer_has_paid),
     viewerIsHost: row.viewer_is_host,
+    hiddenForPlan: row.hidden_for_plan === true,
     registrationOpen: row.registration_open,
     isPast: row.is_past,
     createdAt: iso(row.created_at),
@@ -334,6 +352,7 @@ async function listDiscoverEvents(viewerId: string, filters: CalendarEventFilter
   const value = normalizedFilters(filters)
   return rowsForViewer(viewerId, `
     where e.status = 'published'
+      and ${EVENT_OPEN_SQL}
       and e.end_at > now()
       and ${eventSearchSql('$2')}
       and ($3::text = '' or e.category = $3::text)
@@ -350,6 +369,7 @@ async function listOrganizationEvents(viewerId: string, companyId: string, limit
   return rowsForViewer(viewerId, `
     where e.company_id = $2::uuid
       and e.status = 'published'
+      and ${EVENT_OPEN_SQL}
       and e.end_at > now()
     order by e.start_at asc
     limit $3
@@ -386,6 +406,7 @@ async function listPastEvents(viewerId: string, filters: CalendarEventFilters | 
   const value = normalizedFilters(filters)
   return rowsForViewer(viewerId, `
     where e.status in ('published', 'cancelled')
+      and ${EVENT_OPEN_SQL}
       and e.end_at <= now()
       and ${eventSearchSql('$2')}
       and ($3::text = '' or e.category = $3::text)
@@ -401,6 +422,14 @@ async function getEvent(eventId: string, viewerId: string) {
   const rows = await rowsForViewer(viewerId, `
     where e.id = $2::uuid
       and (e.status <> 'draft' or ${EVENT_MANAGER_ACCESS_SQL})
+      and (
+        ${EVENT_OPEN_SQL}
+        or ${EVENT_MANAGER_ACCESS_SQL}
+        or exists (
+          select 1 from public.event_attendees holder_ea
+          where holder_ea.event_id = e.id and holder_ea.user_id = $1::uuid
+        )
+      )
     limit 1
   `, [eventId])
   return rows[0] ?? null
@@ -495,14 +524,17 @@ async function countAttendees(client: DatabaseQueryClient, eventId: string) {
 
 async function attendEvent(userId: string, eventId: string) {
   return withTransaction(async (client) => {
-    const result = await client.query<EventLockRow>(`
-      select id, host_user_id, status, end_at, capacity, registration_mode, registration_closes_at, is_paid
-      from public.events
-      where id=$1::uuid
-      for update
+    const result = await client.query<EventLockRow & { plan_visible?: boolean | null }>(`
+      select e.id, e.host_user_id, e.status, e.end_at, e.capacity, e.registration_mode, e.registration_closes_at, e.is_paid,
+        ${EVENT_OPEN_SQL} as plan_visible
+      from public.events e
+      where e.id=$1::uuid
+      for update of e
     `, [eventId])
     const event = result.rows[0]
     if (!event) throw new Error('event_not_found')
+    // The host's plan ended: the event is hidden and takes no new registrations.
+    if (event.plan_visible === false) throw new Error('event_not_open')
     if (event.host_user_id === userId) throw new Error('event_host_cannot_attend')
     if (event.is_paid) throw new Error('event_requires_payment')
     if (event.status !== 'published' || new Date(event.end_at).getTime() <= Date.now()) throw new Error('event_not_open')

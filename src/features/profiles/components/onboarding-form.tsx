@@ -1,16 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useRef, useState } from 'react'
-import {
-  Anchor,
-  BriefcaseBusiness,
-  Building2,
-  Check,
-  Compass,
-  GraduationCap,
-  Heart,
-  School,
-} from 'lucide-react'
+import { Check, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { FormErrorSummary, focusFirstFormError, hasFormErrors } from '@/components/ui/form-error-summary'
@@ -24,8 +15,9 @@ import {
   type ProfileIntent,
 } from '../persona'
 import { DG_PROFILE_EXPLANATION, DG_PROFILE_VISIBILITY, type ProfileDocumentSummary } from '../profile-document-policy'
+import { PERSONA_ICONS } from '../persona-icons'
 import { DgProfileUpload } from './dg-profile-upload'
-import { OrganizationPicker } from './organization-picker'
+import { OrganizationPicker, type PickerOrganization } from './organization-picker'
 import { UsernameField } from './username-field'
 
 function firstError(state: ProfileActionState, field: string) {
@@ -49,55 +41,55 @@ const personaOptions = [
     id: 'seafarer',
     label: 'Seafarer',
     description: 'Master, officer, engineer, rating, cadet or other sea-going professional.',
-    icon: Anchor,
+    icon: PERSONA_ICONS.seafarer,
   },
   {
     id: 'shore_professional',
     label: 'Shore Professional',
     description: 'Superintendent, DPA, marine manager or another shore-based professional.',
-    icon: Building2,
+    icon: PERSONA_ICONS.shore_professional,
   },
   {
     id: 'recruiter_hr',
     label: 'Recruiter / HR',
     description: 'Crewing, manning, recruitment or maritime HR professional.',
-    icon: BriefcaseBusiness,
+    icon: PERSONA_ICONS.recruiter_hr,
   },
   {
     id: 'trainer_instructor',
     label: 'Trainer / Instructor',
     description: 'Maritime trainer, instructor, assessor or academy faculty.',
-    icon: GraduationCap,
+    icon: PERSONA_ICONS.trainer_instructor,
   },
   {
     id: 'student_cadet',
     label: 'Student / Cadet',
     description: 'Maritime student, cadet or aspiring maritime professional.',
-    icon: School,
+    icon: PERSONA_ICONS.student_cadet,
   },
   {
     id: 'seafarer_family',
     label: 'Seafarer Family',
     description: 'Spouse, partner, parent or family member of a seafarer.',
-    icon: Heart,
+    icon: PERSONA_ICONS.seafarer_family,
   },
   {
     id: 'maritime_enthusiast',
     label: 'Maritime Enthusiast',
     description: 'Here for the maritime community, knowledge and industry network.',
-    icon: Compass,
+    icon: PERSONA_ICONS.maritime_enthusiast,
   },
   {
     id: 'other',
     label: 'Other',
     description: 'Another participant in or around the maritime ecosystem.',
-    icon: Compass,
+    icon: PERSONA_ICONS.other,
   },
 ] as const satisfies ReadonlyArray<{
   id: Persona
   label: string
   description: string
-  icon: typeof Anchor
+  icon: LucideIcon
 }>
 
 const intentOptions = PROFILE_INTENTS.map((id) => ({ id, label: PROFILE_INTENT_LABELS[id] }))
@@ -108,6 +100,39 @@ type OnboardingFormProps = {
   suggestedUsername?: string
   profileId?: string
   initialDgProfile?: ProfileDocumentSummary | null
+  /** An organization the member just registered from the picker, to link as their current organization. */
+  registeredOrganization?: PickerOrganization | null
+}
+
+/** Session draft of the onboarding answers while the member registers their organization. */
+const ONBOARDING_DRAFT_KEY = 'sns:onboarding-draft'
+
+function saveOnboardingDraft(link: HTMLAnchorElement) {
+  const form = link.closest('form')
+  if (!form) return
+  try {
+    window.sessionStorage.setItem(ONBOARDING_DRAFT_KEY, JSON.stringify(captureSubmittedActivationValues(new FormData(form))))
+  } catch {
+    // Storage can be unavailable (private mode); the member simply re-enters their answers.
+  }
+}
+
+function takeOnboardingDraft(): ProfileActionState['values'] | undefined {
+  try {
+    const raw = window.sessionStorage.getItem(ONBOARDING_DRAFT_KEY)
+    if (!raw) return undefined
+    window.sessionStorage.removeItem(ONBOARDING_DRAFT_KEY)
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+    const record = parsed as Record<string, unknown>
+    const formData = new FormData()
+    for (const [key, value] of Object.entries(record)) {
+      if (typeof value === 'string') formData.set(key, value)
+    }
+    return captureSubmittedActivationValues(formData)
+  } catch {
+    return undefined
+  }
 }
 
 function OnboardingFields({
@@ -115,6 +140,7 @@ function OnboardingFields({
   suggestedUsername = '',
   profileId,
   initialDgProfile = null,
+  registeredOrganization = null,
   state,
 }: OnboardingFormProps & { state: ProfileActionState }) {
   const values = state.values
@@ -261,6 +287,7 @@ function OnboardingFields({
                   required
                 />
                 <OnboardingOrganizationPicker
+                  registeredOrganization={registeredOrganization}
                   label="Current / last organisation"
                   values={values}
                   revision={state.revision}
@@ -278,6 +305,7 @@ function OnboardingFields({
                   error={firstError(state, 'headline')}
                 />
                 <OnboardingOrganizationPicker
+                  registeredOrganization={registeredOrganization}
                   label="Current organisation"
                   values={values}
                   revision={state.revision}
@@ -295,6 +323,7 @@ function OnboardingFields({
                   error={firstError(state, 'headline')}
                 />
                 <OnboardingOrganizationPicker
+                  registeredOrganization={registeredOrganization}
                   label="Current organisation"
                   values={values}
                   revision={state.revision}
@@ -313,6 +342,7 @@ function OnboardingFields({
                   hint="For example: SIRE 2.0, navigation, human factors or marine engineering."
                 />
                 <OnboardingOrganizationPicker
+                  registeredOrganization={registeredOrganization}
                   label="Organisation / institute"
                   values={values}
                   revision={state.revision}
@@ -402,24 +432,30 @@ function OnboardingOrganizationPicker({
   values,
   revision,
   error,
+  registeredOrganization,
 }: {
   label: string
   values: ProfileActionState['values']
   /** Each server response restarts the picker from the values that were submitted. */
   revision?: number
   error?: string
+  registeredOrganization?: PickerOrganization | null
 }) {
   const name = values?.currentCompany ?? ''
   const id = values?.currentCompanyId ?? ''
+  // Back from registering: link the new organization until the member chooses something else.
+  const registered = registeredOrganization && (!revision || id === registeredOrganization.id) ? registeredOrganization : null
   return (
     <OrganizationPicker
       key={revision ?? 0}
       label={label}
-      defaultName={name}
-      defaultOrganization={id && name.trim() ? { id, name: name.trim() } : null}
+      defaultName={registered?.name ?? name}
+      defaultOrganization={registered ?? (id && name.trim() ? { id, name: name.trim() } : null)}
       error={error}
       labelClassName="grid gap-2 text-sm font-medium text-navy-900"
       inputClassName={onboardingInputClass}
+      returnTo="/onboarding"
+      onBeforeRegister={saveOnboardingDraft}
     />
   )
 }
@@ -482,9 +518,18 @@ async function completeActivationSafely(previousState: ProfileActionState, formD
   }
 }
 
-export function OnboardingForm({ initialFullName, suggestedUsername, profileId, initialDgProfile }: OnboardingFormProps) {
+export function OnboardingForm({ initialFullName, suggestedUsername, profileId, initialDgProfile, registeredOrganization }: OnboardingFormProps) {
   const [state, formAction, pending] = useActionState(completeActivationSafely, { revision: 0 })
+  const [draft, setDraft] = useState<ProfileActionState['values']>()
   const formRef = useRef<HTMLFormElement>(null)
+
+  // Restore the answers saved before the member left to register their organization.
+  useEffect(() => {
+    const saved = takeOnboardingDraft()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is only readable after hydration
+    if (saved) setDraft(saved)
+  }, [])
+  const fieldsState = state.values || !draft ? state : { ...state, values: draft }
 
   useEffect(() => {
     if (!hasFormErrors(state.error, state.fieldErrors)) return
@@ -500,11 +545,13 @@ export function OnboardingForm({ initialFullName, suggestedUsername, profileId, 
       />
 
       <OnboardingFields
+        key={draft && !state.values ? 'restored' : 'fresh'}
         initialFullName={initialFullName}
         suggestedUsername={suggestedUsername}
         profileId={profileId}
         initialDgProfile={initialDgProfile}
-        state={state}
+        registeredOrganization={registeredOrganization}
+        state={fieldsState}
       />
 
       <div className="flex flex-col gap-3 border-t border-mist-100 pt-6 sm:flex-row sm:items-center sm:justify-between">

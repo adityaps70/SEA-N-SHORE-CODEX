@@ -23,6 +23,7 @@ import {
   type ParsedOrganizationApplicationInput,
 } from './schemas'
 import { decidedVia, isoTimestamp } from './access-request-repository'
+import { organizationClaimStatusSql } from './unclaimed-organization-policy'
 
 export type { OrganizationApplicationInput } from './types'
 
@@ -68,6 +69,7 @@ type CompanySearchRow = QueryResultRow & {
   organization_type: string | null
   is_verified: boolean | null
   website: string | null
+  claim_status?: string | null
 }
 
 type ReturningCompanyRow = QueryResultRow & { id: string; slug: string }
@@ -421,13 +423,15 @@ export function createOrganizationRepository(input: {
   ) {
     return transaction(async (txQuery) => {
       const companyRows = await txQuery(
-        `select id
+        `select id, ${organizationClaimStatusSql('companies')} as claim_status
          from public.companies
          where id = $1
          limit 1`,
         [companyId],
-      ) as ReturningIdRow[]
+      ) as Array<ReturningIdRow & { claim_status?: string | null }>
       if (!companyRows[0]) throw new Error('organization_company_not_found')
+      // Nobody manages an unclaimed page, so nobody could decide the request.
+      if (companyRows[0].claim_status === 'unclaimed') throw new Error('organization_unclaimed')
 
       const membershipRows = await txQuery(
         `select role::text as role, approved_at
@@ -539,7 +543,8 @@ export function createOrganizationRepository(input: {
     const normalized = term.trim()
     if (normalized.length < 2) return []
     const rows = await query(
-      `select id, slug, name, company_type, organization_type, coalesce(is_verified, false) as is_verified, website
+      `select id, slug, name, company_type, organization_type, coalesce(is_verified, false) as is_verified, website,
+              ${organizationClaimStatusSql('companies')} as claim_status
        from public.companies
        where name ilike $1 or coalesce(website, '') ilike $1
        order by is_verified desc, name asc, id asc
@@ -553,6 +558,7 @@ export function createOrganizationRepository(input: {
       name: row.name,
       companyType: row.company_type || row.organization_type ? displayOrganizationType(row.organization_type, row.company_type) : null,
       verified: Boolean(row.is_verified),
+      unclaimed: row.claim_status === 'unclaimed',
       website: row.website ?? null,
     }))
   }

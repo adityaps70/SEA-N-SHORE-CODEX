@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { CASHFREE_API_VERSION } from '@/features/payments/cashfree'
 import { PaymentProviderError } from '@/features/payments/types'
 import {
+  CashfreeSubscriptionsError,
   createCashfreeSubscriptionsClient,
+  isSubscriptionsNotEnabledError,
   mapCashfreeSubscription,
   mapCashfreeSubscriptionPayment,
   normalizePaymentMethod,
@@ -171,6 +173,48 @@ describe('Cashfree subscriptions client', () => {
     await expect(client.getSubscription('../orders')).rejects.toBeInstanceOf(PaymentProviderError)
     await expect(client.createPlan({ planId: 'bad id!', name: 'x', amountMinor: 100, interval: 'month' })).rejects.toBeInstanceOf(PaymentProviderError)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('Cashfree subscriptions errors', () => {
+  it('logs the HTTP status and Cashfree error code, type and message without any secret', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ message: 'Profile is inactive', code: 'request_failed', type: 'invalid_request_error' }, 400))
+    const log = vi.fn()
+    const client = createCashfreeSubscriptionsClient(config, fetchMock, { log })
+    const failure = client.createPlan({ planId: 'snsp_org', name: 'Organization Pro monthly', amountMinor: 200000, interval: 'month' })
+    await expect(failure).rejects.toBeInstanceOf(CashfreeSubscriptionsError)
+    await expect(failure).rejects.toMatchObject({ code: 'provider_request_failed', status: 400, providerCode: 'request_failed', providerMessage: 'Profile is inactive' })
+    expect(log).toHaveBeenCalledWith('cashfree_subscriptions_request_failed', {
+      method: 'POST',
+      endpoint: '/plans',
+      environment: 'sandbox',
+      error: 'provider_request_failed',
+      httpStatus: 400,
+      cashfreeCode: 'request_failed',
+      cashfreeType: 'invalid_request_error',
+      cashfreeMessage: 'Profile is inactive',
+    })
+    const logged = JSON.stringify(log.mock.calls)
+    expect(logged).not.toContain(config.clientSecret)
+    expect(logged).not.toContain(config.clientId)
+  })
+
+  it('hides subscription ids from the logged endpoint', async () => {
+    const log = vi.fn()
+    const client = createCashfreeSubscriptionsClient(config, vi.fn(async () => jsonResponse({ message: 'boom' }, 500)), { log })
+    await expect(client.getSubscription(subscriptionId)).rejects.toBeInstanceOf(PaymentProviderError)
+    expect(log.mock.calls[0]![1]).toMatchObject({ endpoint: '/subscriptions/:id', httpStatus: 500, cashfreeMessage: 'boom' })
+  })
+
+  it('recognises "Subscriptions not enabled" answers and nothing else', () => {
+    expect(isSubscriptionsNotEnabledError(new CashfreeSubscriptionsError(400, 'Profile is inactive', null, null))).toBe(true)
+    expect(isSubscriptionsNotEnabledError(new CashfreeSubscriptionsError(403, 'Subscription product is not activated for this merchant', null, null))).toBe(true)
+    expect(isSubscriptionsNotEnabledError(new CashfreeSubscriptionsError(400, null, 'feature_not_enabled', null))).toBe(true)
+    expect(isSubscriptionsNotEnabledError(new PaymentProviderError('provider_request_failed', 400, 'Subscriptions is not enabled'))).toBe(true)
+    expect(isSubscriptionsNotEnabledError(new CashfreeSubscriptionsError(400, 'customer_phone is invalid', 'customer_phone_invalid', null))).toBe(false)
+    expect(isSubscriptionsNotEnabledError(new CashfreeSubscriptionsError(401, 'authentication Failed', 'request_failed', null))).toBe(false)
+    expect(isSubscriptionsNotEnabledError(new PaymentProviderError('provider_unreachable'))).toBe(false)
+    expect(isSubscriptionsNotEnabledError(new Error('Profile is inactive'))).toBe(false)
   })
 })
 

@@ -59,6 +59,8 @@ type Scenario = {
   lockedOrder?: Record<string, unknown> | null
   earning?: Record<string, unknown> | null
   refundRequestStale?: boolean
+  /** The host's plan ended, so the event is hidden and not sold. */
+  hiddenForPlan?: boolean
 }
 
 function earningRow(overrides: Record<string, unknown> = {}) {
@@ -87,6 +89,7 @@ function earningRow(overrides: Record<string, unknown> = {}) {
 function scenario(input: Scenario) {
   db.txQuery.mockImplementation(async (sql: string, values: unknown[]) => {
     const text = sql.replace(/\s+/g, ' ')
+    if (text.includes('as visible from public.events e')) return { rows: [{ visible: !input.hiddenForPlan }] }
     if (text.includes('from public.events where id = $1::uuid for update')) return { rows: input.event === null ? [] : [input.event ?? eventRow] }
     if (text.startsWith(' select 1 from public.event_attendees') || text.startsWith('select 1 from public.event_attendees')) return { rows: input.registered ? [{ '?column?': 1 }] : [] }
     if (text.includes('count(*)::bigint as count from public.event_attendees')) return { rows: [{ count: String(input.attendees ?? 0) }] }
@@ -135,6 +138,12 @@ describe('event payment repository: starting checkout', () => {
     const insert = db.txQuery.mock.calls.find((call) => String(call[0]).includes('insert into public.event_payment_orders'))
     expect(insert?.[1]).toEqual([eventId, profileId, 'Paid masterclass', 49900, 'INR', 'razorpay'])
     expect(sqlCalls()[0]).toContain('for update')
+  })
+
+  it('sells no new tickets while the host’s plan has ended', async () => {
+    scenario({ hiddenForPlan: true })
+    await expect(eventPaymentRepository.prepareCheckoutOrder({ profileId, eventId, provider: 'razorpay', now })).rejects.toMatchObject({ code: 'event_not_found' })
+    expect(db.txQuery.mock.calls.some((call) => String(call[0]).includes('insert into public.event_payment_orders'))).toBe(false)
   })
 
   it('counts seats held by other open checkouts and refuses when the event is full', async () => {

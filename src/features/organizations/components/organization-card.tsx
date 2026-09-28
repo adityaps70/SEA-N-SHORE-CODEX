@@ -4,6 +4,7 @@ import { BadgeCheck } from 'lucide-react'
 import { followerLabel, organizationCoverUrl, organizationTagline } from '../organization-page-profile'
 import type { OrganizationCard as OrganizationCardData } from '../workspace-repository'
 import { OrganizationFollowButton } from './organization-follow-button'
+import { OrganizationStatusBadge } from '@/features/profiles/components/organization-status-badge'
 import { OrganizationCover, OrganizationLogo } from './organization-logo'
 
 export function VerifiedMark({ className = 'size-4' }: { className?: string }) {
@@ -36,7 +37,7 @@ export function OrganizationCard({
         <div className="mt-2 min-w-0">
           <p className="flex min-w-0 items-center gap-1.5">
             <Link href={href} className="truncate font-bold text-navy-950 hover:text-ocean-700 hover:underline">{organization.name}</Link>
-            {organization.verified ? <VerifiedMark /> : null}
+            {organization.verified ? <VerifiedMark /> : <OrganizationStatusBadge organization={organization} size="sm" />}
           </p>
           <p className="mt-0.5 truncate text-xs text-muted">
             {[organization.companyType, organization.headquarters].filter(Boolean).join(' · ')}
@@ -71,7 +72,7 @@ export function OrganizationSuggestionRow({ organization }: { organization: Orga
           <Link href={'/organizations/' + organization.slug} className="truncate text-sm font-bold text-navy-950 hover:text-ocean-700 hover:underline">
             {organization.name}
           </Link>
-          {organization.verified ? <VerifiedMark className="size-3.5" /> : null}
+          {organization.verified ? <VerifiedMark className="size-3.5" /> : <OrganizationStatusBadge organization={organization} size="sm" />}
         </p>
         <p className="truncate text-xs text-muted">{organization.companyType}</p>
         <p className="text-xs text-muted">{followerLabel(organization.followerCount)}</p>

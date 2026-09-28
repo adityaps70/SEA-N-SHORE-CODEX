@@ -2,14 +2,18 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Search, ShieldCheck } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { withAdminAvatarUrls } from '@/features/admin/avatars'
 import {
+  AdminAvatar,
   AdminChip,
   AdminEmptyState,
   AdminFilterBar,
   AdminPageHeader,
+  AdminPagination,
   AdminPanel,
   formatAdminDate,
   looksLikeTestAccount,
+  readAdminPage,
   type AdminChipTone,
 } from '@/features/admin/components/admin-ui'
 import {
@@ -21,6 +25,9 @@ import {
 import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Users · Admin' }
+
+/** Shared with the organizations directory so both admin lists page the same way. */
+const PAGE_SIZE = 50
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
@@ -55,36 +62,44 @@ function readStatus(value: string | string[] | undefined): AdminUserStatusFilter
     : 'all'
 }
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?'
-}
-
 export default async function AdminUsersPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams
   const query = readSingle(params.q).trim().slice(0, 120)
   const status = readStatus(params.status)
   const admin = await requireAwsUser()
   const hideTestAccounts = readSingle(params.test) === 'hide'
-  const results = await adminRepository.searchUsers(admin.id, {
+  const page = readAdminPage(params.page)
+  // One extra row tells us whether there is a next page.
+  const fetched = await adminRepository.searchUsers(admin.id, {
     query,
     status,
-    limit: 100,
+    limit: PAGE_SIZE + 1,
+    offset: (page - 1) * PAGE_SIZE,
   })
+  const hasNextPage = fetched.length > PAGE_SIZE
+  const results = fetched.slice(0, PAGE_SIZE)
 
   const viewingDeletionRecords = status === 'deletion_requested'
   const testAccounts = viewingDeletionRecords ? 0 : results.filter(looksLikeTestAccount).length
-  const users = hideTestAccounts && !viewingDeletionRecords ? results.filter((user) => !looksLikeTestAccount(user)) : results
+  const users = await withAdminAvatarUrls(
+    hideTestAccounts && !viewingDeletionRecords ? results.filter((user) => !looksLikeTestAccount(user)) : results,
+  )
 
-  function usersHref(next: { status?: AdminUserStatusFilter; hideTest?: boolean }) {
+  function usersHref(next: { status?: AdminUserStatusFilter; hideTest?: boolean; page?: number }) {
     const search = new URLSearchParams()
     if (query) search.set('q', query)
     const nextStatus = next.status ?? status
     if (nextStatus !== 'all') search.set('status', nextStatus)
     if (next.hideTest ?? hideTestAccounts) search.set('test', 'hide')
+    // Changing a filter starts again from the first page.
+    if (next.page && next.page > 1) search.set('page', String(next.page))
     const value = search.toString()
     return `/admin/users${value ? `?${value}` : ''}`
   }
+
+  const resultsLabel = page > 1 || hasNextPage
+    ? `${pluralize(users.length, 'result')} on page ${page}`
+    : pluralize(users.length, 'result')
 
   const filterOptions = (['all', ...ADMIN_USER_STATUSES] as AdminUserStatusFilter[]).map((item) => ({
     href: usersHref({ status: item }),
@@ -99,8 +114,8 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
         meta={(
           <>
             {hideTestAccounts && testAccounts
-              ? `${pluralize(users.length, 'result')} · ${pluralize(testAccounts, 'test account')} hidden · `
-              : `${pluralize(users.length, 'result')}${testAccounts ? ` · ${testAccounts} look like test accounts · ` : ''}`}
+              ? `${resultsLabel} · ${pluralize(testAccounts, 'test account')} hidden · `
+              : `${resultsLabel}${testAccounts ? ` · ${testAccounts} look like test accounts · ` : ''}`}
             {testAccounts ? (
               <Link href={usersHref({ hideTest: !hideTestAccounts })} className="font-semibold text-ocean-700 hover:underline">
                 {hideTestAccounts ? 'Show them' : 'Hide them'}
@@ -166,9 +181,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                     <tr key={user.id} className="align-middle transition hover:bg-mist-50/60">
                       <td className="px-4 py-2.5">
                         <div className="flex min-w-0 items-center gap-3">
-                          <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-mist-100 text-[11px] font-bold text-navy-950">
-                            {initials(user.fullName)}
-                          </span>
+                          <AdminAvatar name={user.fullName} url={deleted ? null : user.avatarUrl} />
                           <div className="min-w-0">
                             <p className="flex flex-wrap items-center gap-1.5 font-semibold text-navy-950">
                               <Link href={`/admin/users/${user.id}`} className="truncate hover:text-ocean-700 hover:underline">{user.fullName}</Link>
@@ -204,6 +217,13 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
           </div>
         )}
       </AdminPanel>
+
+      <AdminPagination
+        label="User list pages"
+        page={page}
+        hasNext={hasNextPage}
+        hrefFor={(target) => usersHref({ page: target })}
+      />
     </main>
   )
 }

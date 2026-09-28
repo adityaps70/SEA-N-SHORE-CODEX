@@ -1,7 +1,7 @@
 import { chromium } from '@playwright/test'
 
 const url = process.env.STAGING_URL || 'https://d3prih0q6jofyr.cloudfront.net'
-const assetPath = '/brand/sea-and-shore-header-logo.svg'
+const assetPath = '/brand/sea-n-shore-lockup.webp'
 
 const browser = await chromium.launch({ headless: true })
 const page = await browser.newPage({ viewport: { width: 1536, height: 1024 } })

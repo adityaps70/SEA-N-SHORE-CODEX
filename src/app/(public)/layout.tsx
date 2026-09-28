@@ -26,11 +26,12 @@ export default async function PublicProfileLayout({ children }: { children: Reac
         <MobileAppHeader
           unreadCount={chrome.notificationChrome.unreadCount}
           messagingUnreadCount={chrome.messagingUnreadCount}
+          canAccessAdmin={chrome.canAccessAdmin}
           viewer={chrome.viewer}
         />
         {children}
         <AppFooter />
-        <MobileNav canAccessAdmin={chrome.canAccessAdmin} />
+        <MobileNav />
       </div>
     )
   }

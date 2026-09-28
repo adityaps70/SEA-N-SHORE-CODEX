@@ -33,14 +33,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <MobileAppHeader
           unreadCount={notificationChrome.unreadCount}
           messagingUnreadCount={messagingUnreadCount}
+          canAccessAdmin={canAccessAdmin}
           viewer={viewer}
+          organizations={organizations}
+          organizationCount={organizationCount}
         />
         <main id="main-content" className="mx-auto w-full max-w-7xl px-4 py-6">
           {children}
         </main>
         <AppFooter />
         <MessagingDock viewerId={user.id} initialUnreadCount={messagingUnreadCount} />
-        <MobileNav canAccessAdmin={canAccessAdmin} />
+        <MobileNav />
       </div>
     </MessagingRealtimeProvider>
   )

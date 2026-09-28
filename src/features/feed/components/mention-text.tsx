@@ -11,7 +11,7 @@ type Segment =
   | { type: 'text'; value: string }
   | { type: 'mention'; value: string; mention: FeedMention }
 
-function segmentBody(body: string, mentions: FeedMention[]): Segment[] {
+export function segmentBody(body: string, mentions: FeedMention[]): Segment[] {
   if (!mentions.length) return [{ type: 'text', value: body }]
 
   const labels = mentions

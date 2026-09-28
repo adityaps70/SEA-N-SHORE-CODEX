@@ -1,4 +1,5 @@
 import type { QueryResultRow } from 'pg'
+import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { query as databaseQuery } from '@/lib/db/client'
 import { isSyntheticDiscoveryText } from '@/lib/public-discovery'
 
@@ -95,6 +96,10 @@ left join public.learning_mentor_applications application
 left join public.companies company
   on company.id = course.company_id`
 
+/**
+ * Listed and open to new learners: also drops courses removed with their owner's account
+ * and courses whose owner's plan ended (see course-publication / billing/plan-visibility).
+ */
 const marketplaceVisibility = `course.status = 'published'
   and (
     (
@@ -106,7 +111,9 @@ const marketplaceVisibility = `course.status = 'published'
       course.company_id is not null
       and company.is_verified = true
     )
-  )`
+  )
+  and course.removed_at is null
+  and ${planVisibleSql('course', 'course')}`
 
 const marketplaceDiscoveryVisibility = `${marketplaceVisibility}
   and course.is_discoverable = true`

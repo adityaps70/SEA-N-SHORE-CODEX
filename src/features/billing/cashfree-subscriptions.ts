@@ -128,6 +128,54 @@ export function mapCashfreeSubscriptionPayment(value: unknown): CashfreeSubscrip
   }
 }
 
+/**
+ * A failed Cashfree Subscriptions call, with what Cashfree said about it. Never carries
+ * request headers or keys: only the HTTP status and Cashfree's own error code, type and message.
+ */
+export class CashfreeSubscriptionsError extends PaymentProviderError {
+  constructor(
+    status: number,
+    providerMessage: string | null,
+    readonly providerCode: string | null,
+    readonly providerType: string | null,
+  ) {
+    super('provider_request_failed', status, providerMessage)
+    this.name = 'CashfreeSubscriptionsError'
+  }
+}
+
+/**
+ * Cashfree's answer when the merchant account does not have the Subscriptions product
+ * switched on yet (e.g. "Profile is inactive", "Subscription is not enabled for this
+ * merchant"). Checkout cannot work until Cashfree activates it, so the member sees a
+ * setup message rather than a retry hint.
+ */
+const SUBSCRIPTIONS_NOT_ENABLED = /profile is inactive|inactive profile|not (?:been )?activated|not (?:been )?enabled|feature[_ ]not[_ ]enabled|product[_ ]not[_ ]activ|not activ(?:e|ated) for (?:this )?(?:merchant|account)/i
+
+export function isSubscriptionsNotEnabledError(error: unknown) {
+  if (!(error instanceof PaymentProviderError) || error.code !== 'provider_request_failed') return false
+  const parts = [error.providerMessage]
+  if (error instanceof CashfreeSubscriptionsError) parts.push(error.providerCode, error.providerType)
+  return parts.some((part) => typeof part === 'string' && SUBSCRIPTIONS_NOT_ENABLED.test(part))
+}
+
+/** Safe fields to log about a failed Cashfree call (no keys, no customer details). */
+export function cashfreeErrorDetails(error: unknown) {
+  if (!(error instanceof PaymentProviderError)) return { message: error instanceof Error ? error.message : null }
+  return {
+    error: error.code,
+    httpStatus: error.status,
+    cashfreeCode: error instanceof CashfreeSubscriptionsError ? error.providerCode : null,
+    cashfreeType: error instanceof CashfreeSubscriptionsError ? error.providerType : null,
+    cashfreeMessage: error.providerMessage,
+  }
+}
+
+/** "/subscriptions/snss_abc/manage" -> "/subscriptions/:id/manage", for logs. */
+function endpointLabel(path: string) {
+  return path.replace(/^\/subscriptions\/(?!pay$)[^/]+/, '/subscriptions/:id')
+}
+
 /** Is this Cashfree error "that id already exists" (a retry of a create that reached Cashfree)? */
 function isAlreadyExists(error: unknown) {
   if (!(error instanceof PaymentProviderError)) return false
@@ -135,8 +183,15 @@ function isAlreadyExists(error: unknown) {
   return error.status === 400 && /already exist/i.test(error.providerMessage ?? '')
 }
 
-export function createCashfreeSubscriptionsClient(config: CashfreeConfig, fetchImpl: FetchLike = fetch) {
+type ClientLog = (message: string, details: Record<string, unknown>) => void
+
+export function createCashfreeSubscriptionsClient(
+  config: CashfreeConfig,
+  fetchImpl: FetchLike = fetch,
+  options: { log?: ClientLog } = {},
+) {
   const base = CASHFREE_PG_BASE_URLS[config.environment]
+  const log: ClientLog = options.log ?? ((message, details) => console.error(message, details))
 
   async function request(path: string, init: { method: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string }) {
     let response: Response
@@ -155,7 +210,13 @@ export function createCashfreeSubscriptionsClient(config: CashfreeConfig, fetchI
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         cache: 'no-store',
       })
-    } catch {
+    } catch (error) {
+      log('cashfree_subscriptions_unreachable', {
+        method: init.method,
+        endpoint: endpointLabel(path),
+        environment: config.environment,
+        reason: error instanceof Error ? error.name : null,
+      })
       throw new PaymentProviderError('provider_unreachable')
     }
     let payload: unknown = null
@@ -165,7 +226,21 @@ export function createCashfreeSubscriptionsClient(config: CashfreeConfig, fetchI
       payload = null
     }
     if (!response.ok) {
-      throw new PaymentProviderError('provider_request_failed', response.status, text(record(payload).message))
+      const body = record(payload)
+      const error = new CashfreeSubscriptionsError(
+        response.status,
+        text(body.message)?.slice(0, 300) ?? null,
+        text(body.code)?.slice(0, 100) ?? null,
+        text(body.type)?.slice(0, 100) ?? null,
+      )
+      // Only Cashfree's own error fields: never headers, keys or the request body.
+      log('cashfree_subscriptions_request_failed', {
+        method: init.method,
+        endpoint: endpointLabel(path),
+        environment: config.environment,
+        ...cashfreeErrorDetails(error),
+      })
+      throw error
     }
     return payload
   }

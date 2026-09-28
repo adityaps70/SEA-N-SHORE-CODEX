@@ -5,8 +5,12 @@ vi.mock('@/features/account-export/components/data-export-panel', () => ({
   DataExportPanel: () => <div>Data export controls</div>,
 }))
 
-vi.mock('@/features/account-deletion/components/delete-account-panel', () => ({
-  DeleteAccountPanel: () => <div>Delete account controls</div>,
+vi.mock('@/features/account-deletion/components/delete-account-section', () => ({
+  DeleteAccountSection: () => <div>Delete account controls</div>,
+}))
+
+vi.mock('@/features/auth/components/account-phone-section', () => ({
+  AccountPhoneSection: () => <div>Mobile number controls</div>,
 }))
 
 import SettingsPage from './page'
@@ -21,6 +25,16 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('heading', { name: 'Account & privacy' })).toBeInTheDocument()
     expect(screen.getByText('Data export controls')).toBeInTheDocument()
     expect(screen.getByText('Delete account controls')).toBeInTheDocument()
+    expect(screen.getByText('Mobile number controls')).toBeInTheDocument()
+  })
+
+  it('lists My Activities under Account & privacy, now that the header has no More menu', () => {
+    render(<SettingsPage />)
+
+    const section = screen.getByRole('heading', { name: 'Account & privacy' }).closest('section') as HTMLElement
+    const activities = within(section).getByRole('link', { name: /My Activities/ })
+    expect(activities).toHaveAttribute('href', '/activities')
+    expect(activities).toHaveClass('border-mist-200', 'hover:border-ocean-300')
   })
 
   it('makes every settings card that navigates look clickable, and keeps the security note from looking like a card', () => {
@@ -30,7 +44,7 @@ describe('SettingsPage', () => {
     expect(billing).toHaveAttribute('href', '/settings/billing')
     expect(billing).toHaveClass('border-mist-200', 'hover:border-ocean-300')
     expect(billing.querySelector('svg.lucide-chevron-right')).not.toBeNull()
-    expect(container.querySelectorAll('a svg.lucide-chevron-right')).toHaveLength(8)
+    expect(container.querySelectorAll('a svg.lucide-chevron-right')).toHaveLength(9)
     expect(screen.getByRole('link', { name: /Earnings/ })).toHaveAttribute('href', '/settings/earnings')
     expect(screen.getByRole('link', { name: /Payout details/ })).toHaveAttribute('href', '/settings/payouts')
 

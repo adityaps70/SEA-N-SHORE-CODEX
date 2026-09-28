@@ -123,6 +123,9 @@ describe('learning marketplace repository', () => {
     expect(seen[0]?.text).toContain("application.status = 'approved'")
     expect(seen[0]?.text).toContain('company.is_verified = true')
     expect(seen[0]?.text).not.toContain('course.is_discoverable = true')
+    // Removed with the owner's account, or the owner's plan ended: not shown or sold to new learners.
+    expect(seen[0]?.text).toContain('course.removed_at is null')
+    expect(seen[0]?.text).toContain('course.hidden_for_plan_at is null')
     expect(seen[0]?.text).not.toContain("course.access_type = 'free'")
     expect(seen[0]?.text).not.toContain('course.price_minor = 0')
   })

@@ -42,8 +42,8 @@ describe('NotificationBell', () => {
     render(<NotificationBell recent={[notification, readNotification]} unreadCount={1} />)
     fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
 
-    const unread = screen.getByRole('button', { name: /Member A sent you a connection request/i })
-    const read = screen.getByRole('button', { name: /Member B accepted your connection request/i })
+    const unread = screen.getByRole('button', { name: /Member A sent you a connection request/i }).closest('[data-notification-state]')
+    const read = screen.getByRole('button', { name: /Member B accepted your connection request/i }).closest('[data-notification-state]')
 
     expect(unread).toHaveAttribute('data-notification-state', 'unread')
     expect(unread).toHaveClass('border-l-4', 'border-ocean-700', 'bg-ocean-50')
@@ -65,6 +65,34 @@ describe('NotificationBell', () => {
     expect(screen.getByRole('region', { name: 'Notifications panel' })).toBeVisible()
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('region', { name: 'Notifications panel' })).not.toBeInTheDocument()
+  })
+
+  it('shows the actor photo linking to their profile and a post preview that opens the post', () => {
+    const reaction: NetworkNotification = {
+      ...notification,
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      type: 'post_reaction',
+      actor: { ...notification.actor!, avatarUrl: 'https://signed.example/member-a.webp' },
+      message: 'Member A reacted Like 👍 to your post.',
+      destination: '/posts/dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      postId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      postPreview: { postId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', mediaUrl: '/api/feed-media/a/b/photo.jpg', mediaType: 'image', text: 'Bridge watch lessons' },
+    }
+    render(<NotificationBell recent={[reaction, notification]} unreadCount={2} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+
+    const avatars = screen.getAllByRole('link', { name: "View Member A's profile" })
+    expect(avatars[0]).toHaveAttribute('href', '/people/member-a')
+    expect(screen.getByRole('img', { name: "Member A's profile photo" })).toHaveAttribute('src', 'https://signed.example/member-a.webp')
+    const preview = screen.getByRole('link', { name: 'Open post: Bridge watch lessons' })
+    expect(preview).toHaveAttribute('href', '/posts/dddddddd-dddd-4ddd-8ddd-dddddddddddd')
+    expect(preview.querySelector('img')).toHaveAttribute('src', '/api/feed-media/a/b/photo.jpg')
+    // A connection request is not about a post, so it has no preview.
+    expect(screen.queryByTestId(`notification-preview-${notification.id}`)).not.toBeInTheDocument()
+
+    fireEvent.click(preview)
+    expect(screen.queryByRole('region', { name: 'Notifications panel' })).not.toBeInTheDocument()
+    expect(screen.getByText('1')).toBeInTheDocument()
   })
 
   it('renders a useful zero state with no unread badge', () => {

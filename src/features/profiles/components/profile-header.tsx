@@ -4,15 +4,16 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { useActionState, useState } from 'react'
-import { Anchor, BadgeCheck, MapPin, Pencil, Ship, TimerReset } from 'lucide-react'
+import { createElement, useActionState, useState } from 'react'
+import { Building2, MapPin, Pencil, type LucideProps } from 'lucide-react'
 import { organizationPageHref } from '../organization-link'
 import { updateProfileIdentitySection, type ProfileInlineActionState } from '../profile-inline-actions'
 import { PERSONA_LABELS, personaUsesProfessionalCompany } from '../persona'
-import { profileAvailabilityLabel } from '../profile-availability'
+import { profileIdentityIcon } from '../persona-icons'
 import type { ContactVisibility, PublicProfile } from '../types'
 import { OrganizationLogo } from './organization-logo'
 import { OrganizationPicker } from './organization-picker'
+import { OrganizationStatusBadge } from './organization-status-badge'
 
 const profileTypeLabels: Record<PublicProfile['profileType'], string> = {
   seafarer: 'Seafarer',
@@ -75,8 +76,12 @@ export function ProfileHeader({
 
   const [state, formAction, pending] = useActionState(submitIdentity, initialState)
   const identityLabel = profile.persona ? PERSONA_LABELS[profile.persona] : profile.primaryIdentity ?? profileTypeLabels[profile.profileType]
+  const identityIcon = createElement(profileIdentityIcon(profile), {
+    'aria-hidden': true,
+    'data-testid': 'profile-identity-icon',
+    className: 'size-3.5',
+  } as LucideProps)
   const secondaryIdentities = profile.secondaryIdentities ?? []
-  const availabilityLabel = profileAvailabilityLabel(profile.availability)
   const showCompanyField = profile.persona
     ? personaUsesProfessionalCompany(profile.persona)
     : profile.identityRoot !== 'organisation'
@@ -116,18 +121,11 @@ export function ProfileHeader({
             </div>
             {avatarControls ? <div className="absolute -bottom-1 -right-1 z-10">{avatarControls}</div> : null}
           </div>
-
-          {availabilityLabel ? (
-            <span className="mb-1 inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full bg-mist-100 px-3 py-1 text-sm font-medium text-navy-900">
-              <TimerReset aria-hidden="true" className="size-4 text-teal-500" />
-              {availabilityLabel}
-            </span>
-          ) : null}
         </div>
 
         <div data-testid="profile-header-identity" className="mt-4 max-w-4xl">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-mist-50 px-2.5 py-1 text-xs font-semibold text-ocean-700">
-            <Anchor aria-hidden="true" className="size-3.5" />
+            {identityIcon}
             {identityLabel}
           </span>
 
@@ -178,13 +176,11 @@ export function ProfileHeader({
                 >
                   <OrganizationLogo logoUrl={profile.currentOrganization.logoUrl} size="xs" />
                   <span className="min-w-0 truncate">{profile.currentOrganization.name}</span>
-                  {profile.currentOrganization.verified ? (
-                    <BadgeCheck aria-label="Verified organization" className="size-3.5 shrink-0" />
-                  ) : null}
+                  <OrganizationStatusBadge organization={profile.currentOrganization} size="sm" />
                 </Link>
               ) : profile.currentCompany ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <Ship aria-hidden="true" className="size-4" />
+                  <Building2 aria-hidden="true" className="size-4" />
                   {profile.currentCompany}
                 </span>
               ) : null}
@@ -237,6 +233,7 @@ export function ProfileHeader({
                   error={state.fieldErrors?.currentCompany?.[0] ?? state.fieldErrors?.currentCompanyId?.[0]}
                   labelClassName={labelClass}
                   inputClassName={inputClass}
+                  returnTo="/profile/edit"
                 />
               ) : null}
               <label className={labelClass}>

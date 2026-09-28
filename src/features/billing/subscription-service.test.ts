@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import type { DatabaseQueryClient } from '@/lib/db/client'
 import { PaymentProviderError, PaymentVerificationError } from '@/features/payments/types'
-import type { CashfreeSubscriptionsClient } from './cashfree-subscriptions'
+import { CashfreeSubscriptionsError, type CashfreeSubscriptionsClient } from './cashfree-subscriptions'
 import { CURRENT_ACCESS_STATUSES, type CheckoutRecord } from './subscription-types'
 import type { SubscriptionRepository } from './subscription-repository'
 import {
@@ -80,7 +80,9 @@ function setup(options: { configured?: boolean; phone?: string | null; email?: s
   }
   let ids = 0
   const log = vi.fn()
+  const syncVisibility = vi.fn(async () => ({ hidden: 0, restored: 0 }))
   const service = createSubscriptionService({
+    syncVisibility,
     loadConfig: async () => (options.configured === false ? null : config),
     createClient: () => client,
     repository: repository as unknown as SubscriptionRepository,
@@ -97,7 +99,7 @@ function setup(options: { configured?: boolean; phone?: string | null; email?: s
     newId: () => `0f7e5b1c-1111-4111-8111-${String(++ids).padStart(12, '0')}`,
     log,
   })
-  return { service, memory, client, repository, prices, log }
+  return { service, memory, client, repository, prices, log, syncVisibility }
 }
 
 function signed(body: unknown, secret = config.clientSecret) {
@@ -192,6 +194,29 @@ describe('starting auto-pay', () => {
 
     const down = setup({ client: fakeClient({ createSubscription: vi.fn(async () => { throw new PaymentProviderError('provider_unreachable') }) as never }) })
     await expect(startMonthly(down.service)).rejects.toBeInstanceOf(BillingGatewayError)
+    await expect(startMonthly(down.service)).rejects.toMatchObject({ reason: 'gateway_error' })
+  })
+
+  it('reports "Subscriptions not enabled" when Cashfree refuses to create the plan, and logs the details', async () => {
+    const client = fakeClient({ createPlan: vi.fn(async () => { throw new CashfreeSubscriptionsError(400, 'Profile is inactive', 'request_failed', 'invalid_request_error') }) as never })
+    const { service, memory, log } = setup({ client })
+    await expect(startMonthly(service)).rejects.toMatchObject({ reason: 'subscriptions_unavailable' })
+    expect(memory.checkouts.size).toBe(0)
+    expect(client.createSubscription).not.toHaveBeenCalled()
+    expect(log).toHaveBeenCalledWith('billing_plan_create_failed', expect.objectContaining({
+      httpStatus: 400,
+      cashfreeCode: 'request_failed',
+      cashfreeType: 'invalid_request_error',
+      cashfreeMessage: 'Profile is inactive',
+      subscriptionsEnabled: false,
+    }))
+    expect(JSON.stringify(log.mock.calls)).not.toContain(config.clientSecret)
+  })
+
+  it('reports "Subscriptions not enabled" when the mandate create is refused for the same reason', async () => {
+    const client = fakeClient({ createSubscription: vi.fn(async () => { throw new CashfreeSubscriptionsError(403, 'Subscription is not enabled for this merchant', null, null) }) as never })
+    const { service } = setup({ client })
+    await expect(startMonthly(service)).rejects.toMatchObject({ reason: 'subscriptions_unavailable' })
   })
 })
 
@@ -240,6 +265,20 @@ describe('subscription webhooks', () => {
     expect(memory.checkouts.get(started.checkoutId)).toMatchObject({ status: 'active', paymentMethod: 'upi' })
   })
 
+  it('re-syncs the owner’s plan-gated items after a status change, and a sync failure never blocks the webhook', async () => {
+    const { service, syncVisibility, log } = setup()
+    const started = await startMonthly(service)
+    const subscriptionId = `snss_${started.checkoutId.replace(/-/g, '')}`
+    await service.handleWebhook(signed(statusWebhook(subscriptionId, 'ACTIVE')))
+    expect(syncVisibility).toHaveBeenCalledWith(subject)
+
+    syncVisibility.mockClear()
+    syncVisibility.mockRejectedValueOnce(new Error('column "hidden_for_plan_at" does not exist'))
+    await expect(service.handleWebhook(signed(statusWebhook(subscriptionId, 'CANCELLED', '2026-10-01T12:40:00+05:30')))).resolves.toMatchObject({ status: 'handled', changed: true })
+    expect(syncVisibility).toHaveBeenCalledWith(subject)
+    expect(log).toHaveBeenCalledWith('billing_plan_visibility_sync_failed', expect.objectContaining({ subject: 'profile' }))
+  })
+
   it('records renewal payments and past-due failures from payment webhooks', async () => {
     const { service, memory } = setup()
     const started = await startMonthly(service)
@@ -274,12 +313,13 @@ describe('subscription webhooks', () => {
 
 describe('cancel auto-renew', () => {
   it('cancels at Cashfree first, then keeps access to the paid-through date', async () => {
-    const { service, memory, client } = setup()
+    const { service, memory, client, syncVisibility } = setup()
     const checkout = memory.seedCheckout({ price: monthly, subject, status: 'active', paidThroughAt: '2026-10-20T00:00:00.000Z' })
     memory.seedAccess({ subject, planCode: 'creator_pro', status: 'active', billingProvider: 'cashfree', providerSubscriptionId: checkout.providerSubscriptionId, periodStartedAt: null, periodEndsAt: '2026-10-23T00:00:00.000Z', cancelAtPeriodEnd: false })
     const result = await service.cancelAutoRenew({ subject, actorProfileId: profileId })
     expect(client.cancelSubscription).toHaveBeenCalledWith(checkout.providerSubscriptionId)
     expect(result.access).toMatchObject({ cancelAtPeriodEnd: true, periodEndsAt: '2026-10-20T00:00:00.000Z', status: 'active' })
+    expect(syncVisibility).toHaveBeenCalledWith(subject)
     await expect(service.cancelAutoRenew({ subject, actorProfileId: profileId })).rejects.toBeInstanceOf(NothingToCancelError)
   })
 
@@ -295,9 +335,11 @@ describe('cancel auto-renew', () => {
 
 describe('billing job', () => {
   it('expires lapsed plans even when Cashfree is not set up', async () => {
-    const { service, memory } = setup({ configured: false })
+    const { service, memory, syncVisibility } = setup({ configured: false })
     memory.seedAccess({ subject, planCode: 'creator_pro', status: 'active', billingProvider: null, providerSubscriptionId: null, periodStartedAt: null, periodEndsAt: '2026-09-30T00:00:00.000Z', cancelAtPeriodEnd: false })
     await expect(service.runSweep()).resolves.toMatchObject({ expired: 1, configured: false })
+    // Every owner: hides items of plans that ended by date, restores renewed ones.
+    expect(syncVisibility).toHaveBeenCalledWith(null)
   })
 
   it('in merchant charge mode raises each renewal once, however often it runs', async () => {

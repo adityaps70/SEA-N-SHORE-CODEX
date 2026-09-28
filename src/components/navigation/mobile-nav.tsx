@@ -1,44 +1,23 @@
-import {
-  BookOpenCheck,
-  Building2,
-  BriefcaseBusiness,
-  CalendarDays,
-  Ellipsis,
-  History,
-  House,
-  MessagesSquare,
-  Settings,
-  ShieldCheck,
-  UsersRound,
-  Bookmark,
-} from 'lucide-react'
+import { BookOpenCheck, BriefcaseBusiness, House, MessagesSquare, UsersRound } from 'lucide-react'
 import { ActiveNavLink } from './active-nav-link'
-import { HeaderMenu, type HeaderMenuItem } from './header-menu'
 
-/** Four destinations plus More: five thumb-sized targets, the mobile platform maximum. */
+/**
+ * Five thumb-sized destinations, the mobile platform maximum. Messages,
+ * notifications and the account menu (Profile, Events, Organizations, Admin,
+ * Settings) live in the phone top header.
+ */
 const destinations = [
   { href: '/home', label: 'Home', icon: House },
   { href: '/network', label: 'Network', accessibleLabel: 'My Network', icon: UsersRound },
   { href: '/jobs', label: 'Jobs', icon: BriefcaseBusiness },
   { href: '/learn', label: 'Learn', icon: BookOpenCheck },
+  { href: '/community', label: 'Community', icon: MessagesSquare },
 ] as const
 
-const navClass = 'flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 border-t-2 border-transparent px-0.5 text-center text-[11px] font-medium leading-tight text-navy-900'
+const navClass = 'flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 border-t-2 border-transparent px-0.5 text-center text-[11px] font-medium leading-tight text-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500'
 const activeNavClass = 'border-ocean-600 bg-ocean-50 text-ocean-700'
 
-export function MobileNav({ canAccessAdmin = false }: { canAccessAdmin?: boolean }) {
-  // Messages and Profile are not repeated here: the mobile top header already
-  // shows both as always-visible icons.
-  const moreItems: HeaderMenuItem[] = [
-    { href: '/events', label: 'Events', icon: <CalendarDays className="size-4" /> },
-    { href: '/activities', label: 'My Activities', icon: <History className="size-4" /> },
-    { href: '/saved', label: 'Saved posts', icon: <Bookmark className="size-4" /> },
-    { href: '/organizations', label: 'Organizations', description: 'Your pages, access requests and discovery', icon: <Building2 className="size-4" /> },
-    { href: '/community', label: 'Community', badge: 'Preview', icon: <MessagesSquare className="size-4" /> },
-    ...(canAccessAdmin ? [{ href: '/admin', label: 'Admin', icon: <ShieldCheck className="size-4" /> }] : []),
-    { href: '/settings', label: 'Settings', icon: <Settings className="size-4" /> },
-  ]
-
+export function MobileNav() {
   return (
     <nav
       aria-label="Primary"
@@ -60,21 +39,6 @@ export function MobileNav({ canAccessAdmin = false }: { canAccessAdmin?: boolean
           </ActiveNavLink>
         )
       })}
-      <HeaderMenu
-        label="More"
-        direction="up"
-        align="right"
-        showChevron={false}
-        items={moreItems}
-        triggerClassName={`${navClass} w-full`}
-        activeTriggerClassName={activeNavClass}
-        trigger={(
-          <>
-            <Ellipsis aria-hidden="true" className="size-5 shrink-0" />
-            <span className="max-w-full truncate">More</span>
-          </>
-        )}
-      />
     </nav>
   )
 }

@@ -118,3 +118,58 @@ export function looksLikeTestAccount(input: { fullName?: string | null; email?: 
   const slug = input.slug?.toLowerCase() ?? ''
   return /^e2e\b/i.test(name) || email.endsWith('@example.com') || slug.startsWith('e2e-')
 }
+
+export function adminInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?'
+}
+
+/** Small round profile photo for admin lists, with initials when there is no photo. */
+export function AdminAvatar({ name, url, className = 'size-8' }: { name: string; url: string | null | undefined; className?: string }) {
+  if (url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- short-lived signed S3 URLs
+      <img src={url} alt="" loading="lazy" className={`${className} shrink-0 rounded-full bg-mist-100 object-cover`} />
+    )
+  }
+  return (
+    <span aria-hidden="true" className={`${className} grid shrink-0 place-items-center rounded-full bg-mist-100 text-[11px] font-bold text-navy-950`}>
+      {adminInitials(name)}
+    </span>
+  )
+}
+
+/** 1-based page number from a search parameter; anything invalid is page 1. */
+export function readAdminPage(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const page = Number.parseInt(raw ?? '', 10)
+  return Number.isFinite(page) && page > 1 ? Math.min(page, 10_000) : 1
+}
+
+/** Previous / next links under an admin list. Renders nothing when everything fits on one page. */
+export function AdminPagination({
+  label,
+  page,
+  hasNext,
+  hrefFor,
+}: {
+  label: string
+  page: number
+  hasNext: boolean
+  hrefFor: (page: number) => string
+}) {
+  if (page <= 1 && !hasNext) return null
+  const linkClass = 'inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'
+  const disabledClass = 'inline-flex min-h-9 items-center rounded-lg border border-mist-100 px-3 text-sm font-semibold text-muted'
+  return (
+    <nav aria-label={label} className="flex items-center justify-between gap-3">
+      {page > 1
+        ? <Link href={hrefFor(page - 1)} rel="prev" className={linkClass}>Previous</Link>
+        : <span aria-disabled="true" className={disabledClass}>Previous</span>}
+      <p className="text-sm font-medium text-muted">Page {page}</p>
+      {hasNext
+        ? <Link href={hrefFor(page + 1)} rel="next" className={linkClass}>Next</Link>
+        : <span aria-disabled="true" className={disabledClass}>Next</span>}
+    </nav>
+  )
+}

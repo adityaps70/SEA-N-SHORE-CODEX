@@ -1,6 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
-import { coursePublisherNameSql, publishedCourseVisibilitySql } from './course-publication'
+import { courseOpenToNewLearnersSql, coursePublisherNameSql, learnerCourseAccessSql, publishedCourseVisibilitySql } from './course-publication'
 
 type EnrollmentQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -152,7 +152,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
        left join public.companies company
          on company.id = course.company_id
        where course.id = $2
-         and ${publishedCourseVisibilitySql()}
+         and ${courseOpenToNewLearnersSql()}
          and course.access_type = 'free'
          and course.price_minor = 0
        on conflict (course_id, learner_id) do nothing
@@ -276,7 +276,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
         and certificate.learner_id = enrollment.learner_id
        where enrollment.learner_id = $1
          and enrollment.status in ('active', 'completed')
-         and ${publishedCourseVisibilitySql()}
+         and ${learnerCourseAccessSql()}
        group by
          enrollment.id,
          enrollment.status,

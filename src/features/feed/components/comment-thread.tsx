@@ -14,9 +14,10 @@ import {
   type PostReactionType,
   type ReactionSummary,
 } from '../types'
+import { AuthorAvatarLink, profileHref } from './author-avatar'
 import { EmojiPicker, insertEmojiAt } from './emoji-picker'
+import { COMMENT_COLLAPSE, ExpandableText } from './expandable-text'
 import { MentionInput, type SelectedMention } from './mention-input'
-import { MentionText } from './mention-text'
 import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
 import { ReactionSummaryTrigger } from './reaction-summary'
@@ -25,10 +26,6 @@ const initialState: CommentActionState = {}
 
 /** Threads with more replies than this start collapsed behind "View N replies". */
 export const REPLY_PREVIEW_LIMIT = 2
-
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
-}
 
 function relativeTime(timestamp: string) {
   const seconds = Math.round((Date.now() - new Date(timestamp).getTime()) / 1000)
@@ -305,16 +302,11 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
       data-testid={isReply ? `reply-thread-${comment.id}` : 'visible-top-level-comment'}
       data-comment-level={isReply ? 'reply' : 'parent'}
     >
-      <div className={`relative z-[1] grid shrink-0 place-items-center overflow-hidden bg-mist-100 font-semibold text-navy-950 ${avatarSize}`}>
-        {comment.author.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={comment.author.avatarUrl} alt={`${comment.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
-        ) : initials(comment.author.fullName)}
-      </div>
+      <AuthorAvatarLink author={comment.author} className={`relative z-[1] ${avatarSize}`} />
       <div className="min-w-0 flex-1">
         <div className={`relative rounded-2xl px-3 py-2.5 ${isReply ? 'bg-mist-50/70 ring-1 ring-mist-100' : 'bg-mist-50'}`}>
           <div className="flex flex-wrap items-baseline gap-x-2 pr-7">
-            <Link href={`/people/${comment.author.slug}`} className="text-sm font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{comment.author.fullName}</Link>
+            <Link href={profileHref(comment.author.slug)} className="text-sm font-semibold text-navy-950 hover:text-ocean-700 hover:underline">{comment.author.fullName}</Link>
             {isPostAuthor ? <span className="rounded-full bg-ocean-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ocean-800">Author</span> : null}
             <span className="min-w-0 truncate text-xs text-muted">{comment.author.rank ?? comment.author.headline ?? 'Maritime professional'}</span>
             <div className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted"><time dateTime={comment.createdAt}>{relativeTime(comment.createdAt)}</time>{edited ? <span>Edited</span> : null}</div>
@@ -325,7 +317,7 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
               <span className="truncate">
                 Replying to{' '}
                 {replyTarget.authorSlug ? (
-                  <Link href={`/people/${replyTarget.authorSlug}`} className="font-semibold text-navy-900 hover:text-ocean-700 hover:underline">{replyTarget.authorName}</Link>
+                  <Link href={profileHref(replyTarget.authorSlug)} className="font-semibold text-navy-900 hover:text-ocean-700 hover:underline">{replyTarget.authorName}</Link>
                 ) : <span className="font-semibold text-navy-900">{replyTarget.authorName}</span>}
               </span>
             </p>
@@ -352,7 +344,7 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
                 <button type="submit" disabled={managementPending} className="min-h-8 rounded-lg bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">{managementPending ? 'Saving…' : 'Save'}</button>
               </div>
             </form>
-          ) : <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink [overflow-wrap:anywhere]"><MentionText body={comment.body} mentions={comment.mentions} /></p>}
+          ) : <ExpandableText body={comment.body} mentions={comment.mentions} limits={COMMENT_COLLAPSE} className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink [overflow-wrap:anywhere]" />}
         </div>
         {!editing ? (
           <div data-testid={`comment-actions-${comment.id}`} className="mt-1 flex min-h-8 items-center gap-1.5 px-1">

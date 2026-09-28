@@ -15,12 +15,12 @@ import { ProfileNetworkStats } from '@/features/profiles/components/profile-netw
 import { ProfileHeader } from '@/features/profiles/components/profile-header'
 import { ProfileMediaControls } from '@/features/profiles/components/profile-media-controls'
 import { ProfileMembershipCard } from '@/features/profiles/components/profile-membership-card'
+import { ProfileOrganizations } from '@/features/profiles/components/profile-organizations'
 import { ProfilePassportToolbar } from '@/features/profiles/components/profile-passport-toolbar'
-import { organizationRepository } from '@/features/organizations/repository'
 import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnDgProfileDocument } from '@/features/profiles/profile-document-service'
 import { getProfileNetworkSummary } from '@/features/profiles/profile-network-stats'
-import { getOwnProfile } from '@/features/profiles/queries'
+import { getOwnProfile, getProfileOrganizations } from '@/features/profiles/queries'
 
 export const metadata: Metadata = { title: 'My profile' }
 
@@ -31,7 +31,7 @@ export default async function OwnProfilePage() {
     getOwnProfilePortfolio(),
     getPeopleYouMayKnow(3),
     getAccessContext(user.id),
-    organizationRepository.listUserOrganizations(user.id),
+    getProfileOrganizations(user.id),
     getProfileNetworkSummary(user.id, user.id).catch(() => null),
     getOwnDgProfileDocument(user.id).catch(() => null),
   ])
@@ -56,10 +56,11 @@ export default async function OwnProfilePage() {
 
         <ProfileAbout profile={profile} editHref="inline" />
         <MaritimeProfileCard profile={profile} editHref="inline" />
+        <ProfileOrganizations organizations={organizations} editable />
         <ProfileCareerTimeline experiences={portfolio.experiences} editable />
         <ProfileCredentialWallet credentials={portfolio.credentials} editable />
         {isSeafarer || dgProfile ? <ProfileDgDocumentCard profileId={profile.id} document={dgProfile} /> : null}
-        <ProfileMembershipCard profile={profile} access={access} organizations={organizations} />
+        <ProfileMembershipCard profile={profile} access={access} />
       </div>
 
       <aside className="min-w-0 lg:sticky lg:top-24 lg:self-start">

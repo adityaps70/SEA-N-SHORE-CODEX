@@ -38,6 +38,7 @@ type VerificationRow = QueryResultRow & {
 type OrganizationRow = QueryResultRow & {
   company_id: string
   company_verified: boolean | null
+  company_claim_status?: string | null
   role: string
   plan_code: string | null
   entitlements: string[] | null
@@ -125,6 +126,7 @@ export function createAccessRepository(input: { query?: AccessQuery } = {}) {
         `select
            c.id as company_id,
            coalesce(c.is_verified, false) as company_verified,
+           coalesce(to_jsonb(c) ->> 'claim_status', 'claimed') as company_claim_status,
            cm.role::text as role,
            subscription.plan_code,
            coalesce(grants.entitlements, '{}'::text[]) as entitlements
@@ -191,6 +193,7 @@ export function createAccessRepository(input: { query?: AccessQuery } = {}) {
         plan,
         role: organizationRole(row.role),
         verified: Boolean(row.company_verified),
+        unclaimed: row.company_claim_status === 'unclaimed',
         entitlements: uniqueCapabilities([
           ...(planEntitlementsByCode.get(plan) ?? []),
           ...grantEntitlements,

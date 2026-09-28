@@ -96,18 +96,11 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
     reasons.push('Trading-area experience matches the sailing region')
   }
 
-  // Joining availability: 10 points.
-  const joiningFrom = parseDate(job.joiningFrom)
-  const joiningUntil = parseDate(job.joiningUntil)
-  const available = parseDate(profile.availability)
-  if (!joiningFrom && !joiningUntil) {
-    score += 10
-  } else if (available && (!joiningUntil || available.getTime() <= joiningUntil.getTime())) {
-    score += 10
-    reasons.push('joining availability fits the required window')
-  } else {
-    warnings.push('Your recorded availability may not fit the required joining window.')
-  }
+  // Joining availability: 10 points. Sea N Shore no longer asks members for
+  // their availability (at sea / ashore / available from), so it is unknown for
+  // everyone: it neither adds a reason nor costs points, and any value left in
+  // older profiles is ignored.
+  score += 10
 
   // Career direction: 5 points.
   if ((job.domain === 'shore' && profile.shoreCareerPreference) || (job.domain === 'sea' && !profile.shoreCareerPreference)) {

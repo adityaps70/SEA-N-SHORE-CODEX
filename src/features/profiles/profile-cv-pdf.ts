@@ -1,5 +1,4 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib'
-import { profileAvailabilityLabel } from './profile-availability'
 import type { ProfilePortfolio } from './profile-portfolio-types'
 import type { PublicProfile } from './types'
 import { formatYears } from '@/lib/format'
@@ -162,7 +161,6 @@ export async function buildProfileCvPdf({
   const meta = [
     profile.location,
     profile.currentCompany,
-    profileAvailabilityLabel(profile.availability) ? `Status: ${profileAvailabilityLabel(profile.availability)}` : null,
   ].filter((value): value is string => Boolean(value))
   if (meta.length) paragraph(meta.join('  |  '), { size: 9.5, lineHeight: 14, color: rgb(0.35, 0.4, 0.44) })
   y -= 4

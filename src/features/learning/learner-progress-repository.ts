@@ -1,7 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { issueCertificateForCompletedEnrollmentWithQuery } from './certificate-repository'
-import { publishedCourseVisibilitySql } from './course-publication'
+import { learnerCourseAccessSql } from './course-publication'
 
 export type LearnerProgressQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type ProgressTransaction = <T>(work: (query: LearnerProgressQuery) => Promise<T>) => Promise<T>
@@ -170,7 +170,7 @@ export async function completeLearningLessonWithQuery(
        and course.slug = $2
        and lesson.id = $3
        and enrollment.status in ('active', 'completed')
-       and ${publishedCourseVisibilitySql()}
+       and ${learnerCourseAccessSql()}
        ${manualRuleSql}
        ${accessPolicySql}
      for update of enrollment`,
@@ -257,7 +257,7 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
            and lesson.id = $3
            and lesson.lesson_type in ('video', 'audio')
            and enrollment.status in ('active', 'completed')
-           and ${publishedCourseVisibilitySql()}
+           and ${learnerCourseAccessSql()}
            ${accessPolicySql}
          for update of enrollment`,
         [learnerId, slug, lessonId],

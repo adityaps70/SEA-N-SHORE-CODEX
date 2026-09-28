@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
 import { HiringJobLifecycleActions } from '@/features/jobs/components/hiring-job-lifecycle-actions'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { JobCompanyIdentity } from '@/features/jobs/components/job-company-identity'
@@ -126,6 +127,7 @@ export default async function HiringJobsPage({
                     {job.urgent ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">Urgent</span> : null}
                   </div>
                   <p className="mt-1 text-sm text-muted">{presentation.description}</p>
+                  {job.hiddenForPlan ? <PlanHiddenBanner companyId={job.companyId} className="mt-3" /> : null}
                   <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-muted">
                     <span className="rounded-full border border-mist-100 px-2.5 py-1">{job.domain === 'sea' ? 'Sea job' : 'Shore job'}</span>
                     {job.rank ? <span className="rounded-full border border-mist-100 px-2.5 py-1">{job.rank}</span> : null}

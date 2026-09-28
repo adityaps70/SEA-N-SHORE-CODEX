@@ -28,6 +28,8 @@ export type CancelAutoRenewResult = { ok: true; message: string } | { ok: false;
 
 export const BILLING_NOT_CONFIGURED_TITLE = 'Online payment isn’t set up yet'
 export const BILLING_NOT_CONFIGURED_MESSAGE = 'Sea N Shore is finishing its payment setup. Nothing can be charged until it is ready. To get the plan sooner, contact the Sea N Shore team.'
+/** Cashfree has not activated Subscriptions (auto-pay) for the Sea N Shore account yet. One-time payments still work. */
+export const AUTOPAY_UNAVAILABLE_MESSAGE = 'Auto-pay isn’t available yet. We’re finishing setup with our payment provider — please try again later or contact info@beaufortmarine.in.'
 export const CONTACT_REQUIRED_MESSAGE = 'Our payment partner needs your mobile number and email address to set up auto-renew and send you payment notices.'
 export const EMAIL_INVALID_MESSAGE = 'Enter a valid email address, for example name@example.com.'
 

@@ -86,6 +86,8 @@ describe('matchesNetworkSearch', () => {
     expect(matchesNetworkSearch(profile(), 'sire')).toBe(true)
     expect(matchesNetworkSearch(profile(), 'mumbai')).toBe(true)
     expect(matchesNetworkSearch(profile(), 'oceanic')).toBe(true)
+    // Availability is no longer asked for or shown, so it is not searchable either.
+    expect(matchesNetworkSearch(profile(), 'mentoring')).toBe(false)
   })
 
   it('trims search input and treats an empty query as a match', () => {

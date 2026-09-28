@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const navigation = vi.hoisted(() => ({ pathname: '/home' }))
 vi.mock('next/navigation', () => ({ usePathname: () => navigation.pathname }))
+vi.mock('@/features/auth/actions', () => ({ signOut: vi.fn() }))
 
 import { HeaderMenu } from './header-menu'
-import { MobileNav } from './mobile-nav'
+import { MobileAppHeader } from './mobile-app-header'
 
 const items = [
   { href: '/activities', label: 'My Activities' },
@@ -73,11 +74,10 @@ describe('HeaderMenu', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('does not repeat Messages or Profile in the mobile More menu (both are in the mobile top header)', () => {
-    render(<MobileNav />)
-    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+  it('keeps Messages out of the phone account menu (it is an icon in the phone header)', () => {
+    render(<MobileAppHeader unreadCount={0} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
     expect(screen.queryByRole('menuitem', { name: /Messages/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('menuitem', { name: /^Profile/ })).not.toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: /Settings/ })).toHaveAttribute('href', '/settings')
   })
 })

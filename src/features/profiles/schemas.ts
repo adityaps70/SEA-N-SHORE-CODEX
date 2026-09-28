@@ -65,7 +65,6 @@ const discardIrrelevantMaritimeValues = (value: unknown) => {
     vesselTypes: undefined,
     tradingAreas: undefined,
     shoreCareerPreference: undefined,
-    availability: undefined,
   }
 }
 
@@ -90,7 +89,6 @@ const onboardingFieldsSchema = z
       (value) => value === true || value === 'true' || value === 'on',
       z.boolean(),
     ),
-    availability: optionalText(100, 'Keep availability details to 100 characters or fewer.'),
   })
   .superRefine((data, context) => {
     if (data.profileType === 'seafarer' && (!data.rank || data.rank.length < 2)) {

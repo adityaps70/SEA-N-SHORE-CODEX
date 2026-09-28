@@ -109,5 +109,7 @@ export type CompanySearchResult = {
   /** Display label for the organization type (resolved from the type code when present). */
   companyType: string | null
   verified: boolean
+  /** An unclaimed page added by someone who works there; nobody can approve join requests. */
+  unclaimed?: boolean
   website: string | null
 }

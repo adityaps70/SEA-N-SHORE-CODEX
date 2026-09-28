@@ -1,21 +1,28 @@
 'use client'
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { BadgeCheck, ExternalLink, Search, X } from 'lucide-react'
+import { BadgeCheck, Briefcase, Building2, Clock3, Search, X } from 'lucide-react'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import { cn } from '@/lib/cn'
 import {
-  createOrganizationHref,
   ORGANIZATION_SEARCH_MIN_LENGTH,
+  registerOrganizationHref,
+  type LinkedOrganization,
+  type OrganizationReturnPath,
   type OrganizationSearchResult,
 } from '../organization-link'
 import { OrganizationLogo } from './organization-logo'
+import { OrganizationStatusBadge } from './organization-status-badge'
+import { UnclaimedOrganizationForm } from './unclaimed-organization-form'
 
 export type PickerOrganization = {
   id: string
   name: string
   logoUrl?: string | null
   verified?: boolean
+  unclaimed?: boolean
+  /** The member's own organization that Sea N Shore is still verifying. */
+  pending?: boolean
 }
 
 type SearchStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -32,8 +39,13 @@ function sameName(left: string, right: string) {
 
 /**
  * Type-ahead for "current organization". Picking a result links the profile to
- * that organization's page on Sea N Shore (its id goes in a hidden field); typing
- * a name that is not listed still saves it as plain text.
+ * that organization's page on Sea N Shore (its id goes in a hidden field).
+ * When the organization is not listed the member chooses:
+ * - "I own or manage this organization": the registration flow, verified by
+ *   Sea N Shore, prefilled with the name and returning to `returnTo`;
+ * - "I just work there": a small inline form that adds an unclaimed page and
+ *   links it straight away.
+ * Typing a name without choosing still saves it as plain text.
  */
 export function OrganizationPicker({
   label,
@@ -45,6 +57,8 @@ export function OrganizationPicker({
   hint,
   labelClassName = defaultLabelClass,
   inputClassName = defaultInputClass,
+  returnTo,
+  onBeforeRegister,
 }: {
   label: string
   name?: string
@@ -55,6 +69,10 @@ export function OrganizationPicker({
   hint?: string
   labelClassName?: string
   inputClassName?: string
+  /** Page the registration flow returns to (it then links the new organization). */
+  returnTo?: OrganizationReturnPath
+  /** Called just before leaving for the registration flow, e.g. to keep a draft. */
+  onBeforeRegister?: (link: HTMLAnchorElement) => void
 }) {
   const baseId = useId()
   const inputId = `${baseId}-input`
@@ -68,6 +86,8 @@ export function OrganizationPicker({
   const [results, setResults] = useState<OrganizationSearchResult[]>([])
   const [searchedFor, setSearchedFor] = useState('')
   const [activeIndex, setActiveIndex] = useState(-1)
+  const [adding, setAdding] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -134,25 +154,42 @@ export function OrganizationPicker({
 
   function onChange(value: string) {
     setText(value)
+    setNotice(null)
     if (linked && !sameName(value, linked.name)) setLinked(null)
     setOpen(true)
     scheduleSearch(value)
   }
 
-  function select(organization: OrganizationSearchResult) {
+  function select(organization: LinkedOrganization, options: { focus?: boolean } = {}) {
     setText(organization.name)
     setLinked({
       id: organization.id,
       name: organization.name,
       logoUrl: organization.logoUrl,
       verified: organization.verified,
+      unclaimed: organization.unclaimed,
     })
+    setAdding(false)
     close()
-    inputRef.current?.focus()
+    if (options.focus !== false) inputRef.current?.focus()
+  }
+
+  function startAdding() {
+    abortRef.current?.abort()
+    if (timerRef.current) clearTimeout(timerRef.current)
+    close()
+    setNotice(null)
+    setAdding(true)
+  }
+
+  function added(organization: LinkedOrganization) {
+    select(organization)
+    setNotice(`${organization.name} is now on Sea N Shore as an unclaimed page and linked here. It is saved with your profile.`)
   }
 
   function unlink() {
     setLinked(null)
+    setNotice(null)
     inputRef.current?.focus()
   }
 
@@ -180,11 +217,11 @@ export function OrganizationPicker({
   }
 
   const term = text.trim()
-  const showPanel = open && term.length >= ORGANIZATION_SEARCH_MIN_LENGTH && !linked
+  const showPanel = open && !adding && term.length >= ORGANIZATION_SEARCH_MIN_LENGTH && !linked
   const exactMatch = results.some((organization) => sameName(organization.name, term))
   const showCreate = status === 'ready' && !exactMatch && sameName(searchedFor, term)
   const activeOptionId = activeIndex >= 0 && results[activeIndex] ? `${baseId}-option-${results[activeIndex].id}` : undefined
-  const helpText = error ?? hint ?? 'Start typing to find its page on Sea N Shore. Not listed? Keep the name as you typed it.'
+  const helpText = error ?? hint ?? 'Start typing to find its page on Sea N Shore. Not listed? Add it, or keep the name as you typed it.'
 
   return (
     <div className={cn('min-w-0', labelClassName)}>
@@ -245,9 +282,9 @@ export function OrganizationPicker({
                   >
                     <OrganizationLogo logoUrl={organization.logoUrl} size="sm" />
                     <span className="min-w-0 flex-1">
-                      <span className="flex min-w-0 items-center gap-1 text-sm font-semibold text-navy-950">
+                      <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-navy-950">
                         <span className="truncate">{organization.name}</span>
-                        {organization.verified ? <BadgeCheck aria-label="Verified organization" className="size-3.5 shrink-0 text-ocean-700" /> : null}
+                        <OrganizationStatusBadge organization={organization} size="sm" />
                       </span>
                       {meta ? <span className="block truncate text-xs text-muted">{meta}</span> : null}
                     </span>
@@ -256,28 +293,52 @@ export function OrganizationPicker({
               })}
             </ul>
             {showCreate ? (
-              <div className={cn('bg-mist-50/60 px-3 py-2.5 text-sm', results.length ? 'border-t border-mist-100' : null)}>
-                <p className="text-navy-950">
-                  Can&apos;t find {term}?{' '}
+              <div role="group" aria-labelledby={`${baseId}-missing`} className={cn('bg-mist-50/60 px-3 py-3 text-sm', results.length ? 'border-t border-mist-100' : null)}>
+                <p id={`${baseId}-missing`} className="font-semibold text-navy-950">Can&apos;t find {term}? Tell us how you are connected to it.</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <a
-                    href={createOrganizationHref(term)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-semibold text-ocean-700 hover:underline"
+                    href={registerOrganizationHref(term, returnTo)}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={(event) => onBeforeRegister?.(event.currentTarget)}
+                    className="flex min-h-11 items-start gap-2.5 rounded-xl border border-mist-200 bg-white p-3 text-left transition hover:border-ocean-300 hover:bg-ocean-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
                   >
-                    Create its page
-                    <ExternalLink aria-hidden="true" className="size-3.5" />
-                    <span className="sr-only">(opens in a new tab)</span>
+                    <Building2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ocean-700" />
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-navy-950">I own or manage this organization</span>
+                      <span className="mt-0.5 block text-xs leading-5 text-muted">Register it. Sea N Shore verifies it before it can publish, then you come back here.</span>
+                    </span>
                   </a>
-                </p>
-                <p className="mt-1 text-xs leading-5 text-muted">
-                  Sea N Shore reviews new organization pages before they go live. You can still save the name as you typed it.
-                </p>
+                  <button
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={startAdding}
+                    className="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-xl border border-mist-200 bg-white p-3 text-left transition hover:border-ocean-300 hover:bg-ocean-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+                  >
+                    <Briefcase aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ocean-700" />
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-navy-950">I just work there</span>
+                      <span className="mt-0.5 block text-xs leading-5 text-muted">Add a basic, unclaimed page and link it now.</span>
+                    </span>
+                  </button>
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted">Or keep typing and save the name as text.</p>
               </div>
             ) : null}
           </div>
         ) : null}
       </div>
+
+      {adding ? (
+        <UnclaimedOrganizationForm
+          initialName={term}
+          onAdded={added}
+          onUseExisting={(organization) => select(organization)}
+          onCancel={() => {
+            setAdding(false)
+            inputRef.current?.focus()
+          }}
+        />
+      ) : null}
 
       {linked ? (
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 font-normal">
@@ -285,6 +346,13 @@ export function OrganizationPicker({
             <OrganizationLogo logoUrl={linked.logoUrl} size="xs" />
             <span className="min-w-0 truncate">Linked to the {linked.name} page on Sea N Shore</span>
           </span>
+          {linked.pending ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-900">
+              <Clock3 aria-hidden="true" className="size-3" /> Waiting for Sea N Shore verification
+            </span>
+          ) : (
+            <OrganizationStatusBadge organization={linked} size="sm" />
+          )}
           <button
             type="button"
             onClick={unlink}
@@ -295,6 +363,7 @@ export function OrganizationPicker({
           </button>
         </div>
       ) : null}
+      {notice ? <p role="status" className="mt-1 text-xs font-medium text-emerald-800">{notice}</p> : null}
       <p id={descriptionId} className={cn('mt-1 text-xs font-normal', error ? 'font-medium text-red-700' : 'text-muted')}>
         {helpText}
       </p>

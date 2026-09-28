@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowUpRight, MapPin, Ship } from 'lucide-react'
+import { ArrowUpRight, Building2, MapPin, Ship } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { PublicProfile } from '../types'
 
@@ -50,7 +50,9 @@ export function ProfileDirectoryCard({ profile }: { profile: PublicProfile }) {
         ) : null}
         {profile.rank || profile.currentCompany ? (
           <p className="flex items-center gap-2">
-            <Ship aria-hidden="true" className="size-4 shrink-0" />
+            {profile.rank
+              ? <Ship aria-hidden="true" className="size-4 shrink-0" />
+              : <Building2 aria-hidden="true" className="size-4 shrink-0" />}
             <span className="truncate">{[profile.rank, profile.currentCompany].filter(Boolean).join(' · ')}</span>
           </p>
         ) : null}

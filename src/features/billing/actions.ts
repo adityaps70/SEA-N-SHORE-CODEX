@@ -8,6 +8,7 @@ import { PHONE_INVALID_MESSAGE, PHONE_REJECTED_MESSAGE } from '@/features/paymen
 import { canBuyCreatorPro, canManageOrganizationBilling, organizationIsVerified } from './billing-access'
 import { formatBillingDate } from './billing-view'
 import {
+  AUTOPAY_UNAVAILABLE_MESSAGE,
   BILLING_NOT_CONFIGURED_MESSAGE,
   CONTACT_REQUIRED_MESSAGE,
   EMAIL_INVALID_MESSAGE,
@@ -84,6 +85,7 @@ function refresh(subject: BillingSubject) {
 }
 
 function gatewayMessage(error: BillingGatewayError) {
+  if (error.reason === 'subscriptions_unavailable') return AUTOPAY_UNAVAILABLE_MESSAGE
   const detail = error.providerMessage ? ` (${error.providerMessage.replace(/\.$/, '')})` : ''
   return `Our payment partner couldn’t start auto-pay just now${detail}. No money was taken. Please try again in a few minutes.`
 }

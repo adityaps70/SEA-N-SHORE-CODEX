@@ -31,6 +31,12 @@ describe('listable organization rule', () => {
     expect(sql).toContain('where listing_application.company_id = c.id')
     expect(sql).toContain("blocked_application.status <> 'approved'")
   })
+
+  it('keeps unclaimed pages listed while a claim is reviewed, but not once suspended', () => {
+    const sql = listableOrganizationSql('c')
+    expect(sql).toContain("coalesce(to_jsonb(c) ->> 'claim_status', 'claimed') = 'unclaimed'")
+    expect(sql).toContain("suspended_application.status = 'suspended'")
+  })
 })
 
 describe('organization link repository', () => {
@@ -50,6 +56,7 @@ describe('organization link repository', () => {
       name: 'Oceanic Ship Management',
       logoUrl: `/api/company-logo/${ORGANIZATION_ID}`,
       verified: true,
+      unclaimed: false,
       type: 'Ship manager',
       location: 'Mumbai, India',
     }])
@@ -82,6 +89,7 @@ describe('organization link repository', () => {
       name: 'Oceanic Ship Management',
       logoUrl: null,
       verified: false,
+      unclaimed: false,
     })
     const [text, values] = callsOf(query)[0] ?? []
     expect(text).toContain('where c.id = $1')
@@ -103,5 +111,35 @@ describe('organization link repository', () => {
     expect(values).toEqual([USER_ID])
     expect(organizations[0]).toMatchObject({ slug: 'oceanic-ship-management', role: 'administrator', logoUrl: `/api/company-logo/${ORGANIZATION_ID}` })
     expect(organizations[1]?.role).toBe('member')
+  })
+
+  it('marks unclaimed organizations in search results', async () => {
+    const query = vi.fn(async () => [organizationRow({ is_verified: false, claim_status: 'unclaimed' })])
+    const repository = createOrganizationLinkRepository({ query })
+
+    const [result] = await repository.searchListableOrganizations('Oceanic')
+
+    expect(callsOf(query)[0]?.[0]).toContain("coalesce(to_jsonb(c) ->> 'claim_status', 'claimed') as claim_status")
+    expect(result).toMatchObject({ verified: false, unclaimed: true })
+  })
+
+  it('lists profile organizations from approved memberships of listed organizations, managers first', async () => {
+    const query = vi.fn(async () => [
+      organizationRow({ member_role: 'owner' }),
+      organizationRow({ id: 'second', slug: 'harbour-crew', name: 'Harbour Crew', member_role: 'recruiter', is_verified: false, claim_status: 'unclaimed' }),
+    ])
+    const repository = createOrganizationLinkRepository({ query })
+
+    const organizations = await repository.listProfileOrganizations(USER_ID)
+
+    const [text, values] = callsOf(query)[0] ?? []
+    expect(text).toContain('cm.approved_at is not null')
+    expect(text).toContain(listableOrganizationSql('c'))
+    expect(text).toMatch(/order by\s+case cm.role::text when 'owner' then 0 when 'administrator' then 1 else 2 end/)
+    expect(values).toEqual([USER_ID, 12])
+    expect(organizations).toEqual([
+      expect.objectContaining({ slug: 'oceanic-ship-management', role: 'owner', relation: 'manages', verified: true, type: 'Ship manager', location: 'Mumbai, India' }),
+      expect.objectContaining({ slug: 'harbour-crew', role: 'recruiter', relation: 'works_at', verified: false, unclaimed: true }),
+    ])
   })
 })

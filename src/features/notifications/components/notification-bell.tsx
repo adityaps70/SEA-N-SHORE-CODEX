@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState, useTransition } from 'react'
 import { loadNotificationChrome, markAllNotificationsRead, markNotificationRead } from '../actions'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import type { NetworkNotification } from '../types'
+import { NotificationActorAvatar, NotificationPostThumb } from './notification-visuals'
 
 function notificationDate(timestamp: string) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -79,6 +80,16 @@ export function NotificationBell({
     })
   }
 
+  /** Opening the post preview link marks the notification read without holding up navigation. */
+  function openPreview(notification: NetworkNotification) {
+    setOpen(false)
+    if (notification.readAt) return
+    const readAt = new Date().toISOString()
+    setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item))
+    setLocalUnreadCount((current) => Math.max(0, current - 1))
+    void markNotificationRead(notification.id).catch(() => undefined)
+  }
+
   function markAll() {
     if (!localUnreadCount || pending) return
     setError('')
@@ -131,20 +142,26 @@ export function NotificationBell({
               {notifications.map((notification) => {
                 const unread = !notification.readAt
                 return (
-                  <button
+                  <div
                     key={notification.id}
-                    type="button"
-                    disabled={pending}
-                    onClick={() => openNotification(notification)}
                     data-notification-state={unread ? 'unread' : 'read'}
-                    className={`relative block w-full px-4 py-3 text-left transition hover:bg-mist-50 disabled:opacity-60 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-3' : ''}`}
+                    className={`relative flex w-full items-center gap-2.5 px-4 py-2.5 transition hover:bg-mist-50 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-3' : ''}`}
                   >
-                    <span className={`block text-sm leading-5 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
-                    <span className="mt-1 flex items-center gap-2">
-                      {unread ? <span aria-hidden="true" className="size-1.5 rounded-full bg-ocean-700" /> : null}
-                      <time dateTime={notification.createdAt} className="text-xs text-muted">{notificationDate(notification.createdAt)}</time>
-                    </span>
-                  </button>
+                    <NotificationActorAvatar notification={notification} size="size-10" />
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => openNotification(notification)}
+                      className="block min-w-0 flex-1 cursor-pointer rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:opacity-60"
+                    >
+                      <span className={`block text-sm leading-5 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                      <span className="mt-1 flex items-center gap-2">
+                        {unread ? <span aria-hidden="true" className="size-1.5 rounded-full bg-ocean-700" /> : null}
+                        <time dateTime={notification.createdAt} className="text-xs text-muted">{notificationDate(notification.createdAt)}</time>
+                      </span>
+                    </button>
+                    <NotificationPostThumb notification={notification} size="size-11" onOpen={() => openPreview(notification)} />
+                  </div>
                 )
               })}
             </div>

@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/lib/aws/storage', () => ({
+  createMediaReadUrl: vi.fn(async (key: string) => `https://media.example/${key}?signed`),
+}))
 vi.mock('@/features/admin/repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/admin/repository')>()
   return {
@@ -54,7 +57,8 @@ describe('/admin/users', () => {
     expect(mocks.searchUsers).toHaveBeenCalledWith('admin-1', {
       query: '',
       status: 'deletion_requested',
-      limit: 100,
+      limit: 51,
+      offset: 0,
     })
     expect(screen.getByRole('heading', { name: 'Deleted account records' })).toBeInTheDocument()
     expect(screen.getByText(/retained only so moderation history and integrity records remain traceable/i)).toBeInTheDocument()
@@ -87,5 +91,36 @@ describe('/admin/users', () => {
     expect(screen.getByText('Meera Kulkarni')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Show them' })).toHaveAttribute('href', '/admin/users?status=active')
     expect(screen.getByRole('link', { name: 'Suspended' })).toHaveAttribute('href', '/admin/users?status=suspended&test=hide')
+  })
+
+  it('shows each member’s profile photo, with initials when there is none', async () => {
+    const withPhoto: AdminUserSummary = { ...deletedRecord, id: 'u-photo', fullName: 'Meera Kulkarni', slug: 'meera-k', email: 'meera@example.net', status: 'active', avatarPath: 'profiles/u-photo/avatar-1.jpg' }
+    const withoutPhoto: AdminUserSummary = { ...deletedRecord, id: 'u-plain', fullName: 'Arjun Rao', slug: 'arjun-rao', email: 'arjun@example.net', status: 'active', avatarPath: null }
+    mocks.searchUsers.mockResolvedValue([withPhoto, withoutPhoto])
+
+    const { container } = render(await AdminUsersPage({ searchParams: Promise.resolve({}) }))
+
+    const photos = container.querySelectorAll('tbody img')
+    expect(photos).toHaveLength(1)
+    expect(photos[0]).toHaveAttribute('src', 'https://media.example/profiles/u-photo/avatar-1.jpg?signed')
+    expect(photos[0]).toHaveClass('rounded-full')
+    expect(screen.getByText('AR')).toBeInTheDocument()
+  })
+
+  it('pages through users 50 at a time and keeps the filters in the page links', async () => {
+    const many = Array.from({ length: 51 }, (_, index): AdminUserSummary => ({
+      ...deletedRecord, id: `u-${index}`, fullName: `Member ${index}`, slug: `member-${index}`, email: `m${index}@example.net`, status: 'active',
+    }))
+    mocks.searchUsers.mockResolvedValue(many)
+
+    render(await AdminUsersPage({ searchParams: Promise.resolve({ status: 'active', page: '2' }) }))
+
+    expect(mocks.searchUsers).toHaveBeenCalledWith('admin-1', { query: '', status: 'active', limit: 51, offset: 50 })
+    expect(screen.queryByText('Member 50')).not.toBeInTheDocument()
+    const pages = screen.getByRole('navigation', { name: 'User list pages' })
+    expect(pages).toHaveTextContent('Page 2')
+    expect(screen.getByRole('link', { name: 'Previous' })).toHaveAttribute('href', '/admin/users?status=active')
+    expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute('href', '/admin/users?status=active&page=3')
+    expect(screen.getByText(/50 results on page 2/)).toBeInTheDocument()
   })
 })

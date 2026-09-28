@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { EventCard } from '@/features/events/components/event-card'
 import { EventNav } from '@/features/events/components/event-nav'
@@ -12,7 +13,7 @@ export default async function HostingEventsPage() {
   const events = await calendarEventRepository.listHostedEvents(user.id)
   const upcoming = events.filter((event) => !event.isPast)
   const past = events.filter((event) => event.isPast)
-  const cards = (items: typeof events) => items.map((event) => <div key={event.id} className="space-y-2"><EventCard event={event} showStatus /><div className="flex flex-wrap gap-x-4 gap-y-1">{event.status !== 'cancelled' ? <Link href={`/events/${event.id}/edit`} className="inline-flex text-sm font-bold text-teal-700 hover:text-teal-800">Manage event →</Link> : null}{event.pricing === 'paid' ? <Link href={`/events/${event.id}/registrations`} className="inline-flex text-sm font-bold text-teal-700 hover:text-teal-800">Paid registrations →</Link> : null}</div></div>)
+  const cards = (items: typeof events) => items.map((event) => <div key={event.id} className="space-y-2">{event.hiddenForPlan ? <PlanHiddenBanner companyId={event.companyId} /> : null}<EventCard event={event} showStatus /><div className="flex flex-wrap gap-x-4 gap-y-1">{event.status !== 'cancelled' ? <Link href={`/events/${event.id}/edit`} className="inline-flex text-sm font-bold text-teal-700 hover:text-teal-800">Manage event →</Link> : null}{event.pricing === 'paid' ? <Link href={`/events/${event.id}/registrations`} className="inline-flex text-sm font-bold text-teal-700 hover:text-teal-800">Paid registrations →</Link> : null}</div></div>)
   return (
     <div className="mx-auto w-full max-w-7xl space-y-8 py-2 sm:px-6 sm:py-6 lg:px-8">
       <EventNav active="hosting" />

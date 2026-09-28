@@ -10,7 +10,7 @@ vi.mock('./active-nav-link', () => ({
 }))
 
 import { AppHeader } from './app-header'
-import { MobileNav } from './mobile-nav'
+import { MobileAppHeader } from './mobile-app-header'
 
 afterEach(() => cleanup())
 
@@ -29,10 +29,10 @@ describe('Settings navigation', () => {
     expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument()
   })
 
-  it('offers Settings from the mobile More menu for every signed-in user', () => {
-    render(<MobileNav />)
+  it('offers Settings from the phone account menu for every signed-in user', () => {
+    render(<MobileAppHeader unreadCount={0} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
 
     expect(screen.getByRole('menuitem', { name: /Settings/ })).toHaveAttribute('href', '/settings')
   })

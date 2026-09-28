@@ -87,6 +87,8 @@ export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
   /** The viewer's seat was bought through Sea N Shore checkout. */
   viewerHasPaid: boolean
   viewerIsHost: boolean
+  /** Hidden from everyone else because the owner's plan ended (kept; back on renewal). */
+  hiddenForPlan?: boolean
   registrationOpen: boolean
   isPast: boolean
   createdAt: string

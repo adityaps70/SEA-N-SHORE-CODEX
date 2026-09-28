@@ -21,8 +21,8 @@ export default async function AdminPage() {
     { label: 'Priority reports', count: metrics.highPriorityReports, href: '/admin/moderation?status=open&type=all', urgent: true },
     { label: 'Open reports', count: metrics.openReports, href: '/admin/moderation?status=open&type=all' },
     { label: 'Under review', count: metrics.reviewingReports, href: '/admin/moderation?status=reviewing&type=all' },
-    { label: 'Pending organizations', count: metrics.pendingOrganizations, href: '/admin/organizations' },
-    { label: 'Organizations asked for changes', count: metrics.changesRequested, href: '/admin/organizations?status=changes_requested' },
+    { label: 'Pending organizations', count: metrics.pendingOrganizations, href: '/admin/organizations?view=queue' },
+    { label: 'Organizations asked for changes', count: metrics.changesRequested, href: '/admin/organizations?view=queue&status=changes_requested' },
     { label: 'Pending access requests', count: metrics.pendingAccessRequests, href: '/admin/access' },
   ]
   const waiting = attention.filter((item) => item.count > 0)

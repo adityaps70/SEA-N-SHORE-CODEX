@@ -2,14 +2,13 @@
 
 import { useRouter } from 'next/navigation'
 import { useActionState, useState } from 'react'
-import { BriefcaseBusiness, Compass, Gauge, Pencil, Ship, TimerReset, Waves } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { Compass, Gauge, Ship, ShipWheel, Waves, type LucideIcon } from 'lucide-react'
 import { updateProfileProfessionalSection, type ProfileInlineActionState } from '../profile-inline-actions'
-import { normalizeProfileAvailability, profileAvailabilityLabel } from '../profile-availability'
 import type { PublicProfile } from '../types'
+import { ProfileField, ProfileFieldList, ProfileSection, ProfileSectionEditButton } from './profile-section'
 import { formatYears } from '@/lib/format'
 
-type Detail = { label: string; value: string; icon: typeof Ship }
+type Detail = { label: string; value: string; icon: LucideIcon }
 
 const initialState: ProfileInlineActionState = {}
 
@@ -34,7 +33,6 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
   const [state, formAction, pending] = useActionState(submitProfessional, initialState)
   const editable = Boolean(editHref)
   const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
-  const availabilityLabel = profileAvailabilityLabel(profile.availability)
 
   const details: Detail[] = [
     profile.rank ? { label: 'Rank', value: profile.rank, icon: Gauge } : null,
@@ -43,12 +41,11 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
       ? { label: 'Sailing experience', value: formatYears(profile.sailingExperienceYears), icon: Waves }
       : null,
     profile.vesselTypes.length
-      ? { label: 'Vessel types', value: profile.vesselTypes.join(' · '), icon: BriefcaseBusiness }
+      ? { label: 'Vessel types', value: profile.vesselTypes.join(' · '), icon: ShipWheel }
       : null,
     profile.tradingAreas.length
       ? { label: 'Trading areas', value: profile.tradingAreas.join(' · '), icon: Compass }
       : null,
-    availabilityLabel ? { label: 'Availability', value: availabilityLabel, icon: TimerReset } : null,
   ].filter((detail): detail is Detail => Boolean(detail))
 
   if (!isSeafarer) return null
@@ -58,26 +55,18 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
   const labelClass = 'block text-sm font-semibold text-navy-950'
 
   return (
-    <Card className="border border-mist-100 p-5 sm:p-7">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold tracking-tight text-navy-950">Maritime Experience</h2>
-        <div className="flex items-center gap-2">
+    <ProfileSection
+      id="profile-maritime"
+      title="Maritime Experience"
+      action={(
+        <>
           {profile.shoreCareerPreference && !editing ? (
             <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-semibold text-ocean-700">Open to shore career</span>
           ) : null}
-          {editable ? (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              aria-label="Edit Professional Record"
-              className="inline-flex size-9 items-center justify-center rounded-full border border-mist-200 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
-            >
-              <Pencil aria-hidden="true" className="size-4" />
-            </button>
-          ) : null}
-        </div>
-      </div>
-
+          {editable ? <ProfileSectionEditButton label="Edit Professional Record" onClick={() => setEditing(true)} /> : null}
+        </>
+      )}
+    >
       {editing ? (
         <form action={formAction} className="mt-5">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -106,14 +95,6 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
               <input name="tradingAreas" maxLength={2000} defaultValue={profile.tradingAreas.join(', ')} className={inputClass} />
               <FieldError state={state} name="tradingAreas" />
             </label>
-            <label className={labelClass}>
-              Availability
-              <select name="availability" defaultValue={normalizeProfileAvailability(profile.availability)} className={inputClass}>
-                <option value="onboard">Onboard</option>
-                <option value="ashore">Ashore</option>
-              </select>
-              <FieldError state={state} name="availability" />
-            </label>
             <label className="flex min-h-10 items-center gap-3 self-end rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950">
               <input name="shoreCareerPreference" type="checkbox" defaultChecked={profile.shoreCareerPreference} />
               Interested in shore opportunities
@@ -130,20 +111,14 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
           </div>
         </form>
       ) : details.length ? (
-        <dl className="mt-6 grid gap-3 sm:grid-cols-2">
-          {details.map(({ label, value, icon: Icon }) => (
-            <div key={label} className="rounded-2xl border border-mist-100 bg-mist-50/60 p-4">
-              <dt className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[.11em] text-muted">
-                <Icon aria-hidden="true" className="size-4 text-ocean-700" />
-                {label}
-              </dt>
-              <dd className="mt-2 text-sm font-semibold leading-6 text-navy-950">{value}</dd>
-            </div>
+        <ProfileFieldList className="mt-5">
+          {details.map(({ label, value, icon }) => (
+            <ProfileField key={label} label={label} icon={icon}>{value}</ProfileField>
           ))}
-        </dl>
+        </ProfileFieldList>
       ) : (
-        <p className="mt-4 text-sm text-muted">Add your maritime experience and current status.</p>
+        <p className="mt-4 text-sm text-muted">Add your rank, sea service, vessel types and trading areas.</p>
       )}
-    </Card>
+    </ProfileSection>
   )
 }

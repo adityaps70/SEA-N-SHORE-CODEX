@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, Eye, FilePenLine, Plus, Receipt, Wallet } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
@@ -47,6 +48,8 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
           {statusLabel(course.status)}
         </span>
       </div>
+
+      {course.hiddenForPlan ? <PlanHiddenBanner companyId={course.companyId} className="mt-4" /> : null}
 
       {course.adminReviewNote ? (
         <div className="mt-4 break-words rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-sm leading-6 text-amber-950">

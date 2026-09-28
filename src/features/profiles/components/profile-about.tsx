@@ -2,10 +2,9 @@
 
 import { useRouter } from 'next/navigation'
 import { useActionState, useState } from 'react'
-import { Pencil } from 'lucide-react'
-import { Card } from '@/components/ui/card'
 import { updateProfileAboutSection, type ProfileInlineActionState } from '../profile-inline-actions'
 import type { PublicProfile } from '../types'
+import { ProfileSection, ProfileSectionEditButton, profileFieldLabelClass } from './profile-section'
 
 const initialState: ProfileInlineActionState = {}
 
@@ -33,21 +32,11 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
   if (!editable && !profile.summary && profile.skills.length === 0) return null
 
   return (
-    <Card className="border border-mist-100 p-5 sm:p-7">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold tracking-tight text-navy-950">About</h2>
-        {editable ? (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            aria-label="Edit About"
-            className="inline-flex size-9 items-center justify-center rounded-full border border-mist-200 text-navy-950 hover:border-ocean-500 hover:text-ocean-700"
-          >
-            <Pencil aria-hidden="true" className="size-4" />
-          </button>
-        ) : null}
-      </div>
-
+    <ProfileSection
+      id="profile-about"
+      title="About"
+      action={editable ? <ProfileSectionEditButton label="Edit About" onClick={() => setEditing(true)} /> : null}
+    >
       {editing ? (
         <form action={formAction} className="mt-4 space-y-4">
           <label className="block text-sm font-semibold text-navy-950">
@@ -84,13 +73,13 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
       ) : (
         <>
           {profile.summary ? (
-            <p className="mt-3 whitespace-pre-line leading-7 text-muted">{profile.summary}</p>
+            <p className="mt-3 whitespace-pre-line text-sm leading-7 text-ink">{profile.summary}</p>
           ) : (
             editable ? <p className="mt-3 text-sm text-muted">Add a short professional introduction.</p> : null
           )}
           {profile.skills.length ? (
-            <div className="mt-6">
-              <p className="text-sm font-semibold text-navy-950">Skills</p>
+            <div className="mt-5">
+              <h3 className={profileFieldLabelClass}>Skills</h3>
               <div className="mt-3 flex flex-wrap gap-2">
                 {profile.skills.map((skill) => (
                   <span key={skill} className="rounded-full bg-mist-50 px-3 py-1.5 text-sm font-medium text-navy-900">
@@ -102,6 +91,6 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
           ) : null}
         </>
       )}
-    </Card>
+    </ProfileSection>
   )
 }

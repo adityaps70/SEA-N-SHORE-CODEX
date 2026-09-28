@@ -11,7 +11,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { Card } from '@/components/ui/card'
 import {
   createProfileCredential,
   deleteProfileCredential,
@@ -19,6 +18,7 @@ import {
   type ProfilePortfolioActionState,
 } from '../profile-portfolio-actions'
 import type { CredentialVerificationState, ProfileCredentialRecord } from '../profile-portfolio-types'
+import { ProfileSection } from './profile-section'
 
 const initialActionState: ProfilePortfolioActionState = {}
 
@@ -177,8 +177,8 @@ function CredentialEntry({
               {verificationLabel(credential.verificationState)}
             </span>
           </div>
-          <h3 className="mt-3 text-base font-semibold leading-6 text-navy-950 sm:text-lg">{credential.name}</h3>
-          <p className="mt-1 text-sm font-medium text-ink">{credential.issuer}</p>
+          <h3 className="mt-3 text-base font-semibold leading-6 text-navy-950">{credential.name}</h3>
+          <p className="mt-1 text-sm text-ink">{credential.issuer}</p>
           {credential.credentialNumber ? (
             <div className="mt-1 flex flex-wrap items-baseline gap-1 text-sm text-muted">
               <span>Credential no.</span>
@@ -224,17 +224,16 @@ export function ProfileCredentialWallet({
   if (!editable && credentials.length === 0) return null
 
   return (
-    <Card className="border border-mist-100 p-5 sm:p-7">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold tracking-tight text-navy-950">Licences &amp; Credentials</h2>
-        {editable && !adding ? (
-          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors" aria-label="Add credential">
-            <Plus aria-hidden="true" className="size-4" />
-            Add credential
-          </button>
-        ) : null}
-      </div>
-
+    <ProfileSection
+      id="profile-credentials"
+      title="Licences & Credentials"
+      action={editable && !adding ? (
+        <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors" aria-label="Add credential">
+          <Plus aria-hidden="true" className="size-4" />
+          Add credential
+        </button>
+      ) : null}
+    >
       {adding ? <CredentialEditor onClose={() => setAdding(false)} /> : null}
 
       {credentials.length ? (
@@ -260,6 +259,6 @@ export function ProfileCredentialWallet({
           </button>
         </div>
       ) : null}
-    </Card>
+    </ProfileSection>
   )
 }

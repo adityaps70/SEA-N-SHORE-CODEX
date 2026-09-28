@@ -3,12 +3,12 @@ import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { getPreferredFeedAuthorIds } from '@/features/network/queries'
 import { resolveFeedMediaUrls } from './media'
-import { feedAuthorAvatarPath, feedPostMediaPaths, mapFeedPost, organizationLogoUrl, type FeedCommentRow, type FeedPostRow } from './mappers'
+import { feedAuthorAvatarPath, feedPostMediaPaths, hiddenPostPaths, mapFeedPost, mapHiddenPost, organizationLogoUrl, type FeedCommentRow, type FeedPostRow } from './mappers'
 import { postPermissions } from './post-permissions'
 import { prioritizeRecentFeedRows } from './ranking'
 import { feedRepository, type FeedRepository } from './repository'
 import { feedRequestSchema } from './schemas'
-import type { FeedComment, FeedCursor, FeedPage, FeedPost, FeedRequest, PostingOrganization } from './types'
+import type { FeedComment, FeedCursor, FeedPage, FeedPost, FeedRequest, HiddenPost, PostingOrganization } from './types'
 
 type RequireUser = () => Promise<AwsVerifiedUser>
 type LoadAccessContext = (profileId: string) => Promise<AccessContext>
@@ -195,6 +195,18 @@ export function createFeedQueries(input: {
     return input.repository.listOwnRecentlyDeletedPosts(user.id)
   }
 
+  /** Posts the signed-in member hid from their feed, newest hide first. */
+  async function getMyHiddenPosts(): Promise<HiddenPost[]> {
+    const user = await input.requireUser()
+    const rows = await input.repository.listHiddenPosts(user.id, 50)
+    if (!rows.length) return []
+    const signedUrls = await input.resolveMediaUrls([...new Set(rows.flatMap(hiddenPostPaths))])
+    return rows.flatMap((row) => {
+      const post = mapHiddenPost(row, signedUrls)
+      return post ? [post] : []
+    })
+  }
+
   async function getMyCommentActivity(): Promise<CommentActivity[]> {
     const user = await input.requireUser()
     const rows = await input.repository.listCommentedRows({ viewerProfileId: user.id })
@@ -210,7 +222,7 @@ export function createFeedQueries(input: {
     return post ?? null
   }
 
-  return { getFeedPage, getPostingOrganizations, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyCommentActivity, getPostById }
+  return { getFeedPage, getPostingOrganizations, getSavedPosts, getPostsByAuthor, getPublicPostsByAuthor, getMyActivityPosts, getMyRecentlyDeletedPosts, getMyHiddenPosts, getMyCommentActivity, getPostById }
 }
 
 const productionQueries = createFeedQueries({
@@ -227,5 +239,6 @@ export const getPostsByAuthor = productionQueries.getPostsByAuthor
 export const getPublicPostsByAuthor = productionQueries.getPublicPostsByAuthor
 export const getMyActivityPosts = productionQueries.getMyActivityPosts
 export const getMyRecentlyDeletedPosts = productionQueries.getMyRecentlyDeletedPosts
+export const getMyHiddenPosts = productionQueries.getMyHiddenPosts
 export const getMyCommentActivity = productionQueries.getMyCommentActivity
 export const getPostById = productionQueries.getPostById

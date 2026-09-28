@@ -4,11 +4,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   submitOrganizationApplication: vi.fn(),
   resubmitOrganizationApplication: vi.fn(),
+  submitOrganizationClaim: vi.fn(),
   refresh: vi.fn(),
+  push: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ refresh: mocks.refresh }),
+  useRouter: () => ({ refresh: mocks.refresh, push: mocks.push }),
+}))
+
+vi.mock('../unclaimed-organization-actions', () => ({
+  submitOrganizationClaim: mocks.submitOrganizationClaim,
 }))
 
 vi.mock('../actions', () => ({
@@ -178,5 +184,53 @@ describe('OrganizationApplicationForm type-dependent fields', () => {
     expect(screen.getByRole('checkbox', { name: 'Support for families' })).toBeChecked()
     expect(screen.getByRole('radio', { name: 'No' })).toBeChecked()
     expect(screen.getByRole('textbox', { name: /Languages/ })).toHaveValue('Tagalog')
+  })
+
+  it('returns to onboarding with the new organization after registering from the picker', async () => {
+    mocks.submitOrganizationApplication.mockResolvedValueOnce({ ok: true, applicationId: 'application-1', companyId: '55555555-5555-4555-8555-555555555555' })
+    render(<OrganizationApplicationForm mode="create" prefillName="Blue Anchor Marine" returnTo="/onboarding" />)
+    expect(screen.getByRole('textbox', { name: 'Organization name' })).toHaveValue('Blue Anchor Marine')
+    chooseType('union')
+
+    submitForm()
+
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/onboarding?registered=55555555-5555-4555-8555-555555555555'))
+    expect(mocks.refresh).not.toHaveBeenCalled()
+  })
+
+  it('claims an unclaimed page through the same verification form', async () => {
+    mocks.submitOrganizationClaim.mockResolvedValueOnce({ ok: true, applicationId: 'application-2' })
+    render(
+      <OrganizationApplicationForm
+        mode="claim"
+        companyId="66666666-6666-4666-8666-666666666666"
+        initial={{
+          organizationName: 'Harbour Crew Services',
+          organizationType: 'manning_agency',
+          organizationTypeOther: null,
+          website: null,
+          officialEmail: '',
+          officeLocation: 'Kochi, India',
+          description: '',
+          fleetSummary: null,
+          vesselTypes: [],
+          applicantRole: '',
+          registrationReference: null,
+          supportingNotes: null,
+        }}
+      />,
+    )
+    expect(screen.getByRole('form', { name: 'Claim organization page' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Organization name' })).toHaveValue('Harbour Crew Services')
+    expect(screen.getByRole('textbox', { name: 'Office location' })).toHaveValue('Kochi, India')
+    expect(screen.getByRole('combobox', { name: 'Organization type' })).toHaveValue('manning_agency')
+
+    fireEvent.submit(screen.getByRole('button', { name: 'Send claim for verification' }).closest('form')!)
+
+    await waitFor(() => expect(mocks.submitOrganizationClaim).toHaveBeenCalledTimes(1))
+    expect(mocks.submitOrganizationClaim.mock.calls[0]?.[0]).toBe('66666666-6666-4666-8666-666666666666')
+    expect(mocks.submitOrganizationClaim.mock.calls[0]?.[1]).toMatchObject({ organizationName: 'Harbour Crew Services' })
+    expect(mocks.submitOrganizationApplication).not.toHaveBeenCalled()
+    expect(await screen.findByRole('status')).toHaveTextContent('Claim sent')
   })
 })

@@ -14,7 +14,14 @@ import {
   subscriptionPaymentMethods,
   type SubscriptionChargeMode,
 } from './billing-config'
-import { createCashfreeSubscriptionsClient, type CashfreeSubscription, type CashfreeSubscriptionsClient } from './cashfree-subscriptions'
+import {
+  cashfreeErrorDetails,
+  createCashfreeSubscriptionsClient,
+  isSubscriptionsNotEnabledError,
+  type CashfreeSubscription,
+  type CashfreeSubscriptionsClient,
+} from './cashfree-subscriptions'
+import { syncPlanContentVisibility } from './plan-visibility'
 import { PLAN_LABELS, planForSubject, type BillingInterval, type BillingSubject } from './plans'
 import { applyCancellation, applyMandatePayment, applyMandateUpdate, expireAllLapsedAccess } from './subscription-ledger'
 import { subscriptionRepository, type SubscriptionRepository } from './subscription-repository'
@@ -40,7 +47,21 @@ export class ContactDetailsRequiredError extends Error {
   }
 }
 export class BillingGatewayError extends Error {
-  constructor(readonly providerMessage: string | null) { super('billing_gateway_error'); this.name = 'BillingGatewayError' }
+  constructor(
+    readonly providerMessage: string | null,
+    /** subscriptions_unavailable: Cashfree has not switched Subscriptions on for our account yet. */
+    readonly reason: 'gateway_error' | 'subscriptions_unavailable' = 'gateway_error',
+  ) {
+    super('billing_gateway_error')
+    this.name = 'BillingGatewayError'
+  }
+}
+
+function gatewayError(error: unknown) {
+  return new BillingGatewayError(
+    error instanceof PaymentProviderError ? error.providerMessage : null,
+    isSubscriptionsNotEnabledError(error) ? 'subscriptions_unavailable' : 'gateway_error',
+  )
 }
 export class NothingToCancelError extends Error {
   constructor() { super('nothing_to_cancel'); this.name = 'NothingToCancelError' }
@@ -91,6 +112,8 @@ export function createSubscriptionService(deps: {
   paymentMethods?: () => string[]
   newId?: () => string
   log?: (message: string, details?: Record<string, unknown>) => void
+  /** Hides / restores the owner's jobs, events and courses after a plan change (null = everyone). */
+  syncVisibility?: (subject: BillingSubject | null) => Promise<unknown>
 } = {}) {
   const loadConfig = deps.loadConfig ?? (() => loadCashfreeConfig())
   const createClient = deps.createClient ?? ((config: CashfreeConfig) => createCashfreeSubscriptionsClient(config))
@@ -104,6 +127,19 @@ export function createSubscriptionService(deps: {
   const paymentMethods = deps.paymentMethods ?? (() => subscriptionPaymentMethods())
   const newId = deps.newId ?? randomUUID
   const log = deps.log ?? ((message, details) => console.error(message, details ?? {}))
+  const syncVisibility = deps.syncVisibility ?? ((subject: BillingSubject | null) => syncPlanContentVisibility(subject))
+
+  /**
+   * Plan-gated items follow the plan: hidden when it ends, back when it is renewed. The
+   * read-time rule already does this, so a failure here is logged and never blocks billing.
+   */
+  async function syncContent(subject: BillingSubject | null) {
+    try {
+      await syncVisibility(subject)
+    } catch (error) {
+      log('billing_plan_visibility_sync_failed', { subject: subject?.kind ?? 'all', message: error instanceof Error ? error.message : null })
+    }
+  }
 
   async function requireClient() {
     const config = await loadConfig()
@@ -206,8 +242,15 @@ export function createSubscriptionService(deps: {
     try {
       planId = await ensurePlan(client, config, price)
     } catch (error) {
-      log('billing_plan_create_failed', { priceId: price.id, message: error instanceof Error ? error.message : null })
-      throw new BillingGatewayError(error instanceof PaymentProviderError ? error.providerMessage : null)
+      log('billing_plan_create_failed', {
+        priceId: price.id,
+        plan: price.planCode,
+        interval: price.interval,
+        environment: config.environment,
+        subscriptionsEnabled: !isSubscriptionsNotEnabledError(error),
+        ...cashfreeErrorDetails(error),
+      })
+      throw gatewayError(error)
     }
 
     const checkoutId = newId()
@@ -256,8 +299,13 @@ export function createSubscriptionService(deps: {
         if (/phone/i.test(providerMessage ?? '')) throw new ContactDetailsRequiredError({ phone: true, email: false }, { phone: true, email: false })
         if (/email/i.test(providerMessage ?? '')) throw new ContactDetailsRequiredError({ phone: false, email: true }, { phone: false, email: true })
       }
-      log('billing_subscription_create_failed', { checkoutId: created.id, status: error instanceof PaymentProviderError ? error.status : null, message: providerMessage })
-      throw new BillingGatewayError(providerMessage)
+      log('billing_subscription_create_failed', {
+        checkoutId: created.id,
+        environment: config.environment,
+        subscriptionsEnabled: !isSubscriptionsNotEnabledError(error),
+        ...cashfreeErrorDetails(error),
+      })
+      throw gatewayError(error)
     }
 
     await transaction((tx) => storeFor(tx).updateCheckout(created.id, {
@@ -292,6 +340,7 @@ export function createSubscriptionService(deps: {
     const subscription = await client.getSubscription(checkout.providerSubscriptionId)
     const result = await transaction((tx) => applyMandateUpdate(storeFor(tx), checkout.id, statusUpdate(subscription), now(), { type: 'provider' }))
     if (result) await runFollowUps(client, result.followUps)
+    if (result?.changed) await syncContent(checkout.subject)
     return result?.checkout ?? checkout
   }
 
@@ -340,6 +389,7 @@ export function createSubscriptionService(deps: {
       reason: input.actorType === 'admin' ? 'admin_cancelled' : 'member_cancelled',
     }))
     if (!result) throw new NothingToCancelError()
+    await syncContent(checkout.subject)
     return result
   }
 
@@ -391,6 +441,7 @@ export function createSubscriptionService(deps: {
     if (outcome?.followUps.length) {
       await runFollowUps(config.environment === checkout.environment ? createClient(config) : null, outcome.followUps)
     }
+    if (outcome?.changed) await syncContent(checkout.subject)
     return {
       status: 'handled' as const,
       type: parsed.type,
@@ -410,6 +461,8 @@ export function createSubscriptionService(deps: {
   async function runSweep(options: { limit?: number } = {}) {
     const at = now()
     const expired = await transaction((tx) => expireAllLapsedAccess(storeFor(tx), at))
+    // Every owner at once: covers plans that ended by date, admin changes and missed webhooks.
+    await syncContent(null)
     const config = await loadConfig()
     const summary = { expired, reconciled: 0, paymentsApplied: 0, chargesRaised: 0, failures: 0, configured: Boolean(config) }
     if (!config) return summary

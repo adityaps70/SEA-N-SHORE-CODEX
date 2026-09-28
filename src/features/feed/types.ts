@@ -204,6 +204,20 @@ export type RecentlyDeletedPost = {
   purgeAfter: string
 }
 
+/** A post the viewer hid from their feed, as listed under My Activities › Hidden posts. */
+export type HiddenPost = {
+  id: string
+  /** The post text, or for a plain repost the original post's text. */
+  body: string
+  isRepost: boolean
+  createdAt: string
+  hiddenAt: string
+  author: Pick<FeedAuthor, 'id' | 'slug' | 'fullName' | 'avatarUrl'>
+  organization: FeedOrganization | null
+  /** First photo or video of the post (or of the original it reposts). */
+  thumbnail: { url: string; mimeType: string } | null
+}
+
 export type FeedPage = {
   posts: FeedPost[]
   nextCursor: FeedCursor | null

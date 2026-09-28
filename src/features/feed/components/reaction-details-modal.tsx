@@ -13,10 +13,7 @@ import {
   type ReactionSummary,
   type ReactionTargetType,
 } from '../types'
-
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
-}
+import { AuthorAvatarLink, profileHref } from './author-avatar'
 
 function OpenReactionDetails({
   targetType,
@@ -125,14 +122,9 @@ function OpenReactionDetails({
                 const details = [reactor.rank ?? reactor.headline, reactor.currentCompany].filter(Boolean).join(' · ')
                 return (
                   <li key={reactor.id} className="flex items-center gap-3 px-2 py-3">
-                    <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
-                      {reactor.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={reactor.avatarUrl} alt="" className="h-full w-full object-cover" />
-                      ) : initials(reactor.fullName)}
-                    </div>
+                    <AuthorAvatarLink author={reactor} className="size-11 rounded-full text-xs" />
                     <div className="min-w-0 flex-1">
-                      <Link href={`/people/${reactor.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
+                      <Link href={profileHref(reactor.slug)} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
                         {reactor.fullName}
                       </Link>
                       {details ? <p className="mt-0.5 truncate text-sm text-muted">{details}</p> : null}

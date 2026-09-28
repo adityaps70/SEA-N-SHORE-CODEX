@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { BadgeCheck, Building2, ChevronRight, CreditCard, Landmark, LockKeyhole, Mail, ShieldCheck, SquarePlus, Wallet } from 'lucide-react'
+import { BadgeCheck, Building2, ChevronRight, CreditCard, History, Landmark, LockKeyhole, Mail, ShieldCheck, SquarePlus, Wallet } from 'lucide-react'
 import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
-import { DeleteAccountPanel } from '@/features/account-deletion/components/delete-account-panel'
+import { DeleteAccountSection } from '@/features/account-deletion/components/delete-account-section'
+import { AccountPhoneSection } from '@/features/auth/components/account-phone-section'
 
 export const metadata: Metadata = { title: 'Settings' }
 
@@ -13,7 +14,7 @@ export default function SettingsPage() {
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Account</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy-950">Settings</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Manage account security, privacy, and permanent account actions from one place.
+          Manage your mobile number, account security, privacy, and permanent account actions from one place.
         </p>
       </header>
 
@@ -31,6 +32,17 @@ export default function SettingsPage() {
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <Link
+            href="/activities"
+            className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <History aria-hidden="true" className="size-4 text-ocean-700" />
+              <p className="font-semibold text-navy-950">My Activities</p>
+            </div>
+            <p className="mt-1 text-sm leading-5 text-muted">Your posts, comments, job applications, events and learning.</p>
+            <ChevronRight aria-hidden="true" className="absolute right-3 top-1/2 size-5 -translate-y-1/2 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
+          </Link>
           <Link
             href="/settings/billing"
             className="group relative rounded-xl border border-mist-200 bg-white p-4 pr-10 transition hover:border-ocean-300 hover:bg-ocean-50/40 hover:shadow-sm"
@@ -123,10 +135,14 @@ export default function SettingsPage() {
         </p>
       </section>
 
+      <div id="mobile-number" className="scroll-mt-24">
+        <AccountPhoneSection />
+      </div>
+
       <div id="your-data" className="grid scroll-mt-24 gap-5">
         <h2 className="sr-only">Your data and privacy controls</h2>
         <DataExportPanel />
-        <DeleteAccountPanel />
+        <DeleteAccountSection />
       </div>
     </section>
   )

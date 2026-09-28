@@ -6,6 +6,7 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { organizationRepository, type OrganizationApplicationInput } from './repository'
 import { COMPANY_ACCESS_REQUEST_ROLES, type CompanyAccessRequestRole, type CompanySearchResult } from './types'
 import { organizationApplicationSchema } from './schemas'
+import { unclaimedOrganizationRepository } from './unclaimed-organization-repository'
 
 type OrganizationFailure = {
   ok: false
@@ -14,7 +15,7 @@ type OrganizationFailure = {
 }
 
 type OrganizationActionResult = { ok: true } | OrganizationFailure
-type OrganizationSubmitResult = { ok: true; applicationId: string } | OrganizationFailure
+type OrganizationSubmitResult = { ok: true; applicationId: string; companyId: string } | OrganizationFailure
 type OrganizationSearchResult =
   | { ok: true; organizations: CompanySearchResult[] }
   | { ok: false; error: string }
@@ -109,6 +110,9 @@ export async function requestOrganizationAccess(
     if (code === 'organization_membership_exists') {
       return { ok: false, error: 'You are already linked to this organization. Open it from "Your organizations".' }
     }
+    if (code === 'organization_unclaimed') {
+      return { ok: false, error: 'Nobody manages this organization page yet, so nobody could approve a request. If you own or manage it, claim the page instead.' }
+    }
     if (code === 'organization_company_not_found') {
       return { ok: false, error: 'This organization could not be found. Search again and choose an existing organization.' }
     }
@@ -125,9 +129,19 @@ export async function submitOrganizationApplication(input: OrganizationApplicati
 
   try {
     const user = await requireAwsUser()
+    // Block exact duplicates (case-insensitive): an existing page is claimed or joined instead.
+    const conflict = await unclaimedOrganizationRepository.findNameConflict(parsed.data.organizationName)
+    if (conflict) {
+      const message = conflict.kind === 'listed'
+        ? conflict.organization.unclaimed
+          ? `${conflict.organization.name} already has an unclaimed page on Sea N Shore. Open it and choose Claim this page.`
+          : `${conflict.organization.name} is already on Sea N Shore. Open its page and ask to join instead.`
+        : 'An organization with this name is already waiting for Sea N Shore review.'
+      return { ok: false, error: message, fieldErrors: { organizationName: [message] } }
+    }
     const result = await organizationRepository.submitOrganizationApplication(user.id, parsed.data)
     refreshOrganizationHiring()
-    return { ok: true, applicationId: result.applicationId }
+    return { ok: true, applicationId: result.applicationId, companyId: result.companyId }
   } catch (error) {
     return { ok: false, error: mutationError(error) }
   }

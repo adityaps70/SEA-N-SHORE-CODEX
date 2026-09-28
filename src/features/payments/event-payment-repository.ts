@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { EVENT_MANAGER_ACCESS_SQL } from '@/features/events/calendar-repository'
+import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { recordPaymentAudit, type PaymentAuditActorType } from './audit'
 import { recordSaleEarning, reverseSaleEarning } from './earnings'
 import {
@@ -189,6 +190,18 @@ async function lockEvent(client: DatabaseQueryClient, eventId: string) {
   return mapEvent(result.rows[0])
 }
 
+/**
+ * False when the event was removed with its owner's account or the host's plan ended:
+ * no new tickets are sold (existing tickets stay valid).
+ */
+async function planAllowsSales(client: DatabaseQueryClient, eventId: string) {
+  const result = await client.query<{ visible: boolean } & QueryResultRow>(
+    `select (e.removed_at is null and ${planVisibleSql('event', 'e')}) as visible from public.events e where e.id = $1::uuid`,
+    [eventId],
+  )
+  return result.rows[0]?.visible !== false
+}
+
 async function attendeeCount(client: DatabaseQueryClient, eventId: string) {
   const result = await client.query<{ count: string } & QueryResultRow>(
     'select count(*)::bigint as count from public.event_attendees where event_id = $1::uuid',
@@ -243,6 +256,7 @@ async function prepareCheckoutOrder(input: {
   try {
     return await withTransaction(async (client) => {
       const event = await lockEvent(client, input.eventId)
+      if (event && !await planAllowsSales(client, event.id)) throw new EventRegistrationError('event_not_found')
       const blocker = checkoutBlocker({
         event,
         profileId: input.profileId,

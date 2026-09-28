@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
   AdminUpdateUserAttributesCommand,
   CognitoIdentityProviderClient,
@@ -17,6 +18,21 @@ function defaultRandomPassword() {
 function defaultSyntheticEmailForPhone(phoneNumber: string) {
   const digest = createHash('sha256').update(phoneNumber).digest('hex').slice(0, 32)
   return `phone-${digest}@auth.seaandshore.in`
+}
+
+/**
+ * Mobile sign-ins are separate Cognito users whose email is a made-up address
+ * (phone-<hash>@auth.seaandshore.in). They exist only to sign in with that number.
+ */
+export function isPhoneLoginEmail(email: string | null | undefined) {
+  return typeof email === 'string' && /^phone-[0-9a-f]{32}@auth\.seaandshore\.in$/i.test(email.trim())
+}
+
+export type PhoneLoginUser = {
+  username: string
+  sub: string | null
+  email: string | null
+  verified: boolean
 }
 
 function attributeValue(
@@ -42,7 +58,7 @@ export function createPhoneAuthAdmin(input: {
   const randomPassword = input.randomPassword ?? defaultRandomPassword
   const syntheticEmailForPhone = input.syntheticEmailForPhone ?? defaultSyntheticEmailForPhone
 
-  async function findUserByPhone(phoneNumber: string): Promise<{ username: string; verified: boolean } | null> {
+  async function findPhoneLoginUser(phoneNumber: string): Promise<PhoneLoginUser | null> {
     const response = await client.send(new ListUsersCommand({
       UserPoolId: userPoolId,
       Filter: `phone_number = "${phoneNumber.replace(/["\\]/g, '')}"`,
@@ -61,12 +77,22 @@ export function createPhoneAuthAdmin(input: {
 
     return {
       username,
+      sub: attributeValue(user.Attributes, 'sub'),
+      email: attributeValue(user.Attributes, 'email'),
       verified: attributeValue(user.Attributes, 'phone_number_verified') === 'true',
     }
   }
 
+  async function findUserByPhone(phoneNumber: string): Promise<{ username: string; verified: boolean } | null> {
+    const user = await findPhoneLoginUser(phoneNumber)
+    return user ? { username: user.username, verified: user.verified } : null
+  }
+
   return {
     findUserByPhone,
+
+    /** The Cognito user holding this number, with enough detail to tell whose it is. */
+    findPhoneLoginUser,
 
     async findVerifiedUserByPhone(phoneNumber: string): Promise<{ username: string } | null> {
       const user = await findUserByPhone(phoneNumber)
@@ -99,6 +125,16 @@ export function createPhoneAuthAdmin(input: {
       }))
 
       return { username }
+    },
+
+    /** Removes a mobile sign-in user. Already gone counts as done. */
+    async deleteUser(username: string): Promise<void> {
+      try {
+        await client.send(new AdminDeleteUserCommand({ UserPoolId: userPoolId, Username: username }))
+      } catch (error) {
+        if (error instanceof Error && error.name === 'UserNotFoundException') return
+        throw error
+      }
     },
 
     async markPhoneVerified(username: string): Promise<void> {

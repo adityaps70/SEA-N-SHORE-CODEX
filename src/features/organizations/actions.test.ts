@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   resubmitOrganizationApplication: vi.fn(),
   searchCompanies: vi.fn(),
   requestCompanyAccess: vi.fn(),
+  findNameConflict: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
@@ -24,6 +25,10 @@ vi.mock('./repository', async (importOriginal) => {
     },
   }
 })
+
+vi.mock('./unclaimed-organization-repository', () => ({
+  unclaimedOrganizationRepository: { findNameConflict: mocks.findNameConflict },
+}))
 
 import { requestOrganizationAccess, resubmitOrganizationApplication, searchOrganizations, submitOrganizationApplication } from './actions'
 
@@ -54,6 +59,23 @@ describe('organization application server actions', () => {
     mocks.resubmitOrganizationApplication.mockResolvedValue(true)
     mocks.searchCompanies.mockResolvedValue([])
     mocks.requestCompanyAccess.mockResolvedValue({ requestId: '44444444-4444-4444-8444-444444444444' })
+    mocks.findNameConflict.mockResolvedValue(null)
+  })
+
+  it('blocks registering an organization whose name is already on Sea N Shore', async () => {
+    mocks.findNameConflict.mockResolvedValueOnce({
+      kind: 'listed',
+      organization: { id: 'company-9', slug: 'oceanic', name: 'Oceanic Shipping Pvt Ltd', logoUrl: null, verified: false, unclaimed: true },
+    })
+
+    const result = await submitOrganizationApplication(validInput())
+
+    expect(result).toMatchObject({ ok: false, fieldErrors: { organizationName: [expect.stringContaining('Claim this page')] } })
+    expect(mocks.findNameConflict).toHaveBeenCalledWith('Oceanic Shipping Pvt Ltd')
+    expect(mocks.submitOrganizationApplication).not.toHaveBeenCalled()
+
+    mocks.findNameConflict.mockResolvedValueOnce({ kind: 'in_review' })
+    await expect(submitOrganizationApplication(validInput())).resolves.toMatchObject({ ok: false, error: expect.stringContaining('waiting for Sea N Shore review') })
   })
 
   it('validates before authentication or repository mutation', async () => {
@@ -85,7 +107,7 @@ describe('organization application server actions', () => {
   })
 
   it('submits normalized organization data with the authenticated user, mapping an older free-text type', async () => {
-    await expect(submitOrganizationApplication(validInput())).resolves.toEqual({ ok: true, applicationId })
+    await expect(submitOrganizationApplication(validInput())).resolves.toEqual({ ok: true, applicationId, companyId: 'company-1' })
 
     expect(mocks.submitOrganizationApplication).toHaveBeenCalledWith('user-1', {
       organizationName: 'Oceanic Shipping Pvt Ltd',
@@ -161,6 +183,14 @@ describe('organization application server actions', () => {
     await expect(requestOrganizationAccess('bad-id', 'administrator', 'Director')).resolves.toMatchObject({ ok: false })
     expect(mocks.requireAwsUser).not.toHaveBeenCalled()
     expect(mocks.requestCompanyAccess).not.toHaveBeenCalled()
+  })
+
+  it('refuses to join an unclaimed organization and points to claiming it', async () => {
+    mocks.requestCompanyAccess.mockRejectedValueOnce(new Error('organization_unclaimed'))
+    await expect(requestOrganizationAccess('33333333-3333-4333-8333-333333333333', 'member', null)).resolves.toEqual({
+      ok: false,
+      error: expect.stringContaining('claim the page instead'),
+    })
   })
 
   it('requests recruiter or admin access without granting membership directly', async () => {

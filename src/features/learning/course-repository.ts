@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { canMentorEditCourse, canTransitionCourseStatus, type CourseStatus } from './course-workflow'
+import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { courseManagerAccessSql } from './course-access'
 import {
   snapshotDetailsFromRow,
@@ -28,6 +29,7 @@ type OwnedCourseRow = QueryResultRow & {
   company_id: string | null
   publisher_name: string
   publisher_slug: string | null
+  hidden_for_plan?: boolean | null
 }
 type OwnedCourseDetailRow = QueryResultRow & {
   id: string
@@ -252,6 +254,8 @@ export type MentorCourseSummary = {
   companyId: string | null
   publisherName: string
   publisherSlug: string | null
+  /** Hidden from new learners because the owner's plan ended (enrolled learners keep it). */
+  hiddenForPlan?: boolean
 }
 
 export type CourseLastReview = {
@@ -708,7 +712,8 @@ export function createCourseRepository(input: {
          course.updated_at,
          course.company_id,
          case when course.company_id is null then creator.full_name else company.name end as publisher_name,
-         case when course.company_id is null then creator.slug else company.slug end as publisher_slug
+         case when course.company_id is null then creator.slug else company.slug end as publisher_slug,
+         not ${planVisibleSql('course', 'course')} as hidden_for_plan
        from public.learning_courses course
        join public.profiles creator on creator.id = course.created_by_user_id
        left join public.companies company on company.id = course.company_id
@@ -733,6 +738,7 @@ export function createCourseRepository(input: {
       companyId: row.company_id ?? null,
       publisherName: row.publisher_name,
       publisherSlug: row.publisher_slug,
+      hiddenForPlan: row.hidden_for_plan === true,
     }))
   }
 

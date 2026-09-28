@@ -2,7 +2,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OrganizationPicker } from './organization-picker'
 
+const actionMocks = vi.hoisted(() => ({ createUnclaimedOrganization: vi.fn() }))
+
 vi.mock('next/navigation', () => ({ usePathname: () => '/profile/edit' }))
+vi.mock('@/features/organizations/unclaimed-organization-actions', () => ({
+  createUnclaimedOrganization: actionMocks.createUnclaimedOrganization,
+}))
 
 const oceanic = {
   id: '22222222-2222-4222-8222-222222222222',
@@ -35,6 +40,7 @@ function hiddenId(container: HTMLElement) {
 
 beforeEach(() => {
   fetchMock.mockReset()
+  actionMocks.createUnclaimedOrganization.mockReset()
   vi.stubGlobal('fetch', fetchMock)
 })
 
@@ -70,20 +76,94 @@ describe('OrganizationPicker', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('offers to create a page when the organization is not listed and keeps the typed name', async () => {
+  it('offers two clear choices when the organization is not listed and keeps the typed name', async () => {
     fetchMock.mockResolvedValue(jsonResponse({ query: 'Blue Anchor Marine', organizations: [] }))
-    const { container } = render(<OrganizationPicker label="Current organization" />)
+    const onBeforeRegister = vi.fn()
+    const { container } = render(<OrganizationPicker label="Current organization" returnTo="/onboarding" onBeforeRegister={onBeforeRegister} />)
     const input = screen.getByRole('combobox')
 
     fireEvent.change(input, { target: { value: 'Blue Anchor Marine' } })
 
-    const create = await screen.findByRole('link', { name: /Create its page/ })
-    expect(create).toHaveAttribute('href', '/organizations?register=1&name=Blue+Anchor+Marine#register-organization')
-    expect(create).toHaveAttribute('target', '_blank')
+    const owner = await screen.findByRole('link', { name: /I own or manage this organization/ })
+    expect(owner).toHaveAttribute('href', '/organizations/register?name=Blue+Anchor+Marine&returnTo=%2Fonboarding')
+    expect(owner).not.toHaveAttribute('target')
+    expect(screen.getByRole('button', { name: /I just work there/ })).toBeInTheDocument()
     expect(screen.getByText(/Can.t find Blue Anchor Marine\?/)).toBeInTheDocument()
-    expect(screen.getByText(/reviews new organization pages before they go live/)).toBeInTheDocument()
+    expect(screen.getByText(/verifies it before it can publish/)).toBeInTheDocument()
+    fireEvent.click(owner)
+    expect(onBeforeRegister).toHaveBeenCalledWith(owner)
     expect(input).toHaveValue('Blue Anchor Marine')
     expect(hiddenId(container)).toBe('')
+  })
+
+  it('does not offer to add an organization that is already listed with the same name', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ query: 'oceanic ship management', organizations: [oceanic] }))
+    render(<OrganizationPicker label="Current organization" />)
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'oceanic ship management' } })
+
+    await screen.findByRole('option', { name: /Oceanic Ship Management/ })
+    expect(screen.queryByRole('button', { name: /I just work there/ })).not.toBeInTheDocument()
+  })
+
+  it('marks unclaimed organizations in the results', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ query: 'harb', organizations: [{ ...harbour, unclaimed: true }] }))
+    render(<OrganizationPicker label="Current organization" />)
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'harb' } })
+
+    const option = await screen.findByRole('option', { name: /Harbour Crew Services/ })
+    expect(option).toHaveTextContent('Unclaimed')
+  })
+
+  it('"I just work there" adds an unclaimed organization inline and links it', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ query: 'Blue Anchor Marine', organizations: [] }))
+    actionMocks.createUnclaimedOrganization.mockResolvedValue({
+      ok: true,
+      organization: { id: '44444444-4444-4444-8444-444444444444', slug: 'blue-anchor-marine-a1b2c3', name: 'Blue Anchor Marine', logoUrl: null, verified: false, unclaimed: true },
+    })
+    const outerSubmit = vi.fn((event: Event) => event.preventDefault())
+    const { container } = render(<form onSubmit={(event) => outerSubmit(event.nativeEvent)}><OrganizationPicker label="Current organization" /></form>)
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Blue Anchor Marine' } })
+    fireEvent.click(await screen.findByRole('button', { name: /I just work there/ }))
+
+    const group = screen.getByRole('group', { name: 'Add your organization' })
+    expect(screen.getByRole('textbox', { name: 'Organization name' })).toHaveValue('Blue Anchor Marine')
+    // None of these fields is submitted with the profile form.
+    expect(group.querySelectorAll('[name]')).toHaveLength(0)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Type or industry' }), { target: { value: 'ship_manager' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'City and country' }), { target: { value: 'Kochi, India' } })
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'City and country' }), { key: 'Enter' })
+
+    await waitFor(() => expect(hiddenId(container)).toBe('44444444-4444-4444-8444-444444444444'))
+    expect(actionMocks.createUnclaimedOrganization).toHaveBeenCalledWith({
+      name: 'Blue Anchor Marine', organizationType: 'ship_manager', location: 'Kochi, India', website: '',
+    })
+    expect(outerSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('Blue Anchor Marine is now on Sea N Shore as an unclaimed page')
+    expect(screen.getByText('Unclaimed')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Add your organization' })).not.toBeInTheDocument()
+  })
+
+  it('offers the existing organization when the name is already taken', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ query: 'Blue Anchor', organizations: [] }))
+    actionMocks.createUnclaimedOrganization.mockResolvedValue({
+      ok: false,
+      error: 'Oceanic Ship Management is already on Sea N Shore. Choose it instead of adding it again.',
+      fieldErrors: { name: ['Oceanic Ship Management is already on Sea N Shore. Choose it instead of adding it again.'] },
+      existing: { id: oceanic.id, slug: oceanic.slug, name: oceanic.name, logoUrl: null, verified: true },
+    })
+    const { container } = render(<OrganizationPicker label="Current organization" />)
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'Blue Anchor' } })
+    fireEvent.click(await screen.findByRole('button', { name: /I just work there/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add and link' }))
+
+    const useExisting = await screen.findByRole('button', { name: 'Use Oceanic Ship Management instead' })
+    expect(screen.getByRole('textbox', { name: 'Organization name' })).toHaveAccessibleDescription(/already on Sea N Shore/)
+    fireEvent.click(useExisting)
+    expect(hiddenId(container)).toBe(oceanic.id)
   })
 
   it('supports arrow keys and Enter, and Escape closes the list', async () => {
