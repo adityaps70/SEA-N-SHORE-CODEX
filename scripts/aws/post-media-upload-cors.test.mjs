@@ -69,7 +69,7 @@ test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and
   const script = readFileSync(iamScriptPath, 'utf8')
   const action = readFileSync(iamActionPath, 'utf8').trim()
 
-  assert.ok(['plan', 'apply-once'].includes(action))
+  assert.ok(['plan', 'apply-once', 'apply-production-access-once'].includes(action))
 
   assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
   assert.match(workflow, /environment:\s*staging/)
@@ -84,7 +84,7 @@ test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and
   assert.match(script, /set -euo pipefail/)
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
   assert.match(script, /GITHUB_DEPLOY_IAM_EXPECTED_SHA/)
-  assert.match(script, /case "\$ACTION" in plan\|apply-once\)/)
+  assert.match(script, /case "\$ACTION" in plan\|apply-once\|apply-production-access-once\)/)
   assert.match(script, /aws iam get-role-policy/)
   assert.match(script, /ManageStagingMediaCors/)
   assert.match(script, /s3:PutBucketCORS/)
