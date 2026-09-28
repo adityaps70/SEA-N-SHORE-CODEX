@@ -166,6 +166,21 @@ describe('/organizations/[slug] public page', () => {
     expect(screen.getByTestId('org-posts')).toHaveAttribute('data-can-post', 'false')
   })
 
+  it('marks an unclaimed page and offers to claim it instead of requesting to join', async () => {
+    mocks.getBySlug.mockResolvedValue({ ...workspace, verified: false, unclaimed: true })
+    render(await OrganizationPage({ params }))
+
+    const header = screen.getByRole('region', { name: /^Harbour Minds/ })
+    expect(within(header).getByText('Unclaimed')).toBeInTheDocument()
+    expect(within(header).queryByText('Not verified yet')).not.toBeInTheDocument()
+    expect(within(header).getByRole('link', { name: 'Claim this page' })).toHaveAttribute('href', '/organizations/harbour-minds/claim')
+
+    const claim = screen.getByRole('region', { name: 'Nobody manages this page yet' })
+    expect(within(claim).getByRole('link', { name: 'Claim this page' })).toHaveAttribute('href', '/organizations/harbour-minds/claim')
+    expect(screen.queryByRole('region', { name: 'Work at Harbour Minds?' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('org-posts')).toHaveAttribute('data-can-post', 'false')
+  })
+
   it('offers copy link, share and request to join from the more menu, and Escape closes it', async () => {
     render(await OrganizationPage({ params }))
     const trigger = screen.getByRole('button', { name: 'More actions for Harbour Minds' })

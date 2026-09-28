@@ -33,7 +33,6 @@ function seafarerInput(): OnboardingInput {
     vesselTypes: ['Oil Tanker'],
     tradingAreas: ['Worldwide'],
     shoreCareerPreference: false,
-    availability: 'Open to mentoring',
   }
 }
 
@@ -101,7 +100,6 @@ describe('Aurora onboarding service authorization', () => {
       vesselTypes: [],
       tradingAreas: [],
       shoreCareerPreference: false,
-      availability: undefined,
     }
 
     await service.completeOnboarding(actorId, input)

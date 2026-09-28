@@ -80,9 +80,9 @@ test('remote verify reports live Cognito confirmation email delivery mode', () =
 })
 
 test('remote logo verification follows the compact header asset used by Wordmark', () => {
-  assert.match(workflow, /ASSET_PATH="\/brand\/sea-and-shore-header-logo\.svg"/)
-  assert.doesNotMatch(workflow, /sea-n-shore-compact-lockup\.webp/)
-  assert.match(workflow, /test "\$content_type" = "image\/svg\+xml"/)
+  assert.match(workflow, /ASSET_PATH="\/brand\/sea-n-shore-lockup\.webp"/)
+  assert.doesNotMatch(workflow, /sea-and-shore-header-logo\.svg/)
+  assert.match(workflow, /test "\$content_type" = "image\/webp"/)
 })
 
 test('staging deployment verification polls until ECS reports rolloutState COMPLETED', () => {

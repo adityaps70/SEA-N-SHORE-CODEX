@@ -16,7 +16,14 @@ function FieldError({ state, name }: { state: ProfileActionState; name: string }
   return message ? <p className="mt-1 text-sm text-red-700">{message}</p> : null
 }
 
-export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
+export function ProfileEditForm({
+  profile,
+  registeredOrganization = null,
+}: {
+  profile: OwnProfile
+  /** An organization the member just registered from the picker, to link as their current organization. */
+  registeredOrganization?: PickerOrganization | null
+}) {
   const [state, formAction, pending] = useActionState(updateProfile, initialState)
   const [usernameReady, setUsernameReady] = useState(true)
   const values = state.values
@@ -34,15 +41,19 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
   }
 
   const usernameValue = usernameLocked ? profile.slug : textValue('slug', profile.slug)
-  const companyName = textValue('currentCompany', profile.currentCompany ?? '')
   const submittedCompanyId = values ? textValue('currentCompanyId') : profile.currentOrganization?.id ?? ''
-  const linkedOrganization: PickerOrganization | null = submittedCompanyId && companyName
+  // Back from registering an organization: link it until the member chooses something else.
+  const registered = registeredOrganization && (!values || submittedCompanyId === registeredOrganization.id) ? registeredOrganization : null
+  const companyName = registered?.name ?? textValue('currentCompany', profile.currentCompany ?? '')
+  const linkedOrganization: PickerOrganization | null = registered ?? (submittedCompanyId && companyName
     ? {
         id: submittedCompanyId,
         name: companyName,
         logoUrl: profile.currentOrganization?.id === submittedCompanyId ? profile.currentOrganization.logoUrl : null,
+        verified: profile.currentOrganization?.id === submittedCompanyId ? profile.currentOrganization.verified : undefined,
+        unclaimed: profile.currentOrganization?.id === submittedCompanyId ? profile.currentOrganization.unclaimed : undefined,
       }
-    : null
+    : null)
   const inputClass = 'mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500'
   const textareaClass = `${inputClass} min-h-28 py-3`
   const labelClass = 'block text-sm font-semibold text-navy-950'
@@ -94,6 +105,7 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
                   error={state.fieldErrors?.currentCompany?.[0] ?? state.fieldErrors?.currentCompanyId?.[0]}
                   labelClassName={labelClass}
                   inputClassName={inputClass}
+                  returnTo="/profile/edit"
                 />
               </div>
             ) : null}
@@ -158,11 +170,6 @@ export function ProfileEditForm({ profile }: { profile: OwnProfile }) {
                 Trading areas
                 <input name="tradingAreas" maxLength={2000} defaultValue={textValue('tradingAreas', profile.tradingAreas.join(', '))} className={inputClass} />
                 <FieldError state={state} name="tradingAreas" />
-              </label>
-              <label className={labelClass}>
-                Availability
-                <input name="availability" maxLength={100} defaultValue={textValue('availability', profile.availability ?? '')} className={inputClass} />
-                <FieldError state={state} name="availability" />
               </label>
               <label className="flex min-h-11 items-center gap-3 self-end rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950">
                 <input

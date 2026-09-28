@@ -37,6 +37,25 @@ describe('jobs repository', () => {
     expect(seen[2]?.text).toContain('(j.apply_until is null or j.apply_until >= current_date)')
   })
 
+  it('hides jobs whose owner’s plan ended from discovery, detail, saved jobs and applying', async () => {
+    const seen: string[] = []
+    const repository = createJobsRepository({ query: async (text) => { seen.push(text); return text.includes('select exists') ? [{ accepting: false }] : [] } })
+    await repository.listPublishedJobs(10)
+    await repository.searchJobs(parseJobSearchParams({ mode: 'for-you' }), 60, 0)
+    await repository.listPublishedJobsForCompany('company-1')
+    await repository.getPublishedJob('job-1')
+    await repository.isAcceptingApplications('job-1')
+    await repository.listSavedJobs('user-1')
+    expect(seen).toHaveLength(6)
+    for (const text of seen) {
+      expect(text).toContain('j.hidden_for_plan_at is null')
+      expect(text).toContain("status in ('trialing', 'active', 'past_due')")
+    }
+    // Applicants keep their application history.
+    await repository.listApplications('user-1')
+    expect(seen[6]).not.toContain('hidden_for_plan_at')
+  })
+
   it('builds structured PostgreSQL discovery filters and maps maritime job intelligence', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createJobsRepository({

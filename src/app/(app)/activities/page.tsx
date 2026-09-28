@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { ArrowRight, BookOpenCheck, BriefcaseBusiness, CalendarDays, MapPin, MessageSquareText, PenSquare, Trash2, type LucideIcon } from 'lucide-react'
+import { ArrowRight, BookOpenCheck, BriefcaseBusiness, CalendarDays, EyeOff, MapPin, MessageSquareText, PenSquare, Trash2, type LucideIcon } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { ActivityTabs } from './activity-tabs'
 import { RailFooter } from '@/components/navigation/rail-footer'
@@ -12,9 +12,10 @@ import { EventCard } from '@/features/events/components/event-card'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { CommentActivityCard } from '@/features/feed/components/comment-activity-card'
 import { FeedProfileCard } from '@/features/feed/components/feed-profile-card'
+import { HiddenPostCard } from '@/features/feed/components/hidden-post-card'
 import { PostCard } from '@/features/feed/components/post-card'
 import { RecentlyDeletedPostCard } from '@/features/feed/components/recently-deleted-post-card'
-import { getMyActivityPosts, getMyCommentActivity, getMyRecentlyDeletedPosts } from '@/features/feed/queries'
+import { getMyActivityPosts, getMyCommentActivity, getMyHiddenPosts, getMyRecentlyDeletedPosts } from '@/features/feed/queries'
 import { JobApplicationList } from '@/features/jobs/components/job-application-list'
 import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { getMyJobApplications, getPublishedJobs } from '@/features/jobs/queries'
@@ -69,10 +70,11 @@ const ACTIVITY_TABS: ReadonlyArray<{ id: ActivityTab; label: string; heading: st
   { id: 'jobs', label: 'Jobs Applied', heading: 'Jobs Applied' },
   { id: 'events', label: 'Events', heading: 'My Events' },
   { id: 'learning', label: 'Learning', heading: 'My Learning' },
+  { id: 'hidden', label: 'Hidden Posts', heading: 'Hidden Posts' },
   { id: 'deleted', label: 'Recently Deleted', heading: 'Recently Deleted' },
 ]
 
-type ActivityTab = 'posts' | 'comments' | 'jobs' | 'events' | 'learning' | 'deleted'
+type ActivityTab = 'posts' | 'comments' | 'jobs' | 'events' | 'learning' | 'hidden' | 'deleted'
 
 export default async function ActivitiesPage({
   searchParams,
@@ -80,20 +82,10 @@ export default async function ActivitiesPage({
   searchParams: Promise<{ tab?: string }>
 }) {
   const { tab: rawTab } = await searchParams
-  const tab: ActivityTab = rawTab === 'comments'
-    ? 'comments'
-    : rawTab === 'jobs'
-      ? 'jobs'
-      : rawTab === 'events'
-        ? 'events'
-        : rawTab === 'learning'
-          ? 'learning'
-          : rawTab === 'deleted'
-            ? 'deleted'
-            : 'posts'
+  const tab: ActivityTab = ACTIVITY_TABS.find((item) => item.id === rawTab)?.id ?? 'posts'
 
   const user = await requireAwsUser()
-  const [profile, recommendations, jobs, posts, comments, applications, deletedPosts, portfolio, attendingEvents, hostedEvents, learning] = await Promise.all([
+  const [profile, recommendations, jobs, posts, comments, applications, deletedPosts, hiddenPosts, portfolio, attendingEvents, hostedEvents, learning] = await Promise.all([
     getOwnProfile(),
     getPeopleYouMayKnow(4),
     getPublishedJobs(),
@@ -101,6 +93,7 @@ export default async function ActivitiesPage({
     tab === 'comments' ? getMyCommentActivity() : Promise.resolve([]),
     tab === 'jobs' ? getMyJobApplications() : Promise.resolve([]),
     tab === 'deleted' ? getMyRecentlyDeletedPosts() : Promise.resolve([]),
+    tab === 'hidden' ? getMyHiddenPosts() : Promise.resolve([]),
     getOwnProfilePortfolio(),
     tab === 'events' ? calendarEventRepository.listMyEvents(user.id) : Promise.resolve([]),
     tab === 'events' ? calendarEventRepository.listHostedEvents(user.id) : Promise.resolve([]),
@@ -130,7 +123,7 @@ export default async function ActivitiesPage({
         <PremiumPageHero
           eyebrow="Member workspace"
           title="My Activities"
-          description="Your posts, comments, applications, events, courses and recently deleted posts in one place."
+          description="Your posts, comments, applications, events, courses, hidden and recently deleted posts in one place."
         />
 
         <ActivityTabs tabs={ACTIVITY_TABS.map((item) => ({ id: item.id, label: item.label, href: `/activities?tab=${item.id}` }))} activeId={tab} />
@@ -190,6 +183,17 @@ export default async function ActivitiesPage({
             ) : (
               <EmptyState icon={BookOpenCheck} title="No course enrollments yet." action={{ href: '/learn', label: 'Explore Learning' }}>
                 Courses you join appear here with your progress, so you can pick up where you left off.
+              </EmptyState>
+            )
+          ) : tab === 'hidden' ? (
+            hiddenPosts.length ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted">Posts you hid stay out of your feed and organization pages. Unhide one to see it there again.</p>
+                {hiddenPosts.map((post) => <HiddenPostCard key={post.id} post={post} />)}
+              </div>
+            ) : (
+              <EmptyState icon={EyeOff} title="You have not hidden any posts." action={{ href: '/home', label: 'Go to home feed' }}>
+                When you hide a post from the ⋯ menu, it appears here so you can bring it back whenever you like.
               </EmptyState>
             )
           ) : deletedPosts.length ? (

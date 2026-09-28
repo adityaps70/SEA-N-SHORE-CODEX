@@ -44,7 +44,6 @@ function input(profileType: OnboardingInput['profileType'] = 'seafarer'): Onboar
     vesselTypes: profileType === 'seafarer' ? ['Oil Tanker'] : [],
     tradingAreas: profileType === 'seafarer' ? ['Worldwide'] : [],
     shoreCareerPreference: false,
-    availability: profileType === 'seafarer' ? 'Open to mentoring' : undefined,
   }
 }
 

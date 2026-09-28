@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createPhoneAuthAdmin } from './phone-auth-admin'
+import { createPhoneAuthAdmin, isPhoneLoginEmail } from './phone-auth-admin'
 
 describe('phone auth Cognito administration', () => {
   it('finds exactly one verified Cognito user for a phone number', async () => {
@@ -164,5 +164,46 @@ describe('phone auth Cognito administration', () => {
       Username: 'uuid-user',
       UserAttributes: [{ Name: 'phone_number_verified', Value: 'true' }],
     })
+  })
+
+  it('describes the Cognito user holding a number, for linking it to an account', async () => {
+    const client = {
+      send: vi.fn(async () => ({
+        Users: [{
+          Username: 'uuid-user',
+          Attributes: [
+            { Name: 'sub', Value: 'sub-1' },
+            { Name: 'email', Value: 'phone-0123456789abcdef0123456789abcdef@auth.seaandshore.in' },
+            { Name: 'phone_number', Value: '+919876543210' },
+            { Name: 'phone_number_verified', Value: 'false' },
+          ],
+        }],
+      })),
+    }
+    const admin = createPhoneAuthAdmin({ client: client as never, userPoolId: 'ap-south-1_pool', region: 'ap-south-1' })
+    await expect(admin.findPhoneLoginUser('+919876543210')).resolves.toEqual({
+      username: 'uuid-user',
+      sub: 'sub-1',
+      email: 'phone-0123456789abcdef0123456789abcdef@auth.seaandshore.in',
+      verified: false,
+    })
+  })
+
+  it('deletes a mobile sign-in user and treats an already-deleted one as done', async () => {
+    const missing = Object.assign(new Error('gone'), { name: 'UserNotFoundException' })
+    const client = { send: vi.fn(async () => undefined).mockRejectedValueOnce(missing) }
+    const admin = createPhoneAuthAdmin({ client: client as never, userPoolId: 'ap-south-1_pool', region: 'ap-south-1' })
+    await expect(admin.deleteUser('uuid-user')).resolves.toBeUndefined()
+    await expect(admin.deleteUser('uuid-user')).resolves.toBeUndefined()
+    expect(client.send).toHaveBeenCalledTimes(2)
+
+    const broken = { send: vi.fn(async () => { throw new Error('AccessDenied') }) }
+    await expect(createPhoneAuthAdmin({ client: broken as never, userPoolId: 'p', region: 'r' }).deleteUser('u')).rejects.toThrow('AccessDenied')
+  })
+
+  it('recognises the made-up email of a mobile-only sign-in', () => {
+    expect(isPhoneLoginEmail('phone-0123456789abcdef0123456789abcdef@auth.seaandshore.in')).toBe(true)
+    expect(isPhoneLoginEmail('meera@example.com')).toBe(false)
+    expect(isPhoneLoginEmail(null)).toBe(false)
   })
 })

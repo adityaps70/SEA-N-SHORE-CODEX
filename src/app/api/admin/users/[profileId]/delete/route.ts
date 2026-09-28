@@ -31,6 +31,7 @@ function errorResponse(error: unknown) {
   if (code === 'admin_user_target_administrator_forbidden') return json({ ok: false, error: 'Administrator accounts require a separate privileged removal process.' }, 409)
   if (code === 'admin_user_deleted') return json({ ok: false, error: 'This account has already been permanently deleted.' }, 409)
   if (code === 'admin_user_identity_unavailable') return json({ ok: false, error: 'This account does not have a removable sign-in identity.' }, 409)
+  if (code === 'admin_user_billing_cancel_failed') return json({ ok: false, error: 'Cashfree didn’t confirm that auto-renew was turned off for this member’s plan, so nothing was deleted. Try again in a few minutes, or cancel the plan from the member’s billing page first.' }, 409)
   if (code === 'admin_user_cleanup_failed') return json({ ok: false, error: 'The sign-in identity was removed, but account cleanup needs administrator support.' }, 500)
   return json({ ok: false, error: 'The account could not be permanently deleted safely. Please try again.' }, 500)
 }

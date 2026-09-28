@@ -146,6 +146,37 @@ describe('ProfileHeader', () => {
     expect(link).toHaveAttribute('href', '/organizations/oceanic-ship-management')
     expect(link).toHaveTextContent('Oceanic Ship Management')
     expect(link.querySelector('img')).toHaveAttribute('src', '/api/company-logo/22222222-2222-4222-8222-222222222222')
+    expect(screen.getByRole('img', { name: 'Verified organization' })).toBeInTheDocument()
+  })
+
+  it('marks an unclaimed current organization', () => {
+    render(
+      <ProfileHeader
+        profile={{
+          ...profile,
+          currentOrganization: {
+            id: '22222222-2222-4222-8222-222222222222',
+            slug: 'harbour-crew',
+            name: 'Harbour Crew',
+            logoUrl: null,
+            verified: false,
+            unclaimed: true,
+          },
+        }}
+      />,
+    )
+
+    expect(screen.getByTestId('profile-header-organization')).toHaveTextContent('Unclaimed')
+    expect(screen.queryByRole('img', { name: 'Verified organization' })).not.toBeInTheDocument()
+  })
+
+  it('uses a work icon, not a ship, for shore personas', () => {
+    const { rerender } = render(<ProfileHeader profile={{ ...profile, persona: 'shore_professional' }} />)
+    expect(screen.getByTestId('profile-identity-icon')).toHaveClass('lucide-briefcase')
+    rerender(<ProfileHeader profile={{ ...profile, persona: 'seafarer' }} />)
+    expect(screen.getByTestId('profile-identity-icon')).toHaveClass('lucide-anchor')
+    rerender(<ProfileHeader profile={{ ...profile, persona: 'trainer_instructor' }} />)
+    expect(screen.getByTestId('profile-identity-icon')).toHaveClass('lucide-graduation-cap')
   })
 
   it('keeps an unlinked current organization as plain text', () => {

@@ -53,7 +53,7 @@ export default async function AdminOrganizationReviewPage({ params }: { params: 
     <main className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Link href="/admin/organizations" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">← Organization reviews</Link>
+          <Link href="/admin/organizations?view=queue" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">← Organization reviews</Link>
           <h2 className="mt-2 text-3xl font-bold text-navy-950">{review.company.name}</h2>
           <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold">
             <span className="rounded-full bg-mist-50 px-2.5 py-1 text-muted">{review.status.replaceAll('_', ' ')}</span>

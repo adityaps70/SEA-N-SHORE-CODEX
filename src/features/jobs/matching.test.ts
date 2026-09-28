@@ -60,9 +60,18 @@ describe('Your Maritime Match', () => {
       expect.stringContaining('rank'),
       expect.stringContaining('vessel'),
       expect.stringContaining('certificate'),
-      expect.stringContaining('joining'),
     ]))
     expect(result.missingRequirements).toEqual([])
+  })
+
+  it('treats availability as unknown: an old stored value neither helps nor warns', () => {
+    const today = new Date('2026-09-11T00:00:00.000Z')
+    const withOldValue = scoreJobMatch(job, { ...profile, availability: '2027-12-01' }, today)
+    const withoutValue = scoreJobMatch(job, { ...profile, availability: null }, today)
+
+    expect(withOldValue.score).toBe(withoutValue.score)
+    expect(withOldValue.warnings.join(' ')).not.toMatch(/availability/i)
+    expect(withOldValue.reasons.join(' ')).not.toMatch(/availability/i)
   })
 
   it('surfaces missing visas and expired credentials as eligibility warnings', () => {

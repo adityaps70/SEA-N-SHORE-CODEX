@@ -82,9 +82,9 @@ describe('My Activities and jobs integration contract', () => {
 
     const primary = screen.getByRole('navigation', { name: 'Primary' })
     const links = within(primary).getAllByRole('link')
-    // Six destinations stay visible; My Activities, Saved and Community live in the More menu.
-    expect(links).toHaveLength(6)
-    expect(within(primary).getByRole('button', { name: 'More' })).toHaveClass('flex-col')
+    // Seven destinations, Community last; My Activities lives in Settings and Saved on the Home rail.
+    expect(links).toHaveLength(7)
+    expect(within(primary).queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
 
     for (const link of links) {
       expect(link).toHaveClass('flex-col')
@@ -103,6 +103,7 @@ describe('My Activities and jobs integration contract', () => {
       'Jobs Applied',
       'Events',
       'Learning',
+      'Hidden Posts',
       'Recently Deleted',
     ])
     expect(within(tabs).getByRole('link', { name: 'Jobs Applied' })).toHaveAttribute('aria-current', 'page')

@@ -22,7 +22,10 @@ describe('organization LMS manager authorization coverage', () => {
   it('keeps learner SCORM launch independent from Studio manager authorization while using published-course visibility', () => {
     const code = source('src/features/learning/scorm-repository.ts')
     expect(code).toContain('learning_enrollments')
-    expect(code).toContain('publishedCourseVisibilitySql')
+    // learnerCourseAccessSql = published-course visibility, plus courses removed after an
+    // owner deleted their account, so enrolled learners keep access.
+    expect(code).toContain('learnerCourseAccessSql')
+    expect(source('src/features/learning/course-publication.ts')).toMatch(/learnerCourseAccessSql[\s\S]*publishedCourseVisibilitySql/)
     expect(code).toContain("from './course-publication'")
   })
 })

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
-import type { FeedCommentRow, FeedPostRow, FeedViewerState } from './mappers'
+import type { FeedCommentRow, FeedPostRow, FeedViewerState, HiddenPostSourceRow } from './mappers'
 import type { FeedCursor, FeedPostType, PostCategory, PostReactionType, ReactionTargetType, RecentlyDeletedPost } from './types'
 
 type FeedQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
@@ -41,6 +41,8 @@ type RecentlyDeletedPostRow = QueryResultRow & {
   purge_after: string
 }
 type IdRow = QueryResultRow & { id: string }
+
+export type HiddenPostRow = QueryResultRow & HiddenPostSourceRow
 
 export type ReactorRow = QueryResultRow & {
   profile_id: string
@@ -924,6 +926,65 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     }
   }
 
+  /**
+   * Posts the viewer hid, newest hide first, with just enough for a compact preview: author,
+   * organization, text (the original's for plain reposts) and the first photo or video.
+   * Deleted posts and posts by blocked or inactive members are left out.
+   */
+  async function listHiddenPosts(viewerProfileId: string, limit = 50): Promise<HiddenPostRow[]> {
+    return await queryRows(
+      `select
+         p.id,
+         p.body,
+         p.post_type::text as post_type,
+         p.created_at,
+         hidden.created_at as hidden_at,
+         author.id as author_id,
+         author.slug as author_slug,
+         author.full_name as author_name,
+         author.avatar_path as author_avatar_path,
+         company.id as company_id,
+         company.slug as company_slug,
+         company.name as company_name,
+         company.logo_path as company_logo_path,
+         source.body as source_body,
+         first_media.storage_path as media_path,
+         first_media.mime_type as media_mime_type
+       from public.post_hides hidden
+       join public.posts p on p.id = hidden.post_id
+       join public.profiles author on author.id = p.author_id
+       left join public.companies company on company.id = p.company_id
+       left join public.posts source on source.id = p.repost_of_post_id and source.deleted_at is null
+       left join lateral (
+         select media.storage_path, media.mime_type
+         from public.post_media media
+         where media.post_id = coalesce(p.repost_of_post_id, p.id)
+         order by media.position asc, media.created_at asc, media.id asc
+         limit 1
+       ) first_media on true
+       where hidden.user_id = $1
+         and p.deleted_at is null
+         and author.account_status = 'active'
+         and not exists (
+           select 1 from public.user_blocks b
+           where (b.blocker_id = $1 and b.blocked_id = p.author_id)
+              or (b.blocker_id = p.author_id and b.blocked_id = $1)
+         )
+       order by hidden.created_at desc, p.id desc
+       limit $2`,
+      [viewerProfileId, Math.min(Math.max(Math.trunc(limit), 1), 100)],
+    ) as HiddenPostRow[]
+  }
+
+  /** Removes one of the viewer's hides. Returns false when the post was not hidden. */
+  async function deleteHide(viewerProfileId: string, postId: string): Promise<boolean> {
+    const rows = await queryRows(
+      `delete from public.post_hides where user_id = $1 and post_id = $2 returning post_id as id`,
+      [viewerProfileId, postId],
+    ) as IdRow[]
+    return rows.length > 0
+  }
+
   async function setSaved(viewerProfileId: string, postId: string, saved: boolean) {
     if (saved) {
       await queryRows(`insert into public.saved_posts (post_id, user_id) values ($1, $2) on conflict (post_id, user_id) do nothing`, [postId, viewerProfileId])
@@ -1061,6 +1122,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     setCommentReaction,
     setSaved,
     setHidden,
+    listHiddenPosts,
+    deleteHide,
     addComment,
     insertPostMentions,
     insertCommentMentions,

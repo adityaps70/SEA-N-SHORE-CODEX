@@ -159,15 +159,15 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     await query(
       `insert into public.maritime_profiles (
          user_id, rank, current_company, current_vessel, sailing_experience_years,
-         vessel_types, trading_areas, shore_career_preference, availability, current_company_id, updated_at
-       ) values ($1, $2, $3, $4, $5, $6::text[], $7::text[], $8, $9, $10::uuid, now())
+         vessel_types, trading_areas, shore_career_preference, current_company_id, updated_at
+       ) values ($1, $2, $3, $4, $5, $6::text[], $7::text[], $8, $9::uuid, now())
        on conflict (user_id) do update set
          rank = excluded.rank, current_company = excluded.current_company, current_vessel = excluded.current_vessel,
          current_company_id = excluded.current_company_id,
          sailing_experience_years = excluded.sailing_experience_years, vessel_types = excluded.vessel_types,
          trading_areas = excluded.trading_areas, shore_career_preference = excluded.shore_career_preference,
-         availability = excluded.availability, updated_at = now()`,
-      [profileId, data.rank ?? null, data.currentCompany ?? null, data.currentVessel ?? null, data.sailingExperienceYears ?? null, data.vesselTypes, data.tradingAreas, data.shoreCareerPreference, data.availability ?? null, data.currentCompany ? data.currentCompanyId ?? null : null],
+         updated_at = now()`,
+      [profileId, data.rank ?? null, data.currentCompany ?? null, data.currentVessel ?? null, data.sailingExperienceYears ?? null, data.vesselTypes, data.tradingAreas, data.shoreCareerPreference, data.currentCompany ? data.currentCompanyId ?? null : null],
     )
   }
 

@@ -46,6 +46,7 @@ import {
   setPostHiddenWithAurora,
   setPostReactionWithAurora,
   setPostSavedWithAurora,
+  unhidePostWithAurora,
   updateCommentWithAurora,
   updatePostWithAurora,
 } from './service'
@@ -564,6 +565,25 @@ export async function setPostHidden(postId: string, hidden: boolean): Promise<Fe
         : 'We could not show this post again. Please try again.',
     }
   }
+  return { ok: true }
+}
+
+/**
+ * Shows a post the member hid (from My Activities › Hidden posts) in their feed and on
+ * organization pages again.
+ */
+export async function unhidePost(postId: string): Promise<FeedActionResult> {
+  const parsedId = postIdSchema.safeParse(postId)
+  if (!parsedId.success) return { ok: false, error: 'Invalid post.' }
+  const user = await requireAwsUser()
+  try {
+    await unhidePostWithAurora(user.id, parsedId.data)
+  } catch {
+    return { ok: false, error: 'We could not show this post again. Please try again.' }
+  }
+  revalidatePath('/activities')
+  revalidatePath('/home')
+  revalidatePath('/organizations/[slug]', 'page')
   return { ok: true }
 }
 

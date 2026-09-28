@@ -59,7 +59,6 @@ export function matchesNetworkSearch(profile: NetworkProfile, query: string) {
     profile.rank,
     profile.currentCompany,
     profile.currentVessel,
-    profile.availability,
     ...profile.vesselTypes,
     ...profile.tradingAreas,
     ...profile.skills,

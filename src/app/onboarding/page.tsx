@@ -3,14 +3,20 @@ import { redirect } from 'next/navigation'
 import { Wordmark } from '@/components/brand/wordmark'
 import { Card } from '@/components/ui/card'
 import { OnboardingForm } from '@/features/profiles/components/onboarding-form'
-import { getOwnOnboardingSetup } from '@/features/profiles/queries'
+import { getOwnOnboardingSetup, getOwnRegisteredOrganization } from '@/features/profiles/queries'
 
 export const metadata: Metadata = { title: 'Set up your profile' }
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  /** `registered`: an organization the member just registered from the organization picker. */
+  searchParams?: Promise<{ registered?: string | string[] }>
+} = {}) {
   const profile = await getOwnOnboardingSetup()
 
   if (profile.onboardingCompletedAt) redirect('/home')
+  const registeredOrganization = await getOwnRegisteredOrganization((await searchParams)?.registered)
 
   return (
     <main
@@ -52,6 +58,7 @@ export default async function OnboardingPage() {
             suggestedUsername={profile.suggestedUsername}
             profileId={profile.profileId}
             initialDgProfile={profile.dgProfile}
+            registeredOrganization={registeredOrganization}
           />
         </Card>
 

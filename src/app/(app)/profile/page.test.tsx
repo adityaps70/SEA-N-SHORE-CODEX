@@ -23,13 +23,18 @@ vi.mock('@/features/access/server', () => ({
   })),
 }))
 
-vi.mock('@/features/organizations/repository', () => ({
-  organizationRepository: {
-    listUserOrganizations: vi.fn(async () => []),
-  },
-}))
-
 vi.mock('@/features/profiles/queries', () => ({
+  getProfileOrganizations: vi.fn(async () => [{
+    id: '33333333-3333-4333-8333-333333333333',
+    slug: 'example-shipping',
+    name: 'Example Shipping',
+    logoUrl: null,
+    verified: true,
+    type: 'Ship manager',
+    location: 'Mumbai, India',
+    role: 'owner',
+    relation: 'manages',
+  }]),
   getOwnProfile: vi.fn(async () => ({
     id: '11111111-1111-4111-8111-111111111111',
     slug: 'captain-example',
@@ -47,7 +52,6 @@ vi.mock('@/features/profiles/queries', () => ({
     vesselTypes: ['Oil Tanker'],
     tradingAreas: ['Worldwide'],
     shoreCareerPreference: false,
-    availability: 'YES',
     skills: ['Navigation'],
     contactVisibility: 'members',
     onboardingCompletedAt: '2026-09-01T00:00:00.000Z',
@@ -106,7 +110,7 @@ vi.mock('@/features/profiles/components/dg-profile-upload', () => ({
   DgProfileOnFileBadge: () => <span>DG profile on file</span>,
 }))
 vi.mock('@/features/profiles/components/profile-membership-card', () => ({
-  ProfileMembershipCard: () => <section><h2>Your profile, access & goals</h2></section>,
+  ProfileMembershipCard: () => <section><h2>Access & goals</h2></section>,
 }))
 vi.mock('@/features/profiles/components/profile-about', () => ({
   ProfileAbout: () => <section><h2>About</h2></section>,
@@ -135,7 +139,11 @@ describe('My Profile page', () => {
 
     expect(screen.getByText('Profile header')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /view public profile/i })).toHaveAttribute('href', '/people/captain-example')
-    expect(screen.getByRole('heading', { name: 'Your profile, access & goals' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Access & goals' })).toBeInTheDocument()
+    const organizations = screen.getByRole('region', { name: 'Organizations' })
+    expect(organizations).toHaveTextContent('Owns or manages')
+    expect(screen.getByRole('link', { name: /Example Shipping/ })).toHaveAttribute('href', '/organizations/example-shipping')
+    expect(screen.getByRole('link', { name: 'Manage organizations' })).toHaveAttribute('href', '/organizations')
     expect(screen.getByRole('heading', { name: 'About' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Maritime Experience' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Experience' })).toBeInTheDocument()

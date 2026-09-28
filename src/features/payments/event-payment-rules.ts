@@ -129,6 +129,7 @@ export function refundReasonLabel(code: string | null) {
     case 'event_not_found': return 'The event was no longer open when the payment arrived.'
     case 'already_registered': return 'The attendee was already registered, so this was a duplicate payment.'
     case 'amount_mismatch': return 'The amount paid did not match the ticket price.'
+    case 'event_cancelled': return 'The event was cancelled because its organiser left Sea N Shore.'
     default: return code ? 'The seat could not be confirmed.' : ''
   }
 }

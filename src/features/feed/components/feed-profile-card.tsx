@@ -1,12 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from 'next/link'
-import { Anchor, BadgeCheck, BookOpen, BriefcaseBusiness, Clock3, GraduationCap, HeartHandshake, MapPin, Ship, Waves } from 'lucide-react'
+import { Anchor, BadgeCheck, BookOpen, BriefcaseBusiness, GraduationCap, HeartHandshake, MapPin, Ship, Waves } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
 import { organizationPageHref } from '@/features/profiles/organization-link'
 import { PERSONA_LABELS, personaUsesProfessionalCompany } from '@/features/profiles/persona'
-import { profileAvailabilityLabel } from '@/features/profiles/profile-availability'
 import type { OwnProfile } from '@/features/profiles/types'
 import { calculateProfileCompletion, type ProfilePortfolioCompletion } from '../profile-completion'
 import { formatYears } from '@/lib/format'
@@ -168,7 +167,6 @@ export function FeedProfileCard({
   const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
   const identity = profileCardIdentity(profile)
   const usesCompany = profile.persona ? personaUsesProfessionalCompany(profile.persona) : profile.identityRoot !== 'organisation'
-  const availabilityLabel = profileAvailabilityLabel(profile.availability)
 
   if (compact) {
     const summary = identity.headline ?? identity.personaLabel ?? identity.detail?.text ?? 'Sea N Shore member'
@@ -263,19 +261,13 @@ export function FeedProfileCard({
         </div>
       ) : null}
 
-      {isSeafarer && (profile.sailingExperienceYears !== null || availabilityLabel || profile.shoreCareerPreference || profile.currentVessel) ? (
+      {isSeafarer && (profile.sailingExperienceYears !== null || profile.shoreCareerPreference || profile.currentVessel) ? (
         <div className="border-t border-mist-100 px-4 py-3">
           <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
             {profile.sailingExperienceYears !== null ? (
               <div className="min-w-0">
                 <dt className="flex items-center gap-1.5 text-muted"><Waves aria-hidden="true" className="size-3.5 shrink-0" />Sea service</dt>
                 <dd className="mt-0.5 truncate font-semibold text-navy-950">{formatYears(profile.sailingExperienceYears)}</dd>
-              </div>
-            ) : null}
-            {availabilityLabel ? (
-              <div className="min-w-0">
-                <dt className="flex items-center gap-1.5 text-muted"><Clock3 aria-hidden="true" className="size-3.5 shrink-0" />Availability</dt>
-                <dd className="mt-0.5 truncate font-semibold text-teal-700">{availabilityLabel}</dd>
               </div>
             ) : null}
             {profile.shoreCareerPreference ? (

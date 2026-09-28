@@ -18,10 +18,11 @@ import {
   type PostReactionType,
   type ReactionSummary,
 } from '../types'
+import { AuthorAvatarLink, OrganizationLogoLink, publishedAsHref } from './author-avatar'
 import { CommentThread } from './comment-thread'
 import { EditPostDialog } from './edit-post-dialog'
 import { FeedDialog } from './feed-dialog'
-import { MentionText } from './mention-text'
+import { ExpandableText } from './expandable-text'
 import { PollCard } from './poll-card'
 import { PostActionsMenu } from './post-actions-menu'
 import { POST_ACTION_BUTTON_CLASS, POST_ACTION_LABEL_CLASS } from './post-action-styles'
@@ -32,10 +33,6 @@ import { ReactionSummaryTrigger } from './reaction-summary'
 import { SendPostButton } from './send-post-button'
 import { SharePostButton } from './share-post-button'
 import { copyToClipboard, postPermalink, type FeedNotice } from './share-utils'
-
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
-}
 
 function relativeTime(timestamp: string) {
   const seconds = Math.round((new Date(timestamp).getTime() - Date.now()) / 1000)
@@ -80,18 +77,6 @@ function RepostSourcePoll({ source }: { source: FeedRepostSource }) {
   )
 }
 
-/** Logo (or initials) of the organization a post was published as. */
-function OrganizationLogo({ organization, size }: { organization: FeedOrganization; size: 'size-10' | 'size-11' }) {
-  return (
-    <div className={`grid ${size} shrink-0 place-items-center overflow-hidden rounded-xl bg-navy-950 text-xs font-black text-white ring-1 ring-mist-100`}>
-      {organization.logoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- organization logos come from the signed-in first-party logo route
-        <img src={organization.logoUrl} alt={`${organization.name} logo`} loading="lazy" className="h-full w-full bg-white object-contain p-1" />
-      ) : initials(organization.name)}
-    </div>
-  )
-}
-
 function authorContext(author: FeedAuthor) {
   return [author.rank ?? author.headline, author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'
 }
@@ -101,7 +86,7 @@ function publishedAsName(post: { author: FeedAuthor; organization?: FeedOrganiza
   return post.organization?.name ?? post.author.fullName
 }
 
-function RepostSourceCard({ source }: { source: FeedRepostSource }) {
+function RepostSourceCard({ source, expanded = false }: { source: FeedRepostSource; expanded?: boolean }) {
   const media = source.mediaItems?.length ? source.mediaItems : source.media ? [source.media] : []
   const organization = source.organization ?? null
   const name = publishedAsName(source)
@@ -112,16 +97,11 @@ function RepostSourceCard({ source }: { source: FeedRepostSource }) {
       className="rounded-2xl border border-mist-100 bg-mist-50/35 p-4 sm:p-5"
     >
       <div className="flex items-start gap-3">
-        {organization ? <OrganizationLogo organization={organization} size="size-10" /> : (
-          <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl bg-mist-100 text-xs font-semibold text-navy-950 ring-1 ring-mist-100">
-            {source.author.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={source.author.avatarUrl} alt={`${source.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
-            ) : initials(source.author.fullName)}
-          </div>
-        )}
+        {organization
+          ? <OrganizationLogoLink organization={organization} className="size-10 rounded-xl" />
+          : <AuthorAvatarLink author={source.author} className="size-10 rounded-xl text-xs" />}
         <div className="min-w-0 flex-1">
-          <Link href={organization ? `/organizations/${organization.slug}` : `/people/${source.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
+          <Link href={publishedAsHref(source)} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
             {name}
           </Link>
           <p className="mt-0.5 truncate text-xs text-muted">
@@ -133,9 +113,12 @@ function RepostSourceCard({ source }: { source: FeedRepostSource }) {
         </div>
       </div>
 
-      <p className="mt-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink">
-        <MentionText body={source.body} mentions={source.mentions} />
-      </p>
+      <ExpandableText
+        body={source.body}
+        mentions={source.mentions}
+        defaultExpanded={expanded}
+        className="mt-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
+      />
       {media.some((item) => item.signedUrl) ? <PostMedia media={media} authorName={source.author.fullName} /> : null}
       <RepostSourcePoll source={source} />
       <Link href={`/posts/${source.id}`} className="mt-4 inline-flex text-sm font-semibold text-ocean-700 hover:text-ocean-800">
@@ -355,19 +338,14 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
     <Card className="overflow-visible border border-mist-100">
       <article aria-labelledby={`post-author-${post.id}`}>
         <header className="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
-          {organization ? <OrganizationLogo organization={organization} size="size-11" /> : (
-            <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
-              {post.author.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={post.author.avatarUrl} alt={`${post.author.fullName}'s profile photo`} className="h-full w-full object-cover" />
-              ) : initials(post.author.fullName)}
-            </div>
-          )}
+          {organization
+            ? <OrganizationLogoLink organization={organization} className="size-11 rounded-xl" />
+            : <AuthorAvatarLink author={post.author} className="size-11 rounded-2xl text-sm" />}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <Link
                 id={`post-author-${post.id}`}
-                href={organization ? `/organizations/${organization.slug}` : `/people/${post.author.slug}`}
+                href={publishedAsHref(post)}
                 className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline"
               >
                 {displayName}
@@ -411,15 +389,23 @@ export function PostCard({ post, detail = false, readOnly = false }: { post: Fee
           {isRepost && post.repostOf ? (
             <>
               {repostCommentary ? (
-                <p className="mb-3 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink">
-                  <MentionText body={repostCommentary} mentions={mentions} />
-                </p>
+                <ExpandableText
+                  body={repostCommentary}
+                  mentions={mentions}
+                  defaultExpanded={detail}
+                  className="mb-3 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
+                />
               ) : null}
-              <RepostSourceCard source={post.repostOf} />
+              <RepostSourceCard source={post.repostOf} expanded={detail} />
             </>
           ) : (
             <>
-              <p className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"><MentionText body={body} mentions={mentions} /></p>
+              <ExpandableText
+                body={body}
+                mentions={mentions}
+                defaultExpanded={detail}
+                className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
+              />
               {postMedia.some((item) => item.signedUrl) ? <PostMedia media={postMedia} authorName={displayName} /> : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
             </>

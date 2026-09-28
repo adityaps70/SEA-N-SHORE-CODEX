@@ -6,7 +6,7 @@ import {
   type MaterialLockReason,
   type MaterialReleaseMode,
 } from './lms-material-policy'
-import { coursePublisherNameSql, publishedCourseVisibilitySql } from './course-publication'
+import { coursePublisherNameSql, learnerCourseAccessSql } from './course-publication'
 
 type LearnerCourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -316,7 +316,7 @@ export function createLearnerCourseRepository(input: {
        where enrollment.learner_id = $1
          and course.slug = $2
          and enrollment.status in ('active', 'completed')
-         and ${publishedCourseVisibilitySql()}
+         and ${learnerCourseAccessSql()}
        order by section.position asc, lesson.position asc`,
       [learnerId, slug],
     ) as LearnerCourseRow[]

@@ -11,7 +11,7 @@ vi.mock('./active-nav-link', () => ({
 }))
 
 import { AppHeader, type HeaderOrganization } from './app-header'
-import { MobileNav } from './mobile-nav'
+import { MobileAppHeader } from './mobile-app-header'
 
 afterEach(() => cleanup())
 
@@ -73,17 +73,17 @@ describe('Organizations in the navigation', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 
-  it('adds Organizations to the desktop More menu with its description', () => {
-    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
-    fireEvent.click(screen.getByRole('button', { name: 'More' }))
-    const item = within(screen.getByRole('menu', { name: 'More' })).getByRole('menuitem', { name: /Organizations/ })
-    expect(item).toHaveAttribute('href', '/organizations')
-    expect(item).toHaveTextContent('Your pages, access requests and discovery')
+  it('no longer has a desktop More menu; Organizations keeps its description in the account menu', () => {
+    const menu = openAccountMenu()
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: /^Organizations/ })).toHaveTextContent('Your pages, access requests and discovery')
   })
 
-  it('adds Organizations to the phone bottom bar More menu', () => {
-    render(<MobileNav />)
-    fireEvent.click(screen.getByRole('button', { name: 'More' }))
-    expect(screen.getByRole('menuitem', { name: /Organizations/ })).toHaveAttribute('href', '/organizations')
+  it('lists Organizations and the member’s organizations in the phone account menu', () => {
+    render(<MobileAppHeader unreadCount={0} organizations={organizations} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    const menu = screen.getByRole('menu', { name: 'Account menu' })
+    expect(within(menu).getByRole('menuitem', { name: /^Organizations/ })).toHaveAttribute('href', '/organizations')
+    expect(within(menu).getByRole('menuitem', { name: 'Manage Oceanic Ship Management' })).toHaveAttribute('href', '/organizations/oceanic-ship-management/manage')
   })
 })

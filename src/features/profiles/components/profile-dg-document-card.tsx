@@ -22,8 +22,8 @@ export function ProfileDgDocumentCard({
   return (
     <Card className="border border-mist-100 p-5 sm:p-6">
       <section aria-labelledby="dg-profile-card-heading">
-        <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Private document</p>
-        <h2 id="dg-profile-card-heading" className="mt-1 text-xl font-semibold tracking-[-.02em] text-navy-950">DG Shipping profile</h2>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ocean-700">Private document</p>
+        <h2 id="dg-profile-card-heading" className="mt-1 text-lg font-bold text-navy-950">DG Shipping profile</h2>
         <p className="mt-1 text-sm leading-6 text-muted">{DG_PROFILE_EXPLANATION}</p>
         <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-muted">
           <Lock aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
@@ -56,8 +56,8 @@ export function ProfileDgDocumentViewerCard({
   return (
     <Card className="border border-mist-100 p-5 sm:p-6">
       <section aria-labelledby="dg-profile-viewer-heading">
-        <p className="text-xs font-semibold uppercase tracking-[.14em] text-ocean-700">Private document</p>
-        <h2 id="dg-profile-viewer-heading" className="mt-1 text-xl font-semibold tracking-[-.02em] text-navy-950">DG Shipping profile</h2>
+        <p className="text-xs font-semibold uppercase tracking-wide text-ocean-700">Private document</p>
+        <h2 id="dg-profile-viewer-heading" className="mt-1 text-lg font-bold text-navy-950">DG Shipping profile</h2>
         <div className="mt-4 flex min-w-0 items-start gap-3 rounded-2xl border border-mist-100 bg-mist-50 p-4">
           <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-ocean-700 shadow-sm">
             <FileText aria-hidden="true" className="size-5" />

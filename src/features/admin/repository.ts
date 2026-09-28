@@ -138,12 +138,60 @@ export type AdminUserSummary = {
   isAdministrator: boolean
   createdAt: string
   updatedAt: string
+  /** Storage key of the profile photo; the page signs it into a short-lived URL. */
+  avatarPath?: string | null
 }
 
 export type AdminUserSearch = {
   query: string
   status: AdminUserStatusFilter
   limit: number
+  /** Rows to skip, for paging. */
+  offset?: number
+}
+
+/** Directory filters for the admin Organizations list. */
+export const ADMIN_ORGANIZATION_DIRECTORY_FILTERS = ['all', 'pending', 'changes_requested', 'verified', 'rejected', 'suspended', 'unclaimed'] as const
+export type AdminOrganizationDirectoryFilter = (typeof ADMIN_ORGANIZATION_DIRECTORY_FILTERS)[number]
+
+export type AdminOrganizationDirectorySearch = {
+  query: string
+  status: AdminOrganizationDirectoryFilter
+  limit: number
+  offset?: number
+}
+
+export type AdminOrganizationDirectoryStatus =
+  | 'verified'
+  | 'approved'
+  | 'pending'
+  | 'changes_requested'
+  | 'rejected'
+  | 'suspended'
+  | 'no_application'
+
+export type AdminOrganizationDirectoryEntry = {
+  id: string
+  slug: string
+  name: string
+  logoPath: string | null
+  /** Display label for the organization type, or null when none was chosen. */
+  type: string | null
+  location: string | null
+  owner: { id: string; fullName: string; slug: string | null } | null
+  memberCount: number
+  plan: 'free' | 'organization_pro'
+  status: AdminOrganizationDirectoryStatus
+  /** The organization's review application, when it has one. */
+  applicationId: string | null
+  claimStatus: 'claimed' | 'unclaimed'
+  createdAt: string
+}
+
+export type AdminOrganizationDirectoryPage = {
+  organizations: AdminOrganizationDirectoryEntry[]
+  /** Organizations matching the search and filter, across all pages. */
+  total: number
 }
 
 export type DeletedPostRecord = {
@@ -267,6 +315,27 @@ type AdminUserRow = QueryResultRow & {
   is_administrator: boolean | null
   created_at: string
   updated_at: string
+  avatar_path?: string | null
+}
+type OrganizationDirectoryRow = QueryResultRow & {
+  company_id: string
+  slug: string
+  name: string
+  logo_path: string | null
+  company_type: string | null
+  organization_type: string | null
+  location: string | null
+  verified: boolean | null
+  created_at: string | Date
+  application_id: string | null
+  application_status: string | null
+  owner_id: string | null
+  owner_name: string | null
+  owner_slug: string | null
+  member_count: number | string | null
+  organization_pro: boolean | null
+  claim_status: string | null
+  total_count: number | string | null
 }
 type DeletedPostRow = QueryResultRow & {
   post_id: string
@@ -491,7 +560,47 @@ function mapAdminUser(row: AdminUserRow): AdminUserSummary {
     isAdministrator: Boolean(row.is_administrator),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    avatarPath: row.account_status === 'deletion_requested' ? null : row.avatar_path ?? null,
   }
+}
+
+/** Suspension wins over the verified flag; an organization with no application is shown as such. */
+export function organizationDirectoryStatus(applicationStatus: string | null, verified: boolean): AdminOrganizationDirectoryStatus {
+  if (applicationStatus === 'suspended') return 'suspended'
+  if (verified) return 'verified'
+  switch (applicationStatus) {
+    case 'approved':
+    case 'pending':
+    case 'changes_requested':
+    case 'rejected':
+      return applicationStatus
+    default:
+      return 'no_application'
+  }
+}
+
+function mapOrganizationDirectoryRow(row: OrganizationDirectoryRow): AdminOrganizationDirectoryEntry {
+  const verified = Boolean(row.verified)
+  return {
+    id: row.company_id,
+    slug: row.slug,
+    name: row.name,
+    logoPath: row.logo_path ?? null,
+    type: row.company_type || row.organization_type ? displayOrganizationType(row.organization_type, row.company_type) : null,
+    location: row.location?.trim() || null,
+    owner: row.owner_id ? { id: row.owner_id, fullName: row.owner_name ?? 'Member', slug: row.owner_slug ?? null } : null,
+    memberCount: numberValue(row.member_count),
+    plan: row.organization_pro ? 'organization_pro' : 'free',
+    status: organizationDirectoryStatus(row.application_status, verified),
+    applicationId: row.application_id ?? null,
+    claimStatus: row.claim_status === 'unclaimed' ? 'unclaimed' : 'claimed',
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+  }
+}
+
+/** Escapes LIKE wildcards so a search for "50%" matches the text, not everything. */
+function likePattern(value: string) {
+  return `%${value.replace(/[\\%_]/g, (character) => `\\${character}`)}%`
 }
 
 function mapOrganizationReview(row: OrganizationReviewRow): AdminOrganizationReview {
@@ -538,9 +647,36 @@ function defaultTransaction<T>(work: (query: AdminQuery) => Promise<T>) {
   }))
 }
 
-export function createAdminRepository(input: { query?: AdminQuery; transaction?: AdminTransaction } = {}) {
+export function createAdminRepository(input: { query?: AdminQuery; transaction?: AdminTransaction; now?: () => number } = {}) {
   const queryRows: AdminQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
   const transaction = input.transaction ?? defaultTransaction
+  const now = input.now ?? (() => Date.now())
+
+  // companies.claim_status arrives with migration 0050. Until then the directory
+  // derives it from whether the organization has an approved owner. A positive
+  // answer is kept for the life of the process; a negative one is rechecked
+  // every minute so the column is picked up soon after the migration runs.
+  let claimStatusColumn: { present: boolean; checkedAt: number } | null = null
+  async function hasClaimStatusColumn() {
+    if (claimStatusColumn && (claimStatusColumn.present || now() - claimStatusColumn.checkedAt < 60_000)) {
+      return claimStatusColumn.present
+    }
+    try {
+      const rows = await queryRows(
+        `select 1 as present
+         from information_schema.columns
+         where table_schema = 'public'
+           and table_name = 'companies'
+           and column_name = 'claim_status'
+         limit 1`,
+        [],
+      )
+      claimStatusColumn = { present: rows.length > 0, checkedAt: now() }
+      return claimStatusColumn.present
+    } catch {
+      return false
+    }
+  }
 
   async function isPlatformAdministratorWithQuery(query: AdminQuery, userId: string, lock = false) {
     const rows = await query(
@@ -1112,6 +1248,12 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
 
     values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
     const limitParameter = String.fromCharCode(36) + values.length
+    const offset = Math.max(Math.trunc(input.offset ?? 0), 0)
+    let offsetSql = ''
+    if (offset > 0) {
+      values.push(offset)
+      offsetSql = ` offset ${String.fromCharCode(36)}${values.length}`
+    }
     const whereSql = where.length ? `where ${where.join(' and ')}` : ''
 
     const rows = await queryRows(
@@ -1120,6 +1262,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          p.full_name,
          p.slug,
          p.headline,
+         p.avatar_path,
          p.account_status::text as account_status,
          ia.email,
          ia.provider_subject,
@@ -1144,7 +1287,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          end,
          p.updated_at desc,
          p.id asc
-       limit ${limitParameter}`,
+       limit ${limitParameter}${offsetSql}`,
       values,
     ) as AdminUserRow[]
 
@@ -1159,6 +1302,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
          p.full_name,
          p.slug,
          p.headline,
+         p.avatar_path,
          p.account_status::text as account_status,
          ia.email,
          ia.provider_subject,
@@ -1308,6 +1452,114 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       ],
     )
     return true
+  }
+
+  /**
+   * Every organization on Sea N Shore, newest first, for the admin directory.
+   * One query: owner, member count, plan and application status come from
+   * lateral joins, and the total comes from a window count.
+   */
+  async function listOrganizations(adminId: string, input: AdminOrganizationDirectorySearch): Promise<AdminOrganizationDirectoryPage> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const hasClaimStatus = await hasClaimStatusColumn()
+    const derivedClaimStatus = `case when org_owner.owner_id is null then 'unclaimed' else 'claimed' end`
+    const claimStatusSql = hasClaimStatus ? `coalesce(c.claim_status::text, ${derivedClaimStatus})` : derivedClaimStatus
+
+    const values: unknown[] = []
+    const parameter = () => String.fromCharCode(36) + values.length
+    const where: string[] = []
+    const normalizedQuery = input.query.trim().toLowerCase()
+    if (normalizedQuery) {
+      values.push(likePattern(normalizedQuery))
+      const search = parameter()
+      where.push(`(
+        lower(c.name) like ${search} escape '\\'
+        or lower(c.slug) like ${search} escape '\\'
+        or lower(coalesce(org_owner.owner_name, '')) like ${search} escape '\\'
+        or lower(coalesce(oa.official_email, '')) like ${search} escape '\\'
+        or exists (select 1 from unnest(c.office_locations) as office(location) where lower(office.location) like ${search} escape '\\')
+      )`)
+    }
+    switch (input.status) {
+      case 'verified':
+        where.push(`coalesce(c.is_verified, false) and coalesce(oa.status, '') <> 'suspended'`)
+        break
+      case 'unclaimed':
+        where.push(`${claimStatusSql} = 'unclaimed'`)
+        break
+      case 'pending':
+      case 'changes_requested':
+      case 'rejected':
+      case 'suspended':
+        values.push(input.status)
+        where.push(`oa.status = ${parameter()}`)
+        break
+      default:
+        break
+    }
+
+    values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
+    const limitParameter = parameter()
+    values.push(Math.max(Math.trunc(input.offset ?? 0), 0))
+    const offsetParameter = parameter()
+
+    const rows = await queryRows(
+      `select
+         c.id as company_id,
+         c.slug,
+         c.name,
+         c.logo_path,
+         c.company_type,
+         c.organization_type,
+         c.office_locations[1] as location,
+         coalesce(c.is_verified, false) as verified,
+         c.created_at,
+         oa.id as application_id,
+         oa.status as application_status,
+         org_owner.owner_id,
+         org_owner.owner_name,
+         org_owner.owner_slug,
+         coalesce(org_members.member_count, 0) as member_count,
+         (subscription.plan_code is not null) as organization_pro,
+         ${claimStatusSql} as claim_status,
+         count(*) over () as total_count
+       from public.companies c
+       left join public.organization_applications oa on oa.company_id = c.id
+       left join lateral (
+         select p.id as owner_id, p.full_name as owner_name, p.slug as owner_slug
+         from public.company_members cm
+         join public.profiles p on p.id = cm.user_id
+         where cm.company_id = c.id
+           and cm.role::text = 'owner'
+           and cm.approved_at is not null
+         order by cm.approved_at asc, cm.created_at asc
+         limit 1
+       ) org_owner on true
+       left join lateral (
+         select count(*)::int as member_count
+         from public.company_members cm
+         where cm.company_id = c.id
+           and cm.approved_at is not null
+       ) org_members on true
+       left join lateral (
+         select s.plan_code
+         from public.account_subscriptions s
+         where s.company_id = c.id
+           and s.plan_code = 'organization_pro'
+           and s.status in ('trialing', 'active', 'past_due')
+           and (s.current_period_ends_at is null or s.current_period_ends_at > now())
+         limit 1
+       ) subscription on true
+       ${where.length ? `where ${where.join(' and ')}` : ''}
+       order by c.created_at desc, c.id asc
+       limit ${limitParameter} offset ${offsetParameter}`,
+      values,
+    ) as OrganizationDirectoryRow[]
+
+    return {
+      organizations: rows.map(mapOrganizationDirectoryRow),
+      total: rows[0] ? numberValue(rows[0].total_count) : 0,
+    }
   }
 
   async function listOrganizationApplications(userId: string, status: AdminOrganizationStatus): Promise<AdminOrganizationReview[]> {
@@ -1541,6 +1793,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     listUserAccountHistory,
     setUserAccountStatus,
     recordUserDeletionAudit,
+    listOrganizations,
     listOrganizationApplications,
     getOrganizationApplicationReview,
     reviewOrganizationApplication,

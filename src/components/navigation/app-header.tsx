@@ -1,56 +1,30 @@
 import {
   BookOpenCheck,
-  Bookmark,
-  Building2,
   BriefcaseBusiness,
   CalendarDays,
-  Ellipsis,
   GraduationCap,
-  History,
   House,
-  LogOut,
   MessageCircleMore,
   MessagesSquare,
   Search,
-  Settings,
-  ShieldCheck,
   SquarePlus,
-  UserRound,
   UsersRound,
 } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
-import { signOut } from '@/features/auth/actions'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import { NotificationBell } from '@/features/notifications/components/notification-bell'
 import type { NetworkNotification } from '@/features/notifications/types'
-import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
+import { AccountMenuSignOut, accountMenuItems, type HeaderOrganization } from './account-menu'
 import { ActiveNavLink } from './active-nav-link'
 import { HeaderMenu, type HeaderMenuItem } from './header-menu'
 import { ViewerAvatar, type HeaderViewer } from './viewer-avatar'
 
-/** Account-menu entries for the member's organizations (at most a few; the rest are one click away). */
-export function organizationMenuItems(organizations: HeaderOrganization[], total = organizations.length): HeaderMenuItem[] {
-  if (!organizations.length) return []
-  const group = 'Your organizations'
-  return [
-    ...organizations.map((organization): HeaderMenuItem => ({
-      href: `/organizations/${organization.slug}`,
-      label: organization.name,
-      icon: <OrganizationLogo logoUrl={organization.logoUrl} size="xs" />,
-      group,
-      secondary: organization.canManage
-        ? { href: `/organizations/${organization.slug}/manage`, label: 'Manage', accessibleLabel: `Manage ${organization.name}` }
-        : undefined,
-    })),
-    ...(total > organizations.length
-      ? [{ href: '/organizations#your-pages', label: `See all ${total} organizations`, group, tone: 'link' as const }]
-      : []),
-  ]
-}
+export { organizationMenuItems, type HeaderOrganization } from './account-menu'
 
 /**
- * Six primary destinations fit at 1024px without clipping; everything else
- * lives in the More menu, the Create menu or the account menu.
+ * Seven primary destinations fit at 1024px without clipping. My Activities is
+ * in Settings, Saved posts is on the Home left rail, and Organizations, Admin
+ * and Settings are in the account menu.
  */
 const destinations = [
   { href: '/home', label: 'Home', icon: House },
@@ -59,26 +33,8 @@ const destinations = [
   { href: '/messages', label: 'Messages', icon: MessageCircleMore },
   { href: '/learn', label: 'Learn', icon: BookOpenCheck },
   { href: '/events', label: 'Events', icon: CalendarDays },
+  { href: '/community', label: 'Community', icon: MessagesSquare },
 ] as const
-
-/** An organization the member belongs to, for the account menu. */
-export type HeaderOrganization = {
-  id: string
-  slug: string
-  name: string
-  logoUrl: string | null
-  /** Any role other than plain member opens the Manage page (roles, requests, plan). */
-  canManage: boolean
-}
-
-const ORGANIZATIONS_DESCRIPTION = 'Your pages, access requests and discovery'
-
-const moreItems: HeaderMenuItem[] = [
-  { href: '/activities', label: 'My Activities', description: 'Your posts, comments, applications and learning', icon: <History className="size-4" /> },
-  { href: '/saved', label: 'Saved posts', description: 'Posts you saved for later', icon: <Bookmark className="size-4" /> },
-  { href: '/organizations', label: 'Organizations', description: ORGANIZATIONS_DESCRIPTION, icon: <Building2 className="size-4" /> },
-  { href: '/community', label: 'Community', description: 'Professional groups — opening soon', icon: <MessagesSquare className="size-4" />, badge: 'Preview' },
-]
 
 const createItems: HeaderMenuItem[] = [
   { href: '/hiring/jobs/new', label: 'Post a job', description: 'Sea or shore vacancy with structured requirements', icon: <BriefcaseBusiness className="size-4" /> },
@@ -87,7 +43,7 @@ const createItems: HeaderMenuItem[] = [
   { href: '/creator', label: 'All creator tools', description: 'Publishing access, verification and organization workspaces', icon: <SquarePlus className="size-4" /> },
 ]
 
-const navClass = 'relative inline-flex min-h-14 min-w-[3.25rem] flex-col items-center justify-center gap-1 rounded-lg border-b-2 border-transparent px-1.5 font-medium text-navy-900 transition hover:bg-mist-50 xl:min-w-[4.25rem]'
+const navClass = 'relative inline-flex min-h-14 min-w-[3.25rem] flex-col items-center justify-center gap-1 rounded-lg border-b-2 border-transparent px-1.5 font-medium text-navy-900 transition hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 xl:min-w-[4.25rem]'
 const activeNavClass = 'border-ocean-600 bg-ocean-50 text-ocean-700'
 
 export function AppHeader({
@@ -108,15 +64,7 @@ export function AppHeader({
   organizations?: HeaderOrganization[]
   organizationCount?: number
 }) {
-  const accountItems: HeaderMenuItem[] = [
-    { href: '/profile', label: 'Profile', description: 'View and edit your Maritime Passport', icon: <UserRound className="size-4" /> },
-    { href: '/organizations', label: 'Organizations', description: ORGANIZATIONS_DESCRIPTION, icon: <Building2 className="size-4" /> },
-    ...organizationMenuItems(organizations, organizationCount),
-    ...(canAccessAdmin
-      ? [{ href: '/admin', label: 'Admin', description: 'Platform administration', icon: <ShieldCheck className="size-4" /> }]
-      : []),
-    { href: '/settings', label: 'Settings', description: 'Account, privacy, membership and data', icon: <Settings className="size-4" /> },
-  ]
+  const accountItems = accountMenuItems({ canAccessAdmin, organizations, organizationCount })
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 hidden border-b border-mist-100 bg-white md:block">
@@ -142,20 +90,6 @@ export function AppHeader({
               <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">{label}</span>
             </ActiveNavLink>
           ))}
-          <HeaderMenu
-            label="More"
-            align="left"
-            showChevron={false}
-            items={moreItems}
-            triggerClassName={navClass}
-            activeTriggerClassName={activeNavClass}
-            trigger={(
-              <>
-                <Ellipsis aria-hidden="true" className="size-4.5 shrink-0" />
-                <span className="hidden whitespace-nowrap text-[11px] leading-none xl:block">More</span>
-              </>
-            )}
-          />
         </nav>
         <div className="flex items-center gap-1.5">
           <form action="/search" method="get" role="search" className="relative hidden lg:block">
@@ -190,18 +124,7 @@ export function AppHeader({
             triggerClassName="inline-flex min-h-10 items-center gap-1.5 rounded-lg px-1.5 text-navy-900 transition hover:bg-mist-50"
             activeTriggerClassName="bg-ocean-50 text-ocean-700"
             trigger={<ViewerAvatar viewer={viewer} />}
-            footer={(
-              <form action={signOut}>
-                <button
-                  type="submit"
-                  role="menuitem"
-                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50"
-                >
-                  <LogOut aria-hidden="true" className="size-4 text-muted" />
-                  Sign out
-                </button>
-              </form>
-            )}
+            footer={<AccountMenuSignOut />}
           />
         </div>
       </div>

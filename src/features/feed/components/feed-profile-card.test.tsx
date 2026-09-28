@@ -198,11 +198,12 @@ describe('FeedProfileCard', () => {
     expect(screen.getByRole('img', { name: 'Verified member' })).toBeInTheDocument()
   })
 
-  it('keeps seafarer facts compact with readable availability', () => {
+  it('keeps seafarer facts compact and no longer shows availability', () => {
     render(<FeedProfileCard profile={{ ...completeProfile, availability: 'onboard' }} portfolioCompletion={completePortfolio} />)
 
     expect(screen.getByText('Sea service')).toBeInTheDocument()
-    expect(screen.getByText('Onboard')).toBeInTheDocument()
+    expect(screen.queryByText('Availability')).not.toBeInTheDocument()
+    expect(screen.queryByText('Onboard')).not.toBeInTheDocument()
     expect(screen.getByText('MT Example')).toBeInTheDocument()
   })
 

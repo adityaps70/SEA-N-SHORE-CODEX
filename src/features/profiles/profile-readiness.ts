@@ -55,10 +55,6 @@ export function getProfileReadiness(profile: PublicProfile): ProfileReadiness {
         complete: hasText(profile.currentCompany) && hasText(profile.currentVessel),
         guidance: 'Add your current company and vessel',
       },
-      {
-        complete: hasText(profile.availability),
-        guidance: 'Set your current availability',
-      },
     )
   }
 

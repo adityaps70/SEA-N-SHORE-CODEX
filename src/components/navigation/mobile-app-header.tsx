@@ -2,22 +2,30 @@ import Link from 'next/link'
 import { Bell, MessageCircleMore, Search, SquarePlus } from 'lucide-react'
 import { Wordmark } from '@/components/brand/wordmark'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
+import { AccountMenuSignOut, accountMenuItems, type HeaderOrganization } from './account-menu'
+import { HeaderMenu } from './header-menu'
 import { ViewerAvatar, type HeaderViewer } from './viewer-avatar'
 
-const iconLinkClass = 'relative grid min-h-10 min-w-10 place-items-center rounded-xl text-navy-900 hover:bg-mist-50'
+const iconLinkClass = 'relative grid min-h-10 min-w-10 place-items-center rounded-xl text-navy-900 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'
 const badgeClass = 'absolute right-0 top-0 inline-flex min-w-5 -translate-y-1/4 translate-x-1/4 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white'
 
 export function MobileAppHeader({
   unreadCount,
   messagingUnreadCount = 0,
+  canAccessAdmin = false,
   viewer = { name: 'Member', avatarUrl: null },
+  organizations = [],
+  organizationCount = organizations.length,
 }: {
   unreadCount: number
   messagingUnreadCount?: number
-  /** Kept for call-site compatibility; admin access now lives in the bottom "More" menu. */
   canAccessAdmin?: boolean
   viewer?: HeaderViewer
+  organizations?: HeaderOrganization[]
+  organizationCount?: number
 }) {
+  // Phones have no Events tab in the bottom bar, so the account menu carries it.
+  const accountItems = accountMenuItems({ canAccessAdmin, organizations, organizationCount, includeEvents: true })
   return (
     <header className="border-b border-mist-100 bg-white md:hidden">
       <div className="flex min-h-14 items-center justify-between gap-2 px-3 sm:px-4">
@@ -42,9 +50,16 @@ export function MobileAppHeader({
             <Bell aria-hidden="true" className="size-5" />
             {unreadCount > 0 ? <span className={badgeClass}>{unreadCount > 9 ? '9+' : unreadCount}</span> : null}
           </Link>
-          <Link href="/profile" aria-label="Profile" className={iconLinkClass}>
-            <ViewerAvatar viewer={viewer} className="size-8" />
-          </Link>
+          <HeaderMenu
+            label="Account menu"
+            items={accountItems}
+            menuWidthClassName="w-72"
+            showChevron={false}
+            triggerClassName={iconLinkClass}
+            activeTriggerClassName="bg-ocean-50"
+            trigger={<ViewerAvatar viewer={viewer} className="size-8" />}
+            footer={<AccountMenuSignOut />}
+          />
         </div>
       </div>
     </header>

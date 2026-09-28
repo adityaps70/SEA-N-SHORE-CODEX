@@ -101,7 +101,7 @@ export async function updateProfileIdentitySection(
 
   let identity = parsed.data
   try {
-    const linked = await resolveCurrentOrganizationLink(parsed.data, organizationLinkRepository)
+    const linked = await resolveCurrentOrganizationLink(parsed.data, organizationLinkRepository, { userId: user.id })
     if (!linked.ok) return nextFailure(previousState, { fieldErrors: linked.fieldErrors })
     identity = linked.data
   } catch {

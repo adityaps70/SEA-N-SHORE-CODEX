@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { mapPublicProfile } from './mappers'
+import { organizationClaimStatusSql } from '@/features/organizations/unclaimed-organization-policy'
 import { listableOrganizationSql } from './organization-link-repository'
 import { PERSONAS, PROFILE_INTENTS, type Persona, type ProfileIntent } from './persona'
 import {
@@ -114,7 +115,8 @@ const PROFILE_SELECT = `
         'slug', linked_org.slug,
         'name', linked_org.name,
         'has_logo', linked_org.logo_path is not null and btrim(linked_org.logo_path) <> '',
-        'verified', coalesce(linked_org.is_verified, false)
+        'verified', coalesce(linked_org.is_verified, false),
+        'unclaimed', ${organizationClaimStatusSql('linked_org')} = 'unclaimed'
       )
     end as current_organization,
     coalesce(
@@ -352,7 +354,6 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
            mp.rank,
            mp.current_company,
            mp.current_vessel,
-           mp.availability,
            array_to_string(mp.vessel_types, ' '),
            array_to_string(mp.trading_areas, ' '),
            coalesce((

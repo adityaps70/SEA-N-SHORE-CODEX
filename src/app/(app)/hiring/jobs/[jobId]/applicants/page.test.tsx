@@ -136,6 +136,12 @@ describe('Hiring applicants page', () => {
     expect(within(second!).getByText(/account is no longer active/)).toBeVisible()
   })
 
+  it('does not show candidates\' availability to recruiters', async () => {
+    await renderPage()
+    expect(screen.queryByText('Availability')).not.toBeInTheDocument()
+    expect(screen.queryByText('Available')).not.toBeInTheDocument()
+  })
+
   it('filters by stage with counts using the owner-facing stage names', async () => {
     await renderPage({ status: 'selected' })
     const filters = screen.getByRole('navigation', { name: 'Filter applicants by status' })

@@ -4,6 +4,7 @@ import type { OrganizationAccessRole } from '@/features/access/policy'
 import { organizationSuspendedSql } from './access-request-repository'
 import { isCompanySize, type CompanySize } from './organization-page-profile'
 import { displayOrganizationType, resolveOrganizationType, type OrganizationTypeCode } from './organization-types'
+import { organizationClaimStatusSql } from './unclaimed-organization-policy'
 import { parseOrganizationDetails } from './schemas'
 import type { OrganizationDetails } from './types'
 
@@ -27,6 +28,7 @@ type WorkspaceRow = QueryResultRow & {
   tagline?: string | null
   company_size?: string | null
   specialties?: string[] | null
+  claim_status?: string | null
 }
 
 type OrganizationCardRow = QueryResultRow & {
@@ -41,6 +43,7 @@ type OrganizationCardRow = QueryResultRow & {
   organization_type: string | null
   headquarters: string | null
   is_verified: boolean | null
+  claim_status?: string | null
   follower_count: string | number | null
   following: boolean | null
 }
@@ -95,6 +98,8 @@ export type OrganizationWorkspace = {
   tagline: string | null
   companySize: CompanySize | null
   specialties: string[]
+  /** Added by a member who works there; nobody manages the page until it is claimed and verified. */
+  unclaimed?: boolean
 }
 
 /** Compact organization summary for cards (hub, discovery, "Pages people also viewed"). */
@@ -110,6 +115,8 @@ export type OrganizationCard = {
   organizationType: OrganizationTypeCode
   headquarters: string | null
   verified: boolean
+  /** Unclaimed page: nobody manages it yet. */
+  unclaimed?: boolean
   followerCount: number
   following: boolean
 }
@@ -204,6 +211,7 @@ function mapWorkspace(row: WorkspaceRow): OrganizationWorkspace {
     tagline: row.tagline?.trim() || null,
     companySize: isCompanySize(row.company_size) ? row.company_size : null,
     specialties: Array.isArray(row.specialties) ? row.specialties : [],
+    unclaimed: row.claim_status === 'unclaimed',
   }
 }
 
@@ -220,6 +228,7 @@ function mapCard(row: OrganizationCardRow): OrganizationCard {
     organizationType: resolveOrganizationType(row.organization_type, row.company_type).code,
     headquarters: row.headquarters ?? null,
     verified: Boolean(row.is_verified),
+    unclaimed: row.claim_status === 'unclaimed',
     followerCount: number(row.follower_count),
     following: Boolean(row.following),
   }
@@ -228,7 +237,8 @@ function mapCard(row: OrganizationCardRow): OrganizationCard {
 const WORKSPACE_COLUMNS = `id, slug, name, logo_path, cover_path, tagline, company_size, specialties,
               company_type, organization_type, organization_details,
               website, description, fleet_summary,
-              vessel_types, office_locations, coalesce(is_verified, false) as is_verified`
+              vessel_types, office_locations, coalesce(is_verified, false) as is_verified,
+              ${organizationClaimStatusSql('companies')} as claim_status`
 
 /** Card columns for `public.companies company`; $1 is the viewer. */
 const CARD_COLUMNS = `company.id,
@@ -242,6 +252,7 @@ const CARD_COLUMNS = `company.id,
          company.organization_type,
          company.office_locations[1] as headquarters,
          coalesce(company.is_verified, false) as is_verified,
+         ${organizationClaimStatusSql('company')} as claim_status,
          (select count(*) from public.organization_follows card_follow where card_follow.company_id = company.id) as follower_count,
          exists (
            select 1 from public.organization_follows viewer_follow

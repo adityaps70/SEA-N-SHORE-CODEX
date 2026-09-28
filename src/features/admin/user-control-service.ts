@@ -1,5 +1,10 @@
 import { deleteMediaObject as runtimeDeleteMediaObject } from '@/lib/aws/storage'
 import { accountDeletionRepository } from '@/features/account-deletion/repository'
+import {
+  AccountDeletionError,
+  createAccountDeletionService,
+  type AccountDeletionEffects,
+} from '@/features/account-deletion/service'
 import { adminRepository, type AdminRepository, type AdminUserSummary } from './repository'
 
 type AdminUserRepository = Pick<
@@ -32,21 +37,13 @@ function assertControllableTarget(adminId: string, target: AdminUserSummary | nu
   return target
 }
 
-function isFirstPartyStoragePath(value: string) {
-  if (!value.trim()) return false
-  try {
-    const url = new URL(value)
-    return url.protocol !== 'http:' && url.protocol !== 'https:'
-  } catch {
-    return !value.startsWith('/')
-  }
-}
-
 export function createAdminUserControlService(input: {
   repository?: AdminUserRepository
   accountDeletionRepository?: AccountDeletionRepository
   identityAdmin: AdminIdentityControl
   deleteMediaObject?: DeleteMediaObject
+  /** Same extras as member deletion: auto-renew off, refunds, attendee notices, other sign-ins. */
+  deletionEffects?: () => AccountDeletionEffects
 }) {
   const repository = input.repository ?? adminRepository
   const deletionRepository = input.accountDeletionRepository ?? accountDeletionRepository
@@ -54,19 +51,6 @@ export function createAdminUserControlService(input: {
 
   async function loadTarget(adminId: string, targetId: string) {
     return assertControllableTarget(adminId, await repository.getAdminUser(adminId, targetId))
-  }
-
-  async function deleteCollectedMedia(paths: string[]) {
-    const unique = [...new Set(paths.filter(isFirstPartyStoragePath))]
-    if (!unique.length) return
-    const results = await Promise.allSettled(unique.map((path) => deleteMedia(path)))
-    const failures = results.filter((result) => result.status === 'rejected').length
-    if (failures) {
-      console.error('[admin_user_deletion_media_cleanup_incomplete]', {
-        attempted: unique.length,
-        failures,
-      })
-    }
   }
 
   return {
@@ -105,28 +89,29 @@ export function createAdminUserControlService(input: {
       const username = targetUsername(target)
       if (!username) throw new Error('admin_user_identity_unavailable')
 
-      let identityDeleted = false
-      let mediaPaths: string[] = []
+      // The member deletion service, with the administrator's check instead of a password:
+      // the same per-organization plan, auto-renew off first, refunds and notices.
+      const deletion = createAccountDeletionService({
+        api: {
+          signIn: async () => { throw new Error('admin_deletion_has_no_password_step') },
+          deleteUser: async () => { throw new Error('admin_deletion_uses_admin_identity_control') },
+        },
+        repository: deletionRepository,
+        deleteMediaObject: deleteMedia,
+        effects: input.deletionEffects?.() ?? {},
+      })
       try {
-        const result = await deletionRepository.deleteAccountWithIdentity(
-          targetId,
-          async () => {
-            await input.identityAdmin.deleteUser(username)
-            identityDeleted = true
-          },
-        )
-        mediaPaths = result.mediaPaths
+        await deletion.deleteVerifiedAccount({
+          profileId: targetId,
+          cognitoSub: target.cognitoSubject ?? null,
+          deleteIdentity: () => input.identityAdmin.deleteUser(username),
+        })
       } catch (error) {
-        if (!identityDeleted) throw error
-        try {
-          const retry = await deletionRepository.finalizeAccountDeletion(targetId)
-          mediaPaths = retry.mediaPaths
-        } catch {
-          throw new Error('admin_user_cleanup_failed')
-        }
+        if (error instanceof AccountDeletionError && error.code === 'account_deletion_cleanup_failed') throw new Error('admin_user_cleanup_failed')
+        if (error instanceof AccountDeletionError && error.code === 'account_deletion_billing_cancel_failed') throw new Error('admin_user_billing_cancel_failed')
+        throw error
       }
 
-      await deleteCollectedMedia(mediaPaths)
       await repository.recordUserDeletionAudit(adminId, targetId, reason)
       return { ok: true as const }
     },

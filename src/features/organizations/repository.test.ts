@@ -189,6 +189,7 @@ describe('organization approval repository', () => {
       name: 'Oceanic Shipping',
       companyType: 'Ship Manager',
       verified: true,
+      unclaimed: false,
       website: 'https://oceanic.example.com',
     }])
     expect(seen[0]?.text).toContain('from public.companies')
@@ -221,6 +222,21 @@ describe('organization approval repository', () => {
       'I manage crewing for this company.',
     ])
     expect(seen.some((entry) => entry.text.includes('insert into public.companies'))).toBe(false)
+  })
+
+  it('refuses a request to join an unclaimed organization, which nobody could approve', async () => {
+    const companyId = '33333333-3333-4333-8333-333333333333'
+    const seen: string[] = []
+    const query = async (text: string) => {
+      seen.push(text)
+      if (text.includes('from public.companies') && text.includes('where id = $1')) return [{ id: companyId, claim_status: 'unclaimed' }]
+      return []
+    }
+    const repository = createOrganizationRepository({ query, transaction: async (work) => work(query) })
+
+    await expect(repository.requestCompanyAccess(actorId, companyId, 'member', null)).rejects.toThrow('organization_unclaimed')
+    expect(seen[0]).toContain("coalesce(to_jsonb(companies) ->> 'claim_status', 'claimed') as claim_status")
+    expect(seen.some((text) => text.includes('insert into public.company_access_requests'))).toBe(false)
   })
 
   it('supports full Organization Pro role requests without creating a duplicate organization', async () => {

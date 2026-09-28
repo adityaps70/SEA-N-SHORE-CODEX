@@ -79,7 +79,8 @@ describe('premium hiring workspace contract', () => {
     expect(page).toContain('Match')
     expect(page).toContain('Rank')
     expect(page).toContain('Vessel')
-    expect(page).toContain('Availability')
+    // Members are no longer asked for availability, so recruiters never see it.
+    expect(page).not.toContain('Availability')
     expect(page).toContain('under_review')
     expect(page).toContain('shortlisted')
     expect(page).toContain('interview')
@@ -88,6 +89,7 @@ describe('premium hiring workspace contract', () => {
 
   it('provides recruiter candidate review with status actions, explainable fit, timeline and private notes', () => {
     const page = source('src/app/(app)/hiring/applicants/[applicationId]/page.tsx')
+    expect(page).not.toContain('Availability')
     const status = source('src/features/jobs/components/hiring-status-action.tsx')
     const notes = source('src/features/jobs/components/recruiter-note-form.tsx')
 

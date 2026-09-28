@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getPublicPostsByAuthor: vi.fn(),
   getProfileNetworkSummary: vi.fn(),
   getViewableDgProfileDocument: vi.fn(),
+  getProfileOrganizations: vi.fn(),
 }))
 
 vi.mock('@/features/profiles/profile-network-stats', () => ({
@@ -42,6 +43,7 @@ vi.mock('@/features/feed/components/post-card', () => ({
 }))
 
 vi.mock('@/features/profiles/queries', () => ({
+  getProfileOrganizations: mocks.getProfileOrganizations,
   getPublicProfileBySlug: vi.fn(async () => ({
     id: '22222222-2222-4222-8222-222222222222',
     slug: 'captain-public',
@@ -59,7 +61,6 @@ vi.mock('@/features/profiles/queries', () => ({
     vesselTypes: ['Oil Tanker'],
     tradingAreas: ['Worldwide'],
     shoreCareerPreference: false,
-    availability: 'ashore',
     skills: ['Navigation'],
   })),
 }))
@@ -127,6 +128,7 @@ vi.mock('@/features/profiles/components/profile-passport-overview', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.getProfileOrganizations.mockResolvedValue([])
   mocks.getVerifiedUser.mockResolvedValue({
     id: '11111111-1111-4111-8111-111111111111',
     cognitoSub: 'viewer-sub',
@@ -175,6 +177,39 @@ describe('Public Profile page', () => {
     expect(screen.getByText('Member Three')).toBeInTheDocument()
     expect(mocks.getPublicPostsByAuthor).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
     expect(screen.queryByRole('heading', { name: 'My Maritime Passport' })).not.toBeInTheDocument()
+  })
+
+  it('lists the organizations the member manages and works for, linking to each page', async () => {
+    mocks.getProfileOrganizations.mockResolvedValueOnce([
+      {
+        id: 'org-1', slug: 'oceanic-shipping', name: 'Oceanic Shipping', logoUrl: '/api/company-logo/org-1',
+        verified: true, type: 'Ship manager', location: 'Singapore', role: 'administrator', relation: 'manages',
+      },
+      {
+        id: 'org-2', slug: 'harbour-crew', name: 'Harbour Crew', logoUrl: null,
+        verified: false, unclaimed: true, type: 'Manning agency', location: null, role: 'member', relation: 'works_at',
+      },
+    ])
+
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+
+    expect(mocks.getProfileOrganizations).toHaveBeenCalledWith('22222222-2222-4222-8222-222222222222')
+    const section = screen.getByRole('region', { name: 'Organizations' })
+    const manages = screen.getByRole('list', { name: 'Owns or manages' })
+    expect(manages).toHaveTextContent('Oceanic Shipping')
+    expect(manages).toHaveTextContent('Administrator')
+    expect(screen.getByRole('link', { name: /Oceanic Shipping/ })).toHaveAttribute('href', '/organizations/oceanic-shipping')
+    expect(screen.getByRole('img', { name: 'Verified organization' })).toBeInTheDocument()
+    const worksAt = screen.getByRole('list', { name: 'Works at' })
+    expect(worksAt).toHaveTextContent('Harbour Crew')
+    expect(worksAt).toHaveTextContent('Member / employee')
+    expect(worksAt).toHaveTextContent('Unclaimed')
+    expect(section).not.toHaveTextContent('Manage organizations')
+  })
+
+  it('omits the Organizations section when the member has none', async () => {
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+    expect(screen.queryByRole('region', { name: 'Organizations' })).not.toBeInTheDocument()
   })
 
   it('shows the Message CTA for a signed-in accepted connection', async () => {

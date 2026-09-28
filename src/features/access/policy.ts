@@ -37,6 +37,11 @@ export type OrganizationAccessMembership = {
   plan: PlanCode
   role: OrganizationAccessRole
   verified: boolean
+  /**
+   * True for an unclaimed organization page (added by someone who works there).
+   * Nobody may publish or post for it until it is claimed and verified.
+   */
+  unclaimed?: boolean
   entitlements: Capability[]
 }
 
@@ -86,7 +91,7 @@ function organizationCapabilities(
   companyId: string,
 ): Capability[] {
   const membership = access.organizationMemberships.find((entry) => entry.companyId === companyId)
-  if (!membership || !membership.verified) return []
+  if (!membership || !membership.verified || membership.unclaimed) return []
 
   const roleCapabilities = ROLE_CAPABILITIES[membership.role]
 
@@ -126,7 +131,7 @@ export function canUseOrganizationRoleCapability(
 ): boolean {
   if (!access.accountActive || !companyId) return false
   const membership = access.organizationMemberships.find((entry) => entry.companyId === companyId)
-  if (!membership) return false
+  if (!membership || membership.unclaimed) return false
   const grant = ORGANIZATION_ROLE_GRANTS[capability]
   if (grant.requiresVerifiedOrganization && !membership.verified) return false
   return grant.roles.includes(membership.role)

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ExternalLink, Settings2 } from 'lucide-react'
+import { CircleDashed, ExternalLink, Settings2 } from 'lucide-react'
 import { canPostAsOrganization, canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { canUpgradeOrganization } from '@/features/billing/billing-access'
@@ -186,9 +186,13 @@ export default async function OrganizationPage({
     events: canUseCapability(access, 'event.publish', { companyId: workspace.id }),
     courses: canUseCapability(access, 'course.publish', { companyId: workspace.id }),
   }
+  const unclaimed = workspace.unclaimed === true
+  const claimHref = `/organizations/${workspace.slug}/claim`
   const joinLink = membership || ownApplication
     ? null
-    : myPendingRequest
+    : unclaimed
+      ? { href: claimHref, label: 'Claim this page' }
+      : myPendingRequest
       ? { href: '/organizations#your-requests', label: 'See your request' }
       : { href: '#work-here', label: 'Request to join' }
 
@@ -220,7 +224,9 @@ export default async function OrganizationPage({
       <Fact label="Verification">
         {workspace.verified
           ? <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-800"><VerifiedMark /> Verified by Sea N Shore</span>
-          : 'Not verified yet. Sea N Shore has not confirmed this organization.'}
+          : unclaimed
+            ? 'Unclaimed. Someone who works here added this page; nobody manages it yet.'
+            : 'Not verified yet. Sea N Shore has not confirmed this organization.'}
       </Fact>
     </dl>
   )
@@ -292,7 +298,9 @@ export default async function OrganizationPage({
                       {formatCount(peopleCount.value)} {peopleCount.value === 1 ? 'person works here' : 'people work here'}
                     </Link>
                   ) : null}
-                  {workspace.verified ? null : <StatusChip tone="warning">Not verified yet</StatusChip>}
+                  {workspace.verified ? null : unclaimed
+                    ? <StatusChip tone="warning"><CircleDashed aria-hidden="true" className="mr-1 size-3.5" />Unclaimed</StatusChip>
+                    : <StatusChip tone="warning">Not verified yet</StatusChip>}
                   {wellbeing && details.helpline24x7 ? <StatusChip tone="info">24/7 helpline</StatusChip> : null}
                 </div>
               </div>
@@ -323,6 +331,11 @@ export default async function OrganizationPage({
                 {canManagePage ? (
                   <Link href={organizationManageHref(workspace.slug)} className={`${manageLinkClass} gap-2`}>
                     <Settings2 aria-hidden="true" className="size-4" /> Manage page
+                  </Link>
+                ) : null}
+                {unclaimed && !ownApplication && !membership ? (
+                  <Link href={claimHref} className={`${manageLinkClass} gap-2`}>
+                    Claim this page
                   </Link>
                 ) : null}
                 {canUpgrade ? (
@@ -471,6 +484,16 @@ export default async function OrganizationPage({
                     : 'Update the application from your Organizations page and resubmit it.'}
               </p>
               <Link href="/organizations#update-application" className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">Go to your application</Link>
+            </section>
+          ) : unclaimed ? (
+            <section id="work-here" aria-labelledby="claim-heading" className="scroll-mt-24 rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+              <h2 id="claim-heading" className="font-bold text-navy-950">Nobody manages this page yet</h2>
+              <p className="mt-1 text-sm leading-6 text-ink">
+                Someone who works at {workspace.name} added it so colleagues can list it on their profiles. If you own or manage {workspace.name}, claim the page. Sea N Shore verifies every claim, and the page can post jobs, events, courses and updates once it is verified.
+              </p>
+              <Link href={claimHref} className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">
+                Claim this page
+              </Link>
             </section>
           ) : (
             <section id="work-here" aria-labelledby="join-heading" className="scroll-mt-24 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)]">

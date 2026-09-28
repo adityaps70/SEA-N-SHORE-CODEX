@@ -89,7 +89,7 @@ export default async function HiringApplicantsPage({
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
             {presentation.key === 'live'
-              ? 'Candidates are ordered by Sea N Shore Match using structured Rank, Vessel experience, credentials, availability and other maritime profile signals.'
+              ? 'Candidates are ordered by Sea N Shore Match using structured Rank, Vessel experience, credentials and other maritime profile signals.'
               : presentation.description}
           </p>
         </div>
@@ -147,7 +147,7 @@ export default async function HiringApplicantsPage({
                     {candidate.headline ? <p className="mt-1 text-sm text-muted">{candidate.headline}</p> : null}
                     {!candidate.accountActive ? <p className="mt-1 text-sm font-semibold text-amber-900">This member’s account is no longer active. Their application is kept for your records.</p> : null}
 
-                    <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                    <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                       <div className="rounded-xl bg-mist-50 p-3">
                         <dt className="text-xs font-bold uppercase tracking-wide text-muted">Rank</dt>
                         <dd className="mt-1 font-semibold text-navy-950">{candidate.rank ?? 'Not listed'}</dd>
@@ -155,10 +155,6 @@ export default async function HiringApplicantsPage({
                       <div className="rounded-xl bg-mist-50 p-3">
                         <dt className="text-xs font-bold uppercase tracking-wide text-muted">Vessel</dt>
                         <dd className="mt-1 font-semibold text-navy-950">{candidate.vesselTypes.slice(0, 2).join(', ') || 'Not listed'}</dd>
-                      </div>
-                      <div className="rounded-xl bg-mist-50 p-3">
-                        <dt className="text-xs font-bold uppercase tracking-wide text-muted">Availability</dt>
-                        <dd className="mt-1 font-semibold text-navy-950">{candidate.availability ?? 'Not listed'}</dd>
                       </div>
                     </dl>
 

@@ -47,6 +47,7 @@ export type PublicProfile = {
   vesselTypes: string[]
   tradingAreas: string[]
   shoreCareerPreference: boolean
+  /** Old at sea / ashore / available-from answer. Still stored, but no longer asked for or shown. */
   availability: string | null
   skills: string[]
 }

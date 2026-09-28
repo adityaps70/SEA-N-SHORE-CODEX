@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from 'react'
 import {
-  Anchor,
+  Briefcase,
   Building2,
   CalendarDays,
   MapPin,
@@ -12,7 +12,6 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { Card } from '@/components/ui/card'
 import {
   createProfileExperience,
   deleteProfileExperience,
@@ -20,6 +19,7 @@ import {
   type ProfilePortfolioActionState,
 } from '../profile-portfolio-actions'
 import type { ProfileExperienceRecord, ProfileExperienceTrack } from '../profile-portfolio-types'
+import { ProfileSection } from './profile-section'
 
 const initialActionState: ProfilePortfolioActionState = {}
 
@@ -217,7 +217,7 @@ function ExperienceEntry({
               <span className="rounded-full bg-ocean-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.1em] text-ocean-700">{trackLabels[record.track]}</span>
               {record.isCurrent ? <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-800">Current</span> : null}
             </div>
-            <h3 className="mt-2 text-lg font-semibold text-navy-950">{record.title}</h3>
+            <h3 className="mt-2 text-base font-semibold text-navy-950">{record.title}</h3>
             {record.organization ? (
               <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-ink">
                 <Building2 aria-hidden="true" className="size-4 text-ocean-600" />
@@ -245,14 +245,14 @@ function ExperienceEntry({
 
         {seaService && (record.vesselType || record.cargoExperience.length || record.engineExperience.length || record.tradingAreas.length) ? (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            {record.vesselType ? <div><p className="text-xs font-semibold uppercase tracking-[.1em] text-muted">Vessel type</p><p className="mt-1 text-sm font-medium text-navy-950">{record.vesselType}</p></div> : null}
-            {record.cargoExperience.length ? <div><p className="text-xs font-semibold uppercase tracking-[.1em] text-muted">Cargo</p><div className="mt-1 flex flex-wrap gap-1.5">{record.cargoExperience.map((item) => <span key={item} className="rounded-full bg-mist-50 px-2.5 py-1 text-xs font-medium text-navy-900">{item}</span>)}</div></div> : null}
-            {record.engineExperience.length ? <div><p className="text-xs font-semibold uppercase tracking-[.1em] text-muted">Engine</p><div className="mt-1 flex flex-wrap gap-1.5">{record.engineExperience.map((item) => <span key={item} className="rounded-full bg-mist-50 px-2.5 py-1 text-xs font-medium text-navy-900">{item}</span>)}</div></div> : null}
-            {record.tradingAreas.length ? <div><p className="text-xs font-semibold uppercase tracking-[.1em] text-muted">Trading areas</p><div className="mt-1 flex flex-wrap gap-1.5">{record.tradingAreas.map((item) => <span key={item} className="rounded-full bg-ocean-50 px-2.5 py-1 text-xs font-medium text-ocean-800">{item}</span>)}</div></div> : null}
+            {record.vesselType ? <div><p className="text-xs font-semibold uppercase tracking-wide text-muted">Vessel type</p><p className="mt-1 text-sm text-ink">{record.vesselType}</p></div> : null}
+            {record.cargoExperience.length ? <div><p className="text-xs font-semibold uppercase tracking-wide text-muted">Cargo</p><div className="mt-1 flex flex-wrap gap-1.5">{record.cargoExperience.map((item) => <span key={item} className="rounded-full bg-mist-50 px-2.5 py-1 text-xs font-medium text-navy-900">{item}</span>)}</div></div> : null}
+            {record.engineExperience.length ? <div><p className="text-xs font-semibold uppercase tracking-wide text-muted">Engine</p><div className="mt-1 flex flex-wrap gap-1.5">{record.engineExperience.map((item) => <span key={item} className="rounded-full bg-mist-50 px-2.5 py-1 text-xs font-medium text-navy-900">{item}</span>)}</div></div> : null}
+            {record.tradingAreas.length ? <div><p className="text-xs font-semibold uppercase tracking-wide text-muted">Trading areas</p><div className="mt-1 flex flex-wrap gap-1.5">{record.tradingAreas.map((item) => <span key={item} className="rounded-full bg-ocean-50 px-2.5 py-1 text-xs font-medium text-ocean-800">{item}</span>)}</div></div> : null}
           </div>
         ) : null}
 
-        {record.description ? <p className="mt-4 text-sm leading-6 text-muted">{record.description}</p> : null}
+        {record.description ? <p className="mt-4 whitespace-pre-line text-sm leading-6 text-ink">{record.description}</p> : null}
         {deleteError ? <p role="alert" className="mt-3 text-sm font-medium text-red-700">{deleteError}</p> : null}
       </div>
     </article>
@@ -272,17 +272,16 @@ export function ProfileCareerTimeline({
   if (!editable && experiences.length === 0) return null
 
   return (
-    <Card className="border border-mist-100 p-5 sm:p-7">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-xl font-semibold tracking-tight text-navy-950">Experience</h2>
-        {editable && !adding ? (
-          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors" aria-label="Add experience">
-            <Plus aria-hidden="true" className="size-4" />
-            Add experience
-          </button>
-        ) : null}
-      </div>
-
+    <ProfileSection
+      id="profile-experience"
+      title="Experience"
+      action={editable && !adding ? (
+        <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors" aria-label="Add experience">
+          <Plus aria-hidden="true" className="size-4" />
+          Add experience
+        </button>
+      ) : null}
+    >
       {adding ? <ExperienceEditor onClose={() => setAdding(false)} /> : null}
 
       {experiences.length ? (
@@ -299,8 +298,8 @@ export function ProfileCareerTimeline({
         </div>
       ) : editable && !adding ? (
         <div className="mt-6 rounded-2xl border border-dashed border-mist-100 bg-mist-50/50 p-6 text-center">
-          <Anchor aria-hidden="true" className="mx-auto size-7 text-ocean-600" />
-          <p className="mt-2 text-sm font-semibold text-navy-950">Build your maritime career timeline</p>
+          <Briefcase aria-hidden="true" className="mx-auto size-7 text-ocean-600" />
+          <p className="mt-2 text-sm font-semibold text-navy-950">Build your career timeline</p>
           <p className="mt-1 text-sm text-muted">Add sea service, shore positions, training roles and other maritime experience.</p>
           <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
             <Plus aria-hidden="true" className="size-4" />
@@ -308,6 +307,6 @@ export function ProfileCareerTimeline({
           </button>
         </div>
       ) : null}
-    </Card>
+    </ProfileSection>
   )
 }

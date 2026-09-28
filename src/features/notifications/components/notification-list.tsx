@@ -6,6 +6,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { relativeTimeFrom } from '@/lib/relative-time'
 import { loadNotifications, markAllNotificationsRead, markNotificationRead } from '../actions'
 import type { NetworkNotification } from '../types'
+import { NotificationActorAvatar, NotificationPostThumb } from './notification-visuals'
 
 export function NotificationList({ notifications }: { notifications: NetworkNotification[] }) {
   const router = useRouter()
@@ -54,6 +55,14 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
     })
   }
 
+  /** The post preview is a plain link; mark the notification read on the way without blocking it. */
+  function markReadInBackground(notification: NetworkNotification) {
+    if (notification.readAt) return
+    const readAt = new Date().toISOString()
+    setItems((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item))
+    void markNotificationRead(notification.id).catch(() => undefined)
+  }
+
   function markAll() {
     if (!unreadCount || pending) return
     setError('')
@@ -93,21 +102,31 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
         {items.map((notification) => {
           const unread = !notification.readAt
           return (
-            <button
+            <div
               key={notification.id}
-              type="button"
-              disabled={pending}
-              onClick={() => openNotification(notification)}
               data-notification-state={unread ? 'unread' : 'read'}
-              className={`group flex w-full items-start gap-3 px-5 py-4 text-left transition disabled:cursor-wait disabled:opacity-60 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-4 enabled:hover:bg-ocean-100' : 'enabled:hover:bg-mist-50'}`}
+              className={`group flex w-full items-center gap-3 px-5 py-3.5 transition ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-4 hover:bg-ocean-100' : 'hover:bg-mist-50'}`}
             >
-              <span className={`mt-2 size-2 shrink-0 rounded-full ${unread ? 'bg-ocean-700' : 'bg-mist-100'}`} aria-hidden="true" />
-              <span className="min-w-0 flex-1">
-                <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
-                <time dateTime={notification.createdAt} title={notification.createdAt} className="mt-1 block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
-              </span>
-              <ChevronRight aria-hidden="true" className="mt-1.5 size-4 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
-            </button>
+              <NotificationActorAvatar notification={notification} />
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => openNotification(notification)}
+                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:cursor-wait disabled:opacity-60"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-sm leading-6 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                  <span className="mt-0.5 flex items-center gap-2">
+                    {unread ? <span className="size-2 shrink-0 rounded-full bg-ocean-700" aria-hidden="true" /> : null}
+                    <time dateTime={notification.createdAt} title={notification.createdAt} className="block text-xs text-muted">{relativeTimeFrom(notification.createdAt)}</time>
+                  </span>
+                </span>
+                {notification.postPreview ? null : (
+                  <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-ocean-700" />
+                )}
+              </button>
+              <NotificationPostThumb notification={notification} onOpen={() => markReadInBackground(notification)} />
+            </div>
           )
         })}
       </div>

@@ -311,6 +311,14 @@ export function createFeedService(input: {
     })
   }
 
+  /** Shows a hidden post in the member's feed again. Idempotent: false when it was not hidden. */
+  async function unhidePost(actorId: string, postId: string) {
+    return input.withTransaction(async (repository) => {
+      await assertMemberReady(repository, actorId)
+      return repository.deleteHide(actorId, postId)
+    })
+  }
+
   async function deletePost(actorId: string, postId: string) {
     return input.withTransaction(async (repository) => {
       await assertMemberReady(repository, actorId)
@@ -630,6 +638,7 @@ export function createFeedService(input: {
     setLiked,
     setSaved,
     setHidden,
+    unhidePost,
     addComment,
     updateComment,
     deleteComment,
@@ -657,6 +666,7 @@ export const setPostReactionWithAurora = productionService.setPostReaction
 export const setPostLikedWithAurora = productionService.setLiked
 export const setPostSavedWithAurora = productionService.setSaved
 export const setPostHiddenWithAurora = productionService.setHidden
+export const unhidePostWithAurora = productionService.unhidePost
 export const addPostCommentWithAurora = productionService.addComment
 export const updateCommentWithAurora = productionService.updateComment
 export const deleteCommentWithAurora = productionService.deleteComment

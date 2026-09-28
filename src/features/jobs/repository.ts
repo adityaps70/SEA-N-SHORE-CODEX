@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
+import { planVisibleSql } from '@/features/billing/plan-visibility'
 import type { JobApplicationCvReference } from './application-media'
 import type {
   JobAlert,
@@ -260,8 +261,15 @@ const JOB_SELECT = `select ${JOB_COLUMNS} ${JOB_FROM}` as const
  * discoverable (the card and detail page say applications are closed); isAcceptingApplications
  * decides whether someone can still apply.
  */
+const JOB_PLAN_VISIBLE = planVisibleSql('job', 'j')
+
+/**
+ * Also hides the jobs of an owner whose Creator Pro / Organization Pro ended (kept, and
+ * back on renewal; see billing/plan-visibility). Applicants still see their applications.
+ */
 const OPEN_JOB_WHERE = `j.status = 'published'
-         and j.deleted_at is null` as const
+         and j.deleted_at is null
+         and ${JOB_PLAN_VISIBLE}`
 
 function normalizeLower(values: readonly string[]) {
   return values.map((value) => value.toLocaleLowerCase())
@@ -373,8 +381,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     const rows = await queryRows(
       `${JOB_SELECT}
        where j.id = $1
-         and j.status = 'published'
-         and j.deleted_at is null
+         and ${OPEN_JOB_WHERE}
        limit 1`,
       [jobId],
     ) as JobRow[]
@@ -387,8 +394,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
          select 1
          from public.jobs j
          where j.id = $1
-           and j.status = 'published'
-           and j.deleted_at is null
+           and ${OPEN_JOB_WHERE}
            and (j.apply_until is null or j.apply_until >= current_date)
        ) as accepting`,
       [jobId],
@@ -610,8 +616,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
       `select ${JOB_COLUMNS}
        ${JOB_FROM}
        join public.job_saves s on s.job_id = j.id and s.user_id = $1
-       where j.status = 'published'
-         and j.deleted_at is null
+       where ${OPEN_JOB_WHERE}
        order by s.saved_at desc, j.id desc
        limit $2`,
       [userId, Math.min(Math.max(Math.trunc(limit), 1), 100)],

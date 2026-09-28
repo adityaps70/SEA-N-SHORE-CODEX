@@ -7,6 +7,7 @@ import type {
   FeedPost,
   FeedPostType,
   FeedRepostSource,
+  HiddenPost,
   PostCategory,
   PostReactionType,
   ReactionSummary,
@@ -319,5 +320,58 @@ export function mapFeedPost(
     viewerFollowsAuthor: Boolean(viewerProfileId) && author.id !== viewerProfileId && Boolean(row.viewer_follows_author),
     mentions: mapMentions(row.post_mentions),
     comments,
+  }
+}
+
+/** Only photos and videos make a thumbnail; documents fall back to the text preview. */
+export function isThumbnailMime(mimeType: string | null | undefined) {
+  return Boolean(mimeType && (mimeType.startsWith('image/') || mimeType.startsWith('video/')))
+}
+
+export type HiddenPostSourceRow = {
+  id: string
+  body: string
+  post_type: FeedPostType
+  created_at: string
+  hidden_at: string
+  author_id: string
+  author_slug: string | null
+  author_name: string
+  author_avatar_path: string | null
+  company_id: string | null
+  company_slug: string | null
+  company_name: string | null
+  company_logo_path: string | null
+  source_body: string | null
+  media_path: string | null
+  media_mime_type: string | null
+}
+
+/** Storage paths a hidden-post preview needs signed: the author's photo and the first media item. */
+export function hiddenPostPaths(row: HiddenPostSourceRow) {
+  return [row.author_avatar_path, isThumbnailMime(row.media_mime_type) ? row.media_path : null]
+    .filter((path): path is string => Boolean(path))
+}
+
+export function mapHiddenPost(row: HiddenPostSourceRow, signedUrls: Map<string, string>): HiddenPost | null {
+  if (!row.author_slug) return null
+  const isRepost = row.post_type === 'repost'
+  const thumbnailUrl = row.media_path && isThumbnailMime(row.media_mime_type) ? signedUrls.get(row.media_path) ?? null : null
+  return {
+    id: row.id,
+    body: isRepost && !row.body.trim() ? row.source_body ?? '' : row.body,
+    isRepost,
+    createdAt: row.created_at,
+    hiddenAt: row.hidden_at,
+    author: {
+      id: row.author_id,
+      slug: row.author_slug,
+      fullName: row.author_name,
+      avatarUrl: row.author_avatar_path ? signedUrls.get(row.author_avatar_path) ?? null : null,
+    },
+    organization: mapOrganization(row.company_id && row.company_slug && row.company_name
+      ? { id: row.company_id, slug: row.company_slug, name: row.company_name, logo_path: row.company_logo_path }
+      : null),
+    thumbnail: thumbnailUrl && row.media_mime_type ? { url: thumbnailUrl, mimeType: row.media_mime_type } : null,
   }
 }

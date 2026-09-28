@@ -31,6 +31,34 @@ describe('Aurora notification repository', () => {
     expect(values).toEqual([RECIPIENT_ID, 50])
   })
 
+  it('loads post previews for a page of notifications in one recipient-aware query', async () => {
+    const query = vi.fn(async () => [{ post_id: NOTIFICATION_ID, snippet: 'Hello', media_path: null, media_mime_type: null }])
+    const { createNotificationRepository } = await import('./repository')
+    const repository = createNotificationRepository({ query })
+    const postIds = [NOTIFICATION_ID, NOTIFICATION_ID]
+
+    await expect(repository.listPostPreviews(RECIPIENT_ID, postIds)).resolves.toHaveLength(1)
+
+    expect(query).toHaveBeenCalledTimes(1)
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toContain('p.id = any($2::uuid[])')
+    expect(sql).toContain('p.deleted_at is null')
+    expect(sql).toContain('public.user_blocks')
+    expect(sql).toContain('from public.post_media media')
+    expect(sql).toContain('limit 1')
+    expect(sql).toContain('coalesce(p.repost_of_post_id, p.id)')
+    expect(values).toEqual([RECIPIENT_ID, [NOTIFICATION_ID]])
+  })
+
+  it('skips the preview query when no notification points at a post', async () => {
+    const query = vi.fn(async () => [])
+    const { createNotificationRepository } = await import('./repository')
+    const repository = createNotificationRepository({ query })
+
+    await expect(repository.listPostPreviews(RECIPIENT_ID, [])).resolves.toEqual([])
+    expect(query).not.toHaveBeenCalled()
+  })
+
   it('counts unread notifications only for the authenticated recipient', async () => {
     const query = vi.fn(async () => [{ unread_count: '3' }])
     const { createNotificationRepository } = await import('./repository')

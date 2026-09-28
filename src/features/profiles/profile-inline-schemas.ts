@@ -65,7 +65,6 @@ export const profileProfessionalSectionSchema = z
       (value) => value === true || value === 'true' || value === 'on',
       z.boolean(),
     ),
-    availability: z.enum(['onboard', 'ashore']),
   })
   .superRefine((data, context) => {
     if (data.profileType === 'seafarer' && (!data.rank || data.rank.length < 2)) {

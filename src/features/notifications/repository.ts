@@ -14,6 +14,14 @@ export type NotificationRow = QueryResultRow & {
   read_at: string | null
 }
 
+/** A compact look at the post a notification is about: its text and first photo or video. */
+export type NotificationPostPreviewRow = QueryResultRow & {
+  post_id: string
+  snippet: string | null
+  media_path: string | null
+  media_mime_type: string | null
+}
+
 export type NotificationEventMode = 'shadow' | 'active'
 
 type CountRow = QueryResultRow & { unread_count: string | number }
@@ -45,6 +53,41 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
         [recipientId, clampLimit(limit)],
       )
       return rows as NotificationRow[]
+    },
+
+    /**
+     * One batched lookup for the posts a page of notifications points at. Plain reposts fall back
+     * to the original post's text and media. Deleted posts, and posts by members the recipient
+     * blocked (or who blocked them), return nothing.
+     */
+    async listPostPreviews(recipientId: string, postIds: readonly string[]): Promise<NotificationPostPreviewRow[]> {
+      const ids = [...new Set(postIds)]
+      if (!ids.length) return []
+      const rows = await queryRows(
+        `select
+           p.id as post_id,
+           left(coalesce(nullif(btrim(p.body), ''), source.body, ''), 160) as snippet,
+           first_media.storage_path as media_path,
+           first_media.mime_type as media_mime_type
+         from public.posts p
+         left join public.posts source on source.id = p.repost_of_post_id and source.deleted_at is null
+         left join lateral (
+           select media.storage_path, media.mime_type
+           from public.post_media media
+           where media.post_id = coalesce(p.repost_of_post_id, p.id)
+           order by media.position asc, media.created_at asc, media.id asc
+           limit 1
+         ) first_media on true
+         where p.id = any($2::uuid[])
+           and p.deleted_at is null
+           and not exists (
+             select 1 from public.user_blocks b
+             where (b.blocker_id = $1 and b.blocked_id = p.author_id)
+                or (b.blocker_id = p.author_id and b.blocked_id = $1)
+           )`,
+        [recipientId, ids],
+      )
+      return rows as NotificationPostPreviewRow[]
     },
 
     async countUnread(recipientId: string): Promise<number> {

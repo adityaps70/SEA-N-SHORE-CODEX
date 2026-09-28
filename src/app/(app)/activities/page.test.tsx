@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   getMyActivityPosts: vi.fn(),
   getMyCommentActivity: vi.fn(),
   getMyRecentlyDeletedPosts: vi.fn(),
+  getMyHiddenPosts: vi.fn(),
   requireAwsUser: vi.fn(),
   listMyEvents: vi.fn(),
   listHostedEvents: vi.fn(),
@@ -42,6 +43,10 @@ vi.mock('@/features/feed/queries', () => ({
   getMyActivityPosts: mocks.getMyActivityPosts,
   getMyCommentActivity: mocks.getMyCommentActivity,
   getMyRecentlyDeletedPosts: mocks.getMyRecentlyDeletedPosts,
+  getMyHiddenPosts: mocks.getMyHiddenPosts,
+}))
+vi.mock('@/features/feed/components/hidden-post-card', () => ({
+  HiddenPostCard: ({ post }: { post: { id: string } }) => <div data-testid="hidden-post">{post.id}</div>,
 }))
 vi.mock('@/features/feed/components/feed-profile-card', () => ({ FeedProfileCard: () => <div>Profile card</div> }))
 vi.mock('@/features/network/components/people-you-may-know', () => ({ PeopleYouMayKnow: () => <div>People</div> }))
@@ -86,6 +91,7 @@ beforeEach(() => {
   mocks.getMyActivityPosts.mockResolvedValue([])
   mocks.getMyCommentActivity.mockResolvedValue([])
   mocks.getMyRecentlyDeletedPosts.mockResolvedValue([deletedPost])
+  mocks.getMyHiddenPosts.mockResolvedValue([])
 })
 
 afterEach(() => cleanup())
@@ -109,7 +115,7 @@ describe('/activities recently deleted', () => {
 
     const nav = screen.getByRole('navigation', { name: 'Activity sections' })
     const tabs = within(nav).getAllByRole('link')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Posts', 'Comments', 'Jobs Applied', 'Events', 'Learning', 'Recently Deleted'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Posts', 'Comments', 'Jobs Applied', 'Events', 'Learning', 'Hidden Posts', 'Recently Deleted'])
     for (const tab of tabs) {
       expect(tab.querySelector('svg')).toBeNull()
       expect(tab).toHaveClass('whitespace-nowrap', 'border-b-2', 'cursor-pointer')
@@ -138,5 +144,33 @@ describe('/activities recently deleted', () => {
 
     expect(screen.getByText('No recently deleted posts.')).toBeInTheDocument()
     expect(screen.getByText(/30 days/i)).toBeInTheDocument()
+  })
+})
+
+describe('/activities hidden posts', () => {
+  it('adds a Hidden Posts tab that loads only the viewer’s hidden posts', async () => {
+    mocks.getMyHiddenPosts.mockResolvedValueOnce([{ id: 'hidden-1' }, { id: 'hidden-2' }])
+
+    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'hidden' }) }))
+
+    const nav = screen.getByRole('navigation', { name: 'Activity sections' })
+    expect(within(nav).getByRole('link', { name: 'Hidden Posts' })).toHaveAttribute('href', '/activities?tab=hidden')
+    expect(within(nav).getByRole('link', { name: 'Hidden Posts' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('heading', { name: 'Hidden Posts' })).toBeInTheDocument()
+    expect(screen.getAllByTestId('hidden-post').map((item) => item.textContent)).toEqual(['hidden-1', 'hidden-2'])
+    expect(mocks.getMyHiddenPosts).toHaveBeenCalledTimes(1)
+    expect(mocks.getMyRecentlyDeletedPosts).not.toHaveBeenCalled()
+    expect(mocks.getMyActivityPosts).not.toHaveBeenCalled()
+  })
+
+  it('explains the empty state and does not load hidden posts on other tabs', async () => {
+    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'hidden' }) }))
+    expect(screen.getByText('You have not hidden any posts.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Go to home feed' })).toHaveAttribute('href', '/home')
+
+    cleanup()
+    mocks.getMyHiddenPosts.mockClear()
+    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'posts' }) }))
+    expect(mocks.getMyHiddenPosts).not.toHaveBeenCalled()
   })
 })

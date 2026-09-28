@@ -98,7 +98,6 @@ function validForm() {
   formData.set('vesselTypes', 'Oil Tanker, oil tanker')
   formData.set('tradingAreas', 'Worldwide')
   formData.set('shoreCareerPreference', 'false')
-  formData.set('availability', ' Open to mentoring ')
   return formData
 }
 

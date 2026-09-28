@@ -109,6 +109,32 @@ describe('calendar event repository', () => {
     await expect(calendarEventRepository.cancelEvent(viewerId, eventId)).rejects.toThrow('event_forbidden')
   })
 
+  it('keeps plan-lapsed and removed events out of listings but lets hosts and ticket holders open them', async () => {
+    db.query.mockResolvedValue([])
+    await calendarEventRepository.listDiscoverEvents(viewerId, '')
+    await calendarEventRepository.listPastEvents(viewerId, '')
+    await calendarEventRepository.listOrganizationEvents(viewerId, companyId)
+    await calendarEventRepository.getEvent(eventId, viewerId)
+    await calendarEventRepository.listMyEvents(viewerId)
+    const [discover, past, organization, detail, mine] = db.query.mock.calls.map((call) => String(call[0]).replace(/\s+/g, ' '))
+    const whereOf = (sql: string) => sql.split('left join public.companies c on c.id = e.company_id')[1] ?? ''
+    for (const sql of [discover, past, organization]) {
+      const where = whereOf(sql)
+      expect(where).toContain('e.removed_at is null and')
+      expect(where).toContain('e.hidden_for_plan_at is null')
+    }
+    expect(detail).toContain('holder_ea.user_id = $1::uuid')
+    // Ticket holders' own list is not filtered.
+    expect(whereOf(mine)).not.toContain('removed_at')
+    db.query.mockReset()
+  })
+
+  it('refuses new free registrations for an event whose host’s plan ended', async () => {
+    db.txQuery.mockResolvedValueOnce({ rows: [{ id: eventId, host_user_id: hostId, status: 'published', end_at: '2099-01-01T00:00:00.000Z', capacity: null, registration_mode: 'open', registration_closes_at: null, plan_visible: false }] })
+    await expect(calendarEventRepository.attendEvent(viewerId, eventId)).rejects.toThrow('event_not_open')
+    expect(db.txQuery).toHaveBeenCalledTimes(1)
+  })
+
   it('makes duplicate attendance idempotent', async () => {
     db.txQuery
       .mockResolvedValueOnce({ rows: [{ id: eventId, host_user_id: hostId, status: 'published', end_at: '2099-01-01T00:00:00.000Z', capacity: 1, registration_mode: 'open', registration_closes_at: null }] })

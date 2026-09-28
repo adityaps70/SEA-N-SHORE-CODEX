@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
+import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { scoreJobMatch } from './matching'
 import type { JobApplicationCvReference } from './application-media'
 import { validateApplicationStatusChange } from './application-status'
@@ -105,6 +106,8 @@ export type ManagedHiringJobSummary = HiringJobSummary & {
   newApplicantCount: number
   moderationRemoved: boolean
   canDelete: boolean
+  /** Nobody else can see it because the owner's plan ended (kept; back on renewal). */
+  hiddenForPlan?: boolean
 }
 
 export type HiringJobStateChange = {
@@ -205,6 +208,7 @@ type ManagedJobRow = HiringJobSummaryRow & {
   new_applicant_count?: string | number | null
   moderation_removed?: boolean | null
   can_delete?: boolean | null
+  hidden_for_plan?: boolean | null
 }
 
 type PersonalPublisherRow = QueryResultRow & {
@@ -405,6 +409,7 @@ function managedJobSelect(userParam: string, rolesParam: string) {
          (select count(*) from public.job_applications a where a.job_id = j.id) as applicant_count,
          (select count(*) from public.job_applications a where a.job_id = j.id and a.status = 'applied') as new_applicant_count,
          ${MODERATION_REMOVED_SQL} as moderation_removed,
+         not ${planVisibleSql('job', 'j')} as hidden_for_plan,
          ${deleteAccessSql(userParam, rolesParam)} as can_delete
        from public.jobs j
        left join public.companies c on c.id = j.company_id
@@ -597,6 +602,7 @@ function mapManagedJob(row: ManagedJobRow): ManagedHiringJobSummary {
     newApplicantCount: numberValue(row.new_applicant_count),
     moderationRemoved: Boolean(row.moderation_removed),
     canDelete: Boolean(row.can_delete),
+    hiddenForPlan: row.hidden_for_plan === true,
   }
 }
 

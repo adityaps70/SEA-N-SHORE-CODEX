@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppHeader } from './app-header'
+import { MobileAppHeader } from './mobile-app-header'
 import { MobileNav } from './mobile-nav'
 
 vi.mock('@/features/notifications/components/notification-bell', () => ({
@@ -11,27 +12,28 @@ vi.mock('@/features/auth/actions', () => ({ signOut: vi.fn() }))
 afterEach(() => cleanup())
 
 describe('primary navigation layout', () => {
-  it('keeps the desktop primary row to six destinations plus More', () => {
+  it('shows seven desktop destinations with Community in place of the old More menu', () => {
     render(<AppHeader recentNotifications={[]} unreadCount={0} />)
 
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' })
     const links = primaryNav.querySelectorAll('a')
     expect(Array.from(links).map((link) => link.getAttribute('href'))).toEqual([
-      '/home', '/network', '/jobs', '/messages', '/learn', '/events',
+      '/home', '/network', '/jobs', '/messages', '/learn', '/events', '/community',
     ])
-    expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Saved' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Community' })).toHaveAttribute('href', '/community')
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Saved/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'My Activities' })).not.toBeInTheDocument()
   })
 
-  it('moves Saved posts, My Activities and the Community preview into the More menu', () => {
+  it('keeps My Activities and Saved posts out of the account menu (they live in Settings and on Home)', () => {
     render(<AppHeader recentNotifications={[]} unreadCount={0} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'More' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
 
-    expect(screen.getByRole('menuitem', { name: /Saved posts/ })).toHaveAttribute('href', '/saved')
-    expect(screen.getByRole('menuitem', { name: /My Activities/ })).toHaveAttribute('href', '/activities')
-    expect(screen.getByRole('menuitem', { name: /Community/ })).toHaveTextContent('Preview')
+    expect(screen.queryByRole('menuitem', { name: /My Activities/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: /Saved posts/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: /^Organizations/ })).toHaveAttribute('href', '/organizations')
   })
 
   it('turns Create into a menu of the four things a member can publish', () => {
@@ -68,16 +70,26 @@ describe('primary navigation layout', () => {
     expect(screen.getByRole('searchbox', { name: 'Search Sea N Shore' })).toHaveClass('min-h-10', 'w-44', 'xl:w-56', '2xl:w-[22rem]')
   })
 
-  it('uses a five-target mobile bottom bar with an opaque background', () => {
+  it('uses a five-link mobile bottom bar with Community and an opaque background', () => {
     render(<MobileNav />)
 
     const nav = screen.getByRole('navigation', { name: 'Primary' })
     expect(nav).toHaveClass('grid-cols-5', 'bg-white')
     expect(nav).not.toHaveClass('bg-white/95')
-    expect(screen.getAllByRole('link')).toHaveLength(4)
+    expect(screen.getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual([
+      '/home', '/network', '/jobs', '/learn', '/community',
+    ])
+    expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+  })
 
-    fireEvent.click(screen.getByRole('button', { name: 'More' }))
-    expect(screen.getByRole('menuitem', { name: /Saved posts/ })).toHaveAttribute('href', '/saved')
+  it('moves Events and Organizations into the phone account menu', () => {
+    render(<MobileAppHeader unreadCount={0} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    expect(screen.getByRole('menuitem', { name: /Profile/ })).toHaveAttribute('href', '/profile')
     expect(screen.getByRole('menuitem', { name: /Events/ })).toHaveAttribute('href', '/events')
+    expect(screen.getByRole('menuitem', { name: /^Organizations/ })).toHaveAttribute('href', '/organizations')
+    expect(screen.getByRole('menuitem', { name: /Settings/ })).toHaveAttribute('href', '/settings')
+    expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument()
   })
 })

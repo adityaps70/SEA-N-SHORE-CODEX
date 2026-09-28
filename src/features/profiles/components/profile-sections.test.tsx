@@ -42,14 +42,13 @@ describe('own profile section controls', () => {
     expect(screen.getByRole('textbox', { name: 'Skills' })).toHaveValue('SIRE 2.0')
   })
 
-  it('edits Professional Record in place with Onboard and Ashore availability only', () => {
+  it('edits Professional Record in place without asking for availability', () => {
     render(<MaritimeProfileCard profile={profile} editHref="/profile/edit#professional" />)
     const edit = screen.getByRole('button', { name: 'Edit Professional Record' })
     fireEvent.click(edit)
-    const availability = screen.getByRole('combobox', { name: 'Availability' })
-    expect(availability).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Onboard' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Ashore' })).toBeInTheDocument()
-    expect(screen.queryByRole('option', { name: 'YES' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Rank' })).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Availability' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Onboard' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Ashore' })).not.toBeInTheDocument()
   })
 })

@@ -45,7 +45,6 @@ export type OnboardingFormValues = {
   vesselTypes?: string
   tradingAreas?: string
   shoreCareerPreference?: boolean
-  availability?: string
 }
 
 export type ProfileActionState = {
@@ -77,7 +76,6 @@ const boundedTextFields = {
   sailingExperienceYears: 32,
   vesselTypes: 2000,
   tradingAreas: 2000,
-  availability: 100,
 } as const
 
 function readBoundedText(formData: FormData, name: string, maximum: number) {
@@ -159,9 +157,9 @@ async function flagProfileModeration(profileId: string, assessment: AutomatedMod
 const ORGANIZATION_LOOKUP_FAILED = 'We could not check the organization you chose. Your entries are still here; please try again.'
 
 /** Confirms a picked organization is listed on Sea N Shore; null when the lookup itself failed. */
-async function linkCurrentOrganization<T extends { currentCompany?: string; currentCompanyId?: string }>(data: T) {
+async function linkCurrentOrganization<T extends { currentCompany?: string; currentCompanyId?: string }>(data: T, userId: string) {
   try {
-    return await resolveCurrentOrganizationLink(data, organizationLinkRepository)
+    return await resolveCurrentOrganizationLink(data, organizationLinkRepository, { userId })
   } catch {
     return null
   }
@@ -193,7 +191,7 @@ export async function completeOnboarding(
     })
   }
 
-  const linked = await linkCurrentOrganization(parsed.data)
+  const linked = await linkCurrentOrganization(parsed.data, user.id)
   if (!linked) return failureState(previousState, formData, { error: ORGANIZATION_LOOKUP_FAILED })
   if (!linked.ok) return failureState(previousState, formData, { fieldErrors: linked.fieldErrors })
   const data = linked.data
@@ -289,7 +287,7 @@ export async function completeActivation(
   const parsed = onboardingActivationSchema.safeParse({ ...rawValues, slug: username.slug })
   if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
-  const linked = await linkCurrentOrganization(parsed.data)
+  const linked = await linkCurrentOrganization(parsed.data, user.id)
   if (!linked) return failureState(previousState, formData, { error: ORGANIZATION_LOOKUP_FAILED })
   if (!linked.ok) return failureState(previousState, formData, { fieldErrors: linked.fieldErrors })
   const activation = linked.data
@@ -368,7 +366,7 @@ export async function updateProfile(
   const parsed = onboardingSchema.safeParse({ ...rawValues, profileType: profile.profileType })
   if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
-  const linked = await linkCurrentOrganization(parsed.data)
+  const linked = await linkCurrentOrganization(parsed.data, user.id)
   if (!linked) return failureState(previousState, formData, { error: ORGANIZATION_LOOKUP_FAILED })
   if (!linked.ok) return failureState(previousState, formData, { fieldErrors: linked.fieldErrors })
   const data = linked.data
