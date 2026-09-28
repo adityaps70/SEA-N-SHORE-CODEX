@@ -139,6 +139,8 @@ jobs:
         run: node --test scripts/aws/ecs-task-media-policy-state-release.test.mjs
       - name: Verify ECS task Cashfree secret policy release contract
         run: node --test scripts/aws/ecs-task-cashfree-secret-policy-release.test.mjs
+      - name: Verify guarded staging data cleanup contract
+        run: node scripts/aws/staging-data-cleanup.test.mjs
       - name: Verify social infrastructure plan classifier
         run: node --test scripts/aws/social-events-plan-classifier.test.mjs
       - name: Verify social event parity runtime audit contract
