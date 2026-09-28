@@ -291,10 +291,30 @@ resource "aws_iam_role_policy" "github_deploy" {
         ]
       },
       {
-        Sid      = "Phase5bSesIdentityCreate"
+        Sid    = "Phase5bSesIdentityManage"
+        Effect = "Allow"
+        Action = [
+          "ses:CreateEmailIdentity",
+          "ses:PutEmailIdentityConfigurationSetAttributes",
+          "ses:PutEmailIdentityDkimSigningAttributes",
+          "ses:UpdateEmailIdentityPolicy"
+        ]
+        Resource = [
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in",
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
+        ]
+      },
+      {
+        Sid      = "Phase5bSesConfigurationSetCreate"
         Effect   = "Allow"
-        Action   = ["ses:CreateEmailIdentity"]
-        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in"
+        Action   = ["ses:CreateConfigurationSet"]
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
+      },
+      {
+        Sid      = "Phase5bSesAccountWrite"
+        Effect   = "Allow"
+        Action   = ["ses:PutAccountDetails"]
+        Resource = "*"
       },
       {
         Sid    = "Phase5bCognitoRead"
