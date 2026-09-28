@@ -26,6 +26,16 @@ test('GitHub deploy role scopes Phase 5B SES identity access to the Route53 laun
   assert.match(reconcile, /ses:PutEmailIdentityDkimSigningAttributes/)
   assert.match(reconcile, /ses:UpdateEmailIdentityPolicy/)
   assert.match(reconcile, /ses:CreateConfigurationSet/)
-  assert.doesNotMatch(reconcile, /ses:PutAccountDetails/)
+  assert.doesNotMatch(bootstrap, /ses:PutAccountDetails/)
   assert.doesNotMatch(reconcile, /ses:\*/i)
+})
+
+test('GitHub deploy role can grant SES production-access submission only in the one-shot rerequest mode', () => {
+  assert.match(reconcile, /apply-production-access-once/)
+  assert.match(reconcile, /Phase5bSesProductionAccessRequest/)
+  assert.match(reconcile, /ses:PutAccountDetails/)
+  assert.match(reconcile, /TEMP_PRODUCTION_ACCESS/)
+  assert.match(reconcile, /verify_phase5b_ses_production_access_request_statement/)
+  assert.match(reconcile, /verify_no_phase5b_ses_production_access_request_statement/)
+  assert.doesNotMatch(bootstrap, /ses:PutAccountDetails/)
 })
