@@ -5,7 +5,7 @@ import { AlertTriangle, Building2, CheckCircle2, LockKeyhole, Trash2, X } from '
 import { useRouter } from 'next/navigation'
 import type { AccountDeletionPlan } from '@/features/account-deletion/plan'
 import type { DeletionReauthView } from '@/features/account-deletion/reauth'
-import { displayPhoneNumber } from '@/features/auth/phone-link'
+import { displayPhoneNumber } from '@/features/auth/phone-link-shared'
 
 type DeleteResponse = {
   ok: boolean

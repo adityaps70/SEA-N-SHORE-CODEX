@@ -9,7 +9,7 @@ import {
   removeLinkedPhone,
   requestPhoneLinkCode,
 } from '@/features/auth/phone-link-actions'
-import { displayPhoneNumber, type AccountPhoneSummary, type PhoneLinkState } from '@/features/auth/phone-link'
+import { displayPhoneNumber, type AccountPhoneSummary, type PhoneLinkState } from '@/features/auth/phone-link-shared'
 
 /** Common country codes for seafarers and maritime employers. A number typed with its own + code also works. */
 export const PHONE_COUNTRY_CODES = [
