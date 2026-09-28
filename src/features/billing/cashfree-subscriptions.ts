@@ -185,13 +185,32 @@ function isAlreadyExists(error: unknown) {
 
 type ClientLog = (message: string, details: Record<string, unknown>) => void
 
+export const PAYMENT_PROVIDER_ISSUE_TAG = '[payment_provider_issue]'
+
+/**
+ * Default billing logger. A 4xx answer from Cashfree means Cashfree refused the request
+ * (for example Subscriptions not activated on the merchant account yet, or a bad plan
+ * field): that is a provider/setup issue, not a crash of our service. It is logged as one
+ * warning line tagged [payment_provider_issue] (the deploy health check counts and prints
+ * these instead of treating them as runtime errors). Network failures, timeouts and 5xx
+ * answers stay console.error so the health check still flags them.
+ */
+export function logBillingEvent(message: string, details: Record<string, unknown> = {}) {
+  const status = details.httpStatus
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    console.warn(PAYMENT_PROVIDER_ISSUE_TAG, JSON.stringify({ event: message, ...details }))
+    return
+  }
+  console.error(message, details)
+}
+
 export function createCashfreeSubscriptionsClient(
   config: CashfreeConfig,
   fetchImpl: FetchLike = fetch,
   options: { log?: ClientLog } = {},
 ) {
   const base = CASHFREE_PG_BASE_URLS[config.environment]
-  const log: ClientLog = options.log ?? ((message, details) => console.error(message, details))
+  const log: ClientLog = options.log ?? logBillingEvent
 
   async function request(path: string, init: { method: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string }) {
     let response: Response

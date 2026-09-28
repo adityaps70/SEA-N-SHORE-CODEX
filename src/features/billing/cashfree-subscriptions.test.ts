@@ -8,6 +8,8 @@ import {
   mapCashfreeSubscription,
   mapCashfreeSubscriptionPayment,
   normalizePaymentMethod,
+  logBillingEvent,
+  PAYMENT_PROVIDER_ISSUE_TAG,
 } from './cashfree-subscriptions'
 
 const config = { clientId: 'TEST10123456789', clientSecret: 'cfsk_ma_test_secret', environment: 'sandbox' as const, international: false }
@@ -232,5 +234,47 @@ describe('Cashfree subscription mapping', () => {
     expect(normalizePaymentMethod({ enach: {} })).toBe('enach')
     expect(normalizePaymentMethod('card')).toBe('card')
     expect(normalizePaymentMethod(null)).toBeNull()
+  })
+})
+
+describe('billing event logging', () => {
+  it('logs a 4xx Cashfree refusal as one tagged warning line, not a runtime error', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      logBillingEvent('billing_plan_create_failed', {
+        httpStatus: 400,
+        cashfreeType: 'invalid_request_error',
+        cashfreeMessage: 'Profile is inactive',
+      })
+      expect(error).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledTimes(1)
+      const [tag, line] = warn.mock.calls[0] as [string, string]
+      expect(tag).toBe(PAYMENT_PROVIDER_ISSUE_TAG)
+      expect(line).not.toContain('\n')
+      expect(JSON.parse(line)).toEqual({
+        event: 'billing_plan_create_failed',
+        httpStatus: 400,
+        cashfreeType: 'invalid_request_error',
+        cashfreeMessage: 'Profile is inactive',
+      })
+    } finally {
+      warn.mockRestore()
+      error.mockRestore()
+    }
+  })
+
+  it('keeps network failures and 5xx answers as errors', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      logBillingEvent('cashfree_subscriptions_request_failed', { httpStatus: 502 })
+      logBillingEvent('cashfree_subscriptions_unreachable', { reason: 'TimeoutError' })
+      expect(warn).not.toHaveBeenCalled()
+      expect(error).toHaveBeenCalledTimes(2)
+    } finally {
+      warn.mockRestore()
+      error.mockRestore()
+    }
   })
 })

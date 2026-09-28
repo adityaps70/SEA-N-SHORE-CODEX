@@ -5,7 +5,8 @@ const script = readFileSync('scripts/aws/verify-staging-logo-browser.mjs', 'utf8
 
 describe('staging browser style regression guard', () => {
   it('fails when the compact header logo expands like an unstyled page', () => {
-    expect(script).toContain('state.rect.width > 180')
+    expect(script).toContain('state.rect.width > 240')
+    expect(script).toContain('state.rect.height > 64')
     expect(script).toContain('Header logo rendered outside compact styled bounds')
   })
 

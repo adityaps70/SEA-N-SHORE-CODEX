@@ -111,7 +111,8 @@ try {
   if (state.rect.width < 130 || state.rect.height < 35 || renderedAspectRatio < 2.8) {
     throw new Error(`Header logo is not visibly rendered as a horizontal lockup: ${state.rect.width}x${state.rect.height}`)
   }
-  if (state.rect.width > 180 || state.rect.height > 64) {
+  // Round 7 landing header shows the ship + "Sea N Shore" lockup at 56px tall (about 188px wide at desktop).
+  if (state.rect.width > 240 || state.rect.height > 64) {
     throw new Error(`Header logo rendered outside compact styled bounds: ${state.rect.width}x${state.rect.height}`)
   }
   if (state.style.display === 'none' || state.style.visibility === 'hidden' || Number(state.style.opacity) === 0) {

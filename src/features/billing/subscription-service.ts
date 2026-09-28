@@ -16,6 +16,7 @@ import {
 } from './billing-config'
 import {
   cashfreeErrorDetails,
+  logBillingEvent,
   createCashfreeSubscriptionsClient,
   isSubscriptionsNotEnabledError,
   type CashfreeSubscription,
@@ -126,7 +127,7 @@ export function createSubscriptionService(deps: {
   const chargeMode = deps.chargeMode ?? (() => subscriptionChargeMode())
   const paymentMethods = deps.paymentMethods ?? (() => subscriptionPaymentMethods())
   const newId = deps.newId ?? randomUUID
-  const log = deps.log ?? ((message, details) => console.error(message, details ?? {}))
+  const log = deps.log ?? logBillingEvent
   const syncVisibility = deps.syncVisibility ?? ((subject: BillingSubject | null) => syncPlanContentVisibility(subject))
 
   /**
