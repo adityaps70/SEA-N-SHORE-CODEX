@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 
 const scriptPath = 'scripts/aws/staging-data-cleanup.sh'
 const actionPath = 'scripts/aws/staging-data-cleanup-action.txt'
@@ -12,6 +13,9 @@ assert.equal(existsSync(workflowPath), true, 'missing staging data cleanup workf
 const script = readFileSync(scriptPath, 'utf8')
 const action = readFileSync(actionPath, 'utf8').trim()
 const workflow = readFileSync(workflowPath, 'utf8')
+
+const syntax = spawnSync('bash', ['-n', scriptPath], { encoding: 'utf8' })
+assert.equal(syntax.status, 0, syntax.stderr || 'cleanup runner must pass bash -n')
 
 assert.ok(['plan', 'cleanup-once'].includes(action), 'cleanup guard must be plan or cleanup-once')
 
@@ -29,6 +33,8 @@ assert.match(script, /subscription_payments/)
 assert.match(script, /STAGING_DATA_CLEANUP_FINANCIAL_PROTECTED/)
 assert.match(script, /STAGING_DATA_CLEANUP_PLAN_VERIFIED=true/)
 assert.match(script, /STAGING_DATA_CLEANUP_APPLY_VERIFIED=true/)
+assert.match(script, /COMPLETED_LEGACY_CONVERSIONS_PRESERVED/)
+assert.doesNotMatch(script, /delete from public\.profiles/i, 'cleanup must retain an anonymized profile row rather than hard-delete profiles')
 assert.match(script, /admin-delete-user/)
 
 assert.match(workflow, /feat\/aws-native-phase-0-1/)
