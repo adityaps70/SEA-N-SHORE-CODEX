@@ -338,6 +338,9 @@ jobs:
           EXPECTED_COGNITO_THROTTLE_MESSAGE='Too many Cognito requests. Please try again later'
           COGNITO_ISSUE_PATTERN='\\[cognito_issue\\]'
           EXPECTED_DESTINATION_STREAM_MESSAGE='The destination stream closed early'
+          # Cashfree refused a request (4xx: e.g. Subscriptions not activated yet). The app logs these as one
+          # tagged warning line; they are counted and printed below, not treated as runtime errors.
+          PAYMENT_PROVIDER_ISSUE_PATTERN='\[payment_provider_issue\]'
           IGNORED_MALFORMED_SERVER_REFERENCE_REQUESTS=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ec "$MALFORMED_SERVER_REFERENCE_PATTERN" \
             || true)
@@ -362,6 +365,14 @@ jobs:
             | sort -u \
             | paste -sd, - \
             || true)
+          PAYMENT_PROVIDER_ISSUE_COUNT=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
+            | grep -Ec "$PAYMENT_PROVIDER_ISSUE_PATTERN" \
+            || true)
+          PAYMENT_PROVIDER_ISSUES=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
+            | grep -E "$PAYMENT_PROVIDER_ISSUE_PATTERN" \
+            | sed -nE 's/.*"event":"([^"]*)".*"httpStatus":([0-9]+).*"cashfreeMessage":("[^"]*"|null).*/\1 http=\2 message=\3/p' \
+            | sort | uniq -c | sort -rn | head -n 5 \
+            || true)
           MATCHES=$(jq -r '.events[].message' /tmp/remote-verify-cloudwatch.json \
             | grep -Ev "$MALFORMED_SERVER_REFERENCE_PATTERN" \
             | grep -Ev "$STALE_SERVER_ACTION_PATTERN" \
@@ -371,6 +382,7 @@ jobs:
             | grep -Fv "$EXPECTED_PROFILE_ACTION_MESSAGE" \
             | grep -Fv "$EXPECTED_COGNITO_THROTTLE_MESSAGE" \
             | grep -Fv "$EXPECTED_DESTINATION_STREAM_MESSAGE" \
+            | grep -Ev "$PAYMENT_PROVIDER_ISSUE_PATTERN" \
             | grep -Ev '^[[:space:]]*name: .*error.*,?[[:space:]]*$' \
             | grep -Eai '(^|[^[:alpha:]])(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|password authentication failed|database[^[:cntrl:]]*(failed|error)|auth[^[:cntrl:]]*(failed|error)|HTTP[[:space:]]+5[0-9][0-9])([^[:alpha:]]|$)' \
             || true)
@@ -387,6 +399,11 @@ jobs:
           echo "EXPECTED_COGNITO_THROTTLE_COUNT=$EXPECTED_COGNITO_THROTTLE_COUNT"
           echo "COGNITO_ISSUE_COUNT=$COGNITO_ISSUE_COUNT"
           echo "COGNITO_ISSUE_REASONS=${COGNITO_ISSUE_REASONS:-none}"
+          echo "PAYMENT_PROVIDER_ISSUE_COUNT=$PAYMENT_PROVIDER_ISSUE_COUNT"
+          if [ "$PAYMENT_PROVIDER_ISSUE_COUNT" -gt 0 ]; then
+            echo "PAYMENT_PROVIDER_ISSUES (Cashfree refused these requests; check the Cashfree account setup):"
+            printf '%s\n' "$PAYMENT_PROVIDER_ISSUES" | sed 's/^/  /'
+          fi
           echo "STRONG_RUNTIME_ERROR_MATCHES=$MATCH_COUNT"
 
           if [ "$MATCH_COUNT" -gt 1 ]; then

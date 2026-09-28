@@ -85,6 +85,12 @@ test('remote logo verification follows the compact header asset used by Wordmark
   assert.match(workflow, /test "\$content_type" = "image\/webp"/)
 })
 
+test('remote verify counts Cashfree refusals as payment provider issues, not runtime errors', () => {
+  assert.match(workflow, /PAYMENT_PROVIDER_ISSUE_PATTERN='\\\[payment_provider_issue\\\]'/)
+  assert.match(workflow, /grep -Ev "\$PAYMENT_PROVIDER_ISSUE_PATTERN"/)
+  assert.match(workflow, /PAYMENT_PROVIDER_ISSUE_COUNT=/)
+})
+
 test('staging deployment verification polls until ECS reports rolloutState COMPLETED', () => {
   assert.match(stagingDeployWorkflow, /for attempt in \$\(seq 1 30\)/)
   assert.match(stagingDeployWorkflow, /sleep 5/)
