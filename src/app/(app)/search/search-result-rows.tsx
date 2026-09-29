@@ -1,7 +1,7 @@
 import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { BadgeCheck, BookOpen, Building2 } from 'lucide-react'
-import { ConnectionPrimaryAction } from '@/features/network/components/connection-primary-action'
+import { PersonCardActions } from '@/features/network/components/person-card-actions'
 import type { NetworkProfile } from '@/features/network/types'
 
 /*
@@ -16,9 +16,14 @@ function initials(name: string) {
 /** Divided list wrapper for phone result rows. */
 export const PHONE_RESULT_LIST_CLASS = 'divide-y divide-mist-100 md:hidden'
 
-/** Person: 48px photo, name, headline and the relationship's primary action (Connect, Accept, Pending or Message). */
+/**
+ * Person: 48px photo, name, headline, then rank · organization · location, the relationship's
+ * primary action (Connect, Pending, Accept or Message) and a "…" with Follow, View profile,
+ * Report and Block — the same actions as the network cards.
+ */
 export function SearchPersonRow({ profile, className = '' }: { profile: NetworkProfile; className?: string }) {
-  const headline = profile.headline || [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'
+  const context = [profile.rank, profile.currentCompany, profile.location].filter(Boolean).join(' · ')
+  const headline = profile.headline || context || 'Maritime professional'
   const profileInitials = (
     <span className="grid size-12 place-items-center rounded-full bg-ocean-50 text-[15px] font-semibold text-ocean-800">{initials(profile.fullName)}</span>
   )
@@ -34,13 +39,10 @@ export function SearchPersonRow({ profile, className = '' }: { profile: NetworkP
           {profile.fullName}
         </Link>
         <p className="truncate text-[13px] text-muted">{headline}</p>
+        {profile.headline && context ? <p className="truncate text-xs text-muted">{context}</p> : null}
       </div>
       <div className="shrink-0">
-        <ConnectionPrimaryAction
-          profileId={profile.id}
-          initialRelationship={profile.relationship}
-          variant="pill"
-        />
+        <PersonCardActions profileId={profile.id} slug={profile.slug} fullName={profile.fullName} initialRelationship={profile.relationship} layout="row" />
       </div>
     </li>
   )
