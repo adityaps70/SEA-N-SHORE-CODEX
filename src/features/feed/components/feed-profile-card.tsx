@@ -206,7 +206,7 @@ export function FeedProfileCard({
     <Card className="overflow-hidden border border-mist-100">
       <div className="relative h-16 overflow-hidden bg-[linear-gradient(115deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))]">
         {profile.coverUrl ? (
-          <MediaImage src={profile.coverUrl} alt={`${profile.fullName} cover photo`} fill sizes="320px" loading="eager" className="object-cover" />
+          <MediaImage src={profile.coverUrl} alt={`${profile.fullName} cover photo`} fill sizes="320px" quality={90} loading="eager" className="object-cover" />
         ) : null}
       </div>
       <div className="px-4 pb-4 text-center">

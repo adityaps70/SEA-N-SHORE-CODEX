@@ -20,10 +20,15 @@ describe('Next.js server action upload envelope', () => {
     ]))
   })
 
-  it('serves resized modern formats and keeps them cached for the signed URL window', () => {
+  it('serves resized WebP only (AVIF smears graphics) and keeps results cached for the signed URL window', () => {
     expect(nextConfig.images).toMatchObject({
-      formats: ['image/avif', 'image/webp'],
+      formats: ['image/webp'],
       minimumCacheTTL: 3600,
     })
+    expect(nextConfig.images?.formats).not.toContain('image/avif')
+  })
+
+  it('allows the sharp quality post images and covers ask for, next to the avatar default', () => {
+    expect(nextConfig.images?.qualities).toEqual(expect.arrayContaining([75, 90]))
   })
 })

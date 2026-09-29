@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MediaImage } from './media-image'
 
@@ -53,6 +53,38 @@ describe('MediaImage', () => {
     expect(image).toHaveAttribute('fetchpriority', 'high')
   })
 
+  it('shows the initials underneath a filling photo until it has loaded, then fades the photo in', async () => {
+    render(
+      <span className="relative grid size-11 place-items-center overflow-hidden rounded-full bg-mist-100">
+        <MediaImage src={BUCKET_URL} alt="Member A profile photo" fill sizes="44px" className="object-cover" fallback={<span>MA</span>} />
+      </span>,
+    )
+
+    const initials = screen.getByText('MA')
+    expect(initials.closest('[aria-hidden="true"]')).not.toBeNull()
+    const image = screen.getByRole('img', { name: 'Member A profile photo' })
+    expect(image).toHaveClass('opacity-0', 'motion-safe:transition-opacity', 'object-cover')
+
+    // next/image reports the load after the image has decoded, so the fade completes a tick later.
+    fireEvent.load(image)
+
+    await waitFor(() => expect(image).toHaveClass('opacity-100'))
+    expect(image).not.toHaveClass('opacity-0')
+    expect(screen.getByText('MA')).toBeInTheDocument()
+  })
+
+  it('fades a fixed-size photo in without duplicating its fallback beside it', async () => {
+    render(
+      <MediaImage src={BUCKET_URL} alt="Member A profile photo" width={48} height={48} sizes="48px" className="size-12 rounded-full" fallback={<span>MA</span>} />,
+    )
+
+    expect(screen.queryByText('MA')).not.toBeInTheDocument()
+    const image = screen.getByRole('img', { name: 'Member A profile photo' })
+    expect(image).toHaveClass('opacity-0')
+    fireEvent.load(image)
+    await waitFor(() => expect(image).toHaveClass('opacity-100'))
+  })
+
   it('renders the fallback instead of a broken image', () => {
     render(
       <MediaImage src={BUCKET_URL} alt="Member A profile photo" width={44} height={44} sizes="44px" fallback={<span>MA</span>} />,
@@ -62,5 +94,18 @@ describe('MediaImage', () => {
 
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
     expect(screen.getByText('MA')).toBeInTheDocument()
+  })
+
+  it('keeps the initials when a filling photo fails to load', () => {
+    render(
+      <span className="relative grid size-11 place-items-center overflow-hidden rounded-full bg-mist-100">
+        <MediaImage src={BUCKET_URL} alt="Member A profile photo" fill sizes="44px" fallback={<span>MA</span>} />
+      </span>,
+    )
+
+    fireEvent.error(screen.getByRole('img', { name: 'Member A profile photo' }))
+
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getAllByText('MA')).toHaveLength(1)
   })
 })

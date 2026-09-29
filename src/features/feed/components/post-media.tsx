@@ -177,6 +177,11 @@ type PhotoLoading = {
 /** Photos are shown at the card's width: full width on phones, the 640px column on larger screens. */
 const POST_IMAGE_SIZES = '(max-width: 768px) 100vw, 640px'
 const GRID_IMAGE_SIZES = '(max-width: 768px) 50vw, 320px'
+/**
+ * Most post images are designed graphics (cards, posters) whose small logos and fine text go soft
+ * at the optimizer's default quality 75; 90 is listed in next.config.ts `images.qualities`.
+ */
+const POST_IMAGE_QUALITY = 90
 
 function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetchPriority }: {
   media: FeedMedia[]
@@ -226,6 +231,7 @@ function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetc
           width={1280}
           height={960}
           sizes={POST_IMAGE_SIZES}
+          quality={POST_IMAGE_QUALITY}
           loading={loading}
           fetchPriority={fetchPriority}
           className="block h-auto w-full object-contain"
@@ -250,6 +256,7 @@ function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetc
               alt={item.altText ?? `Photo ${index + 1} attached to ${authorName}'s post`}
               fill
               sizes={GRID_IMAGE_SIZES}
+              quality={POST_IMAGE_QUALITY}
               loading={index === 0 ? loading : 'lazy'}
               fetchPriority={index === 0 ? fetchPriority : undefined}
               className="object-cover"
@@ -283,7 +290,7 @@ function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetc
             width={2048}
             height={1536}
             sizes="100vw"
-            quality={85}
+            quality={POST_IMAGE_QUALITY}
             loading="eager"
             className="max-h-[88vh] max-w-[92vw] object-contain"
             style={{ width: 'auto', height: 'auto' }}

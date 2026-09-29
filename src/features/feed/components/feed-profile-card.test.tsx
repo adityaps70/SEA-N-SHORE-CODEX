@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { FeedProfileCard } from './feed-profile-card'
 import type { OwnProfile } from '@/features/profiles/types'
@@ -58,12 +58,16 @@ describe('FeedProfileCard', () => {
     expect(screen.getByRole('progressbar', { name: /Profile completeness/i })).toBeInTheDocument()
   })
 
-  it('renders the uploaded profile photo and banner when media URLs exist', () => {
+  it('renders the uploaded profile photo and banner when media URLs exist', async () => {
     render(<FeedProfileCard profile={completeProfile} portfolioCompletion={completePortfolio} />)
 
     expect(screen.getByRole('img', { name: 'Member A cover photo' })).toHaveAttribute('src', completeProfile.coverUrl)
     expect(screen.getByRole('img', { name: 'Member A profile photo' })).toHaveAttribute('src', completeProfile.avatarUrl)
-    expect(screen.queryByText('MA')).not.toBeInTheDocument()
+    // The initials sit underneath the photo (hidden from assistive tech) until it has painted.
+    expect(screen.getByText('MA').closest('[aria-hidden="true"]')).not.toBeNull()
+    expect(screen.getByRole('img', { name: 'Member A profile photo' })).toHaveClass('opacity-0')
+    fireEvent.load(screen.getByRole('img', { name: 'Member A profile photo' }))
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Member A profile photo' })).toHaveClass('opacity-100'))
   })
 
   it('increases the desktop profile photo by about 15 percent and preserves the cover overlap', () => {
