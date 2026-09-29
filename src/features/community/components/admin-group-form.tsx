@@ -5,6 +5,7 @@ import { primaryButtonClass } from '@/components/ui/interactive-styles'
 import { createGroupAsAdmin, setGroupOwnerAsAdmin, updateGroupAsAdmin, type AdminGroupFormState } from '../admin-actions'
 import { GROUP_ICON_LABELS } from '../group-icons'
 import { GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type AdminCommunityGroup } from '../types'
+import { JOIN_POLICY_OPTIONS } from './edit-group-form'
 
 const inputClass = 'min-h-10 w-full rounded-lg border border-mist-200 bg-white px-3 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100'
 const areaClass = 'w-full rounded-lg border border-mist-200 bg-white px-3 py-2 text-sm leading-6 text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100'
@@ -38,10 +39,21 @@ export function AdminGroupForm({ group }: { group?: AdminCommunityGroup }) {
         <label className={labelClass}>
           Visibility
           <select name="visibility" defaultValue={group?.visibility ?? 'public'} className={`${inputClass} mt-1 normal-case tracking-normal`}>
-            <option value="public">Public — anyone can join and read</option>
-            <option value="private">Private — admins approve join requests</option>
+            <option value="public">Public — anyone can read the posts and see the members</option>
+            <option value="private">Private — posts and members are visible to members only</option>
           </select>
         </label>
+        <fieldset className="md:col-span-2">
+          <legend className={labelClass}>Join setting</legend>
+          <div className="mt-1 grid gap-2 md:grid-cols-2">
+            {JOIN_POLICY_OPTIONS.map((option) => (
+              <label key={option.value} className="flex min-h-10 cursor-pointer items-start gap-2 rounded-lg border border-mist-200 bg-white px-3 py-2 text-sm normal-case tracking-normal text-navy-950 hover:bg-mist-50 has-[:checked]:border-ocean-400 has-[:checked]:bg-ocean-50">
+                <input type="radio" name="joinPolicy" value={option.value} defaultChecked={(group?.joinPolicy ?? 'open') === option.value} className="mt-0.5 size-4 accent-ocean-700" />
+                <span className="font-semibold">{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <label className={labelClass}>
           Icon
           <select name="icon" defaultValue={group?.icon ?? ''} className={`${inputClass} mt-1 normal-case tracking-normal`}>
@@ -74,7 +86,7 @@ export function AdminGroupOwnerForm({ group }: { group: AdminCommunityGroup }) {
         New owner (sign-in email or @handle)
         <input name="owner" required maxLength={320} className={`${inputClass} mt-1 normal-case tracking-normal`} placeholder="captain@example.com or @asha-singh" />
       </label>
-      <p className="text-xs text-muted">Current owner: {group.owner ? group.owner.fullName : 'none'}. They stay in the group as an admin.</p>
+      <p className="text-xs text-muted">Current owner: {group.owner ? group.owner.fullName : 'none'}. They stay in the group as a moderator.</p>
       <FormStatus state={state} />
       <button type="submit" disabled={pending} className="inline-flex min-h-9 cursor-pointer items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:border-ocean-200 hover:bg-ocean-50 disabled:opacity-60">
         {pending ? 'Saving…' : 'Set owner'}

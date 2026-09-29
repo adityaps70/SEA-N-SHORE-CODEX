@@ -91,7 +91,7 @@ describe('/admin/communities', () => {
     expect(within(edit).getByLabelText('Rules')).toHaveValue('Be kind.')
     expect(within(edit).queryByLabelText(/Owner/)).not.toBeInTheDocument()
     const owner = screen.getByRole('form', { name: 'Change owner of Tanker Professionals' })
-    expect(within(owner).getByText('Current owner: Asha Singh. They stay in the group as an admin.')).toBeInTheDocument()
+    expect(within(owner).getByText('Current owner: Asha Singh. They stay in the group as a moderator.')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Archive Tanker Professionals' })).toHaveLength(2)
   })
 

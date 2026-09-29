@@ -5,16 +5,18 @@ import { useState, useTransition } from 'react'
 import { Check, Clock3, Loader2, LogOut, Plus } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { joinGroup, leaveGroup } from '../actions'
-import type { GroupRole, GroupVisibility, MembershipStatus } from '../types'
+import type { GroupJoinPolicy, GroupRole, GroupVisibility, MembershipStatus } from '../types'
 
 /**
  * Join / Request to join / Pending / Joined (cards) or Join / Leave / Pending (group page).
- * The server decides the membership; this island only reflects it.
+ * The server decides the membership; this island only reflects it. The label follows the
+ * join setting (round 9C): "Join" for open groups, "Request to join" when a moderator approves.
  */
 export function GroupMembershipButton({
   groupId,
   groupName,
   visibility,
+  joinPolicy,
   initialStatus,
   role,
   appearance = 'card',
@@ -23,11 +25,14 @@ export function GroupMembershipButton({
   groupId: string
   groupName: string
   visibility: GroupVisibility
+  /** Defaults to the round 9B rule (private groups need approval) for callers that do not pass it. */
+  joinPolicy?: GroupJoinPolicy
   initialStatus: MembershipStatus | null
   role: GroupRole | null
   appearance?: 'card' | 'page'
   className?: string
 }) {
+  const needsApproval = (joinPolicy ?? (visibility === 'private' ? 'approval' : 'open')) === 'approval'
   const router = useRouter()
   const [status, setStatus] = useState<MembershipStatus | null>(initialStatus)
   const [error, setError] = useState('')
@@ -91,7 +96,7 @@ export function GroupMembershipButton({
       </button>
     )
   } else {
-    const label = visibility === 'private' ? 'Request to join' : 'Join'
+    const label = needsApproval ? 'Request to join' : 'Join'
     button = (
       <button type="button" onClick={join} disabled={pending} aria-label={`${label} ${groupName}`} className={cn(base, appearance === 'page' ? primary : primary, className)}>
         {pending ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />} {label}
