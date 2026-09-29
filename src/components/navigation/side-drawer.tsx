@@ -21,7 +21,7 @@ import { useEffect, useId, useRef, type KeyboardEvent, type MouseEvent, type Rea
 import { useSheetScrollLock } from '@/components/ui/mobile-sheet'
 import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
 import { AccountMenuSignOut, type HeaderOrganization } from './account-menu'
-import { CONTENT_OWNERSHIP_NOTE, FooterSocialLinks, OPERATOR_LINE, copyrightLine, footerLinks } from './app-footer'
+import { FooterSocialIcons, footerBottomLine, footerLinks } from './app-footer'
 import { ViewerAvatar, type HeaderViewer } from './viewer-avatar'
 
 export const SIDE_DRAWER_ID = 'phone-side-drawer'
@@ -282,10 +282,8 @@ export function SideDrawer({
               ))}
             </ul>
           </nav>
-          <FooterSocialLinks className="mt-2" />
-          <p className="mt-3">{copyrightLine()}</p>
-          <p className="mt-1">{OPERATOR_LINE}</p>
-          <p className="mt-1 leading-5">{CONTENT_OWNERSHIP_NOTE}</p>
+          <FooterSocialIcons className="-ml-2 mt-2" />
+          <p className="mt-3 leading-5">{footerBottomLine()}</p>
         </div>
       </div>
     </div>

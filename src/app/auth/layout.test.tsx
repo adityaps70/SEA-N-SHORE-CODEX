@@ -14,6 +14,6 @@ describe('auth route cache policy', () => {
     expect(screen.getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
     expect(screen.getByRole('link', { name: 'Privacy' })).toHaveAttribute('href', '/privacy')
     expect(screen.getByRole('link', { name: 'Copyright & IP' })).toHaveAttribute('href', '/copyright')
-    expect(screen.getByText(/all rights reserved/i)).toBeVisible()
+    expect(screen.getByText(`© ${new Date().getFullYear()} Sea N Shore · operated by Beaufort Marine Services LLP, Navi Mumbai, India`)).toBeVisible()
   })
 })

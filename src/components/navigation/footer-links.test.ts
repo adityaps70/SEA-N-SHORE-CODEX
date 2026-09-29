@@ -89,7 +89,7 @@ describe('footer links', () => {
 
   it('gives the phone side drawer every footer link that has no row of its own in the drawer', () => {
     expect(drawerFooterLinks().map((link) => link.label)).toEqual([
-      'About', 'Pricing', 'Contact us', 'Newsletter', 'Accessibility',
+      'Pricing', 'About', 'Contact us', 'Newsletter', 'Accessibility',
       'Terms', 'Privacy Policy', 'Refunds & cancellation', 'Shipping & delivery', 'Copyright & IP', 'Your data & privacy',
     ])
   })
