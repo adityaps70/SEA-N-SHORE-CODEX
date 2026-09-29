@@ -99,14 +99,21 @@ if [[ "$ACTION" == plan ]]; then
   echo 'EDGE_RECOVERY_PLAN_VERIFIED_NO_APPLY'
   exit 0
 fi
-# Apply only the exact saved plan just checked. For an existing edge, only bounded in-place
-# CloudFront/WAF updates plus the repository redirect function (create/update) are allowed, and
-# at least one of them must change.
+# Apply only the exact saved plan just checked. Dependencies pulled in by -target (the seanshore.in
+# certificate) must be no-ops; for an existing edge, only bounded in-place CloudFront/WAF updates
+# plus the repository redirect function (create/update) are allowed, and at least one must change.
+EDGE_ADDRESSES='["aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
+jq -e --argjson edge "$EDGE_ADDRESSES" '
+  [.resource_changes[] | select(.mode == "managed") | select((.address | IN($edge[])) | not) | select(.change.actions != ["no-op"])] | length == 0
+' "$RECOVERY_DIR/plan.json" >/dev/null || {
+  echo 'Edge apply refused: a dependency outside the edge resources would change.' >&2
+  exit 1
+}
 if [[ -n "$STATE_CF_ID" ]]; then
-  jq -e '
-    [.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] as $changes
+  jq -e --argjson edge "$EDGE_ADDRESSES" '
+    [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
     | ($changes | length) == 3
-      and ([ $changes[].address ] | sort) == ["aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]
+      and ([ $changes[].address ] | sort) == ($edge | sort)
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions as $cf | ($cf == ["no-op"] or $cf == ["update"]))
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["update"] or $fn == ["create"]))
@@ -118,10 +125,10 @@ if [[ -n "$STATE_CF_ID" ]]; then
     exit 1
   }
 else
-  jq -e '
-    [.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] as $changes
+  jq -e --argjson edge "$EDGE_ADDRESSES" '
+    [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
     | ($changes | length) == 3
-      and ([ $changes[].address ] | sort) == ["aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]
+      and ([ $changes[].address ] | sort) == ($edge | sort)
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["create"])
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["create"]))
