@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/mobile-sheet'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
+import { cn } from '@/lib/cn'
 import { useRouter } from 'next/navigation'
 import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import {
@@ -171,7 +172,9 @@ export function RelationshipControls({
     ? 'min-h-9 rounded-xl border border-mist-200 bg-white px-3 text-xs font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50'
     : 'min-h-10 rounded-xl border border-mist-200 bg-white px-3.5 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50'
   const profileVariant = variant === 'profile'
-  const primaryClass = `${buttonClass} border-navy-950 bg-navy-950 text-white hover:border-navy-800 hover:bg-navy-800 ${profileVariant ? PHONE_PRIMARY_PILL : ''}`
+  // Merged with cn() so the filled tone replaces the outline tone: Tailwind orders same-property
+  // utilities by name, so a plain string concat would leave bg-white and text-white both applied.
+  const primaryClass = cn(buttonClass, 'border-navy-950 bg-navy-950 text-white hover:border-navy-800 hover:bg-navy-800', profileVariant && PHONE_PRIMARY_PILL)
   const menuItemClass = `min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-navy-900 hover:bg-mist-50 disabled:opacity-50 max-md:flex max-md:items-center ${SHEET_MENU_ITEM_CLASS}`
   const phoneIcon = 'size-5 shrink-0 md:hidden'
 
