@@ -408,11 +408,15 @@ export function MessagingDock({
   if (hidden) return null
 
   return (
-    <div className="fixed bottom-0 right-6 z-[90] hidden md:block">
+    // The dock sits in a container that mirrors the app shell's (max-w-7xl, px-4), right-aligned,
+    // so it is exactly the right rail's 300px column and lines up with its left and right edges.
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] hidden md:block" data-testid="messaging-dock-anchor">
+      <div className="mx-auto flex w-full max-w-7xl justify-end px-4">
+      <div className="pointer-events-auto w-[300px]">
       {open ? (
         <section
           aria-label="Messaging dock"
-          className="flex h-[min(36rem,calc(100vh-7rem))] w-[25rem] flex-col overflow-hidden rounded-t-2xl border border-b-0 border-mist-100 bg-white shadow-2xl"
+          className="flex h-[min(36rem,calc(100vh-7rem))] w-full flex-col overflow-hidden rounded-t-2xl border border-b-0 border-mist-100 bg-white shadow-2xl"
         >
           <header className="flex min-h-14 items-center gap-1.5 border-b border-mist-100 px-3">
             {active ? (
@@ -685,7 +689,7 @@ export function MessagingDock({
             setLoading(true)
             setOpen(true)
           }}
-          className="flex min-h-12 min-w-48 cursor-pointer items-center gap-2 rounded-t-2xl border border-b-0 border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 shadow-xl transition hover:bg-mist-50"
+          className="flex min-h-12 w-full cursor-pointer items-center gap-2 rounded-t-2xl border border-b-0 border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 shadow-xl transition hover:bg-mist-50"
         >
           <MessageCircleMore aria-hidden="true" className="size-5 text-ocean-700" />
           <span className="flex-1 text-left">Messaging</span>
@@ -708,6 +712,8 @@ export function MessagingDock({
         onActiveIdChange={setLightboxImageId}
         onClose={closeLightbox}
       />
+      </div>
+      </div>
     </div>
   )
 }
