@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { RelationshipState } from '../types'
 import { PersonCardActions } from './person-card-actions'
 
 const refresh = vi.fn()
@@ -29,14 +30,14 @@ vi.mock('../actions', () => ({
 
 const profileId = '22222222-2222-4222-8222-222222222222'
 const connectionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-const none = { following: false, connection: { kind: 'none' as const, connectionId: null } }
+const none: RelationshipState = { following: false, connection: { kind: 'none', connectionId: null } }
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
 
-function renderCard(relationship = none, layout: 'card' | 'row' = 'card') {
+function renderCard(relationship: RelationshipState = none, layout: 'card' | 'row' = 'card') {
   return render(<PersonCardActions profileId={profileId} slug="meera-nair" fullName="Meera Nair" initialRelationship={relationship} layout={layout} />)
 }
 
