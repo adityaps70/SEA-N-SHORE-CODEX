@@ -304,4 +304,80 @@ describe('MessageComposer rich messaging', () => {
     }))
     expect(onCancelReply).toHaveBeenCalled()
   })
+
+  it('keeps the page variant unchanged: "Message…" placeholder, size-10 buttons and the keyboard hint', () => {
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    const textbox = screen.getByRole('textbox', { name: 'Write a message' })
+    expect(textbox).toHaveAttribute('placeholder', 'Message…')
+    expect(textbox).toHaveClass('max-h-36', 'min-h-11')
+    expect(textbox).not.toHaveClass('[field-sizing:content]')
+    expect(textbox.style.height).toBe('')
+    expect(screen.getByRole('button', { name: 'Attach photo or file' })).toHaveClass('size-10', 'border')
+    expect(screen.getByRole('button', { name: 'Add emoji' })).toHaveClass('size-10')
+    expect(screen.getByRole('button', { name: 'Send message' })).toHaveClass('size-11')
+    expect(screen.getByText('Enter to send · Shift + Enter for a new line')).toBeInTheDocument()
+  })
+
+  it('auto-grows the dock variant textarea with its content, capped by the max-height class', async () => {
+    const user = userEvent.setup()
+    mocks.sendMessageAction.mockImplementationOnce(async (input) => ({
+      ok: true,
+      message: canonical({ clientMessageId: input.clientMessageId, body: 'one' }),
+    }))
+
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        variant="dock"
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    const textbox = screen.getByRole('textbox', { name: 'Write a message' }) as HTMLTextAreaElement
+    expect(textbox).toHaveAttribute('placeholder', 'Write a message…')
+    expect(textbox).toHaveAttribute('rows', '1')
+    expect(textbox).toHaveClass('[field-sizing:content]', 'max-h-[7.5rem]', 'flex-1', 'min-w-0')
+    expect(screen.queryByText('Enter to send · Shift + Enter for a new line')).not.toBeInTheDocument()
+
+    // jsdom has no layout: emulate the natural content height (20px line-height + 12px padding).
+    const lineHeight = 20
+    Object.defineProperty(textbox, 'scrollHeight', {
+      configurable: true,
+      get: () => 12 + lineHeight * Math.max(1, textbox.value.split('\n').length),
+    })
+
+    fireEvent.change(textbox, { target: { value: 'one' } })
+    expect(textbox.style.height).toBe('32px')
+
+    fireEvent.change(textbox, { target: { value: 'one\ntwo\nthree' } })
+    expect(textbox.style.height).toBe('72px')
+
+    fireEvent.change(textbox, { target: { value: 'one\ntwo\nthree\nfour\nfive\nsix' } })
+    // The inline height follows the content; the max-h-[7.5rem] (120px, ~5 lines) class caps what is shown.
+    expect(textbox.style.height).toBe('132px')
+    expect(textbox).toHaveClass('max-h-[7.5rem]')
+
+    // Shift+Enter keeps composing (no send), Enter sends and the textarea shrinks back to one line.
+    await user.type(textbox, '{Shift>}{Enter}{/Shift}')
+    expect(mocks.sendMessageAction).not.toHaveBeenCalled()
+    expect(textbox.value.split('\n')).toHaveLength(7)
+
+    fireEvent.change(textbox, { target: { value: 'one' } })
+    await user.type(textbox, '{Enter}')
+    expect(mocks.sendMessageAction).toHaveBeenCalledWith(expect.objectContaining({ body: 'one' }))
+    expect(textbox).toHaveValue('')
+    expect(textbox.style.height).toBe('32px')
+  })
 })
