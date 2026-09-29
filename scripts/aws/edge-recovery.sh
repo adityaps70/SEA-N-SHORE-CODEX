@@ -57,13 +57,28 @@ site=next(e['value'] for e in web['environment'] if e['name']=='NEXT_PUBLIC_SITE
 values={'image_tag':web['image'].rsplit(':',1)[-1], 'site_url':site, 'aurora_engine_version':attrs('aws_rds_cluster', 'aurora')['engine_version']}
 with open(sys.argv[2],'w') as f: json.dump(values,f)
 PY
-# Providers come from the committed lockfile (read-only), exactly like the other guarded scripts;
-# the module now needs archive/random alongside aws, which the host checkout's cache never held.
-grep -Eq 'provider "registry.terraform.io/hashicorp/aws" \{\s*$' "$APP_DIR/.terraform.lock.hcl"
-grep -Eq '^  version\s*=\s*"6\.62\.0"' "$APP_DIR/.terraform.lock.hcl"
-terraform -chdir="$APP_DIR" init -input=false -no-color -lockfile=readonly \
+# Plain init like the other guarded scripts (the committed lock pins only aws; the module also
+# needs archive/random), then assert the exact provider versions the plan will run with.
+terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" \
   -backend-config=region=ap-south-1 -backend-config=use_lockfile=true > "$RECOVERY_DIR/init.log"
+python3 - "$APP_DIR/.terraform.lock.hcl" <<'PY'
+import re, sys
+text = open(sys.argv[1]).read()
+expected = {
+    'registry.terraform.io/hashicorp/aws': '6.62.0',
+    'registry.terraform.io/hashicorp/archive': '2.8.1',
+    'registry.terraform.io/hashicorp/random': '3.9.1',
+}
+for source, version in expected.items():
+    match = re.search(rf'provider\s+"{re.escape(source)}"\s*\{{(?P<body>.*?)\n\}}', text, re.S)
+    if not match:
+        raise SystemExit(f'Missing provider lock for {source}')
+    found = re.search(r'version\s*=\s*"([^"]+)"', match.group('body'))
+    if not found or found.group(1) != version:
+        raise SystemExit(f'Unexpected provider version for {source}: {found.group(1) if found else None}; expected {version}')
+PY
+echo 'EDGE_PROVIDER_LOCK_VERIFIED=true'
 set +e
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect \
