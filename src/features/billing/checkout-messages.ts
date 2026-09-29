@@ -17,6 +17,8 @@ export type StartPlanCheckoutResult =
       error: string
       /** Ask for these, then call again with them. */
       needsContact?: { phone: boolean; email: boolean }
+      /** subscriptions_unavailable: Cashfree has not switched auto-pay on for Sea N Shore yet (a trial can carry on). */
+      reason?: 'subscriptions_unavailable'
     }
 
 /** What the page shows while / after the customer approves the mandate. */

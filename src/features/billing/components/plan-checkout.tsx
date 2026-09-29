@@ -10,11 +10,12 @@ import {
   type CheckPlanCheckoutResult,
   type PlanCheckoutTarget,
 } from '../checkout-messages'
-import { INTERVAL_LABELS, formatRupees, type BillingInterval } from '../plans'
+import { BILLING_INTERVALS, INTERVAL_LABELS, formatRupees, intervalSaving, type BillingInterval } from '../plans'
+import type { PlanPriceSummary } from './plan-cards'
 import { openSubscriptionCheckout, type SubscriptionRedirectTarget } from './subscription-sdk'
 
 /**
- * Choose monthly or yearly, then approve an auto-pay mandate in Cashfree's window.
+ * Choose monthly, half-yearly or yearly, then approve an auto-pay mandate in Cashfree's window.
  * start (server action creates the Cashfree subscription) → optional mobile / email step
  * → Cashfree approval (new tab) → this page asks the server every few seconds until the
  * mandate is approved, waiting for the bank, or failed. The browser never decides.
@@ -23,12 +24,19 @@ import { openSubscriptionCheckout, type SubscriptionRedirectTarget } from './sub
 export type PlanCheckoutProps = {
   target: PlanCheckoutTarget
   planLabel: string
-  prices: { month: number | null; year: number | null }
+  /** The active price of each interval; intervals without one are not offered. */
+  prices: PlanPriceSummary
   yearlySavingLabel: string | null
   defaultInterval?: BillingInterval
   /** Only this interval can be chosen (e.g. "Switch to yearly"). */
   onlyInterval?: BillingInterval
   configured: boolean
+  /**
+   * While the account's free trial runs, the date it ends (already formatted). When auto-pay
+   * is not available yet, the panel then says paid plans open before that date instead of
+   * showing a disabled button.
+   */
+  trialEndsOn?: string | null
   /** Why buying is not possible for this account right now (shown instead of the button). */
   blockedMessage?: string | null
   /** The new plan starts when the current one ends, on this date. */
@@ -57,7 +65,7 @@ export function PlanCheckout(props: PlanCheckoutProps) {
   const fieldId = useId()
   const available: BillingInterval[] = props.onlyInterval
     ? [props.onlyInterval]
-    : (['month', 'year'] as const).filter((interval) => props.prices[interval] !== null)
+    : BILLING_INTERVALS.filter((interval) => props.prices[interval] !== null)
   const [interval, setChosenInterval] = useState<BillingInterval>(
     props.onlyInterval ?? (props.defaultInterval && props.prices[props.defaultInterval] !== null ? props.defaultInterval : available[0] ?? 'month'),
   )
@@ -70,6 +78,7 @@ export function PlanCheckout(props: PlanCheckoutProps) {
   const [status, setStatus] = useState<CheckPlanCheckoutResult | null>(null)
   const [checking, setChecking] = useState(false)
   const [windowProblem, setWindowProblem] = useState<string | null>(null)
+  const [autoPayUnavailable, setAutoPayUnavailable] = useState(false)
   const firstFieldRef = useRef<HTMLInputElement>(null)
   const pollCount = useRef(0)
 
@@ -120,16 +129,16 @@ export function PlanCheckout(props: PlanCheckoutProps) {
   }, [phase, checkout, check, pollMs])
 
   if (!props.configured) {
+    if (props.trialEndsOn) return <PaidPlansOpenSoon trialEndsOn={props.trialEndsOn} />
+    const priceLines = BILLING_INTERVALS.filter((option) => props.prices[option] !== null)
+      .map((option) => `${formatRupees(props.prices[option] as number)} ${INTERVAL_LABELS[option].per}`)
     return (
       <div className="space-y-2 rounded-2xl border border-mist-200 bg-mist-50/60 p-4">
         <p className="text-sm font-bold text-navy-950">{BILLING_NOT_CONFIGURED_TITLE}</p>
         <p className="text-sm leading-6 text-navy-700">{BILLING_NOT_CONFIGURED_MESSAGE}</p>
-        {props.prices.month !== null || props.prices.year !== null ? (
+        {priceLines.length ? (
           <p className="text-sm font-semibold text-navy-900">
-            {props.planLabel}: {[
-              props.prices.month !== null ? `${formatRupees(props.prices.month)} per month` : null,
-              props.prices.year !== null ? `${formatRupees(props.prices.year)} per year` : null,
-            ].filter(Boolean).join(' or ')}
+            {props.planLabel}: {listWithOr(priceLines)}
           </p>
         ) : null}
         <button type="button" disabled className="mt-1 min-h-11 w-full cursor-not-allowed rounded-xl border border-mist-200 bg-mist-100 px-5 text-sm font-bold text-navy-700">
@@ -171,6 +180,12 @@ export function PlanCheckout(props: PlanCheckoutProps) {
         setNeeds(result.needsContact)
         setPhase('contact')
         if (contact) setError(result.error)
+        return
+      }
+      if (result.reason === 'subscriptions_unavailable' && props.trialEndsOn) {
+        setPhase('choose')
+        setError(null)
+        setAutoPayUnavailable(true)
         return
       }
       setPhase(needs.phone || needs.email ? 'contact' : 'choose')
@@ -319,13 +334,15 @@ export function PlanCheckout(props: PlanCheckoutProps) {
     )
   }
 
+  if (autoPayUnavailable && props.trialEndsOn) return <PaidPlansOpenSoon trialEndsOn={props.trialEndsOn} />
+
   const busy = phase === 'starting' || phase === 'opening'
   return (
     <div className="space-y-4">
       {available.length > 1 ? (
         <fieldset>
           <legend className="text-sm font-bold text-navy-950">How often do you want to pay?</legend>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <div className={`mt-2 grid gap-2 ${available.length > 2 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
             {available.map((option) => {
               const optionAmount = props.prices[option]!
               return (
@@ -352,6 +369,8 @@ export function PlanCheckout(props: PlanCheckoutProps) {
                   </span>
                   {option === 'year' && props.yearlySavingLabel ? (
                     <span className="mt-0.5 text-xs font-semibold text-teal-800">{props.yearlySavingLabel}</span>
+                  ) : option !== 'month' && option !== 'year' && savingLabel(props.prices, option) ? (
+                    <span className="mt-0.5 text-xs font-semibold text-teal-800">{savingLabel(props.prices, option)}</span>
                   ) : null}
                 </label>
               )
@@ -391,6 +410,35 @@ export function PlanCheckout(props: PlanCheckoutProps) {
         </button>
       ) : null}
       <div aria-live="polite">{error ? <p className="text-sm font-medium text-rose-700">{error}</p> : null}</div>
+    </div>
+  )
+}
+
+/** "Save ₹1,994.00 every 6 months" for a longer interval, compared with paying monthly; null when it saves nothing. */
+export function savingLabel(prices: PlanPriceSummary, interval: BillingInterval) {
+  const amount = prices[interval]
+  if (prices.month === null || amount === null) return null
+  const saving = intervalSaving(prices.month, amount, interval)
+  return saving ? `Save ${formatRupees(saving.savingMinor)} every ${INTERVAL_LABELS[interval].noun}` : null
+}
+
+/** "₹99.00 per month, ₹999.00 per year or …": a short list joined with "or". */
+export function listWithOr(items: string[]) {
+  if (items.length <= 1) return items[0] ?? ''
+  return `${items.slice(0, -1).join(', ')} or ${items[items.length - 1]}`
+}
+
+/** Auto-pay is not available yet, but the free trial carries on: a calm note, no button. */
+export function PaidPlansOpenSoon({ trialEndsOn }: { trialEndsOn: string }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-ocean-200 bg-ocean-50/60 p-4" role="status">
+      <Info aria-hidden="true" className="mt-0.5 size-5 shrink-0 text-ocean-700" />
+      <div className="min-w-0 space-y-1">
+        <p className="text-sm font-bold text-navy-950">Paid plans open soon</p>
+        <p className="text-sm leading-6 text-navy-800">
+          Your free trial continues until {trialEndsOn}. You’ll be able to choose a paid plan here before it ends; nothing is charged until then.
+        </p>
+      </div>
     </div>
   )
 }

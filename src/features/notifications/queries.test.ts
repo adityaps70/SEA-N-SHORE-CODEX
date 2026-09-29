@@ -9,7 +9,7 @@ function notification(overrides: Record<string, unknown> = {}) {
   return {
     id: '33333333-3333-4333-8333-333333333333',
     actor_id: ACTOR_ID as string | null,
-    notification_type: 'connection_request' as 'connection_request' | 'event_cancelled',
+    notification_type: 'connection_request' as 'connection_request' | 'event_cancelled' | 'plan_trial_ending',
     post_id: null,
     comment_id: null,
     reaction_type: null,
@@ -206,6 +206,18 @@ describe('AWS notification queries', () => {
         actor: null,
         message: 'An event you registered for was cancelled because its organiser left Sea N Shore. Paid tickets are refunded in full.',
         destination: '/events/my',
+      }),
+    ])
+  })
+
+  it('reminds about a free trial that ends soon and links to Membership & billing', async () => {
+    const queries = await queriesFor([notification({ actor_id: null, notification_type: 'plan_trial_ending' })])
+    await expect(queries.getNotifications(10)).resolves.toEqual([
+      expect.objectContaining({
+        type: 'plan_trial_ending',
+        actor: null,
+        message: 'Your free Pro trial ends soon. Choose a plan to keep it — the first payment is only taken on the day the trial ends.',
+        destination: '/settings/billing',
       }),
     ])
   })

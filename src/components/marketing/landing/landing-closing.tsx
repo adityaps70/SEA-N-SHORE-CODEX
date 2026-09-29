@@ -8,7 +8,8 @@ import { Reveal } from '@/components/marketing/motion'
 import { FooterSocialIcons, footerBottomLine, footerLinkGroups, type FooterLink } from '@/components/navigation/app-footer'
 import { configuredSocialLinks } from '@/components/navigation/social-links'
 import { BUSINESS, telHref } from '@/config/business'
-import { formatRupeesShort } from '@/features/billing/plans'
+import type { PlanPriceSummary } from '@/features/billing/components/plan-cards'
+import { INTERVAL_LABELS, formatRupeesShort, trialBadge, type PaidPlanCode } from '@/features/billing/plans'
 import { LANDING_LINKS } from './landing-links'
 import { LogoImage } from './landing-logos'
 import { GLOBAL_PARTNERS, HIRING_COMPANIES, MORE_HIRING_PARTNERS, PARENT_GROUP_LOGO, PARTNERS } from './logos'
@@ -90,25 +91,43 @@ export function PartnersSection() {
 }
 
 export type LandingPlanPrices = {
-  creator: { month: number | null; year: number | null }
-  organization: { month: number | null; year: number | null }
+  creator: PlanPriceSummary
+  organization: PlanPriceSummary
 }
 
-function PlanAmount({ month, year }: { month: number | null; year: number | null }) {
-  if (month === null && year === null) {
+/** "or ₹999 a year" / "or ₹10,000 per 6 months · ₹14,999 a year": the longer intervals with a price. */
+export function longerIntervalNote(prices: PlanPriceSummary) {
+  const parts = [
+    prices.half_year !== null ? `${formatRupeesShort(prices.half_year)} ${INTERVAL_LABELS.half_year.per}` : null,
+    prices.year !== null ? `${formatRupeesShort(prices.year)} a year` : null,
+  ].filter((part): part is string => part !== null)
+  return parts.length ? `or ${parts.join(' · ')}` : null
+}
+
+function PlanAmount({ plan, prices }: { plan: PaidPlanCode; prices: PlanPriceSummary }) {
+  const badge = <span className="trial-badge">{trialBadge(plan)}</span>
+  if (prices.month === null && prices.half_year === null && prices.year === null) {
     return (
       <>
+        {badge}
         <div className="amt" style={{ fontSize: 26 }}>See pricing</div>
         <p>The exact price is shown before you pay.</p>
       </>
     )
   }
+  const longer = longerIntervalNote(prices)
+  const headline: { amount: number; per: string } = prices.month !== null
+    ? { amount: prices.month, per: ' / month' }
+    : prices.half_year !== null
+      ? { amount: prices.half_year, per: ' / 6 months' }
+      : { amount: prices.year as number, per: ' / year' }
   return (
     <>
+      {badge}
       <div className="amt">
-        {month !== null ? <>{formatRupeesShort(month)}<small> / month</small></> : <>{formatRupeesShort(year as number)}<small> / year</small></>}
+        {formatRupeesShort(headline.amount)}<small>{headline.per}</small>
       </div>
-      <p>{month !== null && year !== null ? `or ${formatRupeesShort(year)} a year` : 'Renews automatically'}</p>
+      <p>{prices.month !== null && longer ? longer : 'Renews automatically'}</p>
     </>
   )
 }
@@ -137,7 +156,7 @@ export function PricingSection({ prices }: { prices: LandingPlanPrices }) {
           </Reveal>
           <Reveal as="article" className="price pop" delay={1}>
             <span className="eyebrow">Creator Pro</span>
-            <PlanAmount {...prices.creator} />
+            <PlanAmount plan="creator_pro" prices={prices.creator} />
             <ul>
               <li>Publish courses and events</li>
               <li>Sell tickets &amp; courses</li>
@@ -146,7 +165,7 @@ export function PricingSection({ prices }: { prices: LandingPlanPrices }) {
           </Reveal>
           <Reveal as="article" className="price" delay={2}>
             <span className="eyebrow">Organization Pro</span>
-            <PlanAmount {...prices.organization} />
+            <PlanAmount plan="organization_pro" prices={prices.organization} />
             <ul>
               <li>Post jobs &amp; review applicants</li>
               <li>Team roles &amp; organization posts</li>

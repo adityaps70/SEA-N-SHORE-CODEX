@@ -19,7 +19,9 @@ import {
   type PlanCheckoutTarget,
   type StartPlanCheckoutResult,
 } from './checkout-messages'
-import { PLAN_LABELS, type BillingSubject } from './plans'
+import { BILLING_INTERVALS, PLAN_LABELS, TRIAL_MONTHS, type BillingInterval, type BillingSubject } from './plans'
+import { trialService } from './trial-service'
+import { TrialNotAvailableError } from './trials'
 import { billingRepository } from './repository'
 import { subscriptionRepository } from './subscription-repository'
 import {
@@ -41,7 +43,7 @@ const targetSchema = z.union([
 
 const startSchema = z.object({
   target: targetSchema,
-  interval: z.enum(['month', 'year']),
+  interval: z.enum(BILLING_INTERVALS),
   phone: z.string().trim().max(30).optional(),
   email: z.string().trim().max(120).optional(),
 })
@@ -96,12 +98,12 @@ function gatewayMessage(error: BillingGatewayError) {
  */
 export async function startPlanCheckoutAction(input: {
   target: PlanCheckoutTarget
-  interval: 'month' | 'year'
+  interval: BillingInterval
   phone?: string
   email?: string
 }): Promise<StartPlanCheckoutResult> {
   const parsed = startSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Choose monthly or yearly, then try again.' }
+  if (!parsed.success) return { ok: false, error: 'Choose monthly, half-yearly or yearly, then try again.' }
   try {
     const { user, subject, label } = await authorize(parsed.data.target, 'buy')
     const started = await subscriptionService.startCheckout({
@@ -134,9 +136,46 @@ export async function startPlanCheckoutAction(input: {
           : CONTACT_REQUIRED_MESSAGE
       return { ok: false, error: message, needsContact: error.missing }
     }
-    if (error instanceof BillingGatewayError) return { ok: false, error: gatewayMessage(error) }
+    if (error instanceof BillingGatewayError) {
+      return { ok: false, error: gatewayMessage(error), ...(error.reason === 'subscriptions_unavailable' ? { reason: 'subscriptions_unavailable' as const } : {}) }
+    }
     console.error('plan_checkout_start_failed', { message: error instanceof Error ? error.message : null })
     return { ok: false, error: 'We couldn’t start auto-pay just now. No money was taken. Please try again.' }
+  }
+}
+
+export type StartPlanTrialResult = { ok: true; message: string; endsOn: string | null } | { ok: false; error: string }
+
+/**
+ * Starts the free trial (Creator Pro for the member, Organization Pro for an organization
+ * the member owns or administers). No payment details; one trial per subject, ever.
+ */
+export async function startPlanTrialAction(input: { target: PlanCheckoutTarget }): Promise<StartPlanTrialResult> {
+  const parsed = targetSchema.safeParse(input?.target)
+  if (!parsed.success) return { ok: false, error: 'We couldn’t find this plan. Refresh the page and try again.' }
+  try {
+    const { user, subject } = await authorize(parsed.data, 'buy')
+    const { trial } = await trialService.start({ subject, actor: { type: 'member', profileId: user.id } })
+    refresh(subject)
+    const label = PLAN_LABELS[trial.planCode]
+    const endsOn = formatBillingDate(trial.endsAt)
+    return {
+      ok: true,
+      endsOn,
+      message: `${label} is on. Your ${TRIAL_MONTHS[trial.planCode]}-month free trial ends on ${endsOn}; nothing is charged before then.`,
+    }
+  } catch (error) {
+    if (error instanceof BillingForbiddenError) return { ok: false, error: error.userMessage }
+    if (error instanceof TrialNotAvailableError) {
+      return {
+        ok: false,
+        error: error.code === 'already_used'
+          ? 'The free trial can only be used once, and this one has already been used.'
+          : 'A plan is already active here, so there is nothing to try for free.',
+      }
+    }
+    console.error('plan_trial_start_failed', { message: error instanceof Error ? error.message : null })
+    return { ok: false, error: 'We couldn’t start the free trial just now. Please try again.' }
   }
 }
 

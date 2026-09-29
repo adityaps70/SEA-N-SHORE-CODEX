@@ -16,6 +16,9 @@ import {
   type PaymentRecord,
   type PlanPrice,
   type SubscriptionPaymentStatus,
+  type TrialEndedReason,
+  type TrialPatch,
+  type TrialRecord,
 } from './subscription-types'
 
 /** Rows as pg returns them (timestamps may be Date objects). */
@@ -123,6 +126,28 @@ export function mapAccess(row: Row): AccessRecord {
   }
 }
 
+export function mapTrial(row: Row): TrialRecord {
+  const plan = row.plan_code
+  if (!isPaidPlanCode(plan)) throw new Error('plan_trial_invalid')
+  const reason = str(row.ended_reason)
+  return {
+    id: String(row.id),
+    subject: subjectOf(row),
+    planCode: plan,
+    startedBy: str(row.started_by),
+    startedAt: iso(row.started_at) ?? '',
+    endsAt: iso(row.ends_at) ?? '',
+    endedAt: iso(row.ended_at),
+    endedReason: reason === 'expired' || reason === 'converted' || reason === 'admin_ended' ? (reason as TrialEndedReason) : null,
+    extendedBy: str(row.extended_by),
+    extendedAt: iso(row.extended_at),
+    reminder7dSentAt: iso(row.reminder_7d_sent_at),
+    reminder1dSentAt: iso(row.reminder_1d_sent_at),
+    createdAt: iso(row.created_at) ?? '',
+    updatedAt: iso(row.updated_at) ?? '',
+  }
+}
+
 export function mapPayment(row: Row): PaymentRecord {
   return {
     id: String(row.id),
@@ -158,6 +183,16 @@ const CHECKOUT_COLUMNS: Record<keyof CheckoutPatch, [column: string, cast: strin
   lastStatusEventAt: ['last_status_event_at', 'timestamptz'],
   activatedAt: ['activated_at', 'timestamptz'],
   cancelledAt: ['cancelled_at', 'timestamptz'],
+}
+
+const TRIAL_COLUMNS: Record<keyof TrialPatch, [column: string, cast: string]> = {
+  endsAt: ['ends_at', 'timestamptz'],
+  endedAt: ['ended_at', 'timestamptz'],
+  endedReason: ['ended_reason', 'text'],
+  extendedBy: ['extended_by', 'uuid'],
+  extendedAt: ['extended_at', 'timestamptz'],
+  reminder7dSentAt: ['reminder_7d_sent_at', 'timestamptz'],
+  reminder1dSentAt: ['reminder_1d_sent_at', 'timestamptz'],
 }
 
 const ACCESS_COLUMNS: Record<keyof AccessPatch, [column: string, cast: string]> = {
@@ -406,6 +441,41 @@ export function createSqlBillingStore(tx: DatabaseQueryClient): BillingStore {
 
     async audit(entry) {
       await recordPaymentAudit(tx, entry)
+    },
+
+    async getTrial(subject) {
+      const { column, id } = subjectColumns(subject)
+      const row = await one(`select * from public.plan_trials where ${column} = $1::uuid limit 1 for update`, [id])
+      return row ? mapTrial(row) : null
+    },
+
+    async getTrialById(id) {
+      const row = await one(`select * from public.plan_trials where id = $1::uuid limit 1 for update`, [id])
+      return row ? mapTrial(row) : null
+    },
+
+    async insertTrial(input) {
+      const { column, id } = subjectColumns(input.subject)
+      const row = await one(
+        `insert into public.plan_trials (${column}, plan_code, started_by, started_at, ends_at)
+         values ($1::uuid, $2::text, $3::uuid, $4::timestamptz, $5::timestamptz)
+         returning *`,
+        [id, input.planCode, input.startedBy, input.startedAt, input.endsAt],
+      )
+      return mapTrial(row!)
+    },
+
+    async updateTrial(id, patch) {
+      const set = setClause(patch, TRIAL_COLUMNS, 2)
+      const row = await one(
+        `update public.plan_trials
+         set ${set.sql ? `${set.sql}, ` : ''}updated_at = now()
+         where id = $1::uuid
+         returning *`,
+        [id, ...set.values],
+      )
+      if (!row) throw new Error('plan_trial_missing')
+      return mapTrial(row)
     },
   }
 }

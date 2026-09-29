@@ -7,6 +7,7 @@ import {
   type CheckoutRecord,
   type PaymentRecord,
   type PlanPrice,
+  type TrialRecord,
 } from '../subscription-types'
 
 /**
@@ -30,6 +31,7 @@ export function createMemoryBillingStore(clock: () => Date = () => new Date()) {
   const checkouts = new Map<string, CheckoutRecord>()
   const access = new Map<string, AccessRecord>()
   const payments = new Map<string, PaymentRecord>()
+  const trials = new Map<string, TrialRecord>()
   const audits: PaymentAuditEntry[] = []
   const locks: string[] = []
 
@@ -183,6 +185,39 @@ export function createMemoryBillingStore(clock: () => Date = () => new Date()) {
     async audit(entry) {
       audits.push(entry)
     },
+    async getTrial(subject) {
+      const row = [...trials.values()].find((entry) => sameSubject(entry.subject, subject))
+      return row ? { ...row } : null
+    },
+    async getTrialById(id) {
+      const row = trials.get(id)
+      return row ? { ...row } : null
+    },
+    async insertTrial(input) {
+      // plan_trials_profile_uq / plan_trials_company_uq: one trial per subject, ever.
+      if ([...trials.values()].some((entry) => sameSubject(entry.subject, input.subject))) throw new Error('unique_violation: plan_trials subject')
+      const row: TrialRecord = {
+        ...input,
+        id: nextId(),
+        endedAt: null,
+        endedReason: null,
+        extendedBy: null,
+        extendedAt: null,
+        reminder7dSentAt: null,
+        reminder1dSentAt: null,
+        createdAt: stamp(),
+        updatedAt: stamp(),
+      }
+      trials.set(row.id, row)
+      return { ...row }
+    },
+    async updateTrial(id, patch) {
+      const row = trials.get(id)
+      if (!row) throw new Error('plan_trial_missing')
+      const next = { ...row, ...Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)), updatedAt: stamp() } as TrialRecord
+      trials.set(id, next)
+      return { ...next }
+    },
   }
 
   return {
@@ -190,6 +225,7 @@ export function createMemoryBillingStore(clock: () => Date = () => new Date()) {
     checkouts,
     access,
     payments,
+    trials,
     audits,
     locks,
     /** Seeds a checkout row as if checkout had started. */

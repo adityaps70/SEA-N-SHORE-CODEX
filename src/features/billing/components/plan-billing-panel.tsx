@@ -1,10 +1,12 @@
-import { AlertTriangle, CheckCircle2, Clock3, Crown, Building2, ReceiptText, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, Crown, Building2, ReceiptText, Sparkles, XCircle } from 'lucide-react'
 import type { BillingHistoryRow, PlanBillingView } from '../billing-view'
 import type { CheckPlanCheckoutResult, PlanCheckoutTarget } from '../checkout-messages'
-import { formatRupees } from '../plans'
+import { BILLING_INTERVALS, formatRupees } from '../plans'
 import { CancelAutoRenewButton } from './cancel-auto-renew'
+import type { PlanPriceSummary } from './plan-cards'
 import { CheckoutStatusButton, PlanChangeButton } from './plan-change'
 import { PlanCheckout } from './plan-checkout'
+import { TrialStartButton } from './trial-start-button'
 
 const STATE_TONES: Record<PlanBillingView['state'], string> = {
   free: 'bg-mist-100 text-navy-800',
@@ -12,6 +14,7 @@ const STATE_TONES: Record<PlanBillingView['state'], string> = {
   past_due: 'bg-amber-100 text-amber-900',
   cancelling: 'bg-mist-100 text-navy-800',
   manual: 'bg-ocean-50 text-ocean-800',
+  trialing: 'bg-teal-50 text-teal-800',
 }
 
 const NOTICE_TONES: Record<CheckPlanCheckoutResult['state'], { icon: typeof CheckCircle2; box: string }> = {
@@ -65,8 +68,18 @@ export function PlanBillingPanel({ view, target, eyebrow, description, highlight
   noticeCheckoutId?: string | null
 }) {
   const Icon = view.plan === 'creator_pro' ? Crown : Building2
-  const prices = { month: view.prices.month?.amountMinor ?? null, year: view.prices.year?.amountMinor ?? null }
-  const common = { target, planLabel: view.planLabel, prices, yearlySavingLabel: view.yearlySavingLabel, configured: view.configured, blockedMessage }
+  const prices = Object.fromEntries(BILLING_INTERVALS.map((interval) => [interval, view.prices[interval]?.amountMinor ?? null])) as PlanPriceSummary
+  const trialing = view.state === 'trialing'
+  const common = {
+    target,
+    planLabel: view.planLabel,
+    prices,
+    yearlySavingLabel: view.yearlySavingLabel,
+    configured: view.configured,
+    blockedMessage,
+    // During a trial, a provider that is not open yet is shown as "Paid plans open soon", not as an error.
+    trialEndsOn: trialing ? view.trial.endsOn : null,
+  }
   const { current, actions } = view
   const pending = view.pending && view.pending.checkoutId !== noticeCheckoutId ? view.pending : null
   const showChooser = actions.choosePlan && !(view.pending && view.pending.status !== 'failed')
@@ -98,11 +111,11 @@ export function PlanBillingPanel({ view, target, eyebrow, description, highlight
       {current ? (
         <dl className="mt-4 grid grid-cols-2 gap-4 rounded-xl bg-mist-50/70 p-4 lg:grid-cols-4">
           <Detail label="Price" value={current.priceLabel} />
-          <Detail label="Next payment" value={view.state === 'past_due' ? 'Retrying automatically' : current.autoRenew ? current.renewsOn ?? 'Within a few days' : 'None — auto-renew is off'} />
+          <Detail label="Next payment" value={trialing ? 'Nothing during the trial' : view.state === 'past_due' ? 'Retrying automatically' : current.autoRenew ? current.renewsOn ?? 'Within a few days' : 'None — auto-renew is off'} />
           {view.state === 'active'
             ? <Detail label="Paid until" value={current.paidThrough ?? 'First payment pending'} />
-            : <Detail label="Active until" value={current.accessUntil} />}
-          <Detail label="Payment method" value={current.paymentMethod ?? (view.state === 'manual' ? 'None needed' : 'Auto-pay mandate')} />
+            : <Detail label={trialing ? 'Trial ends' : 'Active until'} value={current.accessUntil} />}
+          <Detail label="Payment method" value={current.paymentMethod ?? (view.state === 'manual' || trialing ? 'None needed' : 'Auto-pay mandate')} />
         </dl>
       ) : null}
 
@@ -161,11 +174,35 @@ export function PlanBillingPanel({ view, target, eyebrow, description, highlight
         </div>
       ) : null}
 
+      {showChooser && view.state === 'free' && view.trial.canStart && !blockedMessage ? (
+        <div className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="trial-offer">
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white text-teal-700">
+              <Sparkles aria-hidden="true" className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-bold text-navy-950">Try {view.planLabel} free for {view.trial.months} months</h3>
+              <p className="mt-1 text-sm leading-6 text-navy-800">
+                No payment details needed and nothing is charged during the trial. You can choose a paid plan at any time; the first payment is taken on the day the trial ends. One free trial per {view.plan === 'organization_pro' ? 'organization' : 'member'}.
+              </p>
+              <div className="mt-3">
+                <TrialStartButton target={target} planLabel={view.planLabel} months={view.trial.months} />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showChooser ? (
         <div className="mt-5 border-t border-mist-100 pt-5">
-          <h3 className="text-base font-bold text-navy-950">{view.state === 'manual' ? 'Set up auto-renew' : `Get ${view.planLabel}`}</h3>
+          <h3 className="text-base font-bold text-navy-950">
+            {view.state === 'manual' ? 'Set up auto-renew' : trialing ? 'Choose a plan' : view.trial.canStart && !blockedMessage ? 'Or choose a paid plan now' : `Get ${view.planLabel}`}
+          </h3>
+          {trialing ? (
+            <p className="mt-1 text-sm leading-6 text-muted">Approve auto-pay now and keep {view.planLabel} without a break. The first payment is scheduled for {view.trial.endsOn ?? 'the day the trial ends'}; nothing is taken before then.</p>
+          ) : null}
           <div className="mt-3">
-            <PlanCheckout {...common} defaultInterval="year" startsOn={view.state === 'manual' ? actions.chooseStartsOn : null} />
+            <PlanCheckout {...common} defaultInterval="year" startsOn={view.state === 'manual' || trialing ? actions.chooseStartsOn : null} />
           </div>
         </div>
       ) : null}

@@ -23,8 +23,8 @@ import { PlanCheckout } from './plan-checkout'
 const base = {
   target: { kind: 'personal' as const },
   planLabel: 'Creator Pro',
-  prices: { month: 10000, year: 100000 },
-  yearlySavingLabel: 'Save ₹200.00 a year — 2 months free',
+  prices: { month: 9900, half_year: null, year: 99900 },
+  yearlySavingLabel: 'Save ₹189.00 a year — 1 month free',
   configured: true,
 }
 
@@ -40,18 +40,63 @@ describe('PlanCheckout', () => {
   it('shows a clear "not set up yet" state instead of a broken button', () => {
     render(<PlanCheckout {...base} configured={false} />)
     expect(screen.getByText('Online payment isn’t set up yet')).toBeInTheDocument()
+    expect(screen.getByText('Creator Pro: ₹99.00 per month or ₹999.00 per year')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Auto-pay not available yet' })).toBeDisabled()
+  })
+
+  it('lists every available price, including half-yearly, when payment is not set up', () => {
+    render(<PlanCheckout {...base} planLabel="Organization Pro" prices={{ month: 199900, half_year: 1000000, year: 1499900 }} configured={false} />)
+    expect(screen.getByText('Organization Pro: ₹1,999.00 per month, ₹10,000.00 per 6 months or ₹14,999.00 per year')).toBeInTheDocument()
+  })
+
+  it('says paid plans open soon, without a button, while a trial runs and payment is not set up', () => {
+    render(<PlanCheckout {...base} configured={false} trialEndsOn="1 Dec 2026" />)
+    expect(screen.getByRole('status')).toHaveTextContent('Paid plans open soon')
+    expect(screen.getByText('Your free trial continues until 1 Dec 2026. You’ll be able to choose a paid plan here before it ends; nothing is charged until then.')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByText('Online payment isn’t set up yet')).not.toBeInTheDocument()
+  })
+
+  it('shows the same "open soon" note when Cashfree has no auto-pay yet and a trial is running', async () => {
+    mocks.start.mockResolvedValueOnce({ ok: false, error: 'Auto-pay isn’t available yet.', reason: 'subscriptions_unavailable' })
+    render(<PlanCheckout {...base} trialEndsOn="1 Dec 2026" />)
+    fireEvent.click(screen.getByRole('button', { name: /Set up auto-pay/ }))
+    expect(await screen.findByText('Paid plans open soon')).toBeInTheDocument()
+    expect(screen.getByText(/Your free trial continues until 1 Dec 2026/)).toBeInTheDocument()
+    expect(screen.queryByText('Auto-pay isn’t available yet.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Set up auto-pay/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps the plain error when auto-pay is unavailable and no trial is running', async () => {
+    mocks.start.mockResolvedValueOnce({ ok: false, error: 'Auto-pay isn’t available yet.', reason: 'subscriptions_unavailable' })
+    render(<PlanCheckout {...base} />)
+    fireEvent.click(screen.getByRole('button', { name: /Set up auto-pay/ }))
+    expect(await screen.findByText('Auto-pay isn’t available yet.')).toBeInTheDocument()
+    expect(screen.queryByText('Paid plans open soon')).not.toBeInTheDocument()
+  })
+
+  it('offers monthly, half-yearly and yearly in that order when all three have a price', () => {
+    render(<PlanCheckout {...base} planLabel="Organization Pro" prices={{ month: 199900, half_year: 1000000, year: 1499900 }} yearlySavingLabel="Save ₹8,989.00 a year — 4 months free" />)
+    expect(screen.getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual(['month', 'half_year', 'year'])
+    const halfYearly = screen.getByRole('radio', { name: /Half-yearly/ })
+    expect(halfYearly).toHaveAccessibleName(/^Half-yearly\s*₹10,000\.00 per 6 months\s*Save ₹1,994\.00 every 6 months$/)
+    fireEvent.click(halfYearly)
+    expect(halfYearly).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹10,000.00 per 6 months' })).toBeInTheDocument()
+    expect(screen.getByText(/₹10,000\.00 is charged every 6 months until you cancel/)).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /Yearly/ })).toHaveAccessibleName(/^Yearly\s*Best value\s*₹14,999\.00 per year\s*Save ₹8,989\.00 a year — 4 months free$/)
   })
 
   it('lets the member choose monthly or yearly and shows the yearly saving', () => {
     render(<PlanCheckout {...base} defaultInterval="year" />)
     const yearly = screen.getByRole('radio', { name: /Yearly/ })
     expect(yearly).toBeChecked()
-    expect(screen.getByText('Save ₹200.00 a year — 2 months free')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹1,000.00 per year' })).toBeInTheDocument()
+    expect(screen.getByText('Save ₹189.00 a year — 1 month free')).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /Half-yearly/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹999.00 per year' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: /Monthly/ }))
-    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹100.00 per month' })).toBeInTheDocument()
-    expect(screen.getByText(/₹100\.00 is charged every month until you cancel/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set up auto-pay · ₹99.00 per month' })).toBeInTheDocument()
+    expect(screen.getByText(/₹99\.00 is charged every month until you cancel/)).toBeInTheDocument()
   })
 
   it('asks for missing contact details, then opens Cashfree and waits for the server to confirm', async () => {
@@ -125,10 +170,10 @@ describe('PlanCheckout', () => {
   })
 
   it('says nothing is charged today for a plan that starts later', () => {
-    render(<PlanCheckout {...base} onlyInterval="year" startsOn="1 Nov 2026" submitLabel="Switch to yearly · ₹1,000.00 per year" />)
+    render(<PlanCheckout {...base} onlyInterval="year" startsOn="1 Nov 2026" submitLabel="Switch to yearly · ₹999.00 per year" />)
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.getByText(/Nothing is charged today\. Your yearly plan starts on 1 Nov 2026/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Switch to yearly · ₹1,000.00 per year' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Switch to yearly · ₹999.00 per year' })).toBeInTheDocument()
   })
 })
 

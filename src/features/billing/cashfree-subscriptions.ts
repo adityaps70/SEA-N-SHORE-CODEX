@@ -73,7 +73,19 @@ export function cashfreeTime(date: Date) {
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z')
 }
 
-const INTERVAL_TYPES: Record<BillingInterval, 'MONTH' | 'YEAR'> = { month: 'MONTH', year: 'YEAR' }
+/** Cashfree PERIODIC plans: `plan_intervals` of `plan_interval_type` (six months = 6 × MONTH). */
+const CASHFREE_INTERVALS: Record<BillingInterval, { intervals: number; type: 'MONTH' | 'YEAR' }> = {
+  month: { intervals: 1, type: 'MONTH' },
+  half_year: { intervals: 6, type: 'MONTH' },
+  year: { intervals: 1, type: 'YEAR' },
+}
+
+/**
+ * The smallest mandate authorisation Cashfree allows, in rupees, refunded after approval.
+ * Used when the first charge is scheduled later (a free trial, or a plan that starts when the
+ * current one ends): nobody pays before the free period ends.
+ */
+export const MANDATE_AUTHORIZATION_RUPEES = 1
 
 /** "upi" from "upi", {upi:{…}}, "UPI_AUTOPAY", "enach", "card"… */
 export function normalizePaymentMethod(value: unknown): string | null {
@@ -294,8 +306,8 @@ export function createCashfreeSubscriptionsClient(
             plan_currency: 'INR',
             plan_recurring_amount: amount,
             plan_max_amount: amount,
-            plan_intervals: 1,
-            plan_interval_type: INTERVAL_TYPES[input.interval],
+            plan_intervals: CASHFREE_INTERVALS[input.interval].intervals,
+            plan_interval_type: CASHFREE_INTERVALS[input.interval].type,
             ...(input.note ? { plan_note: input.note.slice(0, 200) } : {}),
           },
         })
@@ -327,7 +339,12 @@ export function createCashfreeSubscriptionsClient(
           customer_phone: cashfreeCustomerPhone(input.customer.phoneE164),
         },
         plan_details: { plan_id: input.planId },
-        authorization_details: { payment_methods: [...input.paymentMethods] },
+        authorization_details: {
+          payment_methods: [...input.paymentMethods],
+          // A scheduled first charge (free trial, plan starting later): only the minimum
+          // authorisation amount, refunded by Cashfree after the mandate is approved.
+          ...(input.firstChargeAt ? { authorization_amount: MANDATE_AUTHORIZATION_RUPEES, authorization_amount_refund: true } : {}),
+        },
         subscription_meta: {
           ...(input.returnUrl ? { return_url: input.returnUrl.slice(0, 250) } : {}),
           notification_channel: ['EMAIL', 'SMS'],

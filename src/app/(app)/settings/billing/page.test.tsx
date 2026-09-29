@@ -42,7 +42,7 @@ const prices = [
 
 const freeCreatorView = buildPlanBillingView({
   plan: 'creator_pro',
-  billing: { access: null, accessIsCurrent: false, checkout: null, pendingCheckout: null, payments: [] },
+  billing: { access: null, accessIsCurrent: false, checkout: null, pendingCheckout: null, payments: [], trial: null },
   prices,
   configured: true,
 })
@@ -122,7 +122,10 @@ describe('/settings/billing order by ?plan', () => {
     const getCreator = screen.getByRole('button', { name: 'Get Creator Pro' })
     expect(getCreator).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(getCreator)
-    expect(screen.getByRole('heading', { level: 3, name: 'Get Creator Pro' })).toBeInTheDocument()
+    // A member who never had a trial sees the free-trial offer first, then the paid plans.
+    expect(screen.getByRole('heading', { level: 3, name: 'Try Creator Pro free for 3 months' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start free trial — 3 months of Creator Pro' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 3, name: 'Or choose a paid plan now' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: /How often do you want to pay/ })).toBeInTheDocument()
   })
 

@@ -43,7 +43,7 @@ const orgPrices = [
   testPrice({ id: 'om', planCode: 'organization_pro', amountMinor: 500000 }),
   testPrice({ id: 'oy', planCode: 'organization_pro', interval: 'year', amountMinor: 5000000 }),
 ]
-const emptyBilling = { access: null, accessIsCurrent: false, checkout: null, pendingCheckout: null, payments: [] }
+const emptyBilling = { access: null, accessIsCurrent: false, checkout: null, pendingCheckout: null, payments: [], trial: null }
 const freeOrganizationView = buildPlanBillingView({ plan: 'organization_pro', billing: emptyBilling, prices: orgPrices, configured: true })
 
 const NOW = new Date('2026-10-10T06:00:00.000Z')
@@ -212,7 +212,8 @@ describe('/organizations/[slug]/manage', () => {
     expect(screen.getByRole('link', { name: 'Plan & billing' })).toHaveAttribute('aria-current', 'page')
     const plan = screen.getByRole('region', { name: 'Organization Pro' })
     expect(within(plan).getByText('Free plan')).toBeInTheDocument()
-    expect(within(plan).getByRole('heading', { level: 3, name: 'Get Organization Pro' })).toBeInTheDocument()
+    expect(within(plan).getByRole('heading', { level: 3, name: 'Try Organization Pro free for 2 months' })).toBeInTheDocument()
+    expect(within(plan).getByRole('heading', { level: 3, name: 'Or choose a paid plan now' })).toBeInTheDocument()
     expect(within(plan).getByRole('group', { name: /How often do you want to pay/ })).toBeInTheDocument()
     expect(within(plan).getByRole('button', { name: /Set up auto-pay/ })).toBeInTheDocument()
   })

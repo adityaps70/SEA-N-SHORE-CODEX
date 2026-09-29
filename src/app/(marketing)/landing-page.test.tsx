@@ -18,10 +18,11 @@ vi.mock('@/lib/env', () => ({
 import Home, { metadata } from './page'
 
 const SEEDED_PRICES = [
-  { planCode: 'creator_pro', interval: 'month', amountMinor: 10_000, currency: 'INR', active: true },
-  { planCode: 'creator_pro', interval: 'year', amountMinor: 100_000, currency: 'INR', active: true },
-  { planCode: 'organization_pro', interval: 'month', amountMinor: 200_000, currency: 'INR', active: true },
-  { planCode: 'organization_pro', interval: 'year', amountMinor: 2_000_000, currency: 'INR', active: true },
+  { planCode: 'creator_pro', interval: 'month', amountMinor: 9_900, currency: 'INR', active: true },
+  { planCode: 'creator_pro', interval: 'year', amountMinor: 99_900, currency: 'INR', active: true },
+  { planCode: 'organization_pro', interval: 'month', amountMinor: 199_900, currency: 'INR', active: true },
+  { planCode: 'organization_pro', interval: 'half_year', amountMinor: 1_000_000, currency: 'INR', active: true },
+  { planCode: 'organization_pro', interval: 'year', amountMinor: 1_499_900, currency: 'INR', active: true },
 ]
 
 async function renderHome() {
@@ -139,10 +140,18 @@ describe('public landing page', () => {
   it('shows plan prices from the price list', async () => {
     await renderHome()
     const pricing = document.getElementById('pricing') as HTMLElement
-    expect(within(pricing).getByText('₹100')).toBeInTheDocument()
-    expect(within(pricing).getByText('or ₹1,000 a year')).toBeInTheDocument()
-    expect(within(pricing).getByText('₹2,000')).toBeInTheDocument()
-    expect(within(pricing).getByText('or ₹20,000 a year')).toBeInTheDocument()
+    expect(within(pricing).getByText('₹99')).toBeInTheDocument()
+    expect(within(pricing).getByText('or ₹999 a year')).toBeInTheDocument()
+    expect(within(pricing).getByText('₹1,999')).toBeInTheDocument()
+    expect(within(pricing).getByText('or ₹10,000 per 6 months · ₹14,999 a year')).toBeInTheDocument()
+  })
+
+  it('shows the free-trial badge on both paid plans', async () => {
+    await renderHome()
+    const pricing = document.getElementById('pricing') as HTMLElement
+    expect(within(pricing).getByText('3 months free')).toHaveClass('trial-badge')
+    expect(within(pricing).getByText('2 months free')).toHaveClass('trial-badge')
+    expect(within(pricing).getAllByText(/months free/)).toHaveLength(2)
   })
 
   it('falls back to "See pricing" when prices cannot be loaded', async () => {
@@ -150,7 +159,7 @@ describe('public landing page', () => {
     await renderHome()
     const pricing = document.getElementById('pricing') as HTMLElement
     expect(within(pricing).getAllByText('See pricing')).toHaveLength(2)
-    expect(within(pricing).queryByText('₹100')).not.toBeInTheDocument()
+    expect(within(pricing).queryByText('₹99')).not.toBeInTheDocument()
   })
 
   it('renders the FAQ as an accessible accordion before the final call to action', async () => {
