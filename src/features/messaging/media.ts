@@ -7,9 +7,8 @@ import {
 } from '@/lib/aws/storage'
 import {
   buildMessageAttachmentStoragePath,
-  isImageMessageAttachmentMime,
+  isInlineMessageAttachment,
   isOwnedMessageAttachmentStoragePath,
-  isVideoMessageAttachmentMime,
   matchesMessageAttachmentSignature,
   MESSAGE_ATTACHMENT_SIGNATURE_BYTES,
   messageAttachmentContentDisposition,
@@ -17,7 +16,11 @@ import {
   type MessageAttachmentMime,
 } from './media-policy'
 
-/** Signed storage URLs handed out by the attachment route live for five minutes. */
+/**
+ * Signed storage URLs handed out by the attachment route for downloads live for five minutes.
+ * Inline photos and videos use the per-hour cache window of `createMediaDownloadUrl` instead, so
+ * a photo scrolled past twice is served from the browser cache the second time.
+ */
 export const MESSAGE_ATTACHMENT_READ_URL_SECONDS = 300
 
 export async function createPendingMessageAttachmentUpload(input: {
@@ -125,8 +128,9 @@ export async function removeMessageAttachment(storagePath: string) {
 }
 
 /**
- * Short-lived storage URL for an attachment the caller has already
- * authorised. Photos and videos open inline; everything else downloads.
+ * Storage URL for an attachment the caller has already authorised. Photos and
+ * videos open inline on a cacheable, hour-stable URL; everything else downloads
+ * on a five-minute URL.
  */
 export async function createMessageAttachmentReadUrl(input: {
   storagePath: string
@@ -134,15 +138,14 @@ export async function createMessageAttachmentReadUrl(input: {
   mimeType: string
   download?: boolean
 }) {
-  const inlineAllowed = isImageMessageAttachmentMime(input.mimeType)
-    || isVideoMessageAttachmentMime(input.mimeType)
+  const inline = isInlineMessageAttachment(input)
   return createMediaDownloadUrl({
     key: input.storagePath,
     contentType: input.mimeType,
     contentDisposition: messageAttachmentContentDisposition({
       name: input.name,
-      disposition: inlineAllowed && !input.download ? 'inline' : 'attachment',
+      disposition: inline ? 'inline' : 'attachment',
     }),
-    expiresInSeconds: MESSAGE_ATTACHMENT_READ_URL_SECONDS,
+    ...(inline ? { cacheWindow: true } : { expiresInSeconds: MESSAGE_ATTACHMENT_READ_URL_SECONDS }),
   })
 }

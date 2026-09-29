@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import {
+  isInlineMessageAttachment,
   isOwnedMessageAttachmentStoragePath,
   validateMessageAttachmentMetadata,
 } from './media-policy'
@@ -8,7 +9,8 @@ import type { MessagingMessageRow } from './types'
 const messageIdSchema = z.string().uuid()
 
 export type MessageAttachmentAccessResult =
-  | { ok: true; url: string }
+  /** `inline`: a photo or video shown in the thread (not a `?download=1` request). */
+  | { ok: true; url: string; inline: boolean }
   | { ok: false; status: 401 | 404 }
 
 export type MessageAttachmentAccessDependencies = {
@@ -82,6 +84,6 @@ export function createMessageAttachmentAccess(deps: MessageAttachmentAccessDepen
       mimeType: metadata.mimeType,
       download: input.download,
     })
-    return { ok: true, url }
+    return { ok: true, url, inline: isInlineMessageAttachment({ mimeType: metadata.mimeType, download: input.download }) }
   }
 }

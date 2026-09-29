@@ -65,7 +65,46 @@ describe('GET /api/messages/attachments/[messageId]', () => {
     mocks.createMessageAttachmentReadUrl.mockResolvedValue('https://bucket.example/coc.pdf?X-Amz-Expires=300')
   })
 
-  it('redirects a participant to a short-lived signed URL and is never cached', async () => {
+  it('lets the browser keep an inline photo redirect for half an hour', async () => {
+    mocks.findMessageAccessibleToParticipant.mockResolvedValueOnce({
+      id: MESSAGE_ID,
+      conversation_id: CONVERSATION_ID,
+      sender_profile_id: SENDER_ID,
+      client_message_id: '66666666-6666-4666-8666-666666666666',
+      body: '',
+      attachment_storage_path: STORAGE_PATH.replace('.pdf', '.jpg'),
+      attachment_name: 'bridge.jpg',
+      attachment_mime_type: 'image/jpeg',
+      attachment_size: 4096,
+      created_at: '2026-09-20T10:00:00.000Z',
+      edited_at: null,
+      deleted_at: null,
+    })
+    mocks.createMessageAttachmentReadUrl.mockResolvedValueOnce('https://bucket.example/bridge.jpg?X-Amz-Expires=7200')
+
+    const response = await request()
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe('https://bucket.example/bridge.jpg?X-Amz-Expires=7200')
+    expect(response.headers.get('cache-control')).toBe('private, max-age=1800')
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer')
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(mocks.createMessageAttachmentReadUrl).toHaveBeenCalledWith({
+      storagePath: STORAGE_PATH.replace('.pdf', '.jpg'),
+      name: 'bridge.jpg',
+      mimeType: 'image/jpeg',
+      download: false,
+    })
+  })
+
+  it('never caches a non-media attachment redirect', async () => {
+    const response = await request()
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+  })
+
+  it('redirects a participant download to a short-lived signed URL and is never cached', async () => {
     const response = await request('?download=1')
 
     expect(response.status).toBe(302)
@@ -88,6 +127,7 @@ describe('GET /api/messages/attachments/[messageId]', () => {
 
     expect(response.status).toBe(404)
     expect(response.headers.get('location')).toBeNull()
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
     expect(await response.json()).toEqual({ error: 'This attachment is not available.' })
     expect(mocks.createMessageAttachmentReadUrl).not.toHaveBeenCalled()
   })
