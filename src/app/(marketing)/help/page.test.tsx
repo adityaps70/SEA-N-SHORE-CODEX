@@ -21,14 +21,16 @@ describe('/help FAQ', () => {
   it('groups the full FAQ by audience and topic', () => {
     render(<HelpPage />)
     const faq = screen.getByRole('region', { name: 'Frequently asked questions' })
-    for (const title of ['Seafarers & shore professionals', 'Companies & organizations', 'Courses & events', 'Payments & plans', 'Account & privacy']) {
+    for (const title of ['Joining Sea N Shore', 'Seafarers & shore professionals', 'Companies & organizations', 'Global partners', 'Courses & events', 'Payments & plans', 'Account & privacy']) {
       expect(within(faq).getByRole('heading', { level: 3, name: title })).toBeInTheDocument()
       expect(within(faq).getByRole('link', { name: title })).toHaveAttribute('href', expect.stringMatching(/^#faq-/))
     }
-    expect(faq.querySelectorAll('details').length).toBeGreaterThanOrEqual(15)
+    expect(faq.querySelectorAll('details').length).toBeGreaterThanOrEqual(24)
     expect(within(faq).getByText('What do the paid plans cost?')).toBeInTheDocument()
-    expect(within(faq).getByText(/₹100 a month or ₹1,000 a year/)).toBeInTheDocument()
-    expect(within(faq).getAllByText(/₹2,000 a month or ₹20,000 a year/).length).toBeGreaterThan(0)
+    expect(within(faq).getByText(/₹99 a month or ₹999 a year/)).toBeInTheDocument()
+    expect(within(faq).getAllByText(/₹1,999 a month, ₹10,000 for 6 months or ₹14,999 a year/).length).toBeGreaterThan(0)
+    expect(within(faq).getByText('How can my company become a Sea N Shore Global Partner?')).toBeInTheDocument()
+    expect(within(faq).getByRole('link', { name: 'Contact us about a global partnership' })).toHaveAttribute('href', '/contact')
     expect(within(faq).getByText(/"Unclaimed"/)).toBeInTheDocument()
   })
 
