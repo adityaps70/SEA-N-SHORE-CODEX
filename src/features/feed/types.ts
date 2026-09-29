@@ -147,6 +147,8 @@ export type FeedGroupRef = {
   slug: string
   name: string
   visibility: 'public' | 'private'
+  /** Community photo URL (round 9C), or null for the icon fallback. */
+  iconUrl: string | null
 }
 
 export type FeedCommentReplyTarget = {

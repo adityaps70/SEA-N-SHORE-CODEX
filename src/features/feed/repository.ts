@@ -108,7 +108,8 @@ const FEED_ROW_SELECT = `
       'id', post_group.id,
       'slug', post_group.slug,
       'name', post_group.name,
-      'visibility', post_group.visibility
+      'visibility', post_group.visibility,
+      'icon_path', post_group.icon_path
     ) end as post_group,
     case when post_company.id is null then null else json_build_object(
       'id', post_company.id,

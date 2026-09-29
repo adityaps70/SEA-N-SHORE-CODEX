@@ -16,6 +16,7 @@ import type {
   ReactionSummary,
 } from './types'
 import { EMPTY_REACTION_SUMMARY, POST_REACTIONS, reactionCount } from './types'
+import { communityImageUrl } from '@/features/community/repository'
 
 type MaritimeSummaryRow = {
   rank: string | null
@@ -96,6 +97,8 @@ type GroupRefRow = {
   slug: string
   name: string
   visibility: 'public' | 'private'
+  /** Community photo key (round 9C). */
+  icon_path?: string | null
 }
 
 export type OrganizationMentionRow = {
@@ -202,7 +205,13 @@ function mapPhotoTags(rows: PhotoTagRow[] | null | undefined, signedUrls: Map<st
 function mapGroup(row: GroupRefRow | GroupRefRow[] | null | undefined): FeedGroupRef | null {
   const group = firstOrNull(row)
   if (!group?.id || !group.slug) return null
-  return { id: group.id, slug: group.slug, name: group.name, visibility: group.visibility === 'private' ? 'private' : 'public' }
+  return {
+    id: group.id,
+    slug: group.slug,
+    name: group.name,
+    visibility: group.visibility === 'private' ? 'private' : 'public',
+    iconUrl: communityImageUrl(group.id, 'icon', group.icon_path),
+  }
 }
 
 function mapMentions(rows: MentionRow[] | null | undefined): FeedMention[] {

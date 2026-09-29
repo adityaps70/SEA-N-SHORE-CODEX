@@ -99,7 +99,7 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
                   key={group.id}
                   title={group.name}
                   href={groupHref(group.slug)}
-                  leading={<GroupIconTile icon={group.icon} size="sm" />}
+                  leading={<GroupIconTile icon={group.icon} iconUrl={group.iconUrl} size="sm" />}
                   subtitle={`/${group.slug}`}
                   badges={group.archivedAt ? <AdminChip tone="danger">Archived</AdminChip> : <AdminChip tone="success">Live</AdminChip>}
                   fields={[
@@ -143,7 +143,7 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
                     <tr key={group.id} className={`align-middle transition hover:bg-mist-50/60 ${editing?.id === group.id ? 'bg-ocean-50/40' : ''}`}>
                       <td className="px-4 py-2.5">
                         <div className="flex min-w-0 items-center gap-3">
-                          <GroupIconTile icon={group.icon} size="sm" />
+                          <GroupIconTile icon={group.icon} iconUrl={group.iconUrl} size="sm" />
                           <div className="min-w-0">
                             <Link href={groupHref(group.slug)} className="block truncate font-semibold text-navy-950 hover:text-ocean-700 hover:underline" title={group.name}>{group.name}</Link>
                             <p className="truncate text-xs text-muted">/{group.slug}</p>
@@ -200,7 +200,7 @@ export default async function AdminCommunitiesPage({ searchParams }: { searchPar
       <section id="create-group" aria-labelledby="create-group-heading" className="scroll-mt-24 space-y-4 rounded-xl border border-mist-100 bg-white p-4 sm:p-5">
         <div>
           <h3 id="create-group-heading" className="text-lg font-bold text-navy-950">Create group</h3>
-          <p className="mt-1 text-sm text-muted">The owner is added as an active member at once; they can then appoint admins from the group’s Members tab.</p>
+          <p className="mt-1 text-sm text-muted">The owner is added as an active member at once; they can then appoint moderators from the group’s Members tab.</p>
         </div>
         <AdminGroupForm />
       </section>
