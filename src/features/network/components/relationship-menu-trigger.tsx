@@ -1,11 +1,7 @@
 'use client'
 
 import { Ellipsis } from 'lucide-react'
-
-/** Window event that opens a profile's relationship "…" sheet (see RelationshipControls `openMenuEvent`). */
-export function relationshipMenuEventName(profileId: string) {
-  return `sns:relationship-menu:${profileId}`
-}
+import { relationshipMenuEventName } from './relationship-menu-event'
 
 /** The phone page bar's "…" on a public profile: opens the same sheet as the header's "…". */
 export function RelationshipMenuTrigger({ profileId, label }: { profileId: string; label: string }) {

@@ -550,7 +550,7 @@ export function MessageThread({
         />
       </header>
 
-      <div data-testid="message-scroll-area" className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-5 sm:px-6">
+      <div data-testid="message-scroll-area" className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-5 sm:px-6">
         {nextCursor ? (
           <div className="mb-5 flex justify-center">
             <p className="text-xs text-muted">
