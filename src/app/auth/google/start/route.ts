@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createCognitoCookieManager } from '@/lib/auth/cognito-cookies'
 import { createCognitoOAuth } from '@/lib/auth/cognito-oauth'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
+import { siteUrlFor } from '@/lib/site-url'
 
 function fallbackPath(request: NextRequest) {
   return request.nextUrl.searchParams.get('intent') === 'sign-up'
@@ -12,7 +13,7 @@ function fallbackPath(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const environment = getCognitoEnvironment()
   if (!environment.AWS_COGNITO_GOOGLE_ENABLED || !environment.AWS_COGNITO_DOMAIN) {
-    return NextResponse.redirect(new URL(fallbackPath(request), request.url))
+    return NextResponse.redirect(siteUrlFor(fallbackPath(request)))
   }
 
   const oauth = createCognitoOAuth({

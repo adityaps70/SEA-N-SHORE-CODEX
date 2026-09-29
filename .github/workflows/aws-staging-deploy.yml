@@ -129,8 +129,8 @@ jobs:
       NOTIFICATION_WORKER_SERVICE: sea-n-shore-staging-notification-worker
       OUTBOX_WORKER_TASK_DEFINITION: sea-n-shore-staging-outbox-worker
       NOTIFICATION_WORKER_TASK_DEFINITION: sea-n-shore-staging-notification-worker
-      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
-      SERVER_ACTION_ALLOWED_ORIGINS: https://d3prih0q6jofyr.cloudfront.net
+      # NEXT_PUBLIC_SITE_URL is resolved from scripts/aws/public-site-url.txt (one repository variable).
+      SERVER_ACTION_ALLOWED_ORIGINS: https://seanshore.in,https://d3prih0q6jofyr.cloudfront.net
       AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "true"
       AWS_MEDIA_BUCKET: sea-n-shore-staging-310356785722-media
       AURORA_HOST: sea-n-shore-staging-aurora.cluster-cvaiukw021g5.ap-south-1.rds.amazonaws.com
@@ -142,6 +142,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "NEXT_PUBLIC_SITE_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
 
       - name: Validate required staging configuration
         run: |
@@ -210,9 +219,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/media-cors.json <<EOF
-          {"CORSRules":[{"AllowedHeaders":["Content-Type"],"AllowedMethods":["PUT"],"AllowedOrigins":["$SERVER_ACTION_ALLOWED_ORIGINS"],"MaxAgeSeconds":300}]}
-          EOF
+          jq -cn --arg origins "$SERVER_ACTION_ALLOWED_ORIGINS" '
+            {"CORSRules":[{"AllowedHeaders":["Content-Type"],"AllowedMethods":["PUT"],"AllowedOrigins":($origins|split(",")),"MaxAgeSeconds":300}]}
+          ' > /tmp/media-cors.json
 
           aws s3api put-bucket-cors \
             --region "$AWS_REGION" \
@@ -224,10 +233,10 @@ jobs:
             --bucket "$AWS_MEDIA_BUCKET" \
             --output json)"
 
-          jq -e --arg origin "$SERVER_ACTION_ALLOWED_ORIGINS" '
+          jq -e --arg origins "$SERVER_ACTION_ALLOWED_ORIGINS" '
             (.CORSRules | length) == 1
             and .CORSRules[0].AllowedMethods == ["PUT"]
-            and .CORSRules[0].AllowedOrigins == [$origin]
+            and .CORSRules[0].AllowedOrigins == ($origins|split(","))
             and .CORSRules[0].AllowedHeaders == ["Content-Type"]
             and .CORSRules[0].MaxAgeSeconds == 300
           ' <<<"$LIVE_CORS" > /dev/null
@@ -235,7 +244,7 @@ jobs:
           echo "MEDIA_CORS_VERIFIED=true"
           echo "### Media bucket CORS verified" >> "$GITHUB_STEP_SUMMARY"
           echo "- Bucket: \`$AWS_MEDIA_BUCKET\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Origin: \`$SERVER_ACTION_ALLOWED_ORIGINS\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Origins: \`$SERVER_ACTION_ALLOWED_ORIGINS\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Method/header: \`PUT / Content-Type\`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create new ECS task definition revision

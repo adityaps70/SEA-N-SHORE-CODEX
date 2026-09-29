@@ -13,7 +13,9 @@ on:
       - scripts/aws/check-edge-plan.py
       - scripts/aws/check-edge-plan.test.py
       - scripts/aws/server-action-edge-header.test.mjs
+      - scripts/aws/canonical-host-redirect.test.mjs
       - infra/aws/app/edge.tf
+      - infra/aws/app/cloudfront/canonical-host-redirect.js.tftpl
   workflow_dispatch:
 
 permissions:

@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
-"""Allow only bounded staging CloudFront and profile-upload WAF changes."""
+"""Allow only bounded staging CloudFront, canonical-host redirect function and profile-upload WAF changes."""
 import copy
 import json
 import sys
+from pathlib import Path
 
 CACHE_POLICY_ID = '4135ea2d-6df8-44a3-9df3-4b5a84be39ad'
 ORIGIN_POLICY_ID = 'b689b0a8-53d0-40ab-baf2-68738e2966ac'
 FORWARDED_HOST = 'd3prih0q6jofyr.cloudfront.net'
 EXPECTED_CUSTOM_HEADERS = [{'name': 'X-Forwarded-Host', 'value': FORWARDED_HOST}]
+
+CANONICAL_HOST = 'seanshore.in'
+EXPECTED_ALIASES = [CANONICAL_HOST, 'www.' + CANONICAL_HOST]
+CERTIFICATE_ARN_PREFIX = 'arn:aws:acm:us-east-1:310356785722:certificate/'
+FUNCTION_ADDRESS = 'aws_cloudfront_function.canonical_host_redirect'
+FUNCTION_NAME = 'sea-n-shore-staging-canonical-host-redirect'
+FUNCTION_ARN = 'arn:aws:cloudfront::310356785722:function/' + FUNCTION_NAME
+FUNCTION_RUNTIME = 'cloudfront-js-2.0'
+FUNCTION_TEMPLATE = Path(__file__).resolve().parents[2] / 'infra' / 'aws' / 'app' / 'cloudfront' / 'canonical-host-redirect.js.tftpl'
 
 WAF_ID = '3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0'
 WAF_ARN = 'arn:aws:wafv2:us-east-1:310356785722:global/webacl/sea-n-shore-staging-edge/' + WAF_ID
@@ -229,7 +239,43 @@ def _validate_waf_update(change):
     return size_transition or xss_transition
 
 
-def validate(plan, origin):
+def rendered_function_code(redirect_edge_host, template_path=None):
+    """Render the repository template exactly as edge.tf's templatefile() does."""
+    template = Path(template_path or FUNCTION_TEMPLATE).read_text()
+    return (
+        template
+        .replace('${canonical_host}', CANONICAL_HOST)
+        .replace('${edge_host}', FORWARDED_HOST)
+        .replace('${redirect_edge_host}', 'true' if redirect_edge_host else 'false')
+    )
+
+
+def _validate_function(change, errors, template_path=None):
+    after = change.get('after') or {}
+    unknown = change.get('after_unknown') or {}
+    for field in ['name', 'runtime', 'publish', 'code', 'key_value_store_associations']:
+        if has_unknown(unknown.get(field)):
+            errors.append('Unknown redirect function field: ' + field)
+    if after.get('name') != FUNCTION_NAME: errors.append('Redirect function name mismatch')
+    if after.get('runtime') != FUNCTION_RUNTIME: errors.append('Redirect function runtime mismatch')
+    if after.get('publish') is not True: errors.append('Redirect function must be published')
+    if after.get('key_value_store_associations') not in [None, []]: errors.append('Redirect function must not attach key-value stores')
+    try:
+        expected = {rendered_function_code(False, template_path), rendered_function_code(True, template_path)}
+    except OSError:
+        expected = set()
+    if after.get('code') not in expected:
+        errors.append('Redirect function code must be the repository template rendered for seanshore.in')
+
+
+def _only_function_arn_unknown(value):
+    """Accept an unknown function ARN only for a single association whose other fields are known."""
+    if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], dict):
+        return False
+    return set(value[0]) <= {'function_arn'} and value[0].get('function_arn') is True
+
+
+def validate(plan, origin, certificate_arn='', template_path=None):
     errors = []
     changes = {r['address']: r for r in plan.get('resource_changes', [])}
     for address, resource in changes.items():
@@ -240,8 +286,18 @@ def validate(plan, origin):
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('CloudFront must be create/update/no-op')
         elif address == 'aws_wafv2_web_acl.edge':
             if actions not in [['update'], ['no-op']]: errors.append('WAF must be update/no-op')
+        elif address == FUNCTION_ADDRESS:
+            if actions not in [['create'], ['update'], ['no-op']]: errors.append('Redirect function must be create/update/no-op')
         elif actions != ['no-op']:
             errors.append('Forbidden infrastructure change: ' + address)
+
+    function_change = changes.get(FUNCTION_ADDRESS, {}).get('change', {})
+    function_actions = function_change.get('actions')
+    if function_actions in [['create'], ['update'], ['no-op']]:
+        _validate_function(function_change, errors, template_path)
+    else:
+        errors.append('Canonical-host redirect function must be present')
+    function_created = function_actions == ['create']
 
     waf = changes.get('aws_wafv2_web_acl.edge', {}).get('change', {})
     waf_actions = waf.get('actions')
@@ -265,10 +321,26 @@ def validate(plan, origin):
             errors.append('Unknown block: ' + block)
         elif isinstance(values, list):
             for value in values:
-                if any(has_unknown(value.get(f)) for f in fields): errors.append('Unknown safety field in ' + block)
-    if cf.get('web_acl_id') != WAF_ARN or cf.get('enabled') is not True or ('aliases' not in cf or cf['aliases'] not in [None,[]]): errors.append('CloudFront ACL/enabled/aliases mismatch')
+                for f in fields:
+                    if not has_unknown(value.get(f)):
+                        continue
+                    if block == 'default_cache_behavior' and f == 'function_association' and function_created and _only_function_arn_unknown(value.get(f)):
+                        continue
+                    errors.append('Unknown safety field in ' + block)
+    if cf.get('web_acl_id') != WAF_ARN or cf.get('enabled') is not True: errors.append('CloudFront ACL/enabled mismatch')
+    if sorted(cf.get('aliases') or []) != EXPECTED_ALIASES: errors.append('CloudFront aliases must be exactly seanshore.in and www.seanshore.in')
     cert = cf.get('viewer_certificate', [])
-    if len(cert) != 1 or cert[0].get('cloudfront_default_certificate') is not True or cert[0].get('acm_certificate_arn') not in [None,'']: errors.append('AWS-managed HTTPS certificate required')
+    if (
+        not certificate_arn
+        or not certificate_arn.startswith(CERTIFICATE_ARN_PREFIX)
+        or len(cert) != 1
+        or cert[0].get('acm_certificate_arn') != certificate_arn
+        or cert[0].get('ssl_support_method') != 'sni-only'
+        or cert[0].get('minimum_protocol_version') != 'TLSv1.2_2021'
+        or cert[0].get('cloudfront_default_certificate') not in [None, False]
+        or cert[0].get('iam_certificate_id') not in [None, '']
+    ):
+        errors.append('seanshore.in ACM certificate with SNI and TLSv1.2_2021 required')
     origins = cf.get('origin', [])
     if len(origins) != 1 or origins[0].get('domain_name') != origin:
         errors.append('Unexpected origin')
@@ -286,15 +358,22 @@ def validate(plan, origin):
         if b.get('target_origin_id') != 'sea-n-shore-staging-alb': errors.append('Behavior target mismatch')
         if b.get('viewer_protocol_policy') != 'redirect-to-https' or b.get('cache_policy_id') != CACHE_POLICY_ID or b.get('origin_request_policy_id') != ORIGIN_POLICY_ID: errors.append('HTTPS/cache policy mismatch')
         if sorted(b.get('allowed_methods',[])) != ['DELETE','GET','HEAD','OPTIONS','PATCH','POST','PUT']: errors.append('Methods mismatch')
-        if any(b.get(k) for k in ['lambda_function_association','function_association']): errors.append('Unexpected edge function')
+        if b.get('lambda_function_association'): errors.append('Unexpected Lambda@Edge association')
+        associations = b.get('function_association') or []
+        if len(associations) != 1 or associations[0].get('event_type') != 'viewer-request':
+            errors.append('Exactly one viewer-request canonical-host redirect association required')
+        else:
+            arn = associations[0].get('function_arn')
+            if arn != FUNCTION_ARN and not (arn in [None, ''] and function_created):
+                errors.append('Redirect association must reference the repository CloudFront function')
     if cf.get('ordered_cache_behavior') or cf.get('custom_error_response'): errors.append('Unexpected cache/error override')
     return errors
 
 
 if __name__ == '__main__':
     with open(sys.argv[1]) as f: plan = json.load(f)
-    errors = validate(plan, sys.argv[2])
+    errors = validate(plan, sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
     if errors:
         print('\n'.join(errors), file=sys.stderr)
         sys.exit(1)
-    print('EDGE_PLAN_GUARD_PASSED: only bounded staging CloudFront changes and exact profile-media WAF transitions allowed')
+    print('EDGE_PLAN_GUARD_PASSED: only bounded seanshore.in CloudFront changes, the canonical-host redirect function and exact profile-media WAF transitions allowed')

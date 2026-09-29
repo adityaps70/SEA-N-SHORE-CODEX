@@ -1,0 +1,56 @@
+// Sea N Shore canonical host redirect (CloudFront Functions, runtime cloudfront-js-2.0).
+// Rendered by Terraform templatefile(); the four placeholders below are the only interpolations.
+//   - www.seanshore.in            -> 301 https://seanshore.in (same path and query)
+//   - d3prih0q6jofyr.cloudfront.net -> 301 https://seanshore.in (same path and query) only while
+//     REDIRECT_EDGE_HOST is true, and never for /api/* (payment webhooks keep answering here).
+var CANONICAL_HOST = '${canonical_host}';
+var WWW_HOST = 'www.${canonical_host}';
+var EDGE_HOST = '${edge_host}';
+var REDIRECT_EDGE_HOST = ${redirect_edge_host};
+
+function encodeQueryPart(value) {
+  // Keep already percent-encoded octets and literal plus signs as they arrived.
+  return encodeURIComponent(value)
+    .replace(/%25([0-9A-Fa-f]{2})/g, '%$1')
+    .replace(/%2B/g, '+');
+}
+
+function buildQueryString(querystring) {
+  var parts = [];
+  var keys = Object.keys(querystring || {});
+  for (var i = 0; i < keys.length; i++) {
+    var key = keys[i];
+    var entry = querystring[key];
+    var values = entry && entry.multiValue ? entry.multiValue : [entry];
+    for (var j = 0; j < values.length; j++) {
+      var value = values[j] && typeof values[j].value === 'string' ? values[j].value : '';
+      parts.push(encodeQueryPart(key) + '=' + encodeQueryPart(value));
+    }
+  }
+  return parts.length ? '?' + parts.join('&') : '';
+}
+
+function isApiPath(uri) {
+  return uri === '/api' || uri.indexOf('/api/') === 0;
+}
+
+function requestHost(request) {
+  var header = request.headers && request.headers.host;
+  if (!header || typeof header.value !== 'string') return '';
+  return header.value.toLowerCase().split(':')[0];
+}
+
+function handler(event) {
+  var request = event.request;
+  var host = requestHost(request);
+  var redirect = host === WWW_HOST || (REDIRECT_EDGE_HOST && host === EDGE_HOST && !isApiPath(request.uri));
+  if (!redirect) return request;
+  return {
+    statusCode: 301,
+    statusDescription: 'Moved Permanently',
+    headers: {
+      location: { value: 'https://' + CANONICAL_HOST + request.uri + buildQueryString(request.querystring) },
+      'cache-control': { value: 'public, max-age=3600' },
+    },
+  };
+}

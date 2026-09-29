@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
+import { siteUrlFor } from '@/lib/site-url'
 
 function calendarStamp(value: string) {
   return new Date(value).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
@@ -22,7 +23,7 @@ function fileStem(title: string) {
     .slice(0, 64) || 'sea-n-shore-event'
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ eventId: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ eventId: string }> }) {
   const user = await requireAwsUser()
   const { eventId } = await params
   const event = await calendarEventRepository.getEvent(eventId, user.id)
@@ -34,7 +35,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ even
   const location = event.format === 'online'
     ? 'Online'
     : [event.locationName, event.locationAddress, event.city, event.country].filter(Boolean).join(', ') || 'Venue to be confirmed'
-  const eventUrl = new URL(`/events/${event.id}`, request.url).toString()
+  const eventUrl = siteUrlFor(`/events/${event.id}`).toString()
   const description = [event.summary, event.meetingUrl ? `Join online: ${event.meetingUrl}` : null]
     .filter(Boolean)
     .join('\n\n')

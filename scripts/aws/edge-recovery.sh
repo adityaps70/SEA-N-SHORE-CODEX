@@ -33,6 +33,14 @@ else
 fi
 ORIGIN="$(aws elbv2 describe-load-balancers --names sea-n-shore-staging-alb --region ap-south-1 --query 'LoadBalancers[0].DNSName' --output text)"
 [[ "$ORIGIN" == sea-n-shore-staging-alb-*.ap-south-1.elb.amazonaws.com ]]
+# The custom domain rides on the tracked seanshore.in certificate, which must already be ISSUED.
+CERT_ARN="$(jq -r '[.resources[] | select(.mode == "managed" and .type == "aws_acm_certificate" and .name == "seanshore_edge") | .instances[0].attributes.arn][0] // empty' "$RECOVERY_DIR/state.json")"
+[[ "$CERT_ARN" == arn:aws:acm:us-east-1:310356785722:certificate/* ]]
+aws acm describe-certificate --region us-east-1 --certificate-arn "$CERT_ARN" --output json > "$RECOVERY_DIR/certificate.json"
+jq -e '.Certificate | .DomainName == "seanshore.in" and ((.SubjectAlternativeNames | sort) == ["seanshore.in", "www.seanshore.in"])' "$RECOVERY_DIR/certificate.json" >/dev/null
+echo "ACM_CERTIFICATE_STATUS=$(jq -r '.Certificate.Status' "$RECOVERY_DIR/certificate.json")"
+jq -e '.Certificate.Status == "ISSUED"' "$RECOVERY_DIR/certificate.json" >/dev/null || { echo 'seanshore.in edge certificate is not ISSUED; refusing to plan the custom domain.' >&2; exit 1; }
+EXPECTED_FUNCTION_ARN="arn:aws:cloudfront::310356785722:function/sea-n-shore-staging-canonical-host-redirect"
 python3 - "$RECOVERY_DIR/state.json" "$RECOVERY_DIR/variables.json" <<'PY'
 import json, sys
 with open(sys.argv[1]) as f: state=json.load(f)
@@ -57,17 +65,17 @@ terraform -chdir="$APP_DIR" init -input=false -no-color -lockfile=readonly -plug
   -backend-config=region=ap-south-1 -backend-config=use_lockfile=true > "$RECOVERY_DIR/init.log"
 set +e
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge \
+  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect \
   -var-file="$RECOVERY_DIR/variables.json" -out="$RECOVERY_DIR/edge.tfplan" \
   > "$RECOVERY_DIR/plan.log" 2> "$RECOVERY_DIR/plan.err"
 PLAN_EXIT=$?
 set -e
 if [[ "$PLAN_EXIT" != 0 ]]; then cat "$RECOVERY_DIR/plan.err" >&2; exit "$PLAN_EXIT"; fi
 terraform -chdir="$APP_DIR" show -json "$RECOVERY_DIR/edge.tfplan" > "$RECOVERY_DIR/plan.json"
-jq '{actions: [.resource_changes[] | {address, actions: .change.actions}], policies: [.planned_values.root_module.resources[]? | select(.mode == "data") | {address, values: {id: .values.id, name: .values.name}}], distribution: [.resource_changes[] | select(.address == "aws_cloudfront_distribution.app") | {after: (.change.after | {aliases, enabled, web_acl_id, origin, default_cache_behavior, viewer_certificate}), unknown: .change.after_unknown}]}' "$RECOVERY_DIR/plan.json"
+jq '{actions: [.resource_changes[] | {address, actions: .change.actions}], policies: [.planned_values.root_module.resources[]? | select(.mode == "data") | {address, values: {id: .values.id, name: .values.name}}], distribution: [.resource_changes[] | select(.address == "aws_cloudfront_distribution.app") | {after: (.change.after | {aliases, enabled, web_acl_id, origin, default_cache_behavior, viewer_certificate}), unknown: .change.after_unknown}], redirect_function: [.resource_changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") | {actions: .change.actions, after: (.change.after | {name, runtime, publish, comment}), unknown: .change.after_unknown}]}' "$RECOVERY_DIR/plan.json"
 aws cloudfront get-cache-policy --id 4135ea2d-6df8-44a3-9df3-4b5a84be39ad --output json > "$RECOVERY_DIR/cache-policy.json"
 jq -e '.CachePolicy.CachePolicyConfig | .MinTTL == 0 and .DefaultTTL == 0 and .MaxTTL == 0' "$RECOVERY_DIR/cache-policy.json" >/dev/null
-python3 scripts/aws/check-edge-plan.py "$RECOVERY_DIR/plan.json" "$ORIGIN"
+python3 scripts/aws/check-edge-plan.py "$RECOVERY_DIR/plan.json" "$ORIGIN" "$CERT_ARN"
 jq '[.resource_changes[] | {address, actions: .change.actions}]' "$RECOVERY_DIR/plan.json"
 echo "PLAN_SHA256=$(sha256sum "$RECOVERY_DIR/edge.tfplan" | cut -d' ' -f1)"
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$RECOVERY_DIR/state.json")"
@@ -75,30 +83,34 @@ if [[ "$ACTION" == plan ]]; then
   echo 'EDGE_RECOVERY_PLAN_VERIFIED_NO_APPLY'
   exit 0
 fi
-# Apply only the exact saved plan just checked. For an existing edge, only bounded
-# in-place CloudFront and WAF updates/no-ops are allowed, and at least one must change.
+# Apply only the exact saved plan just checked. For an existing edge, only bounded in-place
+# CloudFront/WAF updates plus the repository redirect function (create/update) are allowed, and
+# at least one of them must change.
 if [[ -n "$STATE_CF_ID" ]]; then
   jq -e '
     [.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 2
-      and ([ $changes[].address ] | sort) == ["aws_cloudfront_distribution.app", "aws_wafv2_web_acl.edge"]
+    | ($changes | length) == 3
+      and ([ $changes[].address ] | sort) == ["aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions as $cf | ($cf == ["no-op"] or $cf == ["update"]))
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
+      and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["update"] or $fn == ["create"]))
       and (([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["update"])
-        or ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions == ["update"]))
+        or ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions == ["update"])
+        or ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions != ["no-op"]))
   ' "$RECOVERY_DIR/plan.json" >/dev/null || {
-    echo 'Existing edge apply must contain only bounded CloudFront/WAF in-place changes.' >&2
+    echo 'Existing edge apply must contain only bounded CloudFront/WAF in-place changes and the redirect function.' >&2
     exit 1
   }
 else
   jq -e '
     [.resource_changes[] | select(.mode == "managed") | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 2
-      and ([ $changes[].address ] | sort) == ["aws_cloudfront_distribution.app", "aws_wafv2_web_acl.edge"]
+    | ($changes | length) == 3
+      and ([ $changes[].address ] | sort) == ["aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["create"])
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
+      and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["create"]))
   ' "$RECOVERY_DIR/plan.json" >/dev/null || {
-    echo 'First edge apply must contain CloudFront create plus bounded WAF update/no-op.' >&2
+    echo 'First edge apply must contain CloudFront create plus bounded WAF update/no-op and the redirect function.' >&2
     exit 1
   }
 fi
@@ -122,7 +134,13 @@ CF_ID="$(jq -r '.resources[] | select(.type == "aws_cloudfront_distribution" and
 [[ -n "$CF_ID" && "$CF_ID" != null ]]
 if [[ -n "$STATE_CF_ID" ]]; then [[ "$CF_ID" == "$STATE_CF_ID" ]]; fi
 aws cloudfront get-distribution --id "$CF_ID" > "$RECOVERY_DIR/live.json"
-jq -e '.Distribution | .Status == "Deployed" and .DistributionConfig.Enabled == true and .DistributionConfig.Aliases.Quantity == 0 and .DistributionConfig.ViewerCertificate.CloudFrontDefaultCertificate == true and .DistributionConfig.WebACLId == "arn:aws:wafv2:us-east-1:310356785722:global/webacl/sea-n-shore-staging-edge/3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0"' "$RECOVERY_DIR/live.json" >/dev/null
+jq -e '.Distribution | .Status == "Deployed" and .DistributionConfig.Enabled == true and .DistributionConfig.WebACLId == "arn:aws:wafv2:us-east-1:310356785722:global/webacl/sea-n-shore-staging-edge/3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0"' "$RECOVERY_DIR/live.json" >/dev/null
+jq -e '.Distribution.DistributionConfig | .Aliases.Quantity == 2 and ((.Aliases.Items | sort) == ["seanshore.in", "www.seanshore.in"])' "$RECOVERY_DIR/live.json" >/dev/null
+jq -e --arg cert "$CERT_ARN" '.Distribution.DistributionConfig.ViewerCertificate | .ACMCertificateArn == $cert and .SSLSupportMethod == "sni-only" and .MinimumProtocolVersion == "TLSv1.2_2021" and (.CloudFrontDefaultCertificate // false) == false' "$RECOVERY_DIR/live.json" >/dev/null
+jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.Distribution.DistributionConfig.DefaultCacheBehavior | .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].EventType == "viewer-request" and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0' "$RECOVERY_DIR/live.json" >/dev/null
+aws cloudfront describe-function --name sea-n-shore-staging-canonical-host-redirect --stage LIVE --output json > "$RECOVERY_DIR/live-function.json"
+jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.FunctionSummary | .FunctionMetadata.FunctionARN == $fn and .FunctionConfig.Runtime == "cloudfront-js-2.0"' "$RECOVERY_DIR/live-function.json" >/dev/null
+echo 'CANONICAL_HOST_REDIRECT_FUNCTION_LIVE=true'
 DOMAIN="$(jq -r '.Distribution.DomainName' "$RECOVERY_DIR/live.json")"
 [[ "$DOMAIN" == "d3prih0q6jofyr.cloudfront.net" ]]
 jq -e --arg domain "$DOMAIN" '.Distribution.DistributionConfig.Origins | .Quantity == 1 and .Items[0].CustomHeaders.Quantity == 1 and .Items[0].CustomHeaders.Items[0].HeaderName == "X-Forwarded-Host" and .Items[0].CustomHeaders.Items[0].HeaderValue == $domain' "$RECOVERY_DIR/live.json" >/dev/null
@@ -210,11 +228,22 @@ jq -e '.status == "ok" and .database and .identityMappings and .contentNetwork' 
 jq -e '.status == "ok" and .profile and .network and .discovery and .feed and .hydration and .media' "$RECOVERY_DIR/home.json" >/dev/null
 HTTP_STATUS="$(curl --silent --show-error --max-time 30 -o /dev/null -w '%{http_code}' "http://$DOMAIN/api/health/phase4")"
 [[ "$HTTP_STATUS" == 301 ]]
+# Prove the custom domain works at the edge before DNS moves: pin the alias hostnames to the
+# distribution's own address so SNI and the Host header are the real ones.
+EDGE_IP="$(dig +short A "$DOMAIN" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)"
+[[ -n "$EDGE_IP" ]]
+APEX_STATUS="$(curl --silent --show-error --max-time 45 --resolve "seanshore.in:443:$EDGE_IP" -o "$RECOVERY_DIR/apex-health.json" -w '%{http_code}' "https://seanshore.in/api/health/phase4")"
+[[ "$APEX_STATUS" == 200 ]]
+jq -e '.status == "ok"' "$RECOVERY_DIR/apex-health.json" >/dev/null
+WWW_LOCATION="$(curl --silent --show-error --max-time 45 --resolve "www.seanshore.in:443:$EDGE_IP" -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.seanshore.in/api/health/phase4?probe=www")"
+[[ "$WWW_LOCATION" == "301 https://seanshore.in/api/health/phase4?probe=www" ]]
+echo 'CUSTOM_DOMAIN_EDGE_VERIFIED; WWW_REDIRECT_VERIFIED'
+
 aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region ap-south-1 > "$RECOVERY_DIR/ecs-after.json"
 jq -e --slurpfile before "$RECOVERY_DIR/ecs-before.json" '.services[0] | .taskDefinition == $before[0].services[0].taskDefinition and .desiredCount == 1 and .runningCount == 1 and .pendingCount == 0 and all(.deployments[]; .rolloutState == "COMPLETED" and .failedTasks == 0)' "$RECOVERY_DIR/ecs-after.json" >/dev/null
 echo "CLOUDFRONT_ID=$CF_ID"
 echo "CLOUDFRONT_HTTPS_URL=https://$DOMAIN"
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$RECOVERY_DIR/state-after.json")"
-echo 'EDGE_FORWARDED_HOST_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; ECS_UNCHANGED_AND_HEALTHY'
+echo 'EDGE_FORWARDED_HOST_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; SEANSHORE_ALIASES_AND_CERTIFICATE_VERIFIED; ECS_UNCHANGED_AND_HEALTHY'
 PRESERVE_RECOVERY=false
 rm -f .edge-recovery-preserve

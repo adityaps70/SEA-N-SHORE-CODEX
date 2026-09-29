@@ -16,12 +16,19 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 12
-    env:
-      SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
 
       - name: Use Node 22
         uses: actions/setup-node@v4

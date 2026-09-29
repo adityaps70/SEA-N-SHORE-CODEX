@@ -28,13 +28,23 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 5
-    env:
-      SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
+
       - name: Verify deployed Phase 4 runtime health
         run: |
-          test -n "$SITE_URL" || (echo "Missing staging variable NEXT_PUBLIC_SITE_URL" >&2 && exit 1)
+          test -n "$SITE_URL" || (echo "Missing public site URL" >&2 && exit 1)
           HEALTH_URL="${SITE_URL%/}/api/health/phase4"
           HTTP_STATUS=$(curl --show-error --silent --max-time 45 --output /tmp/phase4-health.json --write-out '%{http_code}' "$HEALTH_URL")
           echo "=== PHASE 4 STAGING HEALTH ==="
@@ -113,9 +123,9 @@ jobs:
             test "$has_logo" = "yes" || { echo "${label} homepage HTML does not contain the compact logo asset path." >&2; exit 1; }
           }
 
-          verify_asset alb "$SITE_URL"
+          verify_asset site "$SITE_URL"
           verify_asset cloudfront "$CLOUDFRONT_URL"
-          verify_page alb "$SITE_URL"
+          verify_page site "$SITE_URL"
           verify_page cloudfront "$CLOUDFRONT_URL"
 
   staging-runtime-shape:

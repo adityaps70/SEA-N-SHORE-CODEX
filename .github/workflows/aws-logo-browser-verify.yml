@@ -20,12 +20,19 @@ jobs:
   chromium-render:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      STAGING_URL: https://d3prih0q6jofyr.cloudfront.net
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "STAGING_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
 
       - name: Use Node 22
         uses: actions/setup-node@v4

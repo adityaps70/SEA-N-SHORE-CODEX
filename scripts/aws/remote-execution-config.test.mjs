@@ -35,7 +35,9 @@ test('GitHub remote execution stays scoped to the bootstrap instance and reposit
   assert.doesNotMatch(workflow, /\$\{\{\s*inputs\.command\s*\}\}/)
 
   assert.match(workflow, /staging-http-health:/)
-  assert.match(workflow, /NEXT_PUBLIC_SITE_URL/)
+  assert.match(workflow, /scripts\/aws\/public-site-url\.txt/)
+  assert.match(workflow, /echo "SITE_URL=\$SITE" >> "\$GITHUB_ENV"/)
+  assert.doesNotMatch(workflow, /vars\.NEXT_PUBLIC_SITE_URL/)
   assert.match(workflow, /\/api\/health\/phase4/)
   assert.match(workflow, /\.database == true/)
   assert.match(workflow, /\.identityMappings == true/)

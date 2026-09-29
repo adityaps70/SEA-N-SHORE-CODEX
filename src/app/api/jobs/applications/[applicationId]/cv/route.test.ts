@@ -77,7 +77,8 @@ describe('GET /api/jobs/applications/[applicationId]/cv', () => {
     mocks.getApplicationCvAccess.mockResolvedValue({ viewer: 'hiring', cv: null })
     const response = await call()
     expect(response.status).toBe(303)
-    expect(response.headers.get('location')).toBe(`https://seanshore.test/hiring/applicants/${applicationId}?cv=missing`)
+    // Redirects are built on NEXT_PUBLIC_SITE_URL, never on the request host the container sees.
+    expect(response.headers.get('location')).toBe(`http://localhost:3000/hiring/applicants/${applicationId}?cv=missing`)
   })
 
   it('sends the reviewer back when the stored file is gone or storage fails', async () => {
@@ -94,6 +95,6 @@ describe('GET /api/jobs/applications/[applicationId]/cv', () => {
   it('lets applicants open their own CV and returns them to their applications on failure', async () => {
     mocks.getApplicationCvAccess.mockResolvedValue({ viewer: 'applicant', cv: null })
     const response = await call()
-    expect(response.headers.get('location')).toBe('https://seanshore.test/jobs/applications?cv=missing')
+    expect(response.headers.get('location')).toBe('http://localhost:3000/jobs/applications?cv=missing')
   })
 })
