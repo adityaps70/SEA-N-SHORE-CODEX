@@ -17,6 +17,11 @@ const copyByType: Record<NetworkNotificationType, string> = {
   comment_mention: 'mentioned you in a comment',
   event_cancelled: 'cancelled an event you registered for',
   plan_trial_ending: 'your free trial ends soon',
+  group_join_request: 'asked to join a group you manage',
+  group_join_approved: 'approved your request to join a group',
+  group_post: 'posted in a group you manage',
+  organization_mention: 'mentioned an organization you manage',
+  photo_tag: 'tagged you in a photo',
 }
 
 const EVENT_CANCELLED_MESSAGE = 'An event you registered for was cancelled because its organiser left Sea N Shore. Paid tickets are refunded in full.'
@@ -64,6 +69,12 @@ function socialCopy(row: NotificationRow) {
       ? `reacted ${meta.label} ${meta.emoji} to your post`
       : `reacted ${meta.label} ${meta.emoji} to your comment`
   }
+  if (row.notification_type === 'group_join_request' && row.group_name) return `asked to join ${row.group_name}`
+  if (row.notification_type === 'group_join_approved' && row.group_name) return `approved your request to join ${row.group_name}`
+  if (row.notification_type === 'group_post' && row.group_name) return `posted in ${row.group_name}`
+  if (row.notification_type === 'organization_mention' && row.company_name) {
+    return row.comment_id ? `mentioned ${row.company_name} in a comment` : `mentioned ${row.company_name} in a post`
+  }
   return copyByType[row.notification_type]
 }
 
@@ -71,6 +82,8 @@ function destinationFor(row: NotificationRow, actor: ProfileSummary | null) {
   if (row.notification_type === 'connection_request') return '/network?tab=requests'
   if (row.notification_type === 'event_cancelled') return '/events/my'
   if (row.notification_type === 'plan_trial_ending') return '/settings/billing'
+  if (row.notification_type === 'group_join_request') return row.group_slug ? `/community/${row.group_slug}?tab=members&requests=1` : '/community'
+  if (row.notification_type === 'group_join_approved') return row.group_slug ? `/community/${row.group_slug}` : '/community'
   if (row.post_id) {
     const base = `/posts/${row.post_id}`
     return row.comment_id ? `${base}#comment-${row.comment_id}` : base

@@ -62,6 +62,7 @@ describe('createPost as an organization', () => {
       category: 'maritime_news',
       body: 'Hiring second officers.',
       mentionProfileIds: [],
+      organizationMentionIds: [],
       companyId,
     })
 
@@ -70,6 +71,7 @@ describe('createPost as an organization', () => {
       category: 'maritime_news',
       body: 'Personal update.',
       mentionProfileIds: [],
+      organizationMentionIds: [],
     })
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/organizations/[slug]', 'page')
   })
@@ -99,7 +101,7 @@ describe('updatePost', () => {
       ok: true,
       post: { id: postId, body: 'Updated text', mentions: [] },
     })
-    expect(mocks.updatePostWithAurora).toHaveBeenCalledWith(viewerId, postId, { body: 'Updated text', mentionProfileIds: [] })
+    expect(mocks.updatePostWithAurora).toHaveBeenCalledWith(viewerId, postId, { body: 'Updated text', mentionProfileIds: [], organizationMentionIds: [] })
   })
 
   it('turns service refusals into plain messages', async () => {

@@ -22,6 +22,7 @@ describe('postMediaReferenceSchema', () => {
     expect(postMediaReferenceSchema.parse(mediaReference)).toEqual({
       ...mediaReference,
       altText: 'Engine room walkthrough',
+      taggedProfileIds: [],
     })
   })
 
@@ -62,7 +63,7 @@ describe('createPostInputSchema', () => {
       media: [mediaReference],
     })
 
-    expect(parsed.media).toEqual([{ ...mediaReference, altText: 'Engine room walkthrough' }])
+    expect(parsed.media).toEqual([{ ...mediaReference, altText: 'Engine room walkthrough', taggedProfileIds: [] }])
   })
 
   it('accepts up to 10 ordered image references that share one pending post id', () => {
@@ -128,7 +129,7 @@ describe('createPostInputSchema', () => {
       media: [document],
     })
 
-    expect(parsed.media).toEqual([{ ...document, altText: 'Engine room walkthrough' }])
+    expect(parsed.media).toEqual([{ ...document, altText: 'Engine room walkthrough', taggedProfileIds: [] }])
     expect(() => createPostInputSchema.parse({
       category: 'learning',
       body: 'Oversized document.',
@@ -223,6 +224,7 @@ describe('comment management schemas', () => {
       commentId,
       body: 'Updated watchkeeping note.',
       mentionProfileIds: [mentionId],
+      organizationMentionIds: [],
     })
   })
 

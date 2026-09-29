@@ -3,7 +3,7 @@ import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { getPreferredFeedAuthorIds } from '@/features/network/queries'
 import { resolveFeedMediaUrls } from './media'
-import { feedAuthorAvatarPath, feedPostMediaPaths, hiddenPostPaths, mapFeedPost, mapHiddenPost, organizationLogoUrl, type FeedCommentRow, type FeedPostRow } from './mappers'
+import { feedAuthorAvatarPath, feedPhotoTagAvatarPaths, feedPostMediaPaths, hiddenPostPaths, mapFeedPost, mapHiddenPost, organizationLogoUrl, type FeedCommentRow, type FeedPostRow } from './mappers'
 import { postPermissions } from './post-permissions'
 import { prioritizeRecentFeedRows } from './ranking'
 import { feedRepository, type FeedRepository } from './repository'
@@ -73,6 +73,7 @@ export function createFeedQueries(input: {
     ])
     const paths = [...new Set([
       ...rows.flatMap(feedPostMediaPaths),
+      ...rows.flatMap(feedPhotoTagAvatarPaths),
       ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
       ...repostSources.flatMap(feedPostMediaPaths),
       ...repostSources.map((row) => feedAuthorAvatarPath(row.profiles)),
@@ -105,6 +106,7 @@ export function createFeedQueries(input: {
     ])
     const paths = [...new Set([
       ...rows.flatMap(feedPostMediaPaths),
+      ...rows.flatMap(feedPhotoTagAvatarPaths),
       ...rows.map((row) => feedAuthorAvatarPath(row.profiles)),
       ...repostSources.flatMap(feedPostMediaPaths),
       ...repostSources.map((row) => feedAuthorAvatarPath(row.profiles)),
@@ -134,14 +136,16 @@ export function createFeedQueries(input: {
       viewerProfileId: user.id,
       ...(parsed.category ? { category: parsed.category } : {}),
       ...(parsed.companyId ? { companyId: parsed.companyId } : {}),
+      ...(parsed.groupId ? { groupId: parsed.groupId } : {}),
+      ...(parsed.hashtag ? { hashtag: parsed.hashtag } : {}),
       ...(parsed.cursor ? { cursor: parsed.cursor } : {}),
       limit: parsed.limit + 1,
     })
     const hasMore = rows.length > parsed.limit
     const pageRows = rows.slice(0, parsed.limit)
     const nextCursor = feedNextCursor(pageRows, hasMore)
-    // An organization's own post list stays newest first.
-    if (parsed.companyId) return { posts: await hydratePosts(pageRows, user.id), nextCursor }
+    // An organization's own post list and a group feed stay newest first.
+    if (parsed.companyId || parsed.groupId || parsed.hashtag) return { posts: await hydratePosts(pageRows, user.id), nextCursor }
     const preferredAuthorIds = new Set(await input.getPreferredAuthorIds())
     preferredAuthorIds.add(user.id)
     const displayRows = prioritizeRecentFeedRows(

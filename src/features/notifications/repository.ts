@@ -12,6 +12,13 @@ export type NotificationRow = QueryResultRow & {
   reaction_type: PostReactionType | null
   created_at: string
   read_at: string | null
+  /** Community group the notification is about (round 9B), with its slug and name when it still exists. */
+  group_id?: string | null
+  group_slug?: string | null
+  group_name?: string | null
+  /** Organization the notification is about (round 9B). */
+  company_id?: string | null
+  company_name?: string | null
 }
 
 /** A compact look at the post a notification is about: its text and first photo or video. */
@@ -43,12 +50,16 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
   return {
     async listRecent(recipientId: string, limit: number): Promise<NotificationRow[]> {
       const rows = await queryRows(
-        `select id, actor_id, notification_type::text as notification_type,
-                post_id, comment_id, reaction_type::text as reaction_type,
-                created_at, read_at
-         from public.notifications
-         where recipient_id = $1
-         order by created_at desc
+        `select n.id, n.actor_id, n.notification_type::text as notification_type,
+                n.post_id, n.comment_id, n.reaction_type::text as reaction_type,
+                n.created_at, n.read_at,
+                n.group_id, g.slug as group_slug, g.name as group_name,
+                n.company_id, c.name as company_name
+         from public.notifications n
+         left join public.community_groups g on g.id = n.group_id
+         left join public.companies c on c.id = n.company_id
+         where n.recipient_id = $1
+         order by n.created_at desc
          limit $2`,
         [recipientId, clampLimit(limit)],
       )

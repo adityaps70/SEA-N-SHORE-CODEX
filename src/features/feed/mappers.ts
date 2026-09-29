@@ -2,8 +2,11 @@ import type {
   FeedAuthor,
   FeedComment,
   FeedCommentReplyTarget,
+  FeedGroupRef,
   FeedMention,
   FeedOrganization,
+  FeedOrganizationMention,
+  FeedPhotoTag,
   FeedPost,
   FeedPostType,
   FeedRepostSource,
@@ -64,9 +67,11 @@ export type FeedCommentRow = {
   reaction_summary?: ReactionCountsRow | null
   viewer_reaction?: PostReactionType | null
   mentions?: MentionRow[] | null
+  organization_mentions?: OrganizationMentionRow[] | null
 }
 
 type MediaRow = {
+  id?: string | null
   storage_path: string
   mime_type: string
   alt_text: string | null
@@ -86,6 +91,28 @@ type PollRow = {
   post_poll_options: PollOptionRow[]
 }
 
+type GroupRefRow = {
+  id: string
+  slug: string
+  name: string
+  visibility: 'public' | 'private'
+}
+
+export type OrganizationMentionRow = {
+  company_id: string
+  slug: string
+  name: string
+  logo_path?: string | null
+}
+
+type PhotoTagRow = {
+  media_id: string
+  profile_id: string
+  slug: string
+  full_name: string
+  avatar_path?: string | null
+}
+
 export type FeedPostRow = {
   id: string
   category: PostCategory
@@ -96,6 +123,12 @@ export type FeedPostRow = {
   /** Organization the post was published as (migration 0044). */
   company_id?: string | null
   organization?: OrganizationIdentityRow | OrganizationIdentityRow[] | null
+  /** Community group the post was published in (migration 0055). */
+  group_id?: string | null
+  post_group?: GroupRefRow | GroupRefRow[] | null
+  post_organization_mentions?: OrganizationMentionRow[] | null
+  post_hashtags?: string[] | null
+  post_photo_tags?: PhotoTagRow[] | null
   viewer_follows_organization?: boolean | null
   created_at: string
   updated_at: string
@@ -143,6 +176,35 @@ function mapReactionSummary(value: FeedPostRow['post_reactions'] | FeedCommentRo
   }
 }
 
+export function mapOrganizationMentions(rows: OrganizationMentionRow[] | null | undefined): FeedOrganizationMention[] {
+  return (rows ?? []).flatMap((row) => row.company_id && row.slug ? [{
+    companyId: row.company_id,
+    slug: row.slug,
+    name: row.name,
+    logoUrl: organizationLogoUrl(row.company_id, row.logo_path),
+  }] : [])
+}
+
+function mapHashtags(value: string[] | null | undefined): string[] {
+  return (value ?? []).filter((tag): tag is string => typeof tag === 'string' && tag.length > 0)
+}
+
+function mapPhotoTags(rows: PhotoTagRow[] | null | undefined, signedUrls: Map<string, string>): FeedPhotoTag[] {
+  return (rows ?? []).flatMap((row) => row.media_id && row.slug ? [{
+    mediaId: row.media_id,
+    profileId: row.profile_id,
+    slug: row.slug,
+    fullName: row.full_name,
+    avatarUrl: row.avatar_path ? signedUrls.get(row.avatar_path) ?? null : null,
+  }] : [])
+}
+
+function mapGroup(row: GroupRefRow | GroupRefRow[] | null | undefined): FeedGroupRef | null {
+  const group = firstOrNull(row)
+  if (!group?.id || !group.slug) return null
+  return { id: group.id, slug: group.slug, name: group.name, visibility: group.visibility === 'private' ? 'private' : 'public' }
+}
+
 function mapMentions(rows: MentionRow[] | null | undefined): FeedMention[] {
   return (rows ?? []).flatMap((row) => row.slug ? [{
     profileId: row.profile_id,
@@ -164,6 +226,11 @@ function mediaRows(value: FeedPostRow['post_media']): MediaRow[] {
 
 export function feedPostMediaPaths(row: FeedPostRow) {
   return mediaRows(row.post_media).map((media) => media.storage_path)
+}
+
+/** Avatar paths of members tagged in the post's photos, for signing alongside the media. */
+export function feedPhotoTagAvatarPaths(row: FeedPostRow) {
+  return (row.post_photo_tags ?? []).flatMap((tag) => tag.avatar_path ? [tag.avatar_path] : [])
 }
 
 export function feedPostMediaPath(row: FeedPostRow) {
@@ -224,11 +291,13 @@ function mapComment(row: FeedCommentRow, signedUrls: Map<string, string>): FeedC
     reactionCount: reactionCount(reactionSummary),
     viewerReaction: row.viewer_reaction ?? null,
     mentions: mapMentions(row.mentions),
+    organizationMentions: mapOrganizationMentions(row.organization_mentions),
   }
 }
 
 function mapMediaItems(row: FeedPostRow, signedUrls: Map<string, string>) {
   return mediaRows(row.post_media).map((media, index) => ({
+    id: media.id ?? null,
     storagePath: media.storage_path,
     mimeType: media.mime_type,
     altText: media.alt_text,
@@ -275,7 +344,11 @@ function mapRepostSource(row: FeedPostRow | null, viewer: FeedViewerState, signe
     mediaItems: mapMediaItems(row, signedUrls),
     poll: mapPoll(row, viewer),
     mentions: mapMentions(row.post_mentions),
+    organizationMentions: mapOrganizationMentions(row.post_organization_mentions),
+    hashtags: mapHashtags(row.post_hashtags),
+    photoTags: mapPhotoTags(row.post_photo_tags, signedUrls),
     organization: mapOrganization(row.organization),
+    group: mapGroup(row.post_group),
   }
 }
 
@@ -319,6 +392,10 @@ export function mapFeedPost(
     viewerCanDelete: viewerOwns,
     viewerFollowsAuthor: Boolean(viewerProfileId) && author.id !== viewerProfileId && Boolean(row.viewer_follows_author),
     mentions: mapMentions(row.post_mentions),
+    organizationMentions: mapOrganizationMentions(row.post_organization_mentions),
+    hashtags: mapHashtags(row.post_hashtags),
+    photoTags: mapPhotoTags(row.post_photo_tags, signedUrls),
+    group: mapGroup(row.post_group),
     comments,
   }
 }

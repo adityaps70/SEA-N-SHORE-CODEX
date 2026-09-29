@@ -9,13 +9,23 @@ import type { FeedPage, FeedPost, PostCategory } from '../types'
 import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
 
+export type FeedListScope = {
+  /** Only posts published in this community group. */
+  groupId?: string
+  /** Only posts carrying this (normalised) hashtag. */
+  hashtag?: string
+}
+
 export function FeedList({
   initialPage,
   category,
+  scope,
   suggestions = [],
 }: {
   initialPage: FeedPage
   category?: PostCategory
+  /** Group or hashtag feed; the open feed passes nothing. */
+  scope?: FeedListScope
   /** People you may know (the desktop rail's data), shown as a swipe row inside the phone feed. */
   suggestions?: NetworkProfile[]
 }) {
@@ -42,7 +52,7 @@ export function FeedList({
     if (!cursor || pending) return
     setError('')
     startTransition(async () => {
-      const result = await loadFeedPage({ category, cursor, limit: 12 })
+      const result = await loadFeedPage({ category, ...scope, cursor, limit: 12 })
       if (!result.ok) {
         setError(result.error)
         return
@@ -53,7 +63,7 @@ export function FeedList({
       })
       setCursor(result.page.nextCursor)
     })
-  }, [category, cursor, pending])
+  }, [category, cursor, pending, scope])
 
   useEffect(() => {
     if (!cursor || typeof IntersectionObserver === 'undefined') return
@@ -75,7 +85,7 @@ export function FeedList({
       if (checking) return
       checking = true
       try {
-        const result = await loadFeedPage({ category, limit: 12 })
+        const result = await loadFeedPage({ category, ...scope, limit: 12 })
         if (!active || !result.ok) return
         setPosts((current) => {
           const seen = new Set(current.map((post) => post.id))
@@ -93,7 +103,7 @@ export function FeedList({
       active = false
       window.clearInterval(interval)
     }
-  }, [category])
+  }, [category, scope])
 
   function showFreshPosts() {
     setPosts((current) => {

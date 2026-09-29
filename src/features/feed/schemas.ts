@@ -24,6 +24,15 @@ const normalizeMentionIds = (value: unknown) => {
 const bodySchema = z.string().trim().min(1, 'Write something before posting.').max(5000, 'Keep posts to 5,000 characters or fewer.')
 const commentBodySchema = z.string().trim().min(1, 'Write a comment first.').max(2000, 'Keep comments to 2,000 characters or fewer.')
 const mentionIdsSchema = z.preprocess(normalizeMentionIds, z.array(z.string().uuid()).max(20, 'Mention no more than 20 members.')).default([])
+/** Organizations tagged with @ (round 9B); the same shape as member mentions. */
+const organizationMentionIdsSchema = z.preprocess(normalizeMentionIds, z.array(z.string().uuid()).max(20, 'Tag no more than 20 organizations.')).default([])
+/** Empty form values mean "not in a group". */
+const groupIdSchema = z.preprocess(
+  (value) => value === '' || value == null ? undefined : value,
+  z.string().uuid('Choose the group again.').optional(),
+)
+/** Members tagged in one photo; the composer sends them inside the media manifest. */
+const photoTagIdsSchema = z.preprocess(normalizeMentionIds, z.array(z.string().uuid()).max(20, 'Tag no more than 20 people in a photo.')).default([])
 /** Empty form values mean "post as yourself". */
 const postAsCompanySchema = z.preprocess(
   (value) => value === '' || value == null ? undefined : value,
@@ -56,6 +65,7 @@ export const postMediaReferenceSchema = z.object({
     (value) => value === '' || value == null ? null : Number(value),
     z.number().int().min(1).max(POST_DOCUMENT_MAX_PAGES, `PDF documents can have no more than ${POST_DOCUMENT_MAX_PAGES} pages.`).nullable(),
   ).default(null),
+  taggedProfileIds: photoTagIdsSchema,
 }).superRefine((media, context) => {
   if (media.mimeType === 'application/pdf' && media.pageCount === null) {
     context.addIssue({
@@ -110,7 +120,9 @@ const standardPostSchema = z.object({
   pollOptions: z.preprocess(() => [], z.array(z.never()).max(0)).optional().default([]),
   media: postMediaCollectionSchema.optional(),
   mentionProfileIds: mentionIdsSchema,
+  organizationMentionIds: organizationMentionIdsSchema,
   companyId: postAsCompanySchema,
+  groupId: groupIdSchema,
 })
 
 const pollPostSchema = z.object({
@@ -120,7 +132,9 @@ const pollPostSchema = z.object({
   pollOptions: pollOptionsSchema,
   media: z.never({ error: 'Technical polls cannot include media.' }).optional(),
   mentionProfileIds: mentionIdsSchema,
+  organizationMentionIds: organizationMentionIdsSchema,
   companyId: postAsCompanySchema,
+  groupId: groupIdSchema,
 })
 
 export const createPostInputSchema = z.discriminatedUnion('mode', [standardPostSchema, pollPostSchema])
@@ -130,12 +144,14 @@ export const commentInputSchema = z.object({
   body: commentBodySchema,
   parentCommentId: z.preprocess((value) => value === '' || value == null ? undefined : value, z.string().uuid().optional()),
   mentionProfileIds: mentionIdsSchema,
+  organizationMentionIds: organizationMentionIdsSchema,
 })
 
 export const updateCommentInputSchema = z.object({
   commentId: z.string().uuid(),
   body: commentBodySchema,
   mentionProfileIds: mentionIdsSchema,
+  organizationMentionIds: organizationMentionIdsSchema,
 })
 
 export const deleteCommentInputSchema = z.object({
@@ -152,6 +168,7 @@ export const updatePostInputSchema = z.object({
     z.string().trim().max(5000, 'Keep posts to 5,000 characters or fewer.'),
   ),
   mentionProfileIds: mentionIdsSchema,
+  organizationMentionIds: organizationMentionIdsSchema,
 })
 
 export const repostInputSchema = z.object({
@@ -161,6 +178,7 @@ export const repostInputSchema = z.object({
     z.string().trim().max(REPOST_COMMENTARY_MAX, `Keep your thoughts to ${REPOST_COMMENTARY_MAX.toLocaleString('en')} characters or fewer.`),
   ),
   mentionProfileIds: mentionIdsSchema,
+  organizationMentionIds: organizationMentionIdsSchema,
 })
 
 export const SHARE_MESSAGE_NOTE_MAX = 1000
@@ -186,6 +204,8 @@ export const feedCursorSchema = z.object({
 export const feedRequestSchema = z.object({
   category: z.enum(POST_CATEGORIES).optional(),
   companyId: z.string().uuid().optional(),
+  groupId: z.string().uuid().optional(),
+  hashtag: z.string().regex(/^[a-z0-9_]{1,64}$/).optional(),
   cursor: feedCursorSchema.optional(),
   limit: z.number().int().min(1).max(20).default(12),
 })

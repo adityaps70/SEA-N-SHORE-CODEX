@@ -156,7 +156,7 @@ describe('repostPost with commentary', () => {
   it('stores trimmed commentary with mentions', async () => {
     const { repostPost } = await import('./actions')
     await repostPost(postId, { body: '  Good lesson for cadets.  ', mentionProfileIds: [recipientId] })
-    expect(mocks.repostPostWithAurora).toHaveBeenCalledWith(viewerId, postId, { body: 'Good lesson for cadets.', mentionProfileIds: [recipientId] })
+    expect(mocks.repostPostWithAurora).toHaveBeenCalledWith(viewerId, postId, { body: 'Good lesson for cadets.', mentionProfileIds: [recipientId], organizationMentionIds: [] })
   })
 
   it('blocks unsafe commentary before saving and rejects overly long commentary', async () => {

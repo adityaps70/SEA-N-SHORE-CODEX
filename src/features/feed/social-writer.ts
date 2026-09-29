@@ -13,11 +13,15 @@ export function createFeedSocialWriterForClient(client: DatabaseQueryClient) {
       postId?: string
       commentId?: string
       reactionType?: PostReactionType
+      /** Community group the notification is about (round 9B). */
+      groupId?: string
+      /** Organization the notification is about (round 9B). */
+      companyId?: string
     }) {
       await client.query(
         `insert into public.notifications (
-           recipient_id, actor_id, notification_type, post_id, comment_id, reaction_type, dedupe_key
-         ) values ($1, $2, $3, $4, $5, $6, $7)
+           recipient_id, actor_id, notification_type, post_id, comment_id, reaction_type, dedupe_key, group_id, company_id
+         ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          on conflict (recipient_id, dedupe_key) where dedupe_key is not null
          do update set
            actor_id = excluded.actor_id,
@@ -25,6 +29,8 @@ export function createFeedSocialWriterForClient(client: DatabaseQueryClient) {
            post_id = excluded.post_id,
            comment_id = excluded.comment_id,
            reaction_type = excluded.reaction_type,
+           group_id = excluded.group_id,
+           company_id = excluded.company_id,
            created_at = now(),
            read_at = null`,
         [
@@ -35,6 +41,8 @@ export function createFeedSocialWriterForClient(client: DatabaseQueryClient) {
           input.commentId ?? null,
           input.reactionType ?? null,
           input.dedupeKey,
+          input.groupId ?? null,
+          input.companyId ?? null,
         ],
       )
     },

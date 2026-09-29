@@ -94,6 +94,8 @@ export type ReactionDetailsPage = {
 }
 
 export type FeedMedia = {
+  /** post_media row id; absent on optimistic/legacy shapes. */
+  id?: string | null
   storagePath: string
   mimeType: string
   altText: string | null
@@ -122,6 +124,31 @@ export type FeedMention = {
   fullName: string
 }
 
+/** An organization tagged with @ in a post or comment (round 9B). */
+export type FeedOrganizationMention = {
+  companyId: string
+  slug: string
+  name: string
+  logoUrl: string | null
+}
+
+/** A member tagged in one of the post's photos (round 9B). */
+export type FeedPhotoTag = {
+  mediaId: string
+  profileId: string
+  slug: string
+  fullName: string
+  avatarUrl?: string | null
+}
+
+/** The community group a post was published in (round 9B). */
+export type FeedGroupRef = {
+  id: string
+  slug: string
+  name: string
+  visibility: 'public' | 'private'
+}
+
 export type FeedCommentReplyTarget = {
   commentId: string
   authorName: string
@@ -145,6 +172,7 @@ export type FeedComment = {
   reactionCount?: number
   viewerReaction?: PostReactionType | null
   mentions?: FeedMention[]
+  organizationMentions?: FeedOrganizationMention[]
   replies?: FeedComment[]
 }
 
@@ -160,7 +188,11 @@ export type FeedRepostSource = {
   mediaItems?: FeedMedia[]
   poll: FeedPoll | null
   mentions?: FeedMention[]
+  organizationMentions?: FeedOrganizationMention[]
+  hashtags?: string[]
+  photoTags?: FeedPhotoTag[]
   organization?: FeedOrganization | null
+  group?: FeedGroupRef | null
 }
 
 export type FeedPost = {
@@ -193,6 +225,14 @@ export type FeedPost = {
   /** True when the signed-in viewer follows this post's author. */
   viewerFollowsAuthor?: boolean
   mentions?: FeedMention[]
+  /** Organizations tagged with @ in the text. */
+  organizationMentions?: FeedOrganizationMention[]
+  /** Normalised (lower-case) hashtags found in the text, in order of first appearance. */
+  hashtags?: string[]
+  /** Members tagged in the post's photos. */
+  photoTags?: FeedPhotoTag[]
+  /** The community group this post was published in, or null for the open feed. */
+  group?: FeedGroupRef | null
   comments: FeedComment[]
 }
 
@@ -227,6 +267,10 @@ export type FeedRequest = {
   category?: PostCategory
   /** Only posts published as this organization. */
   companyId?: string
+  /** Only posts published in this community group. */
+  groupId?: string
+  /** Only posts carrying this normalised hashtag (public posts, newest first). */
+  hashtag?: string
   cursor?: FeedCursor
   limit?: number
 }
