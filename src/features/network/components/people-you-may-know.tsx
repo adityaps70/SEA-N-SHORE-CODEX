@@ -28,7 +28,7 @@ export function PeopleYouMayKnow({ profiles }: { profiles: NetworkProfile[] }) {
             <article key={profile.id} className="py-3 first:pt-1 last:pb-1">
               <div className="flex items-start gap-3">
                 {profile.avatarUrl ? (
-                  <MediaImage src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={44} height={44} sizes="44px" className="size-11 shrink-0 rounded-xl object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+                  <MediaImage avatar src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={44} height={44} sizes="44px" className="size-11 shrink-0 rounded-xl object-cover ring-1 ring-mist-100" fallback={profileInitials} />
                 ) : profileInitials}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-navy-950">{profile.fullName}</p>

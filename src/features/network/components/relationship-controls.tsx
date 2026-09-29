@@ -1,16 +1,10 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Ban, Check, Clock3, Ellipsis, Flag, UserMinus, UserPlus, UserRoundCheck, UserRoundPlus, X } from 'lucide-react'
-import {
-  MobileSheetBackdrop,
-  MobileSheetCancel,
-  MobileSheetGrab,
-  SHEET_MENU_ITEM_CLASS,
-  SHEET_MENU_PANEL_CLASS,
-} from '@/components/ui/mobile-sheet'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/action-menu'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
-import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
+import { cn } from '@/lib/cn'
 import { useRouter } from 'next/navigation'
 import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import {
@@ -66,7 +60,7 @@ export function RelationshipControls({
   const [awaitingRefresh, setAwaitingRefresh] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [reporting, setReporting] = useState(false)
-  const menuRef = useDismissibleLayer<HTMLDivElement>(menuOpen, () => setMenuOpen(false))
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
     if (!openMenuEvent) return
@@ -171,8 +165,10 @@ export function RelationshipControls({
     ? 'min-h-9 rounded-xl border border-mist-200 bg-white px-3 text-xs font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50'
     : 'min-h-10 rounded-xl border border-mist-200 bg-white px-3.5 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:bg-mist-50 disabled:cursor-not-allowed disabled:opacity-50'
   const profileVariant = variant === 'profile'
-  const primaryClass = `${buttonClass} border-navy-950 bg-navy-950 text-white hover:border-navy-800 hover:bg-navy-800 ${profileVariant ? PHONE_PRIMARY_PILL : ''}`
-  const menuItemClass = `min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-navy-900 hover:bg-mist-50 disabled:opacity-50 max-md:flex max-md:items-center ${SHEET_MENU_ITEM_CLASS}`
+  // Merged with cn() so the filled tone replaces the outline tone: Tailwind orders same-property
+  // utilities by name, so a plain string concat would leave bg-white and text-white both applied.
+  const primaryClass = cn(buttonClass, 'border-navy-950 bg-navy-950 text-white hover:border-navy-800 hover:bg-navy-800', profileVariant && PHONE_PRIMARY_PILL)
+  const menuItemClass = 'text-xs text-navy-900'
   const phoneIcon = 'size-5 shrink-0 md:hidden'
 
   return (
@@ -203,117 +199,102 @@ export function RelationshipControls({
           </div>
         ) : null}
 
-        <div ref={menuRef} className="relative">
-          <button
-            type="button"
-            aria-label={menuIconOnly ? 'More actions' : 'More'}
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            onClick={() => setMenuOpen((value) => !value)}
-            className={menuIconOnly
-              ? 'grid size-9 place-items-center rounded-full text-navy-900 transition hover:bg-mist-50 max-md:size-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
-              : `${buttonClass} inline-flex items-center ${profileVariant ? PHONE_MORE_ROUND : ''}`}
+        <button
+          ref={menuTriggerRef}
+          type="button"
+          aria-label={menuIconOnly ? 'More actions' : 'More'}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          onClick={() => setMenuOpen((value) => !value)}
+          className={menuIconOnly
+            ? 'grid size-9 shrink-0 place-items-center rounded-full text-navy-900 transition hover:bg-mist-50 max-md:size-11 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
+            : `${buttonClass} inline-flex items-center ${profileVariant ? PHONE_MORE_ROUND : ''}`}
+        >
+          {menuIconOnly ? <Ellipsis aria-hidden="true" className="size-5" /> : profileVariant ? (
+            <>
+              <span className="max-md:sr-only">More</span>
+              <Ellipsis aria-hidden="true" className={phoneIcon} />
+            </>
+          ) : 'More'}
+        </button>
+        {/* Rendered in a portal, so the last row of a list is never clipped by its card. */}
+        <ActionMenu open={menuOpen} onClose={() => setMenuOpen(false)} anchorRef={menuTriggerRef} label="Relationship actions">
+          <ActionMenuItem
+            disabled={pending}
+            onClick={() => {
+              setMenuOpen(false)
+              toggleFollow()
+            }}
+            className={menuItemClass}
+            icon={relationship.following ? <UserRoundCheck aria-hidden="true" className={phoneIcon} /> : <UserRoundPlus aria-hidden="true" className={phoneIcon} />}
           >
-            {menuIconOnly ? <Ellipsis aria-hidden="true" className="size-5" /> : profileVariant ? (
-              <>
-                <span className="max-md:sr-only">More</span>
-                <Ellipsis aria-hidden="true" className={phoneIcon} />
-              </>
-            ) : 'More'}
-          </button>
-          {menuOpen ? <MobileSheetBackdrop onClose={() => setMenuOpen(false)} /> : null}
-          {menuOpen ? (
-            <div role="menu" aria-label="Relationship actions" className={`absolute right-0 z-[70] mt-2 min-w-48 rounded-xl border border-mist-100 bg-white p-1.5 shadow-xl ${SHEET_MENU_PANEL_CLASS}`}>
-              <MobileSheetGrab />
-              <button
-                type="button"
-                role="menuitem"
-                disabled={pending}
-                onClick={() => {
-                  setMenuOpen(false)
-                  toggleFollow()
-                }}
-                className={menuItemClass}
-              >
-                {relationship.following ? <UserRoundCheck aria-hidden="true" className={phoneIcon} /> : <UserRoundPlus aria-hidden="true" className={phoneIcon} />}
-                {relationship.following ? 'Following' : 'Follow'}
-              </button>
-              {relationship.connection.kind === 'outgoing_pending' ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={pending || awaitingRefresh}
-                  onClick={() => {
-                    setMenuOpen(false)
-                    respond('cancel')
-                  }}
-                  className={menuItemClass}
-                >
-                  <X aria-hidden="true" className={phoneIcon} />
-                  Cancel request
-                </button>
-              ) : null}
-              {relationship.connection.kind === 'incoming_pending' ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={pending || awaitingRefresh}
-                  onClick={() => {
-                    setMenuOpen(false)
-                    respond('decline')
-                  }}
-                  className={menuItemClass}
-                >
-                  <X aria-hidden="true" className={phoneIcon} />
-                  Decline
-                </button>
-              ) : null}
-              {relationship.connection.kind === 'connected' ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={pending || awaitingRefresh}
-                  onClick={() => {
-                    setMenuOpen(false)
-                    respond('remove')
-                  }}
-                  className={menuItemClass}
-                >
-                  <UserMinus aria-hidden="true" className={phoneIcon} />
-                  Remove connection
-                </button>
-              ) : null}
-              <button
-                type="button"
-                role="menuitem"
-                disabled={pending}
-                onClick={() => {
-                  setMenuOpen(false)
-                  block()
-                }}
-                className={`min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 max-md:flex max-md:items-center ${SHEET_MENU_ITEM_CLASS}`}
-              >
-                <Ban aria-hidden="true" className={phoneIcon} />
-                Block
-              </button>
-              {reportProfile ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false)
-                    setReporting(true)
-                  }}
-                  className={`min-h-9 w-full rounded-lg px-3 text-left text-xs font-semibold text-red-700 hover:bg-red-50 md:hidden max-md:flex max-md:items-center ${SHEET_MENU_ITEM_CLASS}`}
-                >
-                  <Flag aria-hidden="true" className={phoneIcon} />
-                  Report profile
-                </button>
-              ) : null}
-              <MobileSheetCancel onClick={() => setMenuOpen(false)} />
-            </div>
+            {relationship.following ? 'Following' : 'Follow'}
+          </ActionMenuItem>
+          {relationship.connection.kind === 'outgoing_pending' ? (
+            <ActionMenuItem
+              disabled={pending || awaitingRefresh}
+              onClick={() => {
+                setMenuOpen(false)
+                respond('cancel')
+              }}
+              className={menuItemClass}
+              icon={<X aria-hidden="true" className={phoneIcon} />}
+            >
+              Cancel request
+            </ActionMenuItem>
           ) : null}
-        </div>
+          {relationship.connection.kind === 'incoming_pending' ? (
+            <ActionMenuItem
+              disabled={pending || awaitingRefresh}
+              onClick={() => {
+                setMenuOpen(false)
+                respond('decline')
+              }}
+              className={menuItemClass}
+              icon={<X aria-hidden="true" className={phoneIcon} />}
+            >
+              Decline
+            </ActionMenuItem>
+          ) : null}
+          {relationship.connection.kind === 'connected' ? (
+            <ActionMenuItem
+              disabled={pending || awaitingRefresh}
+              onClick={() => {
+                setMenuOpen(false)
+                respond('remove')
+              }}
+              className={menuItemClass}
+              icon={<UserMinus aria-hidden="true" className={phoneIcon} />}
+            >
+              Remove connection
+            </ActionMenuItem>
+          ) : null}
+          <ActionMenuItem
+            tone="danger"
+            disabled={pending}
+            onClick={() => {
+              setMenuOpen(false)
+              block()
+            }}
+            className="text-xs"
+            icon={<Ban aria-hidden="true" className={phoneIcon} />}
+          >
+            Block
+          </ActionMenuItem>
+          {reportProfile ? (
+            <ActionMenuItem
+              tone="danger"
+              onClick={() => {
+                setMenuOpen(false)
+                setReporting(true)
+              }}
+              className="text-xs md:hidden"
+              icon={<Flag aria-hidden="true" className={phoneIcon} />}
+            >
+              Report profile
+            </ActionMenuItem>
+          ) : null}
+        </ActionMenu>
       </div>
       {reporting ? (
         <ReportContentButton

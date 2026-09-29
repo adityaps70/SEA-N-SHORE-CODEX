@@ -19,27 +19,16 @@ import { getAccessContext } from '@/features/access/server'
 import { DataExportPanel } from '@/features/account-export/components/data-export-panel'
 import { DeleteAccountSection } from '@/features/account-deletion/components/delete-account-section'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { AccountPhonePanel } from '@/features/auth/components/account-phone-panel'
-import { getAccountPhoneSummary } from '@/features/auth/phone-link-runtime'
-import type { AccountPhoneSummary } from '@/features/auth/phone-link-shared'
 import { PhoneSettingsList, settingsGroups } from './settings-groups'
 
 export const metadata: Metadata = { title: 'Settings' }
 
-function primaryPhone(summary: AccountPhoneSummary | null) {
-  const phones = summary?.phones ?? []
-  return (phones.find((phone) => phone.current) ?? phones[0])?.phoneNumber ?? null
-}
-
 export default async function SettingsPage() {
   const user = await requireAwsUser()
-  const [access, phoneSummary] = await Promise.all([
-    // The plan label is a convenience on the phone list; Settings must render without it.
-    getAccessContext(user.id).catch(() => null),
-    getAccountPhoneSummary(),
-  ])
+  // The plan label is a convenience on the phone list; Settings must render without it.
+  const access = await getAccessContext(user.id).catch(() => null)
   const planLabel = access ? (access.personalPlan === 'creator_pro' ? 'Creator Pro' : 'Free') : null
-  const groups = settingsGroups({ planLabel, phoneNumber: primaryPhone(phoneSummary) })
+  const groups = settingsGroups({ planLabel })
 
   return (
     <section className="mx-auto grid max-w-4xl gap-5 py-2 max-md:gap-0 max-md:py-0 sm:py-5">
@@ -50,7 +39,7 @@ export default async function SettingsPage() {
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Account</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy-950">Settings</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Manage your mobile number, account security, privacy, and permanent account actions from one place.
+          Manage your account security, privacy, and permanent account actions from one place.
         </p>
       </header>
 
@@ -182,11 +171,7 @@ export default async function SettingsPage() {
         </p>
       </section>
 
-      {/* Phones reach these panels from the list above (#mobile-number, #download-data, #delete-account). */}
-      <div id="mobile-number" className="scroll-mt-24 max-md:mt-2">
-        <AccountPhonePanel summary={phoneSummary} />
-      </div>
-
+      {/* Phones reach these panels from the list above (#download-data, #delete-account). */}
       <div id="your-data" className="grid scroll-mt-24 gap-5 max-md:mt-5">
         <h2 className="sr-only">Your data and privacy controls</h2>
         <div id="download-data" className="scroll-mt-24">

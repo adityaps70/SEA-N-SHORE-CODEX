@@ -33,7 +33,7 @@ export function ProfileDirectoryCard({ profile }: { profile: PublicProfile }) {
     <Card className="group flex h-full flex-col border border-mist-100 p-5 transition-transform duration-200 hover:-translate-y-0.5">
       <div className="flex items-start gap-3">
         {profile.avatarUrl ? (
-          <MediaImage src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+          <MediaImage avatar src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" fallback={profileInitials} />
         ) : profileInitials}
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[.11em] text-ocean-700">{labels[profile.profileType]}</p>

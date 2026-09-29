@@ -210,8 +210,8 @@ export default async function ActivitiesPage({
         </section>
       </main>
 
-      <aside className="hidden min-w-0 xl:block">
-        <div className="sticky top-24 max-h-[calc(100vh-7rem)] space-y-4 overflow-y-auto pr-1">
+      <aside className="hidden min-w-0 bg-transparent xl:block">
+        <div className="sticky top-24 max-h-[calc(100vh-7rem)] space-y-4 overflow-y-auto bg-transparent [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <Card className="border border-mist-100 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>

@@ -6,7 +6,9 @@ import { withTransaction } from '@/lib/db/client'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { parsePriceToMinor } from '@/features/payments/currency'
 import { formatBillingDate } from './billing-view'
-import { INTERVAL_LABELS, PLAN_LABELS, formatRupees } from './plans'
+import { addDays, BILLING_INTERVALS, INTERVAL_LABELS, PLAN_LABELS, formatRupees } from './plans'
+import { trialService } from './trial-service'
+import { TrialNotRunningError } from './trials'
 import { endManualSubscription, PlanPriceError, replacePlanPrice, subscriptionRepository } from './subscription-repository'
 import { BillingGatewayError, BillingNotConfiguredError, billingPaths, NothingToCancelError, subscriptionService } from './subscription-service'
 
@@ -24,7 +26,7 @@ async function requireAdmin() {
 
 const priceSchema = z.object({
   plan: z.enum(['creator_pro', 'organization_pro']),
-  interval: z.enum(['month', 'year']),
+  interval: z.enum(BILLING_INTERVALS),
   amount: z.string().trim().min(1).max(20),
 })
 
@@ -97,5 +99,44 @@ export async function adminCancelSubscriptionAction(input: { accessId: string; m
     if (error instanceof BillingGatewayError) return { ok: false, error: `Cashfree didn’t confirm the cancellation${error.providerMessage ? ` (${error.providerMessage.replace(/\.$/, '')})` : ''}. Nothing was changed. Try again, or cancel it in the Cashfree dashboard.` }
     console.error('admin_subscription_cancel_failed', { message: error instanceof Error ? error.message : null })
     return { ok: false, error: 'The subscription could not be cancelled just now. Nothing was changed. Please try again.' }
+  }
+}
+
+const extendTrialSchema = z.object({ trialId: z.string().uuid(), days: z.number().int().min(1).max(365) })
+
+/** Admin: give a running free trial more time (days from its current end). */
+export async function adminExtendTrialAction(input: { trialId: string; days: number }): Promise<AdminBillingResult> {
+  const admin = await requireAdmin()
+  if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can change trials.' }
+  const parsed = extendTrialSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Enter how many days to add, between 1 and 365.' }
+  try {
+    const current = await subscriptionRepository.listTrialsForAdmin(500).then((rows) => rows.find((row) => row.trial.id === parsed.data.trialId)?.trial ?? null)
+    if (!current) return { ok: false, error: 'We couldn’t find this trial. Refresh the page and try again.' }
+    const base = Math.max(Date.parse(current.endsAt), Date.now())
+    const result = await trialService.extend({ trialId: parsed.data.trialId, endsAt: addDays(new Date(base), parsed.data.days), actor: { type: 'admin', profileId: admin.id } })
+    for (const path of [...ADMIN_PATHS, ...billingPaths(result.trial.subject)]) revalidatePath(path)
+    return { ok: true, message: `The ${PLAN_LABELS[result.trial.planCode]} trial now ends on ${formatBillingDate(result.trial.endsAt)}.` }
+  } catch (error) {
+    if (error instanceof TrialNotRunningError) return { ok: false, error: 'This trial is not running any more, so it can’t be extended.' }
+    console.error('admin_trial_extend_failed', { message: error instanceof Error ? error.message : null })
+    return { ok: false, error: 'The trial could not be extended just now. Nothing was changed. Please try again.' }
+  }
+}
+
+/** Admin: end a running free trial now; the account returns to the free plan at once. */
+export async function adminEndTrialAction(input: { trialId: string }): Promise<AdminBillingResult> {
+  const admin = await requireAdmin()
+  if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can change trials.' }
+  const parsed = z.string().uuid().safeParse(input?.trialId)
+  if (!parsed.success) return { ok: false, error: 'We couldn’t find this trial. Refresh the page and try again.' }
+  try {
+    const result = await trialService.end({ trialId: parsed.data, actor: { type: 'admin', profileId: admin.id } })
+    for (const path of [...ADMIN_PATHS, ...billingPaths(result.trial.subject)]) revalidatePath(path)
+    return { ok: true, message: `The ${PLAN_LABELS[result.trial.planCode]} trial has ended. The account is on the free plan now; nothing was deleted.` }
+  } catch (error) {
+    if (error instanceof TrialNotRunningError) return { ok: false, error: 'This trial is not running any more.' }
+    console.error('admin_trial_end_failed', { message: error instanceof Error ? error.message : null })
+    return { ok: false, error: 'The trial could not be ended just now. Nothing was changed. Please try again.' }
   }
 }

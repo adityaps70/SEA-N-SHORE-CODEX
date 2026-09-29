@@ -7,6 +7,9 @@ import { NetworkProfileCard } from './network-profile-card'
 vi.mock('./connection-primary-action', () => ({
   ConnectionPrimaryAction: () => <button type="button">Connect</button>,
 }))
+vi.mock('./person-card-actions', () => ({
+  PersonCardActions: ({ slug, layout }: { slug: string; layout?: string }) => <div data-testid="person-card-actions" data-slug={slug} data-layout={layout ?? 'card'}>Full actions</div>,
+}))
 
 vi.mock('@/features/messaging/components/start-conversation-button', () => ({
   StartConversationButton: ({ targetProfileId }: { targetProfileId: string }) => (
@@ -68,5 +71,15 @@ describe('NetworkProfileCard', () => {
     render(<NetworkProfileCard profile={connectedProfile} />)
 
     expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
+  })
+
+  it('renders the full network action set for search results', () => {
+    render(<NetworkProfileCard profile={profile} actions="full" />)
+    expect(screen.getByTestId('person-card-actions')).toHaveAttribute('data-slug', 'capt-meera-nair')
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    // Headline, rank · organization and location, like the network cards.
+    expect(screen.getByText('Master Mariner | Tanker Operations')).toBeInTheDocument()
+    expect(screen.getByText(/Master · Ocean Example/)).toBeInTheDocument()
+    expect(screen.getByText('Mumbai, India')).toBeInTheDocument()
   })
 })

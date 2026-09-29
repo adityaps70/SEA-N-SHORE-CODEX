@@ -202,3 +202,42 @@ describe('RelationshipControls', () => {
     })
   })
 })
+
+describe('RelationshipControls primary button tone', () => {
+  const filledTone = (element: HTMLElement) => {
+    const classes = element.className.split(/\s+/)
+    // The filled primary tone must win outright: a white background or a navy text colour left
+    // over from the outline base would render white-on-white on the profile header.
+    expect(classes).toContain('bg-navy-950')
+    expect(classes).toContain('text-white')
+    expect(classes).not.toContain('bg-white')
+    expect(classes).not.toContain('text-navy-900')
+    expect(classes).not.toContain('border-mist-200')
+    expect(classes).not.toContain('hover:bg-mist-50')
+  }
+
+  it('renders Connect as a filled navy button with white text in every variant', () => {
+    for (const props of [{}, { compact: true }, { variant: 'profile' as const }, { compact: true, menuIconOnly: true }]) {
+      cleanup()
+      render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'none', connectionId: null } }} {...props} />)
+      filledTone(screen.getByRole('button', { name: 'Connect' }))
+    }
+  })
+
+  it('renders Accept with the same filled tone', () => {
+    render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'incoming_pending', connectionId } }} variant="profile" />)
+    filledTone(screen.getByRole('button', { name: 'Accept' }))
+  })
+
+  it('keeps Pending readable as a quiet chip and More as an outline button', () => {
+    render(<RelationshipControls profileId={profileId} initialRelationship={{ following: false, connection: { kind: 'outgoing_pending', connectionId } }} variant="profile" />)
+    const pending = screen.getByText('Pending').closest('span[class]') as HTMLElement
+    expect(pending.className).toContain('bg-mist-50')
+    expect(pending.className).toContain('text-muted')
+    expect(pending.className).not.toContain('text-white')
+    const more = screen.getByRole('button', { name: 'More' })
+    expect(more.className).toContain('bg-white')
+    expect(more.className).toContain('text-navy-900')
+    expect(more.className).not.toContain('text-white')
+  })
+})

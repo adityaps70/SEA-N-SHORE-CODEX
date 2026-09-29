@@ -1,18 +1,10 @@
 'use client'
 
 import { Bookmark, EyeOff, Flag, Link2, MoreHorizontal, PencilLine, Trash2, UserMinus } from 'lucide-react'
-import type { RefObject } from 'react'
-import {
-  MobileSheetBackdrop,
-  MobileSheetCancel,
-  MobileSheetGrab,
-  SHEET_MENU_ITEM_CLASS,
-  SHEET_MENU_PANEL_CLASS,
-} from '@/components/ui/mobile-sheet'
-import { useFeedMenu } from './use-feed-menu'
+import { useCallback, useRef, useState, type RefObject } from 'react'
+import { ActionMenu, ActionMenuItem, ActionMenuSeparator } from '@/components/ui/action-menu'
 
-const itemClass = `flex w-full cursor-pointer items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50 ${SHEET_MENU_ITEM_CLASS}`
-const separatorClass = 'my-1 h-px bg-mist-100 max-md:hidden'
+const itemClass = 'rounded-xl py-2.5'
 
 /**
  * The post header "⋯" menu (a bottom sheet on phones, a dropdown from md). Secondary actions live here so the action row stays
@@ -56,7 +48,10 @@ export function PostActionsMenu({
   /** Receives the trigger element so dialogs opened from the menu can return focus to it. */
   triggerRef?: RefObject<HTMLButtonElement | null>
 }) {
-  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, closeAndFocusTrigger, rootRef: menuRootRef, triggerRef: menuTriggerRef, menuRef, onMenuKeyDown } = useFeedMenu(externalTriggerRef)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const internalTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuTriggerRef = externalTriggerRef ?? internalTriggerRef
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
 
   function run(action: () => void) {
     return () => {
@@ -66,7 +61,7 @@ export function PostActionsMenu({
   }
 
   return (
-    <div ref={menuRootRef} className="relative shrink-0">
+    <div className="relative shrink-0">
       <button
         ref={menuTriggerRef}
         type="button"
@@ -74,66 +69,48 @@ export function PostActionsMenu({
         title="More options"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        onClick={toggleMenu}
+        onClick={() => setMenuOpen((value) => !value)}
         className="inline-flex size-9 max-md:size-11 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted transition hover:border-mist-100 hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
       >
         <MoreHorizontal aria-hidden="true" className="size-5" />
       </button>
-      {menuOpen ? <MobileSheetBackdrop onClose={closeMenu} /> : null}
-      {menuOpen ? (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label={`Options for ${authorName}'s post`}
-          onKeyDown={onMenuKeyDown}
-          className={`absolute right-0 top-full z-50 mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl ${SHEET_MENU_PANEL_CLASS}`}
-        >
-          <MobileSheetGrab />
-          <button type="button" role="menuitem" disabled={pending} onClick={run(onToggleSave)} className={itemClass}>
-            <Bookmark aria-hidden="true" className="size-4" fill={saved ? 'currentColor' : 'none'} />
-            {saved ? 'Remove from saved' : 'Save post'}
-          </button>
-          <button type="button" role="menuitem" onClick={run(onCopyLink)} className={itemClass}>
-            <Link2 aria-hidden="true" className="size-4" />
-            Copy link
-          </button>
-          {canEdit && onEdit ? (
-            <button type="button" role="menuitem" disabled={pending} onClick={run(onEdit)} className={itemClass}>
-              <PencilLine aria-hidden="true" className="size-4" />
-              Edit post
-            </button>
-          ) : null}
-          {canDelete ? (
-            <>
-              <div role="separator" className={separatorClass} />
-              <button type="button" role="menuitem" disabled={pending} onClick={run(onDelete)} className={`${itemClass} text-red-700 hover:bg-red-50 focus-visible:bg-red-50`}>
-                <Trash2 aria-hidden="true" className="size-4" />
-                Delete post
-              </button>
-            </>
-          ) : null}
-          {isOwner || canDelete ? null : (
-            <>
-              <button type="button" role="menuitem" disabled={pending} onClick={run(onHide)} className={itemClass}>
-                <EyeOff aria-hidden="true" className="size-4" />
-                Hide post
-              </button>
-              {canUnfollow ? (
-                <button type="button" role="menuitem" disabled={pending} onClick={run(onUnfollow)} className={itemClass}>
-                  <UserMinus aria-hidden="true" className="size-4" />
-                  <span className="min-w-0 break-words">Unfollow {authorName}</span>
-                </button>
-              ) : null}
-              <div role="separator" className={separatorClass} />
-              <button type="button" role="menuitem" onClick={run(onReport)} className={`${itemClass} text-red-700 hover:bg-red-50 focus-visible:bg-red-50`}>
-                <Flag aria-hidden="true" className="size-4" />
-                Report post
-              </button>
-            </>
-          )}
-          <MobileSheetCancel onClick={closeAndFocusTrigger} />
-        </div>
-      ) : null}
+      <ActionMenu open={menuOpen} onClose={closeMenu} anchorRef={menuTriggerRef} label={`Options for ${authorName}'s post`} className="w-[min(18rem,calc(100vw-2rem))] rounded-2xl">
+        <ActionMenuItem disabled={pending} onClick={run(onToggleSave)} className={itemClass} icon={<Bookmark aria-hidden="true" className="size-4" fill={saved ? 'currentColor' : 'none'} />}>
+          {saved ? 'Remove from saved' : 'Save post'}
+        </ActionMenuItem>
+        <ActionMenuItem onClick={run(onCopyLink)} className={itemClass} icon={<Link2 aria-hidden="true" className="size-4" />}>
+          Copy link
+        </ActionMenuItem>
+        {canEdit && onEdit ? (
+          <ActionMenuItem disabled={pending} onClick={run(onEdit)} className={itemClass} icon={<PencilLine aria-hidden="true" className="size-4" />}>
+            Edit post
+          </ActionMenuItem>
+        ) : null}
+        {canDelete ? (
+          <>
+            <ActionMenuSeparator />
+            <ActionMenuItem tone="danger" disabled={pending} onClick={run(onDelete)} className={itemClass} icon={<Trash2 aria-hidden="true" className="size-4" />}>
+              Delete post
+            </ActionMenuItem>
+          </>
+        ) : null}
+        {isOwner || canDelete ? null : (
+          <>
+            <ActionMenuItem disabled={pending} onClick={run(onHide)} className={itemClass} icon={<EyeOff aria-hidden="true" className="size-4" />}>
+              Hide post
+            </ActionMenuItem>
+            {canUnfollow ? (
+              <ActionMenuItem disabled={pending} onClick={run(onUnfollow)} className={itemClass} icon={<UserMinus aria-hidden="true" className="size-4" />}>
+                <span className="min-w-0 break-words">Unfollow {authorName}</span>
+              </ActionMenuItem>
+            ) : null}
+            <ActionMenuSeparator />
+            <ActionMenuItem tone="danger" onClick={run(onReport)} className={itemClass} icon={<Flag aria-hidden="true" className="size-4" />}>
+              Report post
+            </ActionMenuItem>
+          </>
+        )}
+      </ActionMenu>
     </div>
   )
 }

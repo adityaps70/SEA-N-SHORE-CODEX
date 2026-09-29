@@ -28,7 +28,7 @@ export function ConnectionRequestCard({
       <div className="flex min-w-0 flex-1 items-start gap-4">
         <Link href={`/people/${profile.slug}`} className="shrink-0" aria-label={`View ${profile.fullName} profile photo`}>
           {profile.avatarUrl ? (
-            <MediaImage src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={64} height={64} sizes="64px" className="size-16 rounded-full object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+            <MediaImage avatar src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={64} height={64} sizes="64px" className="size-16 rounded-full object-cover ring-1 ring-mist-100" fallback={profileInitials} />
           ) : profileInitials}
         </Link>
 

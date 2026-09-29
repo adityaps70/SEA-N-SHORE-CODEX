@@ -44,8 +44,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAwsUser.mockResolvedValue({ id: 'user-1' })
   mocks.listActivePrices.mockResolvedValue([
-    { id: 'p1', planCode: 'organization_pro', interval: 'month', amountMinor: 500000, currency: 'INR', active: true },
-    { id: 'p2', planCode: 'organization_pro', interval: 'year', amountMinor: 5000000, currency: 'INR', active: true },
+    { id: 'p0', planCode: 'creator_pro', interval: 'month', amountMinor: 9900, currency: 'INR', active: true },
+    { id: 'p1', planCode: 'organization_pro', interval: 'month', amountMinor: 199900, currency: 'INR', active: true },
+    { id: 'p2', planCode: 'organization_pro', interval: 'half_year', amountMinor: 1000000, currency: 'INR', active: true },
+    { id: 'p3', planCode: 'organization_pro', interval: 'year', amountMinor: 1499900, currency: 'INR', active: true },
   ])
   mocks.getUserOrganizationState.mockResolvedValue({ kind: 'none' })
 })
@@ -69,6 +71,24 @@ describe('membership plans page contract', () => {
     expect(page).toContain('Student management')
     expect(page).toContain('Company verification')
     expect(page).toContain('Verification and payment are separate')
+  })
+})
+
+describe('/plans prices and free trials', () => {
+  it('shows the monthly, half-yearly and yearly prices with their savings and the trial badges', async () => {
+    mocks.getAccessContext.mockResolvedValue(access([]))
+    mocks.listUserOrganizations.mockResolvedValue([])
+    const organization = await renderPlans()
+    const creator = screen.getByRole('heading', { level: 2, name: 'Creator Pro' }).closest('article') as HTMLElement
+
+    expect(organization).toHaveTextContent('₹1,999 / month')
+    expect(organization).toHaveTextContent('or ₹10,000 / 6 months — save ₹1,994')
+    expect(organization).toHaveTextContent('or ₹14,999 / year — save ₹8,989')
+    expect(organization).toHaveTextContent('2 months free')
+    expect(creator).toHaveTextContent('₹99 / month')
+    expect(creator).toHaveTextContent('3 months free')
+    expect(creator).not.toHaveTextContent('/ year')
+    expect(screen.getAllByText('Start with a free trial, no payment details needed.')).toHaveLength(2)
   })
 })
 

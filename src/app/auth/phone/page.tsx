@@ -1,29 +1,10 @@
-import type { Metadata } from 'next'
-import { AuthShell } from "@/features/auth/components/auth-shell";
-import { confirmPhoneOtp, requestPhoneOtp } from "@/features/auth/actions";
-import { PhoneAuthForm } from "@/features/auth/components/phone-auth-form";
+import { redirect } from 'next/navigation'
 
-export const metadata: Metadata = { title: 'Sign in with phone' }
-
-export default async function PhoneAuthPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ intent?: string; step?: string }>;
-}) {
-  const params = await searchParams;
-  const intent = params.intent === "sign-up" ? "sign-up" : "sign-in";
-  const step = params.step === "confirm" ? "confirm" : "request";
-
-  return (
-    <AuthShell>
-      <div className="mt-7">
-        <PhoneAuthForm
-          intent={intent}
-          step={step}
-          requestAction={requestPhoneOtp}
-          confirmAction={confirmPhoneOtp}
-        />
-      </div>
-    </AuthShell>
-  );
+/**
+ * Mobile-number sign-in is no longer offered in the UI. The route stays so old links
+ * and bookmarks land on email sign-in instead of a 404; the phone auth form and its
+ * server actions remain in the codebase, unused by this page.
+ */
+export default function PhoneAuthPage() {
+  redirect('/auth/sign-in')
 }

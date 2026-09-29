@@ -14,8 +14,31 @@
 export const PAID_PLAN_CODES = ['creator_pro', 'organization_pro'] as const
 export type PaidPlanCode = typeof PAID_PLAN_CODES[number]
 
-export const BILLING_INTERVALS = ['month', 'year'] as const
+export const BILLING_INTERVALS = ['month', 'half_year', 'year'] as const
 export type BillingInterval = typeof BILLING_INTERVALS[number]
+
+/** How many monthly payments one payment of each interval replaces. */
+export const INTERVAL_MONTHS: Record<BillingInterval, number> = { month: 1, half_year: 6, year: 12 }
+
+/**
+ * The prices Sea N Shore charges new subscribers, in paise: the ONE source of truth. The
+ * database rows in plan_prices are seeded from this list by the round 9A migration (a
+ * contract test keeps the two in step) and every page reads the active rows at runtime;
+ * an admin can still replace a price, which only affects new subscribers.
+ */
+export const PLAN_PRICES: Record<PaidPlanCode, Partial<Record<BillingInterval, number>>> = {
+  creator_pro: { month: 9900, year: 99900 },
+  organization_pro: { month: 199900, half_year: 1000000, year: 1499900 },
+}
+
+/** Free trial length per plan, in months. One trial per member / organization, ever. */
+export const TRIAL_MONTHS: Record<PaidPlanCode, number> = {
+  creator_pro: 3,
+  organization_pro: 2,
+}
+
+/** Days before a trial ends on which a "choose a plan" reminder goes out. */
+export const TRIAL_REMINDER_DAYS = [7, 1] as const
 
 export const RENEWAL_GRACE_DAYS = 3
 /** Before the first charge of a new mandate: access until the first charge date + grace. */
@@ -30,6 +53,7 @@ export const PLAN_LABELS: Record<PaidPlanCode, string> = {
 
 export const INTERVAL_LABELS: Record<BillingInterval, { adjective: string; per: string; noun: string }> = {
   month: { adjective: 'Monthly', per: 'per month', noun: 'month' },
+  half_year: { adjective: 'Half-yearly', per: 'per 6 months', noun: '6 months' },
   year: { adjective: 'Yearly', per: 'per year', noun: 'year' },
 }
 
@@ -62,8 +86,7 @@ export function addInterval(date: Date, interval: BillingInterval, count = 1): D
   const result = new Date(date.getTime())
   const day = result.getUTCDate()
   result.setUTCDate(1)
-  if (interval === 'month') result.setUTCMonth(result.getUTCMonth() + count)
-  else result.setUTCFullYear(result.getUTCFullYear() + count)
+  result.setUTCMonth(result.getUTCMonth() + count * INTERVAL_MONTHS[interval])
   const lastDay = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate()
   result.setUTCDate(Math.min(day, lastDay))
   return result
@@ -88,13 +111,39 @@ export function formatRupeesShort(amountMinor: number) {
   return amountMinor % 100 === 0 ? formatRupees(amountMinor).replace(/\.00$/, '') : formatRupees(amountMinor)
 }
 
-/** What paying yearly saves compared with 12 monthly payments; null when it saves nothing. */
-export function yearlySaving(monthlyMinor: number, yearlyMinor: number) {
-  const twelveMonths = monthlyMinor * 12
-  const savingMinor = twelveMonths - yearlyMinor
+/**
+ * What one payment of `interval` saves compared with paying monthly for the same months;
+ * null when it saves nothing (or for the monthly price itself).
+ */
+export function intervalSaving(monthlyMinor: number, amountMinor: number, interval: BillingInterval) {
+  const months = INTERVAL_MONTHS[interval]
+  if (months <= 1 || monthlyMinor <= 0) return null
+  const monthlyTotalMinor = monthlyMinor * months
+  const savingMinor = monthlyTotalMinor - amountMinor
   if (savingMinor <= 0) return null
   const monthsFree = Math.floor(savingMinor / monthlyMinor)
-  return { savingMinor, twelveMonthsMinor: twelveMonths, monthsFree }
+  return { savingMinor, monthlyTotalMinor, monthsFree, months }
+}
+
+/** What paying yearly saves compared with 12 monthly payments; null when it saves nothing. */
+export function yearlySaving(monthlyMinor: number, yearlyMinor: number) {
+  const saving = intervalSaving(monthlyMinor, yearlyMinor, 'year')
+  return saving ? { savingMinor: saving.savingMinor, twelveMonthsMinor: saving.monthlyTotalMinor, monthsFree: saving.monthsFree } : null
+}
+
+/** When a free trial that starts at `start` ends: TRIAL_MONTHS calendar months later. */
+export function trialEndsAt(start: Date, plan: PaidPlanCode) {
+  return addInterval(start, 'month', TRIAL_MONTHS[plan])
+}
+
+/** Whole days left in a trial (rounded up), never below zero. */
+export function trialDaysLeft(now: Date, endsAt: Date) {
+  return Math.max(0, Math.ceil((endsAt.getTime() - now.getTime()) / DAY_MS))
+}
+
+/** "3 months free" for the plan cards. */
+export function trialBadge(plan: PaidPlanCode) {
+  return `${TRIAL_MONTHS[plan]} months free`
 }
 
 /** Access end for an auto-renewing plan that is paid through `paidThrough`. */

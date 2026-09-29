@@ -17,10 +17,19 @@ export type MediaImageProps = Omit<
    * if the photo fails to load it is all that remains.
    */
   fallback?: ReactNode
+  /**
+   * The photo is a person's avatar or profile photo. Covers the box and anchors it at the upper
+   * middle (`object-[50%_25%]`) so a portrait photo shows the face rather than the torso when the
+   * box is squarer than the photo. Not for covers, logos or post images.
+   */
+  avatar?: boolean
 }
 
 /** The photo fades in once painted; users who prefer reduced motion see it appear at once. */
 const FADE_IN_CLASS = 'motion-safe:transition-opacity motion-safe:duration-300'
+
+/** Face-first framing for person photos: cover the box, anchored at the upper middle. */
+export const AVATAR_OBJECT_CLASS = 'object-cover object-[50%_25%]'
 
 /**
  * The one image element for member photos and post images.
@@ -31,8 +40,9 @@ const FADE_IN_CLASS = 'motion-safe:transition-opacity motion-safe:duration-300'
  * routes that need the session cookie, blob: previews, data: URLs) is shown unoptimized, exactly
  * like a plain <img>. The photo fades in when it has loaded; with `fill`, `fallback` (initials)
  * shows underneath it until then, and a photo that fails to load leaves only `fallback`.
+ * `avatar` marks a person photo: it is framed face-first (`object-cover object-[50%_25%]`).
  */
-export function MediaImage({ src, alt, fallback = null, className, fill, ...props }: MediaImageProps) {
+export function MediaImage({ src, alt, fallback = null, className, fill, avatar = false, ...props }: MediaImageProps) {
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
 
@@ -62,7 +72,7 @@ export function MediaImage({ src, alt, fallback = null, className, fill, ...prop
       alt={alt}
       unoptimized={!isOptimizedMediaImageUrl(src)}
       onLoad={() => setLoadedSrc(src)}
-      className={cn(className, FADE_IN_CLASS, loadedSrc === src ? 'opacity-100' : 'opacity-0')}
+      className={cn(className, avatar && AVATAR_OBJECT_CLASS, FADE_IN_CLASS, loadedSrc === src ? 'opacity-100' : 'opacity-0')}
     />
   )
 

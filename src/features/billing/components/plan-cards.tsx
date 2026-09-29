@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react'
 import { Building2, Check, Crown, UserRound } from 'lucide-react'
-import { formatRupeesShort, yearlySaving, type PaidPlanCode } from '@/features/billing/plans'
+import {
+  BILLING_INTERVALS,
+  INTERVAL_LABELS,
+  formatRupeesShort,
+  intervalSaving,
+  trialBadge,
+  type BillingInterval,
+  type PaidPlanCode,
+} from '@/features/billing/plans'
 import type { PlanPrice } from '@/features/billing/subscription-types'
 
 /**
@@ -64,32 +72,68 @@ function FeatureList({ items, compact = false }: { items: string[]; compact?: bo
   )
 }
 
-export type PlanPriceSummary = { month: number | null; year: number | null }
+export type PlanPriceSummary = Record<BillingInterval, number | null>
 
+/** The active price of each billing interval for `plan` (null where none is active). */
 export function summarizePlanPrices(prices: PlanPrice[], plan: PaidPlanCode): PlanPriceSummary {
-  const find = (interval: 'month' | 'year') =>
+  const find = (interval: BillingInterval) =>
     prices.find((price) => price.planCode === plan && price.interval === interval && price.active !== false)?.amountMinor ?? null
-  return { month: find('month'), year: find('year') }
+  return Object.fromEntries(BILLING_INTERVALS.map((interval) => [interval, find(interval)])) as PlanPriceSummary
+}
+
+/** True when no interval has a price (the prices could not be loaded). */
+export function hasAnyPrice(prices: PlanPriceSummary) {
+  return BILLING_INTERVALS.some((interval) => prices[interval] !== null)
+}
+
+/**
+ * The longer intervals with a price, as "or ₹10,000 / 6 months — save ₹1,994" lines: the
+ * saving compares one payment with the same number of monthly payments (intervalSaving).
+ */
+export function longerIntervalLines(prices: PlanPriceSummary) {
+  return BILLING_INTERVALS.filter((interval) => interval !== 'month' && prices[interval] !== null).map((interval) => {
+    const amount = prices[interval] as number
+    const saving = prices.month !== null ? intervalSaving(prices.month, amount, interval) : null
+    const text = `${prices.month !== null ? 'or ' : ''}${formatRupeesShort(amount)} / ${INTERVAL_LABELS[interval].noun}${saving ? ` — save ${formatRupeesShort(saving.savingMinor)}` : ''}`
+    return { interval, amount, saving, text }
+  })
+}
+
+/** "3 months free" pill for a paid plan card; light (teal on white) or dark (white on navy) card. */
+export function TrialBadge({ plan, dark = false }: { plan: PaidPlanCode; dark?: boolean }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold ${dark ? 'bg-white/15 text-white' : 'bg-teal-50 text-teal-800'}`}>
+      {trialBadge(plan)}
+    </span>
+  )
 }
 
 /** Real prices from plan_prices; `unavailableText` is shown when they cannot be loaded. */
-function PriceBlock({ prices, dark = false, unavailableText, compact = false }: { prices: PlanPriceSummary; dark?: boolean; unavailableText: string; compact?: boolean }) {
-  if (prices.month === null && prices.year === null) {
-    return <p className={`mt-2 text-sm ${dark ? 'text-white/70' : 'text-muted'}`}>{unavailableText}</p>
+function PriceBlock({ plan, prices, dark = false, unavailableText, compact = false }: { plan: PaidPlanCode; prices: PlanPriceSummary; dark?: boolean; unavailableText: string; compact?: boolean }) {
+  if (!hasAnyPrice(prices)) {
+    return (
+      <div className="mt-2">
+        <TrialBadge plan={plan} dark={dark} />
+        <p className={`mt-2 text-sm ${dark ? 'text-white/70' : 'text-muted'}`}>{unavailableText}</p>
+        <p className={`mt-1 text-xs ${dark ? 'text-white/60' : 'text-muted'}`}>Start with a free trial, no payment details needed.</p>
+      </div>
+    )
   }
-  const saving = prices.month !== null && prices.year !== null ? yearlySaving(prices.month, prices.year) : null
+  const longer = longerIntervalLines(prices)
   return (
     <div className="mt-2">
+      <TrialBadge plan={plan} dark={dark} />
       {prices.month !== null ? (
-        <p className={`text-3xl font-bold ${compact ? 'max-md:text-2xl' : ''} ${dark ? 'text-white' : 'text-navy-950'}`}>
+        <p className={`mt-2 text-3xl font-bold ${compact ? 'max-md:text-2xl' : ''} ${dark ? 'text-white' : 'text-navy-950'}`}>
           {formatRupeesShort(prices.month)}<span className={`text-base font-semibold ${dark ? 'text-white/70' : 'text-muted'}`}> / month</span>
         </p>
       ) : null}
-      {prices.year !== null ? (
-        <p className={`mt-1 text-sm font-semibold ${dark ? 'text-teal-200' : 'text-teal-800'}`}>
-          {prices.month !== null ? 'or ' : ''}{formatRupeesShort(prices.year)} / year{saving ? ` — save ${formatRupeesShort(saving.savingMinor)}` : ''}
+      {longer.map((line) => (
+        <p key={line.interval} className={`mt-1 text-sm font-semibold ${dark ? 'text-teal-200' : 'text-teal-800'}`}>
+          {line.text}
         </p>
-      ) : null}
+      ))}
+      <p className={`mt-1 text-xs ${dark ? 'text-white/60' : 'text-muted'}`}>Start with a free trial, no payment details needed.</p>
       <p className={`mt-1 text-xs ${dark ? 'text-white/60' : 'text-muted'}`}>Renews automatically. Cancel auto-renew any time.</p>
     </div>
   )
@@ -139,7 +183,7 @@ export function PlanCards({
         </span>
         <p className={`mt-5 text-xs font-bold uppercase tracking-[0.16em] text-teal-700 ${eyebrow}`}>Independent creators</p>
         <h2 className={`mt-1 text-2xl font-bold text-navy-950 ${title}`}>Creator Pro</h2>
-        <PriceBlock prices={creatorPrices} unavailableText={unavailablePriceText} compact={compact} />
+        <PriceBlock plan="creator_pro" prices={creatorPrices} unavailableText={unavailablePriceText} compact={compact} />
         <p className="mt-3 text-sm leading-6 text-muted">For recruiters, consultants, trainers, coaches and event organizers.</p>
         <FeatureList items={CREATOR_FEATURES} compact={compact} />
         <div className={`mt-auto pt-6 ${action}`}>{creatorAction}</div>
@@ -151,7 +195,7 @@ export function PlanCards({
         </span>
         <p className={`mt-5 text-xs font-bold uppercase tracking-[0.16em] text-teal-200 ${eyebrow}`}>Companies & institutions</p>
         <h2 className={`mt-1 text-2xl font-bold ${title}`}>Organization Pro</h2>
-        <PriceBlock prices={organizationPrices} dark unavailableText={unavailablePriceText} compact={compact} />
+        <PriceBlock plan="organization_pro" prices={organizationPrices} dark unavailableText={unavailablePriceText} compact={compact} />
         <p className="mt-3 text-sm leading-6 text-white/70">
           For shipping companies, manning agencies, training institutes, colleges, survey companies, service companies and associations.
         </p>

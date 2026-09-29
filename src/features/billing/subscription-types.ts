@@ -117,6 +117,32 @@ export type PaymentPatch = Partial<Pick<PaymentRecord,
 
 export type AccessInsert = Omit<AccessRecord, 'id' | 'createdAt' | 'updatedAt'>
 
+/** billing_provider of the account_subscriptions row a free trial grants. */
+export const TRIAL_BILLING_PROVIDER = 'trial'
+
+export type TrialEndedReason = 'expired' | 'converted' | 'admin_ended'
+
+/** A row of public.plan_trials: the one free trial a member or organization ever gets. */
+export type TrialRecord = {
+  id: string
+  subject: BillingSubject
+  planCode: PaidPlanCode
+  startedBy: string | null
+  startedAt: string
+  endsAt: string
+  endedAt: string | null
+  endedReason: TrialEndedReason | null
+  extendedBy: string | null
+  extendedAt: string | null
+  reminder7dSentAt: string | null
+  reminder1dSentAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type TrialInsert = Pick<TrialRecord, 'subject' | 'planCode' | 'startedBy' | 'startedAt' | 'endsAt'>
+export type TrialPatch = Partial<Pick<TrialRecord, 'endsAt' | 'endedAt' | 'endedReason' | 'extendedBy' | 'extendedAt' | 'reminder7dSentAt' | 'reminder1dSentAt'>>
+
 export type CheckoutInsert = {
   id: string
   subject: BillingSubject
@@ -154,6 +180,11 @@ export type BillingStore = {
   updatePayment(id: string, patch: PaymentPatch): Promise<PaymentRecord>
   hasSuccessfulChargeAfter(checkoutId: string, after: Date): Promise<boolean>
   audit(entry: PaymentAuditEntry): Promise<void>
+  /** The subject's free trial, whenever it ran (there is at most one, ever). */
+  getTrial(subject: BillingSubject): Promise<TrialRecord | null>
+  getTrialById(id: string): Promise<TrialRecord | null>
+  insertTrial(input: TrialInsert): Promise<TrialRecord>
+  updateTrial(id: string, patch: TrialPatch): Promise<TrialRecord>
 }
 
 export type LedgerActor = { type: 'provider' | 'member' | 'admin' | 'system'; profileId?: string | null }

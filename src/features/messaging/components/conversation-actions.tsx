@@ -2,14 +2,7 @@
 
 import { Ban, Ellipsis, Flag, LoaderCircle, Trash2 } from 'lucide-react'
 import { useCallback, useId, useRef, useState, useTransition, type KeyboardEvent } from 'react'
-import {
-  MobileSheetBackdrop,
-  MobileSheetCancel,
-  MobileSheetGrab,
-  SHEET_MENU_ITEM_CLASS,
-  SHEET_MENU_PANEL_CLASS,
-} from '@/components/ui/mobile-sheet'
-import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/action-menu'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { blockProfile } from '@/features/network/actions'
 import { deleteConversationAction } from '../actions'
@@ -144,7 +137,7 @@ export function DeleteConversationDialog({
 
 const DEFAULT_TRIGGER_CLASS = 'grid size-9 shrink-0 cursor-pointer place-items-center rounded-xl border border-mist-100 bg-white text-navy-900 shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600 aria-expanded:bg-ocean-50 aria-expanded:text-ocean-800'
 
-const menuItemClass = `flex min-h-10 w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 text-left text-sm font-semibold text-red-700 transition hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${SHEET_MENU_ITEM_CLASS}`
+const menuItemClass = 'min-h-10 gap-2.5'
 
 /**
  * ⋯ menu for a conversation (thread header, inbox row, compact dock chat).
@@ -180,23 +173,14 @@ export function ConversationActionsMenu({
   const [blockError, setBlockError] = useState('')
   const [blocking, startBlock] = useTransition()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
   const menuId = useId()
   const close = useCallback(() => setOpen(false), [])
-  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close, { triggerRef })
   const closeConfirm = useCallback(() => setConfirming(false), [])
-
-  function focusFirstItem() {
-    requestAnimationFrame(() => {
-      menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
-    })
-  }
 
   function onTriggerKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
       setOpen(true)
-      focusFirstItem()
     }
   }
 
@@ -228,7 +212,7 @@ export function ConversationActionsMenu({
   }
 
   return (
-    <div ref={rootRef} className={className}>
+    <div className={className}>
       <button
         ref={triggerRef}
         type="button"
@@ -243,40 +227,30 @@ export function ConversationActionsMenu({
       >
         <Ellipsis aria-hidden="true" className="size-4" />
       </button>
-      {open ? <MobileSheetBackdrop onClose={close} /> : null}
-      {open ? (
-        <div
-          ref={menuRef}
-          id={menuId}
-          role="menu"
-          aria-label={`Conversation options for ${otherName}`}
-          className={`absolute z-50 w-56 ${direction === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} rounded-xl border border-mist-100 bg-white p-1.5 shadow-[var(--shadow-card)] ${align === 'right' ? 'right-0' : 'left-0'} ${SHEET_MENU_PANEL_CLASS}`}
-        >
-          <MobileSheetGrab />
-          {safety ? (
-            <>
-              <button type="button" role="menuitem" onClick={startReport} className={menuItemClass}>
-                <Flag aria-hidden="true" className="size-4" />
-                Report
-              </button>
-              <button type="button" role="menuitem" onClick={block} disabled={blocking} className={menuItemClass}>
-                <Ban aria-hidden="true" className="size-4" />
-                Block
-              </button>
-            </>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={startDelete}
-            className={menuItemClass}
-          >
-            <Trash2 aria-hidden="true" className="size-4" />
-            Delete conversation
-          </button>
-          <MobileSheetCancel onClick={close} />
-        </div>
-      ) : null}
+      <ActionMenu
+        open={open}
+        onClose={close}
+        anchorRef={triggerRef}
+        id={menuId}
+        label={`Conversation options for ${otherName}`}
+        align={align === 'right' ? 'end' : 'start'}
+        side={direction === 'up' ? 'top' : 'bottom'}
+        className="w-56 shadow-[var(--shadow-card)]"
+      >
+        {safety ? (
+          <>
+            <ActionMenuItem tone="danger" onClick={startReport} className={menuItemClass} icon={<Flag aria-hidden="true" className="size-4" />}>
+              Report
+            </ActionMenuItem>
+            <ActionMenuItem tone="danger" onClick={block} disabled={blocking} className={menuItemClass} icon={<Ban aria-hidden="true" className="size-4" />}>
+              Block
+            </ActionMenuItem>
+          </>
+        ) : null}
+        <ActionMenuItem tone="danger" onClick={startDelete} className={menuItemClass} icon={<Trash2 aria-hidden="true" className="size-4" />}>
+          Delete conversation
+        </ActionMenuItem>
+      </ActionMenu>
       {blockError ? (
         <p role="alert" className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700 shadow-sm">
           {blockError}

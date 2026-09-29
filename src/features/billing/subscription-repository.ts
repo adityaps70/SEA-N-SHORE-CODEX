@@ -2,9 +2,9 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
 import { recordPaymentAudit } from '@/features/payments/audit'
 import type { CashfreeMode } from '@/features/payments/types'
-import type { BillingInterval, BillingSubject, PaidPlanCode } from './plans'
-import { mapAccess, mapCheckout, mapPayment, mapPlanPrice } from './subscription-store'
-import type { AccessRecord, CheckoutRecord, PaymentRecord, PlanPrice } from './subscription-types'
+import { isBillingInterval, type BillingInterval, type BillingSubject, type PaidPlanCode } from './plans'
+import { mapAccess, mapCheckout, mapPayment, mapPlanPrice, mapTrial } from './subscription-store'
+import type { AccessRecord, CheckoutRecord, PaymentRecord, PlanPrice, TrialRecord } from './subscription-types'
 
 type Row = QueryResultRow & Record<string, unknown>
 type Query = (text: string, values?: readonly unknown[]) => Promise<Row[]>
@@ -31,6 +31,16 @@ export type SubjectBilling = {
   /** A newer mandate still waiting for approval, if any (shown as "waiting for your bank"). */
   pendingCheckout: CheckoutRecord | null
   payments: PaymentRecord[]
+  /** The subject's free trial, whenever it ran (null: never had one, so one can be started). */
+  trial: TrialRecord | null
+}
+
+export type AdminTrialRow = {
+  trial: TrialRecord
+  /** The access row the trial granted, as it is now (trialing, expired, or converted to a mandate). */
+  access: AccessRecord | null
+  subjectName: string
+  subjectHref: string
 }
 
 export type AdminSubscriptionRow = {
@@ -81,7 +91,7 @@ export function createSubscriptionRepository(input: { query?: Query } = {}) {
 
   async function getSubjectBilling(subject: BillingSubject, now: Date = new Date()): Promise<SubjectBilling> {
     const { column, id } = subjectColumns(subject)
-    const [accessRows, pendingRows, paymentRows] = await Promise.all([
+    const [accessRows, pendingRows, paymentRows, trialRows] = await Promise.all([
       queryRows(
         `select * from public.account_subscriptions
          where ${column} = $1::uuid
@@ -110,6 +120,7 @@ export function createSubscriptionRepository(input: { query?: Query } = {}) {
          limit 24`,
         [id],
       ),
+      queryRows(`select * from public.plan_trials where ${column} = $1::uuid limit 1`, [id]),
     ])
     const access = accessRows[0] ? mapAccess(accessRows[0]) : null
     const end = access?.periodEndsAt ? Date.parse(access.periodEndsAt) : null
@@ -127,7 +138,74 @@ export function createSubscriptionRepository(input: { query?: Query } = {}) {
     let pendingCheckout = pendingRows[0] ? mapCheckout(pendingRows[0]) : null
     // A failed attempt only matters until something newer succeeds.
     if (pendingCheckout && checkout && Date.parse(checkout.createdAt) > Date.parse(pendingCheckout.createdAt)) pendingCheckout = null
-    return { access, accessIsCurrent, checkout, pendingCheckout, payments: paymentRows.map(mapPayment) }
+    return { access, accessIsCurrent, checkout, pendingCheckout, payments: paymentRows.map(mapPayment), trial: trialRows[0] ? mapTrial(trialRows[0]) : null }
+  }
+
+  /** Every free trial, running first, with the access row it granted. */
+  async function listTrialsForAdmin(limit = 200): Promise<AdminTrialRow[]> {
+    const rows = await queryRows(
+      `select trial.*,
+         coalesce(profile.full_name, company.name, 'Unknown') as subject_name,
+         case when access.id is null then null else to_jsonb(access.*) end as access_row
+       from public.plan_trials trial
+       left join public.profiles profile on profile.id = trial.profile_id
+       left join public.companies company on company.id = trial.company_id
+       left join public.account_subscriptions access
+         on access.billing_provider = 'trial'
+        and access.provider_subscription_id = 'trial_' || trial.id::text
+       order by (trial.ended_at is null and trial.ends_at > now()) desc, trial.ends_at asc
+       limit $1::int`,
+      [Math.min(Math.max(limit, 1), 500)],
+    )
+    return rows.map((row) => {
+      const trial = mapTrial(row)
+      const accessRow = row.access_row && typeof row.access_row === 'object' ? row.access_row as Row : null
+      return {
+        trial,
+        access: accessRow ? mapAccess(accessRow) : null,
+        subjectName: String(row.subject_name),
+        subjectHref: trial.subject.kind === 'profile' ? `/admin/users/${trial.subject.profileId}` : '/admin/organizations',
+      }
+    })
+  }
+
+  /** Open trials that still need closing or a reminder: ended, or ending within `withinDays`. */
+  async function listOpenTrials(now: Date, withinDays: number, limit = 200): Promise<TrialRecord[]> {
+    const rows = await queryRows(
+      `select * from public.plan_trials
+       where ended_at is null
+         and ends_at <= $1::timestamptz + ($2::int * interval '1 day')
+       order by ends_at asc
+       limit $3::int`,
+      [now.toISOString(), withinDays, Math.min(Math.max(limit, 1), 500)],
+    )
+    return rows.map(mapTrial)
+  }
+
+  /** Who gets a trial reminder: the member, or the organization's owner and administrators. */
+  async function listTrialRecipients(subject: BillingSubject): Promise<Array<{ profileId: string; email: string | null }>> {
+    const rows = subject.kind === 'profile'
+      ? await queryRows(`select id as profile_id, null::text as email from public.profiles where id = $1::uuid`, [subject.profileId])
+      : await queryRows(
+        `select cm.user_id as profile_id, null::text as email
+         from public.company_members cm
+         where cm.company_id = $1::uuid
+           and cm.role::text in ('owner', 'administrator')
+           and cm.approved_at is not null`,
+        [subject.companyId],
+      )
+    return rows.map((row) => ({ profileId: String(row.profile_id), email: typeof row.email === 'string' ? row.email : null }))
+  }
+
+  /** Idempotent in-app notification (by dedupe key), the same way the feed writes its notices. */
+  async function upsertTrialNotification(input: { recipientId: string; dedupeKey: string }) {
+    await queryRows(
+      `insert into public.notifications (recipient_id, actor_id, notification_type, dedupe_key)
+       values ($1::uuid, null, 'plan_trial_ending', $2::text)
+       on conflict (recipient_id, dedupe_key) where dedupe_key is not null
+       do update set created_at = now(), read_at = null`,
+      [input.recipientId, input.dedupeKey],
+    )
   }
 
   async function getAccessById(id: string): Promise<AccessRecord | null> {
@@ -259,7 +337,7 @@ export function createSubscriptionRepository(input: { query?: Query } = {}) {
       ...mapPayment(row),
       subjectName: String(row.subject_name),
       planCode: row.plan_code === 'organization_pro' ? 'organization_pro' : 'creator_pro',
-      interval: row.billing_interval === 'year' ? 'year' : 'month',
+      interval: isBillingInterval(row.billing_interval) ? row.billing_interval : 'month',
     }))
   }
 
@@ -277,6 +355,10 @@ export function createSubscriptionRepository(input: { query?: Query } = {}) {
     listChargesDue,
     listSubscriptionsForAdmin,
     listRecentPaymentsForAdmin,
+    listTrialsForAdmin,
+    listOpenTrials,
+    listTrialRecipients,
+    upsertTrialNotification,
   }
 }
 

@@ -5,11 +5,13 @@ import { BRAND_ASSETS, BRAND_NAME } from '@/components/brand/brand-assets'
 import { FaqAccordion } from '@/components/marketing/faq/faq-accordion'
 import type { FaqItem } from '@/components/marketing/faq/faq-data'
 import { Reveal } from '@/components/marketing/motion'
+import { FooterSocialIcons, footerBottomLine, footerLinkGroups, type FooterLink } from '@/components/navigation/app-footer'
 import { configuredSocialLinks } from '@/components/navigation/social-links'
-import { BUSINESS, businessAddressLine, telHref } from '@/config/business'
-import { formatRupeesShort } from '@/features/billing/plans'
-import { LANDING_LINKS, LANDING_SECTIONS } from './landing-links'
-import { LogoImage } from './landing-logos'
+import { BUSINESS, telHref } from '@/config/business'
+import type { PlanPriceSummary } from '@/features/billing/components/plan-cards'
+import { INTERVAL_LABELS, formatRupeesShort, trialBadge, type PaidPlanCode } from '@/features/billing/plans'
+import { LANDING_LINKS } from './landing-links'
+import { LogoLink } from './landing-logos'
 import { GLOBAL_PARTNERS, HIRING_COMPANIES, MORE_HIRING_PARTNERS, PARENT_GROUP_LOGO, PARTNERS } from './logos'
 
 /** Logos in the phone-only partners strip (the full grid stays one tap away). */
@@ -33,7 +35,7 @@ export function PartnersSection() {
         {/* Phones: one swipeable logo strip; "See all" opens the full grid below in place (CSS :target, no JS). */}
         <ul className="pstrip swipe" aria-label="Maritime companies on Sea N Shore">
           {HIRING_COMPANIES.slice(0, PHONE_STRIP_SIZE).map((company) => (
-            <li key={company.file} className="logo-tile"><LogoImage logo={company} /></li>
+            <li key={company.file} className="logo-tile"><LogoLink logo={company} /></li>
           ))}
         </ul>
         <a className="pall-open" href="#partners-all">
@@ -44,7 +46,7 @@ export function PartnersSection() {
           <div className="parent">
             <Reveal className="pcard" delay={0}>
               <span className="eyebrow">Parent group</span>
-              <LogoImage logo={PARENT_GROUP_LOGO} />
+              <LogoLink logo={PARENT_GROUP_LOGO} />
             </Reveal>
             <Reveal className="note" delay={1}>
               <strong style={{ fontFamily: 'var(--display)', fontSize: 24, lineHeight: 1.15 }}>Run by maritime people, for maritime people.</strong>
@@ -56,7 +58,7 @@ export function PartnersSection() {
           <ul className="pgrid flex" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {PARTNERS.map((partner, index) => (
               <Reveal as="li" key={partner.file} className="ptile" delay={index}>
-                <div className="lg"><LogoImage logo={partner} /></div>
+                <div className="lg"><LogoLink logo={partner} /></div>
                 <span>{partner.role}</span>
               </Reveal>
             ))}
@@ -66,7 +68,7 @@ export function PartnersSection() {
           <ul className="pgrid g4" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {GLOBAL_PARTNERS.map((partner, index) => (
               <Reveal as="li" key={partner.file} className="ptile" delay={index}>
-                <div className="lg"><LogoImage logo={partner} /></div>
+                <div className="lg"><LogoLink logo={partner} /></div>
                 <span>Global partner</span>
               </Reveal>
             ))}
@@ -76,7 +78,7 @@ export function PartnersSection() {
           <ul className="pgrid" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {hiring.map((company, index) => (
               <Reveal as="li" key={company.file} className="ptile" delay={index}>
-                <div className="lg"><LogoImage logo={company} decorative /></div>
+                <div className="lg"><LogoLink logo={company} decorative /></div>
                 <span>{company.name}</span>
               </Reveal>
             ))}
@@ -89,25 +91,43 @@ export function PartnersSection() {
 }
 
 export type LandingPlanPrices = {
-  creator: { month: number | null; year: number | null }
-  organization: { month: number | null; year: number | null }
+  creator: PlanPriceSummary
+  organization: PlanPriceSummary
 }
 
-function PlanAmount({ month, year }: { month: number | null; year: number | null }) {
-  if (month === null && year === null) {
+/** "or ₹999 a year" / "or ₹10,000 per 6 months · ₹14,999 a year": the longer intervals with a price. */
+export function longerIntervalNote(prices: PlanPriceSummary) {
+  const parts = [
+    prices.half_year !== null ? `${formatRupeesShort(prices.half_year)} ${INTERVAL_LABELS.half_year.per}` : null,
+    prices.year !== null ? `${formatRupeesShort(prices.year)} a year` : null,
+  ].filter((part): part is string => part !== null)
+  return parts.length ? `or ${parts.join(' · ')}` : null
+}
+
+function PlanAmount({ plan, prices }: { plan: PaidPlanCode; prices: PlanPriceSummary }) {
+  const badge = <span className="trial-badge">{trialBadge(plan)}</span>
+  if (prices.month === null && prices.half_year === null && prices.year === null) {
     return (
       <>
+        {badge}
         <div className="amt" style={{ fontSize: 26 }}>See pricing</div>
         <p>The exact price is shown before you pay.</p>
       </>
     )
   }
+  const longer = longerIntervalNote(prices)
+  const headline: { amount: number; per: string } = prices.month !== null
+    ? { amount: prices.month, per: ' / month' }
+    : prices.half_year !== null
+      ? { amount: prices.half_year, per: ' / 6 months' }
+      : { amount: prices.year as number, per: ' / year' }
   return (
     <>
+      {badge}
       <div className="amt">
-        {month !== null ? <>{formatRupeesShort(month)}<small> / month</small></> : <>{formatRupeesShort(year as number)}<small> / year</small></>}
+        {formatRupeesShort(headline.amount)}<small>{headline.per}</small>
       </div>
-      <p>{month !== null && year !== null ? `or ${formatRupeesShort(year)} a year` : 'Renews automatically'}</p>
+      <p>{prices.month !== null && longer ? longer : 'Renews automatically'}</p>
     </>
   )
 }
@@ -136,7 +156,7 @@ export function PricingSection({ prices }: { prices: LandingPlanPrices }) {
           </Reveal>
           <Reveal as="article" className="price pop" delay={1}>
             <span className="eyebrow">Creator Pro</span>
-            <PlanAmount {...prices.creator} />
+            <PlanAmount plan="creator_pro" prices={prices.creator} />
             <ul>
               <li>Publish courses and events</li>
               <li>Sell tickets &amp; courses</li>
@@ -145,7 +165,7 @@ export function PricingSection({ prices }: { prices: LandingPlanPrices }) {
           </Reveal>
           <Reveal as="article" className="price" delay={2}>
             <span className="eyebrow">Organization Pro</span>
-            <PlanAmount {...prices.organization} />
+            <PlanAmount plan="organization_pro" prices={prices.organization} />
             <ul>
               <li>Post jobs &amp; review applicants</li>
               <li>Team roles &amp; organization posts</li>
@@ -208,47 +228,23 @@ export function FinalCta({ signedIn }: { signedIn: boolean }) {
   )
 }
 
-function socialHandle(href: string) {
-  try {
-    const path = new URL(href).pathname.replace(/^\/+|\/+$/g, '')
-    return path ? (href.includes('instagram.com') ? path : `@${path}`) : ''
-  } catch {
-    return ''
-  }
+/** Landing-only section anchors, added to the shared footer groups. */
+const LANDING_FOOTER_ANCHORS: Record<string, FooterLink[]> = {
+  Product: [{ href: '#organizations', label: 'For companies' }],
+  Company: [
+    { href: '#partners', label: 'Partners' },
+    { href: '#faq', label: 'FAQ' },
+  ],
 }
 
-const COMPANY_LINKS = [
-  { href: '#organizations', label: 'For companies' },
-  { href: '#partners', label: 'Partners' },
-  { href: '#faq', label: 'FAQ' },
-  { href: '/about', label: 'About' },
-  { href: '/help', label: 'Help' },
-  { href: '/contact', label: 'Contact us' },
-  { href: '/newsletter', label: 'Newsletter' },
-]
+/** The shared Product / Company / Help & legal groups (signed-out set) plus the landing anchors. */
+export const LANDING_FOOTER_GROUPS = footerLinkGroups({ signedIn: false }).map((group) => ({
+  ...group,
+  links: [...group.links, ...(LANDING_FOOTER_ANCHORS[group.title] ?? [])],
+}))
 
-const LEGAL_LINKS = [
-  { href: '/terms', label: 'Terms' },
-  { href: '/privacy', label: 'Privacy Policy' },
-  { href: '/refunds', label: 'Refunds & cancellation' },
-  { href: '/shipping', label: 'Shipping & delivery' },
-  { href: '/copyright', label: 'Copyright & IP' },
-  { href: '/accessibility', label: 'Accessibility' },
-]
-
-const PLATFORM_LINKS = [
-  ...LANDING_SECTIONS.filter((section) => section.id !== 'organizations' && section.id !== 'pricing').map((section) => ({
-    href: `#${section.id}`,
-    label: section.id === 'passport' ? 'Maritime Passport' : section.label,
-  })),
-  { href: '/pricing', label: 'Pricing' },
-]
-
-const FOOTER_GROUPS = [
-  { title: 'Platform', links: PLATFORM_LINKS },
-  { title: 'Company', links: COMPANY_LINKS },
-  { title: 'Legal', links: LEGAL_LINKS },
-]
+const PHOTO_CREDITS =
+  'Photos: Unsplash — Alim, NOAA, Yoanna Yordanova, Navy Medicine, Dmitrijs Safrans, Wolfgang Weiser, Shaah Shahidh, Josh Hild. Partner logos belong to their owners. User-generated content remains owned by its creators.'
 
 function FooterLink({ href, label }: { href: string; label: string }) {
   return <li>{href.startsWith('#') ? <a href={href}>{label}</a> : <Link href={href}>{label}</Link>}</li>
@@ -256,21 +252,20 @@ function FooterLink({ href, label }: { href: string; label: string }) {
 
 export function LandingFooter() {
   const social = configuredSocialLinks()
-  const year = new Date().getFullYear()
   return (
     <footer aria-label="Site footer">
       <div className="wrap cols">
         <div className="brand">
           {/* eslint-disable-next-line @next/next/no-img-element -- brand artwork at its intrinsic size */}
           <img src={BRAND_ASSETS.lockupWhite.src} width={BRAND_ASSETS.lockupWhite.width} height={BRAND_ASSETS.lockupWhite.height} alt={BRAND_NAME} loading="lazy" decoding="async" />
-          <p>The professional network for seafarers and shore professionals. Operated by {BUSINESS.legalName}, {businessAddressLine()}.</p>
+          <p>The professional network for seafarers and shore professionals.</p>
           <p>
             <a href={`mailto:${BUSINESS.email}`}>{BUSINESS.email}</a> · <a className="nowrap" href={telHref(BUSINESS.phone.tel)}>{BUSINESS.phone.display}</a>
           </p>
         </div>
         {/* Phones: the three link groups collapse into tap-to-open rows; contact and social stay open. */}
         <nav aria-label="Footer links" className="fgroups">
-          {FOOTER_GROUPS.map((group) => (
+          {LANDING_FOOTER_GROUPS.map((group) => (
             <details key={group.title}>
               <summary>
                 {group.title}
@@ -280,40 +275,22 @@ export function LandingFooter() {
             </details>
           ))}
         </nav>
-        <nav aria-label="Platform" className="fnav">
-          <h4>Platform</h4>
-          <ul>{PLATFORM_LINKS.map((link) => <FooterLink key={link.href} {...link} />)}</ul>
-        </nav>
-        <nav aria-label="Company" className="fnav">
-          <h4>Company</h4>
-          <ul>{COMPANY_LINKS.map((link) => <FooterLink key={link.href} {...link} />)}</ul>
-        </nav>
-        <nav aria-label="Legal" className="fnav">
-          <h4>Legal</h4>
-          <ul>{LEGAL_LINKS.map((link) => <FooterLink key={link.href} {...link} />)}</ul>
-        </nav>
+        {LANDING_FOOTER_GROUPS.map((group) => (
+          <nav key={group.title} aria-label={group.title} className="fnav">
+            <h4>{group.title}</h4>
+            <ul>{group.links.map((link) => <FooterLink key={link.href} {...link} />)}</ul>
+          </nav>
+        ))}
         {social.length ? (
           <div className="fsocial">
             <h4>Follow</h4>
-            <ul aria-label="Sea N Shore on social media">
-              {social.map((link) => {
-                const handle = socialHandle(link.href)
-                return (
-                  <li key={link.key}>
-                    <a href={link.href} target="_blank" rel="noopener noreferrer">
-                      {link.label}{handle ? ` · ${handle}` : ''}
-                      <span className="sr-only"> (opens in a new tab)</span>
-                    </a>
-                  </li>
-                )
-              })}
-            </ul>
+            <FooterSocialIcons linkClassName="ficon" size={22} />
           </div>
         ) : null}
       </div>
       <div className="wrap legal">
-        <span>© {year} {BUSINESS.legalName}. All rights reserved.</span>
-        <span>Photos: Unsplash — Alim, NOAA, Yoanna Yordanova, Navy Medicine, Dmitrijs Safrans, Wolfgang Weiser, Shaah Shahidh, Josh Hild. Partner logos belong to their owners. User-generated content remains owned by its creators.</span>
+        <p>{footerBottomLine()}</p>
+        <p className="credits">{PHOTO_CREDITS}</p>
       </div>
     </footer>
   )

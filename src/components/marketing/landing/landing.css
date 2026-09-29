@@ -45,6 +45,10 @@
 .lp .marquee:hover .track{animation-play-state:paused}
 .lp .logo-tile{height:84px;min-width:150px;padding:12px 20px;border:1px solid #E6EDEE;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;flex:none}
 .lp .logo-tile img{height:52px;max-width:170px;width:auto;object-fit:contain}
+.lp .logo-link{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:12px;transition:opacity .15s ease}
+.lp .logo-link:hover{opacity:.8}
+.lp .logo-link:focus-visible{outline:3px solid var(--teal);outline-offset:4px}
+.lp .parent .pcard .logo-link{width:auto;height:auto;align-self:flex-start}
 @keyframes lp-scroll{to{transform:translateX(-50%)}}
 @media (prefers-reduced-motion: reduce){
   .lp .track{animation:none;flex-wrap:wrap;width:auto;justify-content:center}
@@ -92,6 +96,7 @@
 .lp .price.pop{border:2px solid var(--teal-d);background:#F2FAF8}
 .lp .price .amt{font-family:var(--display);font-size:42px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums;line-height:1.1}
 .lp .price .amt small{font-size:17px;font-weight:600;color:var(--ink-3);font-family:var(--body)}
+.lp .price .trial-badge{align-self:flex-start;display:inline-flex;align-items:center;min-height:24px;padding:2px 10px;border-radius:999px;background:var(--teal-d);color:#fff;font-size:12px;font-weight:800;letter-spacing:.02em;line-height:1.2}
 .lp .price p{margin:0;color:var(--ink-2);font-size:15.5px}
 .lp .price ul{margin:4px 0 0;padding-left:18px;list-style:disc;color:var(--ink-2);font-size:15px;line-height:1.7}
 .lp .final{position:relative;color:#fff;overflow:hidden}
@@ -102,12 +107,17 @@
 .lp .final h2{font-size:clamp(38px,5vw,64px);line-height:1;font-weight:800}
 .lp .final p{margin:0;font-size:19px;color:#DDE8EE}
 .lp footer{background:var(--navy);color:#B8C7D3;font-size:15px}
-.lp footer .cols{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(4,minmax(0,1fr));gap:36px;padding-block:56px 36px}
+.lp footer .cols{display:grid;grid-template-columns:minmax(0,1.3fr) repeat(3,minmax(0,1fr)) auto;gap:36px;padding-block:56px 36px}
 .lp footer h4{margin:0 0 12px;font-weight:700;color:#fff;font-size:14px;letter-spacing:.08em;text-transform:uppercase}
 .lp footer ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .lp footer a{text-decoration:none;color:#CFE0E8}
 .lp footer a:hover{color:#fff;text-decoration:underline}
-.lp footer .legal{border-top:1px solid rgba(255,255,255,.12);padding-block:20px 28px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;font-size:13px;color:#8FA6B8}
+.lp footer .legal{border-top:1px solid rgba(255,255,255,.12);padding-block:20px 28px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:#8FA6B8}
+.lp footer .legal p{margin:0}
+.lp footer .legal .credits{font-size:12px;color:#7F97AA}
+.lp footer .fsocial ul{flex-direction:row;flex-wrap:wrap;gap:4px;margin-left:-8px}
+.lp footer .fsocial .ficon{display:inline-flex;width:40px;height:40px;align-items:center;justify-content:center;border-radius:999px;color:#CFE0E8;transition:background .15s ease,color .15s ease}
+.lp footer .fsocial .ficon:hover{background:rgba(255,255,255,.1);color:#fff;text-decoration:none}
 .lp .feedsec{background:#fff}
 .lp .feed-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:64px;align-items:center}
 .lp .feed-copy{display:flex;flex-direction:column;gap:18px;align-items:flex-start}
@@ -460,7 +470,8 @@
   .lp .steps > div:first-child{grid-column:1/-1}
   .lp .pgrid{grid-template-columns:repeat(4,minmax(0,1fr))}
   .lp .pgrid.flex .ptile{width:calc((100% - 42px)/4)}
-  .lp footer .cols{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .lp footer .cols{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .lp footer .fsocial{grid-column:1/-1}
 }
 @media (max-width:720px){
   .lp{font-size:16px}
@@ -671,9 +682,10 @@
   .lp .fgroups ul{gap:0;padding-bottom:10px}
   .lp .fgroups a{display:flex;align-items:center;min-height:44px}
   .lp footer .fsocial h4{margin-bottom:4px}
-  .lp footer .fsocial ul{flex-direction:row;flex-wrap:wrap;gap:0 18px}
-  .lp footer .fsocial a{display:inline-flex;align-items:center;min-height:44px}
-  .lp footer .legal{padding-block:12px 20px;font-size:12px;gap:8px}
+  .lp footer .fsocial ul{gap:2px}
+  .lp footer .fsocial .ficon{width:44px;height:44px}
+  .lp footer .legal{padding-block:12px 20px;font-size:12px;gap:6px}
+  .lp footer .legal .credits{font-size:11px}
 }
 @media (max-width:767.98px) and (prefers-reduced-motion: reduce){
   .lp .fgroups summary svg{transition:none}

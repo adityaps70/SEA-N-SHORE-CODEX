@@ -139,4 +139,5 @@ input[type="file"]:focus-visible {
 /* Round 8 phone bottom sheets */
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
 @keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }

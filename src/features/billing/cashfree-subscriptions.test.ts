@@ -89,7 +89,8 @@ describe('Cashfree subscriptions client', () => {
       subscription_id: subscriptionId,
       customer_details: { customer_name: 'Capt. Meera Rao', customer_email: 'meera@example.com', customer_phone: '9876543210' },
       plan_details: { plan_id: 'snsp_22222222222242228222222222222222' },
-      authorization_details: { payment_methods: ['upi', 'card', 'enach'] },
+      // A scheduled first charge: only the ₹1 authorisation, refunded by Cashfree.
+      authorization_details: { payment_methods: ['upi', 'card', 'enach'], authorization_amount: 1, authorization_amount_refund: true },
       subscription_meta: {
         return_url: 'https://seanshore.example/api/billing/cashfree/return?checkout=0f7e5b1c-1111-4111-8111-111111111111',
         notification_channel: ['EMAIL', 'SMS'],

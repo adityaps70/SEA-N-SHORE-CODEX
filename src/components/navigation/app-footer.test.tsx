@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { AppFooter } from './app-footer'
-import { RailFooter } from './rail-footer'
+import { AppFooter, FOOTER_LINK_GROUPS, FooterSocialIcons, footerBottomLine, footerLinks } from './app-footer'
+import { RailFooter, railKeyLinks } from './rail-footer'
 
 afterEach(() => cleanup())
 
@@ -11,24 +11,69 @@ function source(path: string) {
   return readFileSync(join(process.cwd(), path), 'utf8')
 }
 
+const ALL_LINKS = footerLinks({ signedIn: true })
+const BOTTOM_LINE = `© ${new Date().getFullYear()} Sea N Shore · operated by Beaufort Marine Services LLP, Navi Mumbai, India`
+
+function expectSocialIcons(root: HTMLElement) {
+  const social = within(root).getByRole('list', { name: 'Sea N Shore on social media' })
+  const links = within(social).getAllByRole('link')
+  expect(links.map((link) => link.getAttribute('aria-label'))).toEqual([
+    'Instagram (opens in a new tab)',
+    'Facebook (opens in a new tab)',
+    'X (opens in a new tab)',
+  ])
+  expect(links.map((link) => link.getAttribute('href'))).toEqual([
+    'https://www.instagram.com/seaandshore.in',
+    'https://www.facebook.com/seaandshore.in',
+    'https://x.com/inseaandshore',
+  ])
+  for (const link of links) {
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    // Icons, not text: the only name comes from the aria-label.
+    expect(link.textContent).toBe('')
+    expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  }
+}
+
+describe('footer building blocks', () => {
+  it('groups the links as Product, Company and Help & legal', () => {
+    expect(FOOTER_LINK_GROUPS.map((group) => group.title)).toEqual(['Product', 'Company', 'Help & legal'])
+    expect(FOOTER_LINK_GROUPS.map((group) => group.links.map((link) => link.label))).toEqual([
+      ['Jobs', 'Learn', 'Events', 'Community', 'Pricing'],
+      ['About', 'Contact us', 'Newsletter'],
+      ['Help', 'Accessibility', 'Terms', 'Privacy Policy', 'Refunds & cancellation', 'Shipping & delivery', 'Copyright & IP', 'Your data & privacy'],
+    ])
+  })
+
+  it('builds the one quiet bottom line from the business details', () => {
+    expect(footerBottomLine(2026)).toBe('© 2026 Sea N Shore · operated by Beaufort Marine Services LLP, Navi Mumbai, India')
+    expect(footerBottomLine()).toBe(BOTTOM_LINE)
+  })
+
+  it('renders the configured social profiles as named icon links opening in a new tab', () => {
+    const { container } = render(<FooterSocialIcons />)
+    expectSocialIcons(container)
+  })
+})
+
 describe('AppFooter (compact end-of-content footer)', () => {
-  it('shows copyright wording and the full trust, legal and navigation link set', () => {
+  it('shows the three link groups with every footer link, the social icons and the bottom line', () => {
     render(<AppFooter />)
 
-    expect(screen.getByText(/all rights reserved/i)).toBeVisible()
     const nav = screen.getByRole('navigation', { name: 'Footer' })
-    expect(within(nav).getByRole('link', { name: 'Copyright & IP' })).toHaveAttribute('href', '/copyright')
-    expect(within(nav).getByRole('link', { name: 'Terms' })).toHaveAttribute('href', '/terms')
-    expect(within(nav).getByRole('link', { name: 'Privacy Policy' })).toHaveAttribute('href', '/privacy')
-    expect(within(nav).getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
-    expect(within(nav).getByRole('link', { name: 'Contact us' })).toHaveAttribute('href', '/contact')
-    expect(within(nav).getByRole('link', { name: 'Pricing' })).toHaveAttribute('href', '/pricing')
-    expect(within(nav).getByRole('link', { name: 'Refunds & cancellation' })).toHaveAttribute('href', '/refunds')
-    expect(within(nav).getByRole('link', { name: 'Shipping & delivery' })).toHaveAttribute('href', '/shipping')
+    expect(within(nav).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Product', 'Company', 'Help & legal'])
+    for (const link of ALL_LINKS) {
+      expect(within(nav).getByRole('link', { name: link.label })).toHaveAttribute('href', link.href)
+    }
+    expect(within(nav).getAllByRole('link')).toHaveLength(ALL_LINKS.length)
     expect(within(nav).getByRole('link', { name: 'Your data & privacy' })).toHaveAttribute('href', '/settings#your-data')
-    expect(within(nav).getByRole('link', { name: 'Jobs' })).toHaveAttribute('href', '/jobs')
-    expect(screen.getByText('Sea N Shore is operated by Beaufort Marine Services LLP · Navi Mumbai, India')).toBeVisible()
-    expect(screen.getByRole('link', { name: /Instagram/ })).toHaveAttribute('href', 'https://www.instagram.com/seaandshore.in')
+
+    expectSocialIcons(screen.getByRole('contentinfo'))
+    expect(screen.getByText(BOTTOM_LINE)).toBeVisible()
+    expect(screen.queryByText(/all rights reserved/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/is operated by/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/User-generated content/)).not.toBeInTheDocument()
   })
 
   it('hides itself at the rail breakpoint when the page renders a rail footer', () => {
@@ -41,20 +86,37 @@ describe('AppFooter (compact end-of-content footer)', () => {
     const { container } = render(<AppFooter />)
     expect(container.querySelector('footer')).toHaveClass('max-md:hidden')
     expect(source('src/components/navigation/side-drawer.tsx')).toContain('drawerFooterLinks()')
+    expect(source('src/components/navigation/side-drawer.tsx')).toContain('footerBottomLine()')
+    expect(source('src/components/navigation/side-drawer.tsx')).toContain('<FooterSocialIcons')
   })
 })
 
-describe('RailFooter (LinkedIn-style right-rail footer)', () => {
-  it('renders the compact link cloud and copyright line, only from its breakpoint up', () => {
+describe('RailFooter (compact right-rail footer)', () => {
+  it('shows a few key links, then every link behind a native "More" disclosure, social icons and the bottom line', () => {
     const { container } = render(<RailFooter visibleFrom="lg" />)
-    const footer = container.querySelector('footer')
+    const footer = container.querySelector('footer') as HTMLElement
     expect(footer).toHaveAttribute('data-rail-footer', 'lg')
     expect(footer).toHaveClass('hidden', 'lg:block', 'sticky', 'bottom-0')
-    expect(within(footer as HTMLElement).getByRole('link', { name: 'About' })).toHaveAttribute('href', '/about')
-    expect(within(footer as HTMLElement).getByText('Sea N Shore')).toBeInTheDocument()
-    expect(within(footer as HTMLElement).getByRole('link', { name: 'Refunds & cancellation' })).toHaveAttribute('href', '/refunds')
-    expect(within(footer as HTMLElement).getByRole('link', { name: 'Contact us' })).toHaveAttribute('href', '/contact')
-    expect(within(footer as HTMLElement).getByText('Sea N Shore is operated by Beaufort Marine Services LLP · Navi Mumbai, India')).toBeInTheDocument()
+    expect(footer).not.toHaveClass('bg-mist-50')
+
+    expect(railKeyLinks().map((link) => link.label)).toEqual(['Help', 'Terms', 'Privacy Policy', 'Contact us', 'Pricing'])
+    const nav = within(footer).getByRole('navigation', { name: 'Footer' })
+    const keyList = nav.querySelector('ul') as HTMLElement
+    expect(within(keyList).getAllByRole('link').map((link) => link.getAttribute('href'))).toEqual(['/help', '/terms', '/privacy', '/contact', '/pricing'])
+
+    const more = nav.querySelector('details') as HTMLElement
+    expect(more).not.toHaveAttribute('open')
+    const summary = more.querySelector('summary') as HTMLElement
+    expect(summary).toHaveTextContent('More')
+    expect(summary.querySelector('svg')).toHaveClass('group-open/more:rotate-180')
+    expect(within(more).getAllByRole('heading', { hidden: true }).map((heading) => heading.textContent)).toEqual(['Product', 'Company', 'Help & legal'])
+    for (const link of ALL_LINKS) {
+      expect(within(more).getByRole('link', { name: link.label, hidden: true })).toHaveAttribute('href', link.href)
+    }
+
+    expectSocialIcons(footer)
+    expect(within(footer).getByText(BOTTOM_LINE)).toBeInTheDocument()
+    expect(within(footer).queryByText(/is operated by/)).not.toBeInTheDocument()
   })
 
   it('defaults to the xl breakpoint used by the home feed rail', () => {

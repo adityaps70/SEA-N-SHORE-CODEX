@@ -18,10 +18,11 @@ vi.mock('@/lib/env', () => ({
 import Home, { metadata } from './page'
 
 const SEEDED_PRICES = [
-  { planCode: 'creator_pro', interval: 'month', amountMinor: 10_000, currency: 'INR', active: true },
-  { planCode: 'creator_pro', interval: 'year', amountMinor: 100_000, currency: 'INR', active: true },
-  { planCode: 'organization_pro', interval: 'month', amountMinor: 200_000, currency: 'INR', active: true },
-  { planCode: 'organization_pro', interval: 'year', amountMinor: 2_000_000, currency: 'INR', active: true },
+  { planCode: 'creator_pro', interval: 'month', amountMinor: 9_900, currency: 'INR', active: true },
+  { planCode: 'creator_pro', interval: 'year', amountMinor: 99_900, currency: 'INR', active: true },
+  { planCode: 'organization_pro', interval: 'month', amountMinor: 199_900, currency: 'INR', active: true },
+  { planCode: 'organization_pro', interval: 'half_year', amountMinor: 1_000_000, currency: 'INR', active: true },
+  { planCode: 'organization_pro', interval: 'year', amountMinor: 1_499_900, currency: 'INR', active: true },
 ]
 
 async function renderHome() {
@@ -72,7 +73,7 @@ describe('public landing page', () => {
 
     const signIn = screen.getByRole('group', { name: 'Sign in to Sea N Shore' })
     expect(within(signIn).getByRole('link', { name: /Continue with Google/ })).toHaveAttribute('href', '/auth/google/start?intent=sign-in')
-    expect(within(signIn).getByRole('link', { name: /Continue with mobile number/ })).toHaveAttribute('href', '/auth/phone?intent=sign-in')
+    expect(within(signIn).queryByRole('link', { name: /Continue with mobile number/ })).not.toBeInTheDocument()
     expect(within(signIn).getByRole('link', { name: /Sign in with email/ })).toHaveAttribute('href', '/auth/sign-in')
     expect(within(signIn).getByRole('link', { name: /Join now — it’s free/ })).toHaveAttribute('href', '/auth/sign-up')
     expect(within(signIn).getByRole('link', { name: 'User Agreement' })).toHaveAttribute('href', '/terms')
@@ -89,7 +90,7 @@ describe('public landing page', () => {
     await renderHome()
 
     expect(screen.queryByRole('link', { name: /Continue with Google/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Continue with mobile number/ })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /Continue with mobile number/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/Google account/)).not.toBeInTheDocument()
   })
 
@@ -139,10 +140,18 @@ describe('public landing page', () => {
   it('shows plan prices from the price list', async () => {
     await renderHome()
     const pricing = document.getElementById('pricing') as HTMLElement
-    expect(within(pricing).getByText('₹100')).toBeInTheDocument()
-    expect(within(pricing).getByText('or ₹1,000 a year')).toBeInTheDocument()
-    expect(within(pricing).getByText('₹2,000')).toBeInTheDocument()
-    expect(within(pricing).getByText('or ₹20,000 a year')).toBeInTheDocument()
+    expect(within(pricing).getByText('₹99')).toBeInTheDocument()
+    expect(within(pricing).getByText('or ₹999 a year')).toBeInTheDocument()
+    expect(within(pricing).getByText('₹1,999')).toBeInTheDocument()
+    expect(within(pricing).getByText('or ₹10,000 per 6 months · ₹14,999 a year')).toBeInTheDocument()
+  })
+
+  it('shows the free-trial badge on both paid plans', async () => {
+    await renderHome()
+    const pricing = document.getElementById('pricing') as HTMLElement
+    expect(within(pricing).getByText('3 months free')).toHaveClass('trial-badge')
+    expect(within(pricing).getByText('2 months free')).toHaveClass('trial-badge')
+    expect(within(pricing).getAllByText(/months free/)).toHaveLength(2)
   })
 
   it('falls back to "See pricing" when prices cannot be loaded', async () => {
@@ -150,7 +159,7 @@ describe('public landing page', () => {
     await renderHome()
     const pricing = document.getElementById('pricing') as HTMLElement
     expect(within(pricing).getAllByText('See pricing')).toHaveLength(2)
-    expect(within(pricing).queryByText('₹100')).not.toBeInTheDocument()
+    expect(within(pricing).queryByText('₹99')).not.toBeInTheDocument()
   })
 
   it('renders the FAQ as an accessible accordion before the final call to action', async () => {
@@ -173,11 +182,21 @@ describe('public landing page', () => {
     await renderHome()
     const footer = screen.getByRole('contentinfo')
     const hrefs = within(footer).getAllByRole('link').map((link) => link.getAttribute('href'))
-    for (const href of ['/contact', '/terms', '/privacy', '/refunds', '/shipping', '/pricing', '/about', '/help', '/accessibility', '/newsletter', '#faq']) {
+    for (const href of ['/jobs', '/learn', '/events', '/community', '/pricing', '/about', '/contact', '/newsletter', '/help', '/accessibility', '/terms', '/privacy', '/refunds', '/shipping', '/copyright', '#faq', '#organizations', '#partners']) {
       expect(hrefs).toContain(href)
     }
+    expect(hrefs).not.toContain('/settings#your-data')
     expect(within(footer).getByRole('link', { name: 'info@beaufortmarine.in' })).toHaveAttribute('href', 'mailto:info@beaufortmarine.in')
-    expect(within(footer).getByRole('link', { name: /Instagram/ })).toHaveAttribute('href', 'https://www.instagram.com/seaandshore.in')
+    const social = within(footer).getByRole('list', { name: 'Sea N Shore on social media' })
+    expect(within(social).getAllByRole('link').map((link) => link.getAttribute('aria-label'))).toEqual(['Instagram (opens in a new tab)', 'Facebook (opens in a new tab)', 'X (opens in a new tab)'])
+    const instagram = within(footer).getByRole('link', { name: 'Instagram (opens in a new tab)' })
+    expect(instagram).toHaveAttribute('href', 'https://www.instagram.com/seaandshore.in')
+    expect(instagram).toHaveAttribute('target', '_blank')
+    expect(instagram).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(instagram.querySelector('svg')).toBeInTheDocument()
+    expect(within(footer).getByText(`© ${new Date().getFullYear()} Sea N Shore · operated by Beaufort Marine Services LLP, Navi Mumbai, India`)).toBeInTheDocument()
+    expect(within(footer).getByText(/^Photos: Unsplash/)).toHaveClass('credits')
+    expect(within(footer).queryByText(/All rights reserved/)).not.toBeInTheDocument()
     expect(within(footer).getByRole('img', { name: 'Sea N Shore' })).toHaveAttribute('src', '/brand/sea-n-shore-lockup-white.webp')
   })
 
@@ -222,7 +241,12 @@ describe('landing page on phones (below 768px)', () => {
     const strip = within(partners).getByRole('list', { name: 'Maritime companies on Sea N Shore' })
     expect(strip).toHaveClass('pstrip', 'swipe')
     expect(within(strip).getAllByRole('listitem').length).toBeGreaterThanOrEqual(6)
-    expect(within(strip).getByRole('img', { name: 'Wallem' })).toBeInTheDocument()
+    // A verified logo is a link to the company's website; the image itself is decorative inside it.
+    const wallem = within(strip).getByRole('link', { name: 'Visit Wallem website' })
+    expect(wallem).toHaveAttribute('href', 'https://www.wallem.com/')
+    expect(wallem).toHaveAttribute('target', '_blank')
+    expect(wallem).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(wallem.querySelector('img')).toHaveAttribute('src', '/landing/logos/c_wallem.svg')
 
     const seeAll = within(partners).getByRole('link', { name: /See all 40\+ partners/ })
     expect(seeAll).toHaveClass('pall-open')
@@ -234,7 +258,9 @@ describe('landing page on phones (below 768px)', () => {
     for (const title of ['Partners', 'Global partners', 'Companies hiring']) {
       expect(within(all).getByRole('heading', { level: 3, name: title })).toBeInTheDocument()
     }
-    expect(within(all).getByRole('img', { name: 'Beaufort Marine Services LLP' })).toBeInTheDocument()
+    expect(within(all).getByRole('link', { name: 'Visit Beaufort Marine Services LLP website' })).toHaveAttribute('href', 'https://www.beaufortmarine.in/')
+    // Logos without a verified website are plain images, never a broken link.
+    expect(all.querySelector('img[src="/landing/logos/c_jataj.webp"]')?.closest('a')).toBeNull()
     expect(within(all).getByText('Nordships Maritime')).toBeInTheDocument()
     expect(within(all).getByRole('link', { name: 'Show fewer partners' })).toHaveAttribute('href', '#partners')
   })
@@ -262,14 +288,14 @@ describe('landing page on phones (below 768px)', () => {
     const groups = within(footer).getByRole('navigation', { name: 'Footer links' })
     expect(groups).toHaveClass('fgroups')
     const details = groups.querySelectorAll('details')
-    expect([...details].map((item) => item.querySelector('summary')?.textContent)).toEqual(['Platform', 'Company', 'Legal'])
+    expect([...details].map((item) => item.querySelector('summary')?.textContent)).toEqual(['Product', 'Company', 'Help & legal'])
     for (const item of details) expect(item).not.toHaveAttribute('open')
     const hrefs = within(groups).getAllByRole('link', { hidden: true }).map((link) => link.getAttribute('href'))
-    for (const href of ['/pricing', '/about', '/help', '/contact', '/terms', '/privacy', '/refunds', '/shipping', '/copyright', '/accessibility', '#faq']) {
+    for (const href of ['/jobs', '/learn', '/events', '/community', '/pricing', '/about', '/contact', '/newsletter', '/help', '/accessibility', '/terms', '/privacy', '/refunds', '/shipping', '/copyright', '#faq', '#organizations', '#partners']) {
       expect(hrefs).toContain(href)
     }
     // Desktop columns are unchanged and marked so phones can hide them.
-    for (const name of ['Platform', 'Company', 'Legal']) {
+    for (const name of ['Product', 'Company', 'Help & legal']) {
       expect(within(footer).getByRole('navigation', { name })).toHaveClass('fnav')
     }
     expect(within(footer).getByRole('link', { name: 'info@beaufortmarine.in' }).closest('.fnav')).toBeNull()

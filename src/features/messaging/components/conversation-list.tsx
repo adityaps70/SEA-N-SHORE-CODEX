@@ -114,6 +114,7 @@ export function ConversationList({
                 >
                   {item.otherAvatarUrl ? (
                     <MediaImage
+                      avatar
                       src={item.otherAvatarUrl}
                       alt=""
                       width={56}

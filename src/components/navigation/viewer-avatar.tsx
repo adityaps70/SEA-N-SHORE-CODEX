@@ -31,6 +31,7 @@ export function ViewerAvatar({ viewer, className = 'size-8' }: { viewer: HeaderV
     const px = avatarPx(className, 32)
     return (
       <MediaImage
+        avatar
         src={viewer.avatarUrl}
         alt=""
         width={px}

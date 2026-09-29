@@ -12,6 +12,8 @@ export type NetworkNotificationType =
   | 'comment_mention'
   /** An event the member registered for was cancelled because its organiser deleted their account. */
   | 'event_cancelled'
+  /** The member's (or their organization's) free Pro trial ends in 7 days / tomorrow. */
+  | 'plan_trial_ending'
 
 export type NotificationActor = {
   id: string

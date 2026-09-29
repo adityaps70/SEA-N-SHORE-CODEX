@@ -181,7 +181,7 @@ export function SendPostDialog({
                           />
                           <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
                             {recipient.avatarUrl ? (
-                              <MediaImage src={recipient.avatarUrl} alt="" fill sizes="40px" className="object-cover" fallback={initials(recipient.fullName)} />
+                              <MediaImage avatar src={recipient.avatarUrl} alt="" fill sizes="40px" className="object-cover" fallback={initials(recipient.fullName)} />
                             ) : initials(recipient.fullName)}
                           </span>
                           <span className="min-w-0 flex-1">

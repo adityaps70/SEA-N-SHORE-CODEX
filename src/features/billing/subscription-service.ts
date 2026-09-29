@@ -23,12 +23,13 @@ import {
   type CashfreeSubscriptionsClient,
 } from './cashfree-subscriptions'
 import { syncPlanContentVisibility } from './plan-visibility'
-import { PLAN_LABELS, planForSubject, type BillingInterval, type BillingSubject } from './plans'
+import { INTERVAL_LABELS, PLAN_LABELS, planForSubject, type BillingInterval, type BillingSubject } from './plans'
 import { applyCancellation, applyMandatePayment, applyMandateUpdate, expireAllLapsedAccess } from './subscription-ledger'
 import { subscriptionRepository, type SubscriptionRepository } from './subscription-repository'
 import { createSqlBillingStore } from './subscription-store'
-import { CLOSED_CHECKOUT_STATUSES, type BillingStore, type CheckoutRecord, type LedgerFollowUp, type LedgerResult } from './subscription-types'
+import { CLOSED_CHECKOUT_STATUSES, TRIAL_BILLING_PROVIDER, type BillingStore, type CheckoutRecord, type LedgerFollowUp, type LedgerResult } from './subscription-types'
 import { parseSubscriptionWebhook } from './subscription-webhook'
+import { runTrialSweep } from './trial-service'
 
 export class BillingNotConfiguredError extends Error {
   constructor() { super('billing_not_configured'); this.name = 'BillingNotConfiguredError' }
@@ -115,6 +116,8 @@ export function createSubscriptionService(deps: {
   log?: (message: string, details?: Record<string, unknown>) => void
   /** Hides / restores the owner's jobs, events and courses after a plan change (null = everyone). */
   syncVisibility?: (subject: BillingSubject | null) => Promise<unknown>
+  /** Closes ended free trials and sends their reminders (trial-service.ts). */
+  trialSweep?: (now: Date) => Promise<{ closed: number; reminders: number; failures: number }>
 } = {}) {
   const loadConfig = deps.loadConfig ?? (() => loadCashfreeConfig())
   const createClient = deps.createClient ?? ((config: CashfreeConfig) => createCashfreeSubscriptionsClient(config))
@@ -129,6 +132,7 @@ export function createSubscriptionService(deps: {
   const newId = deps.newId ?? randomUUID
   const log = deps.log ?? logBillingEvent
   const syncVisibility = deps.syncVisibility ?? ((subject: BillingSubject | null) => syncPlanContentVisibility(subject))
+  const trialSweep = deps.trialSweep ?? ((at: Date) => runTrialSweep(at))
 
   /**
    * Plan-gated items follow the plan: hidden when it ends, back when it is renewed. The
@@ -168,7 +172,7 @@ export function createSubscriptionService(deps: {
     if (price.providerPlanId === planId && price.providerEnvironment === config.environment) return planId
     await client.createPlan({
       planId,
-      name: `${PLAN_LABELS[price.planCode]} ${price.interval === 'year' ? 'yearly' : 'monthly'}`,
+      name: `${PLAN_LABELS[price.planCode]} ${INTERVAL_LABELS[price.interval].adjective.toLowerCase()}`,
       amountMinor: price.amountMinor,
       interval: price.interval,
       note: `Sea N Shore ${PLAN_LABELS[price.planCode]}`,
@@ -231,6 +235,9 @@ export function createSubscriptionService(deps: {
       const cancelledThrough = access.cancelAtPeriodEnd ? parseTime(access.periodEndsAt) : null
       const carryOver = paidThrough ?? cancelledThrough
       if (carryOver && carryOver.getTime() - at.getTime() > SCHEDULED_START_MIN_MS) startsAt = carryOver
+      // A free trial: the first charge is the day the trial ends, never earlier. When the trial has
+      // less than the pre-debit notice period left, the charge waits that period out instead.
+      if (access.billingProvider === TRIAL_BILLING_PROVIDER && carryOver && !startsAt) startsAt = new Date(at.getTime() + SCHEDULED_START_MIN_MS)
       replacesCheckoutId = checkout?.id ?? null
     }
 
@@ -281,7 +288,7 @@ export function createSubscriptionService(deps: {
         returnUrl: returnUrlFor(siteUrl(), created.id),
         firstChargeAt: startsAt,
         paymentMethods: paymentMethods(),
-        note: `${PLAN_LABELS[plan]} (${input.interval === 'year' ? 'yearly' : 'monthly'})${input.label ? ` for ${input.label}` : ''}`,
+        note: `${PLAN_LABELS[plan]} (${INTERVAL_LABELS[input.interval].adjective.toLowerCase()})${input.label ? ` for ${input.label}` : ''}`,
         tags: { sns_checkout_id: created.id, sns_plan: plan, sns_interval: input.interval },
       })
       if (!subscription.sessionId) throw new PaymentProviderError('provider_response_invalid')
@@ -464,8 +471,13 @@ export function createSubscriptionService(deps: {
     const expired = await transaction((tx) => expireAllLapsedAccess(storeFor(tx), at))
     // Every owner at once: covers plans that ended by date, admin changes and missed webhooks.
     await syncContent(null)
+    // Free trials: close the records of trials that ended, remind the ones ending soon.
+    const trials = await trialSweep(at).catch((error: unknown) => {
+      log('billing_trial_sweep_failed', { message: error instanceof Error ? error.message : null })
+      return { closed: 0, reminders: 0, failures: 1 }
+    })
     const config = await loadConfig()
-    const summary = { expired, reconciled: 0, paymentsApplied: 0, chargesRaised: 0, failures: 0, configured: Boolean(config) }
+    const summary = { expired, trialsClosed: trials.closed, trialReminders: trials.reminders, reconciled: 0, paymentsApplied: 0, chargesRaised: 0, failures: trials.failures, configured: Boolean(config) }
     if (!config) return summary
     const client = createClient(config)
 

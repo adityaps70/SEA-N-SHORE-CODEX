@@ -3,7 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { Camera, Trash2 } from 'lucide-react'
 import { startTransition, useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
-import { downscaleImage } from '@/lib/images/downscale-image'
+import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
+import { downscaleImage, isDownscalableImage } from '@/lib/images/downscale-image'
 import {
   removeAvatarAction,
   removeCoverAction,
@@ -13,6 +14,12 @@ import {
 } from '../profile-media-actions'
 
 const initialState: ProfileMediaActionState = {}
+
+/** Profile photos are round; covers are the 4:1 banner (1584 × 396) the app recommends. */
+const CROP: Record<'avatar' | 'cover', { shape: 'circle' | 'rect'; aspect: number; title: string }> = {
+  avatar: { shape: 'circle', aspect: 1, title: 'Adjust your profile photo' },
+  cover: { shape: 'rect', aspect: 4, title: 'Adjust your cover photo' },
+}
 const subscribeToHydration = () => () => {}
 const getHydratedSnapshot = () => true
 const getServerHydratedSnapshot = () => false
@@ -31,6 +38,7 @@ export function ProfileMediaControls({
   const [removeError, setRemoveError] = useState('')
   const [removed, setRemoved] = useState(false)
   const [removing, startRemoving] = useTransition()
+  const [cropping, setCropping] = useState<File | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const label = kind === 'avatar' ? 'profile photo' : 'cover photo'
   const hydrated = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerHydratedSnapshot)
@@ -52,6 +60,25 @@ export function ProfileMediaControls({
     const formData = new FormData()
     formData.set('image', image, image.name)
     startTransition(() => formAction(formData))
+  }
+
+  /** A photo the browser can re-encode is framed in the crop dialog first; a GIF is uploaded as it is. */
+  function pickImage(picked: File) {
+    if (isDownscalableImage(picked)) {
+      setCropping(picked)
+      return
+    }
+    void submitImage(picked)
+  }
+
+  function cancelCrop() {
+    setCropping(null)
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
+  function saveCrop(cropped: File) {
+    setCropping(null)
+    void submitImage(cropped)
   }
 
   function removeImage() {
@@ -85,7 +112,7 @@ export function ProfileMediaControls({
             const picked = event.currentTarget.files?.[0]
             if (picked) {
               setRemoved(false)
-              void submitImage(picked)
+              pickImage(picked)
             }
           }}
         />
@@ -121,6 +148,17 @@ export function ProfileMediaControls({
         <span role="alert" className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 shadow-sm">
           {error}
         </span>
+      ) : null}
+
+      {cropping ? (
+        <ImageCropDialog
+          file={cropping}
+          shape={CROP[kind].shape}
+          aspect={CROP[kind].aspect}
+          title={CROP[kind].title}
+          onCancel={cancelCrop}
+          onSave={saveCrop}
+        />
       ) : null}
     </div>
   )

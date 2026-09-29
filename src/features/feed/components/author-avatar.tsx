@@ -40,6 +40,7 @@ export function AuthorAvatarLink({ author, className, loading = 'lazy' }: {
     >
       {author.avatarUrl ? (
         <MediaImage
+          avatar
           src={author.avatarUrl}
           alt={`${author.fullName}'s profile photo`}
           fill

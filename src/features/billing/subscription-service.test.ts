@@ -81,8 +81,10 @@ function setup(options: { configured?: boolean; phone?: string | null; email?: s
   let ids = 0
   const log = vi.fn()
   const syncVisibility = vi.fn(async () => ({ hidden: 0, restored: 0 }))
+  const trialSweep = vi.fn(async () => ({ closed: 0, reminders: 0, failures: 0 }))
   const service = createSubscriptionService({
     syncVisibility,
+    trialSweep,
     loadConfig: async () => (options.configured === false ? null : config),
     createClient: () => client,
     repository: repository as unknown as SubscriptionRepository,
@@ -99,7 +101,7 @@ function setup(options: { configured?: boolean; phone?: string | null; email?: s
     newId: () => `0f7e5b1c-1111-4111-8111-${String(++ids).padStart(12, '0')}`,
     log,
   })
-  return { service, memory, client, repository, prices, log, syncVisibility }
+  return { service, memory, client, repository, prices, log, syncVisibility, trialSweep }
 }
 
 function signed(body: unknown, secret = config.clientSecret) {
@@ -183,6 +185,31 @@ describe('starting auto-pay', () => {
     expect(started.startsAt).toBe('2026-10-20T00:00:00.000Z')
     expect((client.createSubscription as ReturnType<typeof vi.fn>).mock.calls[0]![0].firstChargeAt).toEqual(new Date('2026-10-20T00:00:00.000Z'))
     expect(memory.checkouts.get(started.checkoutId)?.replacesCheckoutId).toBe(checkout.id)
+  })
+
+  it('schedules the first charge for the day a free trial ends, and never before', async () => {
+    const { service, memory, client } = setup()
+    memory.seedAccess({ subject, planCode: 'creator_pro', status: 'trialing', billingProvider: 'trial', providerSubscriptionId: 'trial_t1', periodStartedAt: NOW.toISOString(), periodEndsAt: '2027-01-01T06:00:00.000Z', cancelAtPeriodEnd: false })
+    const started = await service.startCheckout({ subject, actor: { id: profileId, email: 'meera@example.com' }, interval: 'year' })
+    expect(started.startsAt).toBe('2027-01-01T06:00:00.000Z')
+    expect((client.createSubscription as ReturnType<typeof vi.fn>).mock.calls[0]![0].firstChargeAt).toEqual(new Date('2027-01-01T06:00:00.000Z'))
+    expect(memory.checkouts.get(started.checkoutId)?.replacesCheckoutId).toBeNull()
+
+    // With less than the pre-debit notice left, the charge waits that notice out instead of happening now.
+    const late = setup()
+    late.memory.seedAccess({ subject, planCode: 'creator_pro', status: 'trialing', billingProvider: 'trial', providerSubscriptionId: 'trial_t2', periodStartedAt: NOW.toISOString(), periodEndsAt: new Date(NOW.getTime() + 2 * 60 * 60_000).toISOString(), cancelAtPeriodEnd: false })
+    const soon = await late.service.startCheckout({ subject, actor: { id: profileId, email: 'meera@example.com' }, interval: 'month' })
+    expect(Date.parse(soon.startsAt!)).toBe(NOW.getTime() + 26 * 60 * 60_000)
+  })
+
+  it('sells the half-yearly Organization Pro price as a 6 × MONTH Cashfree plan', async () => {
+    const { service, client, prices } = setup()
+    const company = { kind: 'company' as const, companyId: '55555555-5555-4555-8555-555555555555' }
+    prices.push(testPrice({ id: '66666666-6666-4666-8666-666666666666', planCode: 'organization_pro', interval: 'half_year', amountMinor: 1000000 }))
+    const started = await service.startCheckout({ subject: company, actor: { id: profileId, email: 'meera@example.com' }, interval: 'half_year' })
+    expect(started).toMatchObject({ amountMinor: 1000000, interval: 'half_year' })
+    expect(client.createPlan).toHaveBeenCalledWith(expect.objectContaining({ interval: 'half_year', amountMinor: 1000000, name: 'Organization Pro half-yearly' }))
+    expect((client.createSubscription as ReturnType<typeof vi.fn>).mock.calls[0]![0].note).toBe('Organization Pro (half-yearly)')
   })
 
   it('marks the mandate failed and explains when Cashfree refuses it', async () => {
@@ -372,5 +399,13 @@ describe('billing job', () => {
     const summary = await service.runSweep()
     expect(summary.failures).toBe(2)
     expect(log).toHaveBeenCalledWith('billing_reconcile_failed', expect.any(Object))
+  })
+
+  it('runs the free-trial sweep every time and counts its failures without stopping', async () => {
+    const { service, trialSweep } = setup()
+    trialSweep.mockResolvedValueOnce({ closed: 2, reminders: 1, failures: 0 })
+    await expect(service.runSweep()).resolves.toMatchObject({ trialsClosed: 2, trialReminders: 1, failures: 0 })
+    trialSweep.mockRejectedValueOnce(new Error('db down'))
+    await expect(service.runSweep()).resolves.toMatchObject({ trialsClosed: 0, trialReminders: 0, failures: 1 })
   })
 })

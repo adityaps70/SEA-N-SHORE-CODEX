@@ -247,7 +247,7 @@ export default async function GlobalSearchPage({
           </div>
           {peopleResults.length ? (
             <>
-              <div className="grid gap-4 max-md:hidden sm:grid-cols-2 xl:grid-cols-3">{peopleResults.map((profile, index) => <div key={profile.id} className={resultItemClass(chip, index)}><NetworkProfileCard profile={profile} /></div>)}</div>
+              <div className="grid gap-4 max-md:hidden sm:grid-cols-2 xl:grid-cols-3">{peopleResults.map((profile, index) => <div key={profile.id} className={resultItemClass(chip, index)}><NetworkProfileCard profile={profile} actions="full" /></div>)}</div>
               {/* Phones: compact rows with one Connect / Message pill instead of the suggestion cards. */}
               <ul aria-label="People results" className={PHONE_RESULT_LIST_CLASS}>{peopleResults.map((profile, index) => <SearchPersonRow key={profile.id} profile={profile} className={resultItemClass(chip, index)} />)}</ul>
             </>

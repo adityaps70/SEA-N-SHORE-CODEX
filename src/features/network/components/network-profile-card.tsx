@@ -7,12 +7,17 @@ import { MapPin, Ship, X } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { NetworkProfile } from '../types'
 import { ConnectionPrimaryAction } from './connection-primary-action'
+import { PersonCardActions } from './person-card-actions'
 
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
 }
 
-export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
+/**
+ * `actions="full"` (search results): the whole action set of a network card — Connect /
+ * Pending / Accept / Message, Follow, View profile and a "…" menu — instead of one button.
+ */
+export function NetworkProfileCard({ profile, actions = 'primary' }: { profile: NetworkProfile; actions?: 'primary' | 'full' }) {
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
 
@@ -42,6 +47,7 @@ export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
       <div className="-mt-12 flex justify-center px-5 max-md:-mt-9 max-md:px-3">
         {profile.avatarUrl ? (
           <MediaImage
+            avatar
             src={profile.avatarUrl}
             alt={`${profile.fullName} profile`}
             width={96}
@@ -76,7 +82,9 @@ export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
         </div>
 
         <div className="mt-auto pt-5 max-md:pt-3">
-          <ConnectionPrimaryAction profileId={profile.id} initialRelationship={profile.relationship} />
+          {actions === 'full'
+            ? <PersonCardActions profileId={profile.id} slug={profile.slug} fullName={profile.fullName} initialRelationship={profile.relationship} />
+            : <ConnectionPrimaryAction profileId={profile.id} initialRelationship={profile.relationship} />}
         </div>
       </div>
     </Card>

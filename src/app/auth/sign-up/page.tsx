@@ -45,7 +45,7 @@ export default async function SignUpPage({
       ) : (
         <>
           <OAuthErrorNotice code={params.oauthError} />
-          {/* Phones: Google and mobile number first, then "or" and the email form. */}
+          {/* Phones: Google first (when enabled), then "or" and the email form. */}
           <AuthForm
             mode="sign-up"
             action={signUp}

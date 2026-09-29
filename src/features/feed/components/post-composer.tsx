@@ -96,7 +96,7 @@ function ProfileAvatar({ profile, size = 'size-12' }: { profile: ComposerProfile
   return (
     <div className={`relative grid ${size} shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100`}>
       {profile.avatarUrl ? (
-        <MediaImage src={profile.avatarUrl} alt={`${profile.fullName}'s profile photo`} fill sizes={avatarSizes(size)} className="object-cover" fallback={initials(profile.fullName)} />
+        <MediaImage avatar src={profile.avatarUrl} alt={`${profile.fullName}'s profile photo`} fill sizes={avatarSizes(size)} className="object-cover" fallback={initials(profile.fullName)} />
       ) : initials(profile.fullName)}
     </div>
   )

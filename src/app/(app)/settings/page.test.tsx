@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   getAccessContext: vi.fn(),
-  getAccountPhoneSummary: vi.fn(),
 }))
 
 vi.mock('@/features/account-export/components/data-export-panel', () => ({
@@ -15,16 +14,10 @@ vi.mock('@/features/account-deletion/components/delete-account-section', () => (
   DeleteAccountSection: () => <div>Delete account controls</div>,
 }))
 
-vi.mock('@/features/auth/components/account-phone-panel', () => ({
-  AccountPhonePanel: () => <div>Mobile number controls</div>,
-}))
-
-vi.mock('@/features/auth/phone-link-runtime', () => ({ getAccountPhoneSummary: mocks.getAccountPhoneSummary }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/access/server', () => ({ getAccessContext: mocks.getAccessContext }))
 
 import SettingsPage from './page'
-import { maskedPhoneNumber } from './settings-groups'
 
 async function renderSettings() {
   return render(await SettingsPage())
@@ -39,10 +32,6 @@ describe('SettingsPage', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'user-1' })
     mocks.getAccessContext.mockResolvedValue({ personalPlan: 'free' })
-    mocks.getAccountPhoneSummary.mockResolvedValue({
-      phones: [{ identityId: 'i-1', phoneNumber: '+918299044462', current: true, removable: true, removeBlockedReason: null }],
-      pendingPhoneNumber: null,
-    })
   })
   afterEach(() => cleanup())
 
@@ -53,7 +42,14 @@ describe('SettingsPage', () => {
     expect(screen.getByRole('heading', { name: 'Account & privacy' })).toBeInTheDocument()
     expect(screen.getByText('Data export controls')).toBeInTheDocument()
     expect(screen.getByText('Delete account controls')).toBeInTheDocument()
-    expect(screen.getByText('Mobile number controls')).toBeInTheDocument()
+  })
+
+  it('no longer shows or asks for a mobile number', async () => {
+    await renderSettings()
+
+    expect(document.getElementById('mobile-number')).toBeNull()
+    expect(screen.queryByText(/mobile number/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/Manage your account security, privacy, and permanent account actions/)).toBeInTheDocument()
   })
 
   it('lists My Activities under Account & privacy, now that the header has no More menu', async () => {
@@ -83,7 +79,7 @@ describe('SettingsPage', () => {
     expect(within(security as HTMLElement).getByText(/fresh password verification/)).toBeInTheDocument()
   })
 
-  it('shows phones a grouped list with every destination, the plan and a masked mobile number', async () => {
+  it('shows phones a grouped list with every destination and the plan', async () => {
     await renderSettings()
 
     const list = screen.getByRole('navigation', { name: 'Settings' })
@@ -103,7 +99,6 @@ describe('SettingsPage', () => {
       ['Verifications', '/settings/verifications'],
       ['Creator access', '/creator'],
       ['Organizations', '/organizations'],
-      ['Mobile number+91 ••••• 44462', '#mobile-number'],
       ['Password & Google sign-in', '/auth/forgot-password'],
       ['My Activities', '/activities'],
       ['Hidden posts', '/activities?tab=hidden'],
@@ -116,29 +111,22 @@ describe('SettingsPage', () => {
     expect(within(list).getByRole('link', { name: 'Delete account' })).toHaveClass('text-red-700')
 
     // Same-page panels the rows point at stay on the page (fully usable on phones).
-    for (const id of ['mobile-number', 'download-data', 'delete-account']) {
+    for (const id of ['download-data', 'delete-account']) {
       expect(document.getElementById(id)).not.toBeNull()
     }
     expect(document.getElementById('download-data')).toHaveTextContent('Data export controls')
     expect(document.getElementById('delete-account')).toHaveTextContent('Delete account controls')
   })
 
-  it('shows Creator Pro as the plan, "Add" without a mobile number, and still renders when the plan cannot load', async () => {
+  it('shows Creator Pro as the plan, and still renders when the plan cannot load', async () => {
     mocks.getAccessContext.mockResolvedValueOnce({ personalPlan: 'creator_pro' })
-    mocks.getAccountPhoneSummary.mockResolvedValueOnce({ phones: [], pendingPhoneNumber: null })
     await renderSettings()
     const list = screen.getByRole('navigation', { name: 'Settings' })
     expect(within(list).getByRole('link', { name: /Plan & billing/ })).toHaveTextContent('Creator Pro')
-    expect(within(list).getByRole('link', { name: /Mobile number/ })).toHaveTextContent('Add')
     cleanup()
 
     mocks.getAccessContext.mockRejectedValueOnce(new Error('db down'))
     await renderSettings()
     expect(within(screen.getByRole('navigation', { name: 'Settings' })).getByRole('link', { name: 'Plan & billing' })).toBeInTheDocument()
-  })
-
-  it('masks mobile numbers for the list', () => {
-    expect(maskedPhoneNumber('+918299044462')).toBe('+91 ••••• 44462')
-    expect(maskedPhoneNumber('+6591234567')).toBe('•••• 4567')
   })
 })

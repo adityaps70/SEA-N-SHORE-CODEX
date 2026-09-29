@@ -5,8 +5,8 @@ import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel, formatAdminDate, type AdminChipTone } from '@/features/admin/components/admin-ui'
 import { subscriptionChargeMode } from '@/features/billing/billing-config'
 import { paymentMethodLabel } from '@/features/billing/billing-view'
-import { AdminCancelSubscription, PlanPriceEditor } from '@/features/billing/components/admin-billing-controls'
-import { INTERVAL_LABELS, PLAN_LABELS, PAID_PLAN_CODES, BILLING_INTERVALS, formatRupees } from '@/features/billing/plans'
+import { AdminCancelSubscription, AdminTrialControls, PlanPriceEditor } from '@/features/billing/components/admin-billing-controls'
+import { INTERVAL_LABELS, PLAN_LABELS, PAID_PLAN_CODES, BILLING_INTERVALS, TRIAL_MONTHS, formatRupees, trialDaysLeft } from '@/features/billing/plans'
 import { subscriptionRepository } from '@/features/billing/subscription-repository'
 import { subscriptionService } from '@/features/billing/subscription-service'
 import { minorToPriceInput } from '@/features/payments/currency'
@@ -19,6 +19,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>
 const STATUS_FILTERS = [
   { value: null, label: 'All' },
   { value: 'active', label: 'Active' },
+  { value: 'trialing', label: 'On trial' },
   { value: 'past_due', label: 'Payment failed' },
   { value: 'cancelled', label: 'Cancelled' },
   { value: 'expired', label: 'Ended' },
@@ -47,14 +48,17 @@ export default async function AdminBillingPage({ searchParams }: { searchParams?
   }
   const params = (await searchParams) ?? {}
   const status = first(params.status) ?? null
-  const [prices, history, subscriptions, payments, configuration] = await Promise.all([
+  const [prices, history, subscriptions, payments, configuration, trials] = await Promise.all([
     subscriptionRepository.listActivePrices(),
     subscriptionRepository.listPriceHistory(40),
     subscriptionRepository.listSubscriptionsForAdmin({ status, limit: 100 }),
     subscriptionRepository.listRecentPaymentsForAdmin(50),
     subscriptionService.isConfigured().catch(() => ({ configured: false as const, environment: null })),
+    subscriptionRepository.listTrialsForAdmin(200).catch(() => []),
   ])
   const chargeMode = subscriptionChargeMode()
+  const now = new Date()
+  const runningTrials = trials.filter((row) => row.access?.status === 'trialing' && !row.trial.endedAt && Date.parse(row.trial.endsAt) > now.getTime())
 
   return (
     <div className="space-y-6">
@@ -78,7 +82,7 @@ export default async function AdminBillingPage({ searchParams }: { searchParams?
       <AdminPanel>
         <div className="border-b border-mist-100 px-4 py-3">
           <h3 className="font-semibold text-navy-950">Prices</h3>
-          <p className="text-sm text-muted">Amounts in rupees, charged every month or year until the subscriber cancels.</p>
+          <p className="text-sm text-muted">Amounts in rupees, charged every month, six months or year until the subscriber cancels. Creator Pro starts with {TRIAL_MONTHS.creator_pro} months free, Organization Pro with {TRIAL_MONTHS.organization_pro}.</p>
         </div>
         <ul className="divide-y divide-mist-100">
           {PAID_PLAN_CODES.flatMap((plan) => BILLING_INTERVALS.map((interval) => {
@@ -115,6 +119,53 @@ export default async function AdminBillingPage({ searchParams }: { searchParams?
             </ul>
           </details>
         ) : null}
+      </AdminPanel>
+
+      <AdminPanel>
+        <div className="border-b border-mist-100 px-4 py-3">
+          <h3 className="font-semibold text-navy-950">Free trials</h3>
+          <p className="text-sm text-muted">{runningTrials.length} running. Every member and organization gets one trial, ever; extend or end a running one here.</p>
+        </div>
+        {trials.length ? (
+          <ul className="divide-y divide-mist-100" aria-label="Free trials">
+            {trials.map(({ trial, access, subjectName, subjectHref }) => {
+              const running = runningTrials.some((row) => row.trial.id === trial.id)
+              const outcome = running
+                ? { tone: 'info' as AdminChipTone, label: `Running · ${trialDaysLeft(now, new Date(trial.endsAt))} days left` }
+                : trial.endedReason === 'converted' || (access && access.billingProvider !== 'trial')
+                  ? { tone: 'success' as AdminChipTone, label: 'Converted to a paid plan' }
+                  : trial.endedReason === 'admin_ended'
+                    ? { tone: 'neutral' as AdminChipTone, label: 'Ended by the team' }
+                    : { tone: 'neutral' as AdminChipTone, label: 'Ended' }
+              return (
+                <li key={trial.id} className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-start">
+                  <div className="min-w-0">
+                    <Link href={subjectHref} className="font-semibold text-ocean-700 hover:underline">{subjectName}</Link>
+                    <p className="text-sm text-navy-800">{PLAN_LABELS[trial.planCode]} · {TRIAL_MONTHS[trial.planCode]}-month trial</p>
+                    <div className="mt-1"><AdminChip tone={outcome.tone}>{outcome.label}</AdminChip></div>
+                  </div>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <dt className="text-muted">Started</dt>
+                    <dd className="font-medium text-navy-950">{formatAdminDate(trial.startedAt)}</dd>
+                    <dt className="text-muted">{trial.endedAt && !running ? 'Ended' : 'Ends'}</dt>
+                    <dd className="font-medium text-navy-950">{formatAdminDate(trial.endedAt && !running ? trial.endedAt : trial.endsAt)}</dd>
+                    {trial.extendedAt ? (
+                      <>
+                        <dt className="text-muted">Extended</dt>
+                        <dd className="font-medium text-navy-950">{formatAdminDate(trial.extendedAt)}</dd>
+                      </>
+                    ) : null}
+                  </dl>
+                  <div className="lg:w-64">
+                    {running ? <AdminTrialControls trialId={trial.id} subjectName={subjectName} planLabel={PLAN_LABELS[trial.planCode]} endsOn={formatAdminDate(trial.endsAt)} /> : null}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        ) : (
+          <AdminEmptyState title="No free trials yet" description="Trials appear here as soon as a member or organization starts one." />
+        )}
       </AdminPanel>
 
       <section className="space-y-3">

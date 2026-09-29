@@ -136,7 +136,7 @@ export function AdminAvatar({ name, url, className = 'size-8' }: { name: string;
   if (url) {
     const px = avatarPx(className, 32)
     return (
-      <MediaImage src={url} alt="" width={px} height={px} sizes={avatarSizes(className, 32)} className={`${className} shrink-0 rounded-full bg-mist-100 object-cover`} fallback={fallback} />
+      <MediaImage avatar src={url} alt="" width={px} height={px} sizes={avatarSizes(className, 32)} className={`${className} shrink-0 rounded-full bg-mist-100 object-cover`} fallback={fallback} />
     )
   }
   return fallback

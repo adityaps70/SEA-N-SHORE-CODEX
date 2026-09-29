@@ -24,6 +24,7 @@ export function ApplicantAvatar({
   if (photoUrl) {
     return (
       <MediaImage
+        avatar
         src={photoUrl}
         alt={`Photo of ${name}`}
         width={px}

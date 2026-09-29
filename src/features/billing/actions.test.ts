@@ -87,7 +87,7 @@ describe('starting a plan checkout', () => {
   it('refuses restricted accounts and bad input', async () => {
     mocks.access = accessWith(null, true, false)
     await expect(startPlanCheckoutAction({ target: { kind: 'personal' }, interval: 'month' })).resolves.toMatchObject({ ok: false })
-    await expect(startPlanCheckoutAction({ target: { kind: 'personal' }, interval: 'week' as 'month' })).resolves.toEqual({ ok: false, error: 'Choose monthly or yearly, then try again.' })
+    await expect(startPlanCheckoutAction({ target: { kind: 'personal' }, interval: 'week' as 'month' })).resolves.toEqual({ ok: false, error: 'Choose monthly, half-yearly or yearly, then try again.' })
     expect(mocks.startCheckout).not.toHaveBeenCalled()
   })
 

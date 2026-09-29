@@ -120,7 +120,7 @@ export default async function PricingPage() {
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-7 text-muted marker:text-ocean-700">
           <li>Payments are processed securely by our payment gateway, Cashfree Payments.</li>
           <li>
-            Plans renew automatically each month or year. Cancel auto-renew any time in Settings → Membership &amp; billing; access continues until the end of the period you paid for.
+            Plans renew automatically each month, six months or year. Cancel auto-renew any time in Settings → Membership &amp; billing; access continues until the end of the period you paid for.
           </li>
           <li>
             Everything is delivered online, straight after the payment is confirmed. See the <TextLink href="/shipping">Shipping &amp; delivery policy</TextLink>.

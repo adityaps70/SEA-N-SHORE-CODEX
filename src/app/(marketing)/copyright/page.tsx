@@ -56,7 +56,6 @@ export default function CopyrightPage() {
 
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/terms" className="rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-navy-900">Read Terms</Link>
-          <Link href="/auth/sign-in" className="rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-semibold text-navy-950 hover:bg-mist-50">Sign in to report content</Link>
         </div>
       </section>
     </main>

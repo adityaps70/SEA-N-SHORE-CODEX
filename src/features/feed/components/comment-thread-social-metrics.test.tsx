@@ -105,7 +105,7 @@ describe('CommentThread social metrics', () => {
     const root = item(rootId)
     expect(root.queryByRole('button', { name: /report/i })).not.toBeInTheDocument()
     fireEvent.click(root.getByRole('button', { name: 'Comment actions' }))
-    fireEvent.click(root.getByRole('menuitem', { name: 'Report comment' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Report comment' }))
     expect(screen.getByRole('dialog', { name: 'Report comment' })).toBeInTheDocument()
   })
 

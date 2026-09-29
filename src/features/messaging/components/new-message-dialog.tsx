@@ -329,7 +329,7 @@ function NewMessageDialogPanel({
                     } ${available ? '' : 'cursor-not-allowed opacity-75'}`}
                   >
                     {recipient.avatarUrl ? (
-                      <MediaImage src={recipient.avatarUrl} alt="" width={40} height={40} sizes="40px" className="size-10 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={recipientInitials(recipient.name)} />
+                      <MediaImage avatar src={recipient.avatarUrl} alt="" width={40} height={40} sizes="40px" className="size-10 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={recipientInitials(recipient.name)} />
                     ) : recipientInitials(recipient.name)}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-navy-950">{recipient.name}</span>

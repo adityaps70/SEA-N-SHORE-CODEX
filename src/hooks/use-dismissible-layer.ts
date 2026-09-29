@@ -29,6 +29,11 @@ type DismissibleLayerOptions = {
   triggerRef?: RefObject<HTMLElement | null>
   /** Close when keyboard focus moves outside the layer (Tab away). Default true. */
   closeOnFocusOut?: boolean
+  /**
+   * Extra elements that count as inside the layer, for a panel rendered in a portal away from
+   * its trigger: a press or focus inside any of them does not dismiss.
+   */
+  within?: RefObject<HTMLElement | null>[]
 }
 
 function findTrigger(root: HTMLElement | null, triggerRef?: RefObject<HTMLElement | null>) {
@@ -55,10 +60,12 @@ export function useDismissibleLayer<T extends HTMLElement>(
   const pathname = usePathnameIfAvailable()
   const lastPathnameRef = useRef(pathname)
   const onDismissRef = useRef(onDismiss)
-  const { triggerRef, closeOnFocusOut = true } = options
+  const { triggerRef, closeOnFocusOut = true, within } = options
+  const withinRef = useRef(within)
 
   useEffect(() => {
     onDismissRef.current = onDismiss
+    withinRef.current = within
   })
 
   useEffect(() => {
@@ -72,9 +79,15 @@ export function useDismissibleLayer<T extends HTMLElement>(
       if ((event as CustomEvent<string>).detail !== layerId) dismiss('other-layer')
     }
 
-    function onPointerDown(event: PointerEvent) {
+    function inside(target: EventTarget | null) {
+      if (!(target instanceof Node)) return false
       const root = rootRef.current
-      if (root && event.target instanceof Node && !root.contains(event.target)) dismiss('outside')
+      if (root?.contains(target)) return true
+      return (withinRef.current ?? []).some((ref) => ref.current?.contains(target))
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      if (rootRef.current && !inside(event.target)) dismiss('outside')
     }
 
     function onKeyDown(event: KeyboardEvent) {
@@ -89,7 +102,7 @@ export function useDismissibleLayer<T extends HTMLElement>(
       const next = event.relatedTarget
       // relatedTarget is null when focus goes to a non-focusable area; the
       // pointerdown handler covers that case.
-      if (root && next instanceof Node && !root.contains(next)) dismiss('focus')
+      if (root && next instanceof Node && !inside(next)) dismiss('focus')
     }
 
     const root = rootRef.current

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseSearchChip, resultItemClass, searchChipHref } from './search-filters'
 
@@ -11,7 +11,17 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
-vi.mock('@/features/network/actions', () => ({ sendConnectionRequest: vi.fn(async () => ({ ok: true })), acceptConnectionRequest: vi.fn(async () => ({ ok: true })) }))
+vi.mock('@/features/network/actions', () => ({
+  sendConnectionRequest: vi.fn(async () => ({ ok: true })),
+  acceptConnectionRequest: vi.fn(async () => ({ ok: true })),
+  cancelConnectionRequest: vi.fn(async () => ({ ok: true })),
+  declineConnectionRequest: vi.fn(async () => ({ ok: true })),
+  removeConnection: vi.fn(async () => ({ ok: true })),
+  followProfile: vi.fn(async () => ({ ok: true })),
+  unfollowProfile: vi.fn(async () => ({ ok: true })),
+  blockProfile: vi.fn(async () => ({ ok: true })),
+}))
+vi.mock('@/features/moderation/components/report-content-button', () => ({ ReportContentButton: () => <div role="dialog" aria-label="Report profile" /> }))
 vi.mock('@/features/messaging/actions', () => ({ startDirectConversationAction: vi.fn() }))
 vi.mock('@/features/jobs/actions', () => ({ saveJob: vi.fn(), unsaveJob: vi.fn() }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: vi.fn(async () => ({ id: 'viewer-1' })) }))
@@ -21,7 +31,7 @@ vi.mock('@/features/jobs/queries', () => ({ getJobsDiscovery: mocks.getJobsDisco
 vi.mock('@/features/learning/marketplace-repository', () => ({ marketplaceRepository: { listPublishedCourses: mocks.listPublishedCourses } }))
 vi.mock('@/features/events/calendar-repository', () => ({ calendarEventRepository: { listDiscoverEvents: mocks.listDiscoverEvents } }))
 vi.mock('@/features/network/components/network-profile-card', () => ({
-  NetworkProfileCard: ({ profile }: { profile: { fullName: string } }) => <article>Person {profile.fullName}</article>,
+  NetworkProfileCard: ({ profile, actions }: { profile: { fullName: string }; actions?: string }) => <article data-actions={actions}>Person {profile.fullName}</article>,
 }))
 vi.mock('@/features/jobs/components/job-card', () => ({
   JobCard: ({ job }: { job: { title: string } }) => <article>Job {job.title}</article>,
@@ -97,7 +107,7 @@ describe('Global search on phones', () => {
     mocks.getNetworkHub.mockResolvedValue({
       profiles: [
         { id: 'p1', slug: 'vikram-rao', fullName: 'Vikram Rao', headline: 'Master Mariner · SIRE inspector', avatarUrl: null, relationship: { following: false, connection: { kind: 'none', connectionId: null } } },
-        { id: 'p2', slug: 'sana-iqbal', fullName: 'Sana Iqbal', headline: null, rank: 'Marine Superintendent', currentCompany: null, avatarUrl: null, relationship: { following: true, connection: { kind: 'connected', connectionId: 'c2' } } },
+        { id: 'p2', slug: 'sana-iqbal', fullName: 'Sana Iqbal', headline: null, rank: 'Marine Superintendent', currentCompany: 'Oceanic', location: 'Chennai', avatarUrl: null, relationship: { following: true, connection: { kind: 'connected', connectionId: 'c2' } } },
       ],
     })
     render(await GlobalSearchPage({ searchParams: Promise.resolve({ q: 'sire' }) }))
@@ -111,8 +121,17 @@ describe('Global search on phones', () => {
     expect(within(vikram).getByText('Master Mariner · SIRE inspector')).toBeInTheDocument()
     expect(within(vikram).getByRole('button', { name: 'Connect' })).toHaveClass('rounded-full', 'min-h-9')
     expect(within(vikram).queryByRole('button', { name: /Dismiss/ })).not.toBeInTheDocument()
-    expect(within(sana).getByText('Marine Superintendent')).toBeInTheDocument()
+    // The same actions as the network cards: a "…" with Follow, View profile, Report and Block.
+    fireEvent.click(within(vikram).getByRole('button', { name: 'More actions for Vikram Rao' }))
+    expect(screen.getByRole('menuitem', { name: 'Follow' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'View profile' })).toHaveAttribute('href', '/people/vikram-rao')
+    expect(screen.getByRole('menuitem', { name: 'Report' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Block' })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(within(sana).getByText('Marine Superintendent · Oceanic · Chennai')).toBeInTheDocument()
     expect(within(sana).getByRole('button', { name: 'Message' })).toHaveClass('rounded-full')
+    // Desktop cards carry the full action set too.
+    expect(screen.getByText('Person Vikram Rao').closest('article')).toHaveAttribute('data-actions', 'full')
 
     const organizations = screen.getByRole('list', { name: 'Organization results' })
     expect(within(organizations).getByRole('link', { name: /SIRE Marine/ })).toHaveAttribute('href', '/organizations/sire-marine')

@@ -16,9 +16,11 @@ const copyByType: Record<NetworkNotificationType, string> = {
   post_mention: 'mentioned you in a post',
   comment_mention: 'mentioned you in a comment',
   event_cancelled: 'cancelled an event you registered for',
+  plan_trial_ending: 'your free trial ends soon',
 }
 
 const EVENT_CANCELLED_MESSAGE = 'An event you registered for was cancelled because its organiser left Sea N Shore. Paid tickets are refunded in full.'
+export const PLAN_TRIAL_ENDING_MESSAGE = 'Your free Pro trial ends soon. Choose a plan to keep it — the first payment is only taken on the day the trial ends.'
 
 type NotificationRepository = Pick<ReturnType<typeof createNotificationRepository>, 'listRecent' | 'countUnread'>
   & Partial<Pick<ReturnType<typeof createNotificationRepository>, 'listPostPreviews'>>
@@ -68,6 +70,7 @@ function socialCopy(row: NotificationRow) {
 function destinationFor(row: NotificationRow, actor: ProfileSummary | null) {
   if (row.notification_type === 'connection_request') return '/network?tab=requests'
   if (row.notification_type === 'event_cancelled') return '/events/my'
+  if (row.notification_type === 'plan_trial_ending') return '/settings/billing'
   if (row.post_id) {
     const base = `/posts/${row.post_id}`
     return row.comment_id ? `${base}#comment-${row.comment_id}` : base
@@ -94,7 +97,11 @@ function mapNotifications(
       createdAt: row.created_at,
       readAt: row.read_at,
       actor,
-      message: row.notification_type === 'event_cancelled' ? EVENT_CANCELLED_MESSAGE : `${actorName} ${socialCopy(row)}.`,
+      message: row.notification_type === 'event_cancelled'
+        ? EVENT_CANCELLED_MESSAGE
+        : row.notification_type === 'plan_trial_ending'
+          ? PLAN_TRIAL_ENDING_MESSAGE
+          : `${actorName} ${socialCopy(row)}.`,
       destination: destinationFor(row, actor),
       postId: row.post_id,
       commentId: row.comment_id,

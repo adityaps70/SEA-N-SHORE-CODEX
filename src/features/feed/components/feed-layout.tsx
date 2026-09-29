@@ -24,9 +24,10 @@ export function FeedLayout({
   const completion = calculateProfileCompletion(profile, portfolioCompletion)
   return (
     <section className="grid gap-5 py-2 max-md:gap-0 max-md:py-0 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)_300px] xl:gap-6">
-      <aside className="hidden lg:block">
-        {/* Scrolls on its own when the rail is taller than the window, so Quick actions is never stuck below the fold. */}
-        <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pb-4 pr-1 [scrollbar-width:thin]">
+      <aside className="hidden bg-transparent lg:block">
+        {/* Scrolls on its own when the rail is taller than the window, so Quick actions is never stuck below the fold.
+            The scrollbar is hidden so the rail shows no grey track: the cards sit straight on the page background. */}
+        <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto bg-transparent pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <FeedLeftRail profile={profile} portfolioCompletion={portfolioCompletion} verified={verified} />
         </div>
       </aside>
@@ -42,8 +43,8 @@ export function FeedLayout({
         {children}
       </main>
 
-      <aside className="hidden xl:block">
-        <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto pb-4 pr-1">
+      <aside className="hidden bg-transparent xl:block">
+        <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto bg-transparent pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <FeedDiscoveryRail suggestions={suggestions} />
           <RailFooter visibleFrom="xl" />
         </div>

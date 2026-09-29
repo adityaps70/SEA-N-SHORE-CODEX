@@ -1,4 +1,5 @@
-import { Plus } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowRight, Plus } from 'lucide-react'
 import type { FaqItem } from './faq-data'
 
 /**
@@ -25,6 +26,14 @@ export function FaqAccordion({ items, idPrefix = 'faq' }: { items: FaqItem[]; id
             </span>
           </summary>
           <p className="px-5 pb-5 text-[15px] leading-7 text-navy-800 max-md:px-4 max-md:pb-4 max-md:text-base max-md:leading-6">{item.answer}</p>
+          {item.link ? (
+            <p className="-mt-2 px-5 pb-5 max-md:px-4 max-md:pb-4">
+              <Link href={item.link.href} className="inline-flex min-h-9 items-center gap-1.5 text-sm font-bold text-ocean-700 hover:text-navy-950 hover:underline">
+                {item.link.label}
+                <ArrowRight aria-hidden="true" className="size-4" />
+              </Link>
+            </p>
+          ) : null}
         </details>
       ))}
     </div>

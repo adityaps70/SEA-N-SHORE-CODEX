@@ -1,6 +1,7 @@
-import { INTERVAL_LABELS, PLAN_LABELS, formatRupees, yearlySaving, type BillingInterval, type PaidPlanCode } from './plans'
+import { BILLING_INTERVALS, INTERVAL_LABELS, PLAN_LABELS, TRIAL_MONTHS, formatRupees, trialDaysLeft, yearlySaving, type BillingInterval, type PaidPlanCode } from './plans'
 import type { SubjectBilling } from './subscription-repository'
-import type { PaymentRecord, PlanPrice } from './subscription-types'
+import { TRIAL_BILLING_PROVIDER, type PaymentRecord, type PlanPrice } from './subscription-types'
+import { trialEligibility } from './trials'
 
 /**
  * Turns the stored billing state into what the billing pages show, in plain words.
@@ -18,6 +19,8 @@ export type PlanBillingState =
   | 'cancelling'
   /** Given by the Sea N Shore team (no payment mandate). */
   | 'manual'
+  /** On the free trial: choose a plan before it ends; the first charge is the day it ends. */
+  | 'trialing'
 
 export type BillingHistoryRow = {
   id: string
@@ -32,7 +35,7 @@ export type PlanBillingView = {
   plan: PaidPlanCode
   planLabel: string
   configured: boolean
-  prices: { month: { id: string; amountMinor: number } | null; year: { id: string; amountMinor: number } | null }
+  prices: Record<BillingInterval, { id: string; amountMinor: number } | null>
   /** e.g. "Save ₹200.00 a year — 2 months free", when yearly is cheaper. */
   yearlySavingLabel: string | null
   state: PlanBillingState
@@ -54,6 +57,15 @@ export type PlanBillingView = {
   pending: { checkoutId: string; status: 'created' | 'pending_approval' | 'failed'; interval: BillingInterval; priceLabel: string; startsAt: string | null } | null
   /** When the last paid plan ended (for Free after a paid plan). */
   endedOn: string | null
+  trial: {
+    /** Months of free trial this plan offers. */
+    months: number
+    /** A free trial can be started now (never had one, no current plan). */
+    canStart: boolean
+    /** While the trial runs: when it ends and how many days are left. */
+    endsOn: string | null
+    daysLeft: number | null
+  }
   actions: {
     choosePlan: boolean
     /** When choosing now, the new plan starts on this date (end of the current one). */
@@ -91,7 +103,7 @@ function priceLabel(amountMinor: number, interval: BillingInterval) {
 
 /** "₹1,000.00 per month or ₹10,000.00 per year" from the active prices; null when none. */
 export function planPriceLine(prices: readonly PlanPrice[], plan: PaidPlanCode) {
-  const parts = (['month', 'year'] as const).flatMap((interval) => {
+  const parts = BILLING_INTERVALS.flatMap((interval) => {
     const price = prices.find((entry) => entry.planCode === plan && entry.interval === interval && entry.active)
     return price ? [priceLabel(price.amountMinor, interval)] : []
   })
@@ -136,6 +148,15 @@ export function buildPlanBillingView(input: {
 
   const { access, checkout } = billing
   const current = billing.accessIsCurrent ? access : null
+  const trialRecord = billing.trial ?? null
+  const trialRunning = current && current.billingProvider === TRIAL_BILLING_PROVIDER ? current : null
+  const trialEnds = trialRunning?.periodEndsAt ? new Date(trialRunning.periodEndsAt) : null
+  const trial: PlanBillingView['trial'] = {
+    months: TRIAL_MONTHS[plan],
+    canStart: trialEligibility({ trial: trialRecord, currentAccess: current }).eligible,
+    endsOn: trialEnds ? formatBillingDate(trialEnds.toISOString()) : null,
+    daysLeft: trialEnds ? trialDaysLeft(now, trialEnds) : null,
+  }
   const pendingSource = billing.pendingCheckout
   const pending = pendingSource && (pendingSource.status === 'created' || pendingSource.status === 'pending_approval' || pendingSource.status === 'failed')
     ? {
@@ -156,13 +177,14 @@ export function buildPlanBillingView(input: {
     plan,
     planLabel,
     configured: input.configured,
-    prices: {
-      month: month ? { id: month.id, amountMinor: month.amountMinor } : null,
-      year: year ? { id: year.id, amountMinor: year.amountMinor } : null,
-    },
+    prices: Object.fromEntries(BILLING_INTERVALS.map((interval) => {
+      const price = input.prices.find((entry) => entry.planCode === plan && entry.interval === interval && entry.active) ?? null
+      return [interval, price ? { id: price.id, amountMinor: price.amountMinor } : null]
+    })) as PlanBillingView['prices'],
     yearlySavingLabel,
     pending,
     history,
+    trial,
   }
 
   if (!current) {
@@ -181,6 +203,26 @@ export function buildPlanBillingView(input: {
   }
 
   const accessUntil = formatBillingDate(current.periodEndsAt)
+  if (trialRunning) {
+    const daysLeft = trial.daysLeft ?? 0
+    const whose = plan === 'organization_pro' ? 'This organization’s' : 'Your'
+    return {
+      ...base,
+      state: 'trialing',
+      statusLabel: `Free trial — ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`,
+      statusHelp: `${whose} ${trial.months}-month free trial of ${planLabel} ends on ${trial.endsOn}. Choose a plan before then to keep it: the first payment is taken on the day the trial ends, not before. If you do nothing, the account returns to the free plan and anything published with ${planLabel} is locked, not deleted.`,
+      current: { interval: null, priceLabel: 'Free trial', renewsOn: null, accessUntil, paidThrough: accessUntil, paymentMethod: null, autoRenew: false },
+      endedOn: null,
+      actions: {
+        choosePlan: true,
+        chooseStartsOn: accessUntil,
+        cancelAutoRenew: false,
+        switchToYearly: false,
+        resumeAutoRenew: false,
+        updatePaymentMethod: false,
+      },
+    }
+  }
   if (current.billingProvider !== 'cashfree' || !checkout) {
     return {
       ...base,

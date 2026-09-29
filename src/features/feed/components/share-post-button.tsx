@@ -1,14 +1,8 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useCallback, useRef, useState, useTransition } from 'react'
 import { ExternalLink, Link2, MessageSquareQuote, Repeat2, Send, Share2 } from 'lucide-react'
-import {
-  MobileSheetBackdrop,
-  MobileSheetCancel,
-  MobileSheetGrab,
-  SHEET_MENU_ITEM_CLASS,
-  SHEET_MENU_PANEL_CLASS,
-} from '@/components/ui/mobile-sheet'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/action-menu'
 import { repostPost } from '../actions'
 import { FeedDialog } from './feed-dialog'
 import { RepostDialog, type RepostSourcePreview } from './repost-dialog'
@@ -22,11 +16,10 @@ import {
   type FeedNotice,
 } from './share-utils'
 import { POST_ACTION_BUTTON_CLASS, POST_ACTION_LABEL_CLASS } from './post-action-styles'
-import { useFeedMenu } from './use-feed-menu'
 
 const SHARE_TEXT = 'View this maritime discussion on Sea N Shore.'
 
-const itemClass = `flex w-full cursor-pointer items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50 ${SHEET_MENU_ITEM_CLASS}`
+const itemClass = 'rounded-xl py-2.5'
 
 function ExternalShareDialog({ url, onClose, onCopy }: { url: string; onClose(): void; onCopy(): void }) {
   return (
@@ -86,7 +79,10 @@ export function SharePostButton({
   /** Shows results in the post card. Without it the button shows its own status line. */
   onNotice?(notice: FeedNotice): void
 }) {
-  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, closeAndFocusTrigger, rootRef: menuRootRef, triggerRef: menuTriggerRef, menuRef, onMenuKeyDown } = useFeedMenu()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+  const toggleMenu = useCallback(() => setMenuOpen((value) => !value), [])
   const [dialog, setDialog] = useState<'repost' | 'send' | 'external' | null>(null)
   const [ownNotice, setOwnNotice] = useState<FeedNotice | null>(null)
   const [pending, startTransition] = useTransition()
@@ -134,7 +130,7 @@ export function SharePostButton({
   }
 
   return (
-    <div ref={menuRootRef} className="relative">
+    <div className="relative">
       {variant === 'action' ? (
         <button
           ref={menuTriggerRef}
@@ -165,45 +161,38 @@ export function SharePostButton({
         </button>
       )}
 
-      {menuOpen ? <MobileSheetBackdrop onClose={closeMenu} /> : null}
-      {menuOpen ? (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label="Share post"
-          onKeyDown={onMenuKeyDown}
-          className={`absolute bottom-full z-50 mb-2 w-[min(17.5rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl ${menuAlign === 'start' ? 'left-0' : 'left-1/2 -translate-x-1/2 max-md:translate-x-0'} ${SHEET_MENU_PANEL_CLASS}`}
-        >
-          <MobileSheetGrab />
-          {allowRepost ? (
-            <>
-              <button type="button" role="menuitem" disabled={pending} onClick={repost} className={itemClass}>
-                <Repeat2 aria-hidden="true" className="size-4" />
-                {pending ? 'Reposting…' : 'Repost to feed'}
-              </button>
-              <button type="button" role="menuitem" disabled={pending} onClick={() => openDialog('repost')} className={itemClass}>
-                <MessageSquareQuote aria-hidden="true" className="size-4" />
-                Repost with your thoughts
-              </button>
-            </>
-          ) : null}
-          {allowSend ? (
-            <button type="button" role="menuitem" onClick={() => openDialog('send')} className={itemClass}>
-              <Send aria-hidden="true" className="size-4" />
-              Send in a message
-            </button>
-          ) : null}
-          <button type="button" role="menuitem" onClick={() => { void shareExternally() }} className={itemClass}>
-            <Share2 aria-hidden="true" className="size-4" />
-            Share outside Sea N Shore
-          </button>
-          <button type="button" role="menuitem" onClick={() => { void copyLink() }} className={itemClass}>
-            <Link2 aria-hidden="true" className="size-4" />
-            Copy link
-          </button>
-          <MobileSheetCancel onClick={closeAndFocusTrigger} />
-        </div>
-      ) : null}
+      {/* Opens above the action row (a bottom sheet on phones); portaled so a card never clips it. */}
+      <ActionMenu
+        open={menuOpen}
+        onClose={closeMenu}
+        anchorRef={menuTriggerRef}
+        label="Share post"
+        side="top"
+        align={menuAlign === 'start' ? 'start' : 'center'}
+        className="w-[min(17.5rem,calc(100vw-2rem))] rounded-2xl"
+      >
+        {allowRepost ? (
+          <>
+            <ActionMenuItem disabled={pending} onClick={repost} className={itemClass} icon={<Repeat2 aria-hidden="true" className="size-4" />}>
+              {pending ? 'Reposting…' : 'Repost to feed'}
+            </ActionMenuItem>
+            <ActionMenuItem disabled={pending} onClick={() => openDialog('repost')} className={itemClass} icon={<MessageSquareQuote aria-hidden="true" className="size-4" />}>
+              Repost with your thoughts
+            </ActionMenuItem>
+          </>
+        ) : null}
+        {allowSend ? (
+          <ActionMenuItem onClick={() => openDialog('send')} className={itemClass} icon={<Send aria-hidden="true" className="size-4" />}>
+            Send in a message
+          </ActionMenuItem>
+        ) : null}
+        <ActionMenuItem onClick={() => { void shareExternally() }} className={itemClass} icon={<Share2 aria-hidden="true" className="size-4" />}>
+          Share outside Sea N Shore
+        </ActionMenuItem>
+        <ActionMenuItem onClick={() => { void copyLink() }} className={itemClass} icon={<Link2 aria-hidden="true" className="size-4" />}>
+          Copy link
+        </ActionMenuItem>
+      </ActionMenu>
 
       {!onNotice && ownNotice ? (
         <p role={ownNotice.tone === 'error' ? 'alert' : 'status'} className={`mt-1 text-xs font-semibold ${ownNotice.tone === 'error' ? 'text-red-700' : 'text-emerald-700'}`}>

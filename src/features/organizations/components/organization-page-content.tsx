@@ -134,7 +134,7 @@ export function OrganizationPeopleList({ people }: { people: OrganizationPersonV
           <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950">{initials(person.fullName)}</span>
         )
         const photo = person.avatarUrl ? (
-          <MediaImage src={person.avatarUrl} alt="" width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={personInitials} />
+          <MediaImage avatar src={person.avatarUrl} alt="" width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={personInitials} />
         ) : personInitials
         return (
           <li key={person.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-mist-100 p-3">

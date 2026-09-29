@@ -75,7 +75,7 @@ function ConversationPageBar({
   const identity = (
     <>
       {conversation.otherAvatarUrl ? (
-        <MediaImage src={conversation.otherAvatarUrl} alt="" width={36} height={36} sizes="36px" loading="eager" className="size-9 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={otherInitials} />
+        <MediaImage avatar src={conversation.otherAvatarUrl} alt="" width={36} height={36} sizes="36px" loading="eager" className="size-9 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={otherInitials} />
       ) : otherInitials}
       <span className="min-w-0">
         <span className="block truncate text-base font-bold leading-5 text-navy-950">{name}</span>

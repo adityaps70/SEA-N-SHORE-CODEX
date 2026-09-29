@@ -29,7 +29,7 @@ function access(overrides: Partial<AccessRecord> = {}): AccessRecord {
 }
 
 function billing(overrides: Partial<SubjectBilling> = {}): SubjectBilling {
-  return { access: null, accessIsCurrent: false, checkout: null, pendingCheckout: null, payments: [], ...overrides }
+  return { access: null, accessIsCurrent: false, checkout: null, pendingCheckout: null, payments: [], trial: null, ...overrides }
 }
 
 function view(input: Partial<SubjectBilling>, configured = true) {
@@ -48,6 +48,33 @@ describe('billing page view', () => {
       configured: true,
     })
     expect(view({}, false).configured).toBe(false)
+  })
+
+  it('offers the free trial only to a subject that never had one and has no plan', () => {
+    expect(view({}).trial).toEqual({ months: 3, canStart: true, endsOn: null, daysLeft: null })
+    const used = view({ trial: { id: 't1', subject: { kind: 'profile', profileId }, planCode: 'creator_pro', startedBy: profileId, startedAt: '2026-01-01T00:00:00.000Z', endsAt: '2026-04-01T00:00:00.000Z', endedAt: '2026-04-01T00:00:00.000Z', endedReason: 'expired', extendedBy: null, extendedAt: null, reminder7dSentAt: null, reminder1dSentAt: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-04-01T00:00:00.000Z' } })
+    expect(used.trial.canStart).toBe(false)
+    expect(view({ access: access(), accessIsCurrent: true, checkout: checkout() }).trial.canStart).toBe(false)
+  })
+
+  it('shows a running trial with the days left, the end date and a first charge on that day', () => {
+    const trialing = view({ access: access({ status: 'trialing', billingProvider: 'trial', providerSubscriptionId: 'trial_t1', periodEndsAt: '2026-10-17T06:00:00.000Z' }), accessIsCurrent: true })
+    expect(trialing).toMatchObject({
+      state: 'trialing',
+      statusLabel: 'Free trial — 7 days left',
+      trial: { months: 3, canStart: false, endsOn: formatBillingDate('2026-10-17T06:00:00.000Z'), daysLeft: 7 },
+      current: { priceLabel: 'Free trial', autoRenew: false, accessUntil: formatBillingDate('2026-10-17T06:00:00.000Z') },
+      actions: { choosePlan: true, chooseStartsOn: formatBillingDate('2026-10-17T06:00:00.000Z'), cancelAutoRenew: false },
+    })
+    expect(trialing.statusHelp).toContain('the first payment is taken on the day the trial ends, not before')
+    expect(trialing.statusHelp).toContain('locked, not deleted')
+    expect(view({ access: access({ status: 'trialing', billingProvider: 'trial', periodEndsAt: '2026-10-11T00:00:00.000Z' }), accessIsCurrent: true }).statusLabel).toBe('Free trial — 1 day left')
+  })
+
+  it('lists every interval that has a price, including half-yearly', () => {
+    const organization = buildPlanBillingView({ plan: 'organization_pro', billing: billing({}), prices: [testPrice({ id: 'om', planCode: 'organization_pro', amountMinor: 199900 }), testPrice({ id: 'oh', planCode: 'organization_pro', interval: 'half_year', amountMinor: 1000000 })], configured: true, now: NOW })
+    expect(organization.prices).toEqual({ month: { id: 'om', amountMinor: 199900 }, half_year: { id: 'oh', amountMinor: 1000000 }, year: null })
+    expect(organization.trial.months).toBe(2)
   })
 
   it('says when a previous plan ended', () => {

@@ -213,8 +213,9 @@ describe('PostCard menus as phone bottom sheets', () => {
     const menu = screen.getByRole('menu', { name: /options for rinki mukharjee's post/i })
 
     expect(menu).toHaveClass(...sheetPanelClasses)
-    // Desktop dropdown classes stay as they were.
-    expect(menu).toHaveClass('absolute', 'right-0', 'top-full', 'w-[min(18rem,calc(100vw-2rem))]')
+    // On desktop the panel is a fixed, portaled dropdown so a card never clips it.
+    expect(menu).toHaveClass('fixed', 'w-[min(18rem,calc(100vw-2rem))]')
+    expect(menu.parentElement).toBe(document.body)
     for (const item of within(menu).getAllByRole('menuitem')) expect(item).toHaveClass(...SHEET_MENU_ITEM_CLASS.split(' '))
     expect(within(menu).getByRole('menuitem', { name: 'Report post' })).toHaveClass('text-red-700')
 
@@ -224,9 +225,10 @@ describe('PostCard menus as phone bottom sheets', () => {
   })
 
   it('closes the post menu from the phone backdrop', () => {
-    const { container } = render(<PostCard post={post()} />)
+    render(<PostCard post={post()} />)
     fireEvent.click(screen.getByRole('button', { name: 'Post options' }))
-    const backdrop = container.querySelector('.fixed.inset-0.md\\:hidden')
+    // The sheet and its backdrop are portaled to <body>.
+    const backdrop = document.body.querySelector('.fixed.inset-0.md\\:hidden')
     expect(backdrop).not.toBeNull()
     fireEvent.click(backdrop!)
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
@@ -238,7 +240,9 @@ describe('PostCard menus as phone bottom sheets', () => {
     fireEvent.click(trigger)
     const menu = screen.getByRole('menu', { name: 'Share post' })
     expect(menu).toHaveClass(...sheetPanelClasses)
-    expect(menu).toHaveClass('absolute', 'bottom-full')
+    // Portaled and fixed; the side is measured from real layout (see action-menu.test.tsx).
+    expect(menu).toHaveClass('fixed')
+    expect(menu.parentElement).toBe(document.body)
     expect(within(menu).getByRole('menuitem', { name: 'Repost to feed' })).toHaveClass(...SHEET_MENU_ITEM_CLASS.split(' '))
     fireEvent.click(within(menu).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
