@@ -1,7 +1,6 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Sparkles } from 'lucide-react'
 import { useState, useTransition } from 'react'
 import { startPlanTrialAction } from '../actions'
 import type { PlanCheckoutTarget } from '../checkout-messages'
@@ -40,7 +39,6 @@ export function TrialStartButton({ target, planLabel, months }: { target: PlanCh
   return (
     <div className="space-y-2">
       <button type="button" onClick={() => { void start() }} disabled={pending} aria-busy={pending || undefined} className={primaryButton}>
-        <Sparkles aria-hidden="true" className="size-4" />
         {pending ? 'Starting your trial…' : `Start free trial — ${months} months of ${planLabel}`}
       </button>
       {result?.tone === 'error' ? <p role="alert" className="text-sm font-medium text-rose-700">{result.text}</p> : null}

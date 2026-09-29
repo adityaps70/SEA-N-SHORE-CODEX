@@ -3,11 +3,11 @@ import {
   Briefcase,
   Building2,
   ClipboardCheck,
+  Compass,
   Cpu,
   GraduationCap,
   HeartHandshake,
   Landmark,
-  Sparkles,
   TrendingUp,
   UserRound,
   UserSearch,
@@ -29,7 +29,7 @@ export const PERSONA_ICONS: Record<Persona, LucideIcon> = {
   trainer_instructor: GraduationCap,
   student_cadet: GraduationCap,
   seafarer_family: HeartHandshake,
-  maritime_enthusiast: Sparkles,
+  maritime_enthusiast: Compass,
   other: UserRound,
 }
 

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { FileText, IdCard, Sparkles } from 'lucide-react'
+import { FileText, IdCard, Target } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -129,7 +129,7 @@ export default async function HiringApplicantReviewPage({
                   <p className="mt-1 text-xs font-semibold text-muted max-md:hidden">Applied {formatDateTime(review.appliedAt)}</p>
                   <p className="mt-1 text-[13px] text-muted md:hidden">Applied for {review.job.title} · {relativeTimeFrom(review.appliedAt) || formatDate(review.appliedAt)}</p>
                   <div className="mt-3 flex flex-wrap justify-center gap-2 md:hidden" aria-label="Applicant highlights">
-                    <span className={`${phoneChip} bg-ocean-50 text-ocean-800`}><Sparkles aria-hidden="true" className="size-4" />{review.match.score}% match</span>
+                    <span className={`${phoneChip} bg-ocean-50 text-ocean-800`}><Target aria-hidden="true" className="size-4" />{review.match.score}% match</span>
                     {cvHref ? <a href={cvHref} target="_blank" rel="noreferrer" className={`${phoneChip} bg-mist-50 text-navy-900 hover:bg-mist-100`}><FileText aria-hidden="true" className="size-4" />CV (PDF)</a> : null}
                     {dgHref ? <a href={dgHref} target="_blank" rel="noopener noreferrer" className={`${phoneChip} bg-mist-50 text-navy-900 hover:bg-mist-100`}><IdCard aria-hidden="true" className="size-4" />DG profile</a> : null}
                   </div>

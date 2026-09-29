@@ -200,6 +200,8 @@ describe('ProfileHeader', () => {
     expect(screen.getByTestId('profile-identity-icon')).toHaveClass('lucide-anchor')
     rerender(<ProfileHeader profile={{ ...profile, persona: 'trainer_instructor' }} />)
     expect(screen.getByTestId('profile-identity-icon')).toHaveClass('lucide-graduation-cap')
+    rerender(<ProfileHeader profile={{ ...profile, persona: 'maritime_enthusiast' }} />)
+    expect(screen.getByTestId('profile-identity-icon')).toHaveClass('lucide-compass')
   })
 
   it('keeps an unlinked current organization as plain text', () => {
