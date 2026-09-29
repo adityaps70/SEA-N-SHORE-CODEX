@@ -71,6 +71,8 @@ export type GroupMember = {
   status: MembershipStatus
   requestedAt: string
   joinedAt: string | null
+  /** Round 9C: a Sea N Shore platform administrator who joined (shown with a "Sea N Shore admin" chip). */
+  isPlatformAdmin: boolean
 }
 
 /** A row of the site-admin Communities list. */

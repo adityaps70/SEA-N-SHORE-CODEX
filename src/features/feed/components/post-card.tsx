@@ -203,6 +203,7 @@ export function PostCard({
   readOnly = false,
   flushOnPhones = false,
   loadingPriority,
+  roleBadge,
 }: {
   post: FeedPost
   detail?: boolean
@@ -217,6 +218,8 @@ export function PostCard({
    * image load eagerly instead of lazily; `lead` also fetches that image with high priority.
    */
   loadingPriority?: PostLoadingPriority
+  /** Round 9C: "Owner" / "Moderator" chip next to the author inside a community's Posts tab. */
+  roleBadge?: string
 }) {
   const [canonicalPost, setCanonicalPost] = useState(post)
   const [reaction, setReaction] = useState<PostReactionType | null>(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
@@ -453,6 +456,7 @@ export function PostCard({
               >
                 {displayName}
               </Link>
+              {roleBadge && !organization ? <span className="rounded-md bg-ocean-50 px-1.5 text-[11px] font-bold text-ocean-700">{roleBadge}</span> : null}
               {isRepost ? <span className="text-xs font-medium text-muted">{repostCommentary ? 'reposted with thoughts' : 'reposted'}</span> : null}
             </div>
             <p className="mt-0.5 truncate text-sm text-muted">
@@ -474,10 +478,14 @@ export function PostCard({
                   <span aria-hidden="true">·</span>
                   <Link
                     href={`/community/${post.group.slug}`}
-                    className="min-w-0 truncate font-semibold text-navy-900 hover:text-ocean-700 hover:underline"
+                    className="flex min-w-0 items-center gap-1 font-semibold text-navy-900 hover:text-ocean-700 hover:underline"
                     aria-label={`Posted in ${post.group.name}`}
                   >
-                    in {post.group.name}
+                    {post.group.iconUrl ? (
+                      // Round 9C: the community photo, 16px, next to the group name.
+                      <MediaImage src={post.group.iconUrl} alt="" width={16} height={16} sizes="16px" className="size-4 shrink-0 rounded-[4px] object-cover" />
+                    ) : null}
+                    <span className="truncate">in {post.group.name}</span>
                   </Link>
                 </>
               ) : null}

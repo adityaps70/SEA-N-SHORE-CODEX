@@ -45,6 +45,7 @@ type MemberRow = QueryResultRow & {
   status: MembershipStatus
   requested_at: string
   joined_at: string | null
+  is_platform_admin?: boolean | null
 }
 
 type MembershipRow = QueryResultRow & { role: GroupRole; status: MembershipStatus }
@@ -130,6 +131,7 @@ function mapMember(row: MemberRow): GroupMember {
     status: row.status,
     requestedAt: row.requested_at,
     joinedAt: row.joined_at,
+    isPlatformAdmin: Boolean(row.is_platform_admin),
   }
 }
 
@@ -178,7 +180,8 @@ const DIRECTORY_ORDER = `order by case when g.visibility = 'public' then 0 else 
 const MEMBER_ORDER = `order by case m.role when 'owner' then 0 when 'admin' then 1 else 2 end, lower(p.full_name), p.id`
 
 const MEMBER_SELECT = `
-  select m.profile_id, p.slug, p.full_name, p.headline, p.avatar_path, m.role, m.status, m.requested_at, m.joined_at
+  select m.profile_id, p.slug, p.full_name, p.headline, p.avatar_path, m.role, m.status, m.requested_at, m.joined_at,
+         exists (select 1 from public.user_roles ur where ur.user_id = m.profile_id and ur.role::text = 'administrator') as is_platform_admin
   from public.community_group_memberships m
   join public.profiles p on p.id = m.profile_id
 `
@@ -336,6 +339,32 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
       [groupId, profileId],
     )
     return rows.length === 1
+  }
+
+  /** Approves every pending request of a group; returns the approved profile ids (for notifications). */
+  async function approveAllRequests(groupId: string) {
+    const rows = await queryRows(
+      `update public.community_group_memberships
+       set status = 'active', joined_at = now(), updated_at = now()
+       where group_id = $1 and status = 'pending'
+       returning profile_id as id`,
+      [groupId],
+    ) as IdRow[]
+    return rows.map((row) => row.id)
+  }
+
+  /**
+   * Sea N Shore administrators join at once whatever the join setting: inserts an active
+   * membership, or revives a left/declined/removed row, keeping an existing owner/moderator role.
+   */
+  async function activateMembership(groupId: string, profileId: string) {
+    await queryRows(
+      `insert into public.community_group_memberships (group_id, profile_id, role, status, requested_at, joined_at)
+       values ($1, $2, 'member', 'active', now(), now())
+       on conflict (group_id, profile_id) do update
+         set status = 'active', joined_at = coalesce(public.community_group_memberships.joined_at, now()), updated_at = now()`,
+      [groupId, profileId],
+    )
   }
 
   async function declineRequest(groupId: string, profileId: string) {
@@ -627,6 +656,42 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     return row ? { id: row.id, fullName: row.full_name, slug: row.slug } : null
   }
 
+  /**
+   * Round 9C community images: swaps the banner (`cover_path`) or photo (`icon_path`) and returns
+   * the previous key so the media service can delete the old object. Archived groups are updated
+   * too (site admins tidy them up). Throws when the group does not exist.
+   */
+  async function replaceImagePath(groupId: string, kind: 'cover' | 'icon', nextPath: string | null): Promise<string | null> {
+    const column = kind === 'cover' ? 'cover_path' : 'icon_path'
+    const rows = await queryRows(
+      `with current as (
+         select ${column} as previous_path
+         from public.community_groups
+         where id = $1
+         for update
+       )
+       update public.community_groups g
+       set ${column} = $2,
+           updated_at = now()
+       from current
+       where g.id = $1
+       returning current.previous_path`,
+      [groupId, nextPath],
+    ) as Array<QueryResultRow & { previous_path: string | null }>
+    if (rows.length !== 1) throw new Error('community_group_missing')
+    return rows[0]?.previous_path ?? null
+  }
+
+  /** The stored banner and photo keys of a group (archived groups included), or null when it does not exist. */
+  async function getImagePaths(groupId: string): Promise<{ coverPath: string | null; iconPath: string | null } | null> {
+    const rows = await queryRows(
+      `select cover_path, icon_path from public.community_groups where id = $1 limit 1`,
+      [groupId],
+    ) as Array<QueryResultRow & { cover_path: string | null; icon_path: string | null }>
+    const row = rows[0]
+    return row ? { coverPath: row.cover_path ?? null, iconPath: row.icon_path ?? null } : null
+  }
+
   return {
     listDirectory,
     listViewerGroups,
@@ -635,12 +700,16 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     getBySlug,
     getById,
     getMembership,
+    replaceImagePath,
+    getImagePaths,
     listMembers,
     listPendingRequests,
     countPendingRequests,
     upsertJoin,
     deleteMembership,
     approveRequest,
+    approveAllRequests,
+    activateMembership,
     declineRequest,
     removeMember,
     setMemberRole,
