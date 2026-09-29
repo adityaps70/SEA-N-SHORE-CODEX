@@ -42,6 +42,7 @@ export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
       <div className="-mt-12 flex justify-center px-5 max-md:-mt-9 max-md:px-3">
         {profile.avatarUrl ? (
           <MediaImage
+            avatar
             src={profile.avatarUrl}
             alt={`${profile.fullName} profile`}
             width={96}

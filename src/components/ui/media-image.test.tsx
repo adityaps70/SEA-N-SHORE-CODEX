@@ -109,3 +109,29 @@ describe('MediaImage', () => {
     expect(screen.getAllByText('MA')).toHaveLength(1)
   })
 })
+
+describe('MediaImage avatar framing', () => {
+  it('frames a person photo face-first: covering the box, anchored at the upper middle', () => {
+    render(<MediaImage src={BUCKET_URL} alt="Member A profile photo" width={44} height={44} sizes="44px" className="size-11 rounded-full" avatar />)
+
+    const image = screen.getByRole('img', { name: 'Member A profile photo' })
+    expect(image).toHaveClass('object-cover', 'object-[50%_25%]', 'size-11', 'rounded-full')
+  })
+
+  it('wins over a plain object-cover class from the caller without duplicating it', () => {
+    render(<MediaImage src={BUCKET_URL} alt="Member A profile photo" width={44} height={44} sizes="44px" className="object-cover object-center" avatar />)
+
+    const image = screen.getByRole('img', { name: 'Member A profile photo' })
+    expect(image.className.split(/\s+/).filter((token) => token === 'object-cover')).toHaveLength(1)
+    expect(image).toHaveClass('object-[50%_25%]')
+    expect(image).not.toHaveClass('object-center')
+  })
+
+  it('leaves covers, logos and post images unframed', () => {
+    render(<MediaImage src={BUCKET_URL} alt="Cover photo" width={640} height={160} sizes="640px" className="object-cover" />)
+
+    const image = screen.getByRole('img', { name: 'Cover photo' })
+    expect(image).toHaveClass('object-cover')
+    expect(image).not.toHaveClass('object-[50%_25%]')
+  })
+})

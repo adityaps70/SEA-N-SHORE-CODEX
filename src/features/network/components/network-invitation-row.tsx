@@ -52,7 +52,7 @@ export function NetworkInvitationRow({ profile }: { profile: NetworkProfile }) {
     <article className="flex items-center gap-3 py-3">
       <Link href={`/people/${profile.slug}`} className="shrink-0 rounded-full" aria-label={`View ${profile.fullName} profile`}>
         {profile.avatarUrl ? (
-          <MediaImage src={profile.avatarUrl} alt="" width={56} height={56} sizes="56px" className="size-14 rounded-full object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+          <MediaImage avatar src={profile.avatarUrl} alt="" width={56} height={56} sizes="56px" className="size-14 rounded-full object-cover ring-1 ring-mist-100" fallback={profileInitials} />
         ) : profileInitials}
       </Link>
       <div className="min-w-0 flex-1">

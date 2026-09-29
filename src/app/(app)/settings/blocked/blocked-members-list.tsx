@@ -39,7 +39,7 @@ function BlockedMemberRow({ member }: { member: BlockedMemberItem }) {
     </span>
   )
   const avatar = member.avatarUrl ? (
-    <MediaImage src={member.avatarUrl} alt="" width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={memberInitials} />
+    <MediaImage avatar src={member.avatarUrl} alt="" width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={memberInitials} />
   ) : memberInitials
 
   return (

@@ -174,6 +174,7 @@ function TopCommentPreview({ postId, comment }: { postId: string; comment: FeedC
       <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-[11px] font-semibold text-navy-950">
         {comment.author.avatarUrl ? (
           <MediaImage
+            avatar
             src={comment.author.avatarUrl}
             alt=""
             fill

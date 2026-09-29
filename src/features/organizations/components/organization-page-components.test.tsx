@@ -1,10 +1,25 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useEffect } from 'react'
 
 const mocks = vi.hoisted(() => ({
   followOrganizationAction: vi.fn(),
   unfollowOrganizationAction: vi.fn(),
   updateOrganizationBranding: vi.fn(),
+  cropImageToFile: vi.fn(),
+}))
+
+vi.mock('@/lib/images/crop-image', () => ({ cropImageToFile: mocks.cropImageToFile }))
+// The cropper itself is canvas and pointer driven; here it reports one fixed crop box on load.
+vi.mock('react-easy-crop', () => ({
+  default: function MockCropper(props: { onCropComplete: (area: unknown, pixels: unknown) => void; cropShape: string; aspect: number }) {
+    const { onCropComplete } = props
+    useEffect(() => {
+      onCropComplete({ x: 0, y: 0, width: 50, height: 50 }, { x: 0, y: 0, width: 600, height: 600 })
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- fires once, like the media load event
+    }, [])
+    return <div data-testid="mock-cropper" data-shape={props.cropShape} data-aspect={String(props.aspect)} />
+  },
 }))
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), replace: vi.fn() }), usePathname: () => '/organizations/oceanic' }))
@@ -184,5 +199,80 @@ describe('OrganizationBrandingForm', () => {
     expect(screen.getByLabelText(/Cover image/)).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp')
     expect(screen.getByRole('checkbox', { name: 'Remove the cover image' })).not.toBeChecked()
     expect(screen.getByRole('button', { name: 'Save page details' })).toBeEnabled()
+  })
+
+  describe('cropping a picked image', () => {
+    const original = new File([new Uint8Array(4096)], 'logo.png', { type: 'image/png' })
+    const cropped = new File([new Uint8Array(1024)], 'logo.webp', { type: 'image/webp' })
+
+    beforeEach(() => {
+      vi.stubGlobal('URL', Object.assign(URL, {
+        createObjectURL: vi.fn((file: File) => `blob:https://seanshore.example/${file.name}`),
+        revokeObjectURL: vi.fn(),
+      }))
+    })
+    afterEach(() => vi.unstubAllGlobals())
+
+    it.each([
+      ['Organization logo', 'Adjust your logo', '1'],
+      ['Cover image', 'Adjust your cover photo', '4'],
+    ])('opens the crop dialog when a %s is picked', (label, title, aspect) => {
+      render(<OrganizationBrandingForm workspace={workspace} />)
+
+      fireEvent.change(screen.getByLabelText(new RegExp(label)), { target: { files: [original] } })
+
+      expect(screen.getByRole('dialog', { name: title })).toHaveAttribute('aria-modal', 'true')
+      expect(screen.getByTestId('mock-cropper')).toHaveAttribute('data-shape', 'rect')
+      expect(screen.getByTestId('mock-cropper')).toHaveAttribute('data-aspect', aspect)
+    })
+
+    it('puts the cropped logo into the file input and previews it after Save', async () => {
+      mocks.cropImageToFile.mockResolvedValueOnce(cropped)
+      class FakeDataTransfer {
+        private list: File[] = []
+        items = { add: (file: File) => { this.list.push(file) } }
+        get files() { return this.list }
+      }
+      vi.stubGlobal('DataTransfer', FakeDataTransfer)
+      render(<OrganizationBrandingForm workspace={workspace} />)
+      const input = screen.getByLabelText(/Organization logo/) as HTMLInputElement
+      // jsdom only accepts a real FileList here; let the test observe the assignment instead.
+      Object.defineProperty(input, 'files', { configurable: true, writable: true, value: null })
+
+      fireEvent.change(input, { target: { files: [original] } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(mocks.cropImageToFile).toHaveBeenCalledWith(original, { x: 0, y: 0, width: 600, height: 600 }, { maxEdge: 2048 })
+      expect(input.files?.[0]).toBe(cropped)
+      const preview = document.querySelector('img[src="blob:https://seanshore.example/logo.webp"]')
+      expect(preview).not.toBeNull()
+    })
+
+    it('keeps the original selected, and previews it, where the browser cannot rebuild the file list', async () => {
+      mocks.cropImageToFile.mockResolvedValueOnce(cropped)
+      render(<OrganizationBrandingForm workspace={workspace} />)
+      const input = screen.getByLabelText(/Cover image/) as HTMLInputElement
+
+      fireEvent.change(input, { target: { files: [original] } })
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(input.files?.[0]).toBe(original)
+      expect(document.querySelector('img[src="blob:https://seanshore.example/logo.png"]')).not.toBeNull()
+    })
+
+    it('clears the picker and shows no preview when the crop is cancelled', () => {
+      render(<OrganizationBrandingForm workspace={workspace} />)
+      const input = screen.getByLabelText(/Organization logo/) as HTMLInputElement
+
+      fireEvent.change(input, { target: { files: [original] } })
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(input.value).toBe('')
+      expect(document.querySelector('img[src^="blob:"]')).toBeNull()
+      expect(mocks.cropImageToFile).not.toHaveBeenCalled()
+    })
   })
 })

@@ -89,6 +89,7 @@ function avatar(
     const px = avatarPx(sizeClass, 36)
     return (
       <MediaImage
+        avatar
         data-testid={testId}
         src={item.otherAvatarUrl}
         alt=""

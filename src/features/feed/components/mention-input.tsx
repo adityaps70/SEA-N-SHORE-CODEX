@@ -147,7 +147,7 @@ export function MentionInput({
             >
               <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
                 {candidate.avatarUrl ? (
-                  <MediaImage src={candidate.avatarUrl} alt="" fill sizes="32px" className="object-cover" fallback={candidate.fullName.slice(0, 1).toUpperCase()} />
+                  <MediaImage avatar src={candidate.avatarUrl} alt="" fill sizes="32px" className="object-cover" fallback={candidate.fullName.slice(0, 1).toUpperCase()} />
                 ) : candidate.fullName.slice(0, 1).toUpperCase()}
               </span>
               <span className="min-w-0">

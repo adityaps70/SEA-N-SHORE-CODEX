@@ -487,6 +487,7 @@ export function MessageThread({
   )
   const incomingAvatar = (messageId: string) => (otherAvatarUrl ? (
     <MediaImage
+      avatar
       data-testid={`message-avatar-${messageId}`}
       src={otherAvatarUrl}
       alt=""
@@ -504,7 +505,7 @@ export function MessageThread({
     </div>
   )
   const headerAvatar = otherAvatarUrl ? (
-    <MediaImage src={otherAvatarUrl} alt="" width={44} height={44} sizes="44px" loading="eager" className="size-11 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" fallback={headerInitials} />
+    <MediaImage avatar src={otherAvatarUrl} alt="" width={44} height={44} sizes="44px" loading="eager" className="size-11 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" fallback={headerInitials} />
   ) : headerInitials
 
   return (
@@ -814,6 +815,7 @@ export function MessageThread({
               <div data-testid="typing-indicator" className="mt-2 flex items-end gap-2">
                 {otherAvatarUrl ? (
                   <MediaImage
+                    avatar
                     data-testid="typing-avatar"
                     src={otherAvatarUrl}
                     alt=""

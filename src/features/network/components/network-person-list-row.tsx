@@ -34,6 +34,7 @@ export function NetworkPersonListRow({
       <Link href={`/people/${profile.slug}`} className="shrink-0" aria-label={`View ${profile.fullName} profile photo`}>
         {profile.avatarUrl ? (
           <MediaImage
+            avatar
             src={profile.avatarUrl}
             alt={`${profile.fullName} profile`}
             width={64}

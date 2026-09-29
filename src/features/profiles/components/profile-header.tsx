@@ -122,6 +122,7 @@ export function ProfileHeader({
             >
               {profile.avatarUrl ? (
                 <MediaImage
+                  avatar
                   src={profile.avatarUrl}
                   alt={`${profile.fullName} profile photo`}
                   fill

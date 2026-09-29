@@ -175,7 +175,7 @@ export function FeedProfileCard({
         <div className="flex items-center gap-3">
           <Link href="/profile" aria-label={`${profile.fullName}, view profile`} className="relative grid size-12 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-sm font-semibold text-navy-950 ring-1 ring-mist-100 hover:ring-ocean-500">
             {profile.avatarUrl ? (
-              <MediaImage src={profile.avatarUrl} alt={`${profile.fullName} profile photo`} fill sizes="48px" loading="eager" className="object-cover" fallback={initials(profile.fullName)} />
+              <MediaImage avatar src={profile.avatarUrl} alt={`${profile.fullName} profile photo`} fill sizes="48px" loading="eager" className="object-cover" fallback={initials(profile.fullName)} />
             ) : (
               initials(profile.fullName)
             )}
@@ -216,7 +216,7 @@ export function FeedProfileCard({
           className="relative mx-auto -mt-[37px] grid size-[74px] place-items-center overflow-hidden rounded-2xl border-4 border-white bg-mist-100 text-base font-semibold text-navy-950 shadow-sm hover:ring-2 hover:ring-ocean-500"
         >
           {profile.avatarUrl ? (
-            <MediaImage src={profile.avatarUrl} alt={`${profile.fullName} profile photo`} fill sizes="74px" loading="eager" className="object-cover" fallback={initials(profile.fullName)} />
+            <MediaImage avatar src={profile.avatarUrl} alt={`${profile.fullName} profile photo`} fill sizes="74px" loading="eager" className="object-cover" fallback={initials(profile.fullName)} />
           ) : (
             initials(profile.fullName)
           )}

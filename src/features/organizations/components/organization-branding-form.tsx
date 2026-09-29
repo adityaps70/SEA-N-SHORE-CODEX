@@ -1,9 +1,11 @@
 'use client'
 
 import Image from 'next/image'
-import { useActionState, useEffect, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useActionState, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { ImageUp } from 'lucide-react'
 import { FormErrorSummary } from '@/components/ui/form-error-summary'
+import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
+import { isDownscalableImage } from '@/lib/images/downscale-image'
 import { updateOrganizationBranding, type OrganizationBrandingActionState } from '../workspace-actions'
 import type { OrganizationWorkspace } from '../workspace-repository'
 import { WELLBEING_SERVICES, isWellbeingType, organizationTypeHasField } from '../organization-types'
@@ -19,16 +21,39 @@ import {
 const initialState: OrganizationBrandingActionState = {}
 const IMAGE_TYPES = new Set<string>(BRANDING_IMAGE_TYPES)
 
+type BrandingImageKind = 'logo' | 'cover'
+
+/** Logos sit in a square tile; covers are the 4:1 banner (1584 × 396) recommended below. */
+const CROP: Record<BrandingImageKind, { aspect: number; title: string }> = {
+  logo: { aspect: 1, title: 'Adjust your logo' },
+  cover: { aspect: 4, title: 'Adjust your cover photo' },
+}
+
 function usePreview() {
   const [preview, setPreview] = useState<string | null>(null)
   useEffect(() => () => {
     if (preview) URL.revokeObjectURL(preview)
   }, [preview])
-  function onChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
+  function previewFile(file: File | null | undefined) {
     setPreview(file && IMAGE_TYPES.has(file.type) && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : null)
   }
-  return [preview, onChange] as const
+  return [preview, previewFile] as const
+}
+
+/**
+ * Puts the cropped photo into the file input so the plain form submit sends it. Returns false
+ * where the browser cannot build a FileList (no DataTransfer); the original then stays selected.
+ */
+function replaceInputFile(input: HTMLInputElement | null, file: File) {
+  if (!input || typeof DataTransfer !== 'function') return false
+  try {
+    const transfer = new DataTransfer()
+    transfer.items.add(file)
+    input.files = transfer.files
+    return input.files?.[0] === file
+  } catch {
+    return false
+  }
 }
 
 function chosenFile(value: FormDataEntryValue | null) {
@@ -38,8 +63,11 @@ function chosenFile(value: FormDataEntryValue | null) {
 export function OrganizationBrandingForm({ workspace }: { workspace: OrganizationWorkspace }) {
   const [state, formAction, pending] = useActionState(updateOrganizationBranding, initialState)
   const [clientError, setClientError] = useState<string | null>(null)
-  const [logoPreview, onLogoChange] = usePreview()
-  const [coverPreview, onCoverChange] = usePreview()
+  const [logoPreview, previewLogo] = usePreview()
+  const [coverPreview, previewCover] = usePreview()
+  const [cropping, setCropping] = useState<{ kind: BrandingImageKind; file: File } | null>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
+  const coverInputRef = useRef<HTMLInputElement>(null)
   const [removeCover, setRemoveCover] = useState(false)
   const [tagline, setTagline] = useState(workspace.tagline ?? '')
   const inputClass = 'mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-normal text-navy-950 outline-none focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100'
@@ -53,6 +81,35 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
   const wellbeing = isWellbeingType(workspace.organizationType)
   const logoUrl = organizationLogoUrl(workspace)
   const coverUrl = removeCover ? null : coverPreview ?? organizationCoverUrl(workspace)
+
+  const inputFor = (kind: BrandingImageKind) => (kind === 'logo' ? logoInputRef : coverInputRef).current
+  const previewFor = (kind: BrandingImageKind) => (kind === 'logo' ? previewLogo : previewCover)
+
+  /** A photo the browser can re-encode is framed in the crop dialog first; anything else previews as picked. */
+  function onImageChange(kind: BrandingImageKind, event: ChangeEvent<HTMLInputElement>) {
+    if (kind === 'cover') setRemoveCover(false)
+    const file = event.target.files?.[0]
+    if (file && IMAGE_TYPES.has(file.type) && isDownscalableImage(file)) {
+      setCropping({ kind, file })
+      return
+    }
+    previewFor(kind)(file)
+  }
+
+  function cancelCrop() {
+    if (!cropping) return
+    const input = inputFor(cropping.kind)
+    if (input) input.value = ''
+    previewFor(cropping.kind)(null)
+    setCropping(null)
+  }
+
+  function saveCrop(cropped: File) {
+    if (!cropping) return
+    const replaced = replaceInputFile(inputFor(cropping.kind), cropped)
+    previewFor(cropping.kind)(replaced ? cropped : cropping.file)
+    setCropping(null)
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     const data = new FormData(event.currentTarget)
@@ -111,13 +168,13 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className={labelClass}>
             Organization logo
-            <input name="logo" type="file" accept="image/jpeg,image/png,image/webp" onChange={onLogoChange} className={`${fileClass} mt-2`} />
+            <input ref={logoInputRef} name="logo" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('logo', event)} className={`${fileClass} mt-2`} />
             <span className={hintClass}>Square image works best. JPG, PNG or WebP, up to 5 MB. Leave empty to keep the current logo.</span>
           </label>
           <div>
             <label className={labelClass}>
               Cover image
-              <input name="cover" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { setRemoveCover(false); onCoverChange(event) }} className={`${fileClass} mt-2`} />
+              <input ref={coverInputRef} name="cover" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('cover', event)} className={`${fileClass} mt-2`} />
               <span className={hintClass}>Wide image, about 1584 × 396 pixels. JPG, PNG or WebP, up to 5 MB.</span>
             </label>
             {workspace.coverPath ? (
@@ -241,6 +298,17 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
           </button>
         </div>
       </section>
+
+      {cropping ? (
+        <ImageCropDialog
+          file={cropping.file}
+          shape="rect"
+          aspect={CROP[cropping.kind].aspect}
+          title={CROP[cropping.kind].title}
+          onCancel={cancelCrop}
+          onSave={saveCrop}
+        />
+      ) : null}
     </form>
   )
 }

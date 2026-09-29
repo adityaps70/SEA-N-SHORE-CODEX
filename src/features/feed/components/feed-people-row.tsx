@@ -61,7 +61,7 @@ export function FeedPeopleRow({ profiles }: { profiles: NetworkProfile[] }) {
                   className="flex w-full flex-col items-center rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
                 >
                   {person.avatarUrl ? (
-                    <MediaImage src={person.avatarUrl} alt="" width={64} height={64} sizes="64px" className="size-16 rounded-full object-cover ring-1 ring-mist-100" fallback={personInitials} />
+                    <MediaImage avatar src={person.avatarUrl} alt="" width={64} height={64} sizes="64px" className="size-16 rounded-full object-cover ring-1 ring-mist-100" fallback={personInitials} />
                   ) : personInitials}
                   <span className="mt-2 block w-full truncate text-sm font-semibold text-navy-950">{person.fullName}</span>
                   <span className="mt-0.5 line-clamp-2 min-h-8 w-full text-xs leading-4 text-muted">{role}</span>
