@@ -214,12 +214,14 @@ describe('phone bottom tabs', () => {
       ['Write a postUpdate · Question · Poll', '/home?compose=update'],
       ['Photo or video', '/home?compose=photo'],
       ['Document (PDF)', '/home?compose=document'],
+      // Round 9B: group posts start from the Community directory (a group is chosen first).
+      ['Post in a groupChoose a group first', '/community'],
       ['Post a job', '/hiring/jobs/new'],
       ['Create an event', '/events/create'],
       ['Create a course', '/learn/studio/courses/new'],
       ['All creator tools', '/creator'],
     ])
-    expect(CREATE_SHEET_GROUPS.flat()).toHaveLength(7)
+    expect(CREATE_SHEET_GROUPS.flat()).toHaveLength(8)
 
     fireEvent.click(within(sheet).getByRole('link', { name: 'Post a job' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()

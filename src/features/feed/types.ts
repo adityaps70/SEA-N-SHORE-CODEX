@@ -233,6 +233,8 @@ export type FeedPost = {
   photoTags?: FeedPhotoTag[]
   /** The community group this post was published in, or null for the open feed. */
   group?: FeedGroupRef | null
+  /** The viewer administers the post's group and may remove the post from it (round 9B). */
+  viewerCanModerateGroup?: boolean
   comments: FeedComment[]
 }
 

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -59,6 +59,10 @@ describe('admin route boundary', () => {
     expect(screen.getByRole('link', { name: 'Deleted content' })).toHaveAttribute('href', '/admin/deleted-content')
     expect(screen.getByRole('link', { name: /Access requests/ })).toHaveAttribute('href', '/admin/access')
     expect(screen.getByRole('link', { name: 'Payments' })).toHaveAttribute('href', '/admin/payments')
+    // Round 9B: community groups get their own admin section, right after Organizations.
+    expect(screen.getByRole('link', { name: 'Communities' })).toHaveAttribute('href', '/admin/communities')
+    const hrefs = within(screen.getByRole('navigation', { name: 'Admin navigation' })).getAllByRole('link').map((link) => link.getAttribute('href'))
+    expect(hrefs.indexOf('/admin/communities')).toBe(hrefs.indexOf('/admin/organizations') + 1)
     expect(mocks.notFound).not.toHaveBeenCalled()
   })
 

@@ -32,6 +32,8 @@ function targetHref(targetType: ModerationTargetType, targetId: string) {
   if (targetType === 'job') return `/jobs/${targetId}`
   if (targetType === 'event') return `/events/${targetId}`
   if (targetType === 'profile') return `/admin/users/${targetId}`
+  // Round 9B: community groups open in the admin Communities list, which links to the group page.
+  if (targetType === 'group') return `/admin/communities?group=${targetId}`
   return null
 }
 
@@ -71,6 +73,7 @@ export default async function AdminModerationPage({
     { value: 'job', label: 'Jobs' },
     { value: 'event', label: 'Events' },
     { value: 'profile', label: 'Profiles' },
+    { value: 'group', label: 'Groups' },
   ]
 
   return (

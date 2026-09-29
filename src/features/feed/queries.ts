@@ -1,6 +1,7 @@
 import { organizationsMemberCanPostFor, type AccessContext } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser, type AwsVerifiedUser } from '@/features/auth/aws-queries'
+import { communityRepository } from '@/features/community/repository'
 import { getPreferredFeedAuthorIds } from '@/features/network/queries'
 import { resolveFeedMediaUrls } from './media'
 import { feedAuthorAvatarPath, feedPhotoTagAvatarPaths, feedPostMediaPaths, hiddenPostPaths, mapFeedPost, mapHiddenPost, organizationLogoUrl, type FeedCommentRow, type FeedPostRow } from './mappers'
@@ -14,6 +15,7 @@ type RequireUser = () => Promise<AwsVerifiedUser>
 type LoadAccessContext = (profileId: string) => Promise<AccessContext>
 type ResolveMediaUrls = (paths: string[]) => Promise<Map<string, string>>
 type GetPreferredAuthorIds = () => Promise<Iterable<string>>
+type ListAdministeredGroupIds = (viewerId: string) => Promise<string[]>
 
 export type CommentActivity = { post: FeedPost; viewerComments: FeedComment[] }
 
@@ -41,8 +43,25 @@ export function createFeedQueries(input: {
   getPreferredAuthorIds: GetPreferredAuthorIds
   resolveMediaUrls: ResolveMediaUrls
   loadAccessContext?: LoadAccessContext
+  /** Community groups the viewer administers (round 9B); their posts get "Remove from group". */
+  listAdministeredGroupIds?: ListAdministeredGroupIds
 }) {
   const loadAccessContext = input.loadAccessContext ?? getAccessContext
+  const listAdministeredGroupIds = input.listAdministeredGroupIds ?? communityRepository.listAdministeredGroupIds
+
+  /** Group admins may remove posts from their group; only then do we load the viewer's admin groups. */
+  async function applyGroupModeration(posts: FeedPost[], viewerId: string) {
+    if (!posts.some((post) => post.group)) return posts
+    let groupIds: string[] = []
+    try {
+      groupIds = await listAdministeredGroupIds(viewerId)
+    } catch {
+      groupIds = []
+    }
+    if (!groupIds.length) return posts
+    const administered = new Set(groupIds)
+    return posts.map((post) => post.group && administered.has(post.group.id) ? { ...post, viewerCanModerateGroup: true } : post)
+  }
 
   /** Organization admins may edit and delete their organization's posts; only then do we load roles. */
   async function applyOrganizationPermissions(rows: FeedPostRow[], posts: FeedPost[], viewerId: string) {
@@ -93,7 +112,7 @@ export function createFeedQueries(input: {
       post_comments: commentsByPost.get(row.id) ?? [],
       repost_source: row.repost_of_post_id ? sourceById.get(row.repost_of_post_id) ?? null : null,
     }, viewer, signedUrls, viewerId))
-    return applyOrganizationPermissions(rows, posts, viewerId)
+    return applyGroupModeration(await applyOrganizationPermissions(rows, posts, viewerId), viewerId)
   }
 
   async function hydratePublicPosts(rows: FeedPostRow[], viewerId: string): Promise<FeedPost[]> {

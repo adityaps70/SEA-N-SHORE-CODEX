@@ -32,6 +32,18 @@ function targetLookupSql(targetType: ModerationTargetType) {
       where id = $1 and status = 'published'
       limit 1`
   }
+  if (targetType === 'group') {
+    // Round 9B: a community group is owned by its active owner membership, else by its creator.
+    return `select coalesce(
+        (select m.profile_id from public.community_group_memberships m
+          where m.group_id = g.id and m.role = 'owner' and m.status = 'active'
+          order by m.joined_at asc nulls last limit 1),
+        g.created_by
+      ) as owner_id
+      from public.community_groups g
+      where g.id = $1 and g.archived_at is null
+      limit 1`
+  }
   return `select id as owner_id
     from public.profiles
     where id = $1 and account_status::text <> 'deletion_requested'

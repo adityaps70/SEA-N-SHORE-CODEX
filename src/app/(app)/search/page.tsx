@@ -1,20 +1,27 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { BadgeCheck, BookOpen, BriefcaseBusiness, Building2, CalendarDays, Search, UsersRound } from 'lucide-react'
+import { BadgeCheck, BookOpen, BriefcaseBusiness, Building2, CalendarDays, Hash, Search, UsersRound } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { GroupCard } from '@/features/community/components/group-card'
+import { communityRepository } from '@/features/community/repository'
+import type { CommunityGroup } from '@/features/community/types'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { EventCard } from '@/features/events/components/event-card'
 import { JobCard } from '@/features/jobs/components/job-card'
 import { JobListRow } from '@/features/jobs/components/job-list-row'
 import { getJobsDiscovery } from '@/features/jobs/queries'
+import { hashtagHref } from '@/features/hashtags/parse'
+import { hashtagRepository, type HashtagSuggestion } from '@/features/hashtags/repository'
 import { marketplaceRepository } from '@/features/learning/marketplace-repository'
 import { getNetworkHub } from '@/features/network/queries'
 import { organizationRepository } from '@/features/organizations/repository'
 import { NetworkProfileCard } from '@/features/network/components/network-profile-card'
 import {
   PHONE_ALL_RESULTS_PER_VERTICAL,
+  PHONE_CHIP_RESULTS,
   SEARCH_CHIP_LABELS,
+  hashtagSearchQuery,
   parseSearchChip,
   resultCountLabel,
   resultItemClass,
@@ -24,7 +31,7 @@ import {
   type SearchChip,
   type SearchVertical,
 } from './search-filters'
-import { PHONE_RESULT_LIST_CLASS, SearchCourseRow, SearchOrganizationRow, SearchPersonRow } from './search-result-rows'
+import { PHONE_RESULT_LIST_CLASS, SearchCourseRow, SearchGroupRow, SearchHashtagRow, SearchOrganizationRow, SearchPersonRow, hashtagPostCountLabel } from './search-result-rows'
 import { SearchPhoneBar } from './search-phone-bar'
 
 export const metadata: Metadata = { title: 'Search' }
@@ -54,6 +61,13 @@ function organizationHref(query: string) {
   const params = new URLSearchParams()
   params.set('q', query)
   return verticalPaths.organizations + '?' + params.toString()
+}
+
+/** Community directory (round 9B) with the same search. */
+function groupsHref(query: string) {
+  const params = new URLSearchParams()
+  params.set('q', query)
+  return '/community?' + params.toString()
 }
 function SectionHeading({
   icon: Icon,
@@ -101,7 +115,7 @@ function PhoneSeeAll({ chip, vertical, count, query }: { chip: SearchChip; verti
 }
 
 function SearchChips({ query, chip }: { query: string; chip: SearchChip }) {
-  const chips: SearchChip[] = ['all', 'people', 'jobs', 'organizations', 'courses', 'events']
+  const chips: SearchChip[] = ['all', 'people', 'jobs', 'organizations', 'groups', 'courses', 'events', 'hashtags']
   return (
     <nav aria-label="Search filters" className="-mx-4 flex gap-2 overflow-x-auto border-b border-mist-100 bg-white px-4 py-3 md:hidden">
       {chips.map((value) => (
@@ -164,20 +178,30 @@ export default async function GlobalSearchPage({
           <form action="/search" method="get" role="search" className="relative mt-4 max-w-3xl rounded-2xl bg-white p-2">
             <label htmlFor="global-search-page" className="sr-only">Search Sea N Shore</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-5 -translate-y-1/2 text-muted" />
-            <input id="global-search-page" name="q" type="search" maxLength={100} autoFocus placeholder="Search people, organizations, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
+            <input id="global-search-page" name="q" type="search" maxLength={100} autoFocus placeholder="Search people, organizations, groups, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
           </form>
         </PremiumPageHero>
         </div>
         <div className="mt-5 rounded-[1.5rem] border border-dashed border-mist-200 bg-white px-6 py-12 text-center max-md:mt-4">
           <Search aria-hidden="true" className="mx-auto size-7 text-muted" />
           <p className="mt-3 font-semibold text-navy-950">Start with a name, rank, role, skill, course or event topic.</p>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">Your search stays with you as you continue into People, Organizations, Jobs, Courses or Events.</p>
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">Your search stays with you as you continue into People, Organizations, Groups, Jobs, Courses or Events.</p>
         </div>
       </section>
     )
   }
 
   const user = await requireAwsUser()
+  // Hashtags (round 9B) load beside the other verticals; a failure only empties their section.
+  const hashtagSearch: Promise<{ items: HashtagSuggestion[]; failed: boolean }> = hashtagRepository
+    .searchHashtags(hashtagSearchQuery(query), PHONE_CHIP_RESULTS)
+    .then((items) => ({ items, failed: false }))
+    .catch(() => ({ items: [], failed: true }))
+  // Community groups (round 9B) load the same way: name/description matches, live groups only.
+  const groupSearch: Promise<{ items: CommunityGroup[]; failed: boolean }> = communityRepository
+    .searchGroups(user.id, query, PHONE_CHIP_RESULTS)
+    .then((items) => ({ items, failed: false }))
+    .catch(() => ({ items: [], failed: true }))
   // Each vertical loads independently: one failing source shows a notice in its
   // section instead of taking down the whole results page.
   const settled = await Promise.allSettled([
@@ -187,7 +211,11 @@ export default async function GlobalSearchPage({
     marketplaceRepository.listPublishedCourses({ search: query }),
     calendarEventRepository.listDiscoverEvents(user.id, { search: query }),
   ] as const)
+  const hashtagResult = await hashtagSearch
+  const groupResult = await groupSearch
   const failed = {
+    hashtags: hashtagResult.failed,
+    groups: groupResult.failed,
     people: settled[0].status === 'rejected',
     organizations: settled[1].status === 'rejected',
     jobs: settled[2].status === 'rejected',
@@ -208,13 +236,19 @@ export default async function GlobalSearchPage({
   const jobResults = jobs.items.slice(0, resultLimit(chip, 'jobs'))
   const courseResults = courses.slice(0, resultLimit(chip, 'courses'))
   const eventResults = events.slice(0, resultLimit(chip, 'events'))
-  const totalResults = network.profiles.length + organizations.length + jobs.items.length + courses.length + events.length
+  const hashtags = hashtagResult.items
+  const hashtagResults = hashtags.slice(0, resultLimit(chip, 'hashtags'))
+  const groups = groupResult.items
+  const groupResults = groups.slice(0, resultLimit(chip, 'groups'))
+  const totalResults = network.profiles.length + organizations.length + jobs.items.length + courses.length + events.length + hashtags.length + groups.length
   const verticalCounts: Record<SearchVertical, number> = {
     people: network.profiles.length,
     organizations: organizations.length,
+    groups: groups.length,
     jobs: jobs.items.length,
     courses: courses.length,
     events: events.length,
+    hashtags: hashtags.length,
   }
   const phoneCount = chip === 'all' ? totalResults : verticalCounts[chip]
 
@@ -230,12 +264,12 @@ export default async function GlobalSearchPage({
       <PremiumPageHero
         eyebrow="Global search"
         title={`Results for “${query}”`}
-        description={`${totalResults} matching result${totalResults === 1 ? '' : 's'} across people, organizations, jobs, courses and events.`}
+        description={`${totalResults} matching result${totalResults === 1 ? '' : 's'} across people, organizations, groups, jobs, courses and events.`}
       >
         <form action="/search" method="get" role="search" className="relative mt-4 max-w-3xl rounded-2xl bg-white p-2">
           <label htmlFor="global-search-page" className="sr-only">Search Sea N Shore</label>
           <Search aria-hidden="true" className="pointer-events-none absolute left-6 top-1/2 size-5 -translate-y-1/2 text-muted" />
-          <input id="global-search-page" name="q" type="search" defaultValue={query} maxLength={100} placeholder="Search people, organizations, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
+          <input id="global-search-page" name="q" type="search" defaultValue={query} maxLength={100} placeholder="Search people, organizations, groups, jobs, courses or events" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-12 pr-4 text-sm text-ink outline-none placeholder:text-muted focus:bg-white focus:ring-1 focus:ring-teal-200" />
         </form>
       </PremiumPageHero>
       </div>
@@ -294,6 +328,21 @@ export default async function GlobalSearchPage({
           <PhoneSeeAll chip={chip} vertical="organizations" count={organizations.length} query={query} />
         </section>
 
+        <section aria-labelledby="global-groups-heading" className={`border-t border-mist-100 pt-7 ${PHONE_SECTION} ${sectionPhoneClass(chip, 'groups')}`}>
+          <div id="global-groups-heading">
+            <SectionHeading icon={UsersRound} title="Groups" count={groups.length} href={groupsHref(query)} chip={chip} />
+          </div>
+          {groupResults.length ? (
+            <>
+              <div className="grid gap-4 max-md:hidden sm:grid-cols-2 xl:grid-cols-3">
+                {groupResults.map((group, index) => <div key={group.id} className={resultItemClass(chip, index)}><GroupCard group={group} /></div>)}
+              </div>
+              <ul aria-label="Group results" className={PHONE_RESULT_LIST_CLASS}>{groupResults.map((group, index) => <SearchGroupRow key={group.id} group={group} className={resultItemClass(chip, index)} />)}</ul>
+            </>
+          ) : <EmptyVertical label="Groups" failed={failed.groups} />}
+          <PhoneSeeAll chip={chip} vertical="groups" count={groups.length} query={query} />
+        </section>
+
         <section aria-labelledby="global-jobs-heading" className={`border-t border-mist-100 pt-7 ${PHONE_SECTION} ${sectionPhoneClass(chip, 'jobs')}`}>
           <div id="global-jobs-heading">
             <SectionHeading icon={BriefcaseBusiness} title="Jobs" count={jobs.items.length} href={verticalHref(verticalPaths.jobs, query)} chip={chip} />
@@ -335,6 +384,35 @@ export default async function GlobalSearchPage({
           </div>
           {eventResults.length ? <div className="grid gap-5 max-md:gap-2 md:grid-cols-2 xl:grid-cols-3">{eventResults.map((event, index) => <div key={event.id} className={resultItemClass(chip, index)}><EventCard event={event} /></div>)}</div> : <EmptyVertical label="Events" failed={failed.events} />}
           <PhoneSeeAll chip={chip} vertical="events" count={events.length} query={query} />
+        </section>
+
+        <section aria-labelledby="global-hashtags-heading" className={`border-t border-mist-100 pt-7 ${PHONE_SECTION} ${sectionPhoneClass(chip, 'hashtags')}`}>
+          <div id="global-hashtags-heading">
+            <SectionHeading icon={Hash} title="Hashtags" count={hashtags.length} href={searchChipHref(query, 'hashtags')} chip={chip} />
+          </div>
+          {hashtagResults.length ? (
+            <>
+              <div className="grid gap-4 max-md:hidden sm:grid-cols-2 xl:grid-cols-3">
+                {hashtagResults.map((hashtag, index) => (
+                  <Link
+                    key={hashtag.tag}
+                    href={hashtagHref(hashtag.tag)}
+                    className={`group flex items-center gap-3 rounded-[1.4rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)] transition hover:-translate-y-0.5 hover:border-teal-200 ${resultItemClass(chip, index) ?? ''}`}
+                  >
+                    <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
+                      <Hash aria-hidden="true" className="size-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate font-bold text-navy-950 transition group-hover:text-teal-800">#{hashtag.tag}</span>
+                      <span className="mt-1 block text-sm text-muted">{hashtagPostCountLabel(hashtag.postCount)}</span>
+                    </span>
+                  </Link>
+                ))}
+              </div>
+              <ul aria-label="Hashtag results" className={PHONE_RESULT_LIST_CLASS}>{hashtagResults.map((hashtag, index) => <SearchHashtagRow key={hashtag.tag} hashtag={hashtag} className={resultItemClass(chip, index)} />)}</ul>
+            </>
+          ) : <EmptyVertical label="Hashtags" failed={failed.hashtags} />}
+          <PhoneSeeAll chip={chip} vertical="hashtags" count={hashtags.length} query={query} />
         </section>
       </div>
     </section>

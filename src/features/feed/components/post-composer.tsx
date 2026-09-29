@@ -4,7 +4,7 @@ import { downscaleImage } from '@/lib/images/downscale-image'
 import { avatarSizes } from '@/lib/images/media-image-source'
 import { MediaImage } from '@/components/ui/media-image'
 import { useActionState, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { BarChart3, Check, ChevronDown, FileText, Globe, Hash, ImagePlus, MessageCircleQuestion, PencilLine, X } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, FileText, Globe, Hash, ImagePlus, MessageCircleQuestion, PencilLine, UserRoundPlus, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
@@ -27,6 +27,7 @@ import { readPdfPageCount } from '../pdf-page-count'
 import type { ComposerProfile, PostCategory, PostingOrganization } from '../types'
 import { EmojiPicker } from './emoji-picker'
 import { MentionInput, type SelectedMention } from './mention-input'
+import { PHOTO_TAG_LIMIT, TagPeopleDialog, type TaggedPerson } from './tag-people-dialog'
 import { uploadPostMediaFile } from './upload-post-media'
 
 const initialState: PostComposerState = {}
@@ -55,6 +56,18 @@ type ComposerMedia = {
   progress: number
   status: 'requesting' | 'uploading' | 'ready' | 'error'
   error?: string
+  /** Members tagged in this photo (round 9B); sent in the media manifest. Images only. */
+  taggedProfileIds: string[]
+  /** The same people with their names, for the "With …" line under the tile. */
+  taggedPeople: TaggedPerson[]
+}
+
+/** "With Priya Nair, Arjun Mehta +2" under a tagged photo tile. */
+function taggedPeopleSummary(people: TaggedPerson[]) {
+  if (!people.length) return ''
+  const shown = people.slice(0, 2).map((person) => person.fullName).join(', ')
+  const rest = people.length - 2
+  return rest > 0 ? `With ${shown} +${rest}` : `With ${shown}`
 }
 
 function initials(name: string) {
@@ -230,9 +243,12 @@ export function PostComposer({
   onPosted,
   composeRequest,
   hideTriggerOnPhones = false,
+  group,
 }: {
   profile: ComposerProfile
   defaultCategory?: PostCategory
+  /** Post into this community group (round 9B): the audience becomes its members. */
+  group?: { id: string; name: string }
   /** Organizations the member can post for. Loaded when the composer first opens if not given. */
   postingOrganizations?: PostingOrganization[]
   /** Start with "Post as" set to this organization (organization pages). */
@@ -252,7 +268,7 @@ export function PostComposer({
   const documentInputRef = useRef<HTMLInputElement>(null)
   const mediaStateRef = useRef<ComposerMedia[]>([])
   const uploadSequenceRef = useRef(0)
-  const draftKey = `sea-n-shore:post-draft:${profile.id}${defaultOrganizationId ? `:${defaultOrganizationId}` : ''}`
+  const draftKey = `sea-n-shore:post-draft:${profile.id}${defaultOrganizationId ? `:${defaultOrganizationId}` : ''}${group ? `:group:${group.id}` : ''}`
   const [open, setOpen] = useState(false)
   const [loadedOrganizations, setLoadedOrganizations] = useState<PostingOrganization[] | null>(null)
   const [organizationsError, setOrganizationsError] = useState(false)
@@ -267,6 +283,8 @@ export function PostComposer({
   const [pollFields, setPollFields] = useState<PollField[]>(() => newPollFields(pollIdPrefix))
   const [media, setMediaState] = useState<ComposerMedia[]>([])
   const [mediaError, setMediaError] = useState<string | null>(null)
+  /** `localUrl` of the photo whose "Tag people" dialog is open. */
+  const [tagTarget, setTagTarget] = useState<string | null>(null)
   const [draftHydrated, setDraftHydrated] = useState(false)
   /** Photo / Document button to point at when the file picker could not open by itself. */
   const [pickerHint, setPickerHint] = useState<'photo' | 'document' | null>(null)
@@ -500,6 +518,8 @@ export function PostComposer({
       pageCount,
       progress: 0,
       status: 'requesting',
+      taggedProfileIds: [],
+      taggedPeople: [],
     }))
     setMedia([...existingImages, ...pendingItems])
     setMediaError(null)
@@ -645,8 +665,11 @@ export function PostComposer({
         position,
         fileName: item.file.name,
         pageCount: item.pageCount,
+        taggedProfileIds: isImageMime(item.mimeType) ? item.taggedProfileIds : [],
       })))
     : ''
+  const taggingMedia = tagTarget ? media.find((item) => item.localUrl === tagTarget && isImageMime(item.mimeType)) ?? null : null
+  const taggingIndex = taggingMedia ? media.indexOf(taggingMedia) : -1
   const canSubmit = body.trim().length > 0 && characterCount <= POST_CHARACTER_LIMIT && !mediaBlocksPost
   const hasDraft = Boolean(body.trim() || topicTags.trim() || media.length || pollFields.some((field) => field.value.trim()))
   const tagPreview = normalizedTopicTags(topicTags)
@@ -681,6 +704,7 @@ export function PostComposer({
               <input type="hidden" name="mode" value={mode === 'poll' ? 'poll' : 'standard'} />
               <input type="hidden" name="category" value={defaultCategory ?? 'technical_discussion'} />
               <input type="hidden" name="companyId" value={postAsOrganization?.id ?? ''} />
+              {group ? <input type="hidden" name="groupId" value={group.id} /> : null}
               {mediaIsReady ? <input type="hidden" name="mediaManifest" value={mediaManifest} /> : null}
 
               <div data-testid="composer-phone-bar" className="flex min-h-14 shrink-0 items-center justify-between gap-2 border-b border-mist-100 px-2 pt-[env(safe-area-inset-top)] md:hidden">
@@ -714,7 +738,7 @@ export function PostComposer({
                     <span className="max-md:sr-only">Audience</span>
                     <Globe aria-hidden="true" className="pointer-events-none absolute left-3 size-4 text-navy-700 md:hidden" />
                     <select aria-label="Audience" value="community" disabled className="ml-2 min-h-9 rounded-full border border-mist-100 bg-mist-50 px-3 text-xs font-semibold text-navy-950 disabled:opacity-100 max-md:ml-0 max-md:border-mist-300 max-md:bg-white max-md:pl-8 max-md:text-[13px]">
-                      <option value="community">Sea N Shore community</option>
+                      <option value="community">{group ? `Members of ${group.name}` : 'Sea N Shore community'}</option>
                     </select>
                   </label>
                 </div>
@@ -756,7 +780,7 @@ export function PostComposer({
                     className="min-h-40 w-full resize-none border-0 bg-transparent px-0 py-1 text-lg leading-7 text-ink outline-none placeholder:text-muted"
                   />
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs text-muted">{mode === 'question' ? 'Good questions include enough context for practical answers.' : 'Use @ to mention maritime professionals.'}</p>
+                    <p className="text-xs text-muted">{mode === 'question' ? 'Good questions include enough context for practical answers.' : 'Use @ to mention people or organizations and # to add topics.'}</p>
                     {/* Phones show the counter in the bottom toolbar. */}
                     <p className={`text-xs font-semibold max-md:hidden ${characterCount > POST_CHARACTER_LIMIT ? 'text-red-700' : 'text-muted'}`} aria-live="polite">{characterCount} / {POST_CHARACTER_LIMIT}</p>
                   </div>
@@ -849,15 +873,50 @@ export function PostComposer({
                               >
                                 <X aria-hidden="true" className="size-4" />
                               </button>
+                              {isImageMime(item.mimeType) ? (
+                                // Phones: a round icon button over the photo. md+: a small "Tag people" pill.
+                                <button
+                                  type="button"
+                                  aria-label={`Tag people in photo ${index + 1}`}
+                                  aria-haspopup="dialog"
+                                  onClick={() => setTagTarget(item.localUrl)}
+                                  className="absolute bottom-2 left-2 inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-full bg-white/95 text-navy-950 shadow-sm transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 max-md:size-9 md:h-8 md:px-2.5 md:text-xs md:font-semibold"
+                                >
+                                  <UserRoundPlus aria-hidden="true" className="size-4" />
+                                  <span className="max-md:sr-only">{item.taggedPeople.length ? `Tagged (${item.taggedPeople.length})` : 'Tag people'}</span>
+                                </button>
+                              ) : null}
                             </div>
                             <div className="px-2.5 py-2">
                               <p className="truncate text-xs font-semibold text-navy-950">{item.file.name}</p>
                               <p className="mt-0.5 truncate text-[11px] text-muted">{mediaStatus(item)}</p>
+                              {item.taggedPeople.length ? (
+                                <p data-testid="composer-photo-tags" className="mt-0.5 truncate text-[11px] font-medium text-ocean-700" title={item.taggedPeople.map((person) => person.fullName).join(', ')}>
+                                  {taggedPeopleSummary(item.taggedPeople)}
+                                </p>
+                              ) : null}
                             </div>
                           </div>
                         ))}
                       </div>
                     )}
+                    {taggingMedia ? (
+                      <TagPeopleDialog
+                        key={taggingMedia.localUrl}
+                        photoLabel={`photo ${taggingIndex + 1}`}
+                        initialSelected={taggingMedia.taggedPeople}
+                        max={PHOTO_TAG_LIMIT}
+                        onClose={() => setTagTarget(null)}
+                        onDone={(people) => {
+                          updateMediaByUrl(taggingMedia.localUrl, (current) => ({
+                            ...current,
+                            taggedPeople: people,
+                            taggedProfileIds: people.map((person) => person.profileId),
+                          }))
+                          setTagTarget(null)
+                        }}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -913,7 +972,7 @@ export function PostComposer({
                   <Hash aria-hidden="true" className="size-6" />
                 </button>
 
-                <span className="ml-auto text-xs text-muted max-md:hidden">Audience: Sea N Shore community</span>
+                <span className="ml-auto text-xs text-muted max-md:hidden">Audience: {group ? `Members of ${group.name}` : 'Sea N Shore community'}</span>
                 <p className={`order-6 ml-auto pr-2 text-[13px] tabular-nums md:hidden ${characterCount > POST_CHARACTER_LIMIT ? 'font-semibold text-red-700' : 'text-muted'}`}>
                   {characterCount}/{POST_CHARACTER_LIMIT}
                 </p>

@@ -19,6 +19,21 @@ describe('phone route rules', () => {
     }
   })
 
+  it('shows community group pages with their own page bar while /community itself keeps the top bar', () => {
+    expect(isPhoneDetailRoute('/community')).toBe(false)
+    expect(isPhoneDetailRoute('/community/')).toBe(false)
+    expect(isPhoneDetailRoute('/community/marine-engineers')).toBe(true)
+    expect(isPhoneDetailRoute('/community/marine-engineers?tab=members')).toBe(true)
+    expect(isPhoneFullScreenRoute('/community/marine-engineers')).toBe(false)
+  })
+
+  it('shows hashtag pages with their own page bar, without hiding the tab bar', () => {
+    expect(isPhoneDetailRoute('/hashtags/sire')).toBe(true)
+    expect(isPhoneDetailRoute('/hashtags/life_at_sea')).toBe(true)
+    expect(isPhoneDetailRoute('/hashtags')).toBe(false)
+    expect(isPhoneFullScreenRoute('/hashtags/sire')).toBe(false)
+  })
+
   it('hides the tab bar only on full-screen routes', () => {
     for (const path of [
       '/messages/m1', '/learn/courses/c1/learn', '/profile/edit', '/hiring/jobs/new', '/hiring/jobs/j1/edit',
