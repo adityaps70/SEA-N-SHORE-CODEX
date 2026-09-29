@@ -189,10 +189,11 @@ describe('SavedPostsGrid', () => {
     fireEvent.click(screen.getByRole('button', { name: /Open saved post/ }))
     const dialog = screen.getByRole('dialog')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Post options' }))
-    const menu = within(dialog).getByRole('menu')
+    // The post menu is portaled to <body>, outside the dialog panel.
+    const menu = screen.getByRole('menu')
 
     fireEvent.keyDown(menu, { key: 'Escape' })
-    expect(within(dialog).queryByRole('menu')).not.toBeInTheDocument()
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
@@ -203,7 +204,7 @@ describe('SavedPostsGrid', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Post options' }))
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Remove from saved' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from saved' }))
     })
 
     expect(mocks.setPostSaved).toHaveBeenCalledWith(textPost.id, false)
