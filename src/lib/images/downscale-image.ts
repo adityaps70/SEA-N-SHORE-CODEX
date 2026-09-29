@@ -1,7 +1,7 @@
 /**
  * Shrinks a photo in the browser before it is uploaded, so new avatars, covers, post images and
- * message photos are small at the source: the long edge is capped per use, the result is WebP
- * (JPEG where the browser cannot encode WebP), and re-encoding through a canvas drops EXIF
+ * message photos are small at the source: the long edge and encoder quality are set per use, the
+ * result is WebP (JPEG where the browser cannot encode WebP), and re-encoding through a canvas drops EXIF
  * metadata including GPS. Anything that cannot be improved is returned unchanged: GIFs (which may
  * animate), photos already within the size and under 400 KB, files the browser cannot decode
  * (e.g. HEIC), and results that would be bigger than the original.
@@ -18,16 +18,25 @@ export const DOWNSCALE_MAX_EDGE_PX: Record<DownscaleImageKind, number> = {
 /** Photos at or under this size that already fit the long edge are uploaded as they are. */
 export const DOWNSCALE_SKIP_BYTES = 400 * 1024
 
-export const DOWNSCALE_QUALITY = 0.85
+/**
+ * Encoder quality per use. Post and message images are mostly designed graphics (cards, posters)
+ * whose small text and logos smear below 0.9; avatars and covers are photos and can go lower.
+ */
+export const DOWNSCALE_QUALITY: Record<DownscaleImageKind, number> = {
+  avatar: 0.85,
+  cover: 0.85,
+  post: 0.92,
+  message: 0.92,
+}
 
 type Encoded = { blob: Blob; type: 'image/webp' | 'image/jpeg'; extension: 'webp' | 'jpg' }
 
-function encode(canvas: HTMLCanvasElement, type: Encoded['type'], extension: Encoded['extension']) {
+function encode(canvas: HTMLCanvasElement, type: Encoded['type'], extension: Encoded['extension'], quality: number) {
   return new Promise<Encoded | null>((resolve) => {
     canvas.toBlob((blob) => {
       // A browser that cannot encode the requested type answers with PNG (or nothing).
       resolve(blob && blob.type === type ? { blob, type, extension } : null)
-    }, type, DOWNSCALE_QUALITY)
+    }, type, quality)
   })
 }
 
@@ -68,7 +77,9 @@ export async function downscaleImage(file: File, kind: DownscaleImageKind): Prom
     if (!context) return file
     context.drawImage(bitmap, 0, 0, width, height)
 
-    const encoded = (await encode(canvas, 'image/webp', 'webp')) ?? (await encode(canvas, 'image/jpeg', 'jpg'))
+    const quality = DOWNSCALE_QUALITY[kind]
+    const encoded = (await encode(canvas, 'image/webp', 'webp', quality))
+      ?? (await encode(canvas, 'image/jpeg', 'jpg', quality))
     if (!encoded || encoded.blob.size >= file.size) return file
 
     return new File([encoded.blob], withExtension(file.name, encoded.extension), {

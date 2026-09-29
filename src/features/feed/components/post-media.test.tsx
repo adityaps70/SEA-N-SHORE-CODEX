@@ -1,7 +1,20 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { imageConfigDefault } from 'next/dist/shared/lib/image-config'
+import { ImageConfigContext } from 'next/dist/shared/lib/image-config-context.shared-runtime'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import nextConfig from '../../../../next.config'
 import type { FeedMedia } from '../types'
 import { PostMedia } from './post-media'
+
+/** Renders under the real `images` settings of next.config.ts, as the app does. */
+function renderWithImageConfig(ui: ReactNode) {
+  return render(
+    <ImageConfigContext.Provider value={{ ...imageConfigDefault, ...nextConfig.images } as typeof imageConfigDefault}>
+      {ui}
+    </ImageConfigContext.Provider>,
+  )
+}
 
 const mocks = vi.hoisted(() => ({
   renderPdfPage: vi.fn(async () => ({ width: 842, height: 595 })),
@@ -45,14 +58,36 @@ afterEach(() => cleanup())
 const BUCKET_URL = 'https://sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com/member/post/photo.jpg?X-Amz-Signature=abc'
 
 describe('PostMedia', () => {
-  it('serves media-bucket photos resized through the image optimizer, sized to the post column', () => {
-    render(<PostMedia media={{ ...imageMedia, signedUrl: BUCKET_URL }} authorName="Member A" />)
+  it('serves media-bucket photos resized through the image optimizer at quality 90, sized to the post column', () => {
+    renderWithImageConfig(<PostMedia media={{ ...imageMedia, signedUrl: BUCKET_URL }} authorName="Member A" />)
 
     const image = screen.getByRole('img', { name: 'Portrait of a vessel deck inspection' })
     expect(image.getAttribute('src')).toMatch(/^\/_next\/image\?url=https%3A%2F%2Fsea-n-shore-staging-310356785722-media/)
-    expect(image.getAttribute('srcset')).toContain('&w=640&q=75 640w')
+    expect(image.getAttribute('srcset')).toContain('&w=640&q=90 640w')
+    expect(image.getAttribute('srcset')).not.toContain('q=75')
     expect(image).toHaveAttribute('sizes', '(max-width: 768px) 100vw, 640px')
     expect(image).toHaveAttribute('loading', 'lazy')
+  })
+
+  it('asks for quality 90 for grid photos and the lightbox too', () => {
+    const gallery = [0, 1].map((index) => ({
+      ...imageMedia,
+      storagePath: `member/post/photo-${index}.jpg`,
+      signedUrl: BUCKET_URL.replace('photo.jpg', `photo-${index}.jpg`),
+      altText: `Photo ${index}`,
+      position: index,
+    }))
+    renderWithImageConfig(<PostMedia media={gallery} authorName="Member A" />)
+
+    for (const name of ['Photo 0', 'Photo 1']) {
+      expect(screen.getByRole('img', { name }).getAttribute('srcset')).toContain('q=90')
+    }
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open photo 1 of 2' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Photo 1 of 2' })
+    expect(within(dialog).getByRole('img', { name: 'Photo 0' }).getAttribute('srcset')).toContain('q=90')
+    expect(within(dialog).getByRole('img', { name: 'Photo 0' }).getAttribute('src')).toContain('q=90')
   })
 
   it('loads the first photo of the lead post eagerly with high priority and later photos lazily', () => {

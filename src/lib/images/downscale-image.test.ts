@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DOWNSCALE_MAX_EDGE_PX, DOWNSCALE_SKIP_BYTES, downscaleImage } from './downscale-image'
+import { DOWNSCALE_MAX_EDGE_PX, DOWNSCALE_QUALITY, DOWNSCALE_SKIP_BYTES, downscaleImage } from './downscale-image'
 
 type FakeBitmap = { width: number; height: number; close: () => void }
 
@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   decodeError: null as Error | null,
   encoded: {} as Partial<Record<string, Blob | null>>,
   drawn: [] as Array<{ width: number; height: number }>,
+  encodes: [] as Array<{ type: string; quality: number | undefined }>,
 }))
 
 function file(name: string, type: string, bytes: number) {
@@ -23,6 +24,7 @@ beforeEach(() => {
   state.decodeError = null
   state.encoded = { 'image/webp': blobOf(150_000, 'image/webp'), 'image/jpeg': blobOf(220_000, 'image/jpeg') }
   state.drawn = []
+  state.encodes = []
 
   vi.stubGlobal('createImageBitmap', vi.fn(async () => {
     if (state.decodeError) throw state.decodeError
@@ -38,7 +40,8 @@ beforeEach(() => {
       },
     } as unknown as CanvasRenderingContext2D
   })
-  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (callback, type) {
+  vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (callback, type, quality) {
+    state.encodes.push({ type: String(type), quality: typeof quality === 'number' ? quality : undefined })
     callback(state.encoded[String(type)] ?? null)
   })
 })
@@ -70,6 +73,29 @@ describe('downscaleImage', () => {
 
     expect(DOWNSCALE_MAX_EDGE_PX[kind]).toBe(width)
     expect(state.drawn).toEqual([{ width, height }])
+  })
+
+  it.each([
+    ['avatar', 0.85],
+    ['cover', 0.85],
+    ['post', 0.92],
+    ['message', 0.92],
+  ] as const)('encodes a %s photo as WebP at quality %s so graphics keep their fine text', async (kind, quality) => {
+    await downscaleImage(file('poster.png', 'image/png', 6_000_000), kind)
+
+    expect(DOWNSCALE_QUALITY[kind]).toBe(quality)
+    expect(state.encodes).toEqual([{ type: 'image/webp', quality }])
+  })
+
+  it('uses the same quality for the JPEG fallback', async () => {
+    state.encoded = { 'image/webp': blobOf(90_000, 'image/png'), 'image/jpeg': blobOf(220_000, 'image/jpeg') }
+
+    await downscaleImage(file('poster.png', 'image/png', 6_000_000), 'message')
+
+    expect(state.encodes).toEqual([
+      { type: 'image/webp', quality: 0.92 },
+      { type: 'image/jpeg', quality: 0.92 },
+    ])
   })
 
   it('keeps portrait orientation when scaling', async () => {

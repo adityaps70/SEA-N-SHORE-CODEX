@@ -105,6 +105,7 @@ export function ProfileHeader({
             alt={`${profile.fullName} cover photo`}
             fill
             sizes="(max-width: 768px) 100vw, 960px"
+            quality={90}
             loading="eager"
             className="object-cover"
           />

@@ -21,14 +21,18 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
-    // Signed media-bucket URLs are resized to WebP/AVIF by the optimizer (see MediaImage). The
-    // signed URL is stable for an hour, so optimized results are cached for at least that long.
+    // Signed media-bucket URLs are resized to WebP by the optimizer (see MediaImage). The signed
+    // URL is stable for an hour, so optimized results are cached for at least that long.
+    // WebP only: Next encodes AVIF at quality × 50/80, which smears the text, logos and graphics
+    // most post images are made of. Quality 90 is for post images and covers, 75 for avatars;
+    // Next 16 snaps any quality not listed here to the nearest listed one.
     remotePatterns: OPTIMIZED_MEDIA_IMAGE_HOSTNAMES.map((hostname) => ({
       protocol: 'https' as const,
       hostname,
       pathname: '/**',
     })),
-    formats: ['image/avif', 'image/webp'],
+    formats: ['image/webp'],
+    qualities: [75, 90],
     minimumCacheTTL: 3600,
   },
   async headers() {
