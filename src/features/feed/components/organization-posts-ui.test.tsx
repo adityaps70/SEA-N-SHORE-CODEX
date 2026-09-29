@@ -148,6 +148,7 @@ describe('PostCard for an organization post', () => {
       postId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       body: 'We are hiring second and third officers.',
       mentionProfileIds: [],
+      organizationMentionIds: [],
     }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit post' })).not.toBeInTheDocument())
     expect(screen.getByText('We are hiring second and third officers.')).toBeInTheDocument()
