@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
@@ -41,17 +42,18 @@ export function NetworkInvitationRow({ profile }: { profile: NetworkProfile }) {
 
   const roundButton = 'grid size-11 shrink-0 cursor-pointer place-items-center rounded-full border transition disabled:cursor-wait disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
 
+  const profileInitials = (
+    <span className="grid size-14 place-items-center rounded-full bg-mist-100 text-base font-semibold text-navy-950">
+      {initials(profile.fullName)}
+    </span>
+  )
+
   return (
     <article className="flex items-center gap-3 py-3">
       <Link href={`/people/${profile.slug}`} className="shrink-0 rounded-full" aria-label={`View ${profile.fullName} profile`}>
         {profile.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
-          <img src={profile.avatarUrl} alt="" loading="lazy" className="size-14 rounded-full object-cover ring-1 ring-mist-100" />
-        ) : (
-          <span className="grid size-14 place-items-center rounded-full bg-mist-100 text-base font-semibold text-navy-950">
-            {initials(profile.fullName)}
-          </span>
-        )}
+          <MediaImage src={profile.avatarUrl} alt="" width={56} height={56} sizes="56px" className="size-14 rounded-full object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+        ) : profileInitials}
       </Link>
       <div className="min-w-0 flex-1">
         <Link href={`/people/${profile.slug}`} className="block truncate text-[15px] font-semibold text-navy-950 hover:underline">

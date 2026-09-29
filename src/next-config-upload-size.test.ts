@@ -19,4 +19,11 @@ describe('Next.js server action upload envelope', () => {
       }),
     ]))
   })
+
+  it('serves resized modern formats and keeps them cached for the signed URL window', () => {
+    expect(nextConfig.images).toMatchObject({
+      formats: ['image/avif', 'image/webp'],
+      minimumCacheTTL: 3600,
+    })
+  })
 })

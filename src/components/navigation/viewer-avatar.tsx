@@ -1,3 +1,6 @@
+import { avatarPx, avatarSizes } from '@/lib/images/media-image-source'
+import { MediaImage } from '@/components/ui/media-image'
+
 export type HeaderViewer = {
   name: string
   avatarUrl?: string | null
@@ -16,17 +19,7 @@ export function viewerInitials(name: string) {
 }
 
 export function ViewerAvatar({ viewer, className = 'size-8' }: { viewer: HeaderViewer; className?: string }) {
-  if (viewer.avatarUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- avatar URLs are short-lived signed S3 links
-      <img
-        src={viewer.avatarUrl}
-        alt=""
-        className={`${className} shrink-0 rounded-full object-cover`}
-      />
-    )
-  }
-  return (
+  const fallback = (
     <span
       aria-hidden="true"
       className={`${className} grid shrink-0 place-items-center rounded-full bg-navy-950 ${/(^|\s)text-(xs|sm|base|lg|xl)\b/.test(className) ? '' : 'text-[11px]'} font-bold text-white`}
@@ -34,4 +27,20 @@ export function ViewerAvatar({ viewer, className = 'size-8' }: { viewer: HeaderV
       {viewerInitials(viewer.name)}
     </span>
   )
+  if (viewer.avatarUrl) {
+    const px = avatarPx(className, 32)
+    return (
+      <MediaImage
+        src={viewer.avatarUrl}
+        alt=""
+        width={px}
+        height={px}
+        sizes={avatarSizes(className, 32)}
+        loading="eager"
+        className={`${className} shrink-0 rounded-full object-cover`}
+        fallback={fallback}
+      />
+    )
+  }
+  return fallback
 }

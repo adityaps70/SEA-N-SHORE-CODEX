@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -476,31 +477,35 @@ export function MessageThread({
 
   useEffect(() => () => clearLongPress(), [])
 
-  const incomingAvatar = (messageId: string) => (otherAvatarUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-    <img
-      data-testid={`message-avatar-${messageId}`}
-      src={otherAvatarUrl}
-      alt=""
-      className="block size-7 rounded-full object-cover ring-1 ring-mist-100"
-    />
-  ) : (
+  const incomingInitials = (testId: string) => (
     <span
-      data-testid={`message-avatar-${messageId}`}
+      data-testid={testId}
       className="grid size-7 place-items-center rounded-full bg-white text-[9px] font-bold text-navy-950 ring-1 ring-mist-100"
     >
       {initials(otherName)}
     </span>
-  ))
+  )
+  const incomingAvatar = (messageId: string) => (otherAvatarUrl ? (
+    <MediaImage
+      data-testid={`message-avatar-${messageId}`}
+      src={otherAvatarUrl}
+      alt=""
+      width={28}
+      height={28}
+      sizes="28px"
+      className="block size-7 rounded-full object-cover ring-1 ring-mist-100"
+      fallback={incomingInitials(`message-avatar-${messageId}`)}
+    />
+  ) : incomingInitials(`message-avatar-${messageId}`))
 
-  const headerAvatar = otherAvatarUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-    <img src={otherAvatarUrl} alt="" className="size-11 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" />
-  ) : (
+  const headerInitials = (
     <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-xs font-bold text-navy-950 ring-1 ring-mist-100">
       {initials(otherName)}
     </div>
   )
+  const headerAvatar = otherAvatarUrl ? (
+    <MediaImage src={otherAvatarUrl} alt="" width={44} height={44} sizes="44px" loading="eager" className="size-11 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" fallback={headerInitials} />
+  ) : headerInitials
 
   return (
     <section ref={threadRef} className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,white,var(--mist-50))]">
@@ -808,21 +813,17 @@ export function MessageThread({
             {otherTyping ? (
               <div data-testid="typing-indicator" className="mt-2 flex items-end gap-2">
                 {otherAvatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-                  <img
+                  <MediaImage
                     data-testid="typing-avatar"
                     src={otherAvatarUrl}
                     alt=""
+                    width={28}
+                    height={28}
+                    sizes="28px"
                     className="size-7 shrink-0 rounded-full object-cover ring-1 ring-mist-100"
+                    fallback={incomingInitials('typing-avatar')}
                   />
-                ) : (
-                  <span
-                    data-testid="typing-avatar"
-                    className="grid size-7 shrink-0 place-items-center rounded-full bg-white text-[9px] font-bold text-navy-950 ring-1 ring-mist-100"
-                  >
-                    {initials(otherName)}
-                  </span>
-                )}
+                ) : incomingInitials('typing-avatar')}
                 <div
                   aria-label={`${name} is typing`}
                   className="flex h-9 items-center gap-1 rounded-2xl rounded-bl-md border border-mist-100 bg-white px-3 shadow-sm"

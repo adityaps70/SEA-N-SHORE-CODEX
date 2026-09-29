@@ -1,3 +1,4 @@
+import { postLoadingPriority } from '@/features/feed/post-loading-priority'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -117,7 +118,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           </div>
           {posts.length ? (
             <div className="space-y-4">
-              {posts.map((post) => <PostCard key={post.id} post={post} readOnly={!viewer} />)}
+              {posts.map((post, index) => <PostCard key={post.id} post={post} readOnly={!viewer} loadingPriority={postLoadingPriority(index)} />)}
             </div>
           ) : (
             <div className="rounded-[var(--radius-card)] border border-dashed border-mist-100 bg-white px-6 py-8 text-center text-sm text-muted">

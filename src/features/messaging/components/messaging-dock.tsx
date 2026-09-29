@@ -1,5 +1,7 @@
 'use client'
 
+import { avatarPx, avatarSizes } from '@/lib/images/media-image-source'
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -75,19 +77,7 @@ function avatar(
   testId?: string,
   sizeClass = 'size-9',
 ) {
-  if (item.otherAvatarUrl) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-      <img
-        data-testid={testId}
-        src={item.otherAvatarUrl}
-        alt=""
-        className={`${sizeClass} shrink-0 rounded-full object-cover ring-1 ring-mist-100`}
-      />
-    )
-  }
-
-  return (
+  const fallback = (
     <span
       data-testid={testId}
       className={`grid ${sizeClass} shrink-0 place-items-center rounded-full bg-mist-50 text-[10px] font-bold text-navy-950 ring-1 ring-mist-100`}
@@ -95,6 +85,23 @@ function avatar(
       {initials(item.otherName)}
     </span>
   )
+  if (item.otherAvatarUrl) {
+    const px = avatarPx(sizeClass, 36)
+    return (
+      <MediaImage
+        data-testid={testId}
+        src={item.otherAvatarUrl}
+        alt=""
+        width={px}
+        height={px}
+        sizes={avatarSizes(sizeClass, 36)}
+        className={`${sizeClass} shrink-0 rounded-full object-cover ring-1 ring-mist-100`}
+        fallback={fallback}
+      />
+    )
+  }
+
+  return fallback
 }
 
 async function loadInbox() {

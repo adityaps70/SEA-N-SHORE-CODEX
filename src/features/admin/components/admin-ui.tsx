@@ -1,3 +1,5 @@
+import { avatarPx, avatarSizes } from '@/lib/images/media-image-source'
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 
@@ -126,17 +128,18 @@ export function adminInitials(name: string) {
 
 /** Small round profile photo for admin lists, with initials when there is no photo. */
 export function AdminAvatar({ name, url, className = 'size-8' }: { name: string; url: string | null | undefined; className?: string }) {
-  if (url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- short-lived signed S3 URLs
-      <img src={url} alt="" loading="lazy" className={`${className} shrink-0 rounded-full bg-mist-100 object-cover`} />
-    )
-  }
-  return (
+  const fallback = (
     <span aria-hidden="true" className={`${className} grid shrink-0 place-items-center rounded-full bg-mist-100 text-[11px] font-bold text-navy-950`}>
       {adminInitials(name)}
     </span>
   )
+  if (url) {
+    const px = avatarPx(className, 32)
+    return (
+      <MediaImage src={url} alt="" width={px} height={px} sizes={avatarSizes(className, 32)} className={`${className} shrink-0 rounded-full bg-mist-100 object-cover`} fallback={fallback} />
+    )
+  }
+  return fallback
 }
 
 /** 1-based page number from a search parameter; anything invalid is page 1. */

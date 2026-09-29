@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { renderPdfPage } from '../pdf-page-renderer'
@@ -166,7 +167,22 @@ function PdfDocumentCarousel({ media, flush = false }: { media: FeedMedia; flush
   )
 }
 
-function PhotoGallery({ media, authorName, flush = false }: { media: FeedMedia[]; authorName: string; flush?: boolean }) {
+type PhotoLoading = {
+  /** `eager` for the first posts on screen; everything below stays lazy. */
+  loading?: 'eager' | 'lazy'
+  /** Given to the first photo of the very first post on screen. */
+  fetchPriority?: 'high'
+}
+
+/** Photos are shown at the card's width: full width on phones, the 640px column on larger screens. */
+const POST_IMAGE_SIZES = '(max-width: 768px) 100vw, 640px'
+const GRID_IMAGE_SIZES = '(max-width: 768px) 50vw, 320px'
+
+function PhotoGallery({ media, authorName, flush = false, loading = 'lazy', fetchPriority }: {
+  media: FeedMedia[]
+  authorName: string
+  flush?: boolean
+} & PhotoLoading) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const visible = media.slice(0, 4)
   const overflow = Math.max(0, media.length - visible.length)
@@ -203,10 +219,15 @@ function PhotoGallery({ media, authorName, flush = false }: { media: FeedMedia[]
     if (!item?.signedUrl) return null
     return (
       <button type="button" onClick={() => open(0)} className={`mt-4 block w-full overflow-hidden rounded-2xl border border-mist-200 bg-mist-50 text-left hover:border-ocean-300 hover:bg-mist-50 transition-colors ${flush ? `${FLUSH_CLASS} ${FLUSH_WIDTH_CLASS}` : ''}`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        {/* The intrinsic size is only a placeholder ratio: `h-auto w-full` follows the photo once loaded. */}
+        <MediaImage
           src={item.signedUrl}
           alt={item.altText ?? `Image attached to ${authorName}'s post`}
+          width={1280}
+          height={960}
+          sizes={POST_IMAGE_SIZES}
+          loading={loading}
+          fetchPriority={fetchPriority}
           className="block h-auto w-full object-contain"
         />
       </button>
@@ -224,11 +245,14 @@ function PhotoGallery({ media, authorName, flush = false }: { media: FeedMedia[]
             aria-label={index === 3 && overflow > 0 ? `View all ${media.length} photos` : `Open photo ${index + 1} of ${media.length}`}
             className={`relative min-w-0 overflow-hidden bg-white transition hover:brightness-95 ${imageGridClass(media.length, index)}`}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <MediaImage
               src={item.signedUrl ?? ''}
               alt={item.altText ?? `Photo ${index + 1} attached to ${authorName}'s post`}
-              className="h-full w-full object-cover"
+              fill
+              sizes={GRID_IMAGE_SIZES}
+              loading={index === 0 ? loading : 'lazy'}
+              fetchPriority={index === 0 ? fetchPriority : undefined}
+              className="object-cover"
             />
             {index === 3 && overflow > 0 ? (
               <span className="absolute inset-0 grid place-items-center bg-navy-950/55 text-3xl font-semibold text-white">+{overflow}</span>
@@ -253,8 +277,17 @@ function PhotoGallery({ media, authorName, flush = false }: { media: FeedMedia[]
               <ChevronLeft aria-hidden="true" className="size-6" />
             </button>
           ) : null}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={active.signedUrl} alt={active.altText ?? `Photo attached to ${authorName}'s post`} className="max-h-[88vh] max-w-[92vw] object-contain" />
+          <MediaImage
+            src={active.signedUrl}
+            alt={active.altText ?? `Photo attached to ${authorName}'s post`}
+            width={2048}
+            height={1536}
+            sizes="100vw"
+            quality={85}
+            loading="eager"
+            className="max-h-[88vh] max-w-[92vw] object-contain"
+            style={{ width: 'auto', height: 'auto' }}
+          />
           {media.length > 1 ? (
             <button type="button" aria-label="Next photo" disabled={(activeIndex ?? 0) >= media.length - 1} onClick={() => setActiveIndex((current) => current == null ? null : Math.min(media.length - 1, current + 1))} className="absolute right-3 top-1/2 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 sm:right-6">
               <ChevronRight aria-hidden="true" className="size-6" />
@@ -273,12 +306,14 @@ export function PostMedia({
   media,
   authorName,
   flush = false,
+  loading = 'lazy',
+  fetchPriority,
 }: {
   media: FeedMedia | FeedMedia[]
   authorName: string
   /** Edge to edge on phones (Home feed and post page). */
   flush?: boolean
-}) {
+} & PhotoLoading) {
   const items = useMemo(() => orderedMedia(media), [media])
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const first = items[0]
@@ -331,5 +366,7 @@ export function PostMedia({
   }
 
   const images = items.filter((item) => item.mimeType.startsWith('image/'))
-  return images.length ? <PhotoGallery media={images} authorName={authorName} flush={flush} /> : null
+  return images.length
+    ? <PhotoGallery media={images} authorName={authorName} flush={flush} loading={loading} fetchPriority={fetchPriority} />
+    : null
 }

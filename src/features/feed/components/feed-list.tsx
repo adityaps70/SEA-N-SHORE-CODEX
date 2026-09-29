@@ -1,5 +1,6 @@
 'use client'
 
+import { postLoadingPriority } from '../post-loading-priority'
 import Link from 'next/link'
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from 'react'
 import type { NetworkProfile } from '@/features/network/types'
@@ -138,7 +139,7 @@ export function FeedList({
       ) : null}
       {posts.map((post, index) => (
         <Fragment key={post.id}>
-          <PostCard post={post} flushOnPhones />
+          <PostCard post={post} flushOnPhones loadingPriority={postLoadingPriority(index)} />
           {peoplePositions.has(index) ? <FeedPeopleRow profiles={suggestions} /> : null}
         </Fragment>
       ))}

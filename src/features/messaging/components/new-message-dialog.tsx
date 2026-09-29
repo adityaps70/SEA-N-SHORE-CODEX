@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { LoaderCircle, MessageCircleMore, RefreshCcw, Search, X } from 'lucide-react'
 import {
@@ -34,6 +35,14 @@ type NewMessageDialogProps = {
 type SearchStatus = 'loading' | 'ready' | 'error'
 
 const subscribeNothing = () => () => {}
+
+function recipientInitials(name: string) {
+  return (
+    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-mist-50 text-xs font-bold text-navy-950 ring-1 ring-mist-100">
+      {initials(name)}
+    </span>
+  )
+}
 
 function initials(name: string) {
   return name
@@ -320,13 +329,8 @@ function NewMessageDialogPanel({
                     } ${available ? '' : 'cursor-not-allowed opacity-75'}`}
                   >
                     {recipient.avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-                      <img src={recipient.avatarUrl} alt="" className="size-10 shrink-0 rounded-full object-cover ring-1 ring-mist-100" />
-                    ) : (
-                      <span className="grid size-10 shrink-0 place-items-center rounded-full bg-mist-50 text-xs font-bold text-navy-950 ring-1 ring-mist-100">
-                        {initials(recipient.name)}
-                      </span>
-                    )}
+                      <MediaImage src={recipient.avatarUrl} alt="" width={40} height={40} sizes="40px" className="size-10 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={recipientInitials(recipient.name)} />
+                    ) : recipientInitials(recipient.name)}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-navy-950">{recipient.name}</span>
                       <span className="block truncate text-xs text-muted">

@@ -1,3 +1,4 @@
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { Clock3, MapPin, Ship } from 'lucide-react'
 import type { NetworkProfile } from '../types'
@@ -16,18 +17,19 @@ export function ConnectionRequestCard({
 }) {
   const relationshipKey = `${profile.relationship.following ? 1 : 0}:${profile.relationship.connection.kind}:${profile.relationship.connection.connectionId ?? ''}`
 
+  const profileInitials = (
+    <span className="grid size-16 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
+      {initials(profile.fullName)}
+    </span>
+  )
+
   return (
     <article className="flex flex-col gap-4 px-5 py-4 sm:flex-row sm:items-center sm:px-6">
       <div className="flex min-w-0 flex-1 items-start gap-4">
         <Link href={`/people/${profile.slug}`} className="shrink-0" aria-label={`View ${profile.fullName} profile photo`}>
           {profile.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
-            <img src={profile.avatarUrl} alt={`${profile.fullName} profile`} loading="lazy" className="size-16 rounded-full object-cover ring-1 ring-mist-100" />
-          ) : (
-            <span className="grid size-16 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
-              {initials(profile.fullName)}
-            </span>
-          )}
+            <MediaImage src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={64} height={64} sizes="64px" className="size-16 rounded-full object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+          ) : profileInitials}
         </Link>
 
         <div className="min-w-0 flex-1">

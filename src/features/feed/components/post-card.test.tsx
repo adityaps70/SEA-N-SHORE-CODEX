@@ -48,6 +48,29 @@ const post: FeedPost = {
 afterEach(() => cleanup())
 
 describe('PostCard', () => {
+  it('loads the author photo and first image eagerly only for the first posts on screen', () => {
+    const withPhotos: FeedPost = {
+      ...post,
+      author: { ...post.author, avatarUrl: 'https://media.example/member-a.jpg' },
+      media: { storagePath: 'member/post/deck.jpg', mimeType: 'image/jpeg', altText: 'Deck', signedUrl: 'https://media.example/deck.jpg' },
+    }
+    const { unmount } = render(<PostCard post={withPhotos} loadingPriority="lead" />)
+    expect(screen.getByRole('img', { name: "Member A's profile photo" })).toHaveAttribute('loading', 'eager')
+    expect(screen.getByRole('img', { name: 'Deck' })).toHaveAttribute('loading', 'eager')
+    expect(screen.getByRole('img', { name: 'Deck' })).toHaveAttribute('fetchpriority', 'high')
+    unmount()
+
+    const second = render(<PostCard post={withPhotos} loadingPriority="eager" />)
+    expect(screen.getByRole('img', { name: "Member A's profile photo" })).toHaveAttribute('loading', 'eager')
+    expect(screen.getByRole('img', { name: 'Deck' })).toHaveAttribute('loading', 'eager')
+    expect(screen.getByRole('img', { name: 'Deck' })).not.toHaveAttribute('fetchpriority')
+    second.unmount()
+
+    render(<PostCard post={withPhotos} />)
+    expect(screen.getByRole('img', { name: "Member A's profile photo" })).toHaveAttribute('loading', 'lazy')
+    expect(screen.getByRole('img', { name: 'Deck' })).toHaveAttribute('loading', 'lazy')
+  })
+
   it('renders one action row: [Like 4] [Comment 2] [Repost] [Send] with the reaction types at the far right', () => {
     render(<PostCard post={post} />)
     expect(screen.getByRole('article')).toBeInTheDocument()

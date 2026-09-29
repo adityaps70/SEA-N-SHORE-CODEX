@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { searchMentionCandidates, type MentionCandidate } from '../mention-actions'
 
@@ -144,10 +145,9 @@ export function MentionInput({
               onClick={() => select(candidate)}
               className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left ${index === activeIndex ? 'bg-ocean-50' : 'hover:bg-mist-50'}`}
             >
-              <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
+              <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
                 {candidate.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={candidate.avatarUrl} alt="" className="h-full w-full object-cover" />
+                  <MediaImage src={candidate.avatarUrl} alt="" fill sizes="32px" className="object-cover" fallback={candidate.fullName.slice(0, 1).toUpperCase()} />
                 ) : candidate.fullName.slice(0, 1).toUpperCase()}
               </span>
               <span className="min-w-0">

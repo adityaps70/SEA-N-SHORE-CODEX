@@ -1,3 +1,4 @@
+import { postLoadingPriority } from '../post-loading-priority'
 import { MessagesSquare } from 'lucide-react'
 import type { FeedPost } from '../types'
 import { PostCard } from './post-card'
@@ -17,7 +18,7 @@ export function ProfilePostsSection({ posts, ownerName }: { posts: FeedPost[]; o
 
       {posts.length ? (
         <div className="space-y-4">
-          {posts.map((post) => <PostCard key={post.id} post={post} />)}
+          {posts.map((post, index) => <PostCard key={post.id} post={post} loadingPriority={postLoadingPriority(index)} />)}
         </div>
       ) : (
         <div className="rounded-2xl border border-dashed border-mist-100 bg-white px-5 py-8 text-center">

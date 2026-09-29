@@ -1,6 +1,6 @@
 'use client'
 
-/* eslint-disable @next/next/no-img-element */
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
@@ -100,10 +100,13 @@ export function ProfileHeader({
     <section data-testid="profile-header-shell" className="overflow-visible rounded-[1.75rem] border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:shadow-none">
       <div data-testid="profile-header-cover" className="relative h-36 overflow-hidden rounded-t-[1.75rem] bg-[linear-gradient(115deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))] max-md:h-28 max-md:rounded-none sm:h-48">
         {profile.coverUrl ? (
-          <img
+          <MediaImage
             src={profile.coverUrl}
             alt={`${profile.fullName} cover photo`}
-            className="h-full w-full object-cover"
+            fill
+            sizes="(max-width: 768px) 100vw, 960px"
+            loading="eager"
+            className="object-cover"
           />
         ) : null}
         {mediaControls ? <div className="absolute right-4 top-4 z-10">{mediaControls}</div> : null}
@@ -114,13 +117,18 @@ export function ProfileHeader({
           <div className="relative shrink-0">
             <div
               data-testid="profile-header-avatar"
-              className="grid size-24 place-items-center overflow-hidden rounded-full border-4 border-white bg-mist-100 text-xl font-semibold text-navy-950 shadow-sm sm:size-32 sm:text-2xl"
+              className="relative grid size-24 place-items-center overflow-hidden rounded-full border-4 border-white bg-mist-100 text-xl font-semibold text-navy-950 shadow-sm sm:size-32 sm:text-2xl"
             >
               {profile.avatarUrl ? (
-                <img
+                <MediaImage
                   src={profile.avatarUrl}
                   alt={`${profile.fullName} profile photo`}
-                  className="h-full w-full object-cover"
+                  fill
+                  sizes="(min-width: 640px) 128px, 96px"
+                  loading="eager"
+                  fetchPriority="high"
+                  className="object-cover"
+                  fallback={initials(profile.fullName)}
                 />
               ) : (
                 initials(profile.fullName)
