@@ -23,7 +23,10 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('../actions', () => ({
   addComment: vi.fn(async () => ({ ok: false })),
+  updateComment: vi.fn(async () => ({ ok: false })),
+  deleteComment: vi.fn(async () => ({ ok: true })),
   setCommentReaction: vi.fn(async () => ({ ok: true })),
+  loadReactionDetails: vi.fn(async () => ({ ok: true, reactions: [] })),
 }))
 
 vi.mock('../mention-actions', () => ({
@@ -91,5 +94,75 @@ describe('CommentThread mentions', () => {
     />)
 
     expect(screen.getByRole('link', { name: '@Rahul Gupta' })).toHaveAttribute('href', '/people/rahul-gupta')
+  })
+
+  it('renders organization mentions and hashtags in comment text as links', () => {
+    render(<CommentThread
+      postId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      comments={[{
+        ...rootComment,
+        body: 'Great work @SIRE Marine on the #vetting drive.',
+        organizationMentions: [{
+          companyId: '33333333-3333-4333-8333-333333333333',
+          slug: 'sire-marine',
+          name: 'SIRE Marine',
+          logoUrl: null,
+        }],
+      }]}
+      readOnly
+    />)
+
+    expect(screen.getByRole('link', { name: '@SIRE Marine' })).toHaveAttribute('href', '/organizations/sire-marine')
+    expect(screen.getByRole('link', { name: '#vetting' })).toHaveAttribute('href', '/hashtags/vetting')
+  })
+
+  it('submits a picked organization as a hidden organizationMentionId in a new comment', async () => {
+    mocks.searchMentionCandidates.mockResolvedValueOnce([{
+      kind: 'organization',
+      id: '33333333-3333-4333-8333-333333333333',
+      slug: 'sire-marine',
+      name: 'SIRE Marine',
+      logoUrl: null,
+      subtitle: 'Ship manager',
+    }] as never)
+    const user = userEvent.setup()
+    render(<CommentThread postId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" comments={[]} composerOpen />)
+
+    const textarea = screen.getByPlaceholderText('Write a comment…')
+    await user.type(textarea, 'Well done @SI')
+    await user.click(await screen.findByRole('option', { name: /SIRE Marine/ }, { timeout: 1200 }))
+
+    expect(textarea).toHaveValue('Well done @SIRE Marine ')
+    const form = textarea.closest('form')!
+    expect(form.querySelector<HTMLInputElement>('input[name="organizationMentionId"]')?.value).toBe('33333333-3333-4333-8333-333333333333')
+    expect(form.querySelector('input[name="mentionProfileId"]')).toBeNull()
+  })
+
+  it('pre-fills organization mentions when editing a comment so they survive the save', async () => {
+    const user = userEvent.setup()
+    render(<CommentThread
+      postId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+      comments={[{
+        ...rootComment,
+        body: 'Great work @SIRE Marine.',
+        updatedAt: rootComment.createdAt,
+        viewerOwns: true,
+        canEdit: true,
+        deleted: false,
+        organizationMentions: [{
+          companyId: '33333333-3333-4333-8333-333333333333',
+          slug: 'sire-marine',
+          name: 'SIRE Marine',
+          logoUrl: null,
+        }],
+      }]}
+    />)
+
+    await user.click(screen.getByRole('button', { name: /comment actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: 'Edit' }))
+
+    const textarea = screen.getByPlaceholderText('Edit comment…')
+    const form = textarea.closest('form')!
+    expect(form.querySelector<HTMLInputElement>('input[name="organizationMentionId"]')?.value).toBe('33333333-3333-4333-8333-333333333333')
   })
 })

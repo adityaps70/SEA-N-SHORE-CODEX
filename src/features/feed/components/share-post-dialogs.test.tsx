@@ -134,7 +134,7 @@ describe('share menu', () => {
     expect(within(dialog).getByRole('textbox', { name: 'Your thoughts' })).toHaveValue('Every cadet should read this. ⚓')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Repost' }))
 
-    await waitFor(() => expect(mocks.repostPost).toHaveBeenCalledWith(postId, { body: 'Every cadet should read this. ⚓', mentionProfileIds: [] }))
+    await waitFor(() => expect(mocks.repostPost).toHaveBeenCalledWith(postId, { body: 'Every cadet should read this. ⚓', mentionProfileIds: [], organizationMentionIds: [] }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Repost with your thoughts' })).not.toBeInTheDocument())
     expect(screen.getByRole('status')).toHaveTextContent('Reposted to your feed with your thoughts.')
   })

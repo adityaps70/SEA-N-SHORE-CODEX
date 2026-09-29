@@ -50,7 +50,16 @@ function CommentReplySummary({ count }: { count: number }) {
 }
 
 function selectedMentions(comment: FeedComment): SelectedMention[] {
-  return (comment.mentions ?? []).map((mention) => ({ profileId: mention.profileId, label: mention.fullName }))
+  return [
+    ...(comment.mentions ?? []).map((mention): SelectedMention => ({ kind: 'member', profileId: mention.profileId, label: mention.fullName })),
+    ...(comment.organizationMentions ?? []).map((organization): SelectedMention => ({
+      kind: 'organization',
+      profileId: organization.companyId,
+      label: organization.name,
+      slug: organization.slug,
+      logoUrl: organization.logoUrl,
+    })),
+  ]
 }
 
 function firstActionError(state: CommentActionState) {
@@ -328,7 +337,7 @@ function CommentItem({ postId, postAuthorId, comment, rootComment, readOnly, isR
                 <button type="submit" disabled={managementPending} className="min-h-8 rounded-lg bg-navy-950 px-3 text-xs font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">{managementPending ? 'Saving…' : 'Save'}</button>
               </div>
             </form>
-          ) : <ExpandableText body={comment.body} mentions={comment.mentions} limits={COMMENT_COLLAPSE} className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink [overflow-wrap:anywhere]" />}
+          ) : <ExpandableText body={comment.body} mentions={comment.mentions} organizationMentions={comment.organizationMentions} limits={COMMENT_COLLAPSE} className="mt-1 whitespace-pre-wrap text-sm leading-6 text-ink [overflow-wrap:anywhere]" />}
         </div>
         {!editing ? (
           <div data-testid={`comment-actions-${comment.id}`} className="mt-1 flex min-h-8 items-center gap-1.5 px-1">
