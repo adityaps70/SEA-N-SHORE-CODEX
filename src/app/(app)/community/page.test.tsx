@@ -22,7 +22,7 @@ import CommunityPage from './page'
 function group(overrides: Partial<CommunityGroup> = {}): CommunityGroup {
   return {
     id: 'g-engineers', slug: 'marine-engineers', name: 'Marine Engineers', description: 'Technical conversations spanning machinery and maintenance.',
-    rules: '', coverUrl: null, icon: 'Wrench', visibility: 'public', memberCount: 42, archived: false, createdBy: null, viewerMembership: null, ...overrides,
+    rules: '', coverUrl: null, iconUrl: null, icon: 'Wrench', visibility: 'public', joinPolicy: 'open', ownerOrganization: null, memberCount: 42, archived: false, createdBy: null, viewerMembership: null, ...overrides,
   }
 }
 

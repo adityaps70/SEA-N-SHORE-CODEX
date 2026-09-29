@@ -162,7 +162,7 @@ describe('community repository: administration and moderation', () => {
     })
     expect(id).toBe(groupId)
     const calls = query.mock.calls as unknown as Call[]
-    expect(calls[0][1]).toEqual(['Port Captains', 'port-captains', 'd', 'r', 'ShieldCheck', 'private', viewerId])
+    expect(calls[0][1]).toEqual(['Port Captains', 'port-captains', 'd', 'r', 'ShieldCheck', 'private', 'approval', viewerId, null])
     expect(calls[1][0]).toContain("'owner', 'active'")
     expect(calls[1][1]).toEqual([groupId, memberId])
   })

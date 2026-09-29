@@ -45,7 +45,7 @@ import CommunityGroupPage from './page'
 function group(overrides: Partial<CommunityGroup> = {}): CommunityGroup {
   return {
     id: '22222222-2222-4222-8222-222222222222', slug: 'tanker-professionals', name: 'Tanker Professionals',
-    description: 'Operational discussion around tanker practice.', rules: 'Keep it professional.', coverUrl: null, icon: 'ShieldCheck',
+    description: 'Operational discussion around tanker practice.', rules: 'Keep it professional.', coverUrl: null, iconUrl: null, icon: 'ShieldCheck', joinPolicy: 'open', ownerOrganization: null,
     visibility: 'public', memberCount: 12, archived: false, createdBy: 'owner-1', viewerMembership: null, ...overrides,
   }
 }

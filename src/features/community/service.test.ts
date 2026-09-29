@@ -11,7 +11,7 @@ const postId = '44444444-4444-4444-8444-444444444444'
 
 function group(overrides: Partial<CommunityGroup> = {}): CommunityGroup {
   return {
-    id: groupId, slug: 'tanker-professionals', name: 'Tanker Professionals', description: '', rules: '', coverUrl: null, icon: 'ShieldCheck',
+    id: groupId, slug: 'tanker-professionals', name: 'Tanker Professionals', description: '', rules: '', coverUrl: null, iconUrl: null, icon: 'ShieldCheck', joinPolicy: 'open', ownerOrganization: null,
     visibility: 'private', memberCount: 4, archived: false, createdBy: ownerId, viewerMembership: null, ...overrides,
   }
 }
