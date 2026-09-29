@@ -57,10 +57,11 @@ site=next(e['value'] for e in web['environment'] if e['name']=='NEXT_PUBLIC_SITE
 values={'image_tag':web['image'].rsplit(':',1)[-1], 'site_url':site, 'aurora_engine_version':attrs('aws_rds_cluster', 'aurora')['engine_version']}
 with open(sys.argv[2],'w') as f: json.dump(values,f)
 PY
-# Reuse the observed, lockfile-verified provider; never reset the host checkout.
-PLUGIN_DIR="$HOME/SEA-N-SHORE-CODEX/infra/aws/app/.terraform/providers"
-[[ -x "$PLUGIN_DIR/registry.terraform.io/hashicorp/aws/6.62.0/linux_amd64/terraform-provider-aws_v6.62.0_x5" ]]
-terraform -chdir="$APP_DIR" init -input=false -no-color -lockfile=readonly -plugin-dir="$PLUGIN_DIR" \
+# Providers come from the committed lockfile (read-only), exactly like the other guarded scripts;
+# the module now needs archive/random alongside aws, which the host checkout's cache never held.
+grep -Eq 'provider "registry.terraform.io/hashicorp/aws" \{\s*$' "$APP_DIR/.terraform.lock.hcl"
+grep -Eq '^  version\s*=\s*"6\.62\.0"' "$APP_DIR/.terraform.lock.hcl"
+terraform -chdir="$APP_DIR" init -input=false -no-color -lockfile=readonly \
   -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" \
   -backend-config=region=ap-south-1 -backend-config=use_lockfile=true > "$RECOVERY_DIR/init.log"
 set +e
