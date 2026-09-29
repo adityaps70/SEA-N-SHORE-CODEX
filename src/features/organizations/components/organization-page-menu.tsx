@@ -2,14 +2,8 @@
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { Check, Crown, ExternalLink, Link2, MoreHorizontal, Share2, UserPlus } from 'lucide-react'
-import {
-  MobileSheetBackdrop,
-  MobileSheetCancel,
-  MobileSheetGrab,
-  SHEET_MENU_ITEM_CLASS,
-  SHEET_MENU_PANEL_CLASS,
-} from '@/components/ui/mobile-sheet'
-import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
+import { ActionMenu, ActionMenuItem, visibleMenuItems } from '@/components/ui/action-menu'
+import { cn } from '@/lib/cn'
 import { ORGANIZATION_ANCHOR_EVENT } from './phone-disclosure'
 
 export type OrganizationMenuLink = { href: string; label: string }
@@ -19,12 +13,6 @@ export type OrganizationMenuLink = { href: string; label: string }
  * the sheet itself lives with the header menu and the bar button only asks it to open.
  */
 export const ORGANIZATION_MENU_OPEN_EVENT = 'sns:organization-menu-open'
-
-function menuItems(menu: HTMLElement | null) {
-  // Skip items hidden at this screen size (phone-only rows on desktop).
-  return Array.from(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])
-    .filter((item) => typeof window === 'undefined' || window.getComputedStyle(item).display !== 'none')
-}
 
 /** The "…" button in the phone page bar; it opens the same menu as the header button. */
 export function OrganizationPageMenuBarButton({ organizationName }: { organizationName: string }) {
@@ -67,24 +55,14 @@ export function OrganizationPageMenu({
   // Open towards whichever side has room, so the menu never runs off a phone screen.
   const [alignRight, setAlignRight] = useState(false)
   const [status, setStatus] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
-  const pendingFocusRef = useRef<'first' | 'last' | null>(null)
+  const [initialFocus, setInitialFocus] = useState<'first' | 'last'>('first')
   const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
   const close = useCallback(() => setOpen(false), [])
-  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close, { triggerRef })
   const menuId = useId()
 
   useEffect(() => {
-    const pendingFocus = pendingFocusRef.current
-    if (!open || !pendingFocus) return
-    pendingFocusRef.current = null
-    const entries = menuItems(menuRef.current)
-    entries[pendingFocus === 'first' ? 0 : entries.length - 1]?.focus()
-  }, [open])
-
-  useEffect(() => {
     function onOpenRequest() {
-      pendingFocusRef.current = 'first'
+      setInitialFocus('first')
       setOpen(true)
     }
     window.addEventListener(ORGANIZATION_MENU_OPEN_EVENT, onOpenRequest)
@@ -140,33 +118,21 @@ export function OrganizationPageMenu({
     event.preventDefault()
     const target = event.key === 'ArrowDown' ? 'first' : 'last'
     if (open) {
-      const entries = menuItems(menuRef.current)
+      const entries = visibleMenuItems(document.getElementById(menuId))
       entries[target === 'first' ? 0 : entries.length - 1]?.focus()
       return
     }
-    pendingFocusRef.current = target
+    setInitialFocus(target)
     openMenu()
   }
 
-  function onMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    const entries = menuItems(menuRef.current)
-    if (!entries.length) return
-    const index = entries.indexOf(document.activeElement as HTMLElement)
-    let next: number | null = null
-    if (event.key === 'ArrowDown') next = index < 0 ? 0 : (index + 1) % entries.length
-    if (event.key === 'ArrowUp') next = index < 0 ? entries.length - 1 : (index - 1 + entries.length) % entries.length
-    if (event.key === 'Home') next = 0
-    if (event.key === 'End') next = entries.length - 1
-    if (next === null) return
-    event.preventDefault()
-    entries[next]?.focus()
-  }
-
-  const itemClass = `flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 transition hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none ${SHEET_MENU_ITEM_CLASS}`
-  const phoneItemClass = `${itemClass} md:hidden`
+  const itemClass = 'py-2'
+  // Anchors keep the row look of ActionMenuItem; phone-only rows hide from md up.
+  const linkItemClass = cn('flex min-h-9 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-navy-950 transition hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none [&>svg]:size-4 [&>svg]:shrink-0 max-md:min-h-13 max-md:gap-4 max-md:px-4 max-md:text-[15px] max-md:[&>svg]:size-5')
+  const phoneItemClass = `${linkItemClass} md:hidden`
 
   return (
-    <div ref={rootRef} className="relative">
+    <div className="relative">
       <button
         ref={triggerRef}
         type="button"
@@ -180,51 +146,48 @@ export function OrganizationPageMenu({
       >
         <MoreHorizontal aria-hidden="true" className="size-5" />
       </button>
-      {open ? <MobileSheetBackdrop onClose={close} /> : null}
-      {open ? (
-        <div
-          ref={menuRef}
-          id={menuId}
-          role="menu"
-          aria-label={`More actions for ${organizationName}`}
-          onKeyDown={onMenuKeyDown}
-          className={`absolute top-full z-50 mt-1.5 w-56 rounded-xl border border-mist-100 bg-white p-1.5 shadow-[var(--shadow-card)] ${alignRight ? 'right-0' : 'left-0'} ${SHEET_MENU_PANEL_CLASS}`}
-        >
-          <MobileSheetGrab />
-          {websiteHref ? (
-            <a href={websiteHref} target="_blank" rel="noreferrer" role="menuitem" onClick={close} className={phoneItemClass}>
-              <ExternalLink aria-hidden="true" className="size-4 text-muted" /> Visit website
-              <span className="sr-only">(opens in a new tab)</span>
-            </a>
-          ) : null}
-          <button type="button" role="menuitem" onClick={() => void copyLink()} className={itemClass}>
-            <Link2 aria-hidden="true" className="size-4 text-muted" /> Copy link
-          </button>
-          <button type="button" role="menuitem" onClick={() => void share()} className={itemClass}>
-            <Share2 aria-hidden="true" className="size-4 text-muted" /> Share page
-          </button>
-          {joinLink ? (
-            <a
-              href={joinLink.href}
-              role="menuitem"
-              onClick={() => {
-                close()
-                // Opens the collapsed "Work here?" row on phones, even when the hash is unchanged.
-                if (joinLink.href.startsWith('#')) window.dispatchEvent(new CustomEvent(ORGANIZATION_ANCHOR_EVENT, { detail: joinLink.href }))
-              }}
-              className={itemClass}
-            >
-              <UserPlus aria-hidden="true" className="size-4 text-muted" /> {joinLink.label}
-            </a>
-          ) : null}
-          {upgradeHref ? (
-            <a href={upgradeHref} role="menuitem" onClick={close} className={phoneItemClass}>
-              <Crown aria-hidden="true" className="size-4 text-muted" /> Upgrade to Organization Pro
-            </a>
-          ) : null}
-          <MobileSheetCancel onClick={() => { close(); triggerRef.current?.focus() }} />
-        </div>
-      ) : null}
+      <ActionMenu
+        open={open}
+        onClose={close}
+        anchorRef={triggerRef}
+        id={menuId}
+        label={`More actions for ${organizationName}`}
+        align={alignRight ? 'end' : 'start'}
+        initialFocus={initialFocus}
+        className="w-56 shadow-[var(--shadow-card)]"
+      >
+        {websiteHref ? (
+          <a href={websiteHref} target="_blank" rel="noreferrer" role="menuitem" onClick={close} className={phoneItemClass}>
+            <ExternalLink aria-hidden="true" className="size-4 text-muted" /> Visit website
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
+        ) : null}
+        <ActionMenuItem onClick={() => void copyLink()} className={itemClass} icon={<Link2 aria-hidden="true" className="size-4 text-muted" />}>
+          Copy link
+        </ActionMenuItem>
+        <ActionMenuItem onClick={() => void share()} className={itemClass} icon={<Share2 aria-hidden="true" className="size-4 text-muted" />}>
+          Share page
+        </ActionMenuItem>
+        {joinLink ? (
+          <a
+            href={joinLink.href}
+            role="menuitem"
+            onClick={() => {
+              close()
+              // Opens the collapsed "Work here?" row on phones, even when the hash is unchanged.
+              if (joinLink.href.startsWith('#')) window.dispatchEvent(new CustomEvent(ORGANIZATION_ANCHOR_EVENT, { detail: joinLink.href }))
+            }}
+            className={linkItemClass}
+          >
+            <UserPlus aria-hidden="true" className="size-4 text-muted" /> {joinLink.label}
+          </a>
+        ) : null}
+        {upgradeHref ? (
+          <a href={upgradeHref} role="menuitem" onClick={close} className={phoneItemClass}>
+            <Crown aria-hidden="true" className="size-4 text-muted" /> Upgrade to Organization Pro
+          </a>
+        ) : null}
+      </ActionMenu>
       <p role="status" aria-live="polite" className={status ? `absolute top-full z-40 mt-1.5 ${alignRight ? 'right-0' : 'left-0'} w-max max-w-[16rem] rounded-lg px-3 py-2 text-xs font-semibold shadow-sm max-md:fixed max-md:inset-x-4 max-md:bottom-24 max-md:top-auto max-md:z-[60] max-md:w-auto max-md:max-w-none max-md:text-sm ${status.tone === 'success' ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-800'}` : 'sr-only'}>
         {status ? <>{status.tone === 'success' ? <Check aria-hidden="true" className="mr-1 inline size-3.5" /> : null}{status.text}</> : null}
       </p>

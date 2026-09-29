@@ -3,14 +3,7 @@
 import { ChevronDown, ChevronUp, CornerDownRight, Ellipsis, Flag, MessageCircle, PencilLine, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode, type RefObject } from 'react'
-import {
-  MobileSheetBackdrop,
-  MobileSheetCancel,
-  MobileSheetGrab,
-  SHEET_MENU_ITEM_CLASS,
-  SHEET_MENU_PANEL_CLASS,
-} from '@/components/ui/mobile-sheet'
-import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
+import { ActionMenu, ActionMenuItem } from '@/components/ui/action-menu'
 import * as feedActions from '../actions'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import type { CommentActionState } from '../actions'
@@ -127,8 +120,6 @@ function ReplyComposer({ postId, target, onCreated, onDone }: {
   )
 }
 
-const menuItemClass = `flex w-full cursor-pointer items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-xs font-semibold hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60 max-md:rounded-xl ${SHEET_MENU_ITEM_CLASS}`
-
 /**
  * The comment "⋯" menu (a bottom sheet on phones, a dropdown from md). Owners get Edit (inside the edit window) and Delete; everyone else gets
  * Report, so the action row only holds Like and Reply.
@@ -144,12 +135,6 @@ function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onRepor
 }) {
   const [open, setOpen] = useState(false)
   const close = useCallback(() => setOpen(false), [])
-  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close, { triggerRef })
-  const menuRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (open) menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus()
-  }, [open])
 
   function run(action: () => void) {
     return () => {
@@ -159,7 +144,7 @@ function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onRepor
   }
 
   return (
-    <div ref={rootRef} className="absolute right-1.5 top-1.5 max-md:right-0.5 max-md:top-0.5">
+    <div className="absolute right-1.5 top-1.5 max-md:right-0.5 max-md:top-0.5">
       <button
         ref={triggerRef}
         type="button"
@@ -172,34 +157,18 @@ function CommentActionsMenu({ owner, canEdit, pending, onEdit, onDelete, onRepor
       >
         <Ellipsis className="size-4" aria-hidden="true" />
       </button>
-      {open ? <MobileSheetBackdrop onClose={close} /> : null}
-      {open ? (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label="Comment actions"
-          className={`absolute right-0 z-20 mt-1 w-max min-w-32 overflow-hidden rounded-xl border border-mist-100 bg-white py-1 shadow-lg ${SHEET_MENU_PANEL_CLASS}`}
-        >
-          <MobileSheetGrab />
-          {owner ? (
-            <>
-              {canEdit ? (
-                <button type="button" role="menuitem" onClick={run(onEdit)} className={`${menuItemClass} text-navy-950`}>
-                  <PencilLine aria-hidden="true" className="size-3.5" /> Edit
-                </button>
-              ) : null}
-              <button type="button" role="menuitem" onClick={run(onDelete)} disabled={pending} className={`${menuItemClass} text-red-700 hover:bg-red-50`}>
-                <Trash2 aria-hidden="true" className="size-3.5" /> Delete
-              </button>
-            </>
-          ) : (
-            <button type="button" role="menuitem" onClick={run(onReport)} className={`${menuItemClass} text-red-700 hover:bg-red-50`}>
-              <Flag aria-hidden="true" className="size-3.5" /> Report comment
-            </button>
-          )}
-          <MobileSheetCancel onClick={() => { setOpen(false); triggerRef.current?.focus() }} />
-        </div>
-      ) : null}
+      <ActionMenu open={open} onClose={close} anchorRef={triggerRef} label="Comment actions" className="min-w-32 py-1">
+        {owner ? (
+          <>
+            {canEdit ? (
+              <ActionMenuItem onClick={run(onEdit)} className="min-h-8 text-xs" icon={<PencilLine aria-hidden="true" className="size-3.5" />}>Edit</ActionMenuItem>
+            ) : null}
+            <ActionMenuItem tone="danger" onClick={run(onDelete)} disabled={pending} className="min-h-8 text-xs" icon={<Trash2 aria-hidden="true" className="size-3.5" />}>Delete</ActionMenuItem>
+          </>
+        ) : (
+          <ActionMenuItem tone="danger" onClick={run(onReport)} className="min-h-8 text-xs" icon={<Flag aria-hidden="true" className="size-3.5" />}>Report comment</ActionMenuItem>
+        )}
+      </ActionMenu>
     </div>
   )
 }
