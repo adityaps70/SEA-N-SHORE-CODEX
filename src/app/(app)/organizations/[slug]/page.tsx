@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Building2, CircleDashed, ExternalLink, Settings2 } from 'lucide-react'
+import { Building2, CircleDashed, ExternalLink, MessagesSquare, Settings2 } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { canPostAsOrganization, canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
@@ -350,6 +350,12 @@ export default async function OrganizationPage({
                 {canManagePage ? (
                   <Link href={organizationManageHref(workspace.slug)} className={`${manageLinkClass} gap-2 max-md:order-first ${phonePrimaryClass}`}>
                     <Settings2 aria-hidden="true" className="size-4" /> Manage page
+                  </Link>
+                ) : null}
+                {/* Round 9C: owners and administrators create the organization's community (Organization Pro). Phones: in Manage page › Community. */}
+                {membership && (membership.role === 'owner' || membership.role === 'administrator') ? (
+                  <Link href={`/community/new?as=${workspace.id}`} className={`${manageLinkClass} gap-2 max-md:hidden`}>
+                    <MessagesSquare aria-hidden="true" className="size-4" /> Create a community
                   </Link>
                 ) : null}
                 {unclaimed && !ownApplication && !membership ? (

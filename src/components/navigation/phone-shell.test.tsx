@@ -219,9 +219,11 @@ describe('phone bottom tabs', () => {
       ['Post a job', '/hiring/jobs/new'],
       ['Create an event', '/events/create'],
       ['Create a course', '/learn/studio/courses/new'],
+      // Round 9C: members create communities with Creator Pro / Organization Pro; the page explains otherwise.
+      ['Create a communityCreator Pro · Organization Pro', '/community/new'],
       ['All creator tools', '/creator'],
     ])
-    expect(CREATE_SHEET_GROUPS.flat()).toHaveLength(8)
+    expect(CREATE_SHEET_GROUPS.flat()).toHaveLength(9)
 
     fireEvent.click(within(sheet).getByRole('link', { name: 'Post a job' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
