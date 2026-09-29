@@ -29,6 +29,7 @@ const TARGET_LABELS: Record<string, string> = {
   comment: 'Comment',
   job: 'Job',
   event: 'Event',
+  group: 'Group',
 }
 
 export function auditTargetLabel(targetType: string) {
@@ -41,6 +42,7 @@ export function auditTargetHref(targetType: string, targetId: string) {
   if (targetType === 'event') return `/events/${targetId}`
   if (targetType === 'organization_application') return `/admin/organizations/${targetId}`
   if (targetType === 'user_account') return `/admin/users/${targetId}`
+  if (targetType === 'group') return `/admin/communities?group=${targetId}`
   return null
 }
 

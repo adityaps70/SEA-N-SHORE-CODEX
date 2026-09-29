@@ -4,7 +4,7 @@ import { useId, useRef, useState, useTransition, type RefObject } from 'react'
 import { repostPost } from '../actions'
 import { EmojiPicker, insertEmojiAt } from './emoji-picker'
 import { FeedDialog } from './feed-dialog'
-import { MentionInput, type SelectedMention } from './mention-input'
+import { MentionInput, mentionKind, type SelectedMention } from './mention-input'
 import type { FeedNotice } from './share-utils'
 
 const COMMENTARY_MAX = 3000
@@ -56,7 +56,11 @@ export function RepostDialog({
     }
     setError('')
     startTransition(async () => {
-      const result = await repostPost(postId, { body: commentary, mentionProfileIds: mentions.map((mention) => mention.profileId) })
+      const result = await repostPost(postId, {
+        body: commentary,
+        mentionProfileIds: mentions.filter((mention) => mentionKind(mention) === 'member').map((mention) => mention.profileId),
+        organizationMentionIds: mentions.filter((mention) => mentionKind(mention) === 'organization').map((mention) => mention.profileId),
+      })
       if (!result.ok) {
         setError(result.error)
         return
@@ -88,7 +92,7 @@ export function RepostDialog({
           textareaRef={textareaRef}
           maxLength={COMMENTARY_MAX}
           describedBy={counterId}
-          placeholder="What do you think? Mention colleagues with @"
+          placeholder="What do you think? Mention colleagues or organizations with @, add topics with #"
           className="min-h-28 w-full resize-y rounded-xl border border-mist-100 bg-white px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500"
         />
         <div className="mt-1 flex items-center justify-between gap-2">

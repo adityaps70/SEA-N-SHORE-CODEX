@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   LayoutGrid,
   SquarePen,
+  UsersRound,
   type LucideIcon,
 } from 'lucide-react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
@@ -25,6 +26,7 @@ export const CREATE_SHEET_GROUPS: CreateSheetItem[][] = [
     { href: '/home?compose=update', label: 'Write a post', hint: 'Update · Question · Poll', icon: SquarePen },
     { href: '/home?compose=photo', label: 'Photo or video', icon: ImageIcon },
     { href: '/home?compose=document', label: 'Document (PDF)', icon: FileText },
+    { href: '/community', label: 'Post in a group', hint: 'Choose a group first', icon: UsersRound },
   ],
   [
     { href: '/hiring/jobs/new', label: 'Post a job', icon: BriefcaseBusiness },

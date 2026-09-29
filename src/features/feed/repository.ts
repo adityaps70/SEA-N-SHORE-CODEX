@@ -61,8 +61,18 @@ export type FeedRowsLookup = {
   category?: PostCategory
   /** Only posts published as this organization. */
   companyId?: string
+  /** Only posts published in this community group. */
+  groupId?: string
+  /** Only posts carrying this normalised hashtag; group posts stay out of hashtag pages. */
+  hashtag?: string
   cursor?: FeedCursor
   limit: number
+}
+
+/** Members tagged in one uploaded photo, keyed by the photo's storage path. */
+export type PhotoTagInput = {
+  storagePath: string
+  profileIds: string[]
 }
 
 export type FeedMediaInput = {
@@ -91,8 +101,15 @@ const FEED_ROW_SELECT = `
     p.post_type::text as post_type,
     p.repost_of_post_id,
     p.company_id,
+    p.group_id,
     p.created_at,
     p.updated_at,
+    case when post_group.id is null then null else json_build_object(
+      'id', post_group.id,
+      'slug', post_group.slug,
+      'name', post_group.name,
+      'visibility', post_group.visibility
+    ) end as post_group,
     case when post_company.id is null then null else json_build_object(
       'id', post_company.id,
       'slug', post_company.slug,
@@ -117,6 +134,7 @@ const FEED_ROW_SELECT = `
     coalesce((
       select json_agg(
         json_build_object(
+          'id', media.id,
           'storage_path', media.storage_path,
           'mime_type', media.mime_type,
           'alt_text', media.alt_text,
@@ -161,6 +179,41 @@ const FEED_ROW_SELECT = `
       join public.profiles mentioned on mentioned.id = mention.mentioned_profile_id
       where mention.post_id = p.id
     ), '[]'::json) as post_mentions,
+    coalesce((
+      select json_agg(json_build_object(
+        'company_id', mentioned_company.id,
+        'slug', mentioned_company.slug,
+        'name', mentioned_company.name,
+        'logo_path', mentioned_company.logo_path
+      ) order by org_mention.created_at asc)
+      from public.content_organization_mentions org_mention
+      join public.companies mentioned_company on mentioned_company.id = org_mention.company_id
+      where org_mention.post_id = p.id
+    ), '[]'::json) as post_organization_mentions,
+    coalesce((
+      select json_agg(hashtag.tag order by post_hashtag.position asc, hashtag.tag asc)
+      from public.post_hashtags post_hashtag
+      join public.hashtags hashtag on hashtag.id = post_hashtag.hashtag_id
+      where post_hashtag.post_id = p.id
+    ), '[]'::json) as post_hashtags,
+    coalesce((
+      select json_agg(json_build_object(
+        'media_id', photo_tag.media_id,
+        'profile_id', tagged.id,
+        'slug', tagged.slug,
+        'full_name', tagged.full_name,
+        'avatar_path', tagged.avatar_path
+      ) order by photo_tag.created_at asc, photo_tag.id asc)
+      from public.post_photo_tags photo_tag
+      join public.profiles tagged on tagged.id = photo_tag.tagged_profile_id
+      where photo_tag.post_id = p.id
+        and tagged.account_status = 'active'
+        and not exists (
+          select 1 from public.user_blocks tag_block
+          where (tag_block.blocker_id = $1 and tag_block.blocked_id = tagged.id)
+             or (tag_block.blocker_id = tagged.id and tag_block.blocked_id = $1)
+        )
+    ), '[]'::json) as post_photo_tags,
     json_build_object('count', (select count(*)::int from public.post_comments comment_count where comment_count.post_id = p.id and comment_count.deleted_at is null)) as post_comment_count,
     exists (
       select 1 from public.follows viewer_follow
@@ -170,7 +223,34 @@ const FEED_ROW_SELECT = `
   join public.profiles author on author.id = p.author_id
   left join public.maritime_profiles maritime on maritime.user_id = author.id
   left join public.companies post_company on post_company.id = p.company_id
+  left join public.community_groups post_group on post_group.id = p.group_id
 ` as const
+
+/**
+ * Group posts: public groups are readable by every signed-in member, private groups only by
+ * active members. Posts in archived groups leave every feed until the group is restored.
+ */
+function groupVisibilitySql(postRef = 'p') {
+  return `
+    (
+      ${postRef}.group_id is null
+      or exists (
+        select 1 from public.community_groups visible_group
+        where visible_group.id = ${postRef}.group_id
+          and visible_group.archived_at is null
+          and (
+            visible_group.visibility = 'public'
+            or exists (
+              select 1 from public.community_group_memberships viewer_membership
+              where viewer_membership.group_id = visible_group.id
+                and viewer_membership.profile_id = $1
+                and viewer_membership.status = 'active'
+            )
+          )
+      )
+    )
+  `
+}
 
 function repostSourceVisibilitySql() {
   return `
@@ -183,6 +263,7 @@ function repostSourceVisibilitySql() {
         where source.id = p.repost_of_post_id
           and source.deleted_at is null
           and source.post_type <> 'repost'
+          and ${groupVisibilitySql('source')}
           and (
             source.author_id = $1
             or (
@@ -220,6 +301,7 @@ function visibilitySql() {
         )
       )
     )
+    and ${groupVisibilitySql()}
     ${repostSourceVisibilitySql()}
   `
 }
@@ -272,6 +354,19 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     if (lookup.companyId) {
       values.push(lookup.companyId)
       clauses.push(`p.company_id = $${values.length}`)
+    }
+    if (lookup.groupId) {
+      values.push(lookup.groupId)
+      clauses.push(`p.group_id = $${values.length}`)
+    }
+    if (lookup.hashtag) {
+      values.push(lookup.hashtag)
+      clauses.push(`exists (
+        select 1 from public.post_hashtags tagged_post
+        join public.hashtags tagged on tagged.id = tagged_post.hashtag_id
+        where tagged_post.post_id = p.id and tagged.tag = $${values.length}
+      )`)
+      clauses.push('p.group_id is null')
     }
     if (lookup.cursor) {
       values.push(lookup.cursor.createdAt)
@@ -536,7 +631,13 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
            from public.content_mentions mention
            join public.profiles mentioned on mentioned.id = mention.mentioned_profile_id
            where mention.comment_id = c.id
-         ), '[]'::json) else '[]'::json end as mentions
+         ), '[]'::json) else '[]'::json end as mentions,
+         case when c.deleted_at is null then coalesce((
+           select json_agg(json_build_object('company_id', mentioned_company.id, 'slug', mentioned_company.slug, 'name', mentioned_company.name, 'logo_path', mentioned_company.logo_path) order by org_mention.created_at asc)
+           from public.content_organization_mentions org_mention
+           join public.companies mentioned_company on mentioned_company.id = org_mention.company_id
+           where org_mention.comment_id = c.id
+         ), '[]'::json) else '[]'::json end as organization_mentions
        from public.post_comments c
        join public.profiles author on author.id = c.author_id
        left join public.maritime_profiles maritime on maritime.user_id = author.id
@@ -810,7 +911,14 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return mapCommentMutation(rows[0])
   }
 
-  async function insertStandardPost(input: { id: string; authorId: string; category: PostCategory; body: string; companyId?: string }) {
+  async function insertStandardPost(input: { id: string; authorId: string; category: PostCategory; body: string; companyId?: string; groupId?: string }) {
+    if (input.groupId) {
+      await queryRows(
+        `insert into public.posts (id, author_id, category, body, post_type, company_id, group_id) values ($1, $2, $3, $4, 'standard', $5, $6)`,
+        [input.id, input.authorId, input.category, input.body, input.companyId ?? null, input.groupId],
+      )
+      return
+    }
     if (input.companyId) {
       await queryRows(
         `insert into public.posts (id, author_id, category, body, post_type, company_id) values ($1, $2, $3, $4, 'standard', $5)`,
@@ -819,6 +927,145 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
       return
     }
     await queryRows(`insert into public.posts (id, author_id, category, body, post_type) values ($1, $2, $3, $4, 'standard')`, [input.id, input.authorId, input.category, input.body])
+  }
+
+  /** Active membership (any role) in a live group; group admins/owners count as members. */
+  async function getGroupPostingAccess(actorId: string, groupId: string) {
+    const rows = await queryRows(
+      `select g.id, g.slug, g.name, g.visibility, g.archived_at,
+              (select m.role from public.community_group_memberships m where m.group_id = g.id and m.profile_id = $1 and m.status = 'active') as member_role
+       from public.community_groups g
+       where g.id = $2`,
+      [actorId, groupId],
+    ) as Array<QueryResultRow & { id: string; slug: string; name: string; visibility: 'public' | 'private'; archived_at: string | null; member_role: string | null }>
+    const row = rows[0]
+    if (!row) return null
+    return { id: row.id, slug: row.slug, name: row.name, visibility: row.visibility, archived: Boolean(row.archived_at), memberRole: row.member_role }
+  }
+
+  /** Profile ids of a group's active admins and owners. */
+  async function listGroupAdminIds(groupId: string) {
+    const rows = await queryRows(
+      `select m.profile_id as id
+       from public.community_group_memberships m
+       join public.profiles admin on admin.id = m.profile_id
+       where m.group_id = $1 and m.status = 'active' and m.role in ('admin', 'owner') and admin.account_status = 'active'`,
+      [groupId],
+    ) as IdRow[]
+    return rows.map((row) => row.id)
+  }
+
+  /** Approved owners/administrators of the given organizations, keyed by company id. */
+  async function listOrganizationAdminIds(companyIds: string[]) {
+    const result = new Map<string, string[]>()
+    if (!companyIds.length) return result
+    const rows = await queryRows(
+      `select cm.company_id, cm.user_id as id
+       from public.company_members cm
+       join public.profiles admin on admin.id = cm.user_id
+       where cm.company_id = any($1::uuid[])
+         and cm.approved_at is not null
+         and cm.role::text in ('owner', 'administrator')
+         and admin.account_status = 'active'`,
+      [companyIds],
+    ) as Array<QueryResultRow & { company_id: string; id: string }>
+    for (const row of rows) {
+      const list = result.get(row.company_id) ?? []
+      list.push(row.id)
+      result.set(row.company_id, list)
+    }
+    return result
+  }
+
+  /** Organizations that can be tagged: live, not suspended. Returns the ids that exist. */
+  async function insertOrganizationMentions(actorId: string, target: { postId: string } | { commentId: string }, companyIds: string[]) {
+    const inserted: string[] = []
+    for (const companyId of [...new Set(companyIds)]) {
+      const rows = await queryRows(
+        'postId' in target
+          ? `insert into public.content_organization_mentions (actor_id, company_id, post_id)
+             select $1, c.id, $3 from public.companies c where c.id = $2
+             on conflict (post_id, company_id) where post_id is not null do nothing
+             returning company_id as id`
+          : `insert into public.content_organization_mentions (actor_id, company_id, comment_id)
+             select $1, c.id, $3 from public.companies c where c.id = $2
+             on conflict (comment_id, company_id) where comment_id is not null do nothing
+             returning company_id as id`,
+        [actorId, companyId, 'postId' in target ? target.postId : target.commentId],
+      ) as IdRow[]
+      if (rows[0]?.id) inserted.push(rows[0].id)
+    }
+    return inserted
+  }
+
+  async function replaceOrganizationMentions(actorId: string, target: { postId: string } | { commentId: string }, companyIds: string[]) {
+    const wanted = [...new Set(companyIds)]
+    if ('postId' in target) {
+      await queryRows(`delete from public.content_organization_mentions where post_id = $1 and not (company_id = any($2::uuid[]))`, [target.postId, wanted])
+    } else {
+      await queryRows(`delete from public.content_organization_mentions where comment_id = $1 and not (company_id = any($2::uuid[]))`, [target.commentId, wanted])
+    }
+    return wanted.length ? await insertOrganizationMentions(actorId, target, wanted) : []
+  }
+
+  /** Stores normalised hashtags for a post (creating unknown tags) and returns the tags kept. */
+  async function replacePostHashtags(postId: string, tags: string[]) {
+    const wanted = [...new Set(tags.map((tag) => tag.toLowerCase()).filter((tag) => /^[a-z0-9_]{1,64}$/.test(tag)))]
+    await queryRows(
+      `delete from public.post_hashtags
+       where post_id = $1
+         and hashtag_id not in (select h.id from public.hashtags h where h.tag = any($2::text[]))`,
+      [postId, wanted],
+    )
+    for (const [position, tag] of wanted.entries()) {
+      await queryRows(`insert into public.hashtags (tag) values ($1) on conflict (tag) do nothing`, [tag])
+      await queryRows(
+        `insert into public.post_hashtags (post_id, hashtag_id, position)
+         select $1, h.id, $3 from public.hashtags h where h.tag = $2
+         on conflict (post_id, hashtag_id) do update set position = excluded.position`,
+        [postId, tag, position],
+      )
+    }
+    return wanted
+  }
+
+  /** Tags members in the post's photos. Blocked pairs and unready members are skipped. */
+  async function insertPhotoTags(actorId: string, postId: string, tags: PhotoTagInput[]) {
+    const inserted: Array<{ mediaId: string; profileId: string }> = []
+    for (const tag of tags) {
+      const mediaRows = await queryRows(
+        `select id from public.post_media where post_id = $1 and storage_path = $2 and mime_type like 'image/%'`,
+        [postId, tag.storagePath],
+      ) as IdRow[]
+      const mediaId = mediaRows[0]?.id
+      if (!mediaId) continue
+      for (const profileId of [...new Set(tag.profileIds)]) {
+        if (profileId !== actorId && !await canMentionProfile(actorId, profileId)) continue
+        const rows = await queryRows(
+          `insert into public.post_photo_tags (post_id, media_id, tagged_profile_id, tagged_by)
+           values ($1, $2, $3, $4)
+           on conflict (media_id, tagged_profile_id) do nothing
+           returning tagged_profile_id as id`,
+          [postId, mediaId, profileId, actorId],
+        ) as IdRow[]
+        if (rows[0]?.id) inserted.push({ mediaId, profileId: rows[0].id })
+      }
+    }
+    return inserted
+  }
+
+  /** A tagged member removes their own tag, or the post author removes any tag. */
+  async function deletePhotoTag(actorId: string, postId: string, mediaId: string, profileId: string) {
+    const rows = await queryRows(
+      `delete from public.post_photo_tags tag
+       using public.posts p
+       where tag.post_id = $2 and tag.media_id = $3 and tag.tagged_profile_id = $4
+         and p.id = tag.post_id
+         and ($1 = tag.tagged_profile_id or $1 = p.author_id)
+       returning tag.tagged_profile_id as id`,
+      [actorId, postId, mediaId, profileId],
+    ) as IdRow[]
+    return rows.length > 0
   }
 
   async function insertPostMedia(postId: string, media: FeedMediaInput) {
@@ -834,8 +1081,13 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return Boolean(rows[0]?.attached)
   }
 
-  async function insertPollPost(input: { id: string; authorId: string; category: PostCategory; body: string; companyId?: string }) {
-    if (input.companyId) {
+  async function insertPollPost(input: { id: string; authorId: string; category: PostCategory; body: string; companyId?: string; groupId?: string }) {
+    if (input.groupId) {
+      await queryRows(
+        `insert into public.posts (id, author_id, category, body, post_type, company_id, group_id) values ($1, $2, $3, $4, 'poll', $5, $6)`,
+        [input.id, input.authorId, input.category, input.body, input.companyId ?? null, input.groupId],
+      )
+    } else if (input.companyId) {
       await queryRows(
         `insert into public.posts (id, author_id, category, body, post_type, company_id) values ($1, $2, $3, $4, 'poll', $5)`,
         [input.id, input.authorId, input.category, input.body, input.companyId],
@@ -1112,6 +1364,14 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     updateOwnCommentWithinEditWindow,
     softDeleteOwnComment,
     insertStandardPost,
+    getGroupPostingAccess,
+    listGroupAdminIds,
+    listOrganizationAdminIds,
+    insertOrganizationMentions,
+    replaceOrganizationMentions,
+    replacePostHashtags,
+    insertPhotoTags,
+    deletePhotoTag,
     insertPostMedia,
     isPostMediaAttached,
     insertPollPost,

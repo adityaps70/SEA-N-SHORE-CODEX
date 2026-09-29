@@ -6,7 +6,7 @@ import { PERSONA_ICONS, identityFamilyIcon, profileIdentityIcon } from '../perso
 import type { OwnProfile } from '../types'
 import { ProfileMembershipCard } from './profile-membership-card'
 import { ProfileField, ProfileFieldList, ProfileSection } from './profile-section'
-import { Anchor, Briefcase, Building2, GraduationCap, HeartHandshake, Landmark, UserSearch } from 'lucide-react'
+import { Anchor, Briefcase, Building2, Compass, GraduationCap, HeartHandshake, Landmark, UserSearch } from 'lucide-react'
 
 afterEach(() => cleanup())
 
@@ -94,6 +94,7 @@ describe('persona icons', () => {
     expect(PERSONA_ICONS.recruiter_hr).toBe(UserSearch)
     expect(PERSONA_ICONS.trainer_instructor).toBe(GraduationCap)
     expect(PERSONA_ICONS.seafarer_family).toBe(HeartHandshake)
+    expect(PERSONA_ICONS.maritime_enthusiast).toBe(Compass)
     for (const persona of PERSONAS.filter((entry) => entry !== 'seafarer')) {
       expect(PERSONA_ICONS[persona]).not.toBe(Anchor)
     }

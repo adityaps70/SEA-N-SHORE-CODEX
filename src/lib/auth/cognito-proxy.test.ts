@@ -63,6 +63,7 @@ describe('Cognito protected route proxy', () => {
     '/admin',
     '/community',
     '/events',
+    '/hashtags/sire',
     '/hiring',
     '/home',
     '/jobs',

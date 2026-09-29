@@ -125,6 +125,10 @@ function mentionIds(formData: FormData) {
   return formData.getAll('mentionProfileId')
 }
 
+function organizationMentionIds(formData: FormData) {
+  return formData.getAll('organizationMentionId')
+}
+
 function postInputFromFormData(formData: FormData) {
   const mode: 'standard' | 'poll' = formData.get('mode') === 'poll' ? 'poll' : 'standard'
   return {
@@ -134,7 +138,9 @@ function postInputFromFormData(formData: FormData) {
     pollOptions: formData.getAll('pollOption'),
     media: postMediaReferencesFromFormData(formData),
     mentionProfileIds: mentionIds(formData),
+    organizationMentionIds: organizationMentionIds(formData),
     companyId: formData.get('companyId'),
+    groupId: formData.get('groupId'),
   }
 }
 
@@ -304,7 +310,9 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         body: data.body,
         pollOptions: data.pollOptions,
         mentionProfileIds: data.mentionProfileIds,
+        organizationMentionIds: data.organizationMentionIds,
         ...(data.companyId ? { companyId: data.companyId } : {}),
+        ...(data.groupId ? { groupId: data.groupId } : {}),
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: false })
@@ -345,7 +353,12 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
           pageCount: media.pageCount,
         })),
         mentionProfileIds: data.mentionProfileIds,
+        organizationMentionIds: data.organizationMentionIds,
+        photoTags: data.media.flatMap((media) => media.taggedProfileIds.length && media.mimeType.startsWith('image/')
+          ? [{ storagePath: media.storagePath, profileIds: media.taggedProfileIds }]
+          : []),
         ...(data.companyId ? { companyId: data.companyId } : {}),
+        ...(data.groupId ? { groupId: data.groupId } : {}),
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: true, mediaCount: data.media.length })
@@ -364,7 +377,9 @@ export async function createPost(_previousState: PostComposerState, formData: Fo
         category: data.category,
         body: data.body,
         mentionProfileIds: data.mentionProfileIds,
+        organizationMentionIds: data.organizationMentionIds,
         ...(data.companyId ? { companyId: data.companyId } : {}),
+        ...(data.groupId ? { groupId: data.groupId } : {}),
       })
       await flagAutomatedModeration('post', postId, moderation)
       console.info('[feed_publish_success]', { postId, hasMedia: false })
@@ -416,7 +431,7 @@ export async function deletePost(postId: string): Promise<FeedActionResult> {
  * Edits a post's text. Authors can edit their own posts; for organization posts the author
  * must still post for that organization, and its owners and administrators can edit too.
  */
-export async function updatePost(input: { postId: string; body: string; mentionProfileIds?: string[] }): Promise<UpdatePostActionResult> {
+export async function updatePost(input: { postId: string; body: string; mentionProfileIds?: string[]; organizationMentionIds?: string[] }): Promise<UpdatePostActionResult> {
   const parsed = updatePostInputSchema.safeParse(input)
   if (!parsed.success) {
     const fieldErrors = parsed.error.flatten().fieldErrors
@@ -429,6 +444,7 @@ export async function updatePost(input: { postId: string; body: string; mentionP
     await updatePostWithAurora(user.id, parsed.data.postId, {
       body: parsed.data.body,
       mentionProfileIds: parsed.data.mentionProfileIds,
+      organizationMentionIds: parsed.data.organizationMentionIds,
     })
   } catch (error) {
     const code = safeErrorCode(error)
@@ -474,9 +490,9 @@ export async function restoreDeletedPost(postId: string): Promise<FeedActionResu
 
 export async function repostPost(
   postId: string,
-  input: { body?: string; mentionProfileIds?: string[] } = {},
+  input: { body?: string; mentionProfileIds?: string[]; organizationMentionIds?: string[] } = {},
 ): Promise<RepostActionResult> {
-  const parsed = repostInputSchema.safeParse({ postId, body: input.body, mentionProfileIds: input.mentionProfileIds })
+  const parsed = repostInputSchema.safeParse({ postId, body: input.body, mentionProfileIds: input.mentionProfileIds, organizationMentionIds: input.organizationMentionIds })
   if (!parsed.success) {
     const bodyError = parsed.error.flatten().fieldErrors.body?.[0]
     return { ok: false, error: bodyError ?? 'Invalid post.' }
@@ -490,6 +506,7 @@ export async function repostPost(
       ? await repostPostWithAurora(user.id, parsed.data.postId, {
         body: commentary,
         mentionProfileIds: parsed.data.mentionProfileIds,
+        organizationMentionIds: parsed.data.organizationMentionIds,
       })
       : await repostPostWithAurora(user.id, parsed.data.postId)
     if (moderation) await flagAutomatedModeration('post', repostId, moderation)
@@ -593,6 +610,7 @@ export async function addComment(_previousState: CommentActionState, formData: F
     body: formData.get('body'),
     parentCommentId: formData.get('parentCommentId'),
     mentionProfileIds: mentionIds(formData),
+    organizationMentionIds: organizationMentionIds(formData),
   }
   const parsed = commentInputSchema.safeParse(raw)
   if (!parsed.success) {
@@ -613,6 +631,7 @@ export async function addComment(_previousState: CommentActionState, formData: F
       parsed.data.body,
       parsed.data.parentCommentId ?? null,
       parsed.data.mentionProfileIds,
+      parsed.data.organizationMentionIds,
     )
     await flagAutomatedModeration('comment', commentId, moderation)
     const comment = await hydrateComment(parsed.data.postId, commentId)
@@ -630,6 +649,7 @@ export async function updateComment(_previousState: CommentActionState, formData
     commentId: formData.get('commentId'),
     body: rawBody,
     mentionProfileIds: mentionIds(formData),
+    organizationMentionIds: organizationMentionIds(formData),
   })
   if (!parsed.success) {
     return {
@@ -648,6 +668,7 @@ export async function updateComment(_previousState: CommentActionState, formData
       parsed.data.commentId,
       parsed.data.body,
       parsed.data.mentionProfileIds,
+      parsed.data.organizationMentionIds,
     )
     await flagAutomatedModeration('comment', updated.id, moderation)
     const comment = await hydrateComment(updated.postId, updated.id)

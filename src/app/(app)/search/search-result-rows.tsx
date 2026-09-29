@@ -1,6 +1,9 @@
 import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
-import { BadgeCheck, BookOpen, Building2 } from 'lucide-react'
+import { BadgeCheck, BookOpen, Building2, Hash, Lock } from 'lucide-react'
+import { GroupIcon } from '@/features/community/group-icons'
+import { groupHref } from '@/features/community/types'
+import { hashtagHref } from '@/features/hashtags/parse'
 import { PersonCardActions } from '@/features/network/components/person-card-actions'
 import type { NetworkProfile } from '@/features/network/types'
 
@@ -64,6 +67,52 @@ export function SearchOrganizationRow({ organization, className = '' }: { organi
             {organization.verified ? <BadgeCheck aria-label="Verified" className="size-4 shrink-0 text-teal-500" /> : null}
           </span>
           <span className="block truncate text-[13px] text-muted">{organization.companyType ?? 'Maritime organization'}</span>
+        </span>
+      </Link>
+    </li>
+  )
+}
+
+type HashtagResult = { tag: string; postCount: number }
+
+export function hashtagPostCountLabel(postCount: number) {
+  return postCount === 1 ? '1 post' : `${postCount.toLocaleString('en-IN')} posts`
+}
+
+/** Hashtag: "#" tile, tag, post count (round 9B). */
+export function SearchHashtagRow({ hashtag, className = '' }: { hashtag: HashtagResult; className?: string }) {
+  return (
+    <li className={`first:pt-0 ${className}`}>
+      <Link href={hashtagHref(hashtag.tag)} className="flex min-h-14 items-center gap-3 py-3 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500">
+        <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-ocean-50 text-ocean-700">
+          <Hash aria-hidden="true" className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[15px] font-semibold text-navy-950">#{hashtag.tag}</span>
+          <span className="block truncate text-[13px] text-muted">{hashtagPostCountLabel(hashtag.postCount)}</span>
+        </span>
+      </Link>
+    </li>
+  )
+}
+
+type GroupResult = { id: string; slug: string; name: string; description: string; icon: string | null; visibility: 'public' | 'private'; memberCount: number }
+
+/** Community group (round 9B): icon tile, name (+ lock for private groups), member count · one-line description. */
+export function SearchGroupRow({ group, className = '' }: { group: GroupResult; className?: string }) {
+  const members = `${group.memberCount} ${group.memberCount === 1 ? 'member' : 'members'}`
+  return (
+    <li className={`first:pt-0 ${className}`}>
+      <Link href={groupHref(group.slug)} className="flex min-h-14 items-center gap-3 py-3 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500">
+        <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-navy-950 text-white">
+          <GroupIcon icon={group.icon} aria-hidden="true" className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-[15px] font-semibold text-navy-950">{group.name}</span>
+            {group.visibility === 'private' ? <Lock aria-label="Private group" className="size-3.5 shrink-0 text-muted" /> : null}
+          </span>
+          <span className="block truncate text-[13px] text-muted">{[members, group.description].filter(Boolean).join(' · ')}</span>
         </span>
       </Link>
     </li>

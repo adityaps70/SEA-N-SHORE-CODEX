@@ -12,6 +12,7 @@ const PROTECTED_PREFIXES = [
   '/admin',
   '/community',
   '/events',
+  '/hashtags',
   '/hiring',
   '/home',
   '/jobs',

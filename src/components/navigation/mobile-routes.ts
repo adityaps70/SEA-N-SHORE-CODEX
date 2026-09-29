@@ -22,6 +22,8 @@ const DETAIL_PATTERNS: RegExp[] = [
   /^\/creator$/,
   /^\/profile\/edit$/,
   /^\/organizations\/.+/,
+  /^\/community\/.+/,
+  /^\/hashtags\/.+/,
   /^\/people\/.+/,
   /^\/admin(\/.*)?$/,
 ]

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Globe, MessageCircle, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
+import { removeGroupPost } from '@/features/community/actions'
 import { ReportContentButton } from '@/features/moderation/components/report-content-button'
 import { followProfile, unfollowProfile } from '@/features/network/actions'
 import { deletePost, setPostHidden, setPostReaction, setPostSaved } from '../actions'
@@ -18,6 +19,7 @@ import {
   type FeedComment,
   type FeedMention,
   type FeedOrganization,
+  type FeedOrganizationMention,
   type FeedPost,
   type FeedRepostSource,
   type PostReactionType,
@@ -31,6 +33,7 @@ import { ExpandableText } from './expandable-text'
 import { PollCard } from './poll-card'
 import { PostActionsMenu } from './post-actions-menu'
 import { POST_ACTION_BUTTON_CLASS, POST_ACTION_LABEL_CLASS } from './post-action-styles'
+import { PhotoTagsLine } from './photo-tags-line'
 import { PostMedia } from './post-media'
 import { ReactionDetailsModal } from './reaction-details-modal'
 import { ReactionPicker } from './reaction-picker'
@@ -121,10 +124,12 @@ function RepostSourceCard({ source, expanded = false }: { source: FeedRepostSour
       <ExpandableText
         body={source.body}
         mentions={source.mentions}
+        organizationMentions={source.organizationMentions}
         defaultExpanded={expanded}
         className="mt-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
       />
-      {media.some((item) => item.signedUrl) ? <PostMedia media={media} authorName={source.author.fullName} /> : null}
+      {media.some((item) => item.signedUrl) ? <PostMedia media={media} authorName={source.author.fullName} postId={source.id} photoTags={source.photoTags} /> : null}
+      {source.photoTags?.length ? <PhotoTagsLine tags={source.photoTags} /> : null}
       <RepostSourcePoll source={source} />
       <Link href={`/posts/${source.id}`} className="mt-4 inline-flex text-sm font-semibold text-ocean-700 hover:text-ocean-800">
         View original post
@@ -222,11 +227,12 @@ export function PostCard({
   const [reactionsOpen, setReactionsOpen] = useState(false)
   const [reportOpen, setReportOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmGroupRemove, setConfirmGroupRemove] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [deleted, setDeleted] = useState(false)
   const [hidden, setHidden] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [edited, setEdited] = useState<{ body: string; mentions: FeedMention[] } | null>(null)
+  const [edited, setEdited] = useState<{ body: string; mentions: FeedMention[]; organizationMentions: FeedOrganizationMention[] } | null>(null)
   const [notice, setNotice] = useState<FeedNotice | null>(null)
   const [pending, startTransition] = useTransition()
   const [visibilityPending, startVisibilityTransition] = useTransition()
@@ -353,6 +359,21 @@ export function PostCard({
     })
   }
 
+  /** Group admins remove a post from their group (round 9B); the author can restore it for 30 days. */
+  function removeFromGroup() {
+    if (readOnly || pending) return
+    setDeleteError('')
+    startTransition(async () => {
+      const result = await removeGroupPost(post.id)
+      if (!result.ok) {
+        setDeleteError(`${result.error} Please try again.`)
+        return
+      }
+      setConfirmGroupRemove(false)
+      setDeleted(true)
+    })
+  }
+
   const cardShape = flushOnPhones ? 'max-md:rounded-none max-md:border-x-0 max-md:shadow-none' : ''
 
   if (deleted) {
@@ -403,6 +424,7 @@ export function PostCard({
   const displayName = publishedAsName(post)
   const body = edited?.body ?? post.body
   const mentions = edited?.mentions ?? post.mentions
+  const organizationMentions = edited?.organizationMentions ?? post.organizationMentions
   const postMedia = post.mediaItems?.length ? post.mediaItems : post.media ? [post.media] : []
   const repostCommentary = isRepost ? body.trim() : ''
   const shareSource = isRepost && post.repostOf
@@ -446,6 +468,19 @@ export function PostCard({
               </time>
               <span aria-hidden="true" className="md:hidden">·</span>
               <Globe role="img" aria-label="Visible to the Sea N Shore community" className="size-3.5 md:hidden" />
+              {post.group ? (
+                // Round 9B: the community group the post was published in.
+                <>
+                  <span aria-hidden="true">·</span>
+                  <Link
+                    href={`/community/${post.group.slug}`}
+                    className="min-w-0 truncate font-semibold text-navy-900 hover:text-ocean-700 hover:underline"
+                    aria-label={`Posted in ${post.group.name}`}
+                  >
+                    in {post.group.name}
+                  </Link>
+                </>
+              ) : null}
             </p>
           </div>
           {canFollow ? (
@@ -477,6 +512,8 @@ export function PostCard({
               onReport={() => setReportOpen(true)}
               onDelete={() => { setDeleteError(''); setConfirmDelete(true) }}
               onEdit={() => setEditOpen(true)}
+              canModerateGroup={Boolean(post.viewerCanModerateGroup && post.group)}
+              onRemoveFromGroup={() => { setDeleteError(''); setConfirmGroupRemove(true) }}
               triggerRef={menuTriggerRef}
             />
           ) : null}
@@ -489,6 +526,7 @@ export function PostCard({
                 <ExpandableText
                   body={repostCommentary}
                   mentions={mentions}
+                  organizationMentions={organizationMentions}
                   defaultExpanded={detail}
                   className="mb-3 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
                 />
@@ -500,6 +538,7 @@ export function PostCard({
               <ExpandableText
                 body={body}
                 mentions={mentions}
+                organizationMentions={organizationMentions}
                 defaultExpanded={detail}
                 className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
               />
@@ -510,8 +549,11 @@ export function PostCard({
                   flush={flushOnPhones}
                   loading={loadingPriority ? 'eager' : 'lazy'}
                   fetchPriority={loadingPriority === 'lead' ? 'high' : undefined}
+                  postId={post.id}
+                  photoTags={post.photoTags}
                 />
               ) : null}
+              {post.photoTags?.length ? <PhotoTagsLine tags={post.photoTags} /> : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
             </>
           )}
@@ -631,14 +673,37 @@ export function PostCard({
             postType={post.postType}
             body={body}
             mentions={mentions ?? []}
+            organizationMentions={organizationMentions ?? []}
             publishedAs={displayName}
             onClose={() => setEditOpen(false)}
-            onSaved={(savedPost) => {
-              setEdited({ body: savedPost.body, mentions: savedPost.mentions ?? [] })
+            onSaved={(savedPost, savedOrganizationMentions) => {
+              setEdited({ body: savedPost.body, mentions: savedPost.mentions ?? [], organizationMentions: savedOrganizationMentions })
               setNotice({ text: 'Your changes are saved.', tone: 'success' })
             }}
             returnFocusRef={menuTriggerRef}
           />
+        ) : null}
+        {confirmGroupRemove && post.group ? (
+          <FeedDialog
+            role="alertdialog"
+            size="sm"
+            title="Remove this post from the group?"
+            description={`It will be removed from ${post.group.name} and the feed for everyone, including ${post.author.fullName}, who wrote it. They can restore it from My Activities › Recently deleted for 30 days.`}
+            onClose={() => { if (!pending) setConfirmGroupRemove(false) }}
+            closeLabel="Keep post"
+            returnFocusRef={menuTriggerRef}
+            initialFocusSelector="[data-autofocus]"
+          >
+            {deleteError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p> : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" data-autofocus onClick={() => setConfirmGroupRemove(false)} disabled={pending} className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
+                Cancel
+              </button>
+              <button type="button" onClick={removeFromGroup} disabled={pending} className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60">
+                {pending ? 'Removing…' : 'Remove from group'}
+              </button>
+            </div>
+          </FeedDialog>
         ) : null}
         {confirmDelete ? (
           <FeedDialog

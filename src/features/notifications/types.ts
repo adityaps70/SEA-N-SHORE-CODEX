@@ -14,6 +14,16 @@ export type NetworkNotificationType =
   | 'event_cancelled'
   /** The member's (or their organization's) free Pro trial ends in 7 days / tomorrow. */
   | 'plan_trial_ending'
+  /** Someone asked to join a private group the recipient administers (round 9B). */
+  | 'group_join_request'
+  /** The recipient's request to join a private group was approved. */
+  | 'group_join_approved'
+  /** A member posted in a group the recipient administers. */
+  | 'group_post'
+  /** Someone tagged an organization the recipient administers in a post or comment. */
+  | 'organization_mention'
+  /** Someone tagged the recipient in a photo. */
+  | 'photo_tag'
 
 export type NotificationActor = {
   id: string

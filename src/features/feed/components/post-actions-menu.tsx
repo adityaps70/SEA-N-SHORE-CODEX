@@ -1,6 +1,6 @@
 'use client'
 
-import { Bookmark, EyeOff, Flag, Link2, MoreHorizontal, PencilLine, Trash2, UserMinus } from 'lucide-react'
+import { Bookmark, EyeOff, Flag, Link2, MoreHorizontal, PencilLine, ShieldMinus, Trash2, UserMinus } from 'lucide-react'
 import { useCallback, useRef, useState, type RefObject } from 'react'
 import { ActionMenu, ActionMenuItem, ActionMenuSeparator } from '@/components/ui/action-menu'
 
@@ -27,6 +27,8 @@ export function PostActionsMenu({
   onReport,
   onDelete,
   onEdit,
+  canModerateGroup = false,
+  onRemoveFromGroup,
   triggerRef: externalTriggerRef,
 }: {
   authorName: string
@@ -35,6 +37,10 @@ export function PostActionsMenu({
   canEdit?: boolean
   /** Defaults to isOwner. */
   canDelete?: boolean
+  /** The viewer administers the community group this post is in (round 9B). */
+  canModerateGroup?: boolean
+  /** "Remove from group", shown to group admins who cannot otherwise delete the post. */
+  onRemoveFromGroup?(): void
   saved: boolean
   canUnfollow: boolean
   pending: boolean
@@ -91,6 +97,14 @@ export function PostActionsMenu({
             <ActionMenuSeparator />
             <ActionMenuItem tone="danger" disabled={pending} onClick={run(onDelete)} className={itemClass} icon={<Trash2 aria-hidden="true" className="size-4" />}>
               Delete post
+            </ActionMenuItem>
+          </>
+        ) : null}
+        {canModerateGroup && !canDelete && onRemoveFromGroup ? (
+          <>
+            <ActionMenuSeparator />
+            <ActionMenuItem tone="danger" disabled={pending} onClick={run(onRemoveFromGroup)} className={itemClass} icon={<ShieldMinus aria-hidden="true" className="size-4" />}>
+              Remove from group
             </ActionMenuItem>
           </>
         ) : null}

@@ -142,6 +142,33 @@ describe('content reporting repository', () => {
     ])
   })
 
+  it('accepts reports about a community group, owned by its owner membership or creator (round 9B)', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createModerationRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('from public.community_groups')) return [{ owner_id: '33333333-3333-4333-8333-333333333333' }]
+        return []
+      },
+    })
+
+    await repository.reportContent({ reporterId, targetType: 'group', targetId, reason: 'spam', details: null })
+
+    expect(seen[0]?.text).toContain('from public.community_groups g')
+    expect(seen[0]?.text).toContain("m.role = 'owner'")
+    expect(seen[0]?.text).toContain('g.archived_at is null')
+    expect(seen[0]?.values).toEqual([targetId])
+    expect(seen.find((entry) => entry.text.includes('insert into public.content_reports'))?.values).toEqual(['group', targetId, reporterId, 'spam', null])
+  })
+
+  it('does not let a group owner report their own group', async () => {
+    const repository = createModerationRepository({
+      query: async (text) => (text.includes('from public.community_groups') ? [{ owner_id: reporterId }] : []),
+    })
+    await expect(repository.reportContent({ reporterId, targetType: 'group', targetId, reason: 'spam', details: null }))
+      .rejects.toThrow('moderation_self_report_forbidden')
+  })
+
   it('fails closed when the target is unavailable', async () => {
     const repository = createModerationRepository({ query: async () => [] })
 

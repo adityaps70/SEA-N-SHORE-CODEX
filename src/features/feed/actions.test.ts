@@ -354,6 +354,7 @@ describe('feed actions', () => {
       category: 'technical_discussion',
       body: 'A useful maritime technical lesson.',
       mentionProfileIds: [],
+      organizationMentionIds: [],
     })
     expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', expect.objectContaining({ postId: expect.any(String), hasMedia: false }))
     expect(JSON.stringify(infoSpy.mock.calls)).not.toContain('A useful maritime technical lesson.')
@@ -379,6 +380,8 @@ describe('feed actions', () => {
         pageCount: null,
       }],
       mentionProfileIds: [],
+      organizationMentionIds: [],
+      photoTags: [],
     })
     expect(mockedUploadFeedImage).not.toHaveBeenCalled()
     expect(infoSpy).toHaveBeenCalledWith('[feed_publish_success]', { postId, hasMedia: true, mediaCount: 1 })
@@ -429,6 +432,7 @@ describe('feed actions', () => {
       body: 'A useful maritime technical lesson.',
       pollOptions: ['Mooring', 'Bridge'],
       mentionProfileIds: [],
+      organizationMentionIds: [],
     })
   })
 
@@ -483,7 +487,7 @@ describe('feed actions', () => {
 
     expect(await addComment({}, formData)).toEqual({ ok: true, comment: hydratedComment })
     expect(await setPollVote(postId, optionId)).toEqual({ ok: true })
-    expect(mockedAddComment).toHaveBeenCalledWith(viewerId, postId, 'Useful lesson.', null, [])
+    expect(mockedAddComment).toHaveBeenCalledWith(viewerId, postId, 'Useful lesson.', null, [], [])
     expect(mockedGetPostById).toHaveBeenCalledWith(postId)
     expect(mockedSetVote).toHaveBeenCalledWith(viewerId, postId, optionId)
   })
@@ -508,7 +512,7 @@ describe('feed actions', () => {
     mockedGetPostById.mockResolvedValueOnce(hydratedPost([updatedComment]))
     const state = await managedActions.updateComment({}, commentEditForm())
     expect(state).toEqual({ ok: true, comment: updatedComment })
-    expect(mockedUpdateComment).toHaveBeenCalledWith(viewerId, commentId, 'Updated bridge note.', [mentionId])
+    expect(mockedUpdateComment).toHaveBeenCalledWith(viewerId, commentId, 'Updated bridge note.', [mentionId], [])
   })
 
   it('returns the exact 15-minute edit error without exposing the service code', async () => {

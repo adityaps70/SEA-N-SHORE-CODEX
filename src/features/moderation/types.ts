@@ -1,4 +1,4 @@
-export const MODERATION_TARGET_TYPES = ['post', 'comment', 'job', 'event', 'profile'] as const
+export const MODERATION_TARGET_TYPES = ['post', 'comment', 'job', 'event', 'profile', 'group'] as const
 export type ModerationTargetType = (typeof MODERATION_TARGET_TYPES)[number]
 
 export const MODERATION_REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'] as const

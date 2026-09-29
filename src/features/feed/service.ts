@@ -5,10 +5,12 @@ import { withTransaction as databaseTransaction } from '@/lib/db/client'
 import { resolveFeedMediaUrls } from './media'
 import { postPermissions } from './post-permissions'
 import { REPOST_COMMENTARY_MAX } from './schemas'
+import { extractHashtags } from '@/features/hashtags/parse'
 import {
   createFeedRepositoryForClient,
   type FeedMediaInput,
   type FeedRepository,
+  type PhotoTagInput,
 } from './repository'
 import { createFeedSocialWriterForClient, type FeedSocialWriter } from './social-writer'
 import type { PostCategory, PostReactionType, ReactionDetailsPage, ReactionTargetType } from './types'
@@ -21,13 +23,20 @@ type StandardPostInput = {
   body: string
   media?: FeedMediaInput[]
   mentionProfileIds?: string[]
+  /** Organizations tagged with @ in the text (round 9B). */
+  organizationMentionIds?: string[]
+  /** Members tagged in the uploaded photos, keyed by storage path (round 9B). */
+  photoTags?: PhotoTagInput[]
   /** Publish as this organization; the actor must be allowed to post for it. */
   companyId?: string
+  /** Publish inside this community group; the actor must be an active member. */
+  groupId?: string
 }
 
 type UpdatePostInput = {
   body: string
   mentionProfileIds?: string[]
+  organizationMentionIds?: string[]
 }
 
 type PollPostInput = Omit<StandardPostInput, 'id' | 'media'> & {
@@ -37,6 +46,7 @@ type PollPostInput = Omit<StandardPostInput, 'id' | 'media'> & {
 type RepostInput = {
   body?: string
   mentionProfileIds?: string[]
+  organizationMentionIds?: string[]
 }
 
 type ReactionDetailsRequest = {
@@ -205,6 +215,83 @@ async function notifyCommentMentions(
   }
 }
 
+/** Owners/administrators of each tagged organization, except the member who tagged it. */
+async function notifyOrganizationMentions(
+  repository: FeedRepository,
+  social: FeedSocialWriter | undefined,
+  actorId: string,
+  target: { postId: string; commentId?: string },
+  companyIds: string[],
+) {
+  if (!social || !companyIds.length) return
+  const adminsByCompany = await repository.listOrganizationAdminIds(companyIds)
+  for (const companyId of companyIds) {
+    for (const recipientId of adminsByCompany.get(companyId) ?? []) {
+      if (recipientId === actorId) continue
+      await social.upsertNotification({
+        recipientId,
+        actorId,
+        type: 'organization_mention',
+        postId: target.postId,
+        ...(target.commentId ? { commentId: target.commentId } : {}),
+        companyId,
+        dedupeKey: `organization-mention:${target.commentId ?? target.postId}:${companyId}:${recipientId}`,
+      })
+    }
+  }
+}
+
+/** Each member tagged in a photo hears about it once per post. */
+async function notifyPhotoTags(
+  social: FeedSocialWriter | undefined,
+  actorId: string,
+  postId: string,
+  tags: Array<{ mediaId: string; profileId: string }>,
+) {
+  if (!social) return
+  const recipients = new Set(tags.map((tag) => tag.profileId))
+  for (const recipientId of recipients) {
+    if (recipientId === actorId) continue
+    await social.upsertNotification({
+      recipientId,
+      actorId,
+      type: 'photo_tag',
+      postId,
+      dedupeKey: `photo-tag:${postId}:${recipientId}`,
+    })
+  }
+}
+
+/** Group admins and owners hear about every new post in their group. */
+async function notifyGroupPost(
+  repository: FeedRepository,
+  social: FeedSocialWriter | undefined,
+  actorId: string,
+  groupId: string,
+  postId: string,
+) {
+  if (!social) return
+  for (const recipientId of await repository.listGroupAdminIds(groupId)) {
+    if (recipientId === actorId) continue
+    await social.upsertNotification({
+      recipientId,
+      actorId,
+      type: 'group_post',
+      postId,
+      groupId,
+      dedupeKey: `group-post:${postId}:${recipientId}`,
+    })
+  }
+}
+
+/** The actor must be an active member of a live group to post in it. */
+async function assertCanPostInGroup(repository: FeedRepository, actorId: string, groupId: string) {
+  const group = await repository.getGroupPostingAccess(actorId, groupId)
+  if (!group || group.archived) serviceError('feed_group_unavailable')
+  if (!group.memberRole) serviceError('feed_group_post_forbidden')
+  return group
+}
+
 export function createFeedService(input: {
   withTransaction: FeedTransaction
   createId?: () => string
@@ -231,22 +318,48 @@ export function createFeedService(input: {
     return input.withTransaction(async (repository, social) => {
       await assertMemberReady(repository, actorId)
       if (post.companyId) await assertCanPostAsOrganization(actorId, post.companyId)
+      if (post.groupId) await assertCanPostInGroup(repository, actorId, post.groupId)
       const id = post.id ?? createId()
+      const body = post.body.trim()
       await repository.insertStandardPost({
         id,
         authorId: actorId,
         category: post.category,
-        body: post.body.trim(),
+        body,
         ...(post.companyId ? { companyId: post.companyId } : {}),
+        ...(post.groupId ? { groupId: post.groupId } : {}),
       })
       for (const media of post.media ?? []) await repository.insertPostMedia(id, media)
       const mentions = post.mentionProfileIds?.length
         ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
         : []
       await notifyPostMentions(social, actorId, id, mentions)
+      await storeTagsForNewPost(repository, social, actorId, id, body, post)
       await enqueueFeedInvalidation(social, 'feed.post_created', actorId, id)
       return id
     })
+  }
+
+  /** Organization tags, hashtags, photo tags and group-admin notices for a freshly created post. */
+  async function storeTagsForNewPost(
+    repository: FeedRepository,
+    social: FeedSocialWriter | undefined,
+    actorId: string,
+    postId: string,
+    body: string,
+    post: Pick<StandardPostInput, 'organizationMentionIds' | 'photoTags' | 'groupId'>,
+  ) {
+    const organizations = post.organizationMentionIds?.length
+      ? await repository.insertOrganizationMentions(actorId, { postId }, post.organizationMentionIds)
+      : []
+    await notifyOrganizationMentions(repository, social, actorId, { postId }, organizations)
+    const hashtags = extractHashtags(body)
+    if (hashtags.length) await repository.replacePostHashtags(postId, hashtags)
+    const photoTags = post.photoTags?.length
+      ? await repository.insertPhotoTags(actorId, postId, post.photoTags)
+      : []
+    await notifyPhotoTags(social, actorId, postId, photoTags)
+    if (post.groupId) await notifyGroupPost(repository, social, actorId, post.groupId, postId)
   }
 
   async function assertPendingMediaDiscardable(actorId: string, storagePath: string) {
@@ -261,20 +374,24 @@ export function createFeedService(input: {
     return input.withTransaction(async (repository, social) => {
       await assertMemberReady(repository, actorId)
       if (post.companyId) await assertCanPostAsOrganization(actorId, post.companyId)
+      if (post.groupId) await assertCanPostInGroup(repository, actorId, post.groupId)
       const options = normalizePollOptions(post.pollOptions)
       const id = createId()
+      const body = post.body.trim()
       await repository.insertPollPost({
         id,
         authorId: actorId,
         category: post.category,
-        body: post.body.trim(),
+        body,
         ...(post.companyId ? { companyId: post.companyId } : {}),
+        ...(post.groupId ? { groupId: post.groupId } : {}),
       })
       for (const [position, label] of options.entries()) await repository.insertPollOption(id, label, position)
       const mentions = post.mentionProfileIds?.length
         ? await repository.insertPostMentions(actorId, id, post.mentionProfileIds)
         : []
       await notifyPostMentions(social, actorId, id, mentions)
+      await storeTagsForNewPost(repository, social, actorId, id, body, post)
       await enqueueFeedInvalidation(social, 'feed.post_created', actorId, id)
       return id
     })
@@ -292,6 +409,14 @@ export function createFeedService(input: {
       if (commentary && repost.mentionProfileIds?.length) {
         const mentions = await repository.insertPostMentions(actorId, id, repost.mentionProfileIds)
         await notifyPostMentions(social, actorId, id, mentions)
+      }
+      if (commentary) {
+        if (repost.organizationMentionIds?.length) {
+          const organizations = await repository.insertOrganizationMentions(actorId, { postId: id }, repost.organizationMentionIds)
+          await notifyOrganizationMentions(repository, social, actorId, { postId: id }, organizations)
+        }
+        const hashtags = extractHashtags(commentary)
+        if (hashtags.length) await repository.replacePostHashtags(id, hashtags)
       }
       await enqueueFeedInvalidation(social, 'feed.post_reposted', actorId, id)
       return id
@@ -347,6 +472,9 @@ export function createFeedService(input: {
       if (!await repository.updatePostBody(postId, body)) serviceError('feed_interaction_unavailable')
       const mentions = await repository.replacePostMentions(actorId, postId, body ? update.mentionProfileIds ?? [] : [])
       await notifyPostMentions(social, actorId, postId, mentions.newlyIntroducedProfileIds)
+      const organizations = await repository.replaceOrganizationMentions(actorId, { postId }, body ? update.organizationMentionIds ?? [] : [])
+      await notifyOrganizationMentions(repository, social, actorId, { postId }, organizations)
+      await repository.replacePostHashtags(postId, extractHashtags(body))
       return { id: postId, postType: post.postType }
     })
   }
@@ -451,6 +579,7 @@ export function createFeedService(input: {
     body: string,
     parentCommentId: string | null = null,
     mentionProfileIds: string[] = [],
+    organizationMentionIds: string[] = [],
   ) {
     return input.withTransaction(async (repository, social) => {
       const post = await assertInteractablePost(repository, actorId, postId)
@@ -545,6 +674,10 @@ export function createFeedService(input: {
       }
 
       await notifyCommentMentions(social, actorId, postId, commentId, mentions)
+      if (organizationMentionIds.length) {
+        const organizations = await repository.insertOrganizationMentions(actorId, { commentId }, organizationMentionIds)
+        await notifyOrganizationMentions(repository, social, actorId, { postId, commentId }, organizations)
+      }
       await enqueueFeedInvalidation(social, 'feed.post_comments_changed', actorId, postId)
       return commentId
     })
@@ -555,6 +688,7 @@ export function createFeedService(input: {
     commentId: string,
     body: string,
     mentionProfileIds: string[] = [],
+    organizationMentionIds: string[] = [],
   ) {
     return input.withTransaction(async (repository, social) => {
       await assertOwnedComment(repository, actorId, commentId)
@@ -562,6 +696,8 @@ export function createFeedService(input: {
       if (!updated) serviceError('feed_comment_edit_expired')
       const mentions = await repository.replaceCommentMentions(actorId, commentId, mentionProfileIds)
       await notifyCommentMentions(social, actorId, updated.postId, commentId, mentions.newlyIntroducedProfileIds)
+      const organizations = await repository.replaceOrganizationMentions(actorId, { commentId }, organizationMentionIds)
+      await notifyOrganizationMentions(repository, social, actorId, { postId: updated.postId, commentId }, organizations)
       return updated
     })
   }

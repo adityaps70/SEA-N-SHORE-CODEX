@@ -912,6 +912,10 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     if (targetType === 'event') {
       return `select status as state from public.events where id = $1 for update`
     }
+    if (targetType === 'group') {
+      return `select case when archived_at is null then 'visible' else 'removed' end as state
+        from public.community_groups where id = $1 for update`
+    }
     return `select account_status::text as state from public.profiles where id = $1 for update`
   }
 
@@ -971,6 +975,16 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
         action === 'remove'
           ? "update public.events set status = 'cancelled', updated_at = now() where id = $1"
           : "update public.events set status = 'published', updated_at = now() where id = $1",
+        [targetId],
+      )
+      return
+    }
+    if (targetType === 'group') {
+      // Round 9B: removing a community group archives it (its posts leave every feed); restoring clears it.
+      await query(
+        action === 'remove'
+          ? 'update public.community_groups set archived_at = coalesce(archived_at, now()), updated_at = now() where id = $1'
+          : 'update public.community_groups set archived_at = null, updated_at = now() where id = $1',
         [targetId],
       )
       return

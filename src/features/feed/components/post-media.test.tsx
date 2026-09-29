@@ -4,7 +4,7 @@ import { ImageConfigContext } from 'next/dist/shared/lib/image-config-context.sh
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import nextConfig from '../../../../next.config'
-import type { FeedMedia } from '../types'
+import type { FeedMedia, FeedPhotoTag } from '../types'
 import { PostMedia } from './post-media'
 
 /** Renders under the real `images` settings of next.config.ts, as the app does. */
@@ -18,11 +18,14 @@ function renderWithImageConfig(ui: ReactNode) {
 
 const mocks = vi.hoisted(() => ({
   renderPdfPage: vi.fn(async () => ({ width: 842, height: 595 })),
+  removeMyPhotoTag: vi.fn<(input: { postId: string; mediaId: string; profileId?: string }) => Promise<{ ok: true } | { ok: false; error: string }>>(async () => ({ ok: true })),
 }))
 
 vi.mock('../pdf-page-renderer', () => ({
   renderPdfPage: mocks.renderPdfPage,
 }))
+
+vi.mock('../photo-tag-actions', () => ({ removeMyPhotoTag: mocks.removeMyPhotoTag }))
 
 const imageMedia: FeedMedia = {
   storagePath: 'member/post/photo.jpg',
@@ -51,6 +54,7 @@ const pdfMedia: FeedMedia = {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.renderPdfPage.mockResolvedValue({ width: 842, height: 595 })
+  mocks.removeMyPhotoTag.mockResolvedValue({ ok: true })
 })
 
 afterEach(() => cleanup())
@@ -232,5 +236,85 @@ describe('PostMedia edge to edge on phones', () => {
 
     rerender(<PostMedia media={photo} authorName="Rinki" />)
     expect(screen.getByRole('button')).not.toHaveClass('max-sm:-mx-4')
+  })
+})
+
+describe('PostMedia lightbox: people tagged in photos (round 9B)', () => {
+  const postId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const mediaOne = '66666666-6666-4666-8666-666666666666'
+  const mediaTwo = '77777777-7777-4777-8777-777777777777'
+  const photos: FeedMedia[] = [
+    { id: mediaOne, storagePath: 'p/1.jpg', mimeType: 'image/jpeg', altText: 'Deck one', signedUrl: 'https://media.example/1.jpg', position: 0 },
+    { id: mediaTwo, storagePath: 'p/2.jpg', mimeType: 'image/jpeg', altText: 'Deck two', signedUrl: 'https://media.example/2.jpg', position: 1 },
+  ]
+  const priya: FeedPhotoTag = { mediaId: mediaOne, profileId: '22222222-2222-4222-8222-222222222222', slug: 'priya-nair', fullName: 'Priya Nair', avatarUrl: null }
+  const arjun: FeedPhotoTag = { mediaId: mediaOne, profileId: '33333333-3333-4333-8333-333333333333', slug: 'arjun-mehta', fullName: 'Arjun Mehta', avatarUrl: null }
+  const lee: FeedPhotoTag = { mediaId: mediaTwo, profileId: '44444444-4444-4444-8444-444444444444', slug: 'officer-lee', fullName: 'Officer Lee', avatarUrl: null }
+
+  it('opens the lightbox for a single photo too (it used to set the index and render nothing)', () => {
+    render(<PostMedia media={{ ...photos[0]!, id: mediaOne }} authorName="Member A" postId={postId} photoTags={[priya]} />)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deck one' }))
+    const dialog = screen.getByRole('dialog', { name: 'Photo 1 of 1' })
+    expect(within(dialog).getByRole('img', { name: 'Deck one' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Previous photo' })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'People in this photo (1)' })).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close photo viewer' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('shows a people button with the count for the current photo that toggles the tagged list', () => {
+    render(<PostMedia media={photos} authorName="Member A" postId={postId} photoTags={[priya, arjun, lee]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open photo 1 of 2' }))
+    const dialog = screen.getByRole('dialog', { name: 'Photo 1 of 2' })
+
+    const people = within(dialog).getByRole('button', { name: 'People in this photo (2)' })
+    expect(people.querySelector('svg.lucide-users-round')).toBeInTheDocument()
+    expect(people).toHaveAttribute('aria-expanded', 'false')
+    expect(within(dialog).queryByRole('region', { name: 'People in this photo' })).not.toBeInTheDocument()
+
+    fireEvent.click(people)
+    const panel = within(dialog).getByRole('region', { name: 'People in this photo' })
+    expect(within(panel).getByRole('link', { name: 'Priya Nair' })).toHaveAttribute('href', '/people/priya-nair')
+    expect(within(panel).getByRole('link', { name: 'Arjun Mehta' })).toHaveAttribute('href', '/people/arjun-mehta')
+    expect(within(panel).queryByText('Officer Lee')).not.toBeInTheDocument()
+    expect(within(panel).getAllByRole('button', { name: /Remove my tag/ })).toHaveLength(2)
+
+    // Moving to the next photo updates the count; the panel follows the photo.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next photo' }))
+    expect(within(dialog).getByRole('button', { name: 'People in this photo (1)' })).toBeInTheDocument()
+    expect(within(within(dialog).getByRole('region', { name: 'People in this photo' })).getByRole('link', { name: 'Officer Lee' })).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'People in this photo (1)' }))
+    expect(within(dialog).queryByRole('region', { name: 'People in this photo' })).not.toBeInTheDocument()
+  })
+
+  it('removes the viewer’s own tag through the server and hides the row, or explains a refusal inline', async () => {
+    mocks.removeMyPhotoTag
+      .mockResolvedValueOnce({ ok: false, error: 'You can only remove your own tag.' })
+      .mockResolvedValueOnce({ ok: true })
+    render(<PostMedia media={photos} authorName="Member A" postId={postId} photoTags={[priya, arjun]} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open photo 1 of 2' }))
+    const dialog = screen.getByRole('dialog', { name: 'Photo 1 of 2' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'People in this photo (2)' }))
+    const panel = within(dialog).getByRole('region', { name: 'People in this photo' })
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Remove my tag (Arjun Mehta)' }))
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('You can only remove your own tag.')
+    expect(mocks.removeMyPhotoTag).toHaveBeenCalledWith({ postId, mediaId: mediaOne, profileId: arjun.profileId })
+    expect(within(panel).getByRole('link', { name: 'Arjun Mehta' })).toBeInTheDocument()
+
+    fireEvent.click(within(panel).getByRole('button', { name: 'Remove my tag (Priya Nair)' }))
+    await waitFor(() => expect(within(panel).queryByRole('link', { name: 'Priya Nair' })).not.toBeInTheDocument())
+    expect(within(panel).queryByRole('alert')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'People in this photo (1)' })).toBeInTheDocument()
+  })
+
+  it('hides the people button when the post has no photo tags', () => {
+    render(<PostMedia media={photos} authorName="Member A" postId={postId} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open photo 1 of 2' }))
+    expect(within(screen.getByRole('dialog')).queryByRole('button', { name: /People in this photo/ })).not.toBeInTheDocument()
   })
 })

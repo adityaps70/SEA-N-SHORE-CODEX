@@ -1,6 +1,6 @@
 'use client'
 
-import { CheckCircle2, ChevronRight, Sparkles, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, ChevronRight, Target, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
 import type { JobMatchResult } from '../types'
@@ -26,7 +26,7 @@ export function JobMatchRow({ match }: { match: JobMatchResult }) {
         onClick={() => setOpen(true)}
         className="-mx-4 flex min-h-16 w-[calc(100%+2rem)] cursor-pointer items-center gap-3 bg-navy-950 px-4 py-3 text-left text-white hover:bg-navy-900 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white"
       >
-        <Sparkles aria-hidden="true" className="size-6 shrink-0" />
+        <Target aria-hidden="true" className="size-6 shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="block text-base font-bold">{match.score}% Maritime Match</span>
           <span className="block text-[13px] text-white/75">{summary}</span>

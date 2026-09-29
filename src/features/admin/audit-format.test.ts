@@ -20,6 +20,9 @@ describe('audit formatting', () => {
     expect(auditTargetHref('user_account', 'abc')).toBe('/admin/users/abc')
     expect(auditTargetHref('post', 'p1')).toBe('/posts/p1')
     expect(auditTargetLabel('company_access_request')).toBe('Access request')
+    // Round 9B: community groups are moderation and admin targets too.
+    expect(auditTargetLabel('group')).toBe('Group')
+    expect(auditTargetHref('group', 'g1')).toBe('/admin/communities?group=g1')
     expect(auditTargetHref('unknown', 'x')).toBeNull()
   })
 

@@ -2,15 +2,29 @@
 
 import { useId, useRef, useState, useTransition, type RefObject } from 'react'
 import { updatePost, type UpdatePostActionResult } from '../actions'
-import type { FeedMention, FeedPostType } from '../types'
+import type { FeedMention, FeedOrganizationMention, FeedPostType } from '../types'
 import { EmojiPicker, insertEmojiAt } from './emoji-picker'
 import { FeedDialog } from './feed-dialog'
-import { MentionInput, type SelectedMention } from './mention-input'
+import { MentionInput, mentionKind, type SelectedMention } from './mention-input'
 
 const POST_MAX = 5000
 const REPOST_MAX = 3000
 
 type SavedPost = Extract<UpdatePostActionResult, { ok: true }>['post']
+
+/** Members and organization pages already tagged in the post, as the mention picker tracks them. */
+export function selectedPostMentions(mentions: FeedMention[], organizationMentions: FeedOrganizationMention[] = []): SelectedMention[] {
+  return [
+    ...mentions.map((mention): SelectedMention => ({ kind: 'member', profileId: mention.profileId, label: mention.fullName })),
+    ...organizationMentions.map((organization): SelectedMention => ({
+      kind: 'organization',
+      profileId: organization.companyId,
+      label: organization.name,
+      slug: organization.slug,
+      logoUrl: organization.logoUrl,
+    })),
+  ]
+}
 
 /** Edits the text of a post. Poll options, media and the original of a repost stay as they are. */
 export function EditPostDialog({
@@ -18,6 +32,7 @@ export function EditPostDialog({
   postType,
   body: initialBody,
   mentions: initialMentions,
+  organizationMentions: initialOrganizationMentions = [],
   publishedAs,
   onClose,
   onSaved,
@@ -27,17 +42,20 @@ export function EditPostDialog({
   postType: FeedPostType
   body: string
   mentions: FeedMention[]
+  /** Organization pages tagged with "@" (round 9B). */
+  organizationMentions?: FeedOrganizationMention[]
   /** Name shown as the post's author, e.g. the organization's name. */
   publishedAs: string
   onClose(): void
-  onSaved(post: SavedPost): void
+  /** The saved text and member mentions, plus the organization mentions still in the text. */
+  onSaved(post: SavedPost, organizationMentions: FeedOrganizationMention[]): void
   returnFocusRef?: RefObject<HTMLElement | null>
 }) {
   const inputId = useId()
   const counterId = useId()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [body, setBody] = useState(initialBody)
-  const [mentions, setMentions] = useState<SelectedMention[]>(() => initialMentions.map((mention) => ({ profileId: mention.profileId, label: mention.fullName })))
+  const [mentions, setMentions] = useState<SelectedMention[]>(() => selectedPostMentions(initialMentions, initialOrganizationMentions))
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
   const isRepost = postType === 'repost'
@@ -68,16 +86,24 @@ export function EditPostDialog({
     }
     setError('')
     startTransition(async () => {
+      const present = mentions.filter((mention) => text.includes(`@${mention.label}`))
+      const organizationMentions = present.filter((mention) => mentionKind(mention) === 'organization')
       const result = await updatePost({
         postId,
         body: text,
-        mentionProfileIds: mentions.filter((mention) => text.includes(`@${mention.label}`)).map((mention) => mention.profileId),
+        mentionProfileIds: present.filter((mention) => mentionKind(mention) === 'member').map((mention) => mention.profileId),
+        organizationMentionIds: organizationMentions.map((mention) => mention.profileId),
       })
       if (!result.ok) {
         setError(result.error)
         return
       }
-      onSaved(result.post)
+      onSaved(result.post, organizationMentions.map((mention) => ({
+        companyId: mention.profileId,
+        slug: mention.slug ?? '',
+        name: mention.label,
+        logoUrl: mention.logoUrl ?? null,
+      })))
       onClose()
     })
   }

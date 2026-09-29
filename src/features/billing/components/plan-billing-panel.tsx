@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock3, Crown, Building2, ReceiptText, Sparkles, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, Crown, Building2, ReceiptText, XCircle } from 'lucide-react'
 import type { BillingHistoryRow, PlanBillingView } from '../billing-view'
 import type { CheckPlanCheckoutResult, PlanCheckoutTarget } from '../checkout-messages'
 import { BILLING_INTERVALS, formatRupees } from '../plans'
@@ -176,19 +176,12 @@ export function PlanBillingPanel({ view, target, eyebrow, description, highlight
 
       {showChooser && view.state === 'free' && view.trial.canStart && !blockedMessage ? (
         <div className="mt-5 rounded-2xl border border-teal-200 bg-teal-50/60 p-4" data-testid="trial-offer">
-          <div className="flex items-start gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white text-teal-700">
-              <Sparkles aria-hidden="true" className="size-4" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-base font-bold text-navy-950">Try {view.planLabel} free for {view.trial.months} months</h3>
-              <p className="mt-1 text-sm leading-6 text-navy-800">
-                No payment details needed and nothing is charged during the trial. You can choose a paid plan at any time; the first payment is taken on the day the trial ends. One free trial per {view.plan === 'organization_pro' ? 'organization' : 'member'}.
-              </p>
-              <div className="mt-3">
-                <TrialStartButton target={target} planLabel={view.planLabel} months={view.trial.months} />
-              </div>
-            </div>
+          <h3 className="text-base font-bold text-navy-950">Try {view.planLabel} free for {view.trial.months} months</h3>
+          <p className="mt-1 text-sm leading-6 text-navy-800">
+            No payment details needed and nothing is charged during the trial. You can choose a paid plan at any time; the first payment is taken on the day the trial ends. One free trial per {view.plan === 'organization_pro' ? 'organization' : 'member'}.
+          </p>
+          <div className="mt-3">
+            <TrialStartButton target={target} planLabel={view.planLabel} months={view.trial.months} />
           </div>
         </div>
       ) : null}

@@ -3,7 +3,7 @@
  * vertical, and "All" shows the first few results of each with a "See all …" link to its chip.
  * Posts are not searchable yet, so there is no Posts chip.
  */
-export const SEARCH_VERTICALS = ['people', 'jobs', 'organizations', 'courses', 'events'] as const
+export const SEARCH_VERTICALS = ['people', 'jobs', 'organizations', 'groups', 'courses', 'events', 'hashtags'] as const
 export type SearchVertical = (typeof SEARCH_VERTICALS)[number]
 export type SearchChip = 'all' | SearchVertical
 
@@ -12,8 +12,15 @@ export const SEARCH_CHIP_LABELS: Record<SearchChip, string> = {
   people: 'People',
   jobs: 'Jobs',
   organizations: 'Organizations',
+  groups: 'Groups',
   courses: 'Courses',
   events: 'Events',
+  hashtags: 'Hashtags',
+}
+
+/** Hashtag search: "#sire" and "sire" both look up tags starting with "sire". */
+export function hashtagSearchQuery(query: string) {
+  return query.trim().replace(/^#+/, '').trim()
 }
 
 /** Results per vertical: desktop shows 6; a selected phone chip shows up to 20. */

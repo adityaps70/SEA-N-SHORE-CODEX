@@ -31,6 +31,7 @@ const sections: Section[] = [
   { href: '/admin/moderation', label: 'Moderation', icon: ShieldAlert, count: (m) => m.openReports + m.reviewingReports },
   { href: '/admin/users', label: 'Users', icon: UsersRound },
   { href: '/admin/organizations', label: 'Organizations', icon: Building2, count: (m) => m.pendingOrganizations },
+  { href: '/admin/communities', label: 'Communities', icon: UsersRound },
   { href: '/admin/verifications', label: 'Verifications', icon: BadgeCheck },
   { href: '/admin/access', label: 'Access requests', icon: KeyRound, count: (m) => m.pendingAccessRequests },
   { href: '/admin/learning', label: 'Learning', icon: GraduationCap },

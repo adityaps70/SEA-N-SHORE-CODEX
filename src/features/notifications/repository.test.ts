@@ -26,7 +26,7 @@ describe('Aurora notification repository', () => {
     const [sql, values] = callsOf(query)[0]
     expect(sql).toContain('from public.notifications')
     expect(sql).toContain('recipient_id = $1')
-    expect(sql).toContain('order by created_at desc')
+    expect(sql).toContain('order by n.created_at desc')
     expect(sql).toContain('limit $2')
     expect(values).toEqual([RECIPIENT_ID, 50])
   })

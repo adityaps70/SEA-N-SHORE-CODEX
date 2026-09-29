@@ -1,7 +1,7 @@
 'use client'
 
 import { useId, useState } from 'react'
-import type { FeedMention } from '../types'
+import type { FeedMention, FeedOrganizationMention } from '../types'
 import { MentionText, segmentBody } from './mention-text'
 
 /** Post bodies collapse after about five lines or 300 characters, whichever comes first. */
@@ -11,12 +11,14 @@ export const COMMENT_COLLAPSE = { maxLines: 3, maxChars: 200 } as const
 
 /**
  * Where a long body should be cut when collapsed, or null when it is short enough to show in full.
- * The cut lands on a word boundary and never splits an @mention, so mention links keep working.
+ * The cut lands on a word boundary and never splits an @mention or a #hashtag, so their links
+ * keep working.
  */
 export function collapsedLength(
   body: string,
   mentions: FeedMention[] = [],
   limits: { maxLines: number; maxChars: number } = POST_COLLAPSE,
+  organizationMentions: FeedOrganizationMention[] = [],
 ): number | null {
   const lines = body.split('\n')
   let cut = body.length
@@ -32,13 +34,13 @@ export function collapsedLength(
     if (boundary > cut * 0.6) cut = boundary
   }
 
-  // Never cut an @mention in half: move the cut to just before (or after) the mention.
+  // Never cut an @mention or #hashtag in half: move the cut to just before (or after) it.
   let offset = 0
-  for (const segment of segmentBody(body, mentions)) {
+  for (const segment of segmentBody(body, mentions, organizationMentions)) {
     const start = offset
     const end = offset + segment.value.length
     offset = end
-    if (segment.type !== 'mention' || cut <= start || cut >= end) continue
+    if (segment.type === 'text' || cut <= start || cut >= end) continue
     cut = start > 0 ? start : end
     break
   }
@@ -51,6 +53,8 @@ export function collapsedLength(
 type ExpandableTextProps = {
   body: string
   mentions?: FeedMention[]
+  /** Organization pages tagged with "@" (round 9B). */
+  organizationMentions?: FeedOrganizationMention[]
   /** Classes for the text paragraph. */
   className?: string
   limits?: { maxLines: number; maxChars: number }
@@ -62,20 +66,20 @@ type ExpandableTextProps = {
  * Long text shows its first lines with an inline "…more" button (LinkedIn style) that expands in
  * place; "Show less" collapses it again. Mentions keep rendering as profile links either way.
  */
-export function ExpandableText({ body, mentions = [], className, limits = POST_COLLAPSE, defaultExpanded = false }: ExpandableTextProps) {
+export function ExpandableText({ body, mentions = [], organizationMentions = [], className, limits = POST_COLLAPSE, defaultExpanded = false }: ExpandableTextProps) {
   const id = useId()
   const [expanded, setExpanded] = useState(defaultExpanded)
-  const cut = collapsedLength(body, mentions, limits)
+  const cut = collapsedLength(body, mentions, limits, organizationMentions)
 
   if (cut === null) {
-    return <p className={className}><MentionText body={body} mentions={mentions} /></p>
+    return <p className={className}><MentionText body={body} mentions={mentions} organizationMentions={organizationMentions} /></p>
   }
 
   const buttonClass = 'cursor-pointer rounded font-semibold text-muted hover:text-ocean-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40'
 
   return (
     <p id={id} className={className} data-collapsed={expanded ? 'false' : 'true'}>
-      <MentionText body={expanded ? body : body.slice(0, cut)} mentions={mentions} />
+      <MentionText body={expanded ? body : body.slice(0, cut)} mentions={mentions} organizationMentions={organizationMentions} />
       {expanded ? (
         <>
           {' '}

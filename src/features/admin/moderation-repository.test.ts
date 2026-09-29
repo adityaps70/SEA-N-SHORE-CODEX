@@ -216,4 +216,28 @@ describe('platform moderation repository', () => {
     expect(seen.some((entry) => entry.text.includes('update public.jobs') && entry.text.includes("status = 'published'"))).toBe(true)
     expect(seen.find((entry) => entry.text.includes('insert into public.moderation_actions'))?.values).toContain('restore')
   })
+
+  it('archives a reported community group on remove and clears the archive on restore (round 9B)', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    let state = 'visible'
+    const query = async (text: string, values?: readonly unknown[]) => {
+      seen.push({ text, values })
+      if (text.includes('public.user_roles')) return [{ allowed: true }]
+      if (text.includes('from public.content_reports') && text.includes('for update')) return [{ id: 'report-group', status: 'open' }]
+      if (text.includes('from public.community_groups') && text.includes('for update')) return [{ state }]
+      if (text.includes('from public.moderation_actions') && text.includes('order by created_at desc')) return [{ action: 'remove' }]
+      return []
+    }
+    const repository = createAdminRepository({ query, transaction: async (work) => work(query) })
+
+    await repository.moderateContent(adminId, { targetType: 'group', targetId, action: 'remove', note: 'Recruitment-fee spam group.' })
+    const archive = seen.find((entry) => entry.text.includes('update public.community_groups') && entry.text.includes('archived_at = coalesce(archived_at, now())'))
+    expect(archive?.values).toEqual([targetId])
+    expect(seen.some((entry) => entry.text.includes('insert into public.moderation_actions'))).toBe(true)
+
+    state = 'removed'
+    seen.length = 0
+    await repository.moderateContent(adminId, { targetType: 'group', targetId, action: 'restore', note: null })
+    expect(seen.some((entry) => entry.text.includes('update public.community_groups') && entry.text.includes('archived_at = null'))).toBe(true)
+  })
 })

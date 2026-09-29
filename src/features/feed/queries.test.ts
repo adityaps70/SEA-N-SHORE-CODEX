@@ -150,6 +150,58 @@ describe('Aurora feed queries', () => {
     expect(posts[0]).toMatchObject({ id: savedRow.id, viewerSaved: true })
   })
 
+  it('marks posts in groups the viewer administers as moderatable (round 9B)', async () => {
+    const groupId = '99999999-9999-4999-8999-999999999999'
+    const otherGroupId = '88888888-8888-4888-8888-888888888888'
+    const groupRef = (id: string) => ({ id, slug: `group-${id.slice(0, 2)}`, name: 'Group', visibility: 'public' as const })
+    const rows = [
+      { ...row('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-05T07:00:00.000Z'), group_id: groupId, post_group: groupRef(groupId) },
+      { ...row('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '2026-09-05T06:00:00.000Z'), group_id: otherGroupId, post_group: groupRef(otherGroupId) },
+      row('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '2026-09-05T05:00:00.000Z'),
+    ]
+    const repository = {
+      listFeedRows: vi.fn(async () => rows),
+      getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
+      getComments: vi.fn(async () => []),
+    } as unknown as FeedRepository
+    const listAdministeredGroupIds = vi.fn(async () => [groupId])
+    const { createFeedQueries } = await import('./queries')
+    const queries = createFeedQueries({
+      requireUser: async () => ({ id: viewerId, cognitoSub: 'sub', email: null }),
+      repository,
+      getPreferredAuthorIds: vi.fn(async () => []),
+      resolveMediaUrls: vi.fn(async () => new Map()),
+      listAdministeredGroupIds,
+    })
+
+    const page = await queries.getFeedPage({ limit: 20 })
+
+    expect(listAdministeredGroupIds).toHaveBeenCalledWith(viewerId)
+    expect(page.posts.map((post) => post.viewerCanModerateGroup ?? false)).toEqual([true, false, false])
+    expect(page.posts[0].group).toMatchObject({ id: groupId })
+  })
+
+  it('does not look up administered groups for a feed without group posts', async () => {
+    const rows = [row('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-05T07:00:00.000Z')]
+    const repository = {
+      listFeedRows: vi.fn(async () => rows),
+      getViewerState: vi.fn(async () => ({ likedPostIds: new Set(), savedPostIds: new Set(), pollVotes: new Map() })),
+      getComments: vi.fn(async () => []),
+    } as unknown as FeedRepository
+    const listAdministeredGroupIds = vi.fn(async () => [])
+    const { createFeedQueries } = await import('./queries')
+    const queries = createFeedQueries({
+      requireUser: async () => ({ id: viewerId, cognitoSub: 'sub', email: null }),
+      repository,
+      getPreferredAuthorIds: vi.fn(async () => []),
+      resolveMediaUrls: vi.fn(async () => new Map()),
+      listAdministeredGroupIds,
+    })
+
+    await queries.getFeedPage({ limit: 20 })
+    expect(listAdministeredGroupIds).not.toHaveBeenCalled()
+  })
+
   it('loads one post through the same viewer-scoped repository path', async () => {
     const post = row('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', '2026-09-05T07:00:00.000Z')
     const repository = {
