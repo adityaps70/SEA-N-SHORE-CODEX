@@ -160,11 +160,44 @@ data "aws_cloudfront_origin_request_policy" "all_viewer_except_host" {
   name = "Managed-AllViewerExceptHostHeader"
 }
 
+locals {
+  canonical_site_host = "seanshore.in"
+  canonical_site_url  = "https://${local.canonical_site_host}"
+  edge_host           = "d3prih0q6jofyr.cloudfront.net"
+  edge_site_url       = "https://${aws_cloudfront_distribution.app.domain_name}"
+
+  # Browser origins the application accepts: the canonical domain first, then the AWS-managed
+  # CloudFront hostname that keeps working during the domain move (Cognito callbacks, S3 CORS,
+  # realtime authorizer, Server Actions all derive from this list).
+  browser_site_urls = [local.canonical_site_url, local.edge_site_url]
+}
+
+variable "redirect_edge_host_to_canonical" {
+  description = "Phase 4 switch: 301 the *.cloudfront.net hostname to https://seanshore.in for everything except /api/* (payment webhooks keep answering on the old host)."
+  type        = bool
+  default     = false
+}
+
+# Viewer-request function: www -> apex, and (once enabled) cloudfront.net -> apex except /api/*.
+resource "aws_cloudfront_function" "canonical_host_redirect" {
+  name    = "${local.name_prefix}-canonical-host-redirect"
+  runtime = "cloudfront-js-2.0"
+  comment = "www.seanshore.in -> seanshore.in; optional cloudfront.net -> seanshore.in except /api/*"
+  publish = true
+
+  code = templatefile("${path.module}/cloudfront/canonical-host-redirect.js.tftpl", {
+    canonical_host     = local.canonical_site_host
+    edge_host          = local.edge_host
+    redirect_edge_host = var.redirect_edge_host_to_canonical
+  })
+}
+
 resource "aws_cloudfront_distribution" "app" {
   enabled         = true
   is_ipv6_enabled = true
   comment         = "Sea N Shore staging HTTPS edge"
   web_acl_id      = aws_wafv2_web_acl.edge.arn
+  aliases         = [local.canonical_site_host, "www.${local.canonical_site_host}"]
 
   origin {
     domain_name = data.aws_lb.edge_origin.dns_name
@@ -191,6 +224,11 @@ resource "aws_cloudfront_distribution" "app" {
     compress                 = true
     cache_policy_id          = data.aws_cloudfront_cache_policy.caching_disabled.id
     origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_viewer_except_host.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.canonical_host_redirect.arn
+    }
   }
 
   restrictions {
@@ -200,11 +238,18 @@ resource "aws_cloudfront_distribution" "app" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate.seanshore_edge.arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
   lifecycle {
     prevent_destroy = true
+
+    precondition {
+      condition     = aws_acm_certificate.seanshore_edge.status == "ISSUED"
+      error_message = "The seanshore.in edge certificate must be ISSUED before CloudFront can serve the custom domain."
+    }
   }
 
   tags = local.common_tags

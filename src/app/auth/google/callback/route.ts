@@ -5,11 +5,10 @@ import {
 } from '@/lib/auth/cognito-cookies'
 import { createCognitoOAuth, verifyOAuthState } from '@/lib/auth/cognito-oauth'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
+import { siteUrlFor } from '@/lib/site-url'
 
-function redirectWithError(request: NextRequest, code: string) {
-  const response = NextResponse.redirect(
-    new URL(`/auth/sign-in?oauthError=${encodeURIComponent(code)}`, request.url),
-  )
+function redirectWithError(code: string) {
+  const response = NextResponse.redirect(siteUrlFor(`/auth/sign-in?oauthError=${encodeURIComponent(code)}`))
   const environment = getCognitoEnvironment()
   const cookies = createCognitoCookieManager(
     response.cookies,
@@ -24,7 +23,7 @@ function redirectWithError(request: NextRequest, code: string) {
 export async function GET(request: NextRequest) {
   const environment = getCognitoEnvironment()
   if (!environment.AWS_COGNITO_GOOGLE_ENABLED || !environment.AWS_COGNITO_DOMAIN) {
-    return redirectWithError(request, 'unavailable')
+    return redirectWithError('unavailable')
   }
 
   const actualState = request.nextUrl.searchParams.get('state')
@@ -39,7 +38,7 @@ export async function GET(request: NextRequest) {
     || !verifier
     || !verifyOAuthState(expectedState, actualState)
   ) {
-    return redirectWithError(request, 'verification')
+    return redirectWithError('verification')
   }
 
   try {
@@ -49,7 +48,7 @@ export async function GET(request: NextRequest) {
       siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
     })
     const authentication = await oauth.exchangeCode({ code, verifier })
-    const response = NextResponse.redirect(new URL('/auth/post-sign-in', request.url))
+    const response = NextResponse.redirect(siteUrlFor('/auth/post-sign-in'))
     const cookies = createCognitoCookieManager(
       response.cookies,
       publicEnvironment.NEXT_PUBLIC_SITE_URL,
@@ -60,6 +59,6 @@ export async function GET(request: NextRequest) {
     response.headers.set('Cache-Control', 'private, no-store')
     return response
   } catch {
-    return redirectWithError(request, 'exchange')
+    return redirectWithError('exchange')
   }
 }

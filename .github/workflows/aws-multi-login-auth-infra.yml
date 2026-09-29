@@ -14,6 +14,7 @@ on:
       - scripts/aws/multi-login-auth-infra.sh
       - scripts/aws/multi-login-auth-infra-action.txt
       - scripts/aws/multi-login-auth-infra.test.mjs
+      - scripts/aws/public-site-url.txt
       - .github/workflows/aws-multi-login-auth-infra.yml
   workflow_dispatch:
 

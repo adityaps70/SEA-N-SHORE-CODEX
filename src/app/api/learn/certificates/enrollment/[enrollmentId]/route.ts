@@ -1,9 +1,10 @@
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { buildLearningCertificatePdf } from '@/features/learning/certificate-pdf'
 import { certificateRepository } from '@/features/learning/certificate-repository'
+import { siteUrlFor } from '@/lib/site-url'
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ enrollmentId: string }> },
 ) {
   const user = await requireAwsUser()
@@ -13,8 +14,7 @@ export async function GET(
     const certificate = await certificateRepository.ensureCertificateForEnrollment(user.id, enrollmentId)
     if (!certificate) return new Response('Certificate not available', { status: 404 })
 
-    const origin = new URL(request.url).origin
-    const verificationUrl = `${origin}/certificates/${certificate.verificationCode}`
+    const verificationUrl = siteUrlFor(`/certificates/${certificate.verificationCode}`).toString()
     const bytes = await buildLearningCertificatePdf({ certificate, verificationUrl })
 
     return new Response(Buffer.from(bytes), {

@@ -24,13 +24,19 @@ test('staging deploy supports an explicit exact-head push trigger without weaken
   assert.match(workflow, /IMAGE_TAG="\$\{GITHUB_SHA\}-\$\{GITHUB_RUN_ID\}"/)
 })
 
-test('staging deploy builds with the exact CloudFront Server Action origin without replacing the ALB site URL', () => {
+test('staging deploy builds with the exact canonical and CloudFront Server Action origins and the repository site URL', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
+  const siteUrl = readFileSync('scripts/aws/public-site-url.txt', 'utf8').trim()
 
-  assert.match(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*https:\/\/d3prih0q6jofyr\.cloudfront\.net/)
+  assert.match(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*https:\/\/seanshore\.in,https:\/\/d3prih0q6jofyr\.cloudfront\.net/)
   assert.match(workflow, /--build-arg SERVER_ACTION_ALLOWED_ORIGINS="\$SERVER_ACTION_ALLOWED_ORIGINS"/)
   assert.match(workflow, /--build-arg NEXT_PUBLIC_SITE_URL="\$NEXT_PUBLIC_SITE_URL"/)
   assert.doesNotMatch(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*['"]?\*/)
+  assert.doesNotMatch(workflow, /vars\.NEXT_PUBLIC_SITE_URL/)
+  assert.match(workflow, /Resolve public site URL/)
+  assert.match(workflow, /scripts\/aws\/public-site-url\.txt/)
+  assert.match(workflow, /echo "NEXT_PUBLIC_SITE_URL=\$SITE" >> "\$GITHUB_ENV"/)
+  assert.ok(['https://seanshore.in', 'https://d3prih0q6jofyr.cloudfront.net'].includes(siteUrl), `Unexpected public site URL: ${siteUrl}`)
 })
 
 test('staging deploy verifies exact completed service revision and its immutable task-definition image without ListTasks permission', () => {
@@ -80,7 +86,8 @@ test('one-shot staging deploy applies and verifies only the restricted browser P
   assert.match(workflow, /aws s3api put-bucket-cors/)
   assert.match(workflow, /--bucket "\$AWS_MEDIA_BUCKET"/)
   assert.match(workflow, /"AllowedMethods":\["PUT"\]/)
-  assert.match(workflow, /"AllowedOrigins":\["\$SERVER_ACTION_ALLOWED_ORIGINS"\]/)
+  assert.match(workflow, /"AllowedOrigins":\(\$origins\|split\(","\)\)/)
+  assert.match(workflow, /AllowedOrigins == \(\$origins\|split\(","\)\)/)
   assert.match(workflow, /"AllowedHeaders":\["Content-Type"\]/)
   assert.match(workflow, /"MaxAgeSeconds":300/)
   assert.match(workflow, /aws s3api get-bucket-cors/)

@@ -3,6 +3,7 @@ import { getVerifiedUser } from '@/features/auth/queries'
 import { MAX_JOB_APPLICATION_CV_BYTES } from '@/features/jobs/application-media-policy'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
 import { getMediaObject } from '@/lib/aws/storage'
+import { siteUrlFor } from '@/lib/site-url'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -24,11 +25,11 @@ function contentDisposition(fileName: string, download: boolean) {
   return `${download ? 'attachment' : 'inline'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(withExtension)}`
 }
 
-function unavailableRedirect(request: Request, viewer: 'applicant' | 'hiring', applicationId: string, reason: 'missing' | 'unavailable') {
+function unavailableRedirect(viewer: 'applicant' | 'hiring', applicationId: string, reason: 'missing' | 'unavailable') {
   const path = viewer === 'hiring'
     ? `/hiring/applicants/${applicationId}?cv=${reason}`
     : `/jobs/applications?cv=${reason}`
-  return Response.redirect(new URL(path, request.url), 303)
+  return Response.redirect(siteUrlFor(path), 303)
 }
 
 /**
@@ -54,7 +55,7 @@ export async function GET(
   const access = await hiringRepository.getApplicationCvAccess(viewer.id, parsed.data)
   if (!access) return notFound()
   if (!access.cv || !access.cv.storagePath.startsWith('job-applications/')) {
-    return unavailableRedirect(request, access.viewer, parsed.data, 'missing')
+    return unavailableRedirect(access.viewer, parsed.data, 'missing')
   }
 
   try {
@@ -78,6 +79,6 @@ export async function GET(
       name: error instanceof Error ? error.name : null,
       message: error instanceof Error ? error.message : null,
     })
-    return unavailableRedirect(request, access.viewer, parsed.data, missing ? 'missing' : 'unavailable')
+    return unavailableRedirect(access.viewer, parsed.data, missing ? 'missing' : 'unavailable')
   }
 }

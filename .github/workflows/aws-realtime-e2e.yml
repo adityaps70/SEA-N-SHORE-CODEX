@@ -109,11 +109,19 @@ jobs:
     timeout-minutes: 45
     env:
       AWS_REGION: ap-south-1
-      SITE_URL: https://d3prih0q6jofyr.cloudfront.net
       COGNITO_POOL_NAME: sea-n-shore-staging-users
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@v4
+
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
 
       - name: Wait for exact-head AWS Infrastructure CI
         env:
@@ -247,11 +255,19 @@ jobs:
     timeout-minutes: 30
     env:
       AWS_REGION: ap-south-1
-      SITE_URL: https://d3prih0q6jofyr.cloudfront.net
       COGNITO_POOL_NAME: sea-n-shore-staging-users
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@v4
+
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
 
       - name: Wait for exact-head AWS Infrastructure CI
         env:
@@ -360,6 +376,15 @@ jobs:
       - name: Checkout exact branch head
         uses: actions/checkout@v4
 
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
+
       - name: Wait for exact-head AWS Infrastructure CI
         env:
           GH_TOKEN: ${{ github.token }}
@@ -436,6 +461,15 @@ jobs:
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@v4
+
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
 
       - name: Wait for exact-head AWS Infrastructure CI
         env:

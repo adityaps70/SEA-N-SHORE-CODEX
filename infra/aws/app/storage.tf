@@ -33,7 +33,7 @@ resource "aws_s3_bucket_cors_configuration" "media" {
 
   cors_rule {
     allowed_methods = ["PUT"]
-    allowed_origins = ["https://${aws_cloudfront_distribution.app.domain_name}"]
+    allowed_origins = local.browser_site_urls
     allowed_headers = ["Content-Type"]
     max_age_seconds = 300
   }

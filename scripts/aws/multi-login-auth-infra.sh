@@ -11,7 +11,9 @@ STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 APP_DIR="$PWD/infra/aws/app"
 ACTION_FILE="scripts/aws/multi-login-auth-infra-action.txt"
 GOOGLE_SECRET_ID="sea-n-shore-staging/google-oauth"
-PUBLIC_SITE_URL="https://d3prih0q6jofyr.cloudfront.net"
+PUBLIC_SITE_URL="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+[[ "$PUBLIC_SITE_URL" =~ ^https://[a-z0-9.-]+$ ]]
+export PUBLIC_SITE_URL
 
 [[ "${MULTI_LOGIN_AUTH_INFRA_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "MULTI_LOGIN_AUTH_INFRA_EXPECTED_SHA must be an exact commit SHA." >&2
@@ -29,6 +31,7 @@ git diff --quiet HEAD -- \
   scripts/aws/multi-login-auth-infra.sh \
   scripts/aws/multi-login-auth-infra-action.txt \
   scripts/aws/multi-login-auth-infra.test.mjs \
+  scripts/aws/public-site-url.txt \
   .github/workflows/aws-multi-login-auth-infra.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
@@ -84,7 +87,8 @@ def attrs(kind, name=None):
 web = attrs('aws_ecs_task_definition', 'web')
 containers = json.loads(web['container_definitions'])
 web_container = next(c for c in containers if c['name'] == 'web')
-site_url = 'https://d3prih0q6jofyr.cloudfront.net'
+import os
+site_url = os.environ['PUBLIC_SITE_URL']
 image = web_container['image']
 assert ':' in image.rsplit('/', 1)[-1]
 values = {
