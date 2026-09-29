@@ -2,12 +2,20 @@
 
 import { Bookmark, EyeOff, Flag, Link2, MoreHorizontal, PencilLine, Trash2, UserMinus } from 'lucide-react'
 import type { RefObject } from 'react'
+import {
+  MobileSheetBackdrop,
+  MobileSheetCancel,
+  MobileSheetGrab,
+  SHEET_MENU_ITEM_CLASS,
+  SHEET_MENU_PANEL_CLASS,
+} from '@/components/ui/mobile-sheet'
 import { useFeedMenu } from './use-feed-menu'
 
-const itemClass = 'flex w-full cursor-pointer items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50'
+const itemClass = `flex w-full cursor-pointer items-center gap-3 [&>svg]:shrink-0 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-navy-950 hover:bg-mist-50 focus-visible:bg-mist-50 focus-visible:outline-none disabled:opacity-50 ${SHEET_MENU_ITEM_CLASS}`
+const separatorClass = 'my-1 h-px bg-mist-100 max-md:hidden'
 
 /**
- * The post header "⋯" menu. Secondary actions live here so the action row stays
+ * The post header "⋯" menu (a bottom sheet on phones, a dropdown from md). Secondary actions live here so the action row stays
  * Like · Comment · Repost · Send. Whoever may change the post (its author, or an admin of the
  * organization it was posted as) gets Edit and Delete; other members get Hide, Unfollow (only
  * while following the author) and Report.
@@ -48,7 +56,7 @@ export function PostActionsMenu({
   /** Receives the trigger element so dialogs opened from the menu can return focus to it. */
   triggerRef?: RefObject<HTMLButtonElement | null>
 }) {
-  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, rootRef: menuRootRef, triggerRef: menuTriggerRef, menuRef, onMenuKeyDown } = useFeedMenu(externalTriggerRef)
+  const { open: menuOpen, toggle: toggleMenu, close: closeMenu, closeAndFocusTrigger, rootRef: menuRootRef, triggerRef: menuTriggerRef, menuRef, onMenuKeyDown } = useFeedMenu(externalTriggerRef)
 
   function run(action: () => void) {
     return () => {
@@ -67,18 +75,20 @@ export function PostActionsMenu({
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={toggleMenu}
-        className="inline-flex size-9 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted transition hover:border-mist-100 hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
+        className="inline-flex size-9 max-md:size-11 cursor-pointer items-center justify-center rounded-full border border-transparent text-muted transition hover:border-mist-100 hover:bg-mist-50 hover:text-navy-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40"
       >
         <MoreHorizontal aria-hidden="true" className="size-5" />
       </button>
+      {menuOpen ? <MobileSheetBackdrop onClose={closeMenu} /> : null}
       {menuOpen ? (
         <div
           ref={menuRef}
           role="menu"
           aria-label={`Options for ${authorName}'s post`}
           onKeyDown={onMenuKeyDown}
-          className="absolute right-0 top-full z-50 mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl"
+          className={`absolute right-0 top-full z-50 mt-1 w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-1.5 shadow-xl ${SHEET_MENU_PANEL_CLASS}`}
         >
+          <MobileSheetGrab />
           <button type="button" role="menuitem" disabled={pending} onClick={run(onToggleSave)} className={itemClass}>
             <Bookmark aria-hidden="true" className="size-4" fill={saved ? 'currentColor' : 'none'} />
             {saved ? 'Remove from saved' : 'Save post'}
@@ -95,7 +105,7 @@ export function PostActionsMenu({
           ) : null}
           {canDelete ? (
             <>
-              <div role="separator" className="my-1 h-px bg-mist-100" />
+              <div role="separator" className={separatorClass} />
               <button type="button" role="menuitem" disabled={pending} onClick={run(onDelete)} className={`${itemClass} text-red-700 hover:bg-red-50 focus-visible:bg-red-50`}>
                 <Trash2 aria-hidden="true" className="size-4" />
                 Delete post
@@ -114,13 +124,14 @@ export function PostActionsMenu({
                   <span className="min-w-0 break-words">Unfollow {authorName}</span>
                 </button>
               ) : null}
-              <div role="separator" className="my-1 h-px bg-mist-100" />
+              <div role="separator" className={separatorClass} />
               <button type="button" role="menuitem" onClick={run(onReport)} className={`${itemClass} text-red-700 hover:bg-red-50 focus-visible:bg-red-50`}>
                 <Flag aria-hidden="true" className="size-4" />
                 Report post
               </button>
             </>
           )}
+          <MobileSheetCancel onClick={closeAndFocusTrigger} />
         </div>
       ) : null}
     </div>

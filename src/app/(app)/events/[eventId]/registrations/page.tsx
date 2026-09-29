@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft, Info } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
 import { EventNav } from '@/features/events/components/event-nav'
@@ -49,16 +50,17 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
   const totals = totalsByCurrency(rows)
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:px-6 sm:py-6">
-      <EventNav active="hosting" />
+    <div className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:px-6 sm:py-6 max-md:space-y-4 max-md:py-0">
+      <MobilePageBar backHref={`/events/${event.id}`} title="Paid registrations" />
+      <EventNav active="hosting" className="max-md:hidden" />
       <div>
-        <Link href={`/events/${event.id}`} className="inline-flex items-center gap-1.5 text-sm font-bold text-teal-700 hover:text-teal-800">
+        <Link href={`/events/${event.id}`} className="inline-flex items-center gap-1.5 text-sm font-bold text-teal-700 hover:text-teal-800 max-md:hidden">
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Back to event
         </Link>
-        <p className="mt-3 text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Organizer workspace</p>
-        <h1 className="text-3xl font-bold text-navy-950">Paid registrations</h1>
-        <p className="mt-2 break-words text-sm text-muted">{event.title} · {event.pricing === 'paid' ? `Ticket price ${eventPriceLabel(event)}` : 'This event is currently free'}</p>
+        <p className="mt-3 text-xs font-bold uppercase tracking-[0.18em] text-teal-700 max-md:hidden">Organizer workspace</p>
+        <h1 className="text-3xl font-bold text-navy-950 max-md:sr-only">Paid registrations</h1>
+        <p className="mt-2 break-words text-sm text-muted max-md:mt-0">{event.title} · {event.pricing === 'paid' ? `Ticket price ${eventPriceLabel(event)}` : 'This event is currently free'}</p>
       </div>
 
       <section className="flex gap-3 rounded-2xl border border-teal-100 bg-teal-50/60 p-4 text-sm leading-6 text-navy-800">
@@ -75,7 +77,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
         </p>
       ) : null}
 
-      <dl className="grid gap-3 sm:grid-cols-3">
+      <dl className="grid gap-3 sm:grid-cols-3 max-md:grid-cols-3 max-md:gap-2 max-md:[&>div]:p-3 max-md:[&_dd]:text-lg max-md:[&_dt]:text-[10px] max-md:[&_dt]:tracking-wide">
         <div className="rounded-2xl border border-mist-100 bg-white p-4 shadow-sm">
           <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Confirmed paid seats</dt>
           <dd className="mt-1 text-2xl font-bold text-navy-950">{confirmed.length}{event.capacity ? <span className="text-base font-semibold text-muted"> / {event.capacity}</span> : null}</dd>
@@ -100,7 +102,7 @@ export default async function EventRegistrationsPage({ params }: { params: Promi
                 <li key={row.id} className="grid gap-2 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                   <div className="min-w-0">
                     <p className="truncate font-bold text-navy-950">
-                      {row.attendeeSlug ? <Link href={`/profile/${row.attendeeSlug}`} className="hover:text-teal-700 hover:underline">{row.attendeeName ?? 'Sea N Shore member'}</Link> : row.attendeeName ?? 'Former member'}
+                      {row.attendeeSlug ? <Link href={`/people/${row.attendeeSlug}`} className="hover:text-teal-700 hover:underline">{row.attendeeName ?? 'Sea N Shore member'}</Link> : row.attendeeName ?? 'Former member'}
                     </p>
                     <p className="text-xs text-muted">
                       {row.status === 'refunded' ? `Refunded ${dateLabel(row.refundedAt)}` : row.paidAt ? `Paid ${dateLabel(row.paidAt)}` : `Started ${dateLabel(row.createdAt)}`}

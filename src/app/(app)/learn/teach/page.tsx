@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, Clock3, ShieldAlert } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Clock3, ShieldAlert } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { MentorApplicationForm } from '@/features/learning/components/mentor-application-form'
 import type { MentorApplicationInput } from '@/features/learning/mentor-application'
@@ -137,32 +138,47 @@ export default async function TeachPage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
-      <Link href="/learn" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
+    <main className="mx-auto w-full max-w-6xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/learn" title="Teach on Sea N Shore" />
+      <Link href="/learn" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> Back to Learning
       </Link>
 
-      <section className="mt-5 overflow-hidden rounded-[1.75rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">
+      <section className="mt-5 overflow-hidden rounded-[1.75rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:mt-0 max-md:rounded-2xl max-md:p-5 sm:p-8">
         <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
           <div>
-            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
+            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200 max-md:hidden">
               Verified maritime expertise
             </p>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Teach on Sea N Shore</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 sm:text-base">
+            <h1 className="mt-3 text-3xl font-bold tracking-tight max-md:mt-0 max-md:text-xl sm:text-4xl">Teach on Sea N Shore</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/72 max-md:hidden sm:text-base">
               Help maritime professionals learn from real sea and shore experience. Trainer verification establishes trust; Creator Pro or an eligible Organization Pro workspace provides the publishing entitlement. Courses still pass Sea N Shore quality review before publication.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white/75">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-6 text-white/75 max-md:hidden">
             <p className="font-bold text-white">What we review</p>
             <p className="mt-1">Professional background, credentials, practical expertise, teaching fit and the value of your proposed course topics.</p>
           </div>
         </div>
       </section>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      {/* Phones: the review notes and promo cards fold into one collapsed panel. */}
+      <details className="group mt-3 rounded-2xl border border-mist-100 bg-white px-4 md:hidden">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 text-[15px] font-semibold text-navy-950 [&::-webkit-details-marker]:hidden">
+          How trainer review works
+          <ChevronDown aria-hidden="true" className="size-5 text-muted transition group-open:rotate-180" />
+        </summary>
+        <div className="space-y-3 pb-4 text-sm leading-6 text-muted">
+          <p>Help maritime professionals learn from real sea and shore experience. Trainer verification establishes trust; Creator Pro or an eligible Organization Pro workspace provides the publishing entitlement. Courses still pass Sea N Shore quality review before publication.</p>
+          <p><span className="font-semibold text-navy-950">What we review: </span>Professional background, credentials, practical expertise, teaching fit and the value of your proposed course topics.</p>
+          <p><span className="font-semibold text-navy-950">Practical. Credible. Reviewed. </span>Verified trainers do not publish automatically. Courses move through Sea N Shore review before they become available to learners.</p>
+          <p><span className="font-semibold text-navy-950">Built for maritime careers: </span>Deck, Engine, Tankers, LNG/LPG, Offshore, SIRE 2.0, Safety, Maritime Law, Leadership, Human Factors, Shore Careers, Mental Health and assessments.</p>
+        </div>
+      </details>
+
+      <div className="mt-5 grid gap-5 max-md:mt-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div>{content}</div>
-        <aside className="space-y-4">
+        <aside className="space-y-4 max-md:hidden">
           <article className="rounded-[1.35rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Trainer standard</p>
             <h2 className="mt-2 text-lg font-bold text-navy-950">Practical. Credible. Reviewed.</h2>

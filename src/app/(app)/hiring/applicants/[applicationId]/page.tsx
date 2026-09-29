@@ -1,16 +1,23 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { FileText, IdCard, Sparkles } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { applicantPhotoUrl } from '@/features/jobs/applicant-media'
 import { HIRING_APPLICATION_STATUS_BADGES, HIRING_APPLICATION_STATUS_LABELS } from '@/features/jobs/application-status'
 import { ApplicantAvatar } from '@/features/jobs/components/applicant-avatar'
-import { HiringCvLink } from '@/features/jobs/components/hiring-cv-link'
+import { ApplicantMoreMenu } from '@/features/jobs/components/applicant-more-menu'
+import { HiringCvLink, hiringCvHref } from '@/features/jobs/components/hiring-cv-link'
 import { HiringStatusAction } from '@/features/jobs/components/hiring-status-action'
+import { HiringStatusMobileBar } from '@/features/jobs/components/hiring-status-mobile-bar'
+import { MessageApplicantButton } from '@/features/jobs/components/message-applicant-button'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { JobCompanyIdentity } from '@/features/jobs/components/job-company-identity'
 import { RecruiterNoteForm } from '@/features/jobs/components/recruiter-note-form'
 import { hiringRepository } from '@/features/jobs/hiring-repository'
+import { getRelationshipState } from '@/features/network/queries'
+import { relativeTimeFrom } from '@/lib/relative-time'
 import { formatYears } from '@/lib/format'
 import { dgProfileDownloadHref } from '@/features/profiles/profile-document-policy'
 import { profileDocumentRepository } from '@/features/profiles/profile-document-repository'
@@ -60,10 +67,24 @@ export default async function HiringApplicantReviewPage({
     ? await profileDocumentRepository.getDocument(candidate.id, 'dg_profile').catch(() => null)
     : null
   const isPersonalJob = review.job.companyId === null
+  // Messaging follows the existing rule: accepted connections only. Inactive members can't be messaged.
+  const canMessage = candidate.accountActive && candidate.id !== user.id
+    ? await getRelationshipState(candidate.id).then((state) => state.connection.kind === 'connected').catch(() => false)
+    : false
+  const messageTarget = candidate.accountActive && candidate.id !== user.id ? { targetProfileId: candidate.id, canMessage } : null
+  const applicantsHref = `/hiring/jobs/${review.job.id}/applicants`
+  const cvHref = review.cvAttachment ? hiringCvHref(applicationId) : null
+  const dgHref = dgProfile ? dgProfileDownloadHref(candidate.id) : null
+  const phoneChip = 'relative inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-semibold before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-[\'\'] focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 py-8 sm:px-6 lg:px-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mx-auto w-full max-w-6xl space-y-6 pb-0 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+      <MobilePageBar
+        backHref={applicantsHref}
+        title="Applicant"
+        right={<ApplicantMoreMenu candidateName={candidate.fullName} profileHref={candidate.accountActive ? profileHref : null} message={messageTarget} cvHref={cvHref} dgProfileHref={dgHref} applicantsHref={applicantsHref} />}
+      />
+      <div className="flex flex-col gap-4 max-md:hidden lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
           <JobCompanyIdentity
             name={review.job.companyName}
@@ -83,7 +104,7 @@ export default async function HiringApplicantReviewPage({
         </Link>
       </div>
 
-      <HiringSubnav active="jobs" />
+      <div className="max-md:hidden"><HiringSubnav active="jobs" /></div>
 
       {review.jobStatus !== 'published' ? (
         <p role="status" className="rounded-2xl border border-mist-200 bg-mist-50 px-4 py-3 text-sm font-semibold text-navy-900">
@@ -95,22 +116,31 @@ export default async function HiringApplicantReviewPage({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(19rem,0.75fr)]">
         <div className="min-w-0 space-y-6">
-          <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:p-4 max-md:shadow-none sm:p-6">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex min-w-0 gap-4">
+              <div className="flex min-w-0 gap-4 max-md:flex-col max-md:items-center max-md:gap-3 max-md:text-center">
                 <ApplicantAvatar name={candidate.fullName} photoUrl={photoUrl} size="lg" />
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="min-w-0 break-words text-2xl font-bold text-navy-950">{candidate.fullName}</h2>
+                  <div className="flex flex-wrap items-center gap-2 max-md:justify-center">
+                    <h2 className="min-w-0 break-words text-2xl font-bold text-navy-950 max-md:text-[22px]">{candidate.fullName}</h2>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${HIRING_APPLICATION_STATUS_BADGES[review.status]}`}>{HIRING_APPLICATION_STATUS_LABELS[review.status]}</span>
                   </div>
                   {candidate.headline ? <p className="mt-1 text-sm text-muted">{candidate.headline}</p> : null}
-                  <p className="mt-1 text-xs font-semibold text-muted">Applied {formatDateTime(review.appliedAt)}</p>
-                  {profileHref ? <Link href={profileHref} className="mt-2 inline-flex text-sm font-bold text-teal-700 hover:underline">View Maritime Profile</Link> : null}
+                  <p className="mt-1 text-xs font-semibold text-muted max-md:hidden">Applied {formatDateTime(review.appliedAt)}</p>
+                  <p className="mt-1 text-[13px] text-muted md:hidden">Applied for {review.job.title} · {relativeTimeFrom(review.appliedAt) || formatDate(review.appliedAt)}</p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2 md:hidden" aria-label="Applicant highlights">
+                    <span className={`${phoneChip} bg-ocean-50 text-ocean-800`}><Sparkles aria-hidden="true" className="size-4" />{review.match.score}% match</span>
+                    {cvHref ? <a href={cvHref} target="_blank" rel="noreferrer" className={`${phoneChip} bg-mist-50 text-navy-900 hover:bg-mist-100`}><FileText aria-hidden="true" className="size-4" />CV (PDF)</a> : null}
+                    {dgHref ? <a href={dgHref} target="_blank" rel="noopener noreferrer" className={`${phoneChip} bg-mist-50 text-navy-900 hover:bg-mist-100`}><IdCard aria-hidden="true" className="size-4" />DG profile</a> : null}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 max-md:mt-3 max-md:justify-center">
+                    {profileHref ? <Link href={profileHref} className="inline-flex text-sm font-bold text-teal-700 hover:underline max-md:min-h-10 max-md:items-center">View Maritime Profile</Link> : null}
+                    {messageTarget ? <MessageApplicantButton targetProfileId={candidate.id} candidateName={candidate.fullName} canMessage={canMessage} /> : null}
+                  </div>
                   {!candidate.accountActive ? <p className="mt-2 text-sm font-semibold text-amber-900">This member’s account is no longer active, so their profile can’t be opened. The application is kept for your records.</p> : null}
                 </div>
               </div>
-              <div className="rounded-2xl bg-navy-950 px-5 py-4 text-white sm:text-right">
+              <div className="rounded-2xl bg-navy-950 px-5 py-4 text-white max-md:hidden sm:text-right">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-white/60">Match</p>
                 <p className="mt-1 text-4xl font-black">{review.match.score}%</p>
                 <p className="mt-1 text-xs text-white/65">Structured maritime fit</p>
@@ -215,8 +245,8 @@ export default async function HiringApplicantReviewPage({
           </section>
         </div>
 
-        <aside className="min-w-0 space-y-6">
-          <HiringStatusAction applicationId={applicationId} currentStatus={review.status} />
+        <aside className="min-w-0 space-y-6 max-md:space-y-4">
+          <div className="max-md:hidden"><HiringStatusAction applicationId={applicationId} currentStatus={review.status} /></div>
 
           <section aria-labelledby="candidate-cv-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Candidate CV</p>
@@ -285,7 +315,7 @@ export default async function HiringApplicantReviewPage({
             </div>
           </section>
 
-          <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:hidden sm:p-6">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Vacancy</p>
             <h2 className="mt-1 text-lg font-bold text-navy-950">{review.job.title}</h2>
             <p className="mt-2 text-sm leading-6 text-muted">{review.job.summary}</p>
@@ -297,6 +327,8 @@ export default async function HiringApplicantReviewPage({
           </section>
         </aside>
       </div>
+
+      <HiringStatusMobileBar applicationId={applicationId} currentStatus={review.status} candidateName={candidate.fullName} />
     </div>
   )
 }

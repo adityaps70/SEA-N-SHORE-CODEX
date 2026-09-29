@@ -10,6 +10,7 @@ import {
   SquarePlus,
   UsersRound,
 } from 'lucide-react'
+import Link from 'next/link'
 import { Wordmark } from '@/components/brand/wordmark'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import { NotificationBell } from '@/features/notifications/components/notification-bell'
@@ -92,6 +93,15 @@ export function AppHeader({
           ))}
         </nav>
         <div className="flex items-center gap-1.5">
+          {/* Tablets (md to lg) have no room for the search field; this icon takes its place. */}
+          <Link
+            href="/search"
+            aria-label="Search"
+            title="Search"
+            className="grid min-h-10 min-w-10 place-items-center rounded-lg text-navy-900 transition hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 lg:hidden"
+          >
+            <Search aria-hidden="true" className="size-5" />
+          </Link>
           <form action="/search" method="get" role="search" className="relative hidden lg:block">
             <label htmlFor="global-search" className="sr-only">Search Sea N Shore</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />

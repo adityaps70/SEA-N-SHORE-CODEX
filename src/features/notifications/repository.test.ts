@@ -50,6 +50,28 @@ describe('Aurora notification repository', () => {
     expect(values).toEqual([RECIPIENT_ID, [NOTIFICATION_ID]])
   })
 
+  it('deletes a notification only when it belongs to the recipient', async () => {
+    const query = vi.fn(async () => [{ id: NOTIFICATION_ID }])
+    const { createNotificationRepository } = await import('./repository')
+    const repository = createNotificationRepository({ query })
+
+    await expect(repository.deleteForRecipient(RECIPIENT_ID, NOTIFICATION_ID)).resolves.toBe(true)
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toContain('delete from public.notifications')
+    expect(sql).toContain('where id = $1')
+    expect(sql).toContain('and recipient_id = $2')
+    expect(sql).toContain('returning id')
+    expect(values).toEqual([NOTIFICATION_ID, RECIPIENT_ID])
+  })
+
+  it("reports false when the notification is missing or someone else's", async () => {
+    const query = vi.fn(async () => [])
+    const { createNotificationRepository } = await import('./repository')
+    const repository = createNotificationRepository({ query })
+
+    await expect(repository.deleteForRecipient(RECIPIENT_ID, NOTIFICATION_ID)).resolves.toBe(false)
+  })
+
   it('skips the preview query when no notification points at a post', async () => {
     const query = vi.fn(async () => [])
     const { createNotificationRepository } = await import('./repository')

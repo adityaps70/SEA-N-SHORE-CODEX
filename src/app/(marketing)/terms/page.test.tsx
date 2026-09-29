@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import TermsPage from './page'
 
@@ -28,5 +28,17 @@ describe('TermsPage', () => {
     expect(screen.getAllByRole('link', { name: /Refund & cancellation/ })[0]).toHaveAttribute('href', '/refunds')
     expect(screen.getAllByRole('link', { name: /Shipping & delivery/ })[0]).toHaveAttribute('href', '/shipping')
     expect(screen.getAllByRole('link', { name: /Contact us/i })[0]).toHaveAttribute('href', '/contact')
+  })
+})
+
+describe('TermsPage on phones', () => {
+  it('has a "Jump to" chip row whose chips all land on a section, and 16px body text', () => {
+    const { container } = render(<TermsPage />)
+    const jump = screen.getByRole('navigation', { name: 'Jump to' })
+    expect(jump).toHaveClass('md:hidden')
+    const hrefs = within(jump).getAllByRole('link').map((link) => link.getAttribute('href'))
+    expect(hrefs).toEqual(['#responsible-use', '#user-content', '#platform-ip', '#copyright-complaints', '#payments', '#contact'])
+    for (const href of hrefs) expect(container.querySelector(href as string)).not.toBeNull()
+    expect(container.querySelector('article > div.space-y-7')).toHaveClass('text-sm', 'max-md:text-base')
   })
 })

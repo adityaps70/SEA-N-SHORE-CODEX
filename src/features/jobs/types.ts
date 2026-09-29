@@ -128,6 +128,10 @@ export type JobApplication = {
   events?: JobApplicationEvent[]
   job: Pick<JobListing, 'id' | 'title' | 'companyName' | 'location'> & {
     state?: JobApplicationJobState
+    companyId?: string | null
+    companyLogoPath?: string | null
+    /** The member who posted the job, for "Message recruiter". */
+    recruiterProfileId?: string | null
   }
 }
 

@@ -14,3 +14,21 @@ export function eventPriceLabel(event: Pick<CalendarEvent, 'pricing' | 'priceMin
   if (!event.priceMinor || !event.currency) return 'Paid'
   return formatMoney(event.priceMinor, event.currency)
 }
+
+/**
+ * Where "Hosted by" links: a member's public profile (/people/{slug}) or the organization page.
+ * Null when the publisher has no public page.
+ */
+export function eventPublisherHref(event: Pick<CalendarEvent, 'publisherType' | 'publisherSlug'>) {
+  if (!event.publisherSlug) return null
+  return event.publisherType === 'organization'
+    ? `/organizations/${event.publisherSlug}`
+    : `/people/${event.publisherSlug}`
+}
+
+/** Short place for phone rows and chips: "Online", "Navi Mumbai & online", "Navi Mumbai". */
+export function eventPlaceShort(event: Pick<CalendarEvent, 'format' | 'locationName' | 'city' | 'country'>) {
+  if (event.format === 'online') return 'Online'
+  const place = event.city || event.locationName || event.country || 'Venue to be confirmed'
+  return event.format === 'hybrid' ? `${place} & online` : place
+}

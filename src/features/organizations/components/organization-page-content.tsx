@@ -24,9 +24,9 @@ export function PageSection({
   className?: string
 }) {
   return (
-    <section aria-labelledby={id} className={`rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5 ${className}`}>
+    <section aria-labelledby={id} className={`rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5 max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:shadow-none ${className}`}>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 id={id} className="text-lg font-bold text-navy-950">{title}</h2>
+        <h2 id={id} className="text-lg font-bold text-navy-950 max-md:text-[17px]">{title}</h2>
         {action}
       </div>
       {children}

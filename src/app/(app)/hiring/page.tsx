@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
@@ -34,16 +35,17 @@ export default async function HiringPage() {
   ] as const
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 py-8 sm:px-6 lg:px-8">
-      <section className="overflow-hidden rounded-[2rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mx-auto w-full max-w-6xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+      <MobilePageBar backHref="/jobs" title="Hiring" />
+      <section className="overflow-hidden rounded-[2rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:rounded-2xl max-md:p-4 sm:p-8">
+        <div className="flex flex-col gap-6 max-md:gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200">Sea N Shore Hiring</p>
-            <h1 className="mt-2 text-3xl font-bold sm:text-4xl">Hiring</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-200 max-md:hidden">Sea N Shore Hiring</p>
+            <h1 className="mt-2 text-3xl font-bold max-md:sr-only sm:text-4xl">Hiring</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/75 max-md:hidden">
               Publish personally as a verified independent recruiter or through an organization workspace you are authorized to represent.
             </p>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold">
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold max-md:mt-0">
               {readyPublishers.map((publisher) => (
                 <span key={publisher.key} className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-emerald-200">
                   Ready · {publisher.name}
@@ -75,20 +77,20 @@ export default async function HiringPage() {
 
       <HiringSubnav active="overview" />
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <section aria-label="Hiring overview" className="grid gap-3 max-md:grid-cols-2 max-md:gap-2 sm:grid-cols-2 lg:grid-cols-5">
         {metricCards.map(([label, value]) => (
-          <article key={label} className="rounded-[1.35rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
-            <p className="text-sm font-medium text-muted">{label}</p>
-            <p className="mt-2 text-3xl font-bold tracking-tight text-navy-950">{value}</p>
+          <article key={label} className="rounded-[1.35rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:rounded-2xl max-md:p-3 max-md:shadow-none max-md:last:col-span-2">
+            <p className="text-sm font-medium text-muted max-md:text-[13px]">{label}</p>
+            <p className="mt-2 text-3xl font-bold tracking-tight text-navy-950 max-md:mt-0.5 max-md:text-2xl">{value}</p>
           </article>
         ))}
       </section>
 
-      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:rounded-2xl max-md:p-4 max-md:shadow-none sm:p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-bold text-navy-950">Recent vacancies</h2>
-            <p className="mt-1 text-sm text-muted">Your latest personal and organization hiring activity.</p>
+            <h2 className="text-xl font-bold text-navy-950 max-md:text-lg">Recent vacancies</h2>
+            <p className="mt-1 text-sm text-muted max-md:hidden">Your latest personal and organization hiring activity.</p>
           </div>
           <Link href="/hiring/jobs" className="text-sm font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">View all vacancies</Link>
         </div>

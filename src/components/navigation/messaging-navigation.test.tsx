@@ -55,15 +55,15 @@ describe('messaging navigation', () => {
     expect(screen.queryByLabelText(/unread messages/)).not.toBeInTheDocument()
   })
 
-  it('adds Messages to the mobile header without capping its unread count', () => {
-    render(<MobileAppHeader unreadCount={0} messagingUnreadCount={27} />)
+  it('keeps Messages in the phone top bar without capping its unread count', () => {
+    render(<MobileAppHeader messagingUnreadCount={27} />)
 
     expect(screen.getByRole('link', { name: 'Messages' })).toHaveAttribute('href', '/messages')
     expect(screen.getByLabelText('27 unread messages')).toHaveTextContent('27')
   })
 
   it('updates the mobile Messages badge immediately from exact unread-count events', () => {
-    render(<MobileAppHeader unreadCount={0} messagingUnreadCount={2} />)
+    render(<MobileAppHeader messagingUnreadCount={2} />)
 
     act(() => {
       window.dispatchEvent(new CustomEvent(MESSAGING_UNREAD_COUNT_EVENT, {
@@ -74,7 +74,7 @@ describe('messaging navigation', () => {
     expect(screen.queryByLabelText(/unread messages/)).not.toBeInTheDocument()
   })
 
-  it('does not squeeze Messages into the existing eight-item mobile bottom navigation', () => {
+  it('keeps Messages out of the five phone bottom tabs (it is in the top bar)', () => {
     render(<MobileNav />)
 
     expect(screen.queryByRole('link', { name: 'Messages' })).not.toBeInTheDocument()

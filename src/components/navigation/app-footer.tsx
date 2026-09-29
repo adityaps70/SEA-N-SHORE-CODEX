@@ -81,9 +81,10 @@ export function FooterSocialLinks({ className = '' }: { className?: string }) {
 }
 
 /**
- * Compact footer shown at the end of the content on pages without a right rail
- * and at every phone width. When a page renders <RailFooter>, this footer hides
- * itself at the rail's breakpoint so the links are never shown twice.
+ * Compact footer shown at the end of the content on pages without a right rail,
+ * from the `md` breakpoint up. Phones do not show it: the same links are at the
+ * bottom of the side drawer (side-drawer.tsx). When a page renders <RailFooter>,
+ * this footer hides itself at the rail's breakpoint so the links are never shown twice.
  * Requires an ancestor with the `group/shell` class (the app layouts).
  */
 export function AppFooter() {
@@ -92,7 +93,7 @@ export function AppFooter() {
     <footer
       aria-label="Site footer"
       data-app-footer="compact"
-      className="mx-auto w-full max-w-7xl px-4 pb-6 pt-2 sm:px-6 lg:group-has-data-[rail-footer=lg]/shell:hidden xl:group-has-data-[rail-footer=xl]/shell:hidden"
+      className="mx-auto w-full max-w-7xl px-4 pb-6 pt-2 max-md:hidden sm:px-6 lg:group-has-data-[rail-footer=lg]/shell:hidden xl:group-has-data-[rail-footer=xl]/shell:hidden"
     >
       <div className="border-t border-mist-100 pt-4 text-xs text-muted">
         <nav aria-label="Footer">

@@ -1,6 +1,12 @@
 export type HeaderViewer = {
   name: string
   avatarUrl?: string | null
+  /** Shown in the phone side drawer header. */
+  headline?: string | null
+  organization?: string | null
+  location?: string | null
+  /** 0–100, the same score as the Home profile card; null when it could not be worked out. */
+  profileCompletion?: number | null
 }
 
 export function viewerInitials(name: string) {
@@ -23,7 +29,7 @@ export function ViewerAvatar({ viewer, className = 'size-8' }: { viewer: HeaderV
   return (
     <span
       aria-hidden="true"
-      className={`${className} grid shrink-0 place-items-center rounded-full bg-navy-950 text-[11px] font-bold text-white`}
+      className={`${className} grid shrink-0 place-items-center rounded-full bg-navy-950 ${/(^|\s)text-(xs|sm|base|lg|xl)\b/.test(className) ? '' : 'text-[11px]'} font-bold text-white`}
     >
       {viewerInitials(viewer.name)}
     </span>

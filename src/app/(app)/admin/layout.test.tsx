@@ -93,6 +93,32 @@ describe('admin route boundary', () => {
     expect(screen.queryByLabelText(/waiting/)).not.toBeInTheDocument()
   })
 
+  it('gives phones an "Admin · section" page bar, the works-best-on-a-computer note and chip-style section links', async () => {
+    render(await AdminLayout({ children: <div /> }))
+
+    expect(screen.getByText('Admin · Users')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/admin')
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent('Admin works best on a computer. Everything still works here.')
+    expect(note).toHaveClass('md:hidden', 'bg-amber-50')
+    const users = screen.getByRole('link', { name: 'Users' })
+    expect(users).toHaveClass('max-md:rounded-full', 'max-md:!bg-navy-950')
+    expect(screen.getByRole('navigation', { name: 'Admin navigation' })).toHaveClass('overflow-x-auto')
+  })
+
+  it('names the section for deeper admin pages and sends the overview back home', async () => {
+    mocks.pathname = '/admin/payments/payouts/review'
+    render(await AdminLayout({ children: <div /> }))
+    expect(screen.getByText('Admin · Payments')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/admin/payments/payouts')
+    cleanup()
+
+    mocks.pathname = '/admin'
+    render(await AdminLayout({ children: <div /> }))
+    expect(screen.getByText('Admin · Overview')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/home')
+  })
+
   it('returns not found for a signed-in user without administrator access', async () => {
     mocks.requirePlatformAdministratorUser.mockRejectedValueOnce(new Error('admin_forbidden'))
 

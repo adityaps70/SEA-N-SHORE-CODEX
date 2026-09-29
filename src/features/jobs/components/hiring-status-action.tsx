@@ -15,16 +15,16 @@ const actions: Array<{ label: string; status: OwnerSettableApplicationStatus; to
   { label: 'Reject', status: 'rejected', tone: 'border border-rose-200 bg-white text-rose-700 hover:bg-rose-50' },
 ]
 
-export function HiringStatusAction({ applicationId, currentStatus }: { applicationId: string; currentStatus: JobApplicationStatus }) {
+/** Status-change logic shared by the desktop status card and the phone sticky bar. */
+export function useHiringStatusChange(applicationId: string) {
   const router = useRouter()
-  const noteId = useId()
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const [pendingStatus, setPendingStatus] = useState<OwnerSettableApplicationStatus | null>(null)
 
-  function changeStatus(status: OwnerSettableApplicationStatus) {
+  function changeStatus(status: OwnerSettableApplicationStatus, onDone?: () => void) {
     setError(null)
     setSuccess(null)
     setPendingStatus(status)
@@ -37,9 +37,22 @@ export function HiringStatusAction({ applicationId, currentStatus }: { applicati
       }
       setNote('')
       setSuccess(`Moved to ${HIRING_APPLICATION_STATUS_LABELS[status]}. The applicant can see this on their application timeline.`)
+      onDone?.()
       router.refresh()
     })
   }
+
+  function reset() {
+    setError(null)
+    setSuccess(null)
+  }
+
+  return { note, setNote, error, success, pending, pendingStatus, changeStatus, reset }
+}
+
+export function HiringStatusAction({ applicationId, currentStatus }: { applicationId: string; currentStatus: JobApplicationStatus }) {
+  const noteId = useId()
+  const { note, setNote, error, success, pending, pendingStatus, changeStatus } = useHiringStatusChange(applicationId)
 
   return (
     <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Download, Search } from 'lucide-react'
+import { Download, History, Search } from 'lucide-react'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import {
   AdminChip,
@@ -12,6 +12,7 @@ import {
   formatAdminDate,
   type AdminChipTone,
 } from '@/features/admin/components/admin-ui'
+import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
 import { AdminCampaignComposer, AdminUnsubscribeButton } from '@/features/newsletter/components/admin-newsletter-controls'
 import { getNewsletterConfig, newsletterSendingStatus, SENDING_DISABLED_MESSAGES } from '@/features/newsletter/config'
 import { newsletterRepository, type NewsletterSyncStatus } from '@/features/newsletter/repository'
@@ -125,7 +126,8 @@ export default async function AdminNewsletterPage({ searchParams }: { searchPara
         meta={`${pluralize(counts.subscribed, 'subscriber')} · ${counts.pending} awaiting confirmation · ${counts.unsubscribed} unsubscribed`}
         description="Consent is stored in the Sea N Shore database and synced to the Amazon SES contact list. The database is the source of truth; SES sync retries automatically."
         actions={(
-          <a href={exportHref} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50">
+          // A CSV download is a computer task: phones hide it (the admin banner says so).
+          <a href={exportHref} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 max-md:hidden">
             <Download aria-hidden="true" className="size-4" />
             Export CSV
           </a>
@@ -215,7 +217,24 @@ export default async function AdminNewsletterPage({ searchParams }: { searchPara
         {results.subscribers.length === 0 ? (
           <AdminEmptyState title="No subscribers match this view." description="Try a different search, status or topic." />
         ) : (
-          <div className="relative overflow-x-auto">
+          <>
+          <AdminMobileList label="Subscribers">
+            {results.subscribers.map((subscriber) => (
+              <AdminMobileCard
+                key={subscriber.id}
+                title={subscriber.email}
+                href={href({ page, subscriber: subscriber.id })}
+                subtitle={subscriber.topics.map(newsletterTopicLabel).join(', ') || 'No topics'}
+                fields={[
+                  { label: 'Status', value: <AdminChip tone={statusTone[subscriber.status]}>{NEWSLETTER_STATUS_LABELS[subscriber.status]}</AdminChip> },
+                  { label: 'SES', value: <AdminChip tone={syncLabels[subscriber.sesSyncStatus].tone}>{syncLabels[subscriber.sesSyncStatus].label}</AdminChip> },
+                  { label: 'Signed up', value: formatAdminDate(subscriber.createdAt) },
+                ]}
+                actions={[{ kind: 'link', href: href({ page, subscriber: subscriber.id }), label: 'Consent history', icon: <History aria-hidden="true" /> }]}
+              />
+            ))}
+          </AdminMobileList>
+          <div className={ADMIN_TABLE_DESKTOP_CLASS}>
             <table className="w-full min-w-[52rem] text-left text-sm">
               <thead className="border-b border-mist-100 bg-mist-50/70 text-xs font-semibold uppercase tracking-wide text-muted">
                 <tr>
@@ -245,6 +264,7 @@ export default async function AdminNewsletterPage({ searchParams }: { searchPara
               </tbody>
             </table>
           </div>
+          </>
         )}
       </AdminPanel>
       {lastPage > 1 ? (

@@ -78,8 +78,13 @@ vi.mock('@/features/network/queries', () => ({
 }))
 
 vi.mock('@/features/network/components/relationship-controls', () => ({
-  RelationshipControls: ({ initialRelationship }: { initialRelationship: { connection: { kind: string } } }) => (
-    <div>
+  RelationshipControls: ({ initialRelationship, variant, reportProfile, openMenuEvent }: {
+    initialRelationship: { connection: { kind: string } }
+    variant?: string
+    reportProfile?: boolean
+    openMenuEvent?: string
+  }) => (
+    <div data-testid="relationship-controls" data-variant={variant} data-report-profile={String(Boolean(reportProfile))} data-open-menu-event={openMenuEvent}>
       <span>Relationship controls</span>
       {initialRelationship.connection.kind === 'connected' ? <button type="button">Message</button> : null}
     </div>
@@ -322,6 +327,41 @@ describe('Public Profile page', () => {
     expect(screen.getByRole('heading', { name: 'DG Shipping profile' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Open DG profile/ })).toHaveAttribute('href', '/api/profile/documents/dg-profile/22222222-2222-4222-8222-222222222222')
     expect(screen.getByText(/because Captain applied to a job you manage/)).toBeInTheDocument()
+  })
+
+  it('gives phones a page bar with the name and a "…" that opens the relationship sheet (with Report profile)', async () => {
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/home')
+    const more = screen.getByRole('button', { name: 'More actions for Captain Public' })
+    const controls = screen.getByTestId('relationship-controls')
+    expect(controls).toHaveAttribute('data-variant', 'profile')
+    expect(controls).toHaveAttribute('data-report-profile', 'true')
+    const eventName = controls.getAttribute('data-open-menu-event')
+    expect(eventName).toBe('sns:relationship-menu:22222222-2222-4222-8222-222222222222')
+
+    const opened = vi.fn()
+    window.addEventListener(eventName!, opened)
+    more.click()
+    window.removeEventListener(eventName!, opened)
+    expect(opened).toHaveBeenCalledTimes(1)
+
+    // Desktop keeps the separate Report profile button; on phones it is in the "…" sheet.
+    expect(screen.getByRole('button', { name: 'Report profile' }).parentElement).toHaveClass('max-md:hidden')
+    // Phones drop the footer disclaimer and People you may know.
+    expect(screen.getByText(/Sea N Shore professional profiles are member-provided/)).toHaveClass('max-md:hidden')
+    expect(screen.getByRole('heading', { name: 'People you may know' }).closest('aside')?.parentElement).toHaveClass('max-md:hidden')
+    expect(screen.queryByTestId('public-profile-join-bar')).not.toBeInTheDocument()
+  })
+
+  it('shows signed-out phone visitors a sticky Join Sea N Shore bar instead of a page bar', async () => {
+    mocks.getVerifiedUser.mockResolvedValueOnce(null)
+    render(await PublicProfilePage({ params: Promise.resolve({ slug: 'captain-public' }) }))
+
+    const bar = screen.getByTestId('public-profile-join-bar')
+    expect(bar).toHaveClass('fixed', 'md:hidden')
+    expect(screen.getByRole('link', { name: 'Join Sea N Shore' })).toHaveAttribute('href', '/auth/sign-up')
+    expect(screen.queryByRole('link', { name: 'Back' })).not.toBeInTheDocument()
   })
 
   it('shows no DG profile section to other members', async () => {

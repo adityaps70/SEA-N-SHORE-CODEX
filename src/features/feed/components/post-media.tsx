@@ -18,7 +18,14 @@ function imageGridClass(count: number, index: number) {
   return 'h-48 sm:h-56'
 }
 
-function PdfDocumentCarousel({ media }: { media: FeedMedia }) {
+/**
+ * `flush`: the Home feed / post page phone layout (round 8) — media runs edge to edge below md
+ * (the card body has 16px side padding, 20px from sm). Desktop and tablet are unchanged.
+ */
+const FLUSH_CLASS = 'max-sm:-mx-4 sm:max-md:-mx-5 max-md:rounded-none max-md:border-x-0'
+const FLUSH_WIDTH_CLASS = 'max-sm:w-[calc(100%+2rem)] sm:max-md:w-[calc(100%+2.5rem)]'
+
+function PdfDocumentCarousel({ media, flush = false }: { media: FeedMedia; flush?: boolean }) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null)
   const [rendering, setRendering] = useState(true)
@@ -96,7 +103,7 @@ function PdfDocumentCarousel({ media }: { media: FeedMedia }) {
 
   return (
     <section
-      className="mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-mist-50"
+      className={`mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-mist-50 ${flush ? FLUSH_CLASS : ''}`}
       aria-label="Document carousel"
     >
       <div
@@ -159,7 +166,7 @@ function PdfDocumentCarousel({ media }: { media: FeedMedia }) {
   )
 }
 
-function PhotoGallery({ media, authorName }: { media: FeedMedia[]; authorName: string }) {
+function PhotoGallery({ media, authorName, flush = false }: { media: FeedMedia[]; authorName: string; flush?: boolean }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
   const visible = media.slice(0, 4)
   const overflow = Math.max(0, media.length - visible.length)
@@ -195,7 +202,7 @@ function PhotoGallery({ media, authorName }: { media: FeedMedia[]; authorName: s
     const item = media[0]
     if (!item?.signedUrl) return null
     return (
-      <button type="button" onClick={() => open(0)} className="mt-4 block w-full overflow-hidden rounded-2xl border border-mist-200 bg-mist-50 text-left hover:border-ocean-300 hover:bg-mist-50 transition-colors">
+      <button type="button" onClick={() => open(0)} className={`mt-4 block w-full overflow-hidden rounded-2xl border border-mist-200 bg-mist-50 text-left hover:border-ocean-300 hover:bg-mist-50 transition-colors ${flush ? `${FLUSH_CLASS} ${FLUSH_WIDTH_CLASS}` : ''}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={item.signedUrl}
@@ -208,7 +215,7 @@ function PhotoGallery({ media, authorName }: { media: FeedMedia[]; authorName: s
 
   return (
     <>
-      <div className={`mt-4 grid ${gridClass} gap-0.5 overflow-hidden rounded-2xl border border-mist-100 bg-mist-100 ${media.length === 3 ? 'grid-rows-2' : ''}`}>
+      <div className={`mt-4 grid ${gridClass} gap-0.5 overflow-hidden rounded-2xl border border-mist-100 bg-mist-100 ${media.length === 3 ? 'grid-rows-2' : ''} ${flush ? FLUSH_CLASS : ''}`}>
         {visible.map((item, index) => (
           <button
             key={item.storagePath}
@@ -265,9 +272,12 @@ function PhotoGallery({ media, authorName }: { media: FeedMedia[]; authorName: s
 export function PostMedia({
   media,
   authorName,
+  flush = false,
 }: {
   media: FeedMedia | FeedMedia[]
   authorName: string
+  /** Edge to edge on phones (Home feed and post page). */
+  flush?: boolean
 }) {
   const items = useMemo(() => orderedMedia(media), [media])
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -297,12 +307,12 @@ export function PostMedia({
   if (!first?.signedUrl) return null
 
   if (first.mimeType === 'application/pdf') {
-    return <PdfDocumentCarousel key={first.storagePath} media={first} />
+    return <PdfDocumentCarousel key={first.storagePath} media={first} flush={flush} />
   }
 
   if (isVideo) {
     return (
-      <div className="mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-black">
+      <div className={`mt-4 overflow-hidden rounded-2xl border border-mist-100 bg-black ${flush ? FLUSH_CLASS : ''}`}>
         <video
           ref={videoRef}
           controls
@@ -321,5 +331,5 @@ export function PostMedia({
   }
 
   const images = items.filter((item) => item.mimeType.startsWith('image/'))
-  return images.length ? <PhotoGallery media={images} authorName={authorName} /> : null
+  return images.length ? <PhotoGallery media={images} authorName={authorName} flush={flush} /> : null
 }

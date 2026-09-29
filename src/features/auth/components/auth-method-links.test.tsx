@@ -37,4 +37,21 @@ describe('alternative authentication methods', () => {
       '/auth/google/start?intent=sign-up',
     )
   })
+
+  it('offers large phone-only buttons with Google first and an "or" divider when placed above the form', () => {
+    const { container } = render(<AuthMethodLinks intent="sign-in" placement="above" />)
+
+    const group = container.firstElementChild as HTMLElement
+    expect(group).toHaveClass('md:hidden')
+    const links = screen.getAllByRole('link')
+    expect(links.map((link) => link.textContent)).toEqual(['Continue with Google', 'Continue with mobile number'])
+    for (const link of links) expect(link).toHaveClass('w-full', 'rounded-full', 'min-h-13')
+    expect(screen.getByRole('separator', { name: 'or' })).toBeInTheDocument()
+  })
+
+  it('keeps the default row below the form for desktop only', () => {
+    const { container } = render(<AuthMethodLinks intent="sign-in" />)
+    expect(container.firstElementChild).toHaveClass('max-md:hidden')
+    expect(screen.getByText('or continue with')).toBeInTheDocument()
+  })
 })

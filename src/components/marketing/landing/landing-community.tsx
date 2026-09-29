@@ -82,7 +82,7 @@ export function AudiencesSection() {
             <h2 id="who-title">Whether you’re on the bridge or behind the desk.</h2>
           </div>
         </Reveal>
-        <div className="aud-grid">
+        <div className="aud-grid swipe">
           {AUDIENCES.map((audience, index) => (
             <Reveal as="article" key={audience.title} className="who" delay={index}>
               <div className="ph">

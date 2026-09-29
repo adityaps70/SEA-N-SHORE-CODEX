@@ -125,6 +125,10 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
 
   it('loads the signed-in creator owned draft, curriculum and submission control in one editor', async () => {
     render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
+    // Phones: page bar back to Studio and the amber "works best on a computer" note.
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/learn/studio')
+    expect(screen.getByRole('note')).toHaveTextContent('work best on a computer')
+    expect(screen.getByRole('note')).toHaveClass('md:hidden', 'bg-amber-50')
 
     expect(screen.getByRole('heading', { name: 'Edit course' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /learning studio/i })).toHaveAttribute('href', '/learn/studio')

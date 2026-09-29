@@ -4,39 +4,28 @@ import { Filter, X } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTransition } from 'react'
 import { MARITIME_CERTIFICATES, MARITIME_VISAS, SEA_RANKS, SHORE_ROLES, VESSEL_TYPES } from '../catalog'
+import { activeJobFilters } from '../filter-state'
 import type { JobSearchFilters } from '../types'
 
 type JobsDiscoveryControlsProps = {
   filters: JobSearchFilters
   resultCount: number
+  className?: string
 }
-
-type ActiveFilter = { key: string; label: string }
 
 function replaceValue(params: URLSearchParams, key: string, value: string) {
   params.delete(key)
   if (value) params.set(key, value)
 }
 
-export function JobsDiscoveryControls({ filters, resultCount }: JobsDiscoveryControlsProps) {
+export function JobsDiscoveryControls({ filters, resultCount, className = '' }: JobsDiscoveryControlsProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [pending, startTransition] = useTransition()
   const ranks = filters.mode === 'shore' ? SHORE_ROLES : SEA_RANKS
 
-  const activeFilters: ActiveFilter[] = [
-    ...filters.ranks.map((value) => ({ key: 'rank', label: value })),
-    ...filters.vesselTypes.map((value) => ({ key: 'vessel', label: value })),
-    ...filters.regions.map((value) => ({ key: 'region', label: value })),
-    ...filters.certificates.map((value) => ({ key: 'certificate', label: value })),
-    ...filters.visas.map((value) => ({ key: 'visa', label: value })),
-    ...(filters.minExperienceYears !== null ? [{ key: 'experience', label: `${filters.minExperienceYears}+ years` }] : []),
-    ...(filters.joiningWithinDays !== null ? [{ key: 'joining', label: `Join ≤ ${filters.joiningWithinDays} days` }] : []),
-    ...(filters.salaryMin !== null ? [{ key: 'salaryMin', label: `Salary ≥ ${filters.salaryMin}` }] : []),
-    ...(filters.verifiedOnly ? [{ key: 'verified', label: 'Verified employers' }] : []),
-    ...(filters.easyApplyOnly ? [{ key: 'easyApply', label: 'Easy Apply' }] : []),
-  ]
+  const activeFilters = activeJobFilters(filters)
 
   function navigate(mutator: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString())
@@ -64,7 +53,7 @@ export function JobsDiscoveryControls({ filters, resultCount }: JobsDiscoveryCon
   }
 
   return (
-    <aside className="self-start rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] lg:sticky lg:top-20" aria-busy={pending}>
+    <aside className={`self-start rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] lg:sticky lg:top-20 ${className}`} aria-busy={pending}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="inline-flex items-center gap-2 font-semibold text-navy-950"><Filter aria-hidden="true" className="size-4" />Filters</h2>
         <span className="rounded-full bg-mist-50 px-2 py-1 text-xs font-semibold text-teal-700">{activeFilters.length} active filters</span>

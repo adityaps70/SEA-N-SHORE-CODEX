@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { ActiveNavLink } from '@/components/navigation/active-nav-link'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
+import { AdminMobileBar } from '@/features/admin/components/admin-mobile-bar'
 import { adminRepository, type AdminDashboardMetrics } from '@/features/admin/repository'
 
 type Section = {
@@ -40,8 +41,9 @@ const sections: Section[] = [
   { href: '/admin/audit', label: 'Audit log', icon: Activity },
 ]
 
-const linkClass = 'group flex min-h-10 shrink-0 items-center gap-2.5 rounded-lg px-3 text-sm font-semibold text-navy-900 transition hover:bg-mist-50'
-const activeLinkClass = 'bg-ocean-50 text-ocean-800 hover:bg-ocean-50'
+// Phones (round 8): the section nav is a scrolling chip row, selected = navy-950 filled.
+const linkClass = 'group flex min-h-10 shrink-0 items-center gap-2.5 rounded-lg px-3 text-sm font-semibold text-navy-900 transition hover:bg-mist-50 max-md:min-h-9 max-md:gap-1.5 max-md:rounded-full max-md:border max-md:border-mist-300 max-md:bg-white max-md:px-3.5 max-md:focus-visible:outline max-md:focus-visible:outline-2 max-md:focus-visible:outline-offset-2 max-md:focus-visible:outline-ocean-500'
+const activeLinkClass = 'bg-ocean-50 text-ocean-800 hover:bg-ocean-50 max-md:!border-navy-950 max-md:!bg-navy-950 max-md:!text-white'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   let adminId: string
@@ -57,7 +59,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const metrics = await adminRepository.getAdminDashboardMetrics(adminId).catch(() => null)
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start">
+    <>
+    <AdminMobileBar sections={sections.map(({ href, label }) => ({ href, label }))} />
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 max-md:gap-3 lg:grid-cols-[13.5rem_minmax(0,1fr)] lg:items-start">
       <aside className="min-w-0 lg:sticky lg:top-24">
         <p className="mb-2 hidden items-center gap-2 px-3 text-xs font-bold uppercase tracking-[0.14em] text-muted lg:flex">
           <ShieldCheck aria-hidden="true" className="size-4 text-ocean-700" />
@@ -65,7 +69,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </p>
         <nav
           aria-label="Admin navigation"
-          className="-mx-4 flex gap-1 overflow-x-auto border-b border-mist-100 px-4 pb-2 lg:mx-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:px-0 lg:pb-0"
+          className="-mx-4 flex gap-1 overflow-x-auto border-b border-mist-100 px-4 pb-2 max-md:gap-2 max-md:pb-3 max-md:[scrollbar-width:none] lg:mx-0 lg:flex-col lg:overflow-visible lg:border-b-0 lg:px-0 lg:pb-0 max-md:[&::-webkit-scrollbar]:hidden"
         >
           {sections.map((section) => {
             const Icon = section.icon
@@ -78,7 +82,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 className={linkClass}
                 activeClassName={activeLinkClass}
               >
-                <Icon aria-hidden="true" className="size-4 shrink-0 text-muted group-aria-[current=page]:text-ocean-700" />
+                <Icon aria-hidden="true" className="size-4 shrink-0 text-muted group-aria-[current=page]:text-ocean-700 max-md:hidden" />
                 <span className="whitespace-nowrap">{section.label}</span>
                 {count > 0 ? (
                   <span
@@ -95,5 +99,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       </aside>
       <div className="min-w-0">{children}</div>
     </div>
+    </>
   )
 }

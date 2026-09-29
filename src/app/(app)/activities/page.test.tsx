@@ -57,7 +57,7 @@ vi.mock('@/features/feed/components/recently-deleted-post-card', () => ({
   RecentlyDeletedPostCard: ({ post }: { post: { id: string; body: string } }) => <div data-testid="deleted-post">{post.id}:{post.body}</div>,
 }))
 vi.mock('@/components/product/premium-page-hero', () => ({
-  PremiumPageHero: ({ title, children }: { title: string; children: React.ReactNode }) => <section><h1>{title}</h1>{children}</section>,
+  PremiumPageHero: ({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) => <section className={className}><h1>{title}</h1>{children}</section>,
 }))
 vi.mock('@/components/ui/card', () => ({
   Card: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -124,6 +124,17 @@ describe('/activities recently deleted', () => {
     expect(screen.getByRole('heading', { name: 'My Events' })).toBeInTheDocument()
     expect(within(nav).getByRole('link', { name: 'Events' })).toHaveAttribute('aria-current', 'page')
     expect(tabs.filter((tab) => tab.getAttribute('aria-current') === 'page')).toHaveLength(1)
+    // Phones: the same links as chips, selected = navy-950 filled.
+    expect(within(nav).getByRole('link', { name: 'Events' })).toHaveClass('max-md:rounded-full', 'max-md:bg-navy-950', 'max-md:text-white')
+    expect(within(nav).getByRole('link', { name: 'Posts' })).toHaveClass('max-md:rounded-full', 'max-md:border-mist-300')
+  })
+
+  it('gives phones a page bar back to Settings and hides the intro card there', async () => {
+    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'posts' }) }))
+
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/settings')
+    expect(screen.getByRole('heading', { name: 'My Activities' }).closest('section')).toHaveClass('max-md:hidden')
+    expect(screen.getAllByText('Profile card').every((card) => card.closest('.hidden, .max-md\\:hidden'))).toBe(true)
   })
 
   it('shows matching empty states with a next step for the events tab', async () => {

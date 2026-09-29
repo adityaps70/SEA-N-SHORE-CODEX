@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarketplaceCourse } from '@/features/learning/marketplace-repository'
 
@@ -102,7 +102,8 @@ describe('/learn marketplace', () => {
     )
     expect(screen.getByText('Capt. Maya Singh')).toBeInTheDocument()
     expect(screen.getByText('Verified trainer')).toBeInTheDocument()
-    expect(screen.getAllByText('SIRE 2.0')).toHaveLength(2)
+    // Course card badge, the desktop category option and the phone category chip.
+    expect(screen.getAllByText('SIRE 2.0')).toHaveLength(3)
     expect(screen.getByText('Advanced')).toBeInTheDocument()
     expect(screen.getByText('Recorded')).toBeInTheDocument()
     expect(screen.getByText('₹20,000')).toBeInTheDocument()
@@ -160,18 +161,45 @@ describe('/learn marketplace', () => {
     expect(screen.getByRole('link', { name: 'Clear filters' })).toHaveAttribute('href', '/learn')
   })
 
-  it('filters by category with one dropdown inside the search form instead of a row of chips', async () => {
+  it('filters by category with one dropdown inside the search form on desktop, and a phone-only chip row', async () => {
     await renderLearnPage({ search: 'leadership' })
 
     const select = screen.getByRole('combobox', { name: 'Category' })
     expect(select).toHaveAttribute('name', 'category')
     expect(select).toHaveValue('')
     expect(select.closest('form')).toBe(screen.getByRole('searchbox', { name: 'Search maritime courses' }).closest('form'))
+    expect(select.closest('label')).toHaveClass('max-md:hidden')
     expect(screen.getByRole('option', { name: 'All categories' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Leadership' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Leadership' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'All courses' })).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Course categories')).not.toBeInTheDocument()
+
+    // Phones: the 13 categories as chips (plus "All"), keeping the current search.
+    const chips = screen.getByRole('navigation', { name: 'Course categories' })
+    expect(chips).toHaveClass('md:hidden')
+    expect(within(chips).getAllByRole('link')).toHaveLength(14)
+    expect(within(chips).getByRole('link', { name: 'Leadership' })).toHaveAttribute('href', '/learn?search=leadership&category=Leadership')
+    expect(within(chips).getByRole('link', { name: 'All' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('links My learning on phones (chip) and on desktop (hero), with All courses and Teach chips', async () => {
+    await renderLearnPage()
+
+    const sections = screen.getByRole('navigation', { name: 'Learning sections' })
+    expect(sections).toHaveClass('md:hidden')
+    expect(within(sections).getByRole('link', { name: 'My learning' })).toHaveAttribute('href', '/learn/my-learning')
+    expect(within(sections).getByRole('link', { name: 'All courses' })).toHaveAttribute('aria-current', 'page')
+    expect(within(sections).getByRole('link', { name: 'Teach' })).toHaveAttribute('href', '/learn/teach')
+
+    const desktopLinks = screen.getAllByRole('link', { name: 'My learning' })
+    expect(desktopLinks).toHaveLength(2)
+    expect(desktopLinks.every((link) => link.getAttribute('href') === '/learn/my-learning')).toBe(true)
+  })
+
+  it('points the phone Teach chip at Learning Studio for someone who has it', async () => {
+    mocks.listUserOrganizations.mockResolvedValue([{ role: 'lms_manager' }])
+    await renderLearnPage()
+
+    const sections = screen.getByRole('navigation', { name: 'Learning sections' })
+    expect(within(sections).getByRole('link', { name: 'Studio' })).toHaveAttribute('href', '/learn/studio')
   })
 
   it('keeps an old ?category= link selected even when the label is not in the standard list', async () => {
@@ -179,6 +207,8 @@ describe('/learn marketplace', () => {
 
     expect(mocks.listPublishedCourses).toHaveBeenCalledWith({ category: 'Ship Handling', search: null })
     expect(screen.getByRole('combobox', { name: 'Category' })).toHaveValue('Ship Handling')
+    const chips = screen.getByRole('navigation', { name: 'Course categories' })
+    expect(within(chips).getByRole('link', { name: 'Ship Handling' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('shows a useful no-results state without inventing courses', async () => {

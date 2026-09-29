@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PublicProfile } from '../types'
 import { ProfileHeader } from './profile-header'
+import { ProfilePassportToolbar } from './profile-passport-toolbar'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -104,6 +105,28 @@ describe('ProfileHeader', () => {
     expect(screen.getByRole('button', { name: 'Change profile photo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Change cover photo' })).toBeInTheDocument()
   })
+  it('lets the phone "…" sheet in its actions open the same inline editor, including contact visibility', () => {
+    render(
+      <ProfileHeader
+        profile={profile}
+        editHref="inline"
+        contactVisibility="public"
+        actions={<ProfilePassportToolbar slug={profile.slug} />}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'More profile actions' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Edit basic information/ }))
+    expect(screen.getByRole('textbox', { name: 'Full name' })).toHaveValue('Member A')
+    expect(screen.getByRole('combobox', { name: 'Contact visibility' })).toHaveValue('public')
+  })
+
+  it('runs the header edge to edge on phones only', () => {
+    render(<ProfileHeader profile={profile} />)
+    const shell = screen.getByTestId('profile-header-shell')
+    expect(shell).toHaveClass('rounded-[1.75rem]', 'max-md:-mx-4', 'max-md:rounded-none')
+  })
+
   it('does not edit legacy organization accounts through a personal profile header', () => {
     render(
       <ProfileHeader

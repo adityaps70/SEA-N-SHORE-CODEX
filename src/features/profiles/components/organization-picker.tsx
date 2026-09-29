@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { BadgeCheck, Briefcase, Building2, Clock3, Search, X } from 'lucide-react'
+import { BadgeCheck, Briefcase, Building2, ChevronLeft, Clock3, Search, X } from 'lucide-react'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import { cn } from '@/lib/cn'
 import {
@@ -59,6 +59,7 @@ export function OrganizationPicker({
   inputClassName = defaultInputClass,
   returnTo,
   onBeforeRegister,
+  phoneFullScreen = false,
 }: {
   label: string
   name?: string
@@ -73,6 +74,11 @@ export function OrganizationPicker({
   returnTo?: OrganizationReturnPath
   /** Called just before leaving for the registration flow, e.g. to keep a draft. */
   onBeforeRegister?: (link: HTMLAnchorElement) => void
+  /**
+   * Phones only (below md): while the field is focused the search opens full screen, with
+   * the input at the top and the results under it, so the keyboard never covers them.
+   */
+  phoneFullScreen?: boolean
 }) {
   const baseId = useId()
   const inputId = `${baseId}-input`
@@ -88,6 +94,8 @@ export function OrganizationPicker({
   const [activeIndex, setActiveIndex] = useState(-1)
   const [adding, setAdding] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  /** Full-screen search on phones (only when `phoneFullScreen`). */
+  const [expanded, setExpanded] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
@@ -95,8 +103,14 @@ export function OrganizationPicker({
   const close = useCallback(() => {
     setOpen(false)
     setActiveIndex(-1)
+    setExpanded(false)
   }, [])
-  const rootRef = useDismissibleLayer<HTMLDivElement>(open, close, { triggerRef: inputRef })
+  const rootRef = useDismissibleLayer<HTMLDivElement>(open || expanded, close, { triggerRef: inputRef })
+  /** Leave the phone full-screen search and put the keyboard away. */
+  const finishPhoneSearch = useCallback(() => {
+    close()
+    inputRef.current?.blur()
+  }, [close])
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current)
@@ -152,7 +166,13 @@ export function OrganizationPicker({
     timerRef.current = setTimeout(() => runSearch(term), SEARCH_DEBOUNCE_MS)
   }
 
+  /** Tapping (or typing into) the field on a phone opens the full-screen search. */
+  function expandPhoneSearch() {
+    if (phoneFullScreen && !expanded && !adding) setExpanded(true)
+  }
+
   function onChange(value: string) {
+    expandPhoneSearch()
     setText(value)
     setNotice(null)
     if (linked && !sameName(value, linked.name)) setLinked(null)
@@ -222,11 +242,43 @@ export function OrganizationPicker({
   const showCreate = status === 'ready' && !exactMatch && sameName(searchedFor, term)
   const activeOptionId = activeIndex >= 0 && results[activeIndex] ? `${baseId}-option-${results[activeIndex].id}` : undefined
   const helpText = error ?? hint ?? 'Start typing to find its page on Sea N Shore. Not listed? Add it, or keep the name as you typed it.'
+  const fullScreen = phoneFullScreen && expanded
 
   return (
     <div className={cn('min-w-0', labelClassName)}>
       <label htmlFor={inputId}>{label}</label>
-      <div ref={rootRef} className="relative">
+      <div
+        ref={rootRef}
+        className={cn(
+          'relative',
+          fullScreen && 'max-md:fixed max-md:inset-0 max-md:z-50 max-md:flex max-md:flex-col max-md:overflow-y-auto max-md:bg-white max-md:px-4 max-md:pb-[env(safe-area-inset-bottom)] max-md:pt-[env(safe-area-inset-top)]',
+        )}
+        role={fullScreen ? 'group' : undefined}
+        aria-label={fullScreen ? `Search ${label}` : undefined}
+        data-phone-fullscreen={fullScreen ? 'true' : undefined}
+      >
+        {fullScreen ? (
+          <div className="flex min-h-14 items-center gap-2 font-normal md:hidden">
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={finishPhoneSearch}
+              aria-label="Close organization search"
+              className="-ml-2 grid size-11 cursor-pointer place-items-center rounded-full text-navy-950 hover:bg-mist-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+            >
+              <ChevronLeft aria-hidden="true" className="size-6" />
+            </button>
+            <p className="min-w-0 flex-1 truncate text-[17px] font-bold text-navy-950">{label}</p>
+            <button
+              type="button"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={finishPhoneSearch}
+              className="inline-flex min-h-11 cursor-pointer items-center rounded-full px-3 text-sm font-semibold text-ocean-700 hover:bg-ocean-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+            >
+              Done
+            </button>
+          </div>
+        ) : null}
         <div className="relative">
           <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 mt-0.5 size-4 -translate-y-1/2 text-muted" />
           <input
@@ -235,6 +287,7 @@ export function OrganizationPicker({
             name={name}
             value={text}
             onChange={(event) => onChange(event.target.value)}
+            onPointerDown={expandPhoneSearch}
             onFocus={() => { if (!linked && term.length >= ORGANIZATION_SEARCH_MIN_LENGTH) setOpen(true) }}
             onKeyDown={onKeyDown}
             maxLength={160}
@@ -253,16 +306,24 @@ export function OrganizationPicker({
           ) : null}
         </div>
         <input type="hidden" name={idName} value={linked?.id ?? ''} />
+        {fullScreen && !showPanel ? (
+          <p className="mt-3 text-sm font-normal leading-6 text-muted md:hidden">{helpText}</p>
+        ) : null}
 
         {showPanel ? (
-          <div className="absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-mist-100 bg-white text-left font-normal shadow-[var(--shadow-card)]">
+          <div
+            className={cn(
+              'absolute inset-x-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-mist-100 bg-white text-left font-normal shadow-[var(--shadow-card)]',
+              fullScreen && 'max-md:static max-md:mt-3 max-md:overflow-visible max-md:rounded-none max-md:border-0 max-md:shadow-none',
+            )}
+          >
             {status === 'loading' ? (
               <p role="status" className="px-3 py-2.5 text-sm text-muted">Searching organizations…</p>
             ) : null}
             {status === 'error' && message ? (
               <p role="alert" className="px-3 py-2.5 text-sm text-red-700">{message}</p>
             ) : null}
-            <ul id={listboxId} role="listbox" aria-label={`Organizations matching ${term}`} className={results.length ? 'max-h-72 overflow-y-auto py-1' : 'sr-only'}>
+            <ul id={listboxId} role="listbox" aria-label={`Organizations matching ${term}`} className={results.length ? cn('max-h-72 overflow-y-auto py-1', fullScreen && 'max-md:max-h-none') : 'sr-only'}>
               {results.map((organization, index) => {
                 const meta = [organization.type, organization.location].filter(Boolean).join(' · ')
                 const active = index === activeIndex
@@ -277,6 +338,7 @@ export function OrganizationPicker({
                     onMouseEnter={() => setActiveIndex(index)}
                     className={cn(
                       'flex cursor-pointer items-center gap-3 px-3 py-2',
+                      fullScreen && 'max-md:min-h-14 max-md:border-b max-md:border-mist-100 max-md:px-1',
                       active ? 'bg-ocean-50' : 'hover:bg-mist-50',
                     )}
                   >

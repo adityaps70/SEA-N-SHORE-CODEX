@@ -1,8 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { ChevronRight, Plus } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
 import { HiringJobLifecycleActions } from '@/features/jobs/components/hiring-job-lifecycle-actions'
+import { HiringJobRowMenu } from '@/features/jobs/components/hiring-job-row-menu'
 import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
 import { JobCompanyIdentity } from '@/features/jobs/components/job-company-identity'
 import { hiringRepository, managedJobLifecycle, type ManagedHiringJobSummary } from '@/features/jobs/hiring-repository'
@@ -66,8 +69,17 @@ export default async function HiringJobsPage({
   const visible = filter === 'all' ? withStatus : withStatus.filter((item) => filterFor(item.presentation.key) === filter)
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 py-8 sm:px-6 lg:px-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mx-auto w-full max-w-6xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+      <MobilePageBar
+        backHref="/hiring"
+        title="Your jobs"
+        right={(
+          <Link href="/hiring/jobs/new" aria-label="Post a job" className="grid size-11 place-items-center rounded-full text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500">
+            <Plus aria-hidden="true" className="size-6" />
+          </Link>
+        )}
+      />
+      <div className="flex flex-col gap-4 max-md:hidden sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Sea N Shore Hiring</p>
           <h1 className="mt-2 text-3xl font-bold text-navy-950">Your jobs</h1>
@@ -87,7 +99,7 @@ export default async function HiringJobsPage({
       ) : null}
 
       {jobs.length ? (
-        <nav aria-label="Filter jobs by status" className="flex flex-wrap gap-2">
+        <nav aria-label="Filter jobs by status" className="flex flex-wrap gap-2 max-md:-mx-4 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4 max-md:py-1">
           {FILTERS.map((item) => {
             const active = item.value === filter
             return (
@@ -95,7 +107,7 @@ export default async function HiringJobsPage({
                 key={item.value}
                 href={item.value === 'all' ? '/hiring/jobs' : `/hiring/jobs?status=${item.value}`}
                 aria-current={active ? 'page' : undefined}
-                className={`rounded-full px-3.5 py-2 text-xs font-bold transition ${active ? 'bg-navy-950 text-white' : 'bg-white text-muted ring-1 ring-mist-100 hover:bg-mist-50 hover:text-navy-950'}`}
+                className={`rounded-full px-3.5 py-2 text-xs font-bold transition max-md:inline-flex max-md:min-h-9 max-md:shrink-0 max-md:items-center max-md:whitespace-nowrap max-md:text-sm ${active ? 'bg-navy-950 text-white' : 'bg-white text-muted ring-1 ring-mist-100 hover:bg-mist-50 hover:text-navy-950'}`}
               >
                 {item.label} <span className={active ? 'text-white/70' : 'text-muted'}>{counts[item.value]}</span>
               </Link>
@@ -108,9 +120,12 @@ export default async function HiringJobsPage({
         {visible.map(({ job, presentation }) => {
           const dateLine = jobDateLine(job, presentation.key)
           return (
-            <article key={job.id} className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0 flex-1">
+            <article key={job.id} className="relative rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:rounded-2xl max-md:p-4 max-md:shadow-none sm:p-6">
+              <div className="absolute right-3 top-3 md:hidden">
+                <HiringJobRowMenu jobId={job.id} jobTitle={job.title} lifecycle={managedJobLifecycle(job)} today={today} live={presentation.key === 'live' || presentation.key === 'expired'} applicantCount={job.applicantCount} />
+              </div>
+              <div className="flex flex-col gap-5 max-md:gap-2 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1 max-md:pr-10">
                   <JobCompanyIdentity
                     name={job.publisherName}
                     companyId={job.companyId}
@@ -126,22 +141,28 @@ export default async function HiringJobsPage({
                     <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${presentation.badgeClassName}`}>{presentation.label}</span>
                     {job.urgent ? <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-800">Urgent</span> : null}
                   </div>
-                  <p className="mt-1 text-sm text-muted">{presentation.description}</p>
+                  <p className="mt-1 text-sm text-muted max-md:hidden">{presentation.description}</p>
                   {job.hiddenForPlan ? <PlanHiddenBanner companyId={job.companyId} className="mt-3" /> : null}
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-muted">
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-muted max-md:hidden">
                     <span className="rounded-full border border-mist-100 px-2.5 py-1">{job.domain === 'sea' ? 'Sea job' : 'Shore job'}</span>
                     {job.rank ? <span className="rounded-full border border-mist-100 px-2.5 py-1">{job.rank}</span> : null}
                     {job.vesselTypes.slice(0, 2).map((vessel) => <span key={vessel} className="rounded-full border border-mist-100 px-2.5 py-1">{vessel}</span>)}
                     {job.location ? <span className="rounded-full border border-mist-100 px-2.5 py-1">{job.location}</span> : null}
                   </div>
-                  <p className="mt-3 text-sm text-muted">
+                  <Link href={`/hiring/jobs/${job.id}/applicants`} className="mt-1 inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-ocean-700 hover:underline md:hidden">
+                    {job.applicantCount} applicant{job.applicantCount === 1 ? '' : 's'}
+                    {job.newApplicantCount ? <span className="rounded-full bg-ocean-50 px-2 py-0.5 text-xs font-bold text-ocean-800">{job.newApplicantCount} new</span> : null}
+                    <ChevronRight aria-hidden="true" className="size-4" />
+                  </Link>
+                  {dateLine ? <p className="text-[13px] text-muted md:hidden">{dateLine}</p> : null}
+                  <p className="mt-3 text-sm text-muted max-md:hidden">
                     <span className="font-bold text-navy-950">{job.applicantCount}</span> applicant{job.applicantCount === 1 ? '' : 's'}
                     {job.newApplicantCount ? <span className="ml-2 rounded-full bg-ocean-50 px-2 py-0.5 text-xs font-bold text-ocean-800">{job.newApplicantCount} new</span> : null}
                     {dateLine ? <span className="ml-2">· {dateLine}</span> : null}
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2 lg:justify-end">
+                <div className="flex flex-wrap gap-2 max-md:hidden lg:justify-end">
                   <Link href={`/hiring/jobs/${job.id}/applicants`} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">
                     View applicants
                   </Link>
@@ -155,7 +176,7 @@ export default async function HiringJobsPage({
                   ) : null}
                 </div>
               </div>
-              <div className="mt-4 border-t border-mist-100 pt-4">
+              <div className="mt-4 border-t border-mist-100 pt-4 max-md:hidden">
                 <HiringJobLifecycleActions jobId={job.id} jobTitle={job.title} lifecycle={managedJobLifecycle(job)} today={today} />
                 {job.status === 'published' ? (
                   <p className="mt-2 text-xs text-muted">To delete a live job, archive it first so candidates stop applying.</p>

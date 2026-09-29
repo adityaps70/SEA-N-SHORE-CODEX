@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { ExternalLink, UserRound } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { auditDetails, auditTargetHref, auditTargetLabel, auditVerb } from '@/features/admin/audit-format'
 import { AdminChip, AdminEmptyState, AdminFilterBar, AdminPageHeader, AdminPanel, formatAdminDate } from '@/features/admin/components/admin-ui'
+import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
 import {
   adminRepository,
   type AdminAuditTargetType,
@@ -69,7 +71,29 @@ export default async function AdminAuditPage({
         {events.length === 0 ? (
           <AdminEmptyState title="No audit activity in this view" description="Choose another filter to review more administrator activity." />
         ) : (
-          <div className="relative overflow-x-auto">
+          <>
+          <AdminMobileList label="Audit events">
+            {events.map((event) => {
+              const href = auditTargetHref(event.targetType, event.targetId)
+              const details = auditDetails(event.metadata)
+              const target = auditTargetLabel(event.targetType)
+              return (
+                <AdminMobileCard
+                  key={event.id}
+                  title={auditVerb(event.action)}
+                  subtitle={<>{event.actor.fullName} · <time dateTime={event.createdAt}>{formatAdminDate(event.createdAt, true)}</time></>}
+                  fields={[{ label: 'Target', value: <AdminChip>{target}</AdminChip> }]}
+                  note={details.length ? details.join(' · ') : null}
+                  actionsLabel={`Actions for ${auditVerb(event.action)} by ${event.actor.fullName}`}
+                  actions={[
+                    ...(href ? [{ kind: 'link' as const, href, label: `Open ${target.toLowerCase()}`, icon: <ExternalLink aria-hidden="true" /> }] : []),
+                    ...(event.actor.slug ? [{ kind: 'link' as const, href: `/people/${event.actor.slug}`, label: `View ${event.actor.fullName}`, icon: <UserRound aria-hidden="true" /> }] : []),
+                  ]}
+                />
+              )
+            })}
+          </AdminMobileList>
+          <div className={ADMIN_TABLE_DESKTOP_CLASS}>
             <table className="w-full min-w-[48rem] text-left text-sm">
               <thead className="border-b border-mist-100 bg-mist-50/70 text-xs font-semibold uppercase tracking-wide text-muted">
                 <tr>
@@ -120,6 +144,7 @@ export default async function AdminAuditPage({
               </tbody>
             </table>
           </div>
+          </>
         )}
       </AdminPanel>
     </main>

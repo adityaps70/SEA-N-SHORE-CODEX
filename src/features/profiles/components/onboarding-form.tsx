@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useEffect, useRef, useState } from 'react'
-import { Check, type LucideIcon } from 'lucide-react'
+import { ArrowRight, Check, ChevronLeft, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { FormErrorSummary, focusFirstFormError, hasFormErrors } from '@/components/ui/form-error-summary'
@@ -135,6 +135,29 @@ function takeOnboardingDraft(): ProfileActionState['values'] | undefined {
   }
 }
 
+/**
+ * Phones walk through the form one part at a time (who you are → what you are here to
+ * do → profile basics). It is still one form: parts not on screen are only hidden with
+ * CSS below md, so every field is submitted and desktop keeps the single page.
+ */
+type PhoneStep = 1 | 2 | 3
+const PHONE_STEPS: Record<PhoneStep, string> = {
+  1: 'Which best describes you?',
+  2: 'What are you here to do?',
+  3: 'Your profile basics',
+}
+const PHONE_STEP_COUNT = 3
+
+/** The step that holds the first field the server rejected. */
+function phoneStepForErrors(fieldErrors: ProfileActionState['fieldErrors']): PhoneStep | null {
+  if (!fieldErrors) return null
+  if (fieldErrors.persona?.length) return 1
+  if (fieldErrors.profileIntents?.length) return 2
+  return Object.values(fieldErrors).some((messages) => messages?.length) ? 3 : null
+}
+
+const phoneNextClass = 'sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-10 mt-6 inline-flex min-h-12 w-full shadow-[0_10px_24px_-12px_rgb(7_27_45/0.55)] cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-base font-semibold text-white transition-colors hover:bg-navy-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-not-allowed disabled:opacity-60 md:hidden'
+
 function OnboardingFields({
   initialFullName,
   suggestedUsername = '',
@@ -142,7 +165,9 @@ function OnboardingFields({
   initialDgProfile = null,
   registeredOrganization = null,
   state,
-}: OnboardingFormProps & { state: ProfileActionState }) {
+  phoneStep = 1,
+  onPhoneStep,
+}: OnboardingFormProps & { state: ProfileActionState; phoneStep?: PhoneStep; onPhoneStep?: (step: PhoneStep) => void }) {
   const values = state.values
   const [persona, setPersona] = useState<Persona | undefined>(values?.persona)
   const [intents, setIntents] = useState<ProfileIntent[]>(readIntents(values?.profileIntents))
@@ -166,7 +191,7 @@ function OnboardingFields({
         aria-invalid={Boolean(personaError)}
         data-form-error-target={personaError ? 'true' : undefined}
         tabIndex={personaError ? -1 : undefined}
-        className={personaError ? 'rounded-2xl outline-none focus:ring-2 focus:ring-red-300' : undefined}
+        className={[personaError ? 'rounded-2xl outline-none focus:ring-2 focus:ring-red-300' : '', phoneStep !== 1 ? 'max-md:hidden' : ''].filter(Boolean).join(' ') || undefined}
       >
         <legend className="text-xl font-semibold tracking-tight text-navy-950">Which best describes you?</legend>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
@@ -183,19 +208,21 @@ function OnboardingFields({
                 onClick={() => setPersona(option.id)}
                 aria-label={option.label}
                 aria-pressed={selected}
-                className={`group relative rounded-2xl border p-4 text-left transition-all duration-200 ${
+                className={`group relative rounded-2xl border p-4 text-left transition-all duration-200 max-md:flex max-md:items-start max-md:gap-3 max-md:p-3.5 ${
                   selected
                     ? 'border-ocean-600 bg-ocean-50 shadow-[0_12px_30px_rgba(15,113,151,0.10)] ring-1 ring-ocean-200'
                     : 'border-mist-200 bg-white hover:-translate-y-0.5 hover:border-ocean-300 hover:shadow-md'
                 }`}
               >
-                <span className={`mb-3 grid size-10 place-items-center rounded-xl transition ${
+                <span className={`mb-3 grid size-10 place-items-center rounded-xl transition max-md:mb-0 max-md:shrink-0 ${
                   selected ? 'bg-ocean-700 text-white' : 'bg-mist-50 text-ocean-700 group-hover:bg-ocean-50'
                 }`}>
                   <Icon aria-hidden="true" className="size-5" />
                 </span>
-                <span className="block pr-8 text-sm font-semibold text-navy-950">{option.label}</span>
-                <span className="mt-1 block text-xs leading-5 text-muted">{option.description}</span>
+                <span className="block min-w-0">
+                  <span className="block pr-8 text-sm font-semibold text-navy-950 max-md:text-[15px]">{option.label}</span>
+                  <span className="mt-1 block text-xs leading-5 text-muted max-md:mt-0.5 max-md:text-[13px]">{option.description}</span>
+                </span>
                 {selected ? (
                   <span className="absolute right-3 top-3 grid size-6 place-items-center rounded-full bg-ocean-700 text-white" aria-hidden="true">
                     <Check className="size-3.5" />
@@ -206,6 +233,9 @@ function OnboardingFields({
           })}
         </div>
         {personaError ? <p className="mt-3 text-sm font-medium text-red-700">{personaError}</p> : null}
+        <button type="button" className={phoneNextClass} disabled={!persona} onClick={() => onPhoneStep?.(2)}>
+          Continue <ArrowRight aria-hidden="true" className="size-4" />
+        </button>
       </fieldset>
 
       {persona ? (
@@ -215,7 +245,7 @@ function OnboardingFields({
           tabIndex={intentError ? -1 : undefined}
           className={`rounded-3xl border bg-mist-50 p-5 outline-none sm:p-7 ${
             intentError ? 'border-red-200 focus:ring-2 focus:ring-red-300' : 'border-mist-100'
-          }`}
+          }${phoneStep !== 2 ? ' max-md:hidden' : ''}`}
         >
           <legend className="px-2 text-xl font-semibold tracking-tight text-navy-950">What are you here to do?</legend>
           <p className="text-sm leading-6 text-muted">Choose everything that matters to you. You can change this later.</p>
@@ -241,11 +271,14 @@ function OnboardingFields({
             })}
           </div>
           {intentError ? <p className="mt-3 text-sm font-medium text-red-700">{intentError}</p> : null}
+          <button type="button" className={phoneNextClass} onClick={() => onPhoneStep?.(3)}>
+            Continue <ArrowRight aria-hidden="true" className="size-4" />
+          </button>
         </fieldset>
       ) : null}
 
       {persona ? (
-        <fieldset className="grid gap-5">
+        <fieldset className={`grid gap-5${phoneStep !== 3 ? ' max-md:hidden' : ''}`}>
           <legend className="text-xl font-semibold tracking-tight text-navy-950">Your profile basics</legend>
           <p className="text-sm leading-6 text-muted">
             We only ask for details relevant to {PERSONA_LABELS[persona].toLowerCase()}. You can add more profile depth later.
@@ -456,6 +489,7 @@ function OnboardingOrganizationPicker({
       inputClassName={onboardingInputClass}
       returnTo="/onboarding"
       onBeforeRegister={saveOnboardingDraft}
+      phoneFullScreen
     />
   )
 }
@@ -521,23 +555,72 @@ async function completeActivationSafely(previousState: ProfileActionState, formD
 export function OnboardingForm({ initialFullName, suggestedUsername, profileId, initialDgProfile, registeredOrganization }: OnboardingFormProps) {
   const [state, formAction, pending] = useActionState(completeActivationSafely, { revision: 0 })
   const [draft, setDraft] = useState<ProfileActionState['values']>()
+  const [phoneStep, setPhoneStep] = useState<PhoneStep>(1)
+  const [focusRequest, setFocusRequest] = useState(0)
   const formRef = useRef<HTMLFormElement>(null)
 
   // Restore the answers saved before the member left to register their organization.
   useEffect(() => {
     const saved = takeOnboardingDraft()
+    if (!saved) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is only readable after hydration
-    if (saved) setDraft(saved)
+    setDraft(saved)
+    // They left from the organization field, in the last step.
+    setPhoneStep(3)
   }, [])
   const fieldsState = state.values || !draft ? state : { ...state, values: draft }
 
+  // A rejected submit: on phones show the step with the first problem, then focus it.
   useEffect(() => {
     if (!hasFormErrors(state.error, state.fieldErrors)) return
-    focusFirstFormError(formRef.current)
+    const step = phoneStepForErrors(state.fieldErrors)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the step follows the server's answer
+    if (step) setPhoneStep(step)
+    setFocusRequest((count) => count + 1)
   }, [state])
+
+  useEffect(() => {
+    if (focusRequest) focusFirstFormError(formRef.current)
+  }, [focusRequest])
+
+  function goToPhoneStep(step: PhoneStep) {
+    setPhoneStep(step)
+    // Start the new step at the top of the page.
+    if (typeof window.scrollTo === 'function') window.scrollTo({ top: 0 })
+  }
 
   return (
     <form ref={formRef} action={formAction} className="onboarding-form grid gap-10" noValidate>
+      <div className="-mb-4 md:hidden" data-onboarding-progress="">
+        <div className="flex min-h-11 items-center gap-2">
+          {phoneStep > 1 ? (
+            <button
+              type="button"
+              onClick={() => goToPhoneStep((phoneStep - 1) as PhoneStep)}
+              className="-ml-2 inline-flex min-h-11 cursor-pointer items-center gap-1 rounded-full px-2 text-sm font-semibold text-navy-950 hover:bg-mist-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500"
+            >
+              <ChevronLeft aria-hidden="true" className="size-5" />
+              Back
+            </button>
+          ) : null}
+          <p className="ml-auto text-[13px] font-semibold text-muted" aria-live="polite">
+            Step {phoneStep} of {PHONE_STEP_COUNT}
+            <span className="sr-only"> · {PHONE_STEPS[phoneStep]}</span>
+          </p>
+        </div>
+        <div
+          role="progressbar"
+          aria-label="Profile setup progress"
+          aria-valuemin={1}
+          aria-valuemax={PHONE_STEP_COUNT}
+          aria-valuenow={phoneStep}
+          aria-valuetext={`Step ${phoneStep} of ${PHONE_STEP_COUNT}: ${PHONE_STEPS[phoneStep]}`}
+          className="mt-2 h-1.5 overflow-hidden rounded-full bg-mist-100"
+        >
+          <div className="h-full rounded-full bg-ocean-700 transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${(phoneStep / PHONE_STEP_COUNT) * 100}%` }} />
+        </div>
+      </div>
+
       <FormErrorSummary
         error={state.error}
         fieldErrors={state.fieldErrors}
@@ -552,13 +635,15 @@ export function OnboardingForm({ initialFullName, suggestedUsername, profileId, 
         initialDgProfile={initialDgProfile}
         registeredOrganization={registeredOrganization}
         state={fieldsState}
+        phoneStep={phoneStep}
+        onPhoneStep={goToPhoneStep}
       />
 
-      <div className="flex flex-col gap-3 border-t border-mist-100 pt-6 sm:flex-row sm:items-center sm:justify-between">
+      <div className={`flex flex-col gap-3 border-t border-mist-100 pt-6 sm:flex-row sm:items-center sm:justify-between${phoneStep !== 3 ? ' max-md:hidden' : ''}`}>
         <p className="max-w-xl text-sm leading-6 text-muted">
           Start with the essentials. Jobs, events and course publishing are activated separately through verification and plan access.
         </p>
-        <Button type="submit" disabled={pending} className="w-full sm:w-auto">
+        <Button type="submit" disabled={pending} className="w-full sm:w-auto max-md:rounded-full">
           {pending ? 'Saving your profile…' : 'Complete profile'}
         </Button>
       </div>

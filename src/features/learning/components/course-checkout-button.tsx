@@ -16,10 +16,12 @@ type Props = {
   paymentsConfigured: boolean
   /** Why the course cannot be bought right now (e.g. its currency is not accepted yet). */
   blockedMessage?: string
+  /** Drop the small print (the phone sticky bar has no room for it; the course page shows it above). */
+  compact?: boolean
 }
 
 /** "Buy course — ₹X": gateway checkout, then straight into the course player once the server confirms. */
-export function CourseCheckoutButton({ courseId, courseSlug, courseTitle, priceLabel, paymentsConfigured, blockedMessage }: Props) {
+export function CourseCheckoutButton({ courseId, courseSlug, courseTitle, priceLabel, paymentsConfigured, blockedMessage, compact = false }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
 
@@ -27,7 +29,7 @@ export function CourseCheckoutButton({ courseId, courseSlug, courseTitle, priceL
     <GatewayCheckoutButton
       actionLabel={`Buy course — ${priceLabel}`}
       description={courseTitle}
-      hint="Secure payment by card, UPI or net banking. The course unlocks as soon as the payment succeeds."
+      hint={compact ? undefined : 'Secure payment by card, UPI or net banking. The course unlocks as soon as the payment succeeds.'}
       configured={paymentsConfigured}
       notConfiguredLabel={COURSE_PAYMENTS_NOT_CONFIGURED_LABEL}
       notConfiguredHelp={COURSE_PAYMENTS_NOT_CONFIGURED_HELP}

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Building2, Search } from 'lucide-react'
+import { Building2, ClipboardCheck, ExternalLink, Search, Settings2, UserRound } from 'lucide-react'
 import {
   AdminChip,
   AdminEmptyState,
@@ -12,6 +12,7 @@ import {
   readAdminPage,
   type AdminChipTone,
 } from '@/features/admin/components/admin-ui'
+import { ADMIN_TABLE_DESKTOP_CLASS, AdminMobileCard, AdminMobileList } from '@/features/admin/components/admin-mobile-list'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import {
   ADMIN_ORGANIZATION_DIRECTORY_FILTERS,
@@ -237,7 +238,35 @@ async function organizationDirectory({
             description="Try a different search term or status filter."
           />
         ) : (
-          <div className="relative overflow-x-auto">
+          <>
+          <AdminMobileList label="Organizations">
+            {organizations.map((organization) => {
+              const badge = directoryStatus[organization.status]
+              return (
+                <AdminMobileCard
+                  key={organization.id}
+                  title={organization.name}
+                  href={`/organizations/${organization.slug}`}
+                  leading={<OrganizationLogo logoUrl={organizationLogoUrl({ id: organization.id, logoPath: organization.logoPath })} size="sm" />}
+                  subtitle={[organization.type ?? 'Type not set', organization.location].filter(Boolean).join(' · ')}
+                  badges={organization.claimStatus === 'unclaimed' ? <AdminChip>Unclaimed</AdminChip> : null}
+                  fields={[
+                    { label: 'Status', value: <AdminChip tone={badge.tone}>{badge.label}</AdminChip> },
+                    { label: 'Plan', value: organization.plan === 'organization_pro' ? 'Org Pro' : 'Free' },
+                    { label: 'Owner', value: organization.owner?.fullName ?? 'No owner' },
+                    { label: 'Members', value: organization.memberCount },
+                  ]}
+                  actions={[
+                    { kind: 'link', href: `/organizations/${organization.slug}`, label: 'View page', icon: <ExternalLink aria-hidden="true" /> },
+                    { kind: 'link', href: `/organizations/${organization.slug}/manage`, label: 'Manage', icon: <Settings2 aria-hidden="true" /> },
+                    ...(organization.applicationId ? [{ kind: 'link' as const, href: `/admin/organizations/${organization.applicationId}`, label: 'Review application', icon: <ClipboardCheck aria-hidden="true" /> }] : []),
+                    ...(organization.owner ? [{ kind: 'link' as const, href: `/admin/users/${organization.owner.id}`, label: `Owner: ${organization.owner.fullName}`, icon: <UserRound aria-hidden="true" /> }] : []),
+                  ]}
+                />
+              )
+            })}
+          </AdminMobileList>
+          <div className={ADMIN_TABLE_DESKTOP_CLASS}>
             <table className="w-full min-w-[62rem] table-fixed text-left text-sm">
               <colgroup>
                 <col className="w-[27%]" />
@@ -319,6 +348,7 @@ async function organizationDirectory({
               </tbody>
             </table>
           </div>
+          </>
         )}
       </AdminPanel>
 

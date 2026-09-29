@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeft, ArrowRight, BarChart3, BookOpen, CheckCircle2, Clock3, Eye, FilePenLine, Plus, Receipt, Wallet } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BadgeCheck, BarChart3, BookOpen, CheckCircle2, ClipboardCheck, Clock3, Eye, FilePenLine, Plus, Receipt, Wallet } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { PlanHiddenBanner } from '@/features/billing/components/plan-hidden-banner'
+import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { courseRepository, type MentorCourseSummary } from '@/features/learning/course-repository'
 import { learningRepository } from '@/features/learning/repository'
@@ -116,48 +118,67 @@ export default async function MentorStudioPage() {
   const pendingLearnerReviews = assignmentAttempts.filter((attempt) => attempt.status === 'submitted').length
 
   return (
-    <div className="mx-auto w-full max-w-7xl py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-7xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+      <MobilePageBar
+        backHref="/learn"
+        title="Learning Studio"
+        right={(
+          <PageActionsSheet
+            label="More studio actions"
+            title="Learning Studio"
+            actions={[
+              { kind: 'link', href: '/learn/studio/analytics', label: 'Analytics', icon: <BarChart3 aria-hidden="true" /> },
+              { kind: 'link', href: '/learn/studio/sales', label: 'Course sales', icon: <Receipt aria-hidden="true" /> },
+              { kind: 'link', href: '/settings/earnings', label: 'Earnings & payouts', icon: <Wallet aria-hidden="true" /> },
+              { kind: 'link', href: '/learn/studio/assignments', label: 'Review assignments', icon: <ClipboardCheck aria-hidden="true" /> },
+              { kind: 'link', href: '/learn/teach', label: 'Trainer verification', icon: <BadgeCheck aria-hidden="true" /> },
+            ]}
+          />
+        )}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/learn/teach" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
+        <Link href="/learn/teach" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
           <ArrowLeft aria-hidden="true" className="size-4" /> Trainer verification
         </Link>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Phones keep "Create course" here; the other four live in the page bar's "…" sheet. */}
+        <div className="flex flex-wrap items-center gap-2 max-md:w-full">
           <Link
             href="/learn/studio/analytics"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
           >
             <BarChart3 aria-hidden="true" className="size-4" /> Analytics
           </Link>
           <Link
             href="/learn/studio/sales"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
           >
             <Receipt aria-hidden="true" className="size-4" /> Course sales
           </Link>
           <Link
             href="/settings/earnings"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
           >
             <Wallet aria-hidden="true" className="size-4" /> Earnings &amp; payouts
           </Link>
           <Link
             href="/learn/studio/assignments"
-            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+            className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800 max-md:hidden"
           >
             Review assignments <ArrowRight aria-hidden="true" className="size-4" />
           </Link>
           <Link
             href="/learn/studio/courses/new"
-            className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900"
+            className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-navy-900 max-md:min-h-11 max-md:w-full max-md:justify-center max-md:rounded-full max-md:bg-ocean-700 max-md:text-[15px]"
           >
             <Plus aria-hidden="true" className="size-4" /> Create course
           </Link>
         </div>
       </div>
 
-      <section className="mt-5 overflow-hidden rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">
+      <section className="mt-5 overflow-hidden rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] max-md:mt-3 max-md:rounded-2xl max-md:p-3 sm:p-8">
         <div className="grid gap-7 lg:grid-cols-[1.35fr_0.65fr] lg:items-end">
-          <div>
+          {/* Phones: the page bar carries the title, so only the metrics show here. */}
+          <div className="max-md:hidden">
             <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
               {hasActiveMentor ? 'Verified trainer workspace' : 'Organization LMS workspace'}
             </p>
@@ -166,7 +187,7 @@ export default async function MentorStudioPage() {
               Build practical maritime courses, respond to quality feedback and manage learner work from one workspace—personally or for an organization you are authorized to represent.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-4 max-md:[&>div]:p-2.5 max-md:[&_p:first-child]:text-xl lg:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
               <p className="text-2xl font-bold">{draftCount}</p>
               <p className="mt-1 text-xs text-white/65">Building</p>
@@ -208,8 +229,8 @@ export default async function MentorStudioPage() {
       <section className="mt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Your learning portfolio</p>
-            <h2 className="mt-1 text-2xl font-bold text-navy-950">Courses</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700 max-md:hidden">Your learning portfolio</p>
+            <h2 className="mt-1 text-2xl font-bold text-navy-950 max-md:mt-0 max-md:text-[17px]">Courses</h2>
           </div>
         </div>
 

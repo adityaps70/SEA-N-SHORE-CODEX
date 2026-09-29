@@ -29,15 +29,20 @@ export default async function OrganizationTeamPage({ params }: { params: Promise
   return (
     <OrganizationManageShell workspace={workspace} active="team" {...shell}>
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700">Organization Pro</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950">Team & permissions</h1>
-        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-ocean-700 max-md:hidden">Organization Pro</p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:sr-only">Team & permissions</h1>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted max-md:mt-0 max-md:text-[13px] max-md:leading-5">
           Assign approved members the role that matches their responsibility. Roles determine which Organization Pro capabilities they can use inside this workspace.
         </p>
       </div>
 
       {canManageTeam ? (
-        <OrganizationTeamPanel companyId={workspace.id} members={await organizationWorkspaceRepository.listMembers(workspace.id)} />
+        <OrganizationTeamPanel
+          companyId={workspace.id}
+          organizationSlug={workspace.slug}
+          viewer={{ userId: user.id, role: membership.role }}
+          members={await organizationWorkspaceRepository.listMembers(workspace.id)}
+        />
       ) : (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 sm:p-6">
           <div className="flex gap-3">

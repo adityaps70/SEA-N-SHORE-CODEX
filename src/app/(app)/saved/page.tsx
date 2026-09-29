@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Bookmark } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { Card } from '@/components/ui/card'
 import { getSavedPosts } from '@/features/feed/queries'
 import { SavedPostsGrid } from './saved-posts-grid'
@@ -12,7 +13,9 @@ export default async function SavedPostsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+      <MobilePageBar backHref="/home" title="Saved posts" />
+      {/* Phones: the page bar title replaces the intro. */}
+      <header className="flex flex-wrap max-md:hidden items-end justify-between gap-x-4 gap-y-1">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ocean-700">Your library</p>
           <h1 className="mt-1 text-2xl font-semibold text-navy-950">Saved posts</h1>

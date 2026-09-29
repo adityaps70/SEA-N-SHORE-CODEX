@@ -1,67 +1,87 @@
+'use client'
+
 import Link from 'next/link'
-import { Bell, MessageCircleMore, Search, SquarePlus } from 'lucide-react'
-import { Wordmark } from '@/components/brand/wordmark'
+import { MessageCircleMore, Search } from 'lucide-react'
+import { usePathname } from 'next/navigation'
+import { useCallback, useState } from 'react'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
-import { AccountMenuSignOut, accountMenuItems, type HeaderOrganization } from './account-menu'
-import { HeaderMenu } from './header-menu'
+import type { HeaderOrganization } from './account-menu'
+import { isPhoneDetailRoute } from './mobile-routes'
+import { SIDE_DRAWER_ID, SideDrawer } from './side-drawer'
 import { ViewerAvatar, type HeaderViewer } from './viewer-avatar'
 
-const iconLinkClass = 'relative grid min-h-10 min-w-10 place-items-center rounded-xl text-navy-900 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'
-const badgeClass = 'absolute right-0 top-0 inline-flex min-w-5 -translate-y-1/4 translate-x-1/4 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white'
+const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'
+const badgeClass = 'absolute right-0.5 top-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white ring-2 ring-white'
 
+/**
+ * Phone top bar (round 8, below `md` only): profile photo (opens the side drawer) · search bar
+ * (links to /search) · Messages with its unread badge. Notifications and Create are bottom tabs.
+ * Detail routes (see mobile-routes.ts) render their own MobilePageBar instead, so the bar is
+ * not rendered there.
+ */
 export function MobileAppHeader({
-  unreadCount,
   messagingUnreadCount = 0,
   canAccessAdmin = false,
   viewer = { name: 'Member', avatarUrl: null },
   organizations = [],
   organizationCount = organizations.length,
 }: {
-  unreadCount: number
   messagingUnreadCount?: number
   canAccessAdmin?: boolean
   viewer?: HeaderViewer
   organizations?: HeaderOrganization[]
   organizationCount?: number
 }) {
-  // Phones have no Events tab in the bottom bar, so the account menu carries it.
-  const accountItems = accountMenuItems({ canAccessAdmin, organizations, organizationCount, includeEvents: true })
+  const pathname = usePathname()
+  // The drawer remembers the page it was opened on, so any navigation (back/forward or a link
+  // outside it) closes it.
+  const [openedOn, setOpenedOn] = useState<{ pathname: string | null } | null>(null)
+  const drawerOpen = openedOn !== null && openedOn.pathname === pathname
+  const closeDrawer = useCallback(() => setOpenedOn(null), [])
+
+  if (pathname && isPhoneDetailRoute(pathname)) return null
+
   return (
-    <header className="border-b border-mist-100 bg-white md:hidden">
-      <div className="flex min-h-14 items-center justify-between gap-2 px-3 sm:px-4">
-        <div className="min-w-0 max-w-[40%] shrink [&_img]:h-9 sm:max-w-none sm:[&_img]:h-11"><Wordmark compact /></div>
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Link href="/search" aria-label="Search" className={iconLinkClass}>
-            <Search aria-hidden="true" className="size-5" />
+    <>
+      <header className="sticky top-0 z-40 border-b border-mist-100 bg-white pt-[env(safe-area-inset-top)] md:hidden">
+        <div className="flex min-h-14 items-center gap-2 px-2">
+          <button
+            type="button"
+            aria-label="Open menu"
+            aria-haspopup="dialog"
+            aria-expanded={drawerOpen}
+            aria-controls={drawerOpen ? SIDE_DRAWER_ID : undefined}
+            onClick={() => setOpenedOn({ pathname })}
+            className={`grid size-11 shrink-0 cursor-pointer place-items-center rounded-full ${focusRing}`}
+          >
+            <ViewerAvatar viewer={viewer} className="size-8" />
+          </button>
+          <Link
+            href="/search"
+            className={`flex min-h-10 min-w-0 flex-1 items-center gap-2.5 rounded-full bg-mist-100 px-3.5 text-[15px] text-muted hover:bg-mist-200 ${focusRing}`}
+          >
+            <Search aria-hidden="true" className="size-5 shrink-0 text-navy-700" />
+            <span className="truncate">Search jobs, people, courses</span>
           </Link>
           <Link
-            href="/creator"
-            aria-label="Create"
-            className="mx-0.5 inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg bg-ocean-700 px-2 text-xs font-bold text-white transition hover:bg-ocean-800"
+            href="/messages"
+            aria-label="Messages"
+            className={`relative grid size-11 shrink-0 place-items-center rounded-full text-navy-900 hover:bg-mist-50 ${focusRing}`}
           >
-            <SquarePlus aria-hidden="true" className="size-4 shrink-0" />
-            <span className="hidden whitespace-nowrap min-[420px]:inline">Create</span>
-          </Link>
-          <Link href="/messages" aria-label="Messages" className={iconLinkClass}>
-            <MessageCircleMore aria-hidden="true" className="size-5" />
+            <MessageCircleMore aria-hidden="true" className="size-6" strokeWidth={1.75} />
             <MessagingUnreadBadge initialCount={messagingUnreadCount} className={badgeClass} />
           </Link>
-          <Link href="/notifications" aria-label="Notifications" className={iconLinkClass}>
-            <Bell aria-hidden="true" className="size-5" />
-            {unreadCount > 0 ? <span className={badgeClass}>{unreadCount > 9 ? '9+' : unreadCount}</span> : null}
-          </Link>
-          <HeaderMenu
-            label="Account menu"
-            items={accountItems}
-            menuWidthClassName="w-72"
-            showChevron={false}
-            triggerClassName={iconLinkClass}
-            activeTriggerClassName="bg-ocean-50"
-            trigger={<ViewerAvatar viewer={viewer} className="size-8" />}
-            footer={<AccountMenuSignOut />}
-          />
         </div>
-      </div>
-    </header>
+      </header>
+      {/* Outside the sticky header, so the drawer is not held inside the header's stacking context. */}
+      <SideDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        viewer={viewer}
+        organizations={organizations}
+        organizationCount={organizationCount}
+        canAccessAdmin={canAccessAdmin}
+      />
+    </>
   )
 }

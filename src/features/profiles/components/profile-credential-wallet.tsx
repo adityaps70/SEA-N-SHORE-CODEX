@@ -18,7 +18,8 @@ import {
   type ProfilePortfolioActionState,
 } from '../profile-portfolio-actions'
 import type { CredentialVerificationState, ProfileCredentialRecord } from '../profile-portfolio-types'
-import { ProfileSection } from './profile-section'
+import { PHONE_ICON_ADD_BUTTON_CLASS, ProfileSection, ProfileSectionEditButton } from './profile-section'
+import { PhoneShowAll } from './profile-show-all'
 
 const initialActionState: ProfilePortfolioActionState = {}
 
@@ -148,10 +149,13 @@ function CredentialEditor({
 function CredentialEntry({
   credential,
   editable,
+  phoneEditing = false,
   onEdit,
 }: {
   credential: ProfileCredentialRecord
   editable: boolean
+  /** Phones hide the per-entry edit/delete buttons until the section pencil is on. */
+  phoneEditing?: boolean
   onEdit: () => void
 }) {
   const [deleting, startDelete] = useTransition()
@@ -168,7 +172,7 @@ function CredentialEntry({
   }
 
   return (
-    <article className="rounded-2xl border border-mist-100 bg-white p-4 shadow-sm sm:p-5">
+    <article className="rounded-2xl border border-mist-100 bg-white p-4 shadow-sm max-md:rounded-none max-md:border-0 max-md:p-0 max-md:shadow-none sm:p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -188,7 +192,7 @@ function CredentialEntry({
         </div>
 
         {editable ? (
-          <div className="flex shrink-0 gap-1">
+          <div className={`flex shrink-0 gap-1 ${phoneEditing ? '' : 'max-md:hidden'}`}>
             <button type="button" onClick={onEdit} aria-label={`Edit ${credential.name}`} className="grid size-9 place-items-center rounded-full border border-mist-200 text-muted hover:border-ocean-400 hover:text-ocean-700">
               <Pencil aria-hidden="true" className="size-4" />
             </button>
@@ -220,6 +224,7 @@ export function ProfileCredentialWallet({
 }) {
   const [adding, setAdding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [phoneEditing, setPhoneEditing] = useState(false)
 
   if (!editable && credentials.length === 0) return null
 
@@ -228,26 +233,36 @@ export function ProfileCredentialWallet({
       id="profile-credentials"
       title="Licences & Credentials"
       action={editable && !adding ? (
-        <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors" aria-label="Add credential">
-          <Plus aria-hidden="true" className="size-4" />
-          Add credential
-        </button>
+        <>
+          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add credential">
+            <Plus aria-hidden="true" className="size-4 max-md:size-5" />
+            <span className="max-md:sr-only">Add credential</span>
+          </button>
+          {credentials.length ? (
+            <ProfileSectionEditButton
+              label="Edit credential entries"
+              pressed={phoneEditing}
+              onClick={() => setPhoneEditing((value) => !value)}
+              className="md:hidden"
+            />
+          ) : null}
+        </>
       ) : null}
     >
       {adding ? <CredentialEditor onClose={() => setAdding(false)} /> : null}
 
       {credentials.length ? (
-        <div className="mt-6 grid gap-3 lg:grid-cols-2">
+        <PhoneShowAll noun="credentials" className="mt-6 grid gap-3 max-md:mt-4 max-md:gap-5 lg:grid-cols-2" itemClassName="contents">
           {credentials.map((credential) => (
             editingId === credential.id ? (
               <div key={credential.id} className="lg:col-span-2">
                 <CredentialEditor credential={credential} onClose={() => setEditingId(null)} />
               </div>
             ) : (
-              <CredentialEntry key={credential.id} credential={credential} editable={editable} onEdit={() => { setEditingId(credential.id); setAdding(false) }} />
+              <CredentialEntry key={credential.id} credential={credential} editable={editable} phoneEditing={phoneEditing} onEdit={() => { setEditingId(credential.id); setAdding(false) }} />
             )
           ))}
-        </div>
+        </PhoneShowAll>
       ) : editable && !adding ? (
         <div className="mt-6 rounded-2xl border border-dashed border-mist-100 bg-mist-50/50 p-6 text-center">
           <FileCheck2 aria-hidden="true" className="mx-auto size-7 text-ocean-600" />

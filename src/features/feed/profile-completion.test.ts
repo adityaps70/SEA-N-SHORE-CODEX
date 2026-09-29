@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calculateProfileCompletion } from './profile-completion'
+import { calculateProfileCompletion, nextProfileCompletionHint } from './profile-completion'
 import type { OwnProfile } from '@/features/profiles/types'
 
 function profile(overrides: Partial<OwnProfile> = {}): OwnProfile {
@@ -92,5 +92,17 @@ describe('calculateProfileCompletion', () => {
       currentCompany: null,
       sailingExperienceYears: null,
     }))).toBe(100)
+  })
+})
+
+describe('nextProfileCompletionHint', () => {
+  it('names the first missing item in the completeness order', () => {
+    expect(nextProfileCompletionHint(profile({ sailingExperienceYears: null }), completePortfolio)).toBe('Add sea service to get better job matches')
+    expect(nextProfileCompletionHint(profile({ headline: null, sailingExperienceYears: null }), completePortfolio)).toBe('Add a headline so people know what you do')
+    expect(nextProfileCompletionHint(profile(), { experienceCount: 1, credentialCount: 0 })).toBe('Add your certificates to get better job matches')
+  })
+
+  it('returns null for a complete profile', () => {
+    expect(nextProfileCompletionHint(profile(), completePortfolio)).toBeNull()
   })
 })

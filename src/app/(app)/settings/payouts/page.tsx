@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { ArrowLeft, Clock3 } from 'lucide-react'
 import { backLinkClass, textLinkClass } from '@/components/ui/interactive-styles'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -27,8 +28,10 @@ export default async function PayoutSettingsPage() {
     : []
 
   return (
-    <main className="mx-auto w-full max-w-4xl space-y-6 py-2 sm:py-5">
-      <header>
+    <main className="mx-auto w-full max-w-4xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+      <MobilePageBar backHref="/settings" title="Payout details" />
+      {/* Phones: title in the page bar; Earnings is its own row in Settings. */}
+      <header className="max-md:hidden">
         <Link href="/settings" className={backLinkClass}>
           <ArrowLeft aria-hidden="true" className="size-4" /> Settings
         </Link>

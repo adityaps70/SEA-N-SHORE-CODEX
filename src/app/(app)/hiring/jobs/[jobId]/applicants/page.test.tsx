@@ -151,6 +151,15 @@ describe('Hiring applicants page', () => {
     expect(within(screen.getByRole('region', { name: 'Applicants' })).getAllByRole('article')).toHaveLength(1)
   })
 
+  it('gives phones a page bar and the stage filters as one scrolling chip row', async () => {
+    await renderPage()
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/hiring/jobs')
+    expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', `/hiring/jobs/${jobId}/edit`)
+    const row = within(screen.getByRole('navigation', { name: 'Filter applicants by status' })).getByRole('link', { name: 'All 2' }).parentElement!
+    expect(row.className).toContain('max-md:flex-nowrap')
+    expect(row.className).toContain('max-md:overflow-x-auto')
+  })
+
   it('explains a job with no applicants yet, by job state', async () => {
     mocks.listApplicants.mockResolvedValue([])
     mocks.listManagedJobs.mockResolvedValue([managedJob({ status: 'draft', applicantCount: 0 })])

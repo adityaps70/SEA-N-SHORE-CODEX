@@ -112,10 +112,13 @@ describe('MessageShell', () => {
 
     expect(screen.getByRole('heading', { name: 'Messages' })).toBeInTheDocument()
     expect(screen.getByRole('searchbox', { name: 'Search conversations' })).toBeInTheDocument()
-    expect(screen.getByText('Capt. Meera Nair')).toBeInTheDocument()
+    // The name shows in the inbox row, the desktop thread header and the phone page bar.
+    expect(screen.getByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).toHaveTextContent('Capt. Meera Nair')
     expect(screen.getByLabelText('Unread conversation with Capt. Meera Nair')).toBeInTheDocument()
     expect(screen.getByText('Good day, Captain.')).toBeInTheDocument()
-    expect(screen.getByText('Joining instructions received.')).toBeInTheDocument()
+    // Once in the inbox preview (phones drop its “Last:” label) and once in the thread.
+    expect(screen.getAllByText('Joining instructions received.')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).toHaveTextContent('Last: Joining instructions received.')
     expect(screen.getByRole('textbox', { name: 'Write a message' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument()
     // The number of conversations is not shown anywhere on the page.
@@ -225,5 +228,39 @@ describe('MessageShell', () => {
     expect(navigation.push).not.toHaveBeenCalled()
     expect(navigation.refresh).toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: 'Capt. Meera Nair' })).toBeInTheDocument()
+  })
+
+  describe('phone page bars', () => {
+    it('gives the inbox a "Messaging" bar with a pencil New message button and hides the page header', () => {
+      render(<MessageShell viewerId={VIEWER_ID} inbox={inbox} activeConversation={null} />)
+
+      expect(screen.getByText('Messaging')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/home')
+      expect(screen.getByRole('button', { name: 'Write a new message' })).toHaveAttribute('aria-haspopup', 'dialog')
+      expect(screen.getByRole('heading', { name: 'Messages' }).closest('header')).toHaveClass('max-md:hidden')
+    })
+
+    it('gives an open chat a bar with back, the peer (linking to their profile) and "…" with Report and Block', async () => {
+      const user = userEvent.setup()
+      render(
+        <MessageShell
+          viewerId={VIEWER_ID}
+          inbox={inbox}
+          activeConversation={{ ...activeConversation, otherSlug: 'meera-nair' }}
+        />,
+      )
+
+      expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/messages')
+      expect(screen.getByRole('link', { name: 'Capt. Meera Nair, open profile' })).toHaveAttribute('href', '/people/meera-nair')
+      // The desktop thread header is hidden on phones; the bar replaces it.
+      expect(screen.getByRole('heading', { name: 'Capt. Meera Nair' }).closest('header')).toHaveClass('max-md:hidden')
+      expect(screen.getByTestId('message-shell-grid').className).toContain('max-md:h-[calc(100dvh-3.5rem')
+
+      const bar = screen.getByRole('link', { name: 'Back' }).parentElement as HTMLElement
+      await user.click(within(bar).getByRole('button', { name: 'Conversation options for Capt. Meera Nair' }))
+      expect(screen.getByRole('menuitem', { name: 'Report' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Block' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Delete conversation' })).toBeInTheDocument()
+    })
   })
 })

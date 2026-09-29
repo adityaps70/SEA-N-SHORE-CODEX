@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { FileText, MessageSquareText } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { applicantPhotoUrl } from '@/features/jobs/applicant-media'
 import { HIRING_APPLICATION_STATUS_BADGES, HIRING_APPLICATION_STATUS_LABELS } from '@/features/jobs/application-status'
@@ -70,9 +71,15 @@ export default async function HiringApplicantsPage({
   const visibleFilters = FILTERS.filter((filter) => filter.value !== 'withdrawn' || (counts.get('withdrawn') ?? 0) > 0)
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-6xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+      <MobilePageBar
+        backHref="/hiring/jobs"
+        title="Applicants"
+        right={<Link href={`/hiring/jobs/${jobId}/edit`} className="inline-flex min-h-11 items-center rounded-full px-3 text-[15px] font-semibold text-ocean-700 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500">Edit</Link>}
+      />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
+          <div className="max-md:hidden">
           <JobCompanyIdentity
             name={job.publisherName}
             companyId={job.companyId}
@@ -83,17 +90,18 @@ export default async function HiringApplicantsPage({
             size="sm"
             personalLabel="Personal recruiter"
           />
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <h1 className="min-w-0 break-words text-2xl font-bold text-navy-950 sm:text-3xl">Applicants · {job.title}</h1>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2 max-md:mt-0">
+            <h1 className="min-w-0 break-words text-2xl font-bold text-navy-950 max-md:text-lg sm:text-3xl">Applicants · {job.title}</h1>
             <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${presentation.badgeClassName}`}>{presentation.label}</span>
           </div>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted max-md:hidden">
             {presentation.key === 'live'
               ? 'Candidates are ordered by Sea N Shore Match using structured Rank, Vessel experience, credentials and other maritime profile signals.'
               : presentation.description}
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2 max-md:hidden">
           <Link href={`/hiring/jobs/${jobId}/edit`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">Edit vacancy</Link>
           <Link href="/hiring/jobs" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">All jobs</Link>
         </div>
@@ -102,8 +110,8 @@ export default async function HiringApplicantsPage({
       <HiringSubnav active="jobs" />
 
       {allApplicants.length ? (
-        <nav aria-label="Filter applicants by status" className="rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] sm:p-5">
-          <div className="flex flex-wrap gap-2">
+        <nav aria-label="Filter applicants by status" className="rounded-[1.5rem] border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none sm:p-5">
+          <div className="flex flex-wrap gap-2 max-md:-mx-4 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4 max-md:py-1">
             {visibleFilters.map((filter) => {
               const active = filter.value === 'all' ? !status : status === filter.value
               const count = filter.value === 'all' ? allApplicants.length : counts.get(filter.value) ?? 0
@@ -115,7 +123,7 @@ export default async function HiringApplicantsPage({
                   key={filter.value}
                   href={href}
                   aria-current={active ? 'page' : undefined}
-                  className={`rounded-full px-3.5 py-2 text-xs font-bold transition ${active ? 'bg-navy-950 text-white' : 'bg-mist-50 text-muted hover:bg-mist-100 hover:text-navy-950'}`}
+                  className={`rounded-full px-3.5 py-2 text-xs font-bold transition max-md:inline-flex max-md:min-h-9 max-md:shrink-0 max-md:items-center max-md:whitespace-nowrap max-md:text-sm ${active ? 'bg-navy-950 text-white' : 'bg-mist-50 text-muted hover:bg-mist-100 hover:text-navy-950 max-md:bg-white max-md:ring-1 max-md:ring-mist-100'}`}
                 >
                   {filter.label} <span className={active ? 'text-white/70' : ''}>{count}</span>
                 </Link>
@@ -130,7 +138,7 @@ export default async function HiringApplicantsPage({
           const candidate = applicant.candidate
           const profileHref = candidate.slug ? `/people/${candidate.slug}` : null
           return (
-            <article key={applicant.applicationId} className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+            <article key={applicant.applicationId} className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:rounded-2xl max-md:p-4 max-md:shadow-none sm:p-6">
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
                 <div className="flex min-w-0 gap-4">
                   <ApplicantAvatar name={candidate.fullName} photoUrl={photoUrls.get(applicant.applicationId) ?? null} />
@@ -147,7 +155,7 @@ export default async function HiringApplicantsPage({
                     {candidate.headline ? <p className="mt-1 text-sm text-muted">{candidate.headline}</p> : null}
                     {!candidate.accountActive ? <p className="mt-1 text-sm font-semibold text-amber-900">This member’s account is no longer active. Their application is kept for your records.</p> : null}
 
-                    <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                    <dl className="mt-4 grid gap-3 text-sm max-md:mt-3 max-md:grid-cols-2 max-md:gap-2 sm:grid-cols-2">
                       <div className="rounded-xl bg-mist-50 p-3">
                         <dt className="text-xs font-bold uppercase tracking-wide text-muted">Rank</dt>
                         <dd className="mt-1 font-semibold text-navy-950">{candidate.rank ?? 'Not listed'}</dd>
@@ -180,10 +188,10 @@ export default async function HiringApplicantsPage({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-4 lg:flex-col lg:items-end">
+                <div className="flex items-center justify-between gap-4 max-md:border-t max-md:border-mist-100 max-md:pt-3 lg:flex-col lg:items-end">
                   <div className="text-left lg:text-right">
                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Match</p>
-                    <p className="mt-1 text-3xl font-black text-navy-950">{applicant.match.score}%</p>
+                    <p className="mt-1 text-3xl font-black text-navy-950 max-md:mt-0 max-md:text-2xl">{applicant.match.score}%</p>
                   </div>
                   <Link href={`/hiring/applicants/${applicant.applicationId}`} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">
                     Review application

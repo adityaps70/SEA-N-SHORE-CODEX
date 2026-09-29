@@ -1,7 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ArrowLeft, ExternalLink, FileText, History } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ExternalLink, FileText, History } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { AssignmentGradingControl } from '@/features/learning/components/assignment-grading-control'
@@ -34,9 +35,32 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
 
   const attachmentUrl = review.attachmentPath ? await createMediaReadUrl(review.attachmentPath) : null
 
+  const previousAttemptList = (
+    <div className="mt-4 space-y-3">
+      {review.previousAttempts.map((attempt) => (
+        <article key={attempt.id} className="rounded-2xl border border-mist-100 bg-mist-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold text-navy-950">Attempt {attempt.attemptNumber} · {dateLabel(attempt.submittedAt)}</p>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${attempt.passed ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
+              {attempt.passed ? 'Passed' : 'Needs revision'}
+            </span>
+          </div>
+          <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-navy-900">{attempt.responseText || 'No written response was provided.'}</div>
+          {attempt.scorePoints !== null ? <p className="mt-3 text-sm font-bold text-navy-950">Score {attempt.scorePoints}/{review.maxPoints} · {attempt.percentage}%</p> : null}
+          {attempt.feedback ? (
+            <div className="mt-3 rounded-xl border border-teal-100 bg-white p-3 text-sm leading-6 text-muted">
+              <span className="font-bold text-navy-950">Trainer feedback:</span> {attempt.feedback}
+            </div>
+          ) : null}
+        </article>
+      ))}
+    </div>
+  )
+
   return (
-    <div className="mx-auto w-full max-w-5xl py-6 sm:px-6 lg:px-8">
-      <Link href="/learn/studio/assignments" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
+    <div className="mx-auto w-full max-w-5xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/learn/studio/assignments" title="Grade assignment" />
+      <Link href="/learn/studio/assignments" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> Assignment grading
       </Link>
 
@@ -82,35 +106,30 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
           </section>
 
           {review.previousAttempts.length ? (
-            <section className="rounded-[1.4rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
-              <div className="flex items-center gap-2">
-                <History className="size-5 text-teal-700" aria-hidden="true" />
-                <h2 className="text-lg font-bold text-navy-950">Previous attempts</h2>
-              </div>
-              <div className="mt-4 space-y-3">
-                {review.previousAttempts.map((attempt) => (
-                  <article key={attempt.id} className="rounded-2xl border border-mist-100 bg-mist-50 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-bold text-navy-950">Attempt {attempt.attemptNumber} · {dateLabel(attempt.submittedAt)}</p>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${attempt.passed ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
-                        {attempt.passed ? 'Passed' : 'Needs revision'}
-                      </span>
-                    </div>
-                    <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-navy-900">{attempt.responseText || 'No written response was provided.'}</div>
-                    {attempt.scorePoints !== null ? <p className="mt-3 text-sm font-bold text-navy-950">Score {attempt.scorePoints}/{review.maxPoints} · {attempt.percentage}%</p> : null}
-                    {attempt.feedback ? (
-                      <div className="mt-3 rounded-xl border border-teal-100 bg-white p-3 text-sm leading-6 text-muted">
-                        <span className="font-bold text-navy-950">Trainer feedback:</span> {attempt.feedback}
-                      </div>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            </section>
+            <>
+              {/* Phones: collapsed so the current attempt and grading stay on screen. Placed first so the
+                  desktop section stays the last child of the space-y column. */}
+              <details className="group rounded-[1.4rem] border border-mist-200 bg-white p-4 md:hidden">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[15px] font-bold text-navy-950 [&::-webkit-details-marker]:hidden">
+                  <History className="size-5 text-teal-700" aria-hidden="true" />
+                  <span className="flex-1">Previous attempts ({review.previousAttempts.length})</span>
+                  <ChevronDown className="size-5 text-muted transition group-open:rotate-180" aria-hidden="true" />
+                </summary>
+                {previousAttemptList}
+              </details>
+              <section className="rounded-[1.4rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)] max-md:hidden sm:p-6">
+                <div className="flex items-center gap-2">
+                  <History className="size-5 text-teal-700" aria-hidden="true" />
+                  <h2 className="text-lg font-bold text-navy-950">Previous attempts</h2>
+                </div>
+                {previousAttemptList}
+              </section>
+            </>
           ) : null}
         </div>
 
-        <aside className="rounded-[1.4rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 lg:sticky lg:top-24">
+        {/* Phones: grading first, then the learner's work. */}
+        <aside className="rounded-[1.4rem] border border-mist-200 bg-white p-5 shadow-[var(--shadow-card)] max-md:order-first sm:p-6 lg:sticky lg:top-24">
           {review.status === 'submitted' ? (
             <>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Trainer grading</p>

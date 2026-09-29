@@ -1,5 +1,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { BRAND_ASSETS, BRAND_NAME } from '@/components/brand/brand-assets'
 import { FaqAccordion } from '@/components/marketing/faq/faq-accordion'
 import type { FaqItem } from '@/components/marketing/faq/faq-data'
@@ -11,10 +12,15 @@ import { LANDING_LINKS, LANDING_SECTIONS } from './landing-links'
 import { LogoImage } from './landing-logos'
 import { GLOBAL_PARTNERS, HIRING_COMPANIES, MORE_HIRING_PARTNERS, PARENT_GROUP_LOGO, PARTNERS } from './logos'
 
+/** Logos in the phone-only partners strip (the full grid stays one tap away). */
+const PHONE_STRIP_SIZE = 10
+
 export function PartnersSection() {
   const hiring = [...HIRING_COMPANIES, ...MORE_HIRING_PARTNERS]
+  const total = 1 + PARTNERS.length + GLOBAL_PARTNERS.length + hiring.length
+  const rounded = Math.floor(total / 10) * 10
   return (
-    <section className="block" id="partners" aria-labelledby="partners-title">
+    <section className="block partsec" id="partners" aria-labelledby="partners-title">
       <div className="wrap">
         <Reveal className="head">
           <div>
@@ -23,46 +29,60 @@ export function PartnersSection() {
           </div>
           <p>Sea N Shore is part of the Beaufort Marine group and works with partners across crewing, training, travel, wellness and finance.</p>
         </Reveal>
-        <div className="parent">
-          <Reveal className="pcard" delay={0}>
-            <span className="eyebrow">Parent group</span>
-            <LogoImage logo={PARENT_GROUP_LOGO} />
-          </Reveal>
-          <Reveal className="note" delay={1}>
-            <strong style={{ fontFamily: 'var(--display)', fontSize: 24, lineHeight: 1.15 }}>Run by maritime people, for maritime people.</strong>
-            <p>Beaufort Marine Services LLP, Navi Mumbai, operates Sea N Shore and hires through it for its own vessels and clients.</p>
-          </Reveal>
+
+        {/* Phones: one swipeable logo strip; "See all" opens the full grid below in place (CSS :target, no JS). */}
+        <ul className="pstrip swipe" aria-label="Maritime companies on Sea N Shore">
+          {HIRING_COMPANIES.slice(0, PHONE_STRIP_SIZE).map((company) => (
+            <li key={company.file} className="logo-tile"><LogoImage logo={company} /></li>
+          ))}
+        </ul>
+        <a className="pall-open" href="#partners-all">
+          See all {rounded < total ? `${rounded}+` : total} partners <ChevronRight size={18} aria-hidden="true" />
+        </a>
+
+        <div className="pall" id="partners-all">
+          <div className="parent">
+            <Reveal className="pcard" delay={0}>
+              <span className="eyebrow">Parent group</span>
+              <LogoImage logo={PARENT_GROUP_LOGO} />
+            </Reveal>
+            <Reveal className="note" delay={1}>
+              <strong style={{ fontFamily: 'var(--display)', fontSize: 24, lineHeight: 1.15 }}>Run by maritime people, for maritime people.</strong>
+              <p>Beaufort Marine Services LLP, Navi Mumbai, operates Sea N Shore and hires through it for its own vessels and clients.</p>
+            </Reveal>
+          </div>
+
+          <h3 className="subhead">Partners</h3>
+          <ul className="pgrid flex" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {PARTNERS.map((partner, index) => (
+              <Reveal as="li" key={partner.file} className="ptile" delay={index}>
+                <div className="lg"><LogoImage logo={partner} /></div>
+                <span>{partner.role}</span>
+              </Reveal>
+            ))}
+          </ul>
+
+          <h3 className="subhead">Global partners</h3>
+          <ul className="pgrid g4" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {GLOBAL_PARTNERS.map((partner, index) => (
+              <Reveal as="li" key={partner.file} className="ptile" delay={index}>
+                <div className="lg"><LogoImage logo={partner} /></div>
+                <span>Global partner</span>
+              </Reveal>
+            ))}
+          </ul>
+
+          <h3 className="subhead">Companies hiring</h3>
+          <ul className="pgrid" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {hiring.map((company, index) => (
+              <Reveal as="li" key={company.file} className="ptile" delay={index}>
+                <div className="lg"><LogoImage logo={company} decorative /></div>
+                <span>{company.name}</span>
+              </Reveal>
+            ))}
+          </ul>
+          <a className="pall-close" href="#partners">Show fewer partners</a>
         </div>
-
-        <h3 className="subhead">Partners</h3>
-        <ul className="pgrid flex" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {PARTNERS.map((partner, index) => (
-            <Reveal as="li" key={partner.file} className="ptile" delay={index}>
-              <div className="lg"><LogoImage logo={partner} /></div>
-              <span>{partner.role}</span>
-            </Reveal>
-          ))}
-        </ul>
-
-        <h3 className="subhead">Global partners</h3>
-        <ul className="pgrid g4" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {GLOBAL_PARTNERS.map((partner, index) => (
-            <Reveal as="li" key={partner.file} className="ptile" delay={index}>
-              <div className="lg"><LogoImage logo={partner} /></div>
-              <span>Global partner</span>
-            </Reveal>
-          ))}
-        </ul>
-
-        <h3 className="subhead">Companies hiring</h3>
-        <ul className="pgrid" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-          {hiring.map((company, index) => (
-            <Reveal as="li" key={company.file} className="ptile" delay={index}>
-              <div className="lg"><LogoImage logo={company} decorative /></div>
-              <span>{company.name}</span>
-            </Reveal>
-          ))}
-        </ul>
       </div>
     </section>
   )
@@ -103,7 +123,7 @@ export function PricingSection({ prices }: { prices: LandingPlanPrices }) {
           </div>
           <p>Every member is free. Creators and organizations upgrade when they want to sell, hire or grow.</p>
         </Reveal>
-        <div className="prices">
+        <div className="prices swipe">
           <Reveal as="article" className="price" delay={0}>
             <span className="eyebrow">Member</span>
             <div className="amt">Free</div>
@@ -224,6 +244,12 @@ const PLATFORM_LINKS = [
   { href: '/pricing', label: 'Pricing' },
 ]
 
+const FOOTER_GROUPS = [
+  { title: 'Platform', links: PLATFORM_LINKS },
+  { title: 'Company', links: COMPANY_LINKS },
+  { title: 'Legal', links: LEGAL_LINKS },
+]
+
 function FooterLink({ href, label }: { href: string; label: string }) {
   return <li>{href.startsWith('#') ? <a href={href}>{label}</a> : <Link href={href}>{label}</Link>}</li>
 }
@@ -242,20 +268,32 @@ export function LandingFooter() {
             <a href={`mailto:${BUSINESS.email}`}>{BUSINESS.email}</a> · <a className="nowrap" href={telHref(BUSINESS.phone.tel)}>{BUSINESS.phone.display}</a>
           </p>
         </div>
-        <nav aria-label="Platform">
+        {/* Phones: the three link groups collapse into tap-to-open rows; contact and social stay open. */}
+        <nav aria-label="Footer links" className="fgroups">
+          {FOOTER_GROUPS.map((group) => (
+            <details key={group.title}>
+              <summary>
+                {group.title}
+                <ChevronDown size={18} aria-hidden="true" />
+              </summary>
+              <ul>{group.links.map((link) => <FooterLink key={link.href} {...link} />)}</ul>
+            </details>
+          ))}
+        </nav>
+        <nav aria-label="Platform" className="fnav">
           <h4>Platform</h4>
           <ul>{PLATFORM_LINKS.map((link) => <FooterLink key={link.href} {...link} />)}</ul>
         </nav>
-        <nav aria-label="Company">
+        <nav aria-label="Company" className="fnav">
           <h4>Company</h4>
           <ul>{COMPANY_LINKS.map((link) => <FooterLink key={link.href} {...link} />)}</ul>
         </nav>
-        <nav aria-label="Legal">
+        <nav aria-label="Legal" className="fnav">
           <h4>Legal</h4>
           <ul>{LEGAL_LINKS.map((link) => <FooterLink key={link.href} {...link} />)}</ul>
         </nav>
         {social.length ? (
-          <div>
+          <div className="fsocial">
             <h4>Follow</h4>
             <ul aria-label="Sea N Shore on social media">
               {social.map((link) => {

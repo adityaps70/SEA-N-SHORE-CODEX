@@ -1,10 +1,12 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarketplaceCourse } from '@/features/learning/marketplace-repository'
 
 const mocks = vi.hoisted(() => ({
   getPublishedCourseBySlug: vi.fn(),
   getLearnerEnrollment: vi.fn(),
+  getPublishedCourseOverview: vi.fn(),
+  enrollInFreeCourse: vi.fn(),
   requireAwsUser: vi.fn(),
   notFound: vi.fn(),
   loadCoursePurchaseState: vi.fn(),
@@ -15,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound, useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }))
 vi.mock('@/features/learning/course-purchase-state', () => ({ loadCoursePurchaseState: mocks.loadCoursePurchaseState }))
 vi.mock('@/features/learning/course-payment-actions', () => ({ startCourseCheckoutAction: vi.fn(), confirmCoursePaymentAction: vi.fn() }))
-vi.mock('@/features/learning/enrollment-actions', () => ({ openCourseAsTeamMember: vi.fn(), enrollInFreeCourse: vi.fn() }))
+vi.mock('@/features/learning/enrollment-actions', () => ({ openCourseAsTeamMember: vi.fn(), enrollInFreeCourse: mocks.enrollInFreeCourse }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/learning/marketplace-repository')>()
@@ -23,6 +25,7 @@ vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => 
     ...original,
     marketplaceRepository: {
       getPublishedCourseBySlug: mocks.getPublishedCourseBySlug,
+      getPublishedCourseOverview: mocks.getPublishedCourseOverview,
     },
   }
 })
@@ -89,7 +92,12 @@ describe('/learn/courses/[slug]', () => {
     mocks.getPublishedCourseBySlug.mockResolvedValue(freeCourse)
     mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
     mocks.getLearnerEnrollment.mockResolvedValue(null)
+    mocks.getPublishedCourseOverview.mockResolvedValue({ sections: [], lessonCount: 0, durationSeconds: 0, learnerCount: 0, publisher: null })
   })
+
+  function desktopHero() {
+    return document.getElementById('course-access') as HTMLElement
+  }
 
   it('loads the published course by slug and presents its verified maritime learning evidence', async () => {
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
@@ -98,17 +106,66 @@ describe('/learn/courses/[slug]', () => {
     expect(mocks.requireAwsUser).toHaveBeenCalledOnce()
     expect(mocks.getLearnerEnrollment).toHaveBeenCalledWith('learner-1', freeCourse.id)
     expect(screen.getByRole('link', { name: 'Explore courses' })).toHaveAttribute('href', '/learn')
-    expect(screen.getByRole('heading', { name: freeCourse.title })).toBeInTheDocument()
-    expect(screen.getByText(freeCourse.subtitle!)).toBeInTheDocument()
-    expect(screen.getByText(freeCourse.description)).toBeInTheDocument()
-    expect(screen.getByText('Capt. Maya Singh')).toBeInTheDocument()
-    expect(screen.getByText('Verified trainer')).toBeInTheDocument()
-    expect(screen.getByText('SIRE 2.0')).toBeInTheDocument()
-    expect(screen.getByText('Advanced')).toBeInTheDocument()
-    expect(screen.getByText('English')).toBeInTheDocument()
-    expect(screen.getByText('Recorded')).toBeInTheDocument()
-    expect(screen.getByText('Free')).toBeInTheDocument()
-    expect(screen.getByText('Certificate')).toBeInTheDocument()
+    const hero = desktopHero()
+    expect(within(hero).getByRole('heading', { name: freeCourse.title })).toBeInTheDocument()
+    expect(within(hero).getByText(freeCourse.subtitle!)).toBeInTheDocument()
+    expect(within(hero).getByText(freeCourse.description)).toBeInTheDocument()
+    expect(within(hero).getByText('Capt. Maya Singh')).toBeInTheDocument()
+    expect(within(hero).getByText('Verified trainer')).toBeInTheDocument()
+    expect(within(hero).getByText('SIRE 2.0')).toBeInTheDocument()
+    expect(within(hero).getByText('Advanced')).toBeInTheDocument()
+    expect(within(hero).getByText('English')).toBeInTheDocument()
+    expect(within(hero).getByText('Recorded')).toBeInTheDocument()
+    expect(within(hero).getByText('Free')).toBeInTheDocument()
+    expect(within(hero).getByText('Certificate')).toBeInTheDocument()
+  })
+
+  it('gives phones a page bar, a cover header with chips and trainer link, and a sticky Enroll free bar', async () => {
+    mocks.getPublishedCourseOverview.mockResolvedValueOnce({
+      sections: [{ title: 'Inspection foundations', lessonCount: 5 }, { title: 'Inspection day', lessonCount: 7 }],
+      lessonCount: 12,
+      durationSeconds: 6 * 3600,
+      learnerCount: 312,
+      publisher: { kind: 'person', slug: 'maya-singh' },
+    })
+    mocks.enrollInFreeCourse.mockResolvedValueOnce({ ok: true, enrollmentId: 'e-1', alreadyEnrolled: false })
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+    expect(mocks.getPublishedCourseOverview).toHaveBeenCalledWith(freeCourse.id)
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/learn')
+    expect(screen.getByRole('button', { name: 'More course actions' })).toBeInTheDocument()
+
+    const header = screen.getByTestId('phone-course-header')
+    expect(header).toHaveClass('md:hidden')
+    expect(within(header).getByRole('heading', { name: freeCourse.title })).toBeInTheDocument()
+    expect(within(header).getByText('Free')).toBeInTheDocument()
+    expect(within(header).getByText('Certificate')).toBeInTheDocument()
+    expect(within(header).getByText('6 h')).toBeInTheDocument()
+    expect(within(header).getByRole('link', { name: 'Capt. Maya Singh' })).toHaveAttribute('href', '/people/maya-singh')
+    expect(within(header).getByText(/312 learners/)).toBeInTheDocument()
+
+    const curriculum = screen.getByRole('region', { name: 'Curriculum' })
+    expect(curriculum).toHaveClass('md:hidden')
+    expect(within(curriculum).getByText('12 lessons')).toBeInTheDocument()
+    expect(within(curriculum).getByText('2. Inspection day')).toBeInTheDocument()
+
+    const bar = screen.getByTestId('course-action-bar')
+    expect(bar).toHaveClass('md:hidden', 'sticky')
+    fireEvent.click(within(bar).getByRole('button', { name: 'Enroll free' }))
+    await waitFor(() => expect(within(bar).getByRole('link', { name: /Continue learning/ })).toHaveAttribute('href', `/learn/courses/${freeCourse.slug}/learn`))
+    expect(mocks.enrollInFreeCourse).toHaveBeenCalledWith(freeCourse.id)
+    expect(mocks.refresh).toHaveBeenCalled()
+
+    // Phone-only extras stay off desktop: the promo card and the trainer-credentials blurb are hidden on phones only.
+    expect(screen.getByText('Quality standard').closest('section')).toHaveClass('max-md:hidden')
+    expect(screen.getByText(/Trainer credentials and this course were reviewed/).closest('div.rounded-\\[1\\.3rem\\]')).toHaveClass('max-md:hidden')
+  })
+
+  it('still renders the course page when the phone overview cannot load', async () => {
+    mocks.getPublishedCourseOverview.mockRejectedValueOnce(new Error('db down'))
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+    expect(within(desktopHero()).getByRole('heading', { name: freeCourse.title })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Curriculum' })).not.toBeInTheDocument()
   })
 
   it('offers real free enrollment without fabricating curriculum for a learner who has not enrolled', async () => {
@@ -116,6 +173,8 @@ describe('/learn/courses/[slug]', () => {
 
     const control = screen.getByTestId('enroll-free-control')
     expect(control).toHaveAttribute('data-course-id', freeCourse.id)
+    // The access card keeps its own Enroll free; the phone sticky bar has the other one.
+    expect(screen.getAllByRole('button', { name: 'Enroll free' })).toHaveLength(2)
     expect(within(control).getByRole('button', { name: 'Enroll free' })).toBeInTheDocument()
 
     const outcomes = screen.getByRole('region', { name: 'What you will learn' })
@@ -132,6 +191,7 @@ describe('/learn/courses/[slug]', () => {
 
     expect(screen.queryByText(/lesson 1/i)).not.toBeInTheDocument()
     expect(screen.queryByText('Course curriculum')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Curriculum' })).not.toBeInTheDocument()
   })
 
   it('shows a paid course price and a clear "Purchases open soon" state while payments are not set up', async () => {
@@ -140,8 +200,10 @@ describe('/learn/courses/[slug]', () => {
 
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
 
-    expect(screen.getByRole('heading', { name: paidCourse.title })).toBeInTheDocument()
-    expect(screen.getByText('₹20,000')).toBeInTheDocument()
+    expect(within(desktopHero()).getByRole('heading', { name: paidCourse.title })).toBeInTheDocument()
+    expect(within(desktopHero()).getByText('₹20,000')).toBeInTheDocument()
+    // Nothing to buy yet, so no phone sticky bar either.
+    expect(screen.queryByTestId('course-action-bar')).not.toBeInTheDocument()
     expect(mocks.loadCoursePurchaseState).toHaveBeenCalledWith({ userId: 'learner-1', course: paidCourse, enrollment: null })
     expect(screen.getByRole('button', { name: 'Purchases open soon' })).toBeDisabled()
     expect(screen.getByText(/You'll be able to buy this course here as soon as they are/)).toBeInTheDocument()
@@ -155,11 +217,14 @@ describe('/learn/courses/[slug]', () => {
 
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
 
-    expect(screen.getByText('₹16,000')).toBeInTheDocument()
-    const original = screen.getByText('₹20,000')
+    expect(within(desktopHero()).getByText('₹16,000')).toBeInTheDocument()
+    const original = within(desktopHero()).getByText('₹20,000')
     expect(original.closest('.line-through')).not.toBeNull()
     expect(screen.getByText('Save 20%')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Buy course — ₹16,000' })).toBeEnabled()
+    expect(within(desktopHero()).getByRole('button', { name: 'Buy course — ₹16,000' })).toBeEnabled()
+    // Phones: the same checkout as a sticky bar, and the discounted price on the header chip.
+    expect(within(screen.getByTestId('course-action-bar')).getByRole('button', { name: 'Buy course — ₹16,000' })).toBeEnabled()
+    expect(within(screen.getByTestId('phone-course-header')).getByText('₹16,000')).toBeInTheDocument()
   })
 
   it('offers Check payment status for a checkout the learner started but did not finish', async () => {
@@ -176,7 +241,7 @@ describe('/learn/courses/[slug]', () => {
     const pending = screen.getByRole('region', { name: 'Payment not confirmed yet' })
     expect(within(pending).getByText(/You opened checkout for ₹20,000 at 27 Sept 2026, 10:05 am/)).toBeInTheDocument()
     expect(within(pending).getByRole('button', { name: 'Check payment status' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Buy course — ₹20,000' })).toBeInTheDocument()
+    expect(within(desktopHero()).getByRole('button', { name: 'Buy course — ₹20,000' })).toBeInTheDocument()
   })
 
   it('sends a learner who bought the course straight to Continue learning', async () => {
@@ -186,7 +251,8 @@ describe('/learn/courses/[slug]', () => {
     render(await PublishedCoursePage({ params: Promise.resolve({ slug: paidCourse.slug }) }))
 
     expect(screen.getByText('You own this course.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Continue learning/ })).toHaveAttribute('href', `/learn/courses/${paidCourse.slug}/learn`)
+    expect(within(desktopHero()).getByRole('link', { name: /Continue learning/ })).toHaveAttribute('href', `/learn/courses/${paidCourse.slug}/learn`)
+    expect(within(screen.getByTestId('course-action-bar')).getByRole('link', { name: /Continue learning/ })).toHaveAttribute('href', `/learn/courses/${paidCourse.slug}/learn`)
     expect(screen.queryByRole('button', { name: /Buy course/ })).not.toBeInTheDocument()
   })
 
@@ -198,6 +264,7 @@ describe('/learn/courses/[slug]', () => {
 
     expect(screen.getByText('You manage this course')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open course' })).toBeEnabled()
+    expect(screen.queryByTestId('course-action-bar')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Buy course/ })).not.toBeInTheDocument()
   })
 
@@ -232,6 +299,7 @@ describe('/learn/courses/[slug]', () => {
 
     expect(screen.getByText('You are enrolled in this course.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Enroll free' })).not.toBeInTheDocument()
+    expect(within(screen.getByTestId('course-action-bar')).getByRole('link', { name: /Continue learning/ })).toBeInTheDocument()
   })
 
   it('uses not found before learner lookup when the slug is not currently visible in the published marketplace', async () => {

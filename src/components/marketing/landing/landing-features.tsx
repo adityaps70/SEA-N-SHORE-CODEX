@@ -41,7 +41,7 @@ export function FeatureOverview() {
           </div>
           <p>Generic job sites don’t know a CoC from a CDC. Here’s what you get on Sea N Shore — tap any one to see how it works.</p>
         </Reveal>
-        <div className="ov-grid">
+        <div className="ov-grid swipe">
           {OVERVIEW.map((item, index) => {
             const Icon = item.icon
             return (

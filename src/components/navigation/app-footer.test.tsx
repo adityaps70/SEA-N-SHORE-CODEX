@@ -36,6 +36,12 @@ describe('AppFooter (compact end-of-content footer)', () => {
     const footer = container.querySelector('footer')
     expect(footer).toHaveClass('lg:group-has-data-[rail-footer=lg]/shell:hidden', 'xl:group-has-data-[rail-footer=xl]/shell:hidden')
   })
+
+  it('is hidden on phones, where the same links sit at the bottom of the side drawer', () => {
+    const { container } = render(<AppFooter />)
+    expect(container.querySelector('footer')).toHaveClass('max-md:hidden')
+    expect(source('src/components/navigation/side-drawer.tsx')).toContain('drawerFooterLinks()')
+  })
 })
 
 describe('RailFooter (LinkedIn-style right-rail footer)', () => {
@@ -70,8 +76,16 @@ describe('RailFooter (LinkedIn-style right-rail footer)', () => {
       const text = source(layout)
       expect(text).toContain('group/shell')
       expect(text).toContain('<AppFooter />')
-      // Clears the fixed mobile bottom navigation, including the iPhone home indicator.
+      // Clears the fixed mobile bottom navigation, including the iPhone home indicator,
+      // and drops that padding on full-screen routes, where the tab bar is not shown.
       expect(text).toContain('pb-[calc(4.5rem+env(safe-area-inset-bottom))]')
+      expect(text).toContain('has-[[data-phone-tabbar=off]]:pb-0')
+      // Both shells pass the same chrome props (so organizations reach the account menu everywhere).
+      for (const helper of ['appHeaderProps(chrome)', 'mobileAppHeaderProps(chrome)', 'mobileNavProps(chrome)']) {
+        expect(text).toContain(helper)
+      }
     }
+    // Phones: 16px page padding all round; md and wider keep py-6.
+    expect(source('src/app/(app)/layout.tsx')).toContain('px-4 py-4 md:py-6')
   })
 })

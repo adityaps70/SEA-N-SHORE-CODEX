@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -102,6 +102,8 @@ describe('/learn/studio', () => {
     expect(screen.getByRole('link', { name: /create course/i })).toHaveAttribute('href', '/learn/studio/courses/new')
     expect(screen.getByRole('link', { name: /review assignments/i })).toHaveAttribute('href', '/learn/studio/assignments')
     expect(screen.getByRole('link', { name: /analytics/i })).toHaveAttribute('href', '/learn/studio/analytics')
+    expect(screen.getByRole('link', { name: /analytics/i })).toHaveClass('max-md:hidden')
+    expect(screen.getByRole('link', { name: /create course/i })).not.toHaveClass('max-md:hidden')
     expect(screen.getByRole('link', { name: /review 1 learner submission/i })).toHaveAttribute('href', '/learn/studio/assignments')
     expect(screen.getByText('Learner reviews')).toBeInTheDocument()
     expect(screen.getByText('Assignments awaiting review')).toBeInTheDocument()
@@ -118,6 +120,20 @@ describe('/learn/studio', () => {
     expect(mocks.listOwnedCourses).toHaveBeenCalledWith('user-1')
     expect(mocks.listForMentor).toHaveBeenCalledWith('user-1')
     expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
+  it('moves the secondary Studio actions into the phone "…" sheet and keeps Create course visible', async () => {
+    const page = await MentorStudioPage()
+    render(page)
+
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/learn')
+    fireEvent.click(screen.getByRole('button', { name: 'More studio actions' }))
+    const sheet = screen.getByRole('dialog', { name: 'Learning Studio' })
+    expect(within(sheet).getByRole('menuitem', { name: 'Analytics' })).toHaveAttribute('href', '/learn/studio/analytics')
+    expect(within(sheet).getByRole('menuitem', { name: 'Course sales' })).toHaveAttribute('href', '/learn/studio/sales')
+    expect(within(sheet).getByRole('menuitem', { name: 'Earnings & payouts' })).toHaveAttribute('href', '/settings/earnings')
+    expect(within(sheet).getByRole('menuitem', { name: 'Review assignments' })).toHaveAttribute('href', '/learn/studio/assignments')
+    expect(within(sheet).getByRole('menuitem', { name: 'Trainer verification' })).toHaveAttribute('href', '/learn/teach')
   })
 
   it('keeps assignment grading discoverable even when there are no pending submissions', async () => {

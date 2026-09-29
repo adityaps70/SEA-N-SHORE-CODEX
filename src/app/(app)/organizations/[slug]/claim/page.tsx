@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft, Clock3, ShieldCheck } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { OrganizationApplicationForm } from '@/features/organizations/components/organization-application-form'
 import { OrganizationLogo } from '@/features/profiles/components/organization-logo'
@@ -27,16 +28,17 @@ export default async function ClaimOrganizationPage({ params }: { params: Promis
   const pageHref = `/organizations/${organization.slug}`
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4 py-2 sm:py-4">
-      <Link href={pageHref} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-ocean-700 hover:underline">
+    <div className="mx-auto w-full max-w-3xl space-y-4 py-2 sm:py-4 max-md:space-y-3 max-md:py-0">
+      <MobilePageBar backHref={pageHref} title="Claim this page" />
+      <Link href={pageHref} className="inline-flex min-h-10 items-center gap-2 text-sm font-semibold text-ocean-700 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> Back to {organization.name}
       </Link>
-      <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <header className="rounded-2xl border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none">
         <div className="flex items-center gap-3">
           <OrganizationLogo logoUrl={organization.logoUrl} size="md" />
-          <h1 className="min-w-0 text-2xl font-bold tracking-tight text-navy-950">Claim {organization.name}</h1>
+          <h1 className="min-w-0 text-2xl font-bold tracking-tight text-navy-950 max-md:text-lg">Claim {organization.name}</h1>
         </div>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted max-md:hidden">
           Someone who works here added this page. If you own or manage {organization.name}, tell Sea N Shore who you are. We check every claim the same way we check a new organization. Once it is verified you manage the page, its team and what it publishes.
         </p>
         <p className="mt-2 flex items-start gap-2 text-sm leading-6 text-ink">

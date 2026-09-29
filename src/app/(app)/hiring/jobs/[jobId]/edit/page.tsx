@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { notFound } from 'next/navigation'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { HiringJobForm } from '@/features/jobs/components/hiring-job-form'
@@ -30,8 +31,9 @@ export default async function EditHiringJobPage({ params }: { params: Promise<{ 
     : actions.includes('republish') ? 'Save and republish' : null
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 py-8 sm:px-6 lg:px-8">
-      <div>
+    <div className="mx-auto w-full max-w-5xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+      <MobilePageBar backHref="/hiring/jobs" title="Edit vacancy" />
+      <div className="max-md:hidden">
         <JobCompanyIdentity
           name={jobSummary.publisherName}
           companyId={jobSummary.companyId}
@@ -47,9 +49,9 @@ export default async function EditHiringJobPage({ params }: { params: Promise<{ 
           Update the structured role requirements without changing the publishing identity attached to this vacancy.
         </p>
       </div>
-      <HiringSubnav active="jobs" />
+      <div className="max-md:hidden"><HiringSubnav active="jobs" /></div>
 
-      <section aria-labelledby="job-status-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <section aria-labelledby="job-status-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:rounded-2xl max-md:p-4 max-md:shadow-none sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Job status</p>

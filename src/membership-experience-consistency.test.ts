@@ -12,7 +12,7 @@ test('membership experience is reflected across profile, creator, activities, or
   const profileRepository = read('src/features/profiles/repository.ts')
   const profileMembershipCard = read('src/features/profiles/components/profile-membership-card.tsx')
   const appHeader = read('src/components/navigation/app-header.tsx')
-  const mobileHeader = read('src/components/navigation/mobile-app-header.tsx')
+  const phoneCreateSheet = read('src/components/navigation/create-sheet.tsx')
   const activities = read('src/app/(app)/activities/page.tsx')
   const settingsVerifications = read('src/app/(app)/settings/verifications/page.tsx')
   const learnPage = read('src/app/(app)/learn/page.tsx')
@@ -31,7 +31,7 @@ test('membership experience is reflected across profile, creator, activities, or
   assert.match(profileMembershipCard, /\/organizations\//)
 
   assert.match(appHeader, /href: '\/creator'/)
-  assert.match(mobileHeader, /href="\/creator"/)
+  assert.match(phoneCreateSheet, /href: '\/creator'/)
   assert.match(activities, /tab === 'events'/)
   assert.match(activities, /tab === 'learning'/)
 

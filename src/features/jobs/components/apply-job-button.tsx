@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useId, useState, useTransition } from 'react'
-import { CheckCircle2, FileText, Send, Upload, X } from 'lucide-react'
+import { CheckCircle2, FileText, Send, Upload, X, Zap } from 'lucide-react'
 import { applyToJob, prepareJobApplicationCvUpload } from '../actions'
 import { MAX_JOB_APPLICATION_CV_BYTES } from '../application-media-policy'
 
@@ -9,11 +9,18 @@ export function ApplyJobButton({
   jobId,
   alreadyApplied,
   compact = false,
+  variant,
+  label,
 }: {
   jobId: string
   alreadyApplied: boolean
   compact?: boolean
+  /** 'bar' is the filled pill in the phone sticky apply bar. */
+  variant?: 'bar'
+  /** Overrides the trigger label (e.g. "Apply now" in the phone bar for non-Easy-Apply jobs). */
+  label?: string
 }) {
+  const bar = variant === 'bar'
   const [submitted, setSubmitted] = useState(alreadyApplied)
   const [open, setOpen] = useState(false)
   const [cvFile, setCvFile] = useState<File | null>(null)
@@ -33,11 +40,13 @@ export function ApplyJobButton({
 
   if (submitted) {
     return (
-      <div className={compact
+      <div className={bar
+        ? 'inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-mist-50 px-5 text-[15px] font-semibold text-navy-900'
+        : compact
         ? 'inline-flex min-h-10 items-center gap-2 rounded-xl bg-emerald-50 px-4 text-sm font-semibold text-emerald-800'
         : 'inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-50 px-5 text-sm font-semibold text-emerald-800'}
       >
-        <CheckCircle2 aria-hidden="true" className="size-4" /> {compact ? 'Applied' : 'Application submitted'}
+        <CheckCircle2 aria-hidden="true" className="size-4" /> {compact || bar ? 'Applied' : 'Application submitted'}
       </div>
     )
   }
@@ -119,11 +128,13 @@ export function ApplyJobButton({
           setError('')
           setOpen(true)
         }}
-        className={compact
+        className={bar
+          ? 'inline-flex min-h-11 flex-1 cursor-pointer items-center justify-center gap-2 rounded-full bg-ocean-700 px-5 text-[15px] font-semibold text-white hover:bg-ocean-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500 disabled:cursor-wait disabled:opacity-60'
+          : compact
           ? 'inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60'
           : 'inline-flex min-h-11 items-center gap-2 rounded-xl bg-navy-950 px-5 text-sm font-semibold text-white hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60'}
       >
-        <Send aria-hidden="true" className="size-4" /> {compact ? 'Easy Apply' : 'Apply now'}
+        {bar ? <Zap aria-hidden="true" className="size-4" /> : <Send aria-hidden="true" className="size-4" />} {label ?? (compact || bar ? 'Easy Apply' : 'Apply now')}
       </button>
 
       {open ? (

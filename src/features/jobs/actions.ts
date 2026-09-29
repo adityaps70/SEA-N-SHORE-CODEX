@@ -35,6 +35,7 @@ const cvReferenceSchema = cvMetadataSchema.extend({
 })
 const coverNoteSchema = z.string().trim().max(2000, 'Keep your message to the employer under 2,000 characters.').nullable().optional()
 const alertIdSchema = z.string().uuid()
+const applicationIdSchema = z.string().uuid()
 const alertSchema = z.object({
   name: z.string().trim().min(2).max(120),
   queryString: z.string().max(3000),
@@ -183,6 +184,32 @@ export async function unsaveJob(jobId: string): Promise<JobMutationResult> {
   const user = await requireAwsUser()
   await jobsRepository.unsaveJob(parsed.data, user.id)
   revalidateCandidateJobs(parsed.data)
+  return { ok: true }
+}
+
+/**
+ * Lets a candidate withdraw their own application while it is still open (New, Reviewed,
+ * Shortlisted or Interview). The repository scopes the change to the signed-in applicant.
+ */
+export async function withdrawJobApplication(applicationId: string): Promise<JobMutationResult> {
+  const parsed = applicationIdSchema.safeParse(applicationId)
+  if (!parsed.success) return { ok: false, error: 'Invalid application.' }
+  const user = await requireAwsUser()
+
+  let withdrawn: { jobId: string } | null
+  try {
+    withdrawn = await jobsRepository.withdrawApplication(parsed.data, user.id)
+  } catch {
+    return { ok: false, error: 'We could not withdraw your application. Please try again.' }
+  }
+  if (!withdrawn) {
+    return { ok: false, error: 'This application can no longer be withdrawn.' }
+  }
+
+  revalidateCandidateJobs(withdrawn.jobId)
+  revalidatePath('/activities')
+  revalidatePath(`/hiring/jobs/${withdrawn.jobId}/applicants`)
+  revalidatePath(`/hiring/applicants/${parsed.data}`)
   return { ok: true }
 }
 

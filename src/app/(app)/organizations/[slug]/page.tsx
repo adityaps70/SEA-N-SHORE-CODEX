@@ -2,7 +2,8 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { CircleDashed, ExternalLink, Settings2 } from 'lucide-react'
+import { Building2, CircleDashed, ExternalLink, Settings2 } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { canPostAsOrganization, canUseCapability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { canUpgradeOrganization } from '@/features/billing/billing-access'
@@ -20,7 +21,8 @@ import { StatusChip } from '@/features/organizations/components/organization-acc
 import { OrganizationSuggestionRow, VerifiedMark } from '@/features/organizations/components/organization-card'
 import { OrganizationFollowButton } from '@/features/organizations/components/organization-follow-button'
 import { OrganizationCover, OrganizationLogo } from '@/features/organizations/components/organization-logo'
-import { OrganizationPageMenu } from '@/features/organizations/components/organization-page-menu'
+import { OrganizationPageMenu, OrganizationPageMenuBarButton } from '@/features/organizations/components/organization-page-menu'
+import { PhoneDisclosure } from '@/features/organizations/components/phone-disclosure'
 import { OrganizationPageTabs } from '@/features/organizations/components/organization-page-tabs'
 import {
   EmptyState,
@@ -250,7 +252,7 @@ export default async function OrganizationPage({
     if (!events) return null
     if (!events.ok) return <LoadError what="Events" />
     return (
-      <ul className="grid gap-4 md:grid-cols-2">
+      <ul className="grid gap-4 md:grid-cols-2 max-md:-my-3 max-md:gap-0 max-md:divide-y max-md:divide-mist-100">
         {events.value.map((event) => <li key={event.id} className="min-w-0"><EventCard event={event} /></li>)}
       </ul>
     )
@@ -267,23 +269,33 @@ export default async function OrganizationPage({
   }
 
   const manageLinkClass = 'inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 transition hover:border-ocean-300 hover:bg-ocean-50'
+  // Phones: header buttons are pills that share the row (Follow + Message, or Manage page + Follow).
+  const phonePrimaryClass = 'max-md:min-h-11 max-md:flex-1 max-md:justify-center max-md:rounded-full max-md:border-ocean-700 max-md:bg-ocean-700 max-md:text-[15px] max-md:text-white max-md:hover:bg-ocean-800'
+  const phoneOutlineClass = 'max-md:min-h-11 max-md:flex-1 max-md:justify-center max-md:rounded-full max-md:border-ocean-700 max-md:text-[15px] max-md:text-ocean-700'
+  const upgradeHref = canUpgrade ? organizationPlanBillingHref(workspace.slug) : null
+  const showMessage = Boolean(contactProfileId && contactProfileId !== user.id)
 
   return (
-    <div className="mx-auto w-full max-w-6xl py-2 sm:py-4">
+    <div className="mx-auto w-full max-w-6xl py-2 sm:py-4 max-md:py-0">
+      <MobilePageBar
+        backHref="/organizations"
+        className="max-md:mb-0"
+        right={<OrganizationPageMenuBarButton organizationName={workspace.name} />}
+      />
       {viewer ? <LegacyRequestsHashRedirect href={organizationManageHref(workspace.slug, 'requests') + '#requests'} /> : null}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-        <div className="min-w-0 space-y-4">
-          <section aria-labelledby="organization-name" className="rounded-2xl border border-mist-100 bg-white shadow-[var(--shadow-card)]">
-            <OrganizationCover coverUrl={organizationCoverUrl(workspace)} name={workspace.name} className="h-32 rounded-t-2xl sm:h-48" />
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start max-md:gap-2">
+        <div className="min-w-0 space-y-4 max-md:space-y-2">
+          <section aria-labelledby="organization-name" className="rounded-2xl border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:shadow-none">
+            <OrganizationCover coverUrl={organizationCoverUrl(workspace)} name={workspace.name} className="h-32 rounded-t-2xl sm:h-48 max-md:h-28 max-md:rounded-none" />
             <div className="px-4 sm:px-6">
               <OrganizationLogo company={workspace} size="xl" className="relative -mt-10 sm:-mt-14" />
               <div className="mt-3 min-w-0">
-                <h1 id="organization-name" className="flex flex-wrap items-center gap-x-2 gap-y-1 break-words text-2xl font-bold tracking-tight text-navy-950 sm:text-[1.75rem]">
+                <h1 id="organization-name" className="flex flex-wrap items-center gap-x-2 gap-y-1 break-words text-2xl font-bold tracking-tight text-navy-950 sm:text-[1.75rem] max-md:text-[22px] max-md:leading-7">
                   {workspace.name}
                   {workspace.verified ? <VerifiedMark className="size-6" /> : null}
                 </h1>
-                {tagline ? <p className="mt-1 max-w-3xl text-base leading-6 text-ink">{tagline}</p> : null}
-                <p className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted">
+                {tagline ? <p className="mt-1 max-w-3xl text-base leading-6 text-ink max-md:text-[15px] max-md:leading-5">{tagline}</p> : null}
+                <p className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted max-md:mt-1 max-md:text-[13px]">
                   {metaParts.map((part, index) => (
                     // The separator trails its item so a wrapped line never starts with "·".
                     <span key={`${part}-${index}`} className="whitespace-nowrap">
@@ -305,13 +317,14 @@ export default async function OrganizationPage({
                 </div>
               </div>
 
-              <div className="mt-4 flex flex-wrap items-start gap-2">
+              <div className="mt-4 flex flex-wrap items-start gap-2 max-md:flex-nowrap max-md:items-center">
+                {/* Phones: Visit website is in the "…" sheet. */}
                 {workspace.website ? (
                   <a
                     href={workspace.website}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white transition hover:bg-navy-900"
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white transition hover:bg-navy-900 max-md:hidden"
                   >
                     Visit website <ExternalLink aria-hidden="true" className="size-4" />
                     <span className="sr-only">(opens in a new tab)</span>
@@ -322,24 +335,31 @@ export default async function OrganizationPage({
                   initialFollowing={followState.following}
                   initialFollowerCount={followState.followerCount}
                   appearance="page"
+                  phoneTone={canManagePage ? 'outline' : 'primary'}
                 />
-                {contactProfileId && contactProfileId !== user.id ? (
-                  <div className="w-auto">
-                    <StartConversationButton targetProfileId={contactProfileId} />
+                {showMessage && contactProfileId ? (
+                  // Phones: Message sits beside Follow for visitors; managers reach the team from Manage page.
+                  <div className={`w-auto max-md:min-w-0 max-md:flex-1 ${canManagePage ? 'max-md:hidden' : ''}`}>
+                    <StartConversationButton
+                      targetProfileId={contactProfileId}
+                      className="max-md:min-h-11 max-md:rounded-full max-md:border max-md:border-ocean-700 max-md:bg-white max-md:text-[15px] max-md:text-ocean-700 max-md:hover:bg-ocean-50"
+                    />
                   </div>
                 ) : null}
+                {/* Phones: people who manage the page get Manage page first, then Follow. */}
                 {canManagePage ? (
-                  <Link href={organizationManageHref(workspace.slug)} className={`${manageLinkClass} gap-2`}>
+                  <Link href={organizationManageHref(workspace.slug)} className={`${manageLinkClass} gap-2 max-md:order-first ${phonePrimaryClass}`}>
                     <Settings2 aria-hidden="true" className="size-4" /> Manage page
                   </Link>
                 ) : null}
                 {unclaimed && !ownApplication && !membership ? (
-                  <Link href={claimHref} className={`${manageLinkClass} gap-2`}>
+                  <Link href={claimHref} className={`${manageLinkClass} gap-2 ${phoneOutlineClass}`}>
                     Claim this page
                   </Link>
                 ) : null}
+                {/* Phones: Upgrade to Organization Pro is in the "…" sheet. */}
                 {canUpgrade ? (
-                  <Link href={organizationPlanBillingHref(workspace.slug)} className="inline-flex min-h-10 cursor-pointer items-center px-1 text-sm font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
+                  <Link href={organizationPlanBillingHref(workspace.slug)} className="inline-flex min-h-10 cursor-pointer items-center px-1 text-sm font-semibold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline max-md:hidden">
                     Upgrade to Organization Pro
                   </Link>
                 ) : null}
@@ -347,10 +367,12 @@ export default async function OrganizationPage({
                   organizationName={workspace.name}
                   pagePath={`/organizations/${workspace.slug}`}
                   joinLink={joinLink}
+                  websiteHref={workspace.website}
+                  upgradeHref={upgradeHref}
                 />
               </div>
 
-              <div className="mt-4 border-t border-mist-100">
+              <div className="mt-4 border-t border-mist-100 max-md:-mx-4 max-md:mt-3 max-md:px-1">
                 <OrganizationPageTabs tabs={tabs} active={tab} label={`${workspace.name} page sections`} />
               </div>
             </div>
@@ -458,9 +480,10 @@ export default async function OrganizationPage({
           ) : null}
         </div>
 
-        <aside aria-label="Related" className="min-w-0 space-y-4">
+        <aside aria-label="Related" className="min-w-0 space-y-4 max-md:space-y-2">
           {membership ? (
-            <section aria-labelledby="member-heading" className="rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)]">
+            // Phones: hidden for people who manage the page (it repeats Manage page in the header).
+            <section aria-labelledby="member-heading" className={`rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] ${canManagePage ? 'max-md:hidden' : 'max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:shadow-none'}`}>
               <h2 id="member-heading" className="font-bold text-navy-950">You are part of {workspace.name}</h2>
               <p className="mt-1 text-sm text-muted">
                 {accessRoleLabel(membership.role)} · {membership.plan === 'organization_pro' ? 'Organization Pro' : 'Free plan'}
@@ -470,7 +493,7 @@ export default async function OrganizationPage({
               </Link>
             </section>
           ) : ownApplication ? (
-            <section aria-labelledby="verification-heading" className="rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sky-950">
+            <section aria-labelledby="verification-heading" className="rounded-2xl border border-sky-100 bg-sky-50 p-4 text-sky-950 max-md:-mx-4 max-md:rounded-none max-md:border-x-0">
               <h2 id="verification-heading" className="font-bold">
                 {ownApplication.status === 'pending' ? 'Sea N Shore is verifying this organization'
                   : ownApplication.status === 'suspended' ? 'This organization is suspended'
@@ -486,7 +509,8 @@ export default async function OrganizationPage({
               <Link href="/organizations#update-application" className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">Go to your application</Link>
             </section>
           ) : unclaimed ? (
-            <section id="work-here" aria-labelledby="claim-heading" className="scroll-mt-24 rounded-2xl border border-amber-100 bg-amber-50/60 p-4">
+            // Phones: hidden; the header's Claim this page button (and the "…" sheet) do the same.
+            <section id="work-here" aria-labelledby="claim-heading" className="scroll-mt-24 rounded-2xl border border-amber-100 bg-amber-50/60 p-4 max-md:hidden">
               <h2 id="claim-heading" className="font-bold text-navy-950">Nobody manages this page yet</h2>
               <p className="mt-1 text-sm leading-6 text-ink">
                 Someone who works at {workspace.name} added it so colleagues can list it on their profiles. If you own or manage {workspace.name}, claim the page. Sea N Shore verifies every claim, and the page can post jobs, events, courses and updates once it is verified.
@@ -496,24 +520,32 @@ export default async function OrganizationPage({
               </Link>
             </section>
           ) : (
-            <section id="work-here" aria-labelledby="join-heading" className="scroll-mt-24 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)]">
-              <h2 id="join-heading" className="font-bold text-navy-950">Work at {workspace.name}?</h2>
-              <p className="mt-1 text-sm leading-6 text-muted">
-                Ask to join and choose the role you need. The organization&apos;s owner and administrators decide, and you can follow the status on your Organizations page.
-              </p>
-              <div className="mt-3">
-                <RequestAccessForm company={{ id: workspace.id, name: workspace.name }} initialState={myPendingRequest ? 'pending' : 'none'} />
-              </div>
-              {myPendingRequest ? (
-                <p className="mt-2 text-sm">
-                  <Link href="/organizations#your-requests" className="font-semibold text-ocean-700 hover:underline">See your request</Link>
+            // Phones: one "Work here? Request access" row that opens the same request flow.
+            <section id="work-here" aria-labelledby="join-heading" className="scroll-mt-24 rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:p-0 max-md:shadow-none">
+              <PhoneDisclosure
+                anchorId="work-here"
+                summary={<><Building2 aria-hidden="true" /><span>Work here? <strong className="font-bold">{myPendingRequest ? 'See your request' : 'Request access'}</strong></span></>}
+                panelClassName="max-md:px-4 max-md:pb-4"
+              >
+                <h2 id="join-heading" className="font-bold text-navy-950 max-md:sr-only">Work at {workspace.name}?</h2>
+                <p className="mt-1 text-sm leading-6 text-muted max-md:mt-0">
+                  Ask to join and choose the role you need. The organization&apos;s owner and administrators decide, and you can follow the status on your Organizations page.
                 </p>
-              ) : null}
+                <div className="mt-3">
+                  <RequestAccessForm company={{ id: workspace.id, name: workspace.name }} initialState={myPendingRequest ? 'pending' : 'none'} />
+                </div>
+                {myPendingRequest ? (
+                  <p className="mt-2 text-sm">
+                    <Link href="/organizations#your-requests" className="font-semibold text-ocean-700 hover:underline">See your request</Link>
+                  </p>
+                ) : null}
+              </PhoneDisclosure>
             </section>
           )}
 
           {similar.ok && similar.value.length ? (
-            <section aria-labelledby="similar-heading" className="rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)]">
+            // Phones: hidden; Discover on /organizations lists the same suggestions.
+            <section aria-labelledby="similar-heading" className="rounded-2xl border border-mist-100 bg-white p-4 shadow-[var(--shadow-card)] max-md:hidden">
               <h2 id="similar-heading" className="mb-3 font-bold text-navy-950">Pages people also viewed</h2>
               <ul className="divide-y divide-mist-100">
                 {similar.value.map((organization) => <OrganizationSuggestionRow key={organization.id} organization={organization} />)}

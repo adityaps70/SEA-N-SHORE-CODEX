@@ -143,3 +143,22 @@ describe('PostMedia', () => {
     expect(container.querySelector('video')).toHaveAttribute('aria-label', "Video attached to Member A's post")
   })
 })
+
+describe('PostMedia edge to edge on phones', () => {
+  const photo: FeedMedia = { storagePath: 'p/1.webp', mimeType: 'image/webp', altText: 'Deck drill', signedUrl: 'https://signed.example/1.webp' }
+
+  it('bleeds a single photo, galleries and video to the screen edges only when flush', () => {
+    const { rerender, container } = render(<PostMedia media={photo} authorName="Rinki" flush />)
+    const single = screen.getByRole('button')
+    expect(single).toHaveClass('max-sm:-mx-4', 'sm:max-md:-mx-5', 'max-md:rounded-none', 'max-md:border-x-0', 'max-sm:w-[calc(100%+2rem)]', 'rounded-2xl')
+
+    rerender(<PostMedia media={[photo, { ...photo, storagePath: 'p/2.webp' }]} authorName="Rinki" flush />)
+    expect(container.querySelector('.grid')).toHaveClass('max-sm:-mx-4', 'max-md:rounded-none')
+
+    rerender(<PostMedia media={{ ...photo, mimeType: 'video/mp4', signedUrl: 'https://signed.example/v.mp4' }} authorName="Rinki" flush />)
+    expect(container.querySelector('video')?.parentElement).toHaveClass('max-sm:-mx-4', 'max-md:rounded-none')
+
+    rerender(<PostMedia media={photo} authorName="Rinki" />)
+    expect(screen.getByRole('button')).not.toHaveClass('max-sm:-mx-4')
+  })
+})

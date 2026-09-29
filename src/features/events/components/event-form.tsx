@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState, useTransition, type ChangeEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, useTransition, type ChangeEvent, type ReactNode } from 'react'
 import { ChevronDown, ImageUp, Info, MapPin, Monitor, MonitorSmartphone, Ticket, Trash2, Wallet } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { focusFirstFormError } from '@/components/ui/form-error-summary'
@@ -159,6 +159,45 @@ function fieldProps(name: CalendarEventField, errors: CalendarFieldErrors, helpe
     'aria-invalid': errors[name] ? true : undefined,
     'aria-describedby': describedBy || undefined,
   } as const
+}
+
+/**
+ * An optional form section. On phones it starts collapsed behind a disclosure row so the
+ * required details come first (round 8); its fields stay mounted, so they still submit.
+ * From `md` up it renders exactly like the other sections.
+ */
+function OptionalSection({ eyebrow, title, description, defaultOpen, children }: {
+  eyebrow: string
+  title: string
+  description?: string
+  defaultOpen: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const id = useId()
+  return (
+    <section aria-labelledby={`${id}-title`} className={sectionClass}>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700 max-md:hidden">{eyebrow}</p>
+      <h2 id={`${id}-title`} className="mt-1 text-xl font-bold text-navy-950 max-md:hidden">{title}</h2>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`${id}-panel`}
+        onClick={() => setOpen((value) => !value)}
+        className="-m-2 flex min-h-12 w-[calc(100%+1rem)] cursor-pointer items-center justify-between gap-3 rounded-xl p-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 md:hidden"
+      >
+        <span className="min-w-0">
+          <span className="block text-[17px] font-bold text-navy-950">{title}</span>
+          <span className="block text-[13px] font-normal text-muted">Optional</span>
+        </span>
+        <ChevronDown aria-hidden="true" className={`size-5 shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      <div id={`${id}-panel`} className={open ? 'max-md:mt-4' : 'max-md:hidden'}>
+        {description ? <p className="mt-1.5 text-sm font-normal text-muted">{description}</p> : null}
+        {children}
+      </div>
+    </section>
+  )
 }
 
 function ChoiceCards<T extends string>({ name, legend, value, options, onChange, error }: {
@@ -620,22 +659,22 @@ export function EventForm(props: Props) {
         </div>
       </section>
 
-      <section className={sectionClass}>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Programme</p>
-        <h2 className="mt-1 text-xl font-bold text-navy-950">Content & speakers</h2>
-        <p className="mt-1.5 text-sm font-normal text-muted">These details help professionals decide quickly whether the session is relevant to them.</p>
+      <OptionalSection
+        eyebrow="Programme"
+        title="Content & speakers"
+        description="These details help professionals decide quickly whether the session is relevant to them."
+        defaultOpen={Boolean(initial && (initial.topics.length || initial.agenda.length || initial.speakerDetails.length || initial.speakers.length))}
+      >
         <div className="mt-6 grid gap-5">
           <label className={labelClass}>Topics<input className={inputClass} name="topics" defaultValue={initial?.topics.join(', ') ?? ''} placeholder="e.g. SIRE 2.0, tanker operations, human factors" /><span className={helperClass}>Separate multiple topics with commas.</span></label>
           <label className={labelClass}>Agenda<textarea className={`${inputClass} min-h-36 resize-y`} name="agenda" defaultValue={initial?.agenda.join('\n') ?? ''} placeholder={'e.g. 09:00 Welcome\n09:15 SIRE 2.0 readiness\n11:30 Q&A'} /><span className={helperClass}>One agenda item per line.</span></label>
           <label className={labelClass}>Speaker details<textarea className={`${inputClass} min-h-32 resize-y`} name="speakerDetails" defaultValue={initial?.speakerDetails.map((speaker) => [speaker.name, speaker.title, speaker.organization].join(' | ')).join('\n') ?? ''} placeholder={'e.g. Capt. Name | Master Mariner | Company\nChief Engineer Name | Technical Director | Company'} /><span className={helperClass}>One speaker per line: Name | Title | Organization.</span></label>
           <label className={labelClass}>Speaker names only <span className="font-normal text-muted">(optional fallback)</span><input className={inputClass} name="speakers" defaultValue={initial?.speakers.join(', ') ?? ''} placeholder="e.g. Capt. Name, Chief Engineer Name" /></label>
         </div>
-      </section>
+      </OptionalSection>
 
-      <section className={sectionClass}>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Presentation</p>
-        <h2 className="mt-1 text-xl font-bold text-navy-950">Event banner</h2>
-        <div className="mt-6 space-y-2">
+      <OptionalSection eyebrow="Presentation" title="Event banner" defaultOpen={Boolean(initial?.bannerUrl || initial?.bannerStoragePath)}>
+        <div className="mt-6 space-y-2 max-md:mt-0">
           <div className="flex items-end justify-between gap-3"><div><p className="text-sm font-semibold text-navy-900">Banner image</p><p className="mt-1 text-xs font-normal text-muted">JPEG, PNG or WebP up to 8 MB. A 16:9 image works best.</p></div>{bannerReference ? <button type="button" onClick={removeBanner} disabled={busy} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-50"><Trash2 aria-hidden="true" className="size-3.5" />Remove</button> : null}</div>
           <input type="hidden" name="bannerUrl" value={bannerReference} />
           <label className="group block cursor-pointer overflow-hidden rounded-2xl border border-dashed border-mist-200 bg-mist-50 transition hover:border-teal-300 hover:bg-teal-50/40">
@@ -651,7 +690,7 @@ export function EventForm(props: Props) {
             )}
           </label>
         </div>
-      </section>
+      </OptionalSection>
 
       {errorEntries.length || (error && message) ? (
         <div ref={summaryRef} role="alert" tabIndex={-1} data-form-error-summary="true" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900 outline-none">
@@ -698,7 +737,8 @@ export function EventForm(props: Props) {
         </div>
       ) : null}
 
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap gap-3 rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-xl backdrop-blur sm:p-4 md:bottom-3">
+      {/* Create and edit are full-screen on phones (no tab bar), so the bar sits at the bottom edge. */}
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap gap-3 max-md:bottom-[calc(0.5rem+env(safe-area-inset-bottom))] rounded-2xl border border-mist-100 bg-white/95 p-3 shadow-xl backdrop-blur sm:p-4 md:bottom-3">
         <button disabled={busy} type="submit" name="status" value="draft" className="rounded-xl border border-navy-200 bg-white px-5 py-3 text-sm font-bold text-navy-900 disabled:opacity-60 enabled:hover:border-ocean-300 enabled:hover:bg-mist-50 transition-colors disabled:cursor-not-allowed">{bannerUploading ? 'Uploading banner…' : pending ? 'Saving…' : initial?.status === 'published' ? 'Unpublish to draft' : 'Save draft'}</button>
         <button disabled={busy} type="submit" name="status" value="published" className="rounded-xl bg-teal-600 px-5 py-3 text-sm font-bold text-white hover:bg-teal-700 disabled:opacity-60">{pending ? 'Saving…' : initial?.status === 'published' ? 'Save & keep published' : 'Publish event'}</button>
         {props.mode === 'edit' ? <button disabled={busy} type="button" onClick={() => setConfirmingCancel(true)} aria-expanded={confirmingCancel} className="rounded-xl border border-rose-200 px-5 py-3 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:opacity-60 sm:ml-auto">Cancel event</button> : null}

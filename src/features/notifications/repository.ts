@@ -114,6 +114,22 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
       return Boolean((rows[0] as IdRow | undefined)?.id)
     },
 
+    /**
+     * Deletes one notification, only when it belongs to `recipientId` (the signed-in member).
+     * Returns false when there is no such notification for this recipient. Event receipts keep
+     * their dedupe row, so the same event never recreates a deleted notification.
+     */
+    async deleteForRecipient(recipientId: string, notificationId: string): Promise<boolean> {
+      const rows = await queryRows(
+        `delete from public.notifications
+         where id = $1
+           and recipient_id = $2
+         returning id`,
+        [notificationId, recipientId],
+      )
+      return Boolean((rows[0] as IdRow | undefined)?.id)
+    },
+
     async markAllRead(recipientId: string): Promise<void> {
       await queryRows(
         `update public.notifications
@@ -195,3 +211,4 @@ export const listRecentNotificationsFromAurora = repository.listRecent
 export const countUnreadNotificationsFromAurora = repository.countUnread
 export const markNotificationReadInAurora = repository.markRead
 export const markAllNotificationsReadInAurora = repository.markAllRead
+export const deleteNotificationInAurora = repository.deleteForRecipient

@@ -8,6 +8,7 @@ export type ActivityTabLink = { id: string; label: string; href: string }
 /**
  * One underline tab bar for My Activities. Labels stay on one line; on narrow screens the bar
  * scrolls sideways (inside itself, never the page) and the current tab is scrolled into view.
+ * Phones (round 8) show the same links as a chip row: selected = navy-950 filled.
  */
 export function ActivityTabs({ tabs, activeId }: { tabs: readonly ActivityTabLink[]; activeId: string }) {
   const listRef = useRef<HTMLUListElement | null>(null)
@@ -23,8 +24,8 @@ export function ActivityTabs({ tabs, activeId }: { tabs: readonly ActivityTabLin
   }, [activeId])
 
   return (
-    <nav aria-label="Activity sections" className="mt-4 rounded-2xl border border-mist-100 bg-white px-1.5 shadow-[var(--shadow-card)] sm:px-2">
-      <ul ref={listRef} className="flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav aria-label="Activity sections" className="mt-4 rounded-2xl border border-mist-100 bg-white px-1.5 shadow-[var(--shadow-card)] max-md:-mx-4 max-md:mt-0 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:px-0 max-md:shadow-none sm:px-2">
+      <ul ref={listRef} className="flex overflow-x-auto [scrollbar-width:none] max-md:gap-2 max-md:px-4 max-md:py-1 [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab) => {
           const active = tab.id === activeId
           return (
@@ -32,7 +33,7 @@ export function ActivityTabs({ tabs, activeId }: { tabs: readonly ActivityTabLin
               <Link
                 href={tab.href}
                 aria-current={active ? 'page' : undefined}
-                className={`inline-flex min-h-12 cursor-pointer items-center whitespace-nowrap border-b-2 px-3 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-ocean-600 ${active ? 'border-navy-950 text-navy-950' : 'border-transparent text-muted hover:border-mist-200 hover:text-navy-950'}`}
+                className={`inline-flex min-h-12 cursor-pointer items-center whitespace-nowrap border-b-2 px-3 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-ocean-600 max-md:min-h-9 max-md:rounded-full max-md:border max-md:px-3.5 max-md:focus-visible:outline-offset-2 ${active ? 'border-navy-950 text-navy-950 max-md:bg-navy-950 max-md:text-white' : 'border-transparent text-muted hover:border-mist-200 hover:text-navy-950 max-md:border-mist-300 max-md:bg-white max-md:text-navy-900'}`}
               >
                 {tab.label}
               </Link>

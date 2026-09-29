@@ -1,12 +1,23 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import type { NetworkProfile } from '@/features/network/types'
 import { loadFeedPage } from '../actions'
 import type { FeedPage, FeedPost, PostCategory } from '../types'
+import { FeedPeopleRow, peopleRowPositions } from './feed-people-row'
 import { PostCard } from './post-card'
 
-export function FeedList({ initialPage, category }: { initialPage: FeedPage; category?: PostCategory }) {
+export function FeedList({
+  initialPage,
+  category,
+  suggestions = [],
+}: {
+  initialPage: FeedPage
+  category?: PostCategory
+  /** People you may know (the desktop rail's data), shown as a swipe row inside the phone feed. */
+  suggestions?: NetworkProfile[]
+}) {
   const [canonicalPage, setCanonicalPage] = useState(initialPage)
   const [posts, setPosts] = useState(initialPage.posts)
   const [cursor, setCursor] = useState(initialPage.nextCursor)
@@ -93,21 +104,29 @@ export function FeedList({ initialPage, category }: { initialPage: FeedPage; cat
 
   if (!posts.length) {
     return (
-      <div className="rounded-[var(--radius-card)] border border-dashed border-mist-100 bg-white px-5 py-12 text-center shadow-[var(--shadow-card)]">
-        <p className="text-lg font-semibold text-navy-950">The maritime feed is ready for its first conversation.</p>
-        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Publish a professional update above or discover relevant maritime professionals in the network.</p>
-        <div className="mt-5 flex flex-wrap justify-center gap-2">
-          <a href="#feed-composer" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">Publish an update</a>
-          <Link href="/network" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-900 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Explore Network</Link>
+      <div>
+        <div className="rounded-[var(--radius-card)] border border-dashed border-mist-100 bg-white px-5 py-12 text-center shadow-[var(--shadow-card)]">
+          <p className="text-lg font-semibold text-navy-950">The maritime feed is ready for its first conversation.</p>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Publish a professional update above or discover relevant maritime professionals in the network.</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            {/* Phones have no composer card on Home: the link opens the full-screen composer. */}
+            <Link href="/home?compose=update" className="inline-flex min-h-10 items-center rounded-full bg-ocean-700 px-4 text-sm font-semibold text-white hover:bg-ocean-800 transition-colors md:hidden">Publish an update</Link>
+            <a href="#feed-composer" className="max-md:hidden inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">Publish an update</a>
+            <Link href="/network" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-900 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Explore Network</Link>
+          </div>
         </div>
+        {suggestions.length ? <div className="-mx-4 mt-2 md:hidden"><FeedPeopleRow profiles={suggestions} /></div> : null}
       </div>
     )
   }
 
+  const peoplePositions = suggestions.length ? peopleRowPositions(posts.length) : new Set<number>()
+
   return (
-    <div className="space-y-4">
+    // Phones: posts run edge to edge with an 8px mist gap between them.
+    <div className="space-y-4 max-md:-mx-4 max-md:space-y-2 max-md:bg-mist-100">
       {freshPosts.length ? (
-        <div className="sticky top-20 z-10 flex justify-center">
+        <div className="sticky top-20 z-10 flex justify-center max-md:top-2">
           <button
             type="button"
             onClick={showFreshPosts}
@@ -117,8 +136,13 @@ export function FeedList({ initialPage, category }: { initialPage: FeedPage; cat
           </button>
         </div>
       ) : null}
-      {posts.map((post) => <PostCard key={post.id} post={post} />)}
-      {error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
+      {posts.map((post, index) => (
+        <Fragment key={post.id}>
+          <PostCard post={post} flushOnPhones />
+          {peoplePositions.has(index) ? <FeedPeopleRow profiles={suggestions} /> : null}
+        </Fragment>
+      ))}
+      {error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 max-md:mx-4">{error}</p> : null}
       {cursor ? (
         <div ref={sentinelRef} className="flex justify-center pt-1" aria-label="Load more posts">
           <button

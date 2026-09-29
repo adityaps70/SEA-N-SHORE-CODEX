@@ -7,6 +7,7 @@ import type { PublicProfile } from '../types'
 import { ProfileSection, ProfileSectionEditButton, profileFieldLabelClass } from './profile-section'
 
 const initialState: ProfileInlineActionState = {}
+const PHONE_SUMMARY_CLAMP_CHARS = 220
 
 function FieldError({ state, name }: { state: ProfileInlineActionState; name: string }) {
   const message = state.fieldErrors?.[name]?.[0]
@@ -16,6 +17,7 @@ function FieldError({ state, name }: { state: ProfileInlineActionState; name: st
 export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   async function submitAbout(previousState: ProfileInlineActionState, formData: FormData) {
     const nextState = await updateProfileAboutSection(previousState, formData)
@@ -28,6 +30,8 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
 
   const [state, formAction, pending] = useActionState(submitAbout, initialState)
   const editable = Boolean(editHref)
+  /** Long introductions show four lines and a "…more" toggle on phones. */
+  const clampOnPhones = (profile.summary?.length ?? 0) > PHONE_SUMMARY_CLAMP_CHARS || (profile.summary?.split('\n').length ?? 0) > 4
 
   if (!editable && !profile.summary && profile.skills.length === 0) return null
 
@@ -73,7 +77,19 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
       ) : (
         <>
           {profile.summary ? (
-            <p className="mt-3 whitespace-pre-line text-sm leading-7 text-ink">{profile.summary}</p>
+            <>
+              <p className={`mt-3 whitespace-pre-line text-sm leading-7 text-ink max-md:text-[15px] max-md:leading-6 ${clampOnPhones && !expanded ? 'max-md:line-clamp-4' : ''}`}>{profile.summary}</p>
+              {clampOnPhones ? (
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => setExpanded((value) => !value)}
+                  className="mt-1 min-h-11 cursor-pointer text-[15px] font-semibold text-muted hover:text-navy-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600 md:hidden"
+                >
+                  {expanded ? 'Show less' : '…more'}
+                </button>
+              ) : null}
+            </>
           ) : (
             editable ? <p className="mt-3 text-sm text-muted">Add a short professional introduction.</p> : null
           )}

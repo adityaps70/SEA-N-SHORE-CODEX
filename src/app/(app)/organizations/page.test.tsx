@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -219,6 +219,28 @@ describe('/organizations hub discovery', () => {
     expect(within(discover).getByRole('link', { name: 'Kochi Maritime Academy' })).toHaveAttribute('href', '/organizations/kochi-academy')
     expect(within(discover).getByText('1 follower')).toBeInTheDocument()
     expect(within(discover).getByRole('button', { name: 'Follow Kochi Maritime Academy' })).toBeInTheDocument()
+  })
+
+  it('on phones shows three suggestions and See more for the rest', async () => {
+    mocks.listDiscoverOrganizations.mockResolvedValue(['a', 'b', 'c', 'd', 'e'].map((id) => card({ id, slug: id, name: `Org ${id}` })))
+    render(await OrganizationsPage({ searchParams: Promise.resolve({}) }))
+    const discover = screen.getByRole('region', { name: 'Discover organizations' })
+    const items = within(discover).getAllByRole('listitem')
+    expect(items.map((item) => item.classList.contains('max-md:hidden'))).toEqual([false, false, false, true, true])
+    fireEvent.click(within(discover).getByRole('button', { name: 'See more organizations (2 more)' }))
+    expect(within(discover).getAllByRole('listitem').some((item) => item.classList.contains('max-md:hidden'))).toBe(false)
+    expect(within(discover).queryByRole('button', { name: /See more/ })).not.toBeInTheDocument()
+  })
+
+  it('on phones puts Find right after Your pages, keeps registering collapsed and hides the footer note', async () => {
+    render(await OrganizationsPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.getByRole('region', { name: 'Find your organization' })).toHaveClass('max-md:order-1')
+    const register = screen.getByRole('region', { name: 'Register a new organization' })
+    expect(register).toHaveClass('max-md:order-2')
+    // The section header gives way to the collapsed button on phones.
+    expect(within(register).getByRole('heading', { name: 'Register a new organization' }).parentElement?.parentElement).toHaveClass('max-md:hidden')
+    expect(within(register).getByRole('button', { name: 'Register a new organization' })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByText(/Verification confirms an organization is genuine/)).toHaveClass('max-md:hidden')
   })
 
   it('says so when suggestions cannot be loaded', async () => {

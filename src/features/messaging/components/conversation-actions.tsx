@@ -1,8 +1,17 @@
 'use client'
 
-import { Ellipsis, LoaderCircle, Trash2 } from 'lucide-react'
-import { useCallback, useId, useRef, useState, type KeyboardEvent } from 'react'
+import { Ban, Ellipsis, Flag, LoaderCircle, Trash2 } from 'lucide-react'
+import { useCallback, useId, useRef, useState, useTransition, type KeyboardEvent } from 'react'
+import {
+  MobileSheetBackdrop,
+  MobileSheetCancel,
+  MobileSheetGrab,
+  SHEET_MENU_ITEM_CLASS,
+  SHEET_MENU_PANEL_CLASS,
+} from '@/components/ui/mobile-sheet'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
+import { ReportContentButton } from '@/features/moderation/components/report-content-button'
+import { blockProfile } from '@/features/network/actions'
 import { deleteConversationAction } from '../actions'
 import { useModalLayer } from './use-modal-layer'
 
@@ -135,10 +144,14 @@ export function DeleteConversationDialog({
 
 const DEFAULT_TRIGGER_CLASS = 'grid size-9 shrink-0 cursor-pointer place-items-center rounded-xl border border-mist-100 bg-white text-navy-900 shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600 aria-expanded:bg-ocean-50 aria-expanded:text-ocean-800'
 
+const menuItemClass = `flex min-h-10 w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 text-left text-sm font-semibold text-red-700 transition hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${SHEET_MENU_ITEM_CLASS}`
+
 /**
  * ⋯ menu for a conversation (thread header, inbox row, compact dock chat).
- * Its only action today is "Delete conversation", which asks for confirmation
- * in the page before deleting the conversation for the viewer only.
+ * "Delete conversation" asks for confirmation in the page before deleting the
+ * conversation for the viewer only. With `safety` (the phone chat page bar) it
+ * also offers Report (the shared profile report dialog) and Block. On phones the
+ * menu is a bottom sheet; on desktop it stays a dropdown.
  */
 export function ConversationActionsMenu({
   conversationId,
@@ -148,6 +161,7 @@ export function ConversationActionsMenu({
   align = 'right',
   direction = 'down',
   className = 'relative',
+  safety,
 }: {
   conversationId: string
   otherName: string
@@ -157,9 +171,14 @@ export function ConversationActionsMenu({
   /** Open below the trigger (default) or above it, e.g. for the last inbox rows. */
   direction?: 'down' | 'up'
   className?: string
+  /** Report and Block the other participant; `onBlocked` runs after a successful block. */
+  safety?: { otherProfileId: string; onBlocked?: () => void }
 }) {
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [reporting, setReporting] = useState(false)
+  const [blockError, setBlockError] = useState('')
+  const [blocking, startBlock] = useTransition()
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const menuId = useId()
@@ -188,6 +207,26 @@ export function ConversationActionsMenu({
     setConfirming(true)
   }
 
+  function startReport() {
+    triggerRef.current?.focus({ preventScroll: true })
+    setOpen(false)
+    setReporting(true)
+  }
+
+  function block() {
+    if (!safety) return
+    setOpen(false)
+    setBlockError('')
+    startBlock(async () => {
+      const result = await blockProfile(safety.otherProfileId)
+      if (!result.ok) {
+        setBlockError(result.error)
+        return
+      }
+      safety.onBlocked?.()
+    })
+  }
+
   return (
     <div ref={rootRef} className={className}>
       <button
@@ -204,24 +243,54 @@ export function ConversationActionsMenu({
       >
         <Ellipsis aria-hidden="true" className="size-4" />
       </button>
+      {open ? <MobileSheetBackdrop onClose={close} /> : null}
       {open ? (
         <div
           ref={menuRef}
           id={menuId}
           role="menu"
           aria-label={`Conversation options for ${otherName}`}
-          className={`absolute z-50 w-56 ${direction === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} rounded-xl border border-mist-100 bg-white p-1.5 shadow-[var(--shadow-card)] ${align === 'right' ? 'right-0' : 'left-0'}`}
+          className={`absolute z-50 w-56 ${direction === 'up' ? 'bottom-full mb-1.5' : 'top-full mt-1.5'} rounded-xl border border-mist-100 bg-white p-1.5 shadow-[var(--shadow-card)] ${align === 'right' ? 'right-0' : 'left-0'} ${SHEET_MENU_PANEL_CLASS}`}
         >
+          <MobileSheetGrab />
+          {safety ? (
+            <>
+              <button type="button" role="menuitem" onClick={startReport} className={menuItemClass}>
+                <Flag aria-hidden="true" className="size-4" />
+                Report
+              </button>
+              <button type="button" role="menuitem" onClick={block} disabled={blocking} className={menuItemClass}>
+                <Ban aria-hidden="true" className="size-4" />
+                Block
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             role="menuitem"
             onClick={startDelete}
-            className="flex min-h-10 w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 text-left text-sm font-semibold text-red-700 transition hover:bg-red-50 focus-visible:bg-red-50 focus-visible:outline-none"
+            className={menuItemClass}
           >
             <Trash2 aria-hidden="true" className="size-4" />
             Delete conversation
           </button>
+          <MobileSheetCancel onClick={close} />
         </div>
+      ) : null}
+      {blockError ? (
+        <p role="alert" className="absolute right-0 top-full z-50 mt-1 w-64 rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700 shadow-sm">
+          {blockError}
+        </p>
+      ) : null}
+      {reporting && safety ? (
+        <ReportContentButton
+          targetType="profile"
+          targetId={safety.otherProfileId}
+          label={`Report ${otherName}`}
+          hideTrigger
+          defaultOpen
+          onClose={() => setReporting(false)}
+        />
       ) : null}
       <DeleteConversationDialog
         open={confirming}

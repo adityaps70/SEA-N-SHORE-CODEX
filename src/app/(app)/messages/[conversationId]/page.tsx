@@ -62,7 +62,8 @@ export default async function MessageConversationPage({
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 max-md:p-0 sm:px-6">
+      {/* Phones: the app main already has the 16px gutter, so no second padding layer. */}
       <MessageShell
         viewerId={viewer.id}
         inbox={inbox}

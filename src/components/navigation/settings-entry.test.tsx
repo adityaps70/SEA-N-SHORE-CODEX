@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/components/brand/wordmark', () => ({ Wordmark: () => <div>Sea N Shore</div> }))
@@ -29,11 +29,15 @@ describe('Settings navigation', () => {
     expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument()
   })
 
-  it('offers Settings from the phone account menu for every signed-in user', () => {
-    render(<MobileAppHeader unreadCount={0} />)
+  it('offers Settings, Help, Plans & billing and Sign out from the phone side drawer for every signed-in user', () => {
+    render(<MobileAppHeader />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
+    const drawer = screen.getByRole('dialog')
 
-    expect(screen.getByRole('menuitem', { name: /Settings/ })).toHaveAttribute('href', '/settings')
+    expect(within(drawer).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings')
+    expect(within(drawer).getByRole('link', { name: 'Help' })).toHaveAttribute('href', '/help')
+    expect(within(drawer).getByRole('link', { name: 'Plans & billing' })).toHaveAttribute('href', '/settings/billing')
+    expect(within(drawer).getByRole('button', { name: 'Sign out' })).toHaveAttribute('type', 'submit')
   })
 })

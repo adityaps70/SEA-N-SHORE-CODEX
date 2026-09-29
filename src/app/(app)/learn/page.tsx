@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   BookOpen,
   ChevronDown,
+  GraduationCap,
   Search,
 } from 'lucide-react'
 import { getAccessContext } from '@/features/access/server'
@@ -17,6 +18,10 @@ import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 
 export const metadata: Metadata = { title: 'Learn' }
+
+/** Round 8 phone chips: 32px+ tall, selected = navy-950 filled. */
+const PHONE_CHIP_CLASS = 'inline-flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-mist-300 bg-white px-3.5 text-sm font-semibold text-navy-900 transition hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
+const PHONE_CHIP_ACTIVE_CLASS = '!border-navy-950 !bg-navy-950 !text-white'
 
 const categories = [
   'Deck',
@@ -187,24 +192,47 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   const hasFilters = Boolean(category || search)
   // Keep an old ?category= link selectable even if that label is no longer in the standard list.
   const categoryOptions: readonly string[] = category && !(categories as readonly string[]).includes(category) ? [...categories, category] : categories
+  const teachHref = hasLearningStudio ? '/learn/studio' : '/learn/teach'
+  function categoryHref(value: string | null) {
+    const next = new URLSearchParams()
+    if (search) next.set('search', search)
+    if (value) next.set('category', value)
+    const query = next.toString()
+    return query ? `/learn?${query}` : '/learn'
+  }
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <section className="overflow-hidden rounded-2xl bg-navy-950 px-5 py-5 text-white shadow-md sm:px-6">
+    <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+      <nav aria-label="Learning sections" className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+        <Link href="/learn/my-learning" className={PHONE_CHIP_CLASS}>
+          <GraduationCap aria-hidden="true" className="size-4" /> My learning
+        </Link>
+        <Link href="/learn" aria-current="page" className={`${PHONE_CHIP_CLASS} ${PHONE_CHIP_ACTIVE_CLASS}`}>
+          All courses
+        </Link>
+        <Link href={teachHref} className={PHONE_CHIP_CLASS}>
+          {hasLearningStudio ? 'Studio' : 'Teach'}
+        </Link>
+      </nav>
+
+      <section className="overflow-hidden rounded-2xl bg-navy-950 px-5 py-5 text-white shadow-md max-md:py-4 sm:px-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200">
+            <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-200 max-md:hidden">
               Sea N Shore Learning
             </p>
-            <h1 className="mt-1 max-w-3xl text-2xl font-bold tracking-tight sm:text-3xl">
+            <h1 className="mt-1 max-w-3xl text-2xl font-bold tracking-tight max-md:mt-0 max-md:text-lg sm:text-3xl">
               Learn from verified maritime professionals.
             </h1>
-            <p className="mt-1.5 hidden max-w-2xl text-sm leading-6 text-white/72 sm:block">
+            <p className="mt-1.5 hidden max-w-2xl text-sm leading-6 text-white/72 md:block">
               Practical courses taught by professionals whose experience Sea N Shore has checked, and reviewed before they are published.
             </p>
           </div>
 
-          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm">
+          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm max-md:hidden">
+            <Link href="/learn/my-learning" className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/10">
+              <GraduationCap aria-hidden="true" className="size-4" /> My learning
+            </Link>
             {hasLearningStudio ? (
               <>
                 <span className="text-white/75">Build and manage your courses</span>
@@ -226,13 +254,14 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
         </div>
       </section>
 
-      <section className="mt-4 rounded-xl border border-mist-100 bg-white p-4">
+      <section className="mt-4 rounded-xl border border-mist-100 bg-white p-4 max-md:mt-3 max-md:border-0 max-md:bg-transparent max-md:p-0">
         <form action="/learn" method="get" className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search aria-hidden="true" className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <input aria-label="Search maritime courses" type="search" name="search" defaultValue={search ?? ''} placeholder="Search courses, skills, trainers or organizations" className="w-full rounded-xl border border-mist-200 bg-mist-50/60 py-3 pl-10 pr-4 text-sm font-semibold text-navy-950 outline-none transition placeholder:font-normal placeholder:text-muted focus:border-teal-400 focus:bg-white" />
+            <input aria-label="Search maritime courses" type="search" name="search" enterKeyHint="search" defaultValue={search ?? ''} placeholder="Search courses, skills, trainers or organizations" className="w-full rounded-xl border border-mist-200 bg-mist-50/60 py-3 pl-10 pr-4 text-sm font-semibold text-navy-950 outline-none transition placeholder:font-normal placeholder:text-muted focus:border-teal-400 focus:bg-white max-md:min-h-11 max-md:rounded-full max-md:bg-white max-md:py-2.5 max-md:text-[15px]" />
           </div>
-          <label className="relative sm:w-52">
+          {/* Phones pick a category from the chip row below; the (hidden) select still carries it when searching. */}
+          <label className="relative max-md:hidden sm:w-52">
             <span className="sr-only">Category</span>
             <select name="category" defaultValue={category ?? ''} className="w-full cursor-pointer appearance-none rounded-xl border border-mist-200 bg-mist-50/60 py-3 pl-4 pr-10 text-sm font-semibold text-navy-950 outline-none transition hover:border-mist-300 focus:border-teal-400 focus:bg-white">
               <option value="">All categories</option>
@@ -240,16 +269,26 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
             </select>
             <ChevronDown aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
           </label>
-          <button type="submit" className="cursor-pointer rounded-xl bg-navy-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-navy-900">Search courses</button>
-          {hasFilters ? <Link href="/learn" className="px-2 py-2 text-center text-sm font-bold text-ocean-700 hover:underline">Clear filters</Link> : null}
+          <button type="submit" className="cursor-pointer rounded-xl bg-navy-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-navy-900 max-md:sr-only">Search courses</button>
+          {hasFilters ? <Link href="/learn" className="px-2 py-2 text-center text-sm font-bold text-ocean-700 hover:underline max-md:hidden">Clear filters</Link> : null}
         </form>
+        <nav aria-label="Course categories" className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
+          <Link href={categoryHref(null)} aria-current={category ? undefined : 'page'} className={`${PHONE_CHIP_CLASS} ${category ? '' : PHONE_CHIP_ACTIVE_CLASS}`}>
+            All
+          </Link>
+          {categoryOptions.map((item) => (
+            <Link key={item} href={categoryHref(item)} aria-current={item === category ? 'page' : undefined} className={`${PHONE_CHIP_CLASS} ${item === category ? PHONE_CHIP_ACTIVE_CLASS : ''}`}>
+              {item}
+            </Link>
+          ))}
+        </nav>
       </section>
 
-      <section className="mt-7">
+      <section className="mt-7 max-md:mt-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Explore learning</p>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950">{hasFilters ? 'Courses matching your filters' : 'Published maritime courses'}</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700 max-md:hidden">Explore learning</p>
+            <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-[17px]">{hasFilters ? 'Courses matching your filters' : 'Published maritime courses'}</h2>
           </div>
           <p className="text-sm font-semibold text-muted">{courses.length} {courses.length === 1 ? 'course' : 'courses'}</p>
         </div>

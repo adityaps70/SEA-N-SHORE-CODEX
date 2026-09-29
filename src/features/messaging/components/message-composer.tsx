@@ -454,7 +454,7 @@ export function MessageComposer({
         </button>
       </div>
       <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
-        <p className="text-[11px] text-muted">Enter to send · Shift + Enter for a new line</p>
+        <p className="text-[11px] text-muted max-md:hidden">Enter to send · Shift + Enter for a new line</p>
         {composerError ? <p role="alert" className="text-right text-[11px] font-medium text-red-700">{composerError}</p> : null}
       </div>
     </form>

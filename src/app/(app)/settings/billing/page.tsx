@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { ShieldCheck } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { getAccessContext } from '@/features/access/server'
@@ -102,8 +103,10 @@ export default async function BillingSettingsPage({ searchParams }: { searchPara
   const history = view.history.length ? <BillingHistory rows={view.history} /> : null
 
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 sm:py-5">
-      <header>
+    <main className="mx-auto w-full max-w-5xl space-y-6 py-2 max-md:space-y-4 max-md:pt-0 sm:py-5">
+      <MobilePageBar backHref="/settings" title="Plan & billing" />
+      {/* Phones: the page bar is the title; your plan and its status are the first card below. */}
+      <header className="max-md:hidden">
         <p className="text-xs font-bold uppercase tracking-[0.16em] text-ocean-700">Account</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-navy-950">Membership & billing</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">

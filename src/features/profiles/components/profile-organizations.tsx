@@ -1,30 +1,30 @@
 import Link from 'next/link'
+import { Pencil } from 'lucide-react'
 import { accessRoleLabel } from '@/features/organizations/access-request-labels'
 import { organizationPageHref } from '../organization-link'
 import type { ProfileOrganization } from '../organization-link-repository'
 import { OrganizationLogo } from './organization-logo'
 import { OrganizationStatusBadge } from './organization-status-badge'
 import { ProfileSection, profileFieldLabelClass } from './profile-section'
+import { PhoneShowAll } from './profile-show-all'
 
 function OrganizationRow({ organization }: { organization: ProfileOrganization }) {
   const meta = [organization.type, organization.location].filter(Boolean).join(' · ')
   return (
-    <li className="min-w-0">
-      <Link
-        href={organizationPageHref(organization.slug)}
-        className="group flex min-w-0 items-center gap-3 rounded-2xl border border-mist-200 bg-white p-3 transition hover:border-ocean-200 hover:bg-ocean-50/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
-      >
-        <OrganizationLogo logoUrl={organization.logoUrl} size="md" />
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="min-w-0 truncate text-sm font-semibold text-navy-950 group-hover:text-ocean-700 group-hover:underline">{organization.name}</span>
-            <OrganizationStatusBadge organization={organization} size="sm" />
-          </span>
-          <span className="mt-0.5 block text-sm text-ink">{accessRoleLabel(organization.role)}</span>
-          {meta ? <span className="block truncate text-xs text-muted">{meta}</span> : null}
+    <Link
+      href={organizationPageHref(organization.slug)}
+      className="group flex min-w-0 items-center gap-3 rounded-2xl border border-mist-200 bg-white p-3 transition hover:border-ocean-200 hover:bg-ocean-50/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600"
+    >
+      <OrganizationLogo logoUrl={organization.logoUrl} size="md" />
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="min-w-0 truncate text-sm font-semibold text-navy-950 group-hover:text-ocean-700 group-hover:underline">{organization.name}</span>
+          <OrganizationStatusBadge organization={organization} size="sm" />
         </span>
-      </Link>
-    </li>
+        <span className="mt-0.5 block text-sm text-ink">{accessRoleLabel(organization.role)}</span>
+        {meta ? <span className="block truncate text-xs text-muted">{meta}</span> : null}
+      </span>
+    </Link>
   )
 }
 
@@ -33,9 +33,9 @@ function OrganizationGroup({ id, label, organizations }: { id: string; label: st
   return (
     <div className="mt-5 first-of-type:mt-4">
       <h3 id={id} className={profileFieldLabelClass}>{label}</h3>
-      <ul aria-labelledby={id} className="mt-2 grid gap-2 sm:grid-cols-2">
+      <PhoneShowAll as="ul" itemAs="li" itemClassName="min-w-0" labelledBy={id} noun="organizations" placement="inline" className="mt-2 grid gap-2 sm:grid-cols-2">
         {organizations.map((organization) => <OrganizationRow key={organization.id} organization={organization} />)}
-      </ul>
+      </PhoneShowAll>
     </div>
   )
 }
@@ -62,8 +62,9 @@ export function ProfileOrganizations({
       id="profile-organizations"
       title="Organizations"
       action={editable ? (
-        <Link href="/organizations" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 transition-colors hover:border-ocean-300 hover:bg-mist-50">
-          Manage organizations
+        <Link href="/organizations" aria-label="Manage organizations" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 transition-colors hover:border-ocean-300 hover:bg-mist-50 max-md:size-11 max-md:min-h-0 max-md:justify-center max-md:rounded-full max-md:border-transparent max-md:px-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600">
+          <Pencil aria-hidden="true" className="size-5 md:hidden" />
+          <span className="max-md:sr-only">Manage organizations</span>
         </Link>
       ) : null}
     >

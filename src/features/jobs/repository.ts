@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import type { JobApplicationCvReference } from './application-media'
+import { APPLICANT_WITHDRAWABLE_STATUSES } from './application-status'
 import type {
   JobAlert,
   JobApplication,
@@ -71,6 +72,9 @@ type ApplicationRow = QueryResultRow & {
   company_name: string
   location: string | null
   job_state?: string | null
+  company_id?: string | null
+  company_logo_path?: string | null
+  recruiter_profile_id?: string | null
   events: ApplicationEventRow[] | null
 }
 
@@ -189,6 +193,9 @@ function mapApplication(row: ApplicationRow): JobApplication {
       companyName: row.company_name,
       location: row.location,
       state: applicationJobState(row.job_state),
+      companyId: row.company_id ?? null,
+      companyLogoPath: row.company_logo_path ?? null,
+      recruiterProfileId: row.recruiter_profile_id ?? null,
     },
   }
 }
@@ -477,6 +484,9 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
          j.title,
          j.company_name,
          j.location,
+         j.company_id,
+         c.logo_path as company_logo_path,
+         j.created_by_user_id as recruiter_profile_id,
          case
            when j.deleted_at is not null then 'removed'
            when j.status = 'published' and (j.apply_until is null or j.apply_until >= current_date) then 'open'
@@ -494,6 +504,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
          ), '[]'::json) as events
        from public.job_applications a
        join public.jobs j on j.id = a.job_id
+       left join public.companies c on c.id = j.company_id
        where a.applicant_id = $1
        order by a.applied_at desc, a.id desc${limitSql}`,
       values,
@@ -560,6 +571,31 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
         coverNote,
       ],
     )
+  }
+
+  /**
+   * Withdraws the applicant's own application while it is still in an open stage. The update is
+   * scoped to the applicant and to the withdrawable statuses in one statement, so a recruiter
+   * decision made at the same moment wins and nobody can withdraw someone else's application.
+   * Returns the job id when the application was withdrawn, otherwise null.
+   */
+  async function withdrawApplication(applicationId: string, applicantId: string): Promise<{ jobId: string } | null> {
+    const rows = await queryRows(
+      `with withdrawn as (
+         update public.job_applications a
+         set status = 'withdrawn', updated_at = now()
+         where a.id = $1
+           and a.applicant_id = $2
+           and a.status::text = any($3::text[])
+         returning a.id, a.job_id, a.applicant_id
+       ), logged as (
+         insert into public.job_application_events (application_id, status, actor_id)
+         select id, 'withdrawn'::public.job_application_status, applicant_id from withdrawn
+       )
+       select job_id from withdrawn`,
+      [applicationId, applicantId, [...APPLICANT_WITHDRAWABLE_STATUSES]],
+    ) as Array<QueryResultRow & { job_id: string }>
+    return rows[0] ? { jobId: rows[0].job_id } : null
   }
 
   async function getSavedJobIds(userId: string, jobIds: string[]): Promise<string[]> {
@@ -682,6 +718,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     hasApplied,
     isMemberReady,
     createApplication,
+    withdrawApplication,
     getSavedJobIds,
     getAppliedJobIds,
     isJobSaved,

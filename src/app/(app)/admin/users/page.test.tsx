@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminUserSummary } from '@/features/admin/repository'
 
@@ -82,13 +82,14 @@ describe('/admin/users', () => {
     mocks.searchUsers.mockResolvedValue([realMember, testMember])
 
     render(await AdminUsersPage({ searchParams: Promise.resolve({}) }))
-    expect(screen.getByText('E2E Recruiter 1')).toBeInTheDocument()
+    // Desktop table row and phone card.
+    expect(screen.getAllByText('E2E Recruiter 1')).toHaveLength(2)
     expect(screen.getByRole('link', { name: 'Hide them' })).toHaveAttribute('href', '/admin/users?test=hide')
     cleanup()
 
     render(await AdminUsersPage({ searchParams: Promise.resolve({ test: 'hide', status: 'active' }) }))
     expect(screen.queryByText('E2E Recruiter 1')).not.toBeInTheDocument()
-    expect(screen.getByText('Meera Kulkarni')).toBeInTheDocument()
+    expect(screen.getAllByText('Meera Kulkarni')).toHaveLength(2)
     expect(screen.getByRole('link', { name: 'Show them' })).toHaveAttribute('href', '/admin/users?status=active')
     expect(screen.getByRole('link', { name: 'Suspended' })).toHaveAttribute('href', '/admin/users?status=suspended&test=hide')
   })
@@ -104,7 +105,31 @@ describe('/admin/users', () => {
     expect(photos).toHaveLength(1)
     expect(photos[0]).toHaveAttribute('src', 'https://media.example/profiles/u-photo/avatar-1.jpg?signed')
     expect(photos[0]).toHaveClass('rounded-full')
-    expect(screen.getByText('AR')).toBeInTheDocument()
+    expect(within(container.querySelector('tbody') as HTMLElement).getByText('AR')).toBeInTheDocument()
+  })
+
+  it('renders phones a card list (name first, role and status as label/value, actions in a "…" sheet) and keeps the table for desktop', async () => {
+    const admin: AdminUserSummary = { ...deletedRecord, id: 'u-admin', fullName: 'Prakhar Pathak', slug: 'prakhar-pathak', headline: 'Seafarer', email: 'prakhar@example.net', status: 'active', isAdministrator: true }
+    const member: AdminUserSummary = { ...deletedRecord, id: 'u-member', fullName: 'Rinki Mukharjee', slug: 'rinki', headline: 'Shore professional', email: 'rinki@example.net', status: 'suspended' }
+    mocks.searchUsers.mockResolvedValue([admin, member])
+
+    const { container } = render(await AdminUsersPage({ searchParams: Promise.resolve({}) }))
+
+    expect(container.querySelector('table')?.parentElement).toHaveClass('max-md:hidden')
+    const list = screen.getByRole('list', { name: 'User accounts' })
+    expect(list).toHaveClass('md:hidden')
+    const [first, second] = within(list).getAllByRole('listitem')
+    expect(within(first).getByRole('link', { name: 'Prakhar Pathak' })).toHaveAttribute('href', '/admin/users/u-admin')
+    expect(within(first).getByText('Seafarer · @prakhar-pathak')).toBeInTheDocument()
+    expect(within(first).getByText('Role').nextElementSibling).toHaveTextContent('Admin')
+    expect(within(first).getByText('Status').nextElementSibling).toHaveTextContent('Active')
+    expect(within(second).getByText('Role').nextElementSibling).toHaveTextContent('Member')
+    expect(within(second).getByText('Status').nextElementSibling).toHaveTextContent('Suspended')
+
+    fireEvent.click(within(first).getByRole('button', { name: 'Actions for Prakhar Pathak' }))
+    const sheet = screen.getByRole('dialog', { name: 'Prakhar Pathak' })
+    expect(within(sheet).getByRole('menuitem', { name: 'Manage user' })).toHaveAttribute('href', '/admin/users/u-admin')
+    expect(within(sheet).getByRole('menuitem', { name: 'View public profile' })).toHaveAttribute('href', '/people/prakhar-pathak')
   })
 
   it('pages through users 50 at a time and keeps the filters in the page links', async () => {

@@ -160,6 +160,18 @@ describe('/settings/billing order by ?plan', () => {
     expect(screen.getByRole('list', { name: 'Organizations you manage' })).toBeInTheDocument()
   })
 
+  it('gives phones a page bar and still shows the membership plan and its status (hidden from the phone profile page)', async () => {
+    render(await BillingSettingsPage({ searchParams: params() }))
+
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/settings')
+    expect(screen.getByRole('heading', { name: 'Membership & billing' }).closest('header')).toHaveClass('max-md:hidden')
+    const personal = document.getElementById('creator-pro') as HTMLElement
+    expect(personal).not.toBeNull()
+    expect(personal.closest('.max-md\\:hidden')).toBeNull()
+    expect(within(personal).getByText(freeCreatorView.planLabel)).toBeInTheDocument()
+    expect(within(personal).getByText(freeCreatorView.statusLabel)).toBeInTheDocument()
+  })
+
   it('without ?plan opens Creator Pro for a member with no organization and offers to create one', async () => {
     mocks.getAccessContext.mockResolvedValue(access([]))
     mocks.listUserOrganizations.mockResolvedValue([])

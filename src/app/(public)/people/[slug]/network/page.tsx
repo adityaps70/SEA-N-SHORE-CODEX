@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import { ArrowLeft, Lock } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireUser } from '@/features/auth/queries'
 import { ProfileDirectoryCard } from '@/features/profiles/components/profile-directory-card'
 import {
@@ -54,21 +55,22 @@ export default async function PersonNetworkPage({
   const firstName = firstNameOf(profile.fullName)
 
   return (
-    <main id="main-content" className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-6 sm:px-6 sm:py-10">
-      <div>
+    <main id="main-content" className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-6 max-md:gap-4 max-md:pt-4 sm:px-6 sm:py-10">
+      <MobilePageBar backHref={`/people/${profile.slug}`} title={`${profile.fullName}'s network`} className="!mb-0" />
+      <div className="max-md:-mb-4">
         <Link
           href={`/people/${profile.slug}`}
-          className="inline-flex min-h-10 items-center gap-2 rounded-xl text-sm font-semibold text-ocean-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500"
+          className="inline-flex min-h-10 items-center gap-2 rounded-xl text-sm font-semibold text-ocean-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500 max-md:hidden"
         >
           <ArrowLeft aria-hidden="true" className="size-4" />
           Back to {profile.fullName}
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-[-.025em] text-navy-950 sm:text-3xl">
+        <h1 className="mt-2 text-2xl font-semibold tracking-[-.025em] text-navy-950 max-md:sr-only sm:text-3xl">
           {profile.fullName}&apos;s network
         </h1>
       </div>
 
-      <nav aria-label="Network lists" className="flex flex-wrap gap-2">
+      <nav aria-label="Network lists" className="flex flex-wrap gap-2 max-md:-mx-4 max-md:flex-nowrap max-md:overflow-x-auto max-md:px-4">
         {PROFILE_NETWORK_LISTS.map((entry) => {
           const selected = entry === list
           const count = summary?.counts[entry]

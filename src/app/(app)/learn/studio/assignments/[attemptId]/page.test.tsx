@@ -100,9 +100,16 @@ describe('/learn/studio/assignments/[attemptId]', () => {
     expect(screen.getByText('Submit a structured inspection readiness response.')).toBeInTheDocument()
     expect(screen.getByText('Updated inspection evidence.')).toBeInTheDocument()
     expect(screen.getByText(/Attempt 2/)).toBeInTheDocument()
-    expect(screen.getByText('Previous attempts')).toBeInTheDocument()
-    expect(screen.getByText('Initial inspection evidence.')).toBeInTheDocument()
-    expect(screen.getByText('Add stronger evidence.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Previous attempts' }).closest('section')).toHaveClass('max-md:hidden')
+    // Desktop section plus the collapsed phone copy.
+    expect(screen.getAllByText('Initial inspection evidence.')).toHaveLength(2)
+    const phoneHistory = screen.getByText('Previous attempts (1)').closest('details') as HTMLElement
+    expect(phoneHistory).toHaveClass('md:hidden')
+    expect(phoneHistory).not.toHaveAttribute('open')
+    // Phones: grading comes first.
+    expect(screen.getByText('Trainer grading').closest('aside')).toHaveClass('max-md:order-first')
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/learn/studio/assignments')
+    expect(screen.getAllByText('Add stronger evidence.')).toHaveLength(2)
     expect(screen.getByTestId('assignment-grading-control')).toBeInTheDocument()
     expect(mocks.getForMentor).toHaveBeenCalledWith('mentor-user-1', attemptId)
     expect(mocks.capturedGradingProps).toEqual(expect.objectContaining({ attemptId, maxPoints: 100, passingPercentage: 70 }))

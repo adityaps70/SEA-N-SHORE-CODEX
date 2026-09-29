@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock3 } from 'lucide-react'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { learningRepository } from '@/features/learning/repository'
@@ -31,8 +32,9 @@ export default async function MentorAssignmentsPage() {
   const graded = attempts.filter((attempt) => attempt.status === 'graded')
 
   return (
-    <div className="mx-auto w-full max-w-6xl py-6 sm:px-6 lg:px-8">
-      <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">
+    <div className="mx-auto w-full max-w-6xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/learn/studio" title="Assignment grading" />
+      <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft className="size-4" aria-hidden="true" /> Learning Studio
       </Link>
       <section className="mt-5 rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-[var(--shadow-card)] sm:p-8">

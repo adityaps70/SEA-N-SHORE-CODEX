@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LearnerCourse, LearnerLesson } from '@/features/learning/learner-course-repository'
 import type { LearnerQuiz } from '@/features/learning/learner-quiz-repository'
@@ -40,9 +40,10 @@ vi.mock('@/features/learning/components/material-player', () => ({
     slug: string
     quiz: LearnerQuiz | null
     nextLessonHref?: string | null
+    phoneActions?: React.ReactNode
   }) => {
     mocks.materialPlayer(props)
-    return <div data-testid="material-player">{props.lesson.title}</div>
+    return <div data-testid="material-player">{props.lesson.title}{props.phoneActions}</div>
   },
 }))
 vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
@@ -205,6 +206,7 @@ describe('/learn/courses/[slug]/learn', () => {
       slug: course.slug,
       quiz: null,
       nextLessonHref: `/learn/courses/${course.slug}/learn?lesson=${quizLessonId}`,
+      phoneActions: expect.anything(),
     })
     expect(within(player).getByTestId('material-player')).toHaveTextContent(videoLesson.title)
     expect(mocks.getQuizForLearner).not.toHaveBeenCalled()
@@ -212,6 +214,42 @@ describe('/learn/courses/[slug]/learn', () => {
       'href',
       `/learn/courses/${course.slug}/learn?lesson=${articleId}`,
     )
+  })
+
+  it('puts the lesson first on phones and opens the curriculum from a "Curriculum n/N" sheet', async () => {
+    render(await LearnerCoursePage({
+      params: Promise.resolve({ slug: course.slug }),
+      searchParams: Promise.resolve({ lesson: articleId }),
+    }))
+
+    // Phone page bar: back to the course page with the course title; the desktop header card and nav are phone-hidden.
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', `/learn/courses/${course.slug}`)
+    expect(screen.getByRole('navigation', { name: 'Course curriculum' })).toHaveClass('max-md:hidden')
+    expect(screen.getByRole('heading', { name: course.title }).closest('header')).toHaveClass('max-md:hidden')
+    expect(screen.getByText('Lesson 1 of 3 ·')).toHaveClass('md:hidden')
+    expect(screen.getByText(/% complete · 1 of 3/)).toBeInTheDocument()
+
+    const toggle = screen.getByRole('button', { name: 'Curriculum 1/3' })
+    expect(toggle).toHaveClass('md:hidden')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(toggle)
+    const sheet = screen.getByRole('dialog', { name: 'Course curriculum' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(within(sheet).getByRole('link', { name: /Bridge readiness/i })).toHaveAttribute('href', `/learn/courses/${course.slug}/learn?lesson=${videoId}`)
+    expect(within(sheet).getByRole('link', { current: 'page' })).toHaveAttribute('href', `/learn/courses/${course.slug}/learn?lesson=${articleId}`)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    fireEvent.click(toggle)
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('link', { name: /Bridge readiness/i }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    // One "Next material" action on phones: a full-width ocean pill (the player hides its duplicate link there).
+    const next = within(screen.getByRole('navigation', { name: 'Lesson navigation' })).getByRole('link', { name: /Next material/ })
+    expect(next).toHaveClass('max-md:w-full', 'max-md:rounded-full', 'max-md:bg-ocean-700', 'bg-slate-950')
   })
 
   it('renders a selected article without signing media and keeps curriculum navigation intact', async () => {
@@ -231,6 +269,7 @@ describe('/learn/courses/[slug]/learn', () => {
       slug: course.slug,
       quiz: null,
       nextLessonHref: `/learn/courses/${course.slug}/learn?lesson=${videoId}`,
+      phoneActions: expect.anything(),
     })
   })
 
@@ -248,6 +287,7 @@ describe('/learn/courses/[slug]/learn', () => {
       slug: course.slug,
       quiz,
       nextLessonHref: null,
+      phoneActions: expect.anything(),
     })
   })
 
@@ -285,6 +325,7 @@ describe('/learn/courses/[slug]/learn', () => {
       slug: course.slug,
       quiz: null,
       nextLessonHref: null,
+      phoneActions: expect.anything(),
     })
   })
 

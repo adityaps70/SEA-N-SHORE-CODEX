@@ -188,4 +188,17 @@ describe('My Profile page', () => {
     expect(source).not.toContain('getPostsByAuthor')
     expect(source).not.toContain('ProfilePostsSection')
   })
+
+  it('on phones hides the membership card and People you may know, keeping sections in order', async () => {
+    ownProfileMocks.dgProfile = null
+    render(await OwnProfilePage())
+
+    expect(screen.getByRole('heading', { name: 'Access & goals' }).closest('section')?.parentElement).toHaveClass('max-md:hidden')
+    expect(screen.getByRole('heading', { name: 'People you may know' }).closest('aside')?.parentElement).toHaveClass('max-md:hidden')
+
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)
+    const order = ['About', 'Maritime Experience', 'Organizations', 'Experience', 'Licences & Credentials', 'DG Shipping profile']
+    expect(order.map((title) => headings.indexOf(title))).toEqual([...order.map((title) => headings.indexOf(title))].sort((a, b) => a - b))
+    expect(order.every((title) => headings.includes(title))).toBe(true)
+  })
 })

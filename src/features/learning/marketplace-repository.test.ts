@@ -154,4 +154,41 @@ describe('learning marketplace repository', () => {
     ])
   })
 
+  it('summarizes a published course for the phone page: published lessons per section, length, learners and publisher slug', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createMarketplaceRepository({
+      query: async (text: string, values?: readonly unknown[]) => {
+        seen.push({ text, values })
+        if (text.includes('learning_course_sections')) {
+          return [
+            { section_title: 'Inspection foundations', lesson_count: '5', duration_seconds: '7200' },
+            { section_title: 'Empty draft section', lesson_count: '0', duration_seconds: '0' },
+            { section_title: 'Inspection day', lesson_count: 7, duration_seconds: 14400 },
+          ]
+        }
+        return [{ learner_count: '312', publisher_kind: 'person', publisher_slug: 'maya-singh' }]
+      },
+    })
+
+    await expect(repository.getPublishedCourseOverview(courseId)).resolves.toEqual({
+      sections: [{ title: 'Inspection foundations', lessonCount: 5 }, { title: 'Inspection day', lessonCount: 7 }],
+      lessonCount: 12,
+      durationSeconds: 21600,
+      learnerCount: 312,
+      publisher: { kind: 'person', slug: 'maya-singh' },
+    })
+    const sections = seen.find((entry) => entry.text.includes('learning_course_sections'))
+    expect(sections?.values).toEqual([courseId])
+    expect(sections?.text).toContain('lesson.is_published = true')
+    expect(sections?.text).not.toContain('article_body')
+    const course = seen.find((entry) => entry.text.includes('learner_count'))
+    expect(course?.text).toContain("enrollment.status in ('active', 'completed')")
+  })
+
+  it('has no publisher link when the publisher has no public slug', async () => {
+    const repository = createMarketplaceRepository({
+      query: async (text: string) => text.includes('learning_course_sections') ? [] : [{ learner_count: 0, publisher_kind: 'organization', publisher_slug: null }],
+    })
+    await expect(repository.getPublishedCourseOverview(courseId)).resolves.toMatchObject({ lessonCount: 0, publisher: null })
+  })
 })

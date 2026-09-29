@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { BellRing, BriefcaseBusiness, Search } from 'lucide-react'
+import { BellRing, BriefcaseBusiness, ChevronRight, Search } from 'lucide-react'
 import { PremiumPageHero } from '@/components/product/premium-page-hero'
 import { JobCard } from '@/features/jobs/components/job-card'
+import { JobListRow, JobRowList } from '@/features/jobs/components/job-list-row'
 import { JobsDiscoveryControls } from '@/features/jobs/components/jobs-discovery-controls'
+import { JobsMobileToolbar } from '@/features/jobs/components/jobs-mobile-toolbar'
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { JOB_DISCOVERY_MODES } from '@/features/jobs/catalog'
 import { getJobsDiscovery } from '@/features/jobs/queries'
@@ -44,8 +46,11 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         : 'Roles ordered by the strongest advertised salary first.'
 
   return (
-    <section className="py-2 sm:py-5">
+    <section className="pb-2 pt-0 md:py-5">
+      <JobsMobileToolbar filters={filters} resultCount={items.length} />
+
       <PremiumPageHero
+        className="max-md:hidden"
         eyebrow="Sea N Shore Jobs Intelligence"
         title="Find your next sea or shore role"
         description="Every listing shows how well it matches your rank, experience, vessels and certificates."
@@ -62,27 +67,37 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         </form>
       </PremiumPageHero>
 
-      <JobsSubnav active="discover" />
+      <JobsSubnav active="discover" className="max-md:hidden" />
 
-      <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+      <div className="mt-4 flex gap-2 overflow-x-auto pb-1 max-md:hidden">
         {JOB_DISCOVERY_MODES.map((mode) => <Link key={mode.value} href={`/jobs?mode=${mode.value}`} className={filters.mode === mode.value ? 'shrink-0 rounded-full bg-navy-950 px-4 py-2 text-sm font-semibold text-white' : 'shrink-0 rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-mist-50'}>{mode.label}</Link>)}
       </div>
 
-      {!profileReady ? <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Complete your Maritime Passport for smarter recommendations.</strong> Your job search still works, but match scores become useful once rank, vessel experience and credentials are available. <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Complete profile</Link></div> : null}
+      {!profileReady ? <div className="mt-4 rounded-2xl max-md:mt-2 border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Complete your Maritime Passport for smarter recommendations.</strong> Your job search still works, but match scores become useful once rank, vessel experience and credentials are available. <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Complete profile</Link></div> : null}
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <JobsDiscoveryControls filters={filters} resultCount={items.length} />
+      <div className="mt-5 grid gap-5 max-md:mt-2 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <JobsDiscoveryControls filters={filters} resultCount={items.length} className="max-md:hidden" />
 
         <div className="min-w-0">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-navy-950">{items.length} matching opportunit{items.length === 1 ? 'y' : 'ies'}</p>
-              <p className="mt-0.5 text-xs font-semibold text-navy-700">Sort by: {sortLabel}</p>
-              <p className="mt-0.5 text-xs text-muted">{sortCaption}</p>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 max-md:mb-0 max-md:-mx-4 max-md:flex-nowrap max-md:border-t max-md:border-mist-100 max-md:bg-white max-md:px-4 max-md:pt-4">
+            <div className="min-w-0">
+              <h2 className="text-lg font-bold text-navy-950 md:hidden">{filters.mode === 'for-you' ? 'Top picks for you' : 'Jobs for you'}</h2>
+              <p className="text-sm font-semibold text-navy-950 max-md:text-[13px] max-md:font-normal max-md:text-muted">{items.length} matching opportunit{items.length === 1 ? 'y' : 'ies'}<span className="md:hidden"> · {sortLabel}</span></p>
+              <p className="mt-0.5 text-xs font-semibold text-navy-700 max-md:hidden">Sort by: {sortLabel}</p>
+              <p className="mt-0.5 text-xs text-muted max-md:hidden">{sortCaption}</p>
             </div>
-            <div className="flex items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
+            <div className="flex shrink-0 items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 max-md:min-h-11 max-md:rounded-full max-md:border-0 max-md:px-2 max-md:text-ocean-700"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
           </div>
-          {items.length ? <div className="grid gap-4 xl:grid-cols-2">{items.map(({ job, match, isSaved, alreadyApplied }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}</div> : (
+          {items.length ? (
+            <>
+              <div className="-mx-4 bg-white md:hidden">
+                <JobRowList label="Jobs">
+                  {items.map(({ job, match, isSaved, alreadyApplied }) => <JobListRow key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}
+                </JobRowList>
+              </div>
+              <div className="grid gap-4 max-md:hidden xl:grid-cols-2">{items.map(({ job, match, isSaved, alreadyApplied }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}</div>
+            </>
+          ) : (
             <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-12 text-center">
               <BriefcaseBusiness aria-hidden="true" className="mx-auto size-6 text-muted" />
               <p className="mt-3 font-semibold text-navy-950">{hasSearchConstraints ? 'No roles match these filters yet.' : 'No maritime roles are live yet.'}</p>
@@ -93,6 +108,11 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
               </div>
             </div>
           )}
+          <Link href="/hiring" className="-mx-4 mt-2 flex min-h-14 items-center gap-3 border-y border-mist-100 bg-white px-4 text-[15px] text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500 md:hidden">
+            <BriefcaseBusiness aria-hidden="true" className="size-5 shrink-0" />
+            <span className="min-w-0 flex-1"><strong className="font-semibold">Hiring?</strong> Post or manage jobs</span>
+            <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted" />
+          </Link>
         </div>
       </div>
     </section>

@@ -129,15 +129,16 @@ describe('premium hiring workspace contract', () => {
   it('uses one central Create entry while hiring authorization remains server-side', () => {
     const layout = source('src/app/(app)/layout.tsx')
     const desktopHeader = source('src/components/navigation/app-header.tsx')
-    const mobileHeader = source('src/components/navigation/mobile-app-header.tsx')
+    // Phones: the Post tab opens the Create sheet, whose last entry is the same /creator workspace.
+    const phoneCreateSheet = source('src/components/navigation/create-sheet.tsx')
     const repository = source('src/features/jobs/hiring-repository.ts')
 
     expect(layout).not.toContain('canStartHiring')
     // The desktop Create control is a menu whose last entry opens the central /creator workspace.
     expect(desktopHeader).toMatch(/href: '\/creator'/)
     expect(desktopHeader).toContain('Create')
-    expect(mobileHeader).toContain('href="/creator"')
-    expect(mobileHeader).toContain('Create')
+    expect(phoneCreateSheet).toContain("href: '/creator'")
+    expect(phoneCreateSheet).toContain('title="Create"')
 
     expect(repository).toContain('cm.approved_at is not null')
     expect(repository).toContain('cm.role::text = any($2::text[])')

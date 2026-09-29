@@ -125,4 +125,19 @@ describe('/plans "Get Organization Pro" goes straight to the right place', () =>
     expect(screen.getByRole('link', { name: 'Get Organization Pro' })).toHaveAttribute('href', '/settings/billing?plan=organization_pro#organization-pro')
     error.mockRestore()
   })
+
+  it('keeps phones compact: page bar, smaller title, no lead, compact cards and the verification note behind a toggle', async () => {
+    mocks.getAccessContext.mockResolvedValue(access([]))
+    mocks.listUserOrganizations.mockResolvedValue([])
+    const organization = await renderPlans()
+
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/settings/billing')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveClass('max-md:text-xl')
+    expect(screen.getByText(/Everyone can participate in the community for free/)).toHaveClass('max-md:hidden')
+    expect(organization).toHaveClass('max-md:p-4')
+    expect(screen.getByRole('heading', { level: 2, name: 'Verification and payment are separate' }).closest('section')).toHaveClass('max-md:hidden')
+    const toggle = screen.getByText('Verification and payment are separate', { selector: 'summary' }).closest('details') as HTMLElement
+    expect(toggle).toHaveClass('md:hidden')
+    expect(toggle).not.toHaveAttribute('open')
+  })
 })
