@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import { Camera, Trash2 } from 'lucide-react'
-import { useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
+import { startTransition, useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
+import { downscaleImage } from '@/lib/images/downscale-image'
 import {
   removeAvatarAction,
   removeCoverAction,
@@ -42,6 +43,17 @@ export function ProfileMediaControls({
     router.refresh()
   }, [router, state])
 
+  /**
+   * The picked photo is shrunk in the browser first (avatar: 800px long edge, cover: 1920px,
+   * WebP), then submitted to the upload action as the form's `image` field.
+   */
+  async function submitImage(picked: File) {
+    const image = await downscaleImage(picked, kind)
+    const formData = new FormData()
+    formData.set('image', image, image.name)
+    startTransition(() => formAction(formData))
+  }
+
   function removeImage() {
     if (removing) return
     setRemoveError('')
@@ -70,9 +82,10 @@ export function ProfileMediaControls({
           className="sr-only"
           onChange={(event) => {
             setRemoveError('')
-            if (event.currentTarget.files?.length) {
+            const picked = event.currentTarget.files?.[0]
+            if (picked) {
               setRemoved(false)
-              event.currentTarget.form?.requestSubmit()
+              void submitImage(picked)
             }
           }}
         />

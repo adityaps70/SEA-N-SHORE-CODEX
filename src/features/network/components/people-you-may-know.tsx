@@ -1,3 +1,4 @@
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { ArrowUpRight } from 'lucide-react'
 import { Card } from '@/components/ui/card'
@@ -18,17 +19,17 @@ export function PeopleYouMayKnow({ profiles }: { profiles: NetworkProfile[] }) {
       <div className="mt-3 divide-y divide-mist-100">
         {visibleProfiles.map((profile) => {
           const identityLine = profile.summary ?? profile.headline ?? ([profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional')
+          const profileInitials = (
+            <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-mist-100 text-xs font-semibold text-navy-950">
+              {initials(profile.fullName)}
+            </div>
+          )
           return (
             <article key={profile.id} className="py-3 first:pt-1 last:pb-1">
               <div className="flex items-start gap-3">
                 {profile.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
-                  <img src={profile.avatarUrl} alt={`${profile.fullName} profile`} loading="lazy" className="size-11 shrink-0 rounded-xl object-cover ring-1 ring-mist-100" />
-                ) : (
-                  <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-mist-100 text-xs font-semibold text-navy-950">
-                    {initials(profile.fullName)}
-                  </div>
-                )}
+                  <MediaImage src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={44} height={44} sizes="44px" className="size-11 shrink-0 rounded-xl object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+                ) : profileInitials}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-navy-950">{profile.fullName}</p>
                   <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted">{identityLine}</p>

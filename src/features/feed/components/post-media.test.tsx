@@ -42,7 +42,44 @@ beforeEach(() => {
 
 afterEach(() => cleanup())
 
+const BUCKET_URL = 'https://sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com/member/post/photo.jpg?X-Amz-Signature=abc'
+
 describe('PostMedia', () => {
+  it('serves media-bucket photos resized through the image optimizer, sized to the post column', () => {
+    render(<PostMedia media={{ ...imageMedia, signedUrl: BUCKET_URL }} authorName="Member A" />)
+
+    const image = screen.getByRole('img', { name: 'Portrait of a vessel deck inspection' })
+    expect(image.getAttribute('src')).toMatch(/^\/_next\/image\?url=https%3A%2F%2Fsea-n-shore-staging-310356785722-media/)
+    expect(image.getAttribute('srcset')).toContain('&w=640&q=75 640w')
+    expect(image).toHaveAttribute('sizes', '(max-width: 768px) 100vw, 640px')
+    expect(image).toHaveAttribute('loading', 'lazy')
+  })
+
+  it('loads the first photo of the lead post eagerly with high priority and later photos lazily', () => {
+    const gallery = [0, 1, 2].map((index) => ({
+      ...imageMedia,
+      storagePath: `member/post/photo-${index}.jpg`,
+      signedUrl: `https://media.example/photo-${index}.jpg`,
+      altText: `Photo ${index}`,
+      position: index,
+    }))
+    render(<PostMedia media={gallery} authorName="Member A" loading="eager" fetchPriority="high" />)
+
+    expect(screen.getByRole('img', { name: 'Photo 0' })).toHaveAttribute('loading', 'eager')
+    expect(screen.getByRole('img', { name: 'Photo 0' })).toHaveAttribute('fetchpriority', 'high')
+    expect(screen.getByRole('img', { name: 'Photo 1' })).toHaveAttribute('loading', 'lazy')
+    expect(screen.getByRole('img', { name: 'Photo 1' })).not.toHaveAttribute('fetchpriority')
+    expect(screen.getByRole('img', { name: 'Photo 2' })).toHaveAttribute('loading', 'lazy')
+  })
+
+  it('keeps photos below the first screen lazy by default', () => {
+    render(<PostMedia media={imageMedia} authorName="Member A" />)
+
+    const image = screen.getByRole('img', { name: 'Portrait of a vessel deck inspection' })
+    expect(image).toHaveAttribute('loading', 'lazy')
+    expect(image).not.toHaveAttribute('fetchpriority')
+  })
+
   it('renders portrait images at full post width with natural height and no viewport-height cap', () => {
     const { container } = render(<PostMedia media={imageMedia} authorName="Member A" />)
 

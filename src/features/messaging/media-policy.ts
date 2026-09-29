@@ -47,6 +47,12 @@ export function isVideoMessageAttachmentMime(value: string) {
   return value === 'video/mp4' || value === 'video/webm'
 }
 
+/** Photos and videos open inline in the thread; everything else (and any `?download=1`) downloads. */
+export function isInlineMessageAttachment(input: { mimeType: string; download?: boolean }) {
+  if (input.download) return false
+  return isImageMessageAttachmentMime(input.mimeType) || isVideoMessageAttachmentMime(input.mimeType)
+}
+
 function safeDisplayName(name: string) {
   const normalized = name.replace(/[\u0000-\u001f\u007f]/g, '').trim()
   return normalized.slice(0, 255)

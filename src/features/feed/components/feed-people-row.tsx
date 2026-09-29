@@ -1,4 +1,4 @@
-/* eslint-disable @next/next/no-img-element -- profile photos are short-lived signed URLs */
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { ConnectionPrimaryAction } from '@/features/network/components/connection-primary-action'
 import type { NetworkProfile } from '@/features/network/types'
@@ -48,6 +48,11 @@ export function FeedPeopleRow({ profiles }: { profiles: NetworkProfile[] }) {
       <ul className="flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-1 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {people.map((person) => {
           const role = person.rank ?? person.headline ?? 'Maritime professional'
+          const personInitials = (
+            <span aria-hidden="true" className="grid size-16 place-items-center rounded-full bg-mist-100 text-base font-semibold text-navy-950">
+              {initials(person.fullName)}
+            </span>
+          )
           return (
             <li key={person.id} className="w-40 shrink-0 snap-start">
               <article className="flex h-full flex-col items-center rounded-2xl border border-mist-200 bg-white p-3 text-center">
@@ -56,12 +61,8 @@ export function FeedPeopleRow({ profiles }: { profiles: NetworkProfile[] }) {
                   className="flex w-full flex-col items-center rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
                 >
                   {person.avatarUrl ? (
-                    <img src={person.avatarUrl} alt="" loading="lazy" className="size-16 rounded-full object-cover ring-1 ring-mist-100" />
-                  ) : (
-                    <span aria-hidden="true" className="grid size-16 place-items-center rounded-full bg-mist-100 text-base font-semibold text-navy-950">
-                      {initials(person.fullName)}
-                    </span>
-                  )}
+                    <MediaImage src={person.avatarUrl} alt="" width={64} height={64} sizes="64px" className="size-16 rounded-full object-cover ring-1 ring-mist-100" fallback={personInitials} />
+                  ) : personInitials}
                   <span className="mt-2 block w-full truncate text-sm font-semibold text-navy-950">{person.fullName}</span>
                   <span className="mt-0.5 line-clamp-2 min-h-8 w-full text-xs leading-4 text-muted">{role}</span>
                 </Link>

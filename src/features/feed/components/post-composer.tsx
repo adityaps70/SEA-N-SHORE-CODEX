@@ -1,5 +1,8 @@
 'use client'
 
+import { downscaleImage } from '@/lib/images/downscale-image'
+import { avatarSizes } from '@/lib/images/media-image-source'
+import { MediaImage } from '@/components/ui/media-image'
 import { useActionState, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { BarChart3, Check, ChevronDown, FileText, Globe, Hash, ImagePlus, MessageCircleQuestion, PencilLine, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -91,10 +94,9 @@ function mediaStatus(media: ComposerMedia) {
 
 function ProfileAvatar({ profile, size = 'size-12' }: { profile: ComposerProfile; size?: string }) {
   return (
-    <div className={`grid ${size} shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100`}>
+    <div className={`relative grid ${size} shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100`}>
       {profile.avatarUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={profile.avatarUrl} alt={`${profile.fullName}'s profile photo`} className="h-full w-full object-cover" />
+        <MediaImage src={profile.avatarUrl} alt={`${profile.fullName}'s profile photo`} fill sizes={avatarSizes(size)} className="object-cover" fallback={initials(profile.fullName)} />
       ) : initials(profile.fullName)}
     </div>
   )
@@ -102,10 +104,10 @@ function ProfileAvatar({ profile, size = 'size-12' }: { profile: ComposerProfile
 
 function OrganizationAvatar({ organization, size = 'size-12' }: { organization: PostingOrganization; size?: string }) {
   return (
-    <div className={`grid ${size} shrink-0 place-items-center overflow-hidden rounded-xl bg-navy-950 text-xs font-black text-white ring-1 ring-mist-100`}>
+    <div className={`relative grid ${size} shrink-0 place-items-center overflow-hidden rounded-xl bg-navy-950 text-xs font-black text-white ring-1 ring-mist-100`}>
       {organization.logoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- organization logos come from the signed-in first-party logo route
-        <img src={organization.logoUrl} alt={`${organization.name} logo`} className="h-full w-full bg-white object-contain p-1" />
+        // Organization logos come from the signed-in first-party logo route, so they are shown as they are.
+        <MediaImage src={organization.logoUrl} alt={`${organization.name} logo`} fill sizes={avatarSizes(size)} className="bg-white object-contain p-1" fallback={initials(organization.name)} />
       ) : initials(organization.name)}
     </div>
   )
@@ -565,9 +567,12 @@ export function PostComposer({
     }
   }
 
-  async function choosePhotoVideo(files: File[]) {
-    if (!files.length) return
+  async function choosePhotoVideo(picked: File[]) {
+    if (!picked.length) return
     setPickerHint(null)
+    // Photos are shrunk in the browser first (max 2048px long edge, WebP), so validation and the
+    // upload see the small file. Videos, GIFs and anything the browser cannot decode pass through.
+    const files = await Promise.all(picked.map((file) => downscaleImage(file, 'post')))
     const existingImages = mediaStateRef.current.length > 0 && mediaStateRef.current.every((item) => isImageMime(item.mimeType))
       ? mediaStateRef.current
       : []

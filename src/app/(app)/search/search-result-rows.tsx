@@ -1,3 +1,4 @@
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { BadgeCheck, BookOpen, Building2 } from 'lucide-react'
 import { ConnectionPrimaryAction } from '@/features/network/components/connection-primary-action'
@@ -18,15 +19,15 @@ export const PHONE_RESULT_LIST_CLASS = 'divide-y divide-mist-100 md:hidden'
 /** Person: 48px photo, name, headline and the relationship's primary action (Connect, Accept, Pending or Message). */
 export function SearchPersonRow({ profile, className = '' }: { profile: NetworkProfile; className?: string }) {
   const headline = profile.headline || [profile.rank, profile.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'
+  const profileInitials = (
+    <span className="grid size-12 place-items-center rounded-full bg-ocean-50 text-[15px] font-semibold text-ocean-800">{initials(profile.fullName)}</span>
+  )
   return (
     <li className={`flex items-center gap-3 py-3 first:pt-0 ${className}`}>
       <Link href={`/people/${profile.slug}`} className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500" aria-label={`View ${profile.fullName} profile`}>
         {profile.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
-          <img src={profile.avatarUrl} alt="" loading="lazy" className="size-12 rounded-full object-cover ring-1 ring-mist-100" />
-        ) : (
-          <span className="grid size-12 place-items-center rounded-full bg-ocean-50 text-[15px] font-semibold text-ocean-800">{initials(profile.fullName)}</span>
-        )}
+          <MediaImage src={profile.avatarUrl} alt="" width={48} height={48} sizes="48px" className="size-12 rounded-full object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+        ) : profileInitials}
       </Link>
       <div className="min-w-0 flex-1">
         <Link href={`/people/${profile.slug}`} className="block truncate text-[15px] font-semibold text-navy-950 hover:underline">

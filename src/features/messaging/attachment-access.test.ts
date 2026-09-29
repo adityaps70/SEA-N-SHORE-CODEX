@@ -45,6 +45,7 @@ describe('message attachment access', () => {
     await expect(resolve({ messageId: MESSAGE_ID, download: false })).resolves.toEqual({
       ok: true,
       url: 'https://bucket.example/signed?X-Amz-Expires=300',
+      inline: true,
     })
     expect(deps.findMessageForParticipant).toHaveBeenCalledWith(VIEWER_ID, MESSAGE_ID)
     expect(deps.createReadUrl).toHaveBeenCalledWith({
@@ -57,8 +58,17 @@ describe('message attachment access', () => {
 
   it('passes the download flag through so files are served as attachments', async () => {
     const { resolve, deps } = makeAccess()
-    await resolve({ messageId: MESSAGE_ID, download: true })
+    await expect(resolve({ messageId: MESSAGE_ID, download: true })).resolves.toMatchObject({ ok: true, inline: false })
     expect(deps.createReadUrl).toHaveBeenCalledWith(expect.objectContaining({ download: true }))
+  })
+
+  it('reports non-media attachments as not inline even without the download flag', async () => {
+    const { resolve } = makeAccess(row({
+      attachment_storage_path: `messages/${SENDER_ID}/${CONVERSATION_ID}/${OBJECT_ID}.pdf`,
+      attachment_name: 'coc.pdf',
+      attachment_mime_type: 'application/pdf',
+    }))
+    await expect(resolve({ messageId: MESSAGE_ID, download: false })).resolves.toMatchObject({ ok: true, inline: false })
   })
 
   it('requires a signed-in member', async () => {

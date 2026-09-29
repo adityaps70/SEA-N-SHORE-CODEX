@@ -103,9 +103,9 @@ describe('message attachment verification', () => {
     expect(storage.headMediaObject).not.toHaveBeenCalled()
   })
 
-  it('signs a short-lived read URL that pins type and disposition', async () => {
+  it('signs inline photos on the cache window and pins type and disposition', async () => {
     storage.createMediaDownloadUrl.mockResolvedValue('https://signed.example/file')
-    const { createMessageAttachmentReadUrl, MESSAGE_ATTACHMENT_READ_URL_SECONDS } = await import('./media')
+    const { createMessageAttachmentReadUrl } = await import('./media')
     const storagePath = `messages/${PROFILE_ID}/${CONVERSATION_ID}/${OBJECT_ID}.png`
 
     await createMessageAttachmentReadUrl({ storagePath, name: 'bridge.png', mimeType: 'image/png' })
@@ -113,18 +113,36 @@ describe('message attachment verification', () => {
       key: storagePath,
       contentType: 'image/png',
       contentDisposition: expect.stringMatching(/^inline; filename="bridge\.png"/),
-      expiresInSeconds: MESSAGE_ATTACHMENT_READ_URL_SECONDS,
+      cacheWindow: true,
     })
+
+    await createMessageAttachmentReadUrl({ storagePath: storagePath.replace('.png', '.mp4'), name: 'drill.mp4', mimeType: 'video/mp4' })
+    expect(storage.createMediaDownloadUrl).toHaveBeenLastCalledWith(expect.objectContaining({
+      contentDisposition: expect.stringMatching(/^inline; /),
+      cacheWindow: true,
+    }))
+  })
+
+  it('keeps downloads and non-media attachments on short-lived per-request URLs', async () => {
+    storage.createMediaDownloadUrl.mockResolvedValue('https://signed.example/file')
+    const { createMessageAttachmentReadUrl, MESSAGE_ATTACHMENT_READ_URL_SECONDS } = await import('./media')
+    const storagePath = `messages/${PROFILE_ID}/${CONVERSATION_ID}/${OBJECT_ID}.png`
     expect(MESSAGE_ATTACHMENT_READ_URL_SECONDS).toBeLessThanOrEqual(300)
 
     await createMessageAttachmentReadUrl({ storagePath, name: 'bridge.png', mimeType: 'image/png', download: true })
-    expect(storage.createMediaDownloadUrl).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(storage.createMediaDownloadUrl).toHaveBeenLastCalledWith({
+      key: storagePath,
+      contentType: 'image/png',
       contentDisposition: expect.stringMatching(/^attachment; /),
-    }))
+      expiresInSeconds: MESSAGE_ATTACHMENT_READ_URL_SECONDS,
+    })
 
     await createMessageAttachmentReadUrl({ storagePath: storagePath.replace('.png', '.pdf'), name: 'coc.pdf', mimeType: 'application/pdf' })
-    expect(storage.createMediaDownloadUrl).toHaveBeenLastCalledWith(expect.objectContaining({
+    expect(storage.createMediaDownloadUrl).toHaveBeenLastCalledWith({
+      key: storagePath.replace('.png', '.pdf'),
+      contentType: 'application/pdf',
       contentDisposition: expect.stringMatching(/^attachment; /),
-    }))
+      expiresInSeconds: MESSAGE_ATTACHMENT_READ_URL_SECONDS,
+    })
   })
 })

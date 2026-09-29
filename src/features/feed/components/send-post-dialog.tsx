@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { Check, RefreshCcw, Search } from 'lucide-react'
 import { useEffect, useId, useState, useTransition, type RefObject } from 'react'
@@ -178,10 +179,9 @@ export function SendPostDialog({
                             onChange={() => { setSelected(recipient); setError('') }}
                             className="size-4 shrink-0 accent-ocean-700"
                           />
-                          <span className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
+                          <span className="relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-xs font-semibold text-navy-950">
                             {recipient.avatarUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={recipient.avatarUrl} alt="" className="h-full w-full object-cover" />
+                              <MediaImage src={recipient.avatarUrl} alt="" fill sizes="40px" className="object-cover" fallback={initials(recipient.fullName)} />
                             ) : initials(recipient.fullName)}
                           </span>
                           <span className="min-w-0 flex-1">

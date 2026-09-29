@@ -1,5 +1,7 @@
 'use client'
 
+import type { PostLoadingPriority } from '../post-loading-priority'
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { Globe, MessageCircle, Plus, X } from 'lucide-react'
 import { useEffect, useRef, useState, useTransition } from 'react'
@@ -169,10 +171,16 @@ function TopCommentPreview({ postId, comment }: { postId: string; comment: FeedC
       data-testid="top-comment-preview"
       className="flex items-start gap-2.5 px-4 pb-3 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500 md:hidden"
     >
-      <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-[11px] font-semibold text-navy-950">
+      <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-[11px] font-semibold text-navy-950">
         {comment.author.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- signed profile photo URLs are short-lived
-          <img src={comment.author.avatarUrl} alt="" loading="lazy" className="h-full w-full object-cover" />
+          <MediaImage
+            src={comment.author.avatarUrl}
+            alt=""
+            fill
+            sizes="32px"
+            className="object-cover"
+            fallback={<span aria-hidden="true">{initials(comment.author.fullName)}</span>}
+          />
         ) : <span aria-hidden="true">{initials(comment.author.fullName)}</span>}
       </span>
       <span className="min-w-0 rounded-2xl bg-mist-100 px-3 py-2">
@@ -188,6 +196,7 @@ export function PostCard({
   detail = false,
   readOnly = false,
   flushOnPhones = false,
+  loadingPriority,
 }: {
   post: FeedPost
   detail?: boolean
@@ -197,6 +206,11 @@ export function PostCard({
    * borders, and "+ Follow" in the header. Profile and organization post lists keep cards.
    */
   flushOnPhones?: boolean
+  /**
+   * Set for the first posts of a list (see `postLoadingPriority`): the author photo and first
+   * image load eagerly instead of lazily; `lead` also fetches that image with high priority.
+   */
+  loadingPriority?: PostLoadingPriority
 }) {
   const [canonicalPost, setCanonicalPost] = useState(post)
   const [reaction, setReaction] = useState<PostReactionType | null>(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
@@ -406,7 +420,7 @@ export function PostCard({
         <header className="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
           {organization
             ? <OrganizationLogoLink organization={organization} className="size-11 rounded-xl" />
-            : <AuthorAvatarLink author={post.author} className="size-11 rounded-2xl text-sm" />}
+            : <AuthorAvatarLink author={post.author} className="size-11 rounded-2xl text-sm" loading={loadingPriority ? 'eager' : 'lazy'} />}
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
               <Link
@@ -488,7 +502,15 @@ export function PostCard({
                 defaultExpanded={detail}
                 className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
               />
-              {postMedia.some((item) => item.signedUrl) ? <PostMedia media={postMedia} authorName={displayName} flush={flushOnPhones} /> : null}
+              {postMedia.some((item) => item.signedUrl) ? (
+                <PostMedia
+                  media={postMedia}
+                  authorName={displayName}
+                  flush={flushOnPhones}
+                  loading={loadingPriority ? 'eager' : 'lazy'}
+                  fetchPriority={loadingPriority === 'lead' ? 'high' : undefined}
+                />
+              ) : null}
               {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
             </>
           )}

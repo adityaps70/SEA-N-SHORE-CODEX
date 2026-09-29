@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { Ban, Loader2 } from 'lucide-react'
@@ -32,14 +33,14 @@ function BlockedMemberRow({ member }: { member: BlockedMemberItem }) {
     })
   }
 
-  const avatar = member.avatarUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived signed URL
-    <img src={member.avatarUrl} alt="" loading="lazy" className="size-12 shrink-0 rounded-full object-cover ring-1 ring-mist-100" />
-  ) : (
+  const memberInitials = (
     <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950">
       {initials(member.fullName)}
     </span>
   )
+  const avatar = member.avatarUrl ? (
+    <MediaImage src={member.avatarUrl} alt="" width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={memberInitials} />
+  ) : memberInitials
 
   return (
     <li className="flex items-center gap-3 px-4 py-3 sm:px-5">

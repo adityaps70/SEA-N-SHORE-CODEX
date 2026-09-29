@@ -23,35 +23,76 @@ function getS3Client(): S3Client {
   return client
 }
 
+/**
+ * Signed read URLs are issued per clock-hour window: every call inside the same hour signs with
+ * the window's start as `X-Amz-Date`, so the same key gives the byte-identical URL for the whole
+ * hour and browsers (and Next's image optimizer) can reuse what they already downloaded. A URL is
+ * valid for two windows, so one signed at the very end of an hour still lives for a full hour.
+ */
+export const MEDIA_READ_URL_WINDOW_SECONDS = 3600
+export const MEDIA_READ_URL_EXPIRY_SECONDS = 2 * MEDIA_READ_URL_WINDOW_SECONDS
+/** What S3 sends back as Cache-Control for windowed URLs; matches the window length. */
+export const MEDIA_READ_URL_CACHE_CONTROL = 'private, max-age=3600'
+
+/** Start of the current signing window, as the presigner's `signingDate`. */
+export function mediaReadUrlSigningDate(now = Date.now()): Date {
+  const windowMs = MEDIA_READ_URL_WINDOW_SECONDS * 1000
+  return new Date(Math.floor(now / windowMs) * windowMs)
+}
+
+function windowedSigningOptions(expiresInSeconds: number) {
+  return {
+    signingDate: mediaReadUrlSigningDate(),
+    expiresIn: Math.max(MEDIA_READ_URL_EXPIRY_SECONDS, expiresInSeconds),
+  }
+}
+
+/**
+ * Read URL for a private object. From one hour upwards (the default) the URL is signed per
+ * clock-hour window and is stable for the whole hour; a caller asking for less than an hour gets a
+ * URL signed for this request only.
+ */
 export async function createMediaReadUrl(
   key: string,
-  expiresInSeconds = 3600,
+  expiresInSeconds = MEDIA_READ_URL_WINDOW_SECONDS,
 ): Promise<string> {
   const command = new GetObjectCommand({
     Bucket: getMediaBucketName(),
     Key: key,
+    ResponseCacheControl: MEDIA_READ_URL_CACHE_CONTROL,
   })
-  return getSignedUrl(getS3Client(), command, { expiresIn: expiresInSeconds })
+  if (expiresInSeconds < MEDIA_READ_URL_WINDOW_SECONDS) {
+    return getSignedUrl(getS3Client(), command, { expiresIn: expiresInSeconds })
+  }
+  return getSignedUrl(getS3Client(), command, windowedSigningOptions(expiresInSeconds))
 }
 
 /**
  * Short-lived read URL that also pins the response Content-Type and
  * Content-Disposition, so a private file is always served as its verified
  * type and with a safe file name.
+ *
+ * `cacheWindow: true` opts into the same per-hour windowed signing as
+ * `createMediaReadUrl` (stable URL, one-hour Cache-Control). It is meant for
+ * photos and videos shown inline; downloads keep the five-minute default.
  */
 export async function createMediaDownloadUrl(input: {
   key: string
   contentType: string
   contentDisposition: string
   expiresInSeconds?: number
+  cacheWindow?: boolean
 }): Promise<string> {
   const command = new GetObjectCommand({
     Bucket: getMediaBucketName(),
     Key: input.key,
     ResponseContentType: input.contentType,
     ResponseContentDisposition: input.contentDisposition,
-    ResponseCacheControl: 'private, max-age=300',
+    ResponseCacheControl: input.cacheWindow ? MEDIA_READ_URL_CACHE_CONTROL : 'private, max-age=300',
   })
+  if (input.cacheWindow) {
+    return getSignedUrl(getS3Client(), command, windowedSigningOptions(input.expiresInSeconds ?? 0))
+  }
   return getSignedUrl(getS3Client(), command, { expiresIn: input.expiresInSeconds ?? 300 })
 }
 

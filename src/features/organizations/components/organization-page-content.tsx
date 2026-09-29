@@ -1,3 +1,4 @@
+import { MediaImage } from '@/components/ui/media-image'
 import Image from 'next/image'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
@@ -129,12 +130,12 @@ export function OrganizationPeopleList({ people }: { people: OrganizationPersonV
   return (
     <ul className="grid gap-3 sm:grid-cols-2">
       {people.map((person) => {
-        const photo = person.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- short-lived signed profile photo URL
-          <img src={person.avatarUrl} alt="" loading="lazy" className="size-12 shrink-0 rounded-full object-cover ring-1 ring-mist-100" />
-        ) : (
+        const personInitials = (
           <span aria-hidden="true" className="grid size-12 shrink-0 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950">{initials(person.fullName)}</span>
         )
+        const photo = person.avatarUrl ? (
+          <MediaImage src={person.avatarUrl} alt="" width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={personInitials} />
+        ) : personInitials
         return (
           <li key={person.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-mist-100 p-3">
             {photo}

@@ -90,14 +90,48 @@ describe('AWS media storage boundary', () => {
     })
   })
 
-  it('signs media reads for 3600 seconds by default', async () => {
-    const url = await createMediaReadUrl('profile/post/image.jpg')
+  it('signs media reads per clock-hour window, valid for two hours, by default', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-29T10:42:17.000Z'))
+    try {
+      const url = await createMediaReadUrl('profile/post/image.jpg')
 
-    expect(url).toBe('https://signed.example/media')
-    expect(getSignedUrl).toHaveBeenCalledTimes(1)
-    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 3600 })
-    const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
-    expect(command.input).toMatchObject({ Bucket: mediaBucket, Key: 'profile/post/image.jpg' })
+      expect(url).toBe('https://signed.example/media')
+      expect(getSignedUrl).toHaveBeenCalledTimes(1)
+      expect(getSignedUrl.mock.calls[0]![2]).toEqual({
+        signingDate: new Date('2026-09-29T10:00:00.000Z'),
+        expiresIn: 7200,
+      })
+      const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+      expect(command.input).toEqual({
+        Bucket: mediaBucket,
+        Key: 'profile/post/image.jpg',
+        ResponseCacheControl: 'private, max-age=3600',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps honoring a longer read lifetime from the window start', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-29T10:42:17.000Z'))
+    try {
+      await createMediaReadUrl('profile/post/image.jpg', 86400)
+
+      expect(getSignedUrl.mock.calls[0]![2]).toEqual({
+        signingDate: new Date('2026-09-29T10:00:00.000Z'),
+        expiresIn: 86400,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('signs reads shorter than an hour for this request only', async () => {
+    await createMediaReadUrl('profile/post/image.jpg', 600)
+
+    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 600 })
   })
 
   it('signs direct PUT uploads for five minutes with the exact key and content type', async () => {
@@ -161,7 +195,34 @@ describe('AWS media storage boundary', () => {
       Key: 'messages/a/b/c.pdf',
       ResponseContentType: 'application/pdf',
       ResponseContentDisposition: 'attachment; filename="c.pdf"',
+      ResponseCacheControl: 'private, max-age=300',
     })
+  })
+
+  it('signs inline downloads per clock-hour window only when asked to', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-29T23:59:59.000Z'))
+    try {
+      await createMediaDownloadUrl({
+        key: 'messages/a/b/c.jpg',
+        contentType: 'image/jpeg',
+        contentDisposition: 'inline; filename="c.jpg"',
+        cacheWindow: true,
+      })
+
+      expect(getSignedUrl.mock.calls[0]![2]).toEqual({
+        signingDate: new Date('2026-09-29T23:00:00.000Z'),
+        expiresIn: 7200,
+      })
+      const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+      expect(command.input).toMatchObject({
+        Key: 'messages/a/b/c.jpg',
+        ResponseContentDisposition: 'inline; filename="c.jpg"',
+        ResponseCacheControl: 'private, max-age=3600',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('reads only the requested leading bytes of an object', async () => {

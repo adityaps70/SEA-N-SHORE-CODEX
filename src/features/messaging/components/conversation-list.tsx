@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { MailOpen, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -98,6 +99,11 @@ export function ConversationList({
               const name = item.otherName ?? 'Sea N Shore member'
               const selected = item.conversationId === activeConversationId
               const openMenuUp = index > 1 && index >= filtered.length - 1
+              const otherInitials = (
+                <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-xs font-bold text-navy-950 ring-1 ring-mist-100 max-md:size-14 max-md:rounded-full max-md:bg-ocean-50 max-md:text-base max-md:text-ocean-800 max-md:ring-0">
+                  {initials(item.otherName)}
+                </span>
+              )
               return (
                 <div key={item.conversationId} className={`group relative ${phoneFilter === 'unread' && !item.unread ? 'max-md:hidden' : ''}`}>
                 <Link
@@ -107,17 +113,16 @@ export function ConversationList({
                   className={`flex min-h-20 cursor-pointer items-start gap-3 rounded-2xl p-3 pr-12 transition md:pr-3 max-md:items-center max-md:rounded-none max-md:pl-4 max-md:pr-14 max-md:py-3 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ocean-600 ${selected ? 'bg-ocean-50 hover:bg-ocean-100/70' : 'hover:bg-mist-50'}`}
                 >
                   {item.otherAvatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-                    <img
+                    <MediaImage
                       src={item.otherAvatarUrl}
                       alt=""
+                      width={56}
+                      height={56}
+                      sizes="(max-width: 767px) 56px, 44px"
                       className="size-11 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100 max-md:size-14 max-md:rounded-full"
+                      fallback={otherInitials}
                     />
-                  ) : (
-                    <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-xs font-bold text-navy-950 ring-1 ring-mist-100 max-md:size-14 max-md:rounded-full max-md:bg-ocean-50 max-md:text-base max-md:text-ocean-800 max-md:ring-0">
-                      {initials(item.otherName)}
-                    </span>
-                  )}
+                  ) : otherInitials}
                   <span className="min-w-0 flex-1">
                     <span className="flex items-start justify-between gap-2">
                       <span className={`truncate text-sm max-md:text-base ${item.unread ? 'font-bold text-navy-950' : 'font-semibold text-navy-900'}`}>

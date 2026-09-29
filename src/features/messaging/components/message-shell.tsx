@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { MessageCircleMore } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -66,16 +67,16 @@ function ConversationPageBar({
 }) {
   const name = conversation.otherName ?? 'Sea N Shore member'
   const profileHref = messagingProfileHref(conversation.otherSlug)
+  const otherInitials = (
+    <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-ocean-50 text-xs font-bold text-ocean-800">
+      {initials(conversation.otherName)}
+    </span>
+  )
   const identity = (
     <>
       {conversation.otherAvatarUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- signed profile media URL
-        <img src={conversation.otherAvatarUrl} alt="" className="size-9 shrink-0 rounded-full object-cover ring-1 ring-mist-100" />
-      ) : (
-        <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-ocean-50 text-xs font-bold text-ocean-800">
-          {initials(conversation.otherName)}
-        </span>
-      )}
+        <MediaImage src={conversation.otherAvatarUrl} alt="" width={36} height={36} sizes="36px" loading="eager" className="size-9 shrink-0 rounded-full object-cover ring-1 ring-mist-100" fallback={otherInitials} />
+      ) : otherInitials}
       <span className="min-w-0">
         <span className="block truncate text-base font-bold leading-5 text-navy-950">{name}</span>
         {conversation.otherHeadline ? (

@@ -1,3 +1,4 @@
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import type { NetworkProfile } from '../types'
 import { FollowToggleButton } from './follow-toggle-button'
@@ -22,23 +23,26 @@ export function NetworkPersonListRow({
   kind: 'connection' | 'following' | 'follower'
 }) {
   const connectedOn = kind === 'connection' ? formatConnectedDate(profile.relationshipSince) : null
+  const profileInitials = (
+    <span className="grid size-16 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100 max-md:size-12">
+      {initials(profile.fullName)}
+    </span>
+  )
 
   return (
     <article className="flex items-center gap-4 px-5 py-4 max-md:gap-3 max-md:px-4 max-md:py-3 sm:px-6">
       <Link href={`/people/${profile.slug}`} className="shrink-0" aria-label={`View ${profile.fullName} profile photo`}>
         {profile.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
-          <img
+          <MediaImage
             src={profile.avatarUrl}
             alt={`${profile.fullName} profile`}
-            loading="lazy"
+            width={64}
+            height={64}
+            sizes="(max-width: 767px) 48px, 64px"
             className="size-16 rounded-full object-cover ring-1 ring-mist-100 max-md:size-12"
+            fallback={profileInitials}
           />
-        ) : (
-          <span className="grid size-16 place-items-center rounded-full bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100 max-md:size-12">
-            {initials(profile.fullName)}
-          </span>
-        )}
+        ) : profileInitials}
       </Link>
 
       <div className="min-w-0 flex-1">

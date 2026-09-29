@@ -1,5 +1,6 @@
 'use client'
 
+import { MediaImage } from '@/components/ui/media-image'
 import { useState } from 'react'
 import Link from 'next/link'
 import { MapPin, Ship, X } from 'lucide-react'
@@ -18,6 +19,12 @@ export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
   const maritimeContext = [profile.rank, profile.currentCompany].filter(Boolean).join(' · ')
   const secondaryContext = profile.location || profile.vesselTypes[0] || profile.skills[0] || 'Maritime professional'
 
+  const profileInitials = (
+    <div className="grid size-24 place-items-center rounded-full border-4 border-white bg-mist-100 text-lg font-semibold text-navy-950 shadow-sm ring-1 ring-mist-100 max-md:size-18 max-md:border-[3px]">
+      {initials(profile.fullName)}
+    </div>
+  )
+
   return (
     <Card data-testid="network-profile-card" className="relative flex h-full min-h-[23rem] flex-col overflow-hidden border border-mist-100 bg-white p-0 max-md:min-h-0 max-md:rounded-2xl max-md:shadow-none">
       <div className="h-24 bg-[linear-gradient(135deg,var(--navy-950),var(--ocean-700)_58%,var(--teal-500))] max-md:h-14 max-md:bg-[linear-gradient(135deg,var(--ocean-100),var(--mist-100))]" />
@@ -34,18 +41,16 @@ export function NetworkProfileCard({ profile }: { profile: NetworkProfile }) {
 
       <div className="-mt-12 flex justify-center px-5 max-md:-mt-9 max-md:px-3">
         {profile.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- profile media is a short-lived external signed URL
-          <img
+          <MediaImage
             src={profile.avatarUrl}
             alt={`${profile.fullName} profile`}
-            loading="lazy"
+            width={96}
+            height={96}
+            sizes="(max-width: 767px) 72px, 96px"
             className="size-24 rounded-full border-4 border-white object-cover shadow-sm ring-1 ring-mist-100 max-md:size-18 max-md:border-[3px]"
+            fallback={profileInitials}
           />
-        ) : (
-          <div className="grid size-24 place-items-center rounded-full border-4 border-white bg-mist-100 text-lg font-semibold text-navy-950 shadow-sm ring-1 ring-mist-100 max-md:size-18 max-md:border-[3px]">
-            {initials(profile.fullName)}
-          </div>
-        )}
+        ) : profileInitials}
       </div>
 
       <div className="flex flex-1 flex-col px-5 pb-5 pt-3 text-center max-md:px-3 max-md:pb-3 max-md:pt-2">
