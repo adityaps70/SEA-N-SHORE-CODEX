@@ -11,7 +11,7 @@ import { BUSINESS, telHref } from '@/config/business'
 import type { PlanPriceSummary } from '@/features/billing/components/plan-cards'
 import { INTERVAL_LABELS, formatRupeesShort, trialBadge, type PaidPlanCode } from '@/features/billing/plans'
 import { LANDING_LINKS } from './landing-links'
-import { LogoImage } from './landing-logos'
+import { LogoLink } from './landing-logos'
 import { GLOBAL_PARTNERS, HIRING_COMPANIES, MORE_HIRING_PARTNERS, PARENT_GROUP_LOGO, PARTNERS } from './logos'
 
 /** Logos in the phone-only partners strip (the full grid stays one tap away). */
@@ -35,7 +35,7 @@ export function PartnersSection() {
         {/* Phones: one swipeable logo strip; "See all" opens the full grid below in place (CSS :target, no JS). */}
         <ul className="pstrip swipe" aria-label="Maritime companies on Sea N Shore">
           {HIRING_COMPANIES.slice(0, PHONE_STRIP_SIZE).map((company) => (
-            <li key={company.file} className="logo-tile"><LogoImage logo={company} /></li>
+            <li key={company.file} className="logo-tile"><LogoLink logo={company} /></li>
           ))}
         </ul>
         <a className="pall-open" href="#partners-all">
@@ -46,7 +46,7 @@ export function PartnersSection() {
           <div className="parent">
             <Reveal className="pcard" delay={0}>
               <span className="eyebrow">Parent group</span>
-              <LogoImage logo={PARENT_GROUP_LOGO} />
+              <LogoLink logo={PARENT_GROUP_LOGO} />
             </Reveal>
             <Reveal className="note" delay={1}>
               <strong style={{ fontFamily: 'var(--display)', fontSize: 24, lineHeight: 1.15 }}>Run by maritime people, for maritime people.</strong>
@@ -58,7 +58,7 @@ export function PartnersSection() {
           <ul className="pgrid flex" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {PARTNERS.map((partner, index) => (
               <Reveal as="li" key={partner.file} className="ptile" delay={index}>
-                <div className="lg"><LogoImage logo={partner} /></div>
+                <div className="lg"><LogoLink logo={partner} /></div>
                 <span>{partner.role}</span>
               </Reveal>
             ))}
@@ -68,7 +68,7 @@ export function PartnersSection() {
           <ul className="pgrid g4" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {GLOBAL_PARTNERS.map((partner, index) => (
               <Reveal as="li" key={partner.file} className="ptile" delay={index}>
-                <div className="lg"><LogoImage logo={partner} /></div>
+                <div className="lg"><LogoLink logo={partner} /></div>
                 <span>Global partner</span>
               </Reveal>
             ))}
@@ -78,7 +78,7 @@ export function PartnersSection() {
           <ul className="pgrid" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {hiring.map((company, index) => (
               <Reveal as="li" key={company.file} className="ptile" delay={index}>
-                <div className="lg"><LogoImage logo={company} decorative /></div>
+                <div className="lg"><LogoLink logo={company} decorative /></div>
                 <span>{company.name}</span>
               </Reveal>
             ))}

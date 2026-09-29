@@ -241,7 +241,12 @@ describe('landing page on phones (below 768px)', () => {
     const strip = within(partners).getByRole('list', { name: 'Maritime companies on Sea N Shore' })
     expect(strip).toHaveClass('pstrip', 'swipe')
     expect(within(strip).getAllByRole('listitem').length).toBeGreaterThanOrEqual(6)
-    expect(within(strip).getByRole('img', { name: 'Wallem' })).toBeInTheDocument()
+    // A verified logo is a link to the company's website; the image itself is decorative inside it.
+    const wallem = within(strip).getByRole('link', { name: 'Visit Wallem website' })
+    expect(wallem).toHaveAttribute('href', 'https://www.wallem.com/')
+    expect(wallem).toHaveAttribute('target', '_blank')
+    expect(wallem).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(wallem.querySelector('img')).toHaveAttribute('src', '/landing/logos/c_wallem.svg')
 
     const seeAll = within(partners).getByRole('link', { name: /See all 40\+ partners/ })
     expect(seeAll).toHaveClass('pall-open')
@@ -253,7 +258,9 @@ describe('landing page on phones (below 768px)', () => {
     for (const title of ['Partners', 'Global partners', 'Companies hiring']) {
       expect(within(all).getByRole('heading', { level: 3, name: title })).toBeInTheDocument()
     }
-    expect(within(all).getByRole('img', { name: 'Beaufort Marine Services LLP' })).toBeInTheDocument()
+    expect(within(all).getByRole('link', { name: 'Visit Beaufort Marine Services LLP website' })).toHaveAttribute('href', 'https://www.beaufortmarine.in/')
+    // Logos without a verified website are plain images, never a broken link.
+    expect(all.querySelector('img[src="/landing/logos/c_jataj.webp"]')?.closest('a')).toBeNull()
     expect(within(all).getByText('Nordships Maritime')).toBeInTheDocument()
     expect(within(all).getByRole('link', { name: 'Show fewer partners' })).toHaveAttribute('href', '#partners')
   })
