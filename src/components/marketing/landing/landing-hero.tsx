@@ -1,6 +1,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
-import { Award, Mail, Smartphone, UserRoundPlus } from 'lucide-react'
+import { Award, Mail, UserRoundPlus } from 'lucide-react'
 import { GoogleMark } from '@/features/auth/components/google-mark'
 import { Enter, Parallax, ParallaxLayer, RotatingWords, ScrollDrift } from '@/components/marketing/motion'
 import { JobCardPreview, ProfileCardPreview } from './app-cards'
@@ -17,10 +17,6 @@ function SignInOptions({ googleEnabled }: { googleEnabled: boolean }) {
           Continue with Google
         </Link>
       ) : null}
-      <Link className="sbtn" href={LANDING_LINKS.phoneSignIn}>
-        <Smartphone size={20} color="#075e82" aria-hidden="true" />
-        Continue with mobile number
-      </Link>
       <Link className="sbtn primary" href={LANDING_LINKS.signIn}>
         <Mail size={20} aria-hidden="true" />
         Sign in with email

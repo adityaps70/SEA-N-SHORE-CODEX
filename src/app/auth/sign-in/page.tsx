@@ -20,7 +20,7 @@ export default async function SignInPage({
   return (
     <AuthShell>
       <OAuthErrorNotice code={oauthError} />
-      {/* Phones: Google and mobile number first, then "or" and the email form. Desktop keeps them below the form. */}
+      {/* Phones: Google first (when enabled), then "or" and the email form. Desktop keeps it below the form. */}
       <AuthForm
         mode="sign-in"
         action={signIn}

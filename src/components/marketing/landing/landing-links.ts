@@ -3,7 +3,6 @@ export const LANDING_LINKS = {
   signIn: '/auth/sign-in',
   signUp: '/auth/sign-up',
   googleSignIn: '/auth/google/start?intent=sign-in',
-  phoneSignIn: '/auth/phone?intent=sign-in',
   terms: '/terms',
   privacy: '/privacy',
   refunds: '/refunds',

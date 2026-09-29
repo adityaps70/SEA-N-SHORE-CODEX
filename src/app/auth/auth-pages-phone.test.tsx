@@ -1,7 +1,12 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ googleEnabled: true }))
+const mocks = vi.hoisted(() => ({ googleEnabled: true, redirect: vi.fn() }))
+
+vi.mock('next/navigation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/navigation')>()),
+  redirect: mocks.redirect,
+}))
 
 vi.mock('@/lib/env', () => ({
   getCognitoEnvironment: () => ({ AWS_COGNITO_GOOGLE_ENABLED: mocks.googleEnabled }),
@@ -24,6 +29,7 @@ import ForgotPasswordPage from './forgot-password/page'
 
 beforeEach(() => {
   mocks.googleEnabled = true
+  mocks.redirect.mockReset()
 })
 afterEach(() => cleanup())
 
@@ -47,13 +53,12 @@ const phoneOrder = (container: HTMLElement) => orderFor(container, 'max-md:hidde
 const desktopOrder = (container: HTMLElement) => orderFor(container, 'md:hidden')
 
 describe('/auth/sign-in on phones', () => {
-  it('puts Google and mobile number above the email form, then the form, forgot password, Sign in and Join now', async () => {
+  it('puts Google above the email form, then the form, forgot password, Sign in and Join now', async () => {
     const { container } = render(await SignInPage({ searchParams: Promise.resolve({}) }))
 
     expect(phoneOrder(container)).toEqual([
       'Sea N Shore home',
       'Continue with Google',
-      'Continue with mobile number',
       'Email',
       'Password',
       'Show password',
@@ -65,7 +70,8 @@ describe('/auth/sign-in on phones', () => {
     const above = container.querySelector('[data-auth-methods="above"]') as HTMLElement
     expect(above).toHaveClass('md:hidden')
     expect(within(above).getByRole('link', { name: /Continue with Google/ })).toHaveAttribute('href', '/auth/google/start?intent=sign-in')
-    expect(within(above).getByRole('link', { name: /Continue with mobile number/ })).toHaveAttribute('href', '/auth/phone?intent=sign-in')
+    expect(screen.queryByRole('link', { name: /Continue with mobile number/ })).not.toBeInTheDocument()
+    expect(container.querySelector('a[href^="/auth/phone"]')).toBeNull()
     expect(within(above).getByRole('separator', { name: 'or' })).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Forgot password?' }).every((link) => link.getAttribute('href') === '/auth/forgot-password')).toBe(true)
     expect(screen.getByRole('link', { name: /Join now/ })).toHaveAttribute('href', '/auth/sign-up')
@@ -78,18 +84,21 @@ describe('/auth/sign-in on phones', () => {
       'Email',
       'Password',
       'Sign in',
-      'Continue with mobile number',
       'Continue with Google',
       'Create your profile',
       'Forgot password?',
     ])
   })
 
-  it('leaves Google out on phones too when it is switched off', async () => {
+  it('shows only the email form when Google is switched off: no other methods, no "or" divider', async () => {
     mocks.googleEnabled = false
     const { container } = render(await SignInPage({ searchParams: Promise.resolve({}) }))
-    expect(phoneOrder(container).slice(1, 3)).toEqual(['Continue with mobile number', 'Email'])
+    expect(phoneOrder(container).slice(1, 3)).toEqual(['Email', 'Password'])
+    expect(desktopOrder(container).slice(1, 5)).toEqual(['Email', 'Password', 'Sign in', 'Create your profile'])
     expect(screen.queryByRole('link', { name: /Continue with Google/ })).not.toBeInTheDocument()
+    expect(container.querySelector('[data-auth-methods]')).toBeNull()
+    expect(screen.queryByRole('separator', { name: 'or' })).not.toBeInTheDocument()
+    expect(screen.queryByText('or continue with')).not.toBeInTheDocument()
   })
 
   it('uses the email keyboard and autofill for the email field', async () => {
@@ -125,12 +134,11 @@ describe('/auth/sign-in on phones', () => {
 })
 
 describe('/auth/sign-up on phones', () => {
-  it('uses the same order: Google, mobile number, then the email form', async () => {
+  it('uses the same order: Google, then the email form', async () => {
     const { container } = render(await SignUpPage({ searchParams: Promise.resolve({}) }))
     expect(phoneOrder(container)).toEqual([
       'Sea N Shore home',
       'Continue with Google',
-      'Continue with mobile number',
       'Full name',
       'Email',
       'Password',
@@ -139,24 +147,18 @@ describe('/auth/sign-up on phones', () => {
       'Sign in',
     ])
     const above = container.querySelector('[data-auth-methods="above"]') as HTMLElement
-    expect(within(above).getByRole('link', { name: /Continue with mobile number/ })).toHaveAttribute('href', '/auth/phone?intent=sign-up')
+    expect(within(above).getByRole('link', { name: /Continue with Google/ })).toHaveAttribute('href', '/auth/google/start?intent=sign-up')
+    expect(screen.queryByRole('link', { name: /Continue with mobile number/ })).not.toBeInTheDocument()
+    expect(container.querySelector('a[href^="/auth/phone"]')).toBeNull()
     expect(screen.getByLabelText('Password')).toHaveAttribute('autocomplete', 'new-password')
   })
 })
 
-describe('/auth/phone on phones', () => {
-  it('opens the phone keypad for the number and the one-time code field for the code', async () => {
-    const request = render(await PhoneAuthPage({ searchParams: Promise.resolve({ intent: 'sign-in' }) }))
-    const phone = screen.getByLabelText('Mobile number')
-    expect(phone).toHaveAttribute('type', 'tel')
-    expect(phone).toHaveAttribute('inputmode', 'tel')
-    expect(phone).toHaveAttribute('autocomplete', 'tel')
-    request.unmount()
-
-    render(await PhoneAuthPage({ searchParams: Promise.resolve({ intent: 'sign-in', step: 'confirm' }) }))
-    const code = screen.getByLabelText('Verification code')
-    expect(code).toHaveAttribute('inputmode', 'numeric')
-    expect(code).toHaveAttribute('autocomplete', 'one-time-code')
+describe('/auth/phone', () => {
+  it('no longer offers mobile-number sign-in: it sends visitors to email sign-in', () => {
+    PhoneAuthPage()
+    expect(mocks.redirect).toHaveBeenCalledTimes(1)
+    expect(mocks.redirect).toHaveBeenCalledWith('/auth/sign-in')
   })
 })
 

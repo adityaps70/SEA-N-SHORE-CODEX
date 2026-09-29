@@ -12,7 +12,6 @@ import {
   LayoutGrid,
   Lock,
   Mail,
-  Phone,
   ShieldCheck,
   Trash2,
   UserRound,
@@ -30,16 +29,8 @@ type SettingsRowItem = {
 
 type SettingsGroup = { title: string; rows: SettingsRowItem[]; note?: string }
 
-/** "+91 ••••• 44462" for the phone Settings list; other countries show only the last four digits. */
-export function maskedPhoneNumber(phoneNumber: string) {
-  const indian = /^\+91\d{5}(\d{5})$/.exec(phoneNumber)
-  if (indian) return `+91 ••••• ${indian[1]}`
-  const digits = phoneNumber.replace(/\D/g, '')
-  return digits.length >= 4 ? `•••• ${digits.slice(-4)}` : phoneNumber
-}
-
 /** Phone Settings (round 8): grouped rows with icon, label, current value and chevron. */
-export function settingsGroups(input: { planLabel: string | null; phoneNumber: string | null }): SettingsGroup[] {
+export function settingsGroups(input: { planLabel: string | null }): SettingsGroup[] {
   return [
     {
       title: 'Account',
@@ -56,7 +47,6 @@ export function settingsGroups(input: { planLabel: string | null; phoneNumber: s
     {
       title: 'Sign in & security',
       rows: [
-        { href: '#mobile-number', label: 'Mobile number', icon: Phone, value: input.phoneNumber ? maskedPhoneNumber(input.phoneNumber) : 'Add' },
         { href: '/auth/forgot-password', label: 'Password & Google sign-in', icon: Lock },
       ],
       note: 'Sensitive account actions ask you to confirm it’s you again.',
