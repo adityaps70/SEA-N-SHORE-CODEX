@@ -19,6 +19,11 @@ const mocks = vi.hoisted(() => ({
   readPdfPageCount: vi.fn(async () => 12),
   createObjectURL: vi.fn((file: File) => `blob:${file.name}`),
   revokeObjectURL: vi.fn(),
+  downscaleImage: vi.fn(async (file: File) => file),
+}))
+
+vi.mock('@/lib/images/downscale-image', () => ({
+  downscaleImage: mocks.downscaleImage,
 }))
 
 vi.mock('next/navigation', () => ({
@@ -113,6 +118,7 @@ beforeEach(() => {
   mocks.discardPendingPostMedia.mockResolvedValue({ ok: true })
   mocks.uploadPostMediaFile.mockResolvedValue(undefined)
   mocks.readPdfPageCount.mockResolvedValue(12)
+  mocks.downscaleImage.mockImplementation(async (file: File) => file)
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: mocks.createObjectURL })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: mocks.revokeObjectURL })
 })
@@ -123,6 +129,25 @@ afterEach(() => {
 })
 
 describe('PostComposer rich media', () => {
+  it('shrinks picked photos in the browser before validating and uploading them', async () => {
+    const user = userEvent.setup()
+    const original = fileWithSize('IMG_0001.jpg', 'image/jpeg', POST_IMAGE_MAX_BYTES * 3)
+    const shrunk = fileWithSize('IMG_0001.webp', 'image/webp', 180 * 1024)
+    mocks.downscaleImage.mockResolvedValueOnce(shrunk)
+    render(<PostComposer profile={profile} />)
+    await openComposer(user)
+
+    await user.upload(photoVideoInput(), original)
+
+    await waitFor(() => expect(mocks.uploadPostMediaFile).toHaveBeenCalledTimes(1))
+    expect(mocks.downscaleImage).toHaveBeenCalledWith(original, 'post')
+    expect(mocks.createPostMediaUploads).toHaveBeenCalledWith(expect.objectContaining({
+      files: [expect.objectContaining({ fileName: 'IMG_0001.webp', mimeType: 'image/webp', size: 180 * 1024 })],
+    }))
+    expect(mocks.uploadPostMediaFile.mock.calls[0]?.[0].file).toBe(shrunk)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('keeps the Sea N Shore composer UI while exposing multi-photo/video and PDF controls', async () => {
     const user = userEvent.setup()
     render(<PostComposer profile={profile} />)

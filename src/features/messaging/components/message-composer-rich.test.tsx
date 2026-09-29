@@ -9,6 +9,11 @@ const mocks = vi.hoisted(() => ({
   discardMessageAttachmentAction: vi.fn(),
   uploadMessageAttachmentFile: vi.fn(),
   sendTyping: vi.fn(() => true),
+  downscaleImage: vi.fn(async (file: File) => file),
+}))
+
+vi.mock('@/lib/images/downscale-image', () => ({
+  downscaleImage: mocks.downscaleImage,
 }))
 
 vi.mock('../actions', () => ({
@@ -155,6 +160,41 @@ describe('MessageComposer rich messaging', () => {
     expect(screen.getByRole('button', { name: 'Show recent emojis' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Show recent emojis' }))
     expect(screen.getByRole('button', { name: 'Insert 🗺️' })).toBeInTheDocument()
+  })
+
+  it('shrinks a picked photo in the browser before requesting the upload and sending the bytes', async () => {
+    const user = userEvent.setup()
+    const original = new File([new Uint8Array(9 * 1024 * 1024)], 'IMG_0001.jpg', { type: 'image/jpeg' })
+    const shrunk = new File([new Uint8Array(2048)], 'IMG_0001.webp', { type: 'image/webp' })
+    mocks.downscaleImage.mockResolvedValueOnce(shrunk)
+    const storagePath = `messages/${VIEWER_ID}/${CONVERSATION_ID}/77777777-7777-4777-8777-777777777777.webp`
+    mocks.createMessageAttachmentUploadAction.mockResolvedValueOnce({
+      ok: true,
+      upload: { storagePath, name: 'IMG_0001.webp', mimeType: 'image/webp', size: 2048, kind: 'image', uploadUrl: 'https://upload.example.test/signed' },
+    })
+    mocks.uploadMessageAttachmentFile.mockResolvedValueOnce(undefined)
+
+    const { container } = render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, original)
+
+    await waitFor(() => expect(screen.getByText('Ready to send')).toBeInTheDocument())
+    expect(mocks.downscaleImage).toHaveBeenCalledWith(original, 'message')
+    expect(mocks.createMessageAttachmentUploadAction).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      name: 'IMG_0001.webp',
+      mimeType: 'image/webp',
+      size: 2048,
+    })
+    expect(mocks.uploadMessageAttachmentFile).toHaveBeenCalledWith(expect.objectContaining({ file: shrunk }))
   })
 
   it('uploads a photo, shows a preview state, and sends it even without text', async () => {
