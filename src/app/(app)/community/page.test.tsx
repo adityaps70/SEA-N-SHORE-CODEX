@@ -22,12 +22,13 @@ import CommunityPage from './page'
 function group(overrides: Partial<CommunityGroup> = {}): CommunityGroup {
   return {
     id: 'g-engineers', slug: 'marine-engineers', name: 'Marine Engineers', description: 'Technical conversations spanning machinery and maintenance.',
-    rules: '', coverUrl: null, icon: 'Wrench', visibility: 'public', memberCount: 42, archived: false, createdBy: null, viewerMembership: null, ...overrides,
+    rules: '', coverUrl: null, iconUrl: null, icon: 'Wrench', visibility: 'public', joinPolicy: 'open', ownerOrganization: null, memberCount: 42, archived: false, createdBy: null, viewerMembership: null, ...overrides,
   }
 }
 
 const tankers = group({ id: 'g-tankers', slug: 'tanker-professionals', name: 'Tanker Professionals', icon: 'ShieldCheck', memberCount: 7, description: 'Vetting, SIRE 2.0 and cargo operations.' })
-const masters = group({ id: 'g-masters', slug: 'masters-senior-officers', name: 'Masters & Senior Officers', icon: 'UsersRound', visibility: 'private', memberCount: 3 })
+// Round 9C: the join setting (not the visibility) decides the button label; this private group needs approval.
+const masters = group({ id: 'g-masters', slug: 'masters-senior-officers', name: 'Masters & Senior Officers', icon: 'UsersRound', visibility: 'private', joinPolicy: 'approval', memberCount: 3 })
 
 afterEach(() => cleanup())
 
@@ -93,6 +94,33 @@ describe('/community directory', () => {
     expect(screen.getByRole('heading', { name: 'Groups matching “tanker”' })).toBeInTheDocument()
     expect(screen.queryByRole('list', { name: 'Your groups' })).not.toBeInTheDocument()
     expect(screen.getByText('1 group')).toBeInTheDocument()
+  })
+
+  it('always offers "Create a community" (round 9C): top right on desktop, full width on phones, pointing at /community/new', async () => {
+    render(await CommunityPage({ searchParams: Promise.resolve({}) }))
+    const create = screen.getByRole('link', { name: 'Create a community' })
+    expect(create).toHaveAttribute('href', '/community/new')
+    expect(create).toHaveClass('max-md:w-full', 'max-md:rounded-full')
+    expect(create.closest('header')).toContainElement(screen.getByRole('searchbox', { name: 'Search groups' }))
+    expect(screen.getByRole('heading', { level: 1 }).closest('header')).toHaveClass('md:justify-between')
+  })
+
+  it('tells an empty directory that members create communities with Creator Pro or Organization Pro', async () => {
+    mocks.listDirectory.mockResolvedValue([])
+    render(await CommunityPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.getByText('No groups yet. Create the first community with Creator Pro or Organization Pro.')).toBeInTheDocument()
+  })
+
+  it('labels the join button by the join setting, not the visibility, and names an owning organization', async () => {
+    mocks.listDirectory.mockResolvedValue([
+      group({ id: 'g-open-private', slug: 'open-private', name: 'Open Private', visibility: 'private', joinPolicy: 'open' }),
+      group({ id: 'g-approval-public', slug: 'approval-public', name: 'Approval Public', joinPolicy: 'approval', ownerOrganization: { id: 'c1', slug: 'harbour-minds', name: 'Harbour Minds' } }),
+    ])
+    render(await CommunityPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.getByRole('button', { name: 'Join Open Private' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Request to join Approval Public' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Harbour Minds' })).toHaveAttribute('href', '/organizations/harbour-minds')
+    expect(screen.getByText(/Public · 42 members · By/)).toBeInTheDocument()
   })
 
   it('explains an empty search', async () => {

@@ -21,6 +21,7 @@ export function FeedList({
   category,
   scope,
   suggestions = [],
+  roleBadges,
 }: {
   initialPage: FeedPage
   category?: PostCategory
@@ -28,6 +29,8 @@ export function FeedList({
   scope?: FeedListScope
   /** People you may know (the desktop rail's data), shown as a swipe row inside the phone feed. */
   suggestions?: NetworkProfile[]
+  /** Round 9C: a community's Posts tab passes its owner and moderators (by profile id) for a chip next to the author. */
+  roleBadges?: Record<string, 'Owner' | 'Moderator'>
 }) {
   const [canonicalPage, setCanonicalPage] = useState(initialPage)
   const [posts, setPosts] = useState(initialPage.posts)
@@ -149,7 +152,7 @@ export function FeedList({
       ) : null}
       {posts.map((post, index) => (
         <Fragment key={post.id}>
-          <PostCard post={post} flushOnPhones loadingPriority={postLoadingPriority(index)} />
+          <PostCard post={post} flushOnPhones loadingPriority={postLoadingPriority(index)} roleBadge={roleBadges?.[post.author.id]} />
           {peoplePositions.has(index) ? <FeedPeopleRow profiles={suggestions} /> : null}
         </Fragment>
       ))}

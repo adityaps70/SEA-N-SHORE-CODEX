@@ -1,5 +1,6 @@
 'use client'
 
+import { cn } from '@/lib/cn'
 import { avatarPx, avatarSizes } from '@/lib/images/media-image-source'
 import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
@@ -50,6 +51,17 @@ const HIDDEN_PATTERNS = [
 export function isMessagingDockHiddenPath(pathname: string) {
   return HIDDEN_PATTERNS.some((pattern) => pattern.test(pathname))
 }
+
+/** Collapsed bar and conversation list: exactly the right rail's 300px column. */
+export const DOCK_COLLAPSED_WIDTH_CLASS = 'w-[300px]'
+/** An open conversation widens leftwards over the page (LinkedIn-style), still anchored to the right edge. */
+export const DOCK_CONVERSATION_WIDTH_CLASS = 'w-[416px]'
+const DOCK_LIST_HEIGHT_CLASS = 'h-[min(36rem,calc(100vh-7rem))]'
+const DOCK_CONVERSATION_HEIGHT_CLASS = 'h-[min(42rem,calc(100vh-6rem))]'
+/** Width/height changes animate only for people who have not asked for reduced motion. */
+const DOCK_MOTION_CLASS = 'motion-safe:transition-[width,height] motion-safe:duration-200 motion-safe:ease-out'
+
+export type MessagingDockState = 'bar' | 'list' | 'conversation'
 
 function initials(name: string | null) {
   if (!name) return 'SN'
@@ -407,18 +419,35 @@ export function MessagingDock({
 
   if (hidden) return null
 
+  const dockState: MessagingDockState = !open ? 'bar' : active ? 'conversation' : 'list'
+
   return (
     // The dock sits in a container that mirrors the app shell's (max-w-7xl, px-4), right-aligned,
     // so it is exactly the right rail's 300px column and lines up with its left and right edges.
+    // An open conversation widens to 416px; the extra width grows leftwards over the page.
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] hidden md:block" data-testid="messaging-dock-anchor">
-      <div className="mx-auto flex w-full max-w-7xl justify-end px-4">
-      <div className="pointer-events-auto w-[300px]">
+      <div className="mx-auto flex w-full max-w-7xl items-end justify-end gap-3 px-4">
+      {/* Only one conversation opens at a time today. The wrapper is a flex item in this
+          right-aligned, bottom-aligned row, so extra windows (or a separate bar) could be added
+          as siblings without overlapping: they would line up leftwards like LinkedIn's. */}
+      <div
+        data-dock-state={dockState}
+        className={cn(
+          'pointer-events-auto',
+          DOCK_MOTION_CLASS,
+          dockState === 'conversation' ? DOCK_CONVERSATION_WIDTH_CLASS : DOCK_COLLAPSED_WIDTH_CLASS,
+        )}
+      >
       {open ? (
         <section
           aria-label="Messaging dock"
-          className="flex h-[min(36rem,calc(100vh-7rem))] w-full flex-col overflow-hidden rounded-t-2xl border border-b-0 border-mist-100 bg-white shadow-2xl"
+          className={cn(
+            'flex w-full flex-col overflow-hidden rounded-t-2xl border border-b-0 border-mist-100 bg-white shadow-2xl',
+            DOCK_MOTION_CLASS,
+            active ? DOCK_CONVERSATION_HEIGHT_CLASS : DOCK_LIST_HEIGHT_CLASS,
+          )}
         >
-          <header className="flex min-h-14 items-center gap-1.5 border-b border-mist-100 px-3">
+          <header className="flex min-h-14 items-center gap-1 border-b border-mist-100 px-3">
             {active ? (
               <button
                 type="button"
@@ -446,8 +475,8 @@ export function MessagingDock({
                 {avatar(active, 'dock-peer-avatar', 'size-8')}
               </Link>
             ) : active ? avatar(active, 'dock-peer-avatar', 'size-8') : null}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-navy-950">
+            <div className={cn('min-w-0 flex-1', active && 'pl-1')}>
+              <p title={title} className="truncate text-sm font-bold text-navy-950">
                 {activeProfileHref ? (
                   <Link
                     href={activeProfileHref}
@@ -458,10 +487,11 @@ export function MessagingDock({
                 ) : title}
               </p>
               {active?.otherHeadline ? (
-                <p className="truncate text-[11px] text-muted">{active.otherHeadline}</p>
+                <p title={active.otherHeadline} className="truncate text-[11px] text-muted">{active.otherHeadline}</p>
               ) : null}
             </div>
 
+            <div className="flex shrink-0 items-center gap-1">
             {!active ? (
               <button
                 type="button"
@@ -511,6 +541,7 @@ export function MessagingDock({
             >
               <X aria-hidden="true" className="size-4" />
             </button>
+            </div>
           </header>
 
           {active ? (
@@ -624,6 +655,7 @@ export function MessagingDock({
                 conversationId={active.conversationId}
                 viewerId={viewerId}
                 typingTargetProfileId={active.otherProfileId}
+                variant="dock"
                 onOptimisticMessage={addOptimistic}
                 onMessageConfirmed={confirmMessage}
                 onMessageFailed={failMessage}

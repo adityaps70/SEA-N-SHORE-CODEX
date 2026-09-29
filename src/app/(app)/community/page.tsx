@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
-import { Search } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, Search } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { GroupCard } from '@/features/community/components/group-card'
 import { communityRepository } from '@/features/community/repository'
@@ -53,24 +54,30 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
             Focused spaces where seafarers, shore professionals, trainers and students discuss real work, share lessons and build trusted relationships. Same professional identity, same feed, no noisy group chats.
           </p>
         </div>
-        <form action="/community" method="get" role="search" className="relative w-full md:w-80">
-          <label htmlFor="community-search" className="sr-only">Search groups</label>
-          <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-          <input
-            id="community-search"
-            name="q"
-            type="search"
-            defaultValue={query}
-            maxLength={100}
-            placeholder="Search groups"
-            className="min-h-11 w-full rounded-xl border border-mist-200 bg-white pl-9 pr-3 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100"
-          />
-        </form>
+        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+          <form action="/community" method="get" role="search" className="relative w-full md:w-72">
+            <label htmlFor="community-search" className="sr-only">Search groups</label>
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+            <input
+              id="community-search"
+              name="q"
+              type="search"
+              defaultValue={query}
+              maxLength={100}
+              placeholder="Search groups"
+              className="min-h-11 w-full rounded-xl border border-mist-200 bg-white pl-9 pr-3 text-sm text-ink outline-none placeholder:text-muted focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100"
+            />
+          </form>
+          {/* Round 9C: always shown; /community/new explains Creator Pro / Organization Pro when the member cannot create yet. */}
+          <Link href="/community/new" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-navy-950 px-4 text-sm font-bold text-white transition hover:bg-navy-900 max-md:w-full max-md:rounded-full">
+            <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} /> Create a community
+          </Link>
+        </div>
       </header>
 
       {!query && mine.length ? (
         <section aria-labelledby="your-groups-heading">
-          <SectionHeader id="your-groups-heading" title="Your groups" description="Groups you belong to, and requests waiting for a group admin." />
+          <SectionHeader id="your-groups-heading" title="Your groups" description="Groups you belong to, and requests waiting for a moderator." />
           <GroupGrid groups={mine} label="Your groups" />
         </section>
       ) : null}
@@ -87,7 +94,7 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
           id="all-groups-heading"
           title={query ? `Groups matching “${query}”` : 'All groups'}
           meta={<span className="text-sm text-muted">{directory.length} {directory.length === 1 ? 'group' : 'groups'}</span>}
-          description="Public groups are open to every member. Private groups need a group admin to approve your request; their posts and members are visible to members only."
+          description="Public groups can be read by every member; private groups show their posts and members to members only. Some groups let anyone join, others wait for a moderator to approve your request."
         />
         {directory.length ? (
           <div className="space-y-4 max-md:space-y-2">
@@ -101,7 +108,7 @@ export default async function CommunityPage({ searchParams }: { searchParams: Pr
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-mist-200 bg-white px-5 py-10 text-center text-sm text-muted">
-            {query ? `No groups match “${query}”. Try another word or browse all groups.` : 'No groups yet. Sea N Shore administrators create the first groups.'}
+            {query ? `No groups match “${query}”. Try another word or browse all groups.` : 'No groups yet. Create the first community with Creator Pro or Organization Pro.'}
           </div>
         )}
       </section>

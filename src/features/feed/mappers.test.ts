@@ -47,6 +47,16 @@ describe('mapFeedPost', () => {
     expect(mapped.author.currentCompany).toBeNull()
   })
 
+  it('maps the community group with its photo URL from icon_path (round 9C)', () => {
+    const groupId = '22222222-2222-4222-8222-222222222222'
+    const withPhoto = mapFeedPost(row({ group_id: groupId, post_group: { id: groupId, slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'private', icon_path: `communities/${groupId}/icon-abc.webp` } }), viewer)
+    expect(withPhoto.group).toEqual({ id: groupId, slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'private', iconUrl: `/api/community-media/${groupId}/icon?v=icon-abc.webp` })
+
+    const withoutPhoto = mapFeedPost(row({ group_id: groupId, post_group: { id: groupId, slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'public' } }), viewer)
+    expect(withoutPhoto.group).toEqual({ id: groupId, slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'public', iconUrl: null })
+    expect(mapFeedPost(row({ post_group: null }), viewer).group).toBeNull()
+  })
+
   it('maps viewer state, counts, signed media and ordered poll options', () => {
     const signed = new Map([['111/post/image.jpg', 'https://example.test/signed-image']])
     const mapped = mapFeedPost(row(), viewer, signed)

@@ -41,6 +41,8 @@ const createItems: HeaderMenuItem[] = [
   { href: '/hiring/jobs/new', label: 'Post a job', description: 'Sea or shore vacancy with structured requirements', icon: <BriefcaseBusiness className="size-4" /> },
   { href: '/events/create', label: 'Create an event', description: 'Webinar, masterclass, meetup or conference', icon: <CalendarDays className="size-4" /> },
   { href: '/learn/studio/courses/new', label: 'Create a course', description: 'Build maritime learning in Learning Studio', icon: <GraduationCap className="size-4" /> },
+  // Round 9C: the page explains Creator Pro / Organization Pro when the member cannot create yet.
+  { href: '/community/new', label: 'Create a community', description: 'Your own group, with Creator Pro or Organization Pro', icon: <UsersRound className="size-4" /> },
   { href: '/creator', label: 'All creator tools', description: 'Publishing access, verification and organization workspaces', icon: <SquarePlus className="size-4" /> },
 ]
 

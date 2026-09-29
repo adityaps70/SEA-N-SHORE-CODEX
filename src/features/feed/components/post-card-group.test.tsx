@@ -52,7 +52,7 @@ function post(overrides: Partial<FeedPost> = {}): FeedPost {
     viewerSaved: false,
     viewerOwns: false,
     viewerFollowsAuthor: false,
-    group: { id: '22222222-2222-4222-8222-222222222222', slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'public' },
+    group: { id: '22222222-2222-4222-8222-222222222222', slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'public', iconUrl: null },
     comments: [],
     ...overrides,
   }
@@ -71,6 +71,27 @@ describe('PostCard in a community group (round 9B)', () => {
     expect(link).toHaveTextContent('in Marine Engineers')
     // The label sits in the time / audience line, next to the globe.
     expect(link.parentElement).toContainElement(screen.getByRole('img', { name: 'Visible to the Sea N Shore community' }))
+  })
+
+  it('shows the community photo at 16px before "in <Group>" when the group has one (round 9C)', () => {
+    const iconUrl = '/api/community-media/22222222-2222-4222-8222-222222222222/icon?v=icon-1.webp'
+    render(<PostCard post={post({ group: { ...post().group!, iconUrl } })} />)
+    const link = screen.getByRole('link', { name: 'Posted in Marine Engineers' })
+    const photo = link.querySelector('img')
+    expect(photo).not.toBeNull()
+    expect(photo).toHaveAttribute('src', iconUrl)
+    expect(photo).toHaveAttribute('alt', '')
+    expect(photo).toHaveAttribute('width', '16')
+    expect(photo).toHaveAttribute('height', '16')
+    expect(photo).toHaveClass('size-4', 'object-cover')
+    expect(link).toHaveTextContent('in Marine Engineers')
+  })
+
+  it('shows no photo before "in <Group>" when the group has none', () => {
+    render(<PostCard post={post()} />)
+    const link = screen.getByRole('link', { name: 'Posted in Marine Engineers' })
+    expect(link.querySelector('img')).toBeNull()
+    expect(link).toHaveTextContent('in Marine Engineers')
   })
 
   it('shows no group label for open-feed posts', () => {

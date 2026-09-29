@@ -51,6 +51,14 @@ describe('GroupMembershipButton', () => {
     expect(screen.getByRole('button', { name: 'Join Cadets' })).toBeInTheDocument()
   })
 
+  it('labels the button by the join setting (round 9C): open says Join even for private groups, approval says Request to join even for public ones', () => {
+    render(<GroupMembershipButton groupId={groupId} groupName="Masters" visibility="private" joinPolicy="open" initialStatus={null} role={null} />)
+    expect(screen.getByRole('button', { name: 'Join Masters' })).toBeInTheDocument()
+    cleanup()
+    render(<GroupMembershipButton groupId={groupId} groupName="Cadets" visibility="public" joinPolicy="approval" initialStatus={null} role={null} appearance="page" />)
+    expect(screen.getByRole('button', { name: 'Request to join Cadets' })).toBeInTheDocument()
+  })
+
   it('offers Leave group on the page for members, and no leave for the owner', () => {
     render(<GroupMembershipButton groupId={groupId} groupName="Cadets" visibility="public" initialStatus="active" role="member" appearance="page" />)
     expect(screen.getByRole('button', { name: 'Leave group' })).toHaveClass('max-md:rounded-full')

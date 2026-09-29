@@ -32,6 +32,8 @@ export const CREATE_SHEET_GROUPS: CreateSheetItem[][] = [
     { href: '/hiring/jobs/new', label: 'Post a job', icon: BriefcaseBusiness },
     { href: '/events/create', label: 'Create an event', icon: CalendarPlus },
     { href: '/learn/studio/courses/new', label: 'Create a course', icon: GraduationCap },
+    // Round 9C: the page explains Creator Pro / Organization Pro when the member cannot create yet.
+    { href: '/community/new', label: 'Create a community', hint: 'Creator Pro · Organization Pro', icon: UsersRound },
     { href: '/creator', label: 'All creator tools', icon: LayoutGrid },
   ],
 ]

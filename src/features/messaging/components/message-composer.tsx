@@ -1,5 +1,6 @@
 'use client'
 
+import { cn } from '@/lib/cn'
 import { downscaleImage } from '@/lib/images/downscale-image'
 import {
   FileText,
@@ -46,15 +47,41 @@ type PendingAttachment = {
   error?: string
 }
 
+export type MessageComposerVariant = 'page' | 'dock'
+
 type MessageComposerProps = {
   conversationId: string
   viewerId: string
   typingTargetProfileId?: string | null
   replyTo?: MessagingMessageDto | null
   onCancelReply?: () => void
+  /**
+   * 'page' (default): the full /messages composer. 'dock': the compact composer inside the
+   * 416px messaging dock — one-line placeholder, textarea that grows up to ~5 lines, size-8
+   * borderless icon buttons and no hint text.
+   */
+  variant?: MessageComposerVariant
   onOptimisticMessage: (message: OptimisticMessagingMessage) => void
   onMessageConfirmed: (clientMessageId: string, message: MessagingMessageDto) => void
   onMessageFailed: (clientMessageId: string, error: string) => void
+}
+
+/** Dock textarea: 1 line minimum, ~5 lines (7.5rem at leading-5 + padding) maximum. */
+export const DOCK_TEXTAREA_MAX_HEIGHT_CLASS = 'max-h-[7.5rem]'
+
+function supportsFieldSizing() {
+  return typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content')
+}
+
+/**
+ * JS fallback for `field-sizing: content` (jsdom and older browsers): size the textarea to its
+ * content. The `max-h-*` class still caps the visible height, so only the natural height is set.
+ */
+function fitTextareaToContent(textarea: HTMLTextAreaElement | null) {
+  if (!textarea || supportsFieldSizing()) return
+  textarea.style.height = 'auto'
+  const natural = textarea.scrollHeight
+  textarea.style.height = natural > 0 ? `${natural}px` : ''
 }
 
 function optimisticReplyPreview(replyTo: MessagingMessageDto | null | undefined) {
@@ -95,6 +122,7 @@ export function MessageComposer({
   typingTargetProfileId = null,
   replyTo = null,
   onCancelReply,
+  variant = 'page',
   onOptimisticMessage,
   onMessageConfirmed,
   onMessageFailed,
@@ -105,6 +133,14 @@ export function MessageComposer({
   const [attachment, setAttachment] = useState<PendingAttachment | null>(null)
   const [composerError, setComposerError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dock = variant === 'dock'
+
+  useEffect(() => {
+    // Auto-grow fallback for the dock textarea; also shrinks it back after a send or emoji insert.
+    if (!dock) return
+    fitTextareaToContent(textareaRef.current)
+  }, [body, dock])
   const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastTypingSentAtRef = useRef(0)
 
@@ -321,9 +357,13 @@ export function MessageComposer({
 
   const attachmentReady = attachment?.status === 'ready'
   const canSend = Boolean(body.trim() || attachmentReady)
+  const iconButtonClass = dock
+    ? 'grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-ocean-700 transition hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-40'
+    : 'grid size-10 shrink-0 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-ocean-700 transition hover:border-ocean-200 hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-40'
+  const iconClass = dock ? 'size-4.5' : 'size-5'
 
   return (
-    <form onSubmit={onSubmit} className="border-t border-mist-100 bg-white p-3 sm:p-4">
+    <form onSubmit={onSubmit} className={cn('border-t border-mist-100 bg-white p-3 sm:p-4', dock && 'p-2.5 sm:p-2.5')}>
       {replyTo ? (
         <div className="mb-2 flex items-start gap-3 rounded-2xl border-l-4 border-ocean-500 bg-ocean-50 px-3 py-2.5">
           <div className="min-w-0 flex-1">
@@ -388,7 +428,13 @@ export function MessageComposer({
         </div>
       ) : null}
 
-      <div className="flex items-end gap-1 rounded-2xl border border-mist-100 bg-mist-50 p-2 transition focus-within:border-teal-500">
+      <div
+        className={cn(
+          'flex items-end gap-1 rounded-2xl border border-mist-100 bg-mist-50 p-2 transition focus-within:border-teal-500',
+          // The compact emoji popover anchors to this row so it stays inside the dock panel.
+          dock && 'relative p-1.5',
+        )}
+      >
         <input
           ref={fileInputRef}
           type="file"
@@ -403,11 +449,11 @@ export function MessageComposer({
           title="Attach photo or file"
           onClick={() => fileInputRef.current?.click()}
           disabled={attachment?.status === 'uploading'}
-          className="grid size-10 shrink-0 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-ocean-700 transition hover:border-ocean-200 hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className={iconButtonClass}
         >
           {attachment?.status === 'uploading'
-            ? <LoaderCircle aria-hidden="true" className="size-5 animate-spin" />
-            : <Paperclip aria-hidden="true" className="size-5" />}
+            ? <LoaderCircle aria-hidden="true" className={`${iconClass} animate-spin`} />
+            : <Paperclip aria-hidden="true" className={iconClass} />}
         </button>
 
         <button
@@ -416,22 +462,26 @@ export function MessageComposer({
           title="Attach photo"
           onClick={() => fileInputRef.current?.click()}
           disabled={attachment?.status === 'uploading'}
-          className="hidden size-10 shrink-0 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-ocean-700 transition hover:border-ocean-200 hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-40 sm:grid"
+          className={cn(iconButtonClass, !dock && 'hidden sm:grid')}
         >
-          <ImageIcon aria-hidden="true" className="size-5" />
+          <ImageIcon aria-hidden="true" className={iconClass} />
         </button>
 
-        <MessageEmojiPicker onSelect={(emoji) => {
-          if (!emoji) return
-          setBody((current) => {
-            const next = `${current}${emoji}`
-            noteTyping(next)
-            return next
-          })
-        }} />
+        <MessageEmojiPicker
+          compact={dock}
+          onSelect={(emoji) => {
+            if (!emoji) return
+            setBody((current) => {
+              const next = `${current}${emoji}`
+              noteTyping(next)
+              return next
+            })
+          }}
+        />
 
         <label htmlFor="message-composer" className="sr-only">Write a message</label>
         <textarea
+          ref={textareaRef}
           id="message-composer"
           aria-label="Write a message"
           value={body}
@@ -443,23 +493,31 @@ export function MessageComposer({
           onKeyDown={onKeyDown}
           rows={1}
           maxLength={5000}
-          placeholder="Message…"
-          className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm leading-5 text-navy-950 outline-none placeholder:text-muted"
+          placeholder={dock ? 'Write a message…' : 'Message…'}
+          className={cn(
+            'max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm leading-5 text-navy-950 outline-none placeholder:text-muted',
+            dock && `min-h-8 min-w-0 py-1.5 [field-sizing:content] ${DOCK_TEXTAREA_MAX_HEIGHT_CLASS}`,
+          )}
         />
         <button
           type="submit"
           aria-label="Send message"
           title={sendingCount > 0 ? 'Sending message' : 'Send message'}
           disabled={!canSend || attachment?.status === 'uploading'}
-          className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl bg-ocean-700 text-white transition hover:bg-ocean-800 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted"
+          className={cn(
+            'grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl bg-ocean-700 text-white transition hover:bg-ocean-800 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted',
+            dock && 'size-9 rounded-full',
+          )}
         >
-          <SendHorizontal aria-hidden="true" className="size-4.5" />
+          <SendHorizontal aria-hidden="true" className={dock ? 'size-4' : 'size-4.5'} />
         </button>
       </div>
-      <div className="mt-1.5 flex items-center justify-between gap-3 px-1">
-        <p className="text-[11px] text-muted max-md:hidden">Enter to send · Shift + Enter for a new line</p>
-        {composerError ? <p role="alert" className="text-right text-[11px] font-medium text-red-700">{composerError}</p> : null}
-      </div>
+      {!dock || composerError ? (
+        <div className={cn('mt-1.5 flex items-center justify-between gap-3 px-1', dock && 'mt-1 justify-end')}>
+          {!dock ? <p className="text-[11px] text-muted max-md:hidden">Enter to send · Shift + Enter for a new line</p> : null}
+          {composerError ? <p role="alert" className="text-right text-[11px] font-medium text-red-700">{composerError}</p> : null}
+        </div>
+      ) : null}
     </form>
   )
 }

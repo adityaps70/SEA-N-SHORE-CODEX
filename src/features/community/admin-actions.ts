@@ -9,6 +9,7 @@ import { communityService } from './service'
 import {
   GROUP_DESCRIPTION_MAX_LENGTH,
   GROUP_ICON_NAMES,
+  GROUP_JOIN_POLICIES,
   GROUP_NAME_MAX_LENGTH,
   GROUP_RULES_MAX_LENGTH,
   GROUP_VISIBILITIES,
@@ -21,8 +22,11 @@ const groupFieldsSchema = z.object({
   description: z.string().trim().max(GROUP_DESCRIPTION_MAX_LENGTH, 'The description is too long (2,000 characters at most).'),
   rules: z.string().trim().max(GROUP_RULES_MAX_LENGTH, 'The rules are too long (4,000 characters at most).'),
   visibility: z.enum(GROUP_VISIBILITIES, { message: 'Choose Public or Private.' }),
+  joinPolicy: z.enum(GROUP_JOIN_POLICIES, { message: 'Choose Open or Approval required.' }),
   icon: z.preprocess((value) => (typeof value === 'string' && value ? value : null), z.enum(GROUP_ICON_NAMES).nullable()),
 })
+
+const GROUP_FIELD_KEYS = ['name', 'description', 'rules', 'visibility', 'joinPolicy', 'icon']
 
 const createSchema = groupFieldsSchema.extend({
   owner: z.string().trim().min(3, 'Enter the owner’s sign-in email or profile handle.').max(320),
@@ -56,7 +60,7 @@ async function requireAdmin() {
 export async function createGroupAsAdmin(_previous: AdminGroupFormState, formData: FormData): Promise<AdminGroupFormState> {
   const admin = await requireAdmin()
   if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can create groups.' }
-  const parsed = createSchema.safeParse(readForm(formData, ['name', 'description', 'rules', 'visibility', 'icon', 'owner']))
+  const parsed = createSchema.safeParse(readForm(formData, [...GROUP_FIELD_KEYS, 'owner']))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the group details and try again.' }
   const { owner: ownerLookup, ...group } = parsed.data
   let created: { id: string; slug: string }
@@ -73,7 +77,7 @@ export async function createGroupAsAdmin(_previous: AdminGroupFormState, formDat
 export async function updateGroupAsAdmin(_previous: AdminGroupFormState, formData: FormData): Promise<AdminGroupFormState> {
   const admin = await requireAdmin()
   if (!admin) return { ok: false, error: 'Only Sea N Shore administrators can edit groups.' }
-  const parsed = updateSchema.safeParse(readForm(formData, ['groupId', 'name', 'description', 'rules', 'visibility', 'icon']))
+  const parsed = updateSchema.safeParse(readForm(formData, ['groupId', ...GROUP_FIELD_KEYS]))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the group details and try again.' }
   const { groupId, ...group } = parsed.data
   try {

@@ -3,15 +3,20 @@ import type { CommunityRepository } from './repository'
 import { CommunityServiceError, createCommunityService } from './service'
 import type { CommunityGroup, ViewerMembership } from './types'
 
+// The default platform-admin check reads the database; the service takes an injected one instead.
+vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: vi.fn(async () => false) }))
+
 const viewerId = '11111111-1111-4111-8111-111111111111'
 const adminId = '22222222-2222-4222-8222-222222222222'
 const ownerId = '55555555-5555-4555-8555-555555555555'
 const groupId = '33333333-3333-4333-8333-333333333333'
 const postId = '44444444-4444-4444-8444-444444444444'
+const siteAdminId = '66666666-6666-4666-8666-666666666666'
 
+/** Round 9C: the join setting decides how members get in; this private fixture needs approval (the round 9B default). */
 function group(overrides: Partial<CommunityGroup> = {}): CommunityGroup {
   return {
-    id: groupId, slug: 'tanker-professionals', name: 'Tanker Professionals', description: '', rules: '', coverUrl: null, icon: 'ShieldCheck',
+    id: groupId, slug: 'tanker-professionals', name: 'Tanker Professionals', description: '', rules: '', coverUrl: null, iconUrl: null, icon: 'ShieldCheck', joinPolicy: 'approval', ownerOrganization: null,
     visibility: 'private', memberCount: 4, archived: false, createdBy: ownerId, viewerMembership: null, ...overrides,
   }
 }
@@ -21,8 +26,10 @@ function repository(overrides: Partial<CommunityRepository> = {}) {
     getById: vi.fn(async () => group()),
     getMembership: vi.fn(async () => null),
     upsertJoin: vi.fn(async () => true),
+    activateMembership: vi.fn(async () => undefined),
     deleteMembership: vi.fn(async () => true),
     approveRequest: vi.fn(async () => true),
+    approveAllRequests: vi.fn(async () => [viewerId, adminId]),
     declineRequest: vi.fn(async () => true),
     removeMember: vi.fn(async () => true),
     setMemberRole: vi.fn(async () => true),
@@ -55,15 +62,39 @@ async function codeOf(promise: Promise<unknown>) {
 }
 
 describe('community service: joining and leaving', () => {
-  it('joins a public group at once without notifying anyone', async () => {
-    const repo = repository({ getById: vi.fn(async () => group({ visibility: 'public' })) })
+  it('joins an open group at once without notifying anyone', async () => {
+    const repo = repository({ getById: vi.fn(async () => group({ visibility: 'public', joinPolicy: 'open' })) })
     const result = await createCommunityService({ repository: repo }).joinGroup(viewerId, groupId)
     expect(result.status).toBe('active')
     expect(repo.upsertJoin).toHaveBeenCalledWith(groupId, viewerId, 'active')
     expect(repo.upsertNotification).not.toHaveBeenCalled()
   })
 
-  it('asks to join a private group and notifies every admin and the owner with a dedupe key', async () => {
+  it('lets the join setting decide, not the visibility (round 9C): private + open joins at once, public + approval waits', async () => {
+    const privateOpen = repository({ getById: vi.fn(async () => group({ visibility: 'private', joinPolicy: 'open' })) })
+    await expect(createCommunityService({ repository: privateOpen }).joinGroup(viewerId, groupId)).resolves.toMatchObject({ status: 'active' })
+    expect(privateOpen.upsertJoin).toHaveBeenCalledWith(groupId, viewerId, 'active')
+    expect(privateOpen.upsertNotification).not.toHaveBeenCalled()
+
+    const publicApproval = repository({ getById: vi.fn(async () => group({ visibility: 'public', joinPolicy: 'approval' })) })
+    await expect(createCommunityService({ repository: publicApproval }).joinGroup(viewerId, groupId)).resolves.toMatchObject({ status: 'pending' })
+    expect(publicApproval.upsertJoin).toHaveBeenCalledWith(groupId, viewerId, 'pending')
+    expect(publicApproval.upsertNotification).toHaveBeenCalledTimes(2)
+  })
+
+  it('lets Sea N Shore administrators into approval-required groups at once, even after being removed, with an audit event', async () => {
+    const repo = repository({ getById: vi.fn(async () => group({ viewerMembership: { role: 'member', status: 'removed' } })) })
+    const service = createCommunityService({ repository: repo, canAccessPlatformAdmin: async (userId) => userId === siteAdminId })
+    await expect(service.joinGroup(siteAdminId, groupId)).resolves.toMatchObject({ status: 'active' })
+    expect(repo.activateMembership).toHaveBeenCalledWith(groupId, siteAdminId)
+    expect(repo.upsertJoin).not.toHaveBeenCalled()
+    expect(repo.upsertNotification).not.toHaveBeenCalled()
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(siteAdminId, 'community.admin_joined', groupId, { join_policy: 'approval' })
+    // Ordinary members are still blocked after removal.
+    expect(await codeOf(service.joinGroup(viewerId, groupId))).toBe('group_join_blocked')
+  })
+
+  it('asks to join an approval-required group and notifies every moderator and the owner with a dedupe key', async () => {
     const repo = repository()
     const result = await createCommunityService({ repository: repo }).joinGroup(viewerId, groupId)
     expect(result.status).toBe('pending')
@@ -141,19 +172,118 @@ describe('community service: group administration', () => {
     expect(repo.removeMember).not.toHaveBeenCalled()
   })
 
-  it('removes members and changes roles for active members', async () => {
+  it('removes members and changes roles for active members, writing audit events', async () => {
     const repo = asAdmin({ getMembership: vi.fn(async (): Promise<ViewerMembership | null> => ({ role: 'member', status: 'active' })) })
     const service = createCommunityService({ repository: repo })
     await service.removeMember(adminId, groupId, viewerId)
     await service.setMemberRole(adminId, groupId, viewerId, 'admin')
     expect(repo.removeMember).toHaveBeenCalledWith(groupId, viewerId)
     expect(repo.setMemberRole).toHaveBeenCalledWith(groupId, viewerId, 'admin')
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(adminId, 'community.member_removed', groupId, { profile_id: viewerId, role: 'member' })
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(adminId, 'community.role_changed', groupId, { profile_id: viewerId, from: 'member', to: 'admin' })
   })
 
-  it('keeps the name when a group admin edits the description, rules, visibility and icon', async () => {
+  it('lets a moderator demote another moderator, and skips a no-op role change', async () => {
+    const repo = asAdmin({ getMembership: vi.fn(async (): Promise<ViewerMembership | null> => ({ role: 'admin', status: 'active' })) })
+    const service = createCommunityService({ repository: repo })
+    await service.setMemberRole(adminId, groupId, viewerId, 'member')
+    expect(repo.setMemberRole).toHaveBeenCalledWith(groupId, viewerId, 'member')
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(adminId, 'community.role_changed', groupId, { profile_id: viewerId, from: 'admin', to: 'member' })
+    await service.setMemberRole(adminId, groupId, viewerId, 'admin')
+    expect(repo.setMemberRole).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets the owner promote and demote too, but never their own role', async () => {
+    const repo = repository({
+      getById: vi.fn(async () => group({ viewerMembership: { role: 'owner', status: 'active' } })),
+      getMembership: vi.fn(async (): Promise<ViewerMembership | null> => ({ role: 'admin', status: 'active' })),
+    })
+    const service = createCommunityService({ repository: repo })
+    await service.setMemberRole(ownerId, groupId, adminId, 'member')
+    expect(repo.setMemberRole).toHaveBeenCalledWith(groupId, adminId, 'member')
+    expect(await codeOf(service.setMemberRole(ownerId, groupId, ownerId, 'admin'))).toBe('group_self_action')
+  })
+
+  it('lets Sea N Shore administrators moderate without a membership: approvals, roles, settings and posts', async () => {
+    const repo = repository({
+      getById: vi.fn(async () => group()),
+      getMembership: vi.fn(async (): Promise<ViewerMembership | null> => ({ role: 'member', status: 'active' })),
+    })
+    const service = createCommunityService({ repository: repo, canAccessPlatformAdmin: async (userId) => userId === siteAdminId })
+    await service.approveJoinRequest(siteAdminId, groupId, viewerId)
+    await service.setMemberRole(siteAdminId, groupId, viewerId, 'admin')
+    await service.updateGroup(siteAdminId, groupId, { description: 'd', rules: 'r', visibility: 'private', joinPolicy: 'approval', icon: null })
+    await service.removeGroupPost(siteAdminId, postId)
+    expect(repo.approveRequest).toHaveBeenCalledWith(groupId, viewerId)
+    expect(repo.setMemberRole).toHaveBeenCalledWith(groupId, viewerId, 'admin')
+    expect(repo.updateGroup).toHaveBeenCalled()
+    expect(repo.softDeleteGroupPost).toHaveBeenCalledWith(siteAdminId, postId, groupId)
+    // A plain member with the same (non-admin) check is still refused.
+    expect(await codeOf(service.approveJoinRequest(viewerId, groupId, adminId))).toBe('group_forbidden')
+  })
+
+  it('transfers ownership only from the owner to another active member, with an audit event', async () => {
+    const asOwner = repository({
+      getById: vi.fn(async () => group({ viewerMembership: { role: 'owner', status: 'active' } })),
+      getMembership: vi.fn(async (): Promise<ViewerMembership | null> => ({ role: 'admin', status: 'active' })),
+    })
+    await createCommunityService({ repository: asOwner }).transferOwnership(ownerId, groupId, adminId)
+    expect(asOwner.setOwner).toHaveBeenCalledWith(groupId, adminId)
+    expect(asOwner.insertAuditEvent).toHaveBeenCalledWith(ownerId, 'community.ownership_transferred', groupId, { owner_id: adminId, previous_owner_id: ownerId, previous_role: 'admin' })
+
+    const moderator = asAdmin({ getMembership: vi.fn(async (): Promise<ViewerMembership | null> => ({ role: 'member', status: 'active' })) })
+    expect(await codeOf(createCommunityService({ repository: moderator }).transferOwnership(adminId, groupId, viewerId))).toBe('group_owner_only')
+    expect(moderator.setOwner).not.toHaveBeenCalled()
+    // Even a site administrator uses the admin page for this.
+    const siteAdmin = createCommunityService({ repository: moderator, canAccessPlatformAdmin: async () => true })
+    expect(await codeOf(siteAdmin.transferOwnership(siteAdminId, groupId, viewerId))).toBe('group_owner_only')
+
+    const pendingTarget = repository({
+      getById: vi.fn(async () => group({ viewerMembership: { role: 'owner', status: 'active' } })),
+      getMembership: vi.fn(async (): Promise<ViewerMembership | null> => ({ role: 'member', status: 'pending' })),
+    })
+    expect(await codeOf(createCommunityService({ repository: pendingTarget }).transferOwnership(ownerId, groupId, viewerId))).toBe('group_member_not_found')
+    expect(await codeOf(createCommunityService({ repository: pendingTarget }).transferOwnership(ownerId, groupId, ownerId))).toBe('group_self_action')
+  })
+
+  it('approves all pending requests, notifies each member and writes one audit event', async () => {
+    const repo = asAdmin()
+    const approved = await createCommunityService({ repository: repo }).approveAllPending(adminId, groupId)
+    expect(approved).toEqual([viewerId, adminId])
+    expect(repo.approveAllRequests).toHaveBeenCalledWith(groupId)
+    expect(repo.upsertNotification).toHaveBeenCalledWith({
+      recipientId: viewerId, actorId: adminId, type: 'group_join_approved', groupId, dedupeKey: `group-join-approved:${groupId}:${viewerId}`,
+    })
+    expect(repo.deleteNotification).toHaveBeenCalledWith(ownerId, `group-join-request:${groupId}:${viewerId}:${ownerId}`)
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(adminId, 'community.requests_approved_all', groupId, { count: 2, profile_ids: [viewerId, adminId] })
+
+    const nothing = asAdmin({ approveAllRequests: vi.fn(async () => []) })
+    await expect(createCommunityService({ repository: nothing }).approveAllPending(adminId, groupId)).resolves.toEqual([])
+    expect(nothing.insertAuditEvent).not.toHaveBeenCalled()
+    const member = repository({ getById: vi.fn(async () => group({ viewerMembership: { role: 'member', status: 'active' } })) })
+    expect(await codeOf(createCommunityService({ repository: member }).approveAllPending(viewerId, groupId))).toBe('group_forbidden')
+  })
+
+  it('keeps the name when a moderator edits the description, rules, visibility and icon', async () => {
     const repo = asAdmin()
     await createCommunityService({ repository: repo }).updateGroup(adminId, groupId, { description: 'New', rules: 'Rules', visibility: 'public', icon: 'Wrench' })
     expect(repo.updateGroup).toHaveBeenCalledWith(groupId, { name: 'Tanker Professionals', description: 'New', rules: 'Rules', visibility: 'public', icon: 'Wrench' })
+    expect(repo.insertAuditEvent).not.toHaveBeenCalled()
+  })
+
+  it('saves the join setting and audits a change of it (moderators and site admins alike)', async () => {
+    const repo = asAdmin()
+    await createCommunityService({ repository: repo }).updateGroup(adminId, groupId, { description: '', rules: '', visibility: 'private', joinPolicy: 'open', icon: null })
+    expect(repo.updateGroup).toHaveBeenCalledWith(groupId, expect.objectContaining({ joinPolicy: 'open' }))
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(adminId, 'community.join_policy_changed', groupId, { from: 'approval', to: 'open' })
+
+    const unchanged = asAdmin()
+    await createCommunityService({ repository: unchanged }).updateGroup(adminId, groupId, { description: '', rules: '', visibility: 'private', joinPolicy: 'approval', icon: null })
+    expect(unchanged.insertAuditEvent).not.toHaveBeenCalled()
+
+    const viaAdminPage = repository()
+    await createCommunityService({ repository: viaAdminPage }).updateGroupAsAdmin(siteAdminId, groupId, { name: 'Tanker Professionals', description: '', rules: '', visibility: 'private', joinPolicy: 'open', icon: null })
+    expect((viaAdminPage.insertAuditEvent as ReturnType<typeof vi.fn>).mock.calls.map((call) => call[1])).toEqual(['community.group_updated', 'community.join_policy_changed'])
   })
 })
 
@@ -193,8 +323,19 @@ describe('community service: suggestions and site administration', () => {
       name: 'Tanker Professionals', description: 'd', rules: 'r', visibility: 'public', icon: 'ShieldCheck', ownerId,
     })
     expect(created).toEqual({ id: groupId, slug: 'tanker-professionals-2' })
-    expect(repo.createGroup).toHaveBeenCalledWith(expect.objectContaining({ slug: 'tanker-professionals-2', createdBy: adminId, ownerId }))
-    expect(repo.insertAuditEvent).toHaveBeenCalledWith(adminId, 'community.group_created', groupId, expect.objectContaining({ owner_id: ownerId }))
+    expect(repo.createGroup).toHaveBeenCalledWith(expect.objectContaining({ slug: 'tanker-professionals-2', createdBy: adminId, ownerId, joinPolicy: 'open', ownerCompanyId: null }))
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(adminId, 'community.group_created', groupId, expect.objectContaining({ owner_id: ownerId, owner_company_id: null, join_policy: 'open' }))
+  })
+
+  it('creates an organization-owned community with its join setting (round 9C)', async () => {
+    const repo = repository({ listSlugsLike: vi.fn(async () => []) })
+    const companyId = '77777777-7777-4777-8777-777777777777'
+    const created = await createCommunityService({ repository: repo }).createGroup(viewerId, {
+      name: 'Harbour Minds Crew', description: '', rules: '', visibility: 'private', joinPolicy: 'approval', icon: null, ownerId: viewerId, ownerCompanyId: companyId,
+    })
+    expect(created.slug).toBe('harbour-minds-crew')
+    expect(repo.createGroup).toHaveBeenCalledWith(expect.objectContaining({ createdBy: viewerId, ownerId: viewerId, ownerCompanyId: companyId, joinPolicy: 'approval' }))
+    expect(repo.insertAuditEvent).toHaveBeenCalledWith(viewerId, 'community.group_created', groupId, { slug: 'harbour-minds-crew', owner_id: viewerId, owner_company_id: companyId, visibility: 'private', join_policy: 'approval' })
   })
 
   it('archives, restores and hands over ownership with audit events', async () => {

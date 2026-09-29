@@ -20,7 +20,7 @@ import AdminCommunitiesPage from './page'
 function group(overrides: Partial<AdminCommunityGroup> = {}): AdminCommunityGroup {
   return {
     id: '22222222-2222-4222-8222-222222222222', slug: 'tanker-professionals', name: 'Tanker Professionals', description: 'Tankers.', rules: 'Be kind.',
-    icon: 'ShieldCheck', visibility: 'public', memberCount: 12, pendingCount: 0,
+    icon: 'ShieldCheck', iconUrl: null, visibility: 'public', joinPolicy: 'open', memberCount: 12, pendingCount: 0, ownerOrganization: null,
     owner: { id: '33333333-3333-4333-8333-333333333333', fullName: 'Asha Singh', slug: 'asha-singh' },
     archivedAt: null, createdAt: '2026-09-11T10:00:00.000Z', ...overrides,
   }
@@ -91,7 +91,7 @@ describe('/admin/communities', () => {
     expect(within(edit).getByLabelText('Rules')).toHaveValue('Be kind.')
     expect(within(edit).queryByLabelText(/Owner/)).not.toBeInTheDocument()
     const owner = screen.getByRole('form', { name: 'Change owner of Tanker Professionals' })
-    expect(within(owner).getByText('Current owner: Asha Singh. They stay in the group as an admin.')).toBeInTheDocument()
+    expect(within(owner).getByText('Current owner: Asha Singh. They stay in the group as a moderator.')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Archive Tanker Professionals' })).toHaveLength(2)
   })
 

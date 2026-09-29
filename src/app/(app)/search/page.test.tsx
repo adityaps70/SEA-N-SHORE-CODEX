@@ -179,8 +179,8 @@ describe('Global search on phones', () => {
 
   it('lists community groups (round 9B) with member count and visibility, as phone rows and desktop cards', async () => {
     mocks.searchGroups.mockResolvedValue([
-      { id: 'g1', slug: 'tanker-professionals', name: 'Tanker Professionals', description: 'SIRE 2.0 and cargo operations.', icon: 'ShieldCheck', visibility: 'public', memberCount: 12, archived: false, createdBy: null, rules: '', coverUrl: null, viewerMembership: null },
-      { id: 'g2', slug: 'sire-inspectors', name: 'SIRE Inspectors', description: '', icon: null, visibility: 'private', memberCount: 1, archived: false, createdBy: null, rules: '', coverUrl: null, viewerMembership: { role: 'member', status: 'active' } },
+      { id: 'g1', slug: 'tanker-professionals', name: 'Tanker Professionals', description: 'SIRE 2.0 and cargo operations.', icon: 'ShieldCheck', iconUrl: '/api/community-media/g1/icon?v=icon-1.webp', visibility: 'public', memberCount: 12, archived: false, createdBy: null, rules: '', coverUrl: null, viewerMembership: null },
+      { id: 'g2', slug: 'sire-inspectors', name: 'SIRE Inspectors', description: '', icon: null, iconUrl: null, visibility: 'private', memberCount: 1, archived: false, createdBy: null, rules: '', coverUrl: null, viewerMembership: { role: 'member', status: 'active' } },
     ])
     render(await GlobalSearchPage({ searchParams: Promise.resolve({ q: 'sire', type: 'groups' }) }))
 
@@ -199,6 +199,10 @@ describe('Global search on phones', () => {
     expect(within(tankers!).getByText('12 members · SIRE 2.0 and cargo operations.')).toBeInTheDocument()
     expect(within(inspectors!).getByText('1 member')).toBeInTheDocument()
     expect(within(inspectors!).getByLabelText('Private group')).toBeInTheDocument()
+    // Round 9C: the community photo replaces the icon tile in the phone row when one is set.
+    expect(tankers!.querySelector('img')).toHaveAttribute('src', '/api/community-media/g1/icon?v=icon-1.webp')
+    expect(inspectors!.querySelector('img')).toBeNull()
+    expect(inspectors!.querySelector('svg')).not.toBeNull()
     // Desktop cards carry the join button; a member sees "Joined".
     expect(screen.getByRole('button', { name: 'Join Tanker Professionals' })).toBeInTheDocument()
     expect(screen.getByLabelText('Joined SIRE Inspectors')).toBeInTheDocument()

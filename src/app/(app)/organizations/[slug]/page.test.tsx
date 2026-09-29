@@ -342,6 +342,23 @@ describe('/organizations/[slug] public page', () => {
     expect(screen.getByTestId('org-posts')).toHaveAttribute('data-limit', '3')
   })
 
+  it('offers owners and administrators "Create a community" next to Manage page, pointing at /community/new?as=<organization> (round 9C)', async () => {
+    mocks.getAccessContext.mockResolvedValue(access('administrator'))
+    mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'administrator' })
+    render(await OrganizationPage({ params }))
+    const create = screen.getByRole('link', { name: /Create a community/ })
+    expect(create).toHaveAttribute('href', '/community/new?as=c1')
+    // Phones reach it from Manage page › Community instead.
+    expect(create).toHaveClass('max-md:hidden')
+    expect(create.parentElement).toContainElement(screen.getByRole('link', { name: /Manage page/ }))
+    cleanup()
+
+    mocks.getAccessContext.mockResolvedValue(access('recruiter'))
+    mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'recruiter' })
+    render(await OrganizationPage({ params }))
+    expect(screen.queryByRole('link', { name: /Create a community/ })).not.toBeInTheDocument()
+  })
+
   it('shows the owner of a free organization a subtle Upgrade to Organization Pro link next to Manage page', async () => {
     mocks.getAccessContext.mockResolvedValue(access('owner'))
     mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })

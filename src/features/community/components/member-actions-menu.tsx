@@ -2,13 +2,29 @@
 
 import { useRouter } from 'next/navigation'
 import { useCallback, useId, useRef, useState, useTransition } from 'react'
-import { MoreHorizontal, ShieldCheck, ShieldOff, UserMinus } from 'lucide-react'
+import { Crown, MoreHorizontal, ShieldCheck, ShieldOff, UserMinus } from 'lucide-react'
 import { ActionMenu, ActionMenuItem, ActionMenuSeparator } from '@/components/ui/action-menu'
-import { removeMember, setMemberRole } from '../actions'
+import { removeMember, setMemberRole, transferOwnership } from '../actions'
 import type { GroupRole } from '../types'
 
-/** Group admins: Make admin / Remove admin / Remove from group for one member row. */
-export function MemberActionsMenu({ groupId, profileId, fullName, role }: { groupId: string; profileId: string; fullName: string; role: GroupRole }) {
+/**
+ * Moderator actions for one member row: Make moderator / Remove moderator / Remove from group,
+ * plus Transfer ownership for the owner (round 9C).
+ */
+export function MemberActionsMenu({
+  groupId,
+  profileId,
+  fullName,
+  role,
+  canTransferOwnership = false,
+}: {
+  groupId: string
+  profileId: string
+  fullName: string
+  role: GroupRole
+  /** Only the group owner may hand the group over. */
+  canTransferOwnership?: boolean
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
@@ -30,6 +46,14 @@ export function MemberActionsMenu({ groupId, profileId, fullName, role }: { grou
     })
   }
 
+  function confirmThen(question: string, work: () => Promise<{ ok: true } | { ok: false; error: string }>) {
+    if (typeof window !== 'undefined' && !window.confirm(question)) {
+      close()
+      return
+    }
+    run(work)
+  }
+
   return (
     <div className="relative shrink-0">
       <button
@@ -45,22 +69,24 @@ export function MemberActionsMenu({ groupId, profileId, fullName, role }: { grou
       >
         <MoreHorizontal aria-hidden="true" className="size-5" />
       </button>
-      <ActionMenu open={open} onClose={close} anchorRef={triggerRef} id={menuId} label={`Actions for ${fullName}`} align="end" className="w-56 shadow-[var(--shadow-card)]">
+      <ActionMenu open={open} onClose={close} anchorRef={triggerRef} id={menuId} label={`Actions for ${fullName}`} align="end" className="w-60 shadow-[var(--shadow-card)]">
         {role === 'admin' ? (
-          <ActionMenuItem onClick={() => run(() => setMemberRole({ groupId, profileId, role: 'member' }))} icon={<ShieldOff aria-hidden="true" className="size-4 text-muted" />}>Remove admin</ActionMenuItem>
+          <ActionMenuItem onClick={() => run(() => setMemberRole({ groupId, profileId, role: 'member' }))} icon={<ShieldOff aria-hidden="true" className="size-4 text-muted" />}>Remove moderator</ActionMenuItem>
         ) : (
-          <ActionMenuItem onClick={() => run(() => setMemberRole({ groupId, profileId, role: 'admin' }))} icon={<ShieldCheck aria-hidden="true" className="size-4 text-muted" />}>Make admin</ActionMenuItem>
+          <ActionMenuItem onClick={() => run(() => setMemberRole({ groupId, profileId, role: 'admin' }))} icon={<ShieldCheck aria-hidden="true" className="size-4 text-muted" />}>Make moderator</ActionMenuItem>
         )}
+        {canTransferOwnership ? (
+          <ActionMenuItem
+            onClick={() => confirmThen(`Make ${fullName} the owner of this group? You will stay on as a moderator. This cannot be undone by you.`, () => transferOwnership({ groupId, profileId }))}
+            icon={<Crown aria-hidden="true" className="size-4 text-muted" />}
+          >
+            Transfer ownership
+          </ActionMenuItem>
+        ) : null}
         <ActionMenuSeparator />
         <ActionMenuItem
           tone="danger"
-          onClick={() => {
-            if (typeof window !== 'undefined' && !window.confirm(`Remove ${fullName} from the group? They will not be able to rejoin on their own.`)) {
-              close()
-              return
-            }
-            run(() => removeMember({ groupId, profileId }))
-          }}
+          onClick={() => confirmThen(`Remove ${fullName} from the group? They will not be able to rejoin on their own.`, () => removeMember({ groupId, profileId }))}
           icon={<UserMinus aria-hidden="true" className="size-4" />}
         >
           Remove from group

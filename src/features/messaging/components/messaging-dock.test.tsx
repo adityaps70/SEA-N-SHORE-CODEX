@@ -48,7 +48,12 @@ vi.mock('@/features/realtime/provider', () => ({
 vi.mock('../actions', () => actions)
 vi.mock('../unread-client', () => unread)
 
-import { MessagingDock, isMessagingDockHiddenPath } from './messaging-dock'
+import {
+  DOCK_COLLAPSED_WIDTH_CLASS,
+  DOCK_CONVERSATION_WIDTH_CLASS,
+  MessagingDock,
+  isMessagingDockHiddenPath,
+} from './messaging-dock'
 
 const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
 const OTHER_ID = '22222222-2222-4222-8222-222222222222'
@@ -487,5 +492,115 @@ describe('MessagingDock', () => {
     expect(screen.queryByRole('button', { name: 'Open compact chat with Capt. Anita Singh' })).not.toBeInTheDocument()
     expect(screen.getByText('No conversations yet')).toBeInTheDocument()
     expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0)
+  })
+
+  function dockWrapper() {
+    const wrapper = screen.getByTestId('messaging-dock-anchor').querySelector('[data-dock-state]')
+    if (!wrapper) throw new Error('dock wrapper not rendered')
+    return wrapper as HTMLElement
+  }
+
+  it('keeps the bar and list at 300px and widens to 416px only while a conversation is open', async () => {
+    const user = userEvent.setup()
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+
+    expect(dockWrapper()).toHaveClass(DOCK_COLLAPSED_WIDTH_CLASS, 'w-[300px]')
+    expect(dockWrapper()).toHaveAttribute('data-dock-state', 'bar')
+
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await screen.findByText('Capt. Anita Singh')
+    expect(dockWrapper()).toHaveClass('w-[300px]')
+    expect(dockWrapper()).not.toHaveClass('w-[416px]')
+    expect(dockWrapper()).toHaveAttribute('data-dock-state', 'list')
+    const listSection = screen.getByRole('region', { name: 'Messaging dock' })
+    expect(listSection).toHaveClass('h-[min(36rem,calc(100vh-7rem))]')
+
+    await user.click(screen.getByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+    await waitFor(() => expect(screen.getByText('Hello')).toBeVisible())
+    expect(dockWrapper()).toHaveClass(DOCK_CONVERSATION_WIDTH_CLASS, 'w-[416px]')
+    expect(dockWrapper()).not.toHaveClass('w-[300px]')
+    expect(dockWrapper()).toHaveAttribute('data-dock-state', 'conversation')
+    expect(screen.getByRole('region', { name: 'Messaging dock' })).toHaveClass('h-[min(42rem,calc(100vh-6rem))]')
+
+    await user.click(screen.getByRole('button', { name: 'Back to conversations' }))
+    expect(dockWrapper()).toHaveClass('w-[300px]')
+    expect(dockWrapper()).toHaveAttribute('data-dock-state', 'list')
+
+    await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+    await waitFor(() => expect(dockWrapper()).toHaveAttribute('data-dock-state', 'conversation'))
+    await user.click(screen.getByRole('button', { name: 'Minimize messaging dock' }))
+    expect(dockWrapper()).toHaveClass('w-[300px]')
+    expect(dockWrapper()).toHaveAttribute('data-dock-state', 'bar')
+    expect(screen.getByRole('button', { name: 'Open messaging dock' })).toBeInTheDocument()
+  })
+
+  it('animates the width and height change only with motion-safe variants', async () => {
+    const user = userEvent.setup()
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+
+    const wrapper = dockWrapper()
+    expect(wrapper).toHaveClass(
+      'motion-safe:transition-[width,height]',
+      'motion-safe:duration-200',
+      'motion-safe:ease-out',
+    )
+    for (const className of Array.from(wrapper.classList)) {
+      if (/transition|duration|ease/.test(className)) expect(className.startsWith('motion-safe:')).toBe(true)
+    }
+
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    const section = await screen.findByRole('region', { name: 'Messaging dock' })
+    expect(section).toHaveClass('motion-safe:transition-[width,height]', 'motion-safe:duration-200')
+    for (const className of Array.from(section.classList)) {
+      if (/transition|duration|ease/.test(className)) expect(className.startsWith('motion-safe:')).toBe(true)
+    }
+  })
+
+  it('renders the compact composer inside the open conversation with a one-line placeholder and size-8 icon buttons', async () => {
+    const user = userEvent.setup()
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+    await waitFor(() => expect(screen.getByText('Hello')).toBeVisible())
+
+    const dock = screen.getByRole('region', { name: 'Messaging dock' })
+    const textbox = within(dock).getByRole('textbox', { name: 'Write a message' })
+    expect(textbox).toHaveAttribute('placeholder', 'Write a message…')
+    expect(textbox).toHaveClass('flex-1', 'min-w-0', 'max-h-[7.5rem]', '[field-sizing:content]')
+    expect(textbox).not.toHaveClass('max-h-36')
+
+    for (const name of ['Attach photo or file', 'Attach photo', 'Add emoji']) {
+      const button = within(dock).getByRole('button', { name })
+      expect(button).toHaveClass('size-8', 'rounded-full', 'text-ocean-700')
+      expect(button).not.toHaveClass('size-10', 'border')
+    }
+    expect(within(dock).getByRole('button', { name: 'Send message' })).toBeInTheDocument()
+    expect(within(dock).getByRole('button', { name: 'Send message' })).toHaveClass('size-9')
+    expect(within(dock).queryByText('Enter to send · Shift + Enter for a new line')).not.toBeInTheDocument()
+
+    // The header keeps the full name (title tooltip for the rare overflow) and the headline.
+    const header = dock.querySelector('header') as HTMLElement
+    const name = within(header).getByText('Capt. Anita Singh')
+    expect(name.closest('p')).toHaveAttribute('title', 'Capt. Anita Singh')
+    expect(name.closest('p')?.parentElement).toHaveClass('min-w-0', 'flex-1')
+    expect(within(header).getByText('Master Mariner')).toBeInTheDocument()
+    expect(within(header).getByRole('button', { name: 'Close messaging dock' }).parentElement).toHaveClass('shrink-0')
+  })
+
+  it('keeps the compact emoji popover clamped to the dock panel width', async () => {
+    const user = userEvent.setup()
+    render(<MessagingDock viewerId={VIEWER_ID} initialUnreadCount={1} />)
+
+    await user.click(screen.getByRole('button', { name: 'Open messaging dock' }))
+    await user.click(await screen.findByRole('button', { name: 'Open compact chat with Capt. Anita Singh' }))
+    await waitFor(() => expect(screen.getByText('Hello')).toBeVisible())
+
+    await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+    const menu = screen.getByRole('menu', { name: 'Choose emoji' })
+    expect(menu).toHaveClass('max-w-[calc(416px-1.5rem)]', 'left-0')
+    // Anchored to the composer's input row (relative), not the size-8 trigger.
+    expect(menu.parentElement).toHaveClass('static')
+    expect(menu.parentElement?.parentElement).toHaveClass('relative')
   })
 })

@@ -9,6 +9,20 @@ export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number]
 export const GROUP_VISIBILITIES = ['public', 'private'] as const
 export type GroupVisibility = (typeof GROUP_VISIBILITIES)[number]
 
+/** Round 9C: how members get in. 'open' joins instantly; 'approval' waits for a moderator. */
+export const GROUP_JOIN_POLICIES = ['open', 'approval'] as const
+export type GroupJoinPolicy = (typeof GROUP_JOIN_POLICIES)[number]
+
+/** Role labels shown in the UI. The stored 'admin' role is presented as Moderator (round 9C). */
+export const GROUP_ROLE_LABELS: Record<GroupRole, string> = { owner: 'Owner', admin: 'Moderator', member: 'Member' }
+
+/** An organization that owns a community (Organization Pro). */
+export type GroupOwnerOrganization = {
+  id: string
+  slug: string
+  name: string
+}
+
 /** Icon names stored on `community_groups.icon`; each maps to a lucide icon in `group-icons.ts`. */
 export const GROUP_ICON_NAMES = ['ShieldCheck', 'UsersRound', 'Wrench', 'BookOpenCheck', 'BadgeQuestionMark'] as const
 export type GroupIconName = (typeof GROUP_ICON_NAMES)[number]
@@ -29,13 +43,19 @@ export type CommunityGroup = {
   name: string
   description: string
   rules: string
+  /** Banner image URL, or null for the gradient fallback. */
   coverUrl: string | null
+  /** Community profile photo URL, or null for the icon/initials fallback. */
+  iconUrl: string | null
   icon: string | null
   visibility: GroupVisibility
+  joinPolicy: GroupJoinPolicy
   /** Active members, including admins and the owner. */
   memberCount: number
   archived: boolean
   createdBy: string | null
+  /** Set when an organization owns the community; the community shows the organization's name. */
+  ownerOrganization: GroupOwnerOrganization | null
   /** The signed-in viewer's membership row, or null when they never joined (or left). */
   viewerMembership: ViewerMembership | null
 }
@@ -51,6 +71,8 @@ export type GroupMember = {
   status: MembershipStatus
   requestedAt: string
   joinedAt: string | null
+  /** Round 9C: a Sea N Shore platform administrator who joined (shown with a "Sea N Shore admin" chip). */
+  isPlatformAdmin: boolean
 }
 
 /** A row of the site-admin Communities list. */
@@ -61,10 +83,13 @@ export type AdminCommunityGroup = {
   description: string
   rules: string
   icon: string | null
+  iconUrl: string | null
   visibility: GroupVisibility
+  joinPolicy: GroupJoinPolicy
   memberCount: number
   pendingCount: number
   owner: { id: string; fullName: string; slug: string | null } | null
+  ownerOrganization: GroupOwnerOrganization | null
   archivedAt: string | null
   createdAt: string
 }

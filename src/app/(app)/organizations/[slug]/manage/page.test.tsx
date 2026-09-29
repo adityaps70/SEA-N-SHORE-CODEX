@@ -139,11 +139,22 @@ describe('/organizations/[slug]/manage', () => {
     expect(within(tools).getByText('Owner · Free plan')).toBeInTheDocument()
     // Locked tools lead the owner to Plan & billing, never back to /plans.
     expect(within(tools).getByRole('link', { name: /Team & roles/ })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
-    expect(within(tools).getAllByText('Included with Organization Pro')).toHaveLength(6)
+    // Round 9C adds the Community tool (one community per Organization Pro organization).
+    expect(within(tools).getAllByText('Included with Organization Pro')).toHaveLength(7)
+    expect(within(tools).getByRole('link', { name: /Community/ })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
     expect(within(tools).getByRole('link', { name: 'Upgrade to Organization Pro' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
     expect(screen.queryByRole('link', { name: 'Compare plans' })).not.toBeInTheDocument()
     expect(document.querySelector('a[href="/plans"]')).toBeNull()
     expect(within(nav).getByRole('link', { name: 'Plan & billing' })).toHaveAttribute('href', '/organizations/harbour-minds/manage?section=billing')
+  })
+
+  it('opens the Community tool at /community/new?as=<organization> for an Organization Pro owner (round 9C)', async () => {
+    mocks.getAccessContext.mockResolvedValue({ ...access('owner'), organizationMemberships: [{ companyId: 'c1', plan: 'organization_pro', role: 'owner', verified: true, entitlements: ['organization.manage', 'organization.team'] }] })
+    mocks.getViewer.mockResolvedValue({ kind: 'organization', role: 'owner' })
+    render(await OrganizationManagePage({ params }))
+    const tools = screen.getByRole('region', { name: 'Your workspace' })
+    expect(within(tools).getByRole('link', { name: /Community/ })).toHaveAttribute('href', '/community/new?as=c1')
+    expect(within(tools).getByText('Create and run a community as this organization')).toBeInTheDocument()
   })
 
   it('shows a phone page bar back to the page titled with the section, and a scroll hint on the section row', async () => {

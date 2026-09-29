@@ -3,6 +3,7 @@ import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/clien
 import type {
   AdminCommunityGroup,
   CommunityGroup,
+  GroupJoinPolicy,
   GroupMember,
   GroupRole,
   GroupSuggestionSignals,
@@ -20,9 +21,14 @@ type GroupRow = QueryResultRow & {
   description: string
   rules: string
   cover_path: string | null
+  icon_path?: string | null
   icon: string | null
   visibility: GroupVisibility
+  join_policy?: GroupJoinPolicy | null
   created_by: string | null
+  owner_company_id?: string | null
+  owner_company_slug?: string | null
+  owner_company_name?: string | null
   archived_at: string | null
   member_count: number | string
   viewer_role: GroupRole | null
@@ -39,6 +45,7 @@ type MemberRow = QueryResultRow & {
   status: MembershipStatus
   requested_at: string
   joined_at: string | null
+  is_platform_admin?: boolean | null
 }
 
 type MembershipRow = QueryResultRow & { role: GroupRole; status: MembershipStatus }
@@ -53,12 +60,17 @@ type AdminGroupRow = QueryResultRow & {
   description: string
   rules: string
   icon: string | null
+  icon_path?: string | null
   visibility: GroupVisibility
+  join_policy?: GroupJoinPolicy | null
   member_count: number | string
   pending_count: number | string
   owner_id: string | null
   owner_name: string | null
   owner_slug: string | null
+  owner_company_id?: string | null
+  owner_company_slug?: string | null
+  owner_company_name?: string | null
   archived_at: string | null
   created_at: string
 }
@@ -66,25 +78,44 @@ type AdminGroupRow = QueryResultRow & {
 type SignalRow = QueryResultRow & { rank: string | null; vessel_types: string[] | null; persona: string | null }
 type ProfileLookupRow = QueryResultRow & { id: string; full_name: string; slug: string | null }
 
-/** Group cover images share the first-party feed media route; none are uploaded yet. */
-function groupCoverUrl(coverPath: string | null) {
-  if (!coverPath) return null
-  return `/api/feed-media/${coverPath.split('/').map((segment) => encodeURIComponent(segment)).join('/')}`
+/**
+ * Community images are served by the first-party, signed-in-only route
+ * `/api/community-media/<groupId>/<cover|icon>`; the version query busts caches when the path changes.
+ */
+export function communityImageUrl(groupId: string, kind: 'cover' | 'icon', path: string | null | undefined) {
+  if (!path?.trim()) return null
+  return `/api/community-media/${groupId}/${kind}?v=${encodeURIComponent(path.split('/').at(-1) ?? path)}`
+}
+
+function mapJoinPolicy(value: string | null | undefined, visibility: GroupVisibility): GroupJoinPolicy {
+  if (value === 'open' || value === 'approval') return value
+  // Rows read before migration 0057 keep the round 9B behaviour: private groups need approval.
+  return visibility === 'private' ? 'approval' : 'open'
+}
+
+function mapOwnerOrganization(row: { owner_company_id?: string | null; owner_company_slug?: string | null; owner_company_name?: string | null }) {
+  return row.owner_company_id && row.owner_company_slug && row.owner_company_name
+    ? { id: row.owner_company_id, slug: row.owner_company_slug, name: row.owner_company_name }
+    : null
 }
 
 function mapGroup(row: GroupRow): CommunityGroup {
+  const visibility: GroupVisibility = row.visibility === 'private' ? 'private' : 'public'
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
     description: row.description ?? '',
     rules: row.rules ?? '',
-    coverUrl: groupCoverUrl(row.cover_path),
+    coverUrl: communityImageUrl(row.id, 'cover', row.cover_path),
+    iconUrl: communityImageUrl(row.id, 'icon', row.icon_path),
     icon: row.icon,
-    visibility: row.visibility === 'private' ? 'private' : 'public',
+    visibility,
+    joinPolicy: mapJoinPolicy(row.join_policy, visibility),
     memberCount: Number(row.member_count ?? 0),
     archived: Boolean(row.archived_at),
     createdBy: row.created_by,
+    ownerOrganization: mapOwnerOrganization(row),
     viewerMembership: row.viewer_role && row.viewer_status ? { role: row.viewer_role, status: row.viewer_status } : null,
   }
 }
@@ -100,10 +131,12 @@ function mapMember(row: MemberRow): GroupMember {
     status: row.status,
     requestedAt: row.requested_at,
     joinedAt: row.joined_at,
+    isPlatformAdmin: Boolean(row.is_platform_admin),
   }
 }
 
 function mapAdminGroup(row: AdminGroupRow): AdminCommunityGroup {
+  const visibility: GroupVisibility = row.visibility === 'private' ? 'private' : 'public'
   return {
     id: row.id,
     slug: row.slug,
@@ -111,10 +144,13 @@ function mapAdminGroup(row: AdminGroupRow): AdminCommunityGroup {
     description: row.description ?? '',
     rules: row.rules ?? '',
     icon: row.icon,
-    visibility: row.visibility === 'private' ? 'private' : 'public',
+    iconUrl: communityImageUrl(row.id, 'icon', row.icon_path),
+    visibility,
+    joinPolicy: mapJoinPolicy(row.join_policy, visibility),
     memberCount: Number(row.member_count ?? 0),
     pendingCount: Number(row.pending_count ?? 0),
     owner: row.owner_id && row.owner_name ? { id: row.owner_id, fullName: row.owner_name, slug: row.owner_slug } : null,
+    ownerOrganization: mapOwnerOrganization(row),
     archivedAt: row.archived_at,
     createdAt: row.created_at,
   }
@@ -127,11 +163,13 @@ function likePattern(search: string) {
 
 /** `$1` must be the viewer's profile id. */
 const GROUP_SELECT = `
-  select g.id, g.slug, g.name, g.description, g.rules, g.cover_path, g.icon, g.visibility, g.created_by, g.archived_at,
+  select g.id, g.slug, g.name, g.description, g.rules, g.cover_path, g.icon_path, g.icon, g.visibility, g.join_policy, g.created_by, g.archived_at,
+         g.owner_company_id, owner_company.slug as owner_company_slug, owner_company.name as owner_company_name,
          (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'active') as member_count,
          vm.role as viewer_role,
          vm.status as viewer_status
   from public.community_groups g
+  left join public.companies owner_company on owner_company.id = g.owner_company_id
   left join public.community_group_memberships vm on vm.group_id = g.id and vm.profile_id = $1
 `
 
@@ -142,7 +180,8 @@ const DIRECTORY_ORDER = `order by case when g.visibility = 'public' then 0 else 
 const MEMBER_ORDER = `order by case m.role when 'owner' then 0 when 'admin' then 1 else 2 end, lower(p.full_name), p.id`
 
 const MEMBER_SELECT = `
-  select m.profile_id, p.slug, p.full_name, p.headline, p.avatar_path, m.role, m.status, m.requested_at, m.joined_at
+  select m.profile_id, p.slug, p.full_name, p.headline, p.avatar_path, m.role, m.status, m.requested_at, m.joined_at,
+         exists (select 1 from public.user_roles ur where ur.user_id = m.profile_id and ur.role::text = 'administrator') as is_platform_admin
   from public.community_group_memberships m
   join public.profiles p on p.id = m.profile_id
 `
@@ -302,6 +341,32 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     return rows.length === 1
   }
 
+  /** Approves every pending request of a group; returns the approved profile ids (for notifications). */
+  async function approveAllRequests(groupId: string) {
+    const rows = await queryRows(
+      `update public.community_group_memberships
+       set status = 'active', joined_at = now(), updated_at = now()
+       where group_id = $1 and status = 'pending'
+       returning profile_id as id`,
+      [groupId],
+    ) as IdRow[]
+    return rows.map((row) => row.id)
+  }
+
+  /**
+   * Sea N Shore administrators join at once whatever the join setting: inserts an active
+   * membership, or revives a left/declined/removed row, keeping an existing owner/moderator role.
+   */
+  async function activateMembership(groupId: string, profileId: string) {
+    await queryRows(
+      `insert into public.community_group_memberships (group_id, profile_id, role, status, requested_at, joined_at)
+       values ($1, $2, 'member', 'active', now(), now())
+       on conflict (group_id, profile_id) do update
+         set status = 'active', joined_at = coalesce(public.community_group_memberships.joined_at, now()), updated_at = now()`,
+      [groupId, profileId],
+    )
+  }
+
   async function declineRequest(groupId: string, profileId: string) {
     const rows = await queryRows(
       `delete from public.community_group_memberships
@@ -368,14 +433,17 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     rules: string
     visibility: GroupVisibility
     icon: string | null
+    joinPolicy?: GroupJoinPolicy
     createdBy: string
     ownerId: string
+    /** Organization Pro: the organization that owns the community. */
+    ownerCompanyId?: string | null
   }) {
     const rows = await queryRows(
-      `insert into public.community_groups (name, slug, description, rules, icon, visibility, created_by)
-       values ($1, $2, $3, $4, $5, $6, $7)
+      `insert into public.community_groups (name, slug, description, rules, icon, visibility, join_policy, created_by, owner_company_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        returning id`,
-      [input.name, input.slug, input.description, input.rules, input.icon, input.visibility, input.createdBy],
+      [input.name, input.slug, input.description, input.rules, input.icon, input.visibility, input.joinPolicy ?? (input.visibility === 'private' ? 'approval' : 'open'), input.createdBy, input.ownerCompanyId ?? null],
     ) as IdRow[]
     const groupId = rows[0]?.id
     if (!groupId) throw new Error('community_group_create_failed')
@@ -394,15 +462,36 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     rules: string
     visibility: GroupVisibility
     icon: string | null
+    joinPolicy?: GroupJoinPolicy
   }) {
     const rows = await queryRows(
       `update public.community_groups
-       set name = $2, description = $3, rules = $4, visibility = $5, icon = $6, updated_at = now()
+       set name = $2, description = $3, rules = $4, visibility = $5, icon = $6, join_policy = coalesce($7, join_policy), updated_at = now()
        where id = $1
        returning id`,
-      [groupId, input.name, input.description, input.rules, input.visibility, input.icon],
+      [groupId, input.name, input.description, input.rules, input.visibility, input.icon, input.joinPolicy ?? null],
     ) as IdRow[]
     return rows.length === 1
+  }
+
+  /** Live communities a member owns personally (organization-owned ones count for the organization). */
+  async function countLiveGroupsOwnedByMember(profileId: string) {
+    const rows = await queryRows(
+      `select count(*)::int as count
+       from public.community_groups g
+       where g.archived_at is null and g.owner_company_id is null
+         and exists (select 1 from public.community_group_memberships m where m.group_id = g.id and m.profile_id = $1 and m.role = 'owner' and m.status = 'active')`,
+      [profileId],
+    ) as Array<QueryResultRow & { count: number | string }>
+    return Number(rows[0]?.count ?? 0)
+  }
+
+  async function countLiveGroupsOwnedByOrganization(companyId: string) {
+    const rows = await queryRows(
+      `select count(*)::int as count from public.community_groups g where g.archived_at is null and g.owner_company_id = $1`,
+      [companyId],
+    ) as Array<QueryResultRow & { count: number | string }>
+    return Number(rows[0]?.count ?? 0)
   }
 
   async function setArchived(groupId: string, archived: boolean) {
@@ -422,11 +511,13 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     const values: unknown[] = []
     if (search) values.push(likePattern(search))
     const rows = await queryRows(
-      `select g.id, g.slug, g.name, g.description, g.rules, g.icon, g.visibility, g.archived_at, g.created_at,
+      `select g.id, g.slug, g.name, g.description, g.rules, g.icon, g.icon_path, g.visibility, g.join_policy, g.archived_at, g.created_at,
+              g.owner_company_id, owner_company.slug as owner_company_slug, owner_company.name as owner_company_name,
               (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'active') as member_count,
               (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'pending') as pending_count,
               owner.id as owner_id, owner.full_name as owner_name, owner.slug as owner_slug
        from public.community_groups g
+       left join public.companies owner_company on owner_company.id = g.owner_company_id
        left join lateral (
          select p.id, p.full_name, p.slug
          from public.community_group_memberships om
@@ -565,6 +656,42 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     return row ? { id: row.id, fullName: row.full_name, slug: row.slug } : null
   }
 
+  /**
+   * Round 9C community images: swaps the banner (`cover_path`) or photo (`icon_path`) and returns
+   * the previous key so the media service can delete the old object. Archived groups are updated
+   * too (site admins tidy them up). Throws when the group does not exist.
+   */
+  async function replaceImagePath(groupId: string, kind: 'cover' | 'icon', nextPath: string | null): Promise<string | null> {
+    const column = kind === 'cover' ? 'cover_path' : 'icon_path'
+    const rows = await queryRows(
+      `with current as (
+         select ${column} as previous_path
+         from public.community_groups
+         where id = $1
+         for update
+       )
+       update public.community_groups g
+       set ${column} = $2,
+           updated_at = now()
+       from current
+       where g.id = $1
+       returning current.previous_path`,
+      [groupId, nextPath],
+    ) as Array<QueryResultRow & { previous_path: string | null }>
+    if (rows.length !== 1) throw new Error('community_group_missing')
+    return rows[0]?.previous_path ?? null
+  }
+
+  /** The stored banner and photo keys of a group (archived groups included), or null when it does not exist. */
+  async function getImagePaths(groupId: string): Promise<{ coverPath: string | null; iconPath: string | null } | null> {
+    const rows = await queryRows(
+      `select cover_path, icon_path from public.community_groups where id = $1 limit 1`,
+      [groupId],
+    ) as Array<QueryResultRow & { cover_path: string | null; icon_path: string | null }>
+    const row = rows[0]
+    return row ? { coverPath: row.cover_path ?? null, iconPath: row.icon_path ?? null } : null
+  }
+
   return {
     listDirectory,
     listViewerGroups,
@@ -573,12 +700,16 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     getBySlug,
     getById,
     getMembership,
+    replaceImagePath,
+    getImagePaths,
     listMembers,
     listPendingRequests,
     countPendingRequests,
     upsertJoin,
     deleteMembership,
     approveRequest,
+    approveAllRequests,
+    activateMembership,
     declineRequest,
     removeMember,
     setMemberRole,
@@ -586,6 +717,8 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     listSlugsLike,
     createGroup,
     updateGroup,
+    countLiveGroupsOwnedByMember,
+    countLiveGroupsOwnedByOrganization,
     setArchived,
     listAdminGroups,
     listAdministeredGroupIds,

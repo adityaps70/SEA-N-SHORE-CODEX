@@ -1,9 +1,11 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Globe, Lock, Search, ShieldCheck } from 'lucide-react'
+import { Building2, Globe, Lock, Search, ShieldCheck } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
+import { canAccessPlatformAdmin } from '@/features/admin/access'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { CommunityMediaControls } from '@/features/community/components/community-media-controls'
 import { EditGroupForm } from '@/features/community/components/edit-group-form'
 import { GroupCover, GroupIconTile } from '@/features/community/components/group-icon-tile'
 import { GroupMembersList } from '@/features/community/components/group-members-list'
@@ -13,12 +15,14 @@ import { JoinRequestsPanel } from '@/features/community/components/join-requests
 import { communityRepository } from '@/features/community/repository'
 import {
   GROUP_PAGE_TABS,
+  GROUP_ROLE_LABELS,
   groupHref,
   groupTabHref,
   parseGroupPageTab,
   viewerAdministersGroup,
   viewerCanSeeGroupContent,
   viewerIsActiveMember,
+  type GroupJoinPolicy,
   type GroupMember,
 } from '@/features/community/types'
 import { FeedList } from '@/features/feed/components/feed-list'
@@ -51,16 +55,16 @@ async function withAvatars(members: GroupMember[]) {
   })))
 }
 
-function JoinToSee({ what, group }: { what: string; group: { name: string; id: string; visibility: 'public' | 'private'; viewerMembership: { status: 'active' | 'pending' | 'removed'; role: 'member' | 'admin' | 'owner' } | null } }) {
+function JoinToSee({ what, group }: { what: string; group: { name: string; id: string; visibility: 'public' | 'private'; joinPolicy: GroupJoinPolicy; viewerMembership: { status: 'active' | 'pending' | 'removed'; role: 'member' | 'admin' | 'owner' } | null } }) {
   return (
     <div className="rounded-xl border border-dashed border-mist-200 bg-mist-50/60 px-4 py-8 text-center">
       <Lock aria-hidden="true" className="mx-auto size-6 text-muted" />
       <p className="mt-2 font-semibold text-navy-950">Join to see {what}</p>
       <p className="mx-auto mt-1 max-w-md text-sm leading-6 text-muted">
-        {group.name} is a private group. Its {what} are visible to members once a group admin approves your request.
+        {group.name} is a private group. Its {what} are visible to members{group.joinPolicy === 'approval' ? ' once a moderator approves your request' : ' once you join'}.
       </p>
       <div className="mx-auto mt-4 flex max-w-xs justify-center">
-        <GroupMembershipButton groupId={group.id} groupName={group.name} visibility={group.visibility} initialStatus={group.viewerMembership?.status ?? null} role={group.viewerMembership?.role ?? null} appearance="page" />
+        <GroupMembershipButton groupId={group.id} groupName={group.name} visibility={group.visibility} joinPolicy={group.joinPolicy} initialStatus={group.viewerMembership?.status ?? null} role={group.viewerMembership?.role ?? null} appearance="page" />
       </div>
     </div>
   )
@@ -74,21 +78,31 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
   if (!group || group.archived) notFound()
 
   const isMember = viewerIsActiveMember(group)
-  const isAdmin = viewerAdministersGroup(group)
-  const canSee = viewerCanSeeGroupContent(group)
+  // Round 9C: Sea N Shore administrators moderate every community (settings, approvals, posts, media).
+  const viewerIsPlatformAdmin = await canAccessPlatformAdmin(user.id)
+  const isAdmin = viewerAdministersGroup(group) || viewerIsPlatformAdmin
+  const isOwner = group.viewerMembership?.status === 'active' && group.viewerMembership.role === 'owner'
+  // The banner and photo are managed by the owner, moderators and platform administrators.
+  const canManageMedia = isAdmin
+  const canSee = viewerCanSeeGroupContent(group) || viewerIsPlatformAdmin
   const requestsRequested = single(search.requests) === '1'
   const tab = requestsRequested ? 'members' : parseGroupPageTab(search.tab, isMember ? 'posts' : 'about')
   const editing = isAdmin && single(search.edit) === '1'
   const memberQuery = single(search.q).trim().slice(0, 100)
   const pagePath = groupHref(group.slug)
 
-  const [admins, profile, feedPage, members, requests] = await Promise.all([
+  const [admins, profile, feedPage, members, requests, moderators] = await Promise.all([
     tab === 'about' ? communityRepository.listMembers(group.id, { adminsOnly: true, limit: 20 }).then(withAvatars).catch((): GroupMember[] => []) : [],
     tab === 'posts' && isMember ? getOwnProfile() : null,
     tab === 'posts' && canSee ? getFeedPage({ groupId: group.id }) : null,
     tab === 'members' && canSee ? communityRepository.listMembers(group.id, { search: memberQuery }).then(withAvatars) : [],
-    tab === 'members' && isAdmin && group.visibility === 'private' ? communityRepository.listPendingRequests(group.id).then(withAvatars) : [],
+    // Waiting requests are listed for moderators whatever the join setting: switching to Open never approves them.
+    tab === 'members' && isAdmin ? communityRepository.listPendingRequests(group.id).then(withAvatars) : [],
+    tab === 'posts' && canSee ? communityRepository.listMembers(group.id, { adminsOnly: true, limit: 200 }).catch((): GroupMember[] => []) : [],
   ])
+  // "Owner" / "Moderator" chips next to the author of posts inside the community.
+  const roleBadges = Object.fromEntries(moderators.filter((entry) => entry.role !== 'member').map((entry) => [entry.profileId, GROUP_ROLE_LABELS[entry.role] as 'Owner' | 'Moderator']))
+  const showJoinRequests = isAdmin && (group.joinPolicy === 'approval' || requests.length > 0)
 
   const tabs = GROUP_PAGE_TABS.map((entry) => ({ ...entry, href: groupTabHref(group.slug, entry.id) }))
   const visibilityLabel = group.visibility === 'private' ? 'Private group' : 'Public group'
@@ -99,9 +113,23 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
       <MobilePageBar backHref="/community" title={group.name} className="max-md:mb-0" />
       <div className="space-y-4 max-md:space-y-2">
         <section aria-labelledby="group-name" className="rounded-2xl border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:shadow-none">
-          <GroupCover coverUrl={group.coverUrl} name={group.name} className="h-32 rounded-t-2xl sm:h-44 max-md:h-28 max-md:rounded-none" />
+          <div className="relative">
+            <GroupCover coverUrl={group.coverUrl} name={group.name} className="h-32 rounded-t-2xl sm:h-44 max-md:h-28 max-md:rounded-none" />
+            {canManageMedia ? (
+              <div className="absolute right-3 top-3 z-10">
+                <CommunityMediaControls groupId={group.id} kind="cover" hasImage={Boolean(group.coverUrl)} canManage />
+              </div>
+            ) : null}
+          </div>
           <div className="px-4 sm:px-6">
-            <GroupIconTile icon={group.icon} size="xl" className="relative -mt-10 sm:-mt-12" />
+            <div className="relative -mt-10 w-fit sm:-mt-12">
+              <GroupIconTile icon={group.icon} iconUrl={group.iconUrl} size="xl" />
+              {canManageMedia ? (
+                <div className="absolute -bottom-1 -right-1 z-10">
+                  <CommunityMediaControls groupId={group.id} kind="icon" hasImage={Boolean(group.iconUrl)} canManage />
+                </div>
+              ) : null}
+            </div>
             <div className="mt-3 min-w-0">
               <h1 id="group-name" className="break-words text-2xl font-bold tracking-tight text-navy-950 sm:text-[1.75rem] max-md:text-[22px] max-md:leading-7">{group.name}</h1>
               <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted">
@@ -117,6 +145,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
                 groupId={group.id}
                 groupName={group.name}
                 visibility={group.visibility}
+                joinPolicy={group.joinPolicy}
                 initialStatus={group.viewerMembership?.status ?? null}
                 role={group.viewerMembership?.role ?? null}
                 appearance="page"
@@ -137,19 +166,28 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
               </PageSection>
             ) : null}
             <PageSection id="about-heading" title="About">
+              {group.ownerOrganization ? (
+                <p className="mb-3 flex items-center gap-1.5 text-sm text-muted">
+                  <Building2 aria-hidden="true" className="size-4 text-ocean-700" />
+                  <span>By <Link href={`/organizations/${group.ownerOrganization.slug}`} className="font-semibold text-ocean-700 hover:underline">{group.ownerOrganization.name}</Link></span>
+                </p>
+              ) : null}
+              <p className="mb-3 text-sm text-muted">
+                {group.joinPolicy === 'approval' ? 'Approval required — a moderator approves join requests.' : 'Open — anyone can join.'}
+              </p>
               {group.description
                 ? <p className="whitespace-pre-line text-sm leading-7 text-ink">{group.description}</p>
-                : <p className="text-sm text-muted">The admins have not added a description yet.</p>}
+                : <p className="text-sm text-muted">The moderators have not added a description yet.</p>}
             </PageSection>
             <PageSection id="rules-heading" title="Rules">
               {group.rules
                 ? <p className="whitespace-pre-line text-sm leading-7 text-ink">{group.rules}</p>
-                : <p className="text-sm text-muted">Keep it professional and useful. The admins have not written specific rules yet.</p>}
+                : <p className="text-sm text-muted">Keep it professional and useful. The moderators have not written specific rules yet.</p>}
             </PageSection>
-            <PageSection id="admins-heading" title="Admins">
+            <PageSection id="admins-heading" title="Moderators">
               {admins.length ? (
                 <GroupMembersList groupId={group.id} members={admins} viewerId={user.id} canManage={false} />
-              ) : <p className="text-sm text-muted">This group has no active admins yet.</p>}
+              ) : <p className="text-sm text-muted">This group has no active moderators yet.</p>}
             </PageSection>
           </>
         ) : null}
@@ -168,7 +206,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
                 </div>
               ) : null}
               {feedPage && feedPage.posts.length ? (
-                <FeedList key={`group:${group.id}:${feedPage.posts.map((post) => `${post.id}:${post.updatedAt}`).join('|')}`} initialPage={feedPage} scope={{ groupId: group.id }} />
+                <FeedList key={`group:${group.id}:${feedPage.posts.map((post) => `${post.id}:${post.updatedAt}`).join('|')}`} initialPage={feedPage} scope={{ groupId: group.id }} roleBadges={roleBadges} />
               ) : (
                 <div className="rounded-2xl border border-dashed border-mist-200 bg-white px-5 py-10 text-center shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:shadow-none">
                   <p className="font-semibold text-navy-950">No posts in {group.name} yet</p>
@@ -184,7 +222,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
             <PageSection id="members-heading" title="Members"><JoinToSee what="members" group={group} /></PageSection>
           ) : (
             <>
-              {isAdmin && group.visibility === 'private' ? (
+              {showJoinRequests ? (
                 <PageSection id="join-requests-heading" title={requests.length ? `Join requests (${requests.length})` : 'Join requests'} className={requestsRequested ? 'ring-2 ring-ocean-200' : ''}>
                   <JoinRequestsPanel groupId={group.id} requests={requests} />
                 </PageSection>
@@ -202,7 +240,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
                 )}
               >
                 {members.length
-                  ? <GroupMembersList groupId={group.id} members={members} viewerId={user.id} canManage={isAdmin} />
+                  ? <GroupMembersList groupId={group.id} members={members} viewerId={user.id} canManage={isAdmin} canTransferOwnership={isOwner} />
                   : <p className="text-sm text-muted">{memberQuery ? `No members match “${memberQuery}”.` : 'No members yet.'}</p>}
               </PageSection>
             </>

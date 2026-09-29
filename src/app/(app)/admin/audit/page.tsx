@@ -30,6 +30,7 @@ export default async function AdminAuditPage({
     'comment',
     'job',
     'event',
+    'group',
     'organization_application',
   ]
   const targetType = allowedTypes.includes(requestedType as AdminAuditTargetType)
@@ -48,6 +49,7 @@ export default async function AdminAuditPage({
     { value: 'comment', label: 'Comments' },
     { value: 'job', label: 'Jobs' },
     { value: 'event', label: 'Events' },
+    { value: 'group', label: 'Groups' },
     { value: 'organization_application', label: 'Organizations' },
   ]
 

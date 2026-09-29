@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
-import { ArrowRight, BarChart3, BookOpen, BriefcaseBusiness, CalendarDays, Inbox, Lock, Palette, ShieldCheck, UsersRound } from 'lucide-react'
+import { ArrowRight, BarChart3, BookOpen, BriefcaseBusiness, CalendarDays, Inbox, Lock, MessagesSquare, Palette, ShieldCheck, UsersRound } from 'lucide-react'
 import { canUseCapability, type Capability } from '@/features/access/policy'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -88,6 +88,8 @@ export default async function OrganizationManagePage({
     { href: `/organizations/${workspace.slug}/team`, label: 'Team & roles', icon: UsersRound, capability: 'organization.team', ready: 'Manage member roles', locked: 'Needs Organization Pro and an admin role' },
     { href: `/organizations/${workspace.slug}/branding`, label: 'Branding', icon: Palette, capability: 'organization.branding', ready: 'Edit logo, cover and page details', locked: 'Needs Organization Pro and a content role' },
     { href: `/organizations/${workspace.slug}/analytics`, label: 'Analytics', icon: BarChart3, capability: 'analytics.view', ready: 'Jobs, events and course metrics', locked: 'Needs Organization Pro and an analyst role' },
+    // Round 9C: one community per Organization Pro organization, created by its owner or an administrator.
+    { href: `/community/new?as=${workspace.id}`, label: 'Community', icon: MessagesSquare, capability: 'organization.manage', ready: 'Create and run a community as this organization', locked: 'Needs Organization Pro and an admin role' },
   ]
   const can = (capability: Capability) => canUseCapability(access, capability, { companyId: workspace.id })
   const anyLocked = membership ? tools.some((tool) => !can(tool.capability)) : false

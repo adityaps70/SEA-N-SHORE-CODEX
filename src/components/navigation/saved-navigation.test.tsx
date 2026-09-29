@@ -36,7 +36,7 @@ describe('primary navigation layout', () => {
     expect(screen.getByRole('menuitem', { name: /^Organizations/ })).toHaveAttribute('href', '/organizations')
   })
 
-  it('turns Create into a menu of the four things a member can publish', () => {
+  it('turns Create into a menu of the five things a member can publish', () => {
     render(<AppHeader recentNotifications={[]} unreadCount={0} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
@@ -44,6 +44,8 @@ describe('primary navigation layout', () => {
     expect(screen.getByRole('menuitem', { name: /Post a job/ })).toHaveAttribute('href', '/hiring/jobs/new')
     expect(screen.getByRole('menuitem', { name: /Create an event/ })).toHaveAttribute('href', '/events/create')
     expect(screen.getByRole('menuitem', { name: /Create a course/ })).toHaveAttribute('href', '/learn/studio/courses/new')
+    // Round 9C: communities are created by members (Creator Pro / Organization Pro); the page explains otherwise.
+    expect(screen.getByRole('menuitem', { name: /Create a community/ })).toHaveAttribute('href', '/community/new')
     expect(screen.getByRole('menuitem', { name: /All creator tools/ })).toHaveAttribute('href', '/creator')
     // Posting an update happens in the Home composer, not from the Create menu.
     expect(screen.queryByRole('menuitem', { name: /Post an update/ })).not.toBeInTheDocument()
@@ -51,6 +53,7 @@ describe('primary navigation layout', () => {
       '/hiring/jobs/new',
       '/events/create',
       '/learn/studio/courses/new',
+      '/community/new',
       '/creator',
     ])
   })

@@ -87,6 +87,49 @@ describe('community repository: directory and groups', () => {
     expect(values).toEqual([viewerId, 6, '%tanker%'])
     await expect(createCommunityRepository({ query }).searchGroups(viewerId, '   ')).resolves.toEqual([])
   })
+
+  it('search results carry the community photo URL built from icon_path (round 9C)', async () => {
+    const { query, calls } = fakeQuery([groupRow({ icon_path: `communities/${groupId}/icon-abc.webp`, cover_path: `communities/${groupId}/cover-def.jpg` })])
+    const [group] = await createCommunityRepository({ query }).searchGroups(viewerId, 'marine')
+    expect(calls()[0][0]).toContain('g.icon_path')
+    expect(group).toMatchObject({
+      iconUrl: `/api/community-media/${groupId}/icon?v=icon-abc.webp`,
+      coverUrl: `/api/community-media/${groupId}/cover?v=cover-def.jpg`,
+    })
+  })
+})
+
+describe('community repository: images (round 9C)', () => {
+  it('replaceImagePath swaps only the requested column and returns the previous key', async () => {
+    const { query, calls } = fakeQuery([{ previous_path: 'communities/g/cover-old.jpg' }])
+    const repository = createCommunityRepository({ query })
+
+    await expect(repository.replaceImagePath(groupId, 'cover', 'communities/g/cover-new.webp')).resolves.toBe('communities/g/cover-old.jpg')
+    const [coverSql, coverValues] = calls()[0]
+    expect(coverSql).toContain('cover_path = $2')
+    expect(coverSql).not.toContain('icon_path')
+    expect(coverSql).toContain('for update')
+    expect(coverSql).not.toContain('archived_at')
+    expect(coverValues).toEqual([groupId, 'communities/g/cover-new.webp'])
+
+    await repository.replaceImagePath(groupId, 'icon', null)
+    const [iconSql, iconValues] = calls()[1]
+    expect(iconSql).toContain('icon_path = $2')
+    expect(iconSql).not.toContain('cover_path')
+    expect(iconValues).toEqual([groupId, null])
+  })
+
+  it('replaceImagePath throws when the group does not exist', async () => {
+    const { query } = fakeQuery([])
+    await expect(createCommunityRepository({ query }).replaceImagePath(groupId, 'icon', 'communities/g/icon.png')).rejects.toThrow('community_group_missing')
+  })
+
+  it('getImagePaths returns both keys, or null for an unknown group', async () => {
+    const { query, calls } = fakeQuery([{ cover_path: 'communities/g/cover.jpg', icon_path: null }])
+    await expect(createCommunityRepository({ query }).getImagePaths(groupId)).resolves.toEqual({ coverPath: 'communities/g/cover.jpg', iconPath: null })
+    expect(calls()[0]).toEqual([expect.stringContaining('select cover_path, icon_path from public.community_groups where id = $1'), [groupId]])
+    await expect(createCommunityRepository({ query: vi.fn(async () => []) }).getImagePaths(groupId)).resolves.toBeNull()
+  })
 })
 
 describe('community repository: members', () => {
@@ -162,7 +205,7 @@ describe('community repository: administration and moderation', () => {
     })
     expect(id).toBe(groupId)
     const calls = query.mock.calls as unknown as Call[]
-    expect(calls[0][1]).toEqual(['Port Captains', 'port-captains', 'd', 'r', 'ShieldCheck', 'private', viewerId])
+    expect(calls[0][1]).toEqual(['Port Captains', 'port-captains', 'd', 'r', 'ShieldCheck', 'private', 'approval', viewerId, null])
     expect(calls[1][0]).toContain("'owner', 'active'")
     expect(calls[1][1]).toEqual([groupId, memberId])
   })

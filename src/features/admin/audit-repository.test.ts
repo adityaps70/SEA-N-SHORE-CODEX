@@ -58,4 +58,20 @@ describe('platform admin audit repository', () => {
     expect(seen[1]?.text).toContain('ae.target_type = $1')
     expect(seen[1]?.values).toEqual(['job', 25])
   })
+
+  it('filters community group events (round 9C: creation, roles, ownership, join settings)', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createAdminRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('public.user_roles')) return [{ allowed: true }]
+        return []
+      },
+    })
+
+    await repository.listAuditEvents(adminId, { targetType: 'group', limit: 100 })
+
+    expect(seen[1]?.text).toContain('ae.target_type = $1')
+    expect(seen[1]?.values).toEqual(['group', 100])
+  })
 })

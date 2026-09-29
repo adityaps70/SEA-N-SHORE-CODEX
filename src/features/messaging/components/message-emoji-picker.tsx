@@ -165,17 +165,30 @@ function retainRecentEmoji(current: string[], emoji: string) {
   return [emoji, ...current.filter((value) => value !== emoji)].slice(0, RECENT_EMOJI_LIMIT)
 }
 
+/**
+ * Width of the compact picker popover: it must fit inside the 416px messaging dock panel
+ * (which clips overflow), so it is clamped to the panel width minus the composer padding.
+ */
+export const COMPACT_EMOJI_PICKER_WIDTH_CLASS = 'w-[min(20rem,calc(100vw-2rem))] max-w-[calc(416px-1.5rem)]'
+
 export function MessageEmojiPicker({
   mode = 'insert',
   currentEmoji = null,
   triggerLabel,
   align = 'start',
+  compact = false,
   onSelect,
 }: {
   mode?: 'insert' | 'reaction'
   currentEmoji?: string | null
   triggerLabel?: string
   align?: 'start' | 'end'
+  /**
+   * Dock composer: a borderless size-8 trigger, and the popover is anchored to the nearest
+   * positioned ancestor (the composer's input row) instead of the trigger so it stays inside
+   * the dock panel.
+   */
+  compact?: boolean
   onSelect: (emoji: string | null) => void
 }) {
   const [open, setOpen] = useState(false)
@@ -239,12 +252,15 @@ export function MessageEmojiPicker({
 
   const accessibleTriggerLabel = triggerLabel ?? (mode === 'reaction' ? 'React to message' : 'Add emoji')
   const positionClass = align === 'end' ? 'right-0' : 'left-0'
+  const pickerWidthClass = compact
+    ? COMPACT_EMOJI_PICKER_WIDTH_CLASS
+    : 'w-[min(20rem,calc(100vw-2rem))]'
 
   const fullPicker = (
     <div
       role="menu"
       aria-label={mode === 'reaction' ? 'Choose reaction emoji' : 'Choose emoji'}
-      className={`absolute bottom-full ${positionClass} z-50 mb-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white p-2 shadow-xl`}
+      className={`absolute bottom-full ${positionClass} z-50 mb-2 ${pickerWidthClass} overflow-hidden rounded-2xl border border-mist-100 bg-white p-2 shadow-xl`}
     >
       <div className="mb-2 flex flex-wrap gap-1">
         {mode === 'insert' && recent.length ? (
@@ -352,7 +368,7 @@ export function MessageEmojiPicker({
   )
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className={compact ? 'static' : 'relative'}>
       <button
         type="button"
         aria-label={accessibleTriggerLabel}
@@ -360,9 +376,11 @@ export function MessageEmojiPicker({
         onClick={toggleOpen}
         className={mode === 'reaction'
           ? 'grid size-8 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-muted shadow-sm transition hover:border-ocean-200 hover:bg-ocean-50 hover:text-ocean-700'
-          : 'grid size-10 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50'}
+          : compact
+            ? 'grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-ocean-700 transition hover:bg-ocean-50 aria-expanded:bg-ocean-50'
+            : 'grid size-10 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-navy-900 transition hover:border-ocean-200 hover:bg-ocean-50'}
       >
-        <Smile aria-hidden="true" className={mode === 'reaction' ? 'size-4' : 'size-5 text-ocean-700'} />
+        <Smile aria-hidden="true" className={mode === 'reaction' ? 'size-4' : compact ? 'size-4.5' : 'size-5 text-ocean-700'} />
       </button>
 
       {open && mode === 'reaction' && !expandedReactionPicker ? (
