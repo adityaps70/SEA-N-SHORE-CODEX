@@ -191,6 +191,7 @@ changes=[r for r in plan.get('resource_changes',[]) if r.get('mode')!='data' and
 for r in changes:
     if (
         r['address'] not in allowed
+        and r['address'] not in site_records
         and not r['address'].startswith(validation_prefix)
         and not r['address'].startswith(ses_dkim_prefix)
     ):
