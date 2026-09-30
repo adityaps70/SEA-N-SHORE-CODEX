@@ -29,7 +29,7 @@ variable "aurora_auto_pause_seconds" {
 variable "enable_google_identity_provider" {
   description = "Enable Cognito Google federation after the Google OAuth JSON secret has been populated in Secrets Manager."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "ses_domain" {
