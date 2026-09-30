@@ -162,3 +162,15 @@ test('production image trusts the official Mumbai RDS CA without disabling TLS v
   assert.doesNotMatch(dockerfile, /rejectUnauthorized\s*:\s*false/)
   assert.doesNotMatch(dockerfile, /NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*0/)
 })
+
+test('remote HTTP verification matches the Phase 4 CloudFront redirect contract', () => {
+  const workflow = text('.github/workflows/aws-remote-verify.yml')
+
+  assert.match(workflow, /verify_cloudfront_redirect/)
+  assert.match(workflow, /CLOUDFRONT_API_STATUS/)
+  assert.match(workflow, /\/api\/health\/phase4/)
+  assert.match(workflow, /test "\$status" = "301"/)
+  assert.match(workflow, /test "\$CLOUDFRONT_API_STATUS" = "200"/)
+  assert.doesNotMatch(workflow, /verify_asset cloudfront/)
+  assert.doesNotMatch(workflow, /verify_page cloudfront/)
+})
