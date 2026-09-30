@@ -1,0 +1,37 @@
+name: AWS Google Auth Live Verify
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - scripts/aws/google-auth-live-probe.sh
+      - scripts/aws/google-auth-live-probe.test.mjs
+      - scripts/aws/multi-login-auth-infra-action.txt
+      - src/app/auth/sign-in/page.tsx
+      - src/app/auth/sign-up/page.tsx
+      - src/app/auth/google/start/route.ts
+      - src/features/auth/components/auth-method-links.tsx
+      - src/lib/env.ts
+      - .github/workflows/aws-google-auth-live-verify.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sea-n-shore-google-auth-live-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+      - name: Verify probe contract
+        run: node --test scripts/aws/google-auth-live-probe.test.mjs
+      - name: Verify live Google auth entry points
+        run: bash scripts/aws/google-auth-live-probe.sh
