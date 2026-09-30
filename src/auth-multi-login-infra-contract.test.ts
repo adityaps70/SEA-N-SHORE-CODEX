@@ -32,7 +32,7 @@ describe('multi-login Cognito infrastructure contract', () => {
   it('configures optional Google federation using the existing secret and OAuth code flow', () => {
     expect(auth).toMatch(/aws_cognito_identity_provider" "google"/)
     expect(auth).toMatch(/aws_secretsmanager_secret_version" "google_oauth"/)
-    expect(auth).toMatch(/authorize_scopes\s*=\s*"openid email profile"/)
+    expect(auth).toMatch(/authorize_scopes\s*=\s*"email profile openid"/)
     expect(auth).toMatch(/allowed_oauth_flows\s*=\s*\["code"\]/)
     expect(auth).toMatch(/callback_urls/)
     expect(auth).toMatch(/supported_identity_providers/)
