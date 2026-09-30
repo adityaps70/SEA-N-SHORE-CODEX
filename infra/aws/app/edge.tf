@@ -175,7 +175,7 @@ locals {
 variable "redirect_edge_host_to_canonical" {
   description = "Phase 4 switch: 301 the *.cloudfront.net hostname to https://seanshore.in for everything except /api/* (payment webhooks keep answering on the old host)."
   type        = bool
-  default     = false
+  default     = true
 }
 
 # Viewer-request function: www -> apex, and (once enabled) cloudfront.net -> apex except /api/*.
