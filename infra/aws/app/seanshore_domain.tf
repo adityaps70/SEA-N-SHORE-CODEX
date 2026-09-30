@@ -27,20 +27,74 @@ resource "aws_acm_certificate" "seanshore_edge" {
 }
 
 
-resource "aws_route53_record" "seanshore_legacy_apex" {
-  zone_id = aws_route53_zone.seanshore.zone_id
-  name    = "seanshore.in"
-  type    = "A"
-  ttl     = 300
-  records = ["162.215.226.7"]
+# Production cutover (phase 2): apex + www alias to the app CloudFront distribution. These
+# replaced the legacy website A records in place; the moved blocks keep the
+# Route 53 records tracked under their new names.
+moved {
+  from = aws_route53_record.seanshore_legacy_apex
+  to   = aws_route53_record.seanshore_apex_a
 }
 
-resource "aws_route53_record" "seanshore_legacy_www" {
+moved {
+  from = aws_route53_record.seanshore_legacy_www
+  to   = aws_route53_record.seanshore_www_a
+}
+
+locals {
+  seanshore_site_records = {
+    apex_a    = { name = "seanshore.in", type = "A" }
+    apex_aaaa = { name = "seanshore.in", type = "AAAA" }
+    www_a     = { name = "www.seanshore.in", type = "A" }
+    www_aaaa  = { name = "www.seanshore.in", type = "AAAA" }
+  }
+}
+
+resource "aws_route53_record" "seanshore_apex_a" {
   zone_id = aws_route53_zone.seanshore.zone_id
-  name    = "www.seanshore.in"
-  type    = "A"
-  ttl     = 300
-  records = ["162.215.226.7"]
+  name    = local.seanshore_site_records.apex_a.name
+  type    = local.seanshore_site_records.apex_a.type
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "seanshore_apex_aaaa" {
+  zone_id = aws_route53_zone.seanshore.zone_id
+  name    = local.seanshore_site_records.apex_aaaa.name
+  type    = local.seanshore_site_records.apex_aaaa.type
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "seanshore_www_a" {
+  zone_id = aws_route53_zone.seanshore.zone_id
+  name    = local.seanshore_site_records.www_a.name
+  type    = local.seanshore_site_records.www_a.type
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    evaluate_target_health = false
+  }
+}
+
+resource "aws_route53_record" "seanshore_www_aaaa" {
+  zone_id = aws_route53_zone.seanshore.zone_id
+  name    = local.seanshore_site_records.www_aaaa.name
+  type    = local.seanshore_site_records.www_aaaa.type
+
+  alias {
+    name                   = aws_cloudfront_distribution.app.domain_name
+    zone_id                = aws_cloudfront_distribution.app.hosted_zone_id
+    evaluate_target_health = false
+  }
 }
 
 resource "aws_route53_record" "seanshore_edge_validation" {
@@ -65,7 +119,7 @@ data "aws_sesv2_email_identity" "seanshore_transactional" {
   email_identity = var.ses_domain
 }
 
-# SES verification records are additive; preserve the legacy website A/WWW records until the production cutover is separately approved.
+# SES verification records are additive and independent of the website records above.
 resource "aws_route53_record" "seanshore_ses_dkim" {
   for_each = toset(
     data.aws_sesv2_email_identity.seanshore_transactional.dkim_signing_attributes[0].tokens
