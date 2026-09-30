@@ -27,19 +27,10 @@ resource "aws_acm_certificate" "seanshore_edge" {
 }
 
 
-# Production cutover (phase 2): apex + www alias to the app CloudFront distribution. These
-# replaced the legacy website A records in place; the moved blocks keep the
-# Route 53 records tracked under their new names.
-moved {
-  from = aws_route53_record.seanshore_legacy_apex
-  to   = aws_route53_record.seanshore_apex_a
-}
-
-moved {
-  from = aws_route53_record.seanshore_legacy_www
-  to   = aws_route53_record.seanshore_www_a
-}
-
+# Production cutover (phase 2): apex + www alias to the app CloudFront distribution. The two
+# "legacy" resources are the original website A records updated in place to aliases; they keep
+# their resource names because `moved` blocks would break every -target plan in the guarded
+# scripts until the move is applied.
 locals {
   seanshore_site_records = {
     apex_a    = { name = "seanshore.in", type = "A" }
@@ -49,7 +40,7 @@ locals {
   }
 }
 
-resource "aws_route53_record" "seanshore_apex_a" {
+resource "aws_route53_record" "seanshore_legacy_apex" {
   zone_id = aws_route53_zone.seanshore.zone_id
   name    = local.seanshore_site_records.apex_a.name
   type    = local.seanshore_site_records.apex_a.type
@@ -73,7 +64,7 @@ resource "aws_route53_record" "seanshore_apex_aaaa" {
   }
 }
 
-resource "aws_route53_record" "seanshore_www_a" {
+resource "aws_route53_record" "seanshore_legacy_www" {
   zone_id = aws_route53_zone.seanshore.zone_id
   name    = local.seanshore_site_records.www_a.name
   type    = local.seanshore_site_records.www_a.type

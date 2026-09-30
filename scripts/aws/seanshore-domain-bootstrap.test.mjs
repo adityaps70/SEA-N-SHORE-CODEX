@@ -24,9 +24,8 @@ test('seanshore.in AWS bootstrap has a guarded create-only release path', async 
   assert.match(tf, /subject_alternative_names\s*=\s*\["www\.seanshore\.in"\]/)
   assert.match(tf, /validation_method\s*=\s*"DNS"/)
   assert.doesNotMatch(tf, /162\.215\.226\.7/)
-  assert.match(tf, /moved \{\s*from = aws_route53_record\.seanshore_legacy_apex\s*to\s*= aws_route53_record\.seanshore_apex_a\s*\}/)
-  assert.match(tf, /moved \{\s*from = aws_route53_record\.seanshore_legacy_www\s*to\s*= aws_route53_record\.seanshore_www_a\s*\}/)
-  for (const record of ['seanshore_apex_a', 'seanshore_apex_aaaa', 'seanshore_www_a', 'seanshore_www_aaaa']) {
+  assert.doesNotMatch(tf, /^moved \{/m)
+  for (const record of ['seanshore_legacy_apex', 'seanshore_apex_aaaa', 'seanshore_legacy_www', 'seanshore_www_aaaa']) {
     assert.match(tf, new RegExp(`aws_route53_record" "${record}"[\\s\\S]*?alias \\{\\s*name\\s*=\\s*aws_cloudfront_distribution\\.app\\.domain_name\\s*zone_id\\s*=\\s*aws_cloudfront_distribution\\.app\\.hosted_zone_id\\s*evaluate_target_health = false`))
   }
   assert.match(tf, /aws_route53_record" "seanshore_edge_validation"/)
@@ -44,8 +43,7 @@ test('seanshore.in AWS bootstrap has a guarded create-only release path', async 
   assert.match(script, /plan\|apply-once/)
   assert.match(script, /-target=aws_route53_zone\.seanshore/)
   assert.match(script, /-target=aws_acm_certificate\.seanshore_edge/)
-  assert.doesNotMatch(script, /-target=aws_route53_record\.seanshore_legacy_/)
-  for (const record of ['seanshore_apex_a', 'seanshore_apex_aaaa', 'seanshore_www_a', 'seanshore_www_aaaa']) {
+  for (const record of ['seanshore_legacy_apex', 'seanshore_apex_aaaa', 'seanshore_legacy_www', 'seanshore_www_aaaa']) {
     assert.match(script, new RegExp(`-target=aws_route53_record\\.${record}`))
   }
   assert.match(script, /CLOUDFRONT_HOSTED_ZONE_ID='Z2FDTNDATAQYW2'/)
