@@ -32,6 +32,8 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.match(script, /GOOGLE_OAUTH_CREDENTIALS_READY/)
   assert.match(script, /MULTI_LOGIN_AUTH_INFRA_PLAN_VERIFIED=true/)
   assert.match(script, /MULTI_LOGIN_AUTH_INFRA_APPLY_VERIFIED=true/)
+  assert.match(script, /COGNITO_CLIENT_SITE_URLS_VERIFIED=true/)
+  assert.match(script, /\.UserPoolClient\.CallbackURLs \| index\(\$site \+ "\/auth\/google\/callback"\)/)
   assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.doesNotMatch(script, /terraform[^\n]+-auto-approve/)
   assert.doesNotMatch(script, /aws\s+cognito-idp\s+(create|update|delete)-user-pool/)

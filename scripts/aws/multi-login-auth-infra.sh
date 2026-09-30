@@ -257,5 +257,14 @@ terraform -chdir="$APP_DIR" state pull > "$WORK_DIR/state-after.json"
 STATE_SERIAL_AFTER="$(jq -r '.serial' "$WORK_DIR/state-after.json")"
 [[ "$STATE_SERIAL_AFTER" -ge "$STATE_SERIAL_BEFORE" ]]
 echo "STATE_SERIAL_AFTER=$STATE_SERIAL_AFTER"
+
+# The hosted-UI client must accept the canonical site as an OAuth callback and logout origin.
+jq -e --arg site "$PUBLIC_SITE_URL" '
+  (.UserPoolClient.CallbackURLs | index($site + "/auth/google/callback")) != null
+  and (.UserPoolClient.LogoutURLs | index($site)) != null
+' "$WORK_DIR/client.json" >/dev/null
+echo "COGNITO_CLIENT_CALLBACK_URLS=$(jq -c '.UserPoolClient.CallbackURLs' "$WORK_DIR/client.json")"
+echo "COGNITO_CLIENT_LOGOUT_URLS=$(jq -c '.UserPoolClient.LogoutURLs' "$WORK_DIR/client.json")"
+echo "COGNITO_CLIENT_SITE_URLS_VERIFIED=true"
 echo "PHONE_OTP_COGNITO_INFRA_VERIFIED=true"
 echo "MULTI_LOGIN_AUTH_INFRA_APPLY_VERIFIED=true"
