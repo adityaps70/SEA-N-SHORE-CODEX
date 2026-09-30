@@ -238,3 +238,36 @@ jobs:
           docker build \
             --build-arg NEXT_PUBLIC_SITE_URL=http://localhost:3000 \
             -t sea-n-shore:ci .
+
+  public-dns-diagnostic:
+    name: Public DNS diagnostic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check public delegation and web destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v dig >/dev/null || { sudo apt-get update -y && sudo apt-get install -y dnsutils; }
+          echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "=== PUBLIC RESOLVERS ==="
+          for resolver in 8.8.8.8 1.1.1.1 9.9.9.9; do
+            echo "--- resolver=$resolver NS ---"
+            dig @"$resolver" seaandshore.in NS +noall +answer
+            echo "--- resolver=$resolver A apex ---"
+            dig @"$resolver" seaandshore.in A +noall +answer
+            echo "--- resolver=$resolver A www ---"
+            dig @"$resolver" www.seaandshore.in A +noall +answer
+          done
+          echo "=== TRACE DELEGATION ==="
+          dig +trace seaandshore.in NS
+          echo "=== ROUTE53 AUTHORITATIVE ==="
+          for ns in ns-973.awsdns-57.net ns-1968.awsdns-54.co.uk ns-1475.awsdns-56.org ns-73.awsdns-09.com; do
+            echo "--- $ns apex A ---"
+            dig @"$ns" seaandshore.in A +noall +answer
+            echo "--- $ns www A ---"
+            dig @"$ns" www.seaandshore.in A +noall +answer
+          done
+          echo "=== HTTP VIA RUNNER RESOLVER ==="
+          curl --silent --show-error --max-time 30 -o /dev/null -D - -w 'remote_ip=%{remote_ip}\nhttp_code=%{http_code}\nredirect_url=%{redirect_url}\n' https://seaandshore.in/
+          echo "=== HTTP WWW VIA RUNNER RESOLVER ==="
+          curl --silent --show-error --max-time 30 -o /dev/null -D - -w 'remote_ip=%{remote_ip}\nhttp_code=%{http_code}\nredirect_url=%{redirect_url}\n' https://www.seaandshore.in/
