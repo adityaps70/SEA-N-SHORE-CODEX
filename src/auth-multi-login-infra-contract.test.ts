@@ -7,6 +7,7 @@ describe('multi-login Cognito infrastructure contract', () => {
   const defineChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-define-auth-challenge.mjs', 'utf8')
   const createChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-create-auth-challenge.mjs', 'utf8')
   const verifyChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-verify-auth-challenge.mjs', 'utf8')
+  const variables = fs.readFileSync('infra/aws/app/aws-native-variables.tf', 'utf8')
 
   it('enables custom auth and wires the three Cognito challenge triggers', () => {
     expect(auth).toMatch(/ALLOW_CUSTOM_AUTH/)
@@ -22,6 +23,10 @@ describe('multi-login Cognito infrastructure contract', () => {
     expect(createChallenge).toMatch(/sns:Publish|PublishCommand/)
     expect(createChallenge).not.toMatch(/console\.log\([^)]*code/i)
     expect(verifyChallenge).toMatch(/privateChallengeParameters\?\.answer/)
+  })
+
+  it('keeps Google federation enabled as the deployed desired state', () => {
+    expect(variables).toMatch(/variable "enable_google_identity_provider"[\s\S]*?default\s*=\s*true/)
   })
 
   it('configures optional Google federation using the existing secret and OAuth code flow', () => {
