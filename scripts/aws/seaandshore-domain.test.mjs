@@ -52,6 +52,7 @@ test('seaandshore.in has a guarded two-stage release path that copies the legacy
     assert.ok(script.includes(`  ${target}\n`), `missing target ${target}`)
   }
   assert.match(script, /differs from the legacy snapshot/)
+  assert.match(script, /actions in \\(\\\['update'\\\],\\\['delete','create'\\\],\\\['create','delete'\\\]\\\)/)
   assert.match(script, /unexpected seaandshore change/)
   assert.match(script, /DNS_PARITY_VERIFIED=true/)
   assert.match(script, /ROUTE53_NAME_SERVER=/)
