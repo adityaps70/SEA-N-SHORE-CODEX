@@ -171,6 +171,31 @@ for r in changes:
 print('MULTI_LOGIN_AUTH_INFRA_PLAN_CHANGES=' + str(len(changes)))
 for r in changes:
     print(f"MULTI_LOGIN_AUTH_INFRA_CHANGE={r['address']}|{','.join(r['change']['actions'])}")
+    if r['address'] == 'aws_cognito_identity_provider.google[0]':
+        before = (r.get('change', {}).get('before') or {})
+        after = (r.get('change', {}).get('after') or {})
+        before_details = before.get('provider_details') or {}
+        after_details = after.get('provider_details') or {}
+        sensitive = {'client_id', 'client_secret'}
+        before_keys = sorted(k for k in before_details if k not in sensitive)
+        after_keys = sorted(k for k in after_details if k not in sensitive)
+        print('GOOGLE_IDP_DETAIL_KEYS_BEFORE=' + ','.join(before_keys))
+        print('GOOGLE_IDP_DETAIL_KEYS_AFTER=' + ','.join(after_keys))
+        for key in sorted(set(before_keys) | set(after_keys)):
+            if before_details.get(key) != after_details.get(key):
+                print('GOOGLE_IDP_DETAIL_DIFF=' + key + '|before=' + json.dumps(before_details.get(key)) + '|after=' + json.dumps(after_details.get(key)))
+        print('GOOGLE_IDP_CLIENT_ID_CHANGED=' + str(before_details.get('client_id') != after_details.get('client_id')).lower())
+        print('GOOGLE_IDP_CLIENT_SECRET_CHANGED=' + str(before_details.get('client_secret') != after_details.get('client_secret')).lower())
+        before_mapping = before.get('attribute_mapping') or {}
+        after_mapping = after.get('attribute_mapping') or {}
+        if before_mapping != after_mapping:
+            print('GOOGLE_IDP_ATTRIBUTE_MAPPING_BEFORE=' + json.dumps(before_mapping, sort_keys=True))
+            print('GOOGLE_IDP_ATTRIBUTE_MAPPING_AFTER=' + json.dumps(after_mapping, sort_keys=True))
+        before_ids = before.get('idp_identifiers') or []
+        after_ids = after.get('idp_identifiers') or []
+        if before_ids != after_ids:
+            print('GOOGLE_IDP_IDENTIFIERS_BEFORE=' + json.dumps(before_ids))
+            print('GOOGLE_IDP_IDENTIFIERS_AFTER=' + json.dumps(after_ids))
 PY
 
 STATE_SERIAL_BEFORE="$(jq -r '.serial' "$WORK_DIR/state.json")"
