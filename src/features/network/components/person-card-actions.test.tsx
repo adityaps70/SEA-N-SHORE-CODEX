@@ -56,7 +56,8 @@ describe('PersonCardActions (search result cards)', () => {
     await waitFor(() => expect(actions.blockProfile).toHaveBeenCalledWith(profileId))
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
-    expect(screen.getByRole('button', { name: 'Pending — withdraw request' })).toBeInTheDocument()
+    // The optimistic state lands in a transition; wait for it instead of asserting synchronously.
+    expect(await screen.findByRole('button', { name: 'Pending — withdraw request' })).toBeInTheDocument()
     await waitFor(() => expect(actions.sendConnectionRequest).toHaveBeenCalledWith(profileId))
   })
 

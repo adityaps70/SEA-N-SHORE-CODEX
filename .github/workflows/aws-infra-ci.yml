@@ -216,6 +216,8 @@ jobs:
         run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
       - name: Run guard tests
         run: npm test -- scripts/aws/check-terraform-plan.test.mjs
+      - name: Verify realtime authorizer origin allowlist
+        run: node --test scripts/aws/realtime-authorizer-origins.test.mjs
 
   container:
     name: Docker build

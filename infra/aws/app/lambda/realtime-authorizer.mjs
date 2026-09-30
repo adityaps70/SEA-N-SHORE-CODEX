@@ -4,8 +4,24 @@ import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-sec
 const secrets = new SecretsManagerClient({})
 const audience = process.env.REALTIME_TICKET_AUDIENCE ?? 'sea-n-shore-realtime'
 const secretArn = process.env.REALTIME_TICKET_SECRET_ARN
-const allowedOrigin = process.env.REALTIME_ALLOWED_ORIGIN?.replace(/\/+$/g, '') ?? ''
+const allowedOrigins = parseAllowedOrigins(process.env.REALTIME_ALLOWED_ORIGINS ?? process.env.REALTIME_ALLOWED_ORIGIN)
 let cachedSecret
+
+/** Comma-separated browser origins (https://seanshore.in,https://<edge>.cloudfront.net); trailing slashes ignored. */
+export function parseAllowedOrigins(value) {
+  return [...new Set(
+    (value ?? '')
+      .split(',')
+      .map((origin) => origin.trim().replace(/\/+$/g, ''))
+      .filter(Boolean),
+  )]
+}
+
+/** Exact-origin match against the configured list; an empty list disables the origin check. */
+export function isOriginAllowed(origin, origins = allowedOrigins) {
+  if (origins.length === 0 || !origin) return true
+  return origins.includes(origin.replace(/\/+$/g, ''))
+}
 
 function deny(event, principalId = 'anonymous') {
   return {
@@ -108,7 +124,7 @@ function verifyTicket(ticket, secret) {
 
 export async function handler(event) {
   const origin = event.headers?.origin ?? event.headers?.Origin ?? ''
-  if (allowedOrigin && origin && origin.replace(/\/+$/g, '') !== allowedOrigin) {
+  if (!isOriginAllowed(origin)) {
     return denyWithReason(event, 'origin_mismatch')
   }
 
