@@ -1,3 +1,4 @@
+// Disk maintenance recovered bootstrap capacity; rerun the plan-only Google auth gate.
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
