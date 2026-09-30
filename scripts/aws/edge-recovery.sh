@@ -27,8 +27,8 @@ aws cloudfront list-distributions --no-paginate --output json > "$RECOVERY_DIR/d
 [[ -s "$RECOVERY_DIR/distributions.json" ]]
 jq -e '.DistributionList.IsTruncated == false' "$RECOVERY_DIR/distributions.json" >/dev/null
 jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution") | .name] | sort == ["app", "seaandshore_redirect"]' "$RECOVERY_DIR/state.json" >/dev/null
-STATE_CF_ID="$(jq -r '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution" and .name == "app") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one app distribution in state") end' "$RECOVERY_DIR/state.json")"
-LEGACY_CF_ID="$(jq -r '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution" and .name == "seaandshore_redirect") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one legacy redirect distribution in state") end' "$RECOVERY_DIR/state.json")"
+STATE_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "app" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one app distribution in state") end' "$RECOVERY_DIR/state.json")"
+LEGACY_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "seaandshore_redirect" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one legacy redirect distribution in state") end' "$RECOVERY_DIR/state.json")"
 jq -e --arg app "$STATE_CF_ID" --arg legacy "$LEGACY_CF_ID" '([.DistributionList.Items[]?.Id] | sort) == ([$app, $legacy] | sort)' "$RECOVERY_DIR/distributions.json" >/dev/null
 echo "LIVE_CLOUDFRONT_APP_DISTRIBUTION=$STATE_CF_ID"
 echo "LIVE_CLOUDFRONT_LEGACY_REDIRECT_DISTRIBUTION=$LEGACY_CF_ID"
