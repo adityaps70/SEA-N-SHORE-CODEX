@@ -35,7 +35,8 @@ ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported realtime infrastructure action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.realtime-infra.XXXXXXXX")"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+TF_TMPDIR="$(mktemp -d /var/tmp/sns-tf.XXXXXX)"
+trap 'rm -rf -- "$WORK_DIR"; rm -rf -- "$TF_TMPDIR"' EXIT
 
 aws s3api get-object \
   --bucket "$STATE_BUCKET" \
@@ -100,10 +101,10 @@ with open(output_path, 'w') as f:
     json.dump(values, f)
 PY
 
-# Terraform stages provider downloads in TMPDIR; the instance's /tmp is a small tmpfs that
-# overflows when several guarded plans run at once, so stage them inside the work directory.
-export TMPDIR="$WORK_DIR/tmp"
-mkdir -p "$TMPDIR"
+# Terraform stages provider downloads and plugin sockets in TMPDIR: the instance's /tmp is a
+# small tmpfs that overflows when several guarded plans run at once, and a socket path must stay
+# under 108 characters, so use a short directory on the main volume.
+export TMPDIR="$TF_TMPDIR"
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" \
   -backend-config="key=$STATE_KEY" \
