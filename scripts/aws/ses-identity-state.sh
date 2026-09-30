@@ -42,7 +42,9 @@ aws s3api get-object \
   "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null
 
-STATE_COUNT="$(jq '[.resources[] | select(.mode=="managed" and .type=="aws_sesv2_email_identity" and .name=="transactional_domain")] | length' "$WORK_DIR/state.json")"
+# Count tracked instances, not resource entries: a resource shell left behind without instances
+# still makes Terraform plan a create, so it must not read as reconciled.
+STATE_COUNT="$(jq '[.resources[] | select(.mode=="managed" and .type=="aws_sesv2_email_identity" and .name=="transactional_domain") | .instances[]?] | length' "$WORK_DIR/state.json")"
 if [[ "$STATE_COUNT" == "1" ]]; then
   echo "SES_IDENTITY_STATE_ALREADY_RECONCILED=true"
   exit 0
@@ -247,7 +249,7 @@ verify_live_identity "$WORK_DIR/live-after.json" "$WORK_DIR/tags-after.json"
 [[ "$(canonical_live_shape "$WORK_DIR/live-after.json")" == "$LIVE_SHAPE_BEFORE" ]]
 live_tags_match_desired "$WORK_DIR/tags-after.json"
 terraform -chdir="$APP_DIR" state pull > "$WORK_DIR/state-after.json"
-STATE_COUNT_AFTER="$(jq '[.resources[] | select(.mode=="managed" and .type=="aws_sesv2_email_identity" and .name=="transactional_domain")] | length' "$WORK_DIR/state-after.json")"
+STATE_COUNT_AFTER="$(jq '[.resources[] | select(.mode=="managed" and .type=="aws_sesv2_email_identity" and .name=="transactional_domain") | .instances[]?] | length' "$WORK_DIR/state-after.json")"
 [[ "$STATE_COUNT_AFTER" == "1" ]]
 STATE_SERIAL_AFTER="$(jq -r '.serial' "$WORK_DIR/state-after.json")"
 [[ "$STATE_SERIAL_AFTER" -gt "$STATE_SERIAL_BEFORE" ]]
