@@ -143,9 +143,9 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   -target=aws_route53_zone.seanshore \
   -target=aws_acm_certificate.seanshore_edge \
-  -target=aws_route53_record.seanshore_apex_a \
+  -target=aws_route53_record.seanshore_legacy_apex \
   -target=aws_route53_record.seanshore_apex_aaaa \
-  -target=aws_route53_record.seanshore_www_a \
+  -target=aws_route53_record.seanshore_legacy_www \
   -target=aws_route53_record.seanshore_www_aaaa \
   -target=aws_route53_record.seanshore_edge_validation \
   -target=aws_route53_record.seanshore_ses_dkim \
@@ -160,14 +160,14 @@ allowed={
   'aws_acm_certificate.seanshore_edge',
 }
 # Phase 2 cutover: the legacy website A records become aliases to the app distribution in place
-# (moved from seanshore_legacy_*), and AAAA aliases are created next to them.
+# (same resource names), and AAAA aliases are created next to them.
 CLOUDFRONT_HOSTED_ZONE_ID='Z2FDTNDATAQYW2'
 APP_DISTRIBUTION_DOMAIN='d3prih0q6jofyr.cloudfront.net'
 site_records={
-  'aws_route53_record.seanshore_apex_a': ('seanshore.in', 'A', ['update'], 'aws_route53_record.seanshore_legacy_apex'),
-  'aws_route53_record.seanshore_apex_aaaa': ('seanshore.in', 'AAAA', ['create'], None),
-  'aws_route53_record.seanshore_www_a': ('www.seanshore.in', 'A', ['update'], 'aws_route53_record.seanshore_legacy_www'),
-  'aws_route53_record.seanshore_www_aaaa': ('www.seanshore.in', 'AAAA', ['create'], None),
+  'aws_route53_record.seanshore_legacy_apex': ('seanshore.in', 'A', ['update']),
+  'aws_route53_record.seanshore_apex_aaaa': ('seanshore.in', 'AAAA', ['create']),
+  'aws_route53_record.seanshore_legacy_www': ('www.seanshore.in', 'A', ['update']),
+  'aws_route53_record.seanshore_www_aaaa': ('www.seanshore.in', 'AAAA', ['create']),
 }
 def is_app_alias(after):
     aliases=after.get('alias') or []
@@ -197,7 +197,7 @@ for r in changes:
         raise SystemExit(f"unexpected domain bootstrap change: {r['address']} {r['change']['actions']}")
     actions = r['change']['actions']
     if r['address'] in site_records:
-        name, record_type, expected_actions, previous = site_records[r['address']]
+        name, record_type, expected_actions = site_records[r['address']]
         after = r.get('change', {}).get('after') or {}
         before = r.get('change', {}).get('before') or {}
         unknown = r.get('change', {}).get('after_unknown') or {}
@@ -212,8 +212,6 @@ for r in changes:
         if actions == ['update']:
             if before.get('records') != ['162.215.226.7'] or before.get('type') != record_type:
                 raise SystemExit(f"site record {r['address']} may only replace the legacy 162.215.226.7 record")
-            if r.get('previous_address') not in (previous, None):
-                raise SystemExit(f"site record {r['address']} unexpected previous address {r.get('previous_address')}")
         print(f"SEANSHORE_DOMAIN_BOOTSTRAP_SITE_RECORD={r['address']}|{','.join(actions)}|{name}|{record_type}")
         continue
     if actions == ['create']:
