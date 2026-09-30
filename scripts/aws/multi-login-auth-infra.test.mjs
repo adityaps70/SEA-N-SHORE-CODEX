@@ -36,6 +36,8 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.match(script, /GOOGLE_RUNTIME_VERIFIED=true/)
   assert.match(script, /Continue with Google/)
   assert.match(script, /GOOGLE_OAUTH_CREDENTIALS_READY/)
+  assert.match(script, /GOOGLE_IDP_DETAIL_DIFF/)
+  assert.match(script, /sensitive = \{'client_id', 'client_secret'\}/)
   assert.match(script, /MULTI_LOGIN_AUTH_INFRA_PLAN_VERIFIED=true/)
   assert.match(script, /MULTI_LOGIN_AUTH_INFRA_APPLY_VERIFIED=true/)
   assert.match(script, /COGNITO_CLIENT_SITE_URLS_VERIFIED=true/)
