@@ -51,6 +51,8 @@ jobs:
         run: node --test scripts/aws/canonical-host-redirect.test.mjs
       - name: Verify legacy domain redirect function and guarded release contract
         run: node --test scripts/aws/legacy-domain-redirect.test.mjs scripts/aws/seaandshore-domain.test.mjs
+      - name: Verify guarded Terraform state unlock contract
+        run: node --test scripts/aws/terraform-state-unlock.test.mjs
       - name: Verify remote execution security contract
         run: node --test scripts/aws/remote-execution-config.test.mjs
       - name: Verify remote runtime log window contract
