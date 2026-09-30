@@ -29,7 +29,7 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.match(script, /aws_lambda_function\.cognito_create_auth_challenge/)
   assert.match(script, /aws_lambda_function\.cognito_verify_auth_challenge/)
   assert.match(script, /aws_cognito_identity_provider\.google/)
-  assert.match(script, /aws_ecs_task_definition\.web/)
+  assert.match(script, /aws ecs describe-task-definition/)
   assert.match(script, /aws ecs update-service/)
   assert.match(script, /AWS_COGNITO_GOOGLE_ENABLED/)
   assert.match(script, /GOOGLE_RUNTIME_VERIFIED=true/)
