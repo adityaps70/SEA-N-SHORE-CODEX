@@ -100,6 +100,10 @@ with open(output_path, 'w') as f:
     json.dump(values, f)
 PY
 
+# Terraform stages provider downloads in TMPDIR; the instance's /tmp is a small tmpfs that
+# overflows when several guarded plans run at once, so stage them inside the work directory.
+export TMPDIR="$WORK_DIR/tmp"
+mkdir -p "$TMPDIR"
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" \
   -backend-config="key=$STATE_KEY" \

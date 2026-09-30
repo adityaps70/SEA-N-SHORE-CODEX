@@ -59,6 +59,10 @@ with open(sys.argv[2],'w') as f: json.dump(values,f)
 PY
 # Plain init like the other guarded scripts (the committed lock pins only aws; the module also
 # needs archive/random), then assert the exact provider versions the plan will run with.
+# Terraform stages provider downloads in TMPDIR; the instance's /tmp is a small tmpfs that
+# overflows when several guarded plans run at once, so stage them inside the work directory.
+export TMPDIR="$RECOVERY_DIR/tmp"
+mkdir -p "$TMPDIR"
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" \
   -backend-config=region=ap-south-1 -backend-config=use_lockfile=true > "$RECOVERY_DIR/init.log"
