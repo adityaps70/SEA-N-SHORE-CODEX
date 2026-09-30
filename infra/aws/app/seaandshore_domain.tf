@@ -14,7 +14,7 @@
 variable "seaandshore_redirect_live" {
   description = "Stage B switch for seaandshore.in: attach the certificate and aliases to the redirect distribution and point apex + www at it. Requires the registrar delegation to Route 53 and an ISSUED certificate."
   type        = bool
-  default     = false
+  default     = true
 }
 
 locals {
