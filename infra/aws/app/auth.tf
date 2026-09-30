@@ -119,7 +119,7 @@ resource "aws_cognito_identity_provider" "google" {
   provider_type = "Google"
 
   provider_details = {
-    authorize_scopes = "openid email profile"
+    authorize_scopes = "email profile openid"
     client_id        = local.google_oauth_credentials.client_id
     client_secret    = local.google_oauth_credentials.client_secret
   }
