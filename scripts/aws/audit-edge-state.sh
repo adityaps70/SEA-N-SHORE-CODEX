@@ -147,6 +147,36 @@ while IFS=$'\t' read -r type state_name id live_name; do
         echo "aws_cloudfront_distribution.$state_name LIVE_QUERY_FAILED id=$id error=$ERROR_TEXT"
       fi
       ;;
+    aws_cloudfront_function)
+      case "$live_name" in
+        sea-n-shore-staging-canonical-host-redirect|sea-n-shore-staging-legacy-domain-redirect) ;;
+        *)
+          LIVE_CHECK_FAILED=1
+          echo "aws_cloudfront_function.$state_name LIVE_QUERY_REFUSED id=$id name=$live_name reason=unexpected-function-name"
+          continue
+          ;;
+      esac
+      if [[ "$id" != "$live_name" ]]; then
+        LIVE_CHECK_FAILED=1
+        echo "aws_cloudfront_function.$state_name LIVE_QUERY_REFUSED id=$id name=$live_name reason=state-id-name-mismatch"
+        continue
+      fi
+      if aws cloudfront describe-function \
+        --name "$live_name" \
+        --stage LIVE \
+        --output json > "$EVIDENCE_DIR/edge-function.json" 2>"$EVIDENCE_DIR/edge-live-error.txt"; then
+        if jq -e --arg expected "$live_name" '.FunctionSummary.Name == $expected and .FunctionSummary.FunctionConfig.Runtime == "cloudfront-js-2.0"' "$EVIDENCE_DIR/edge-function.json" >/dev/null; then
+          echo "aws_cloudfront_function.$state_name LIVE=true id=$id name=$live_name"
+        else
+          LIVE_CHECK_FAILED=1
+          echo "aws_cloudfront_function.$state_name LIVE_QUERY_FAILED id=$id name=$live_name reason=unexpected-live-function-shape"
+        fi
+      else
+        LIVE_CHECK_FAILED=1
+        ERROR_TEXT="$(tr '\n' ' ' < "$EVIDENCE_DIR/edge-live-error.txt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
+        echo "aws_cloudfront_function.$state_name LIVE_QUERY_FAILED id=$id name=$live_name error=$ERROR_TEXT"
+      fi
+      ;;
     aws_wafv2_web_acl)
       if [[ -z "$live_name" || "$live_name" == "null" ]]; then
         LIVE_CHECK_FAILED=1

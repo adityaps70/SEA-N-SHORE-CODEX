@@ -169,7 +169,7 @@ for r in changes:
     elif address=='aws_route53_record.seaandshore_www':
         check(after.get('name','').rstrip('.')=='www.seaandshore.in', address, after, address)
         if live:
-            check(actions in (['delete','create'],['create','delete']) and before.get('type')=='CNAME' and after.get('type')=='A' and alias_ok(after), address, after, f'{address} stage B must replace the CNAME with the redirect alias: {actions}')
+            check(actions in (['update'],['delete','create'],['create','delete']) and before.get('type')=='CNAME' and before.get('records')==['seaandshore.in'] and before.get('ttl')==TTL and after.get('type')=='A' and alias_ok(after), address, after, f'{address} stage B must replace the CNAME with the redirect alias: {actions}')
         else:
             check(actions==['create'] and after.get('type')=='CNAME' and after.get('records')==['seaandshore.in'] and after.get('ttl')==TTL, address, after, address)
     elif address in ('aws_route53_record.seaandshore_apex_aaaa[0]','aws_route53_record.seaandshore_www_aaaa[0]'):
