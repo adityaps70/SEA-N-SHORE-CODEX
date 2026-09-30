@@ -20,18 +20,19 @@ STATE_KEY=sea-n-shore/staging/terraform.tfstate
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region ap-south-1 "$RECOVERY_DIR/state.json" > "$RECOVERY_DIR/object.json"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$RECOVERY_DIR/state.json" >/dev/null
 jq -e '[.resources[] | select(.type == "aws_wafv2_web_acl" and .name == "edge") | .instances[].attributes.id] == ["3d249028-c2ca-4c2e-bcc4-1ef31ad2acc0"]' "$RECOVERY_DIR/state.json" >/dev/null
-# A first creation requires zero live distributions; an existing edge must match the tracked ID.
+# Phase 3 intentionally introduced a second distribution for the legacy seaandshore.in redirect.
+# Fail closed unless Terraform state and the live CloudFront inventory contain exactly those two
+# tracked distributions; Phase 4 must only mutate the main app distribution/function.
 aws cloudfront list-distributions --no-paginate --output json > "$RECOVERY_DIR/distributions.json"
 [[ -s "$RECOVERY_DIR/distributions.json" ]]
 jq -e '.DistributionList.IsTruncated == false' "$RECOVERY_DIR/distributions.json" >/dev/null
-STATE_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution") | .instances[].attributes.id] | if length == 0 then "" elif length == 1 then .[0] else error("Unexpected distributions in state") end' "$RECOVERY_DIR/state.json")"
-if [[ -z "$STATE_CF_ID" ]]; then
-  jq -e '.DistributionList.Quantity == 0' "$RECOVERY_DIR/distributions.json" >/dev/null
-  echo 'LIVE_CLOUDFRONT_DISTRIBUTIONS=0'
-else
-  jq -e --arg id "$STATE_CF_ID" '.DistributionList.Quantity == 1 and .DistributionList.Items[0].Id == $id' "$RECOVERY_DIR/distributions.json" >/dev/null
-  echo "LIVE_CLOUDFRONT_DISTRIBUTION=$STATE_CF_ID"
-fi
+jq -e '[.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_distribution") | .name] | sort == ["app", "seaandshore_redirect"]' "$RECOVERY_DIR/state.json" >/dev/null
+STATE_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "app" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one app distribution in state") end' "$RECOVERY_DIR/state.json")"
+LEGACY_CF_ID="$(jq -r '[.resources[] | select(.type == "aws_cloudfront_distribution" and .name == "seaandshore_redirect" and .mode == "managed") | .instances[].attributes.id] | if length == 1 then .[0] else error("Expected exactly one legacy redirect distribution in state") end' "$RECOVERY_DIR/state.json")"
+jq -e --arg app "$STATE_CF_ID" --arg legacy "$LEGACY_CF_ID" '([.DistributionList.Items[]?.Id] | sort) == ([$app, $legacy] | sort)' "$RECOVERY_DIR/distributions.json" >/dev/null
+echo "LIVE_CLOUDFRONT_APP_DISTRIBUTION=$STATE_CF_ID"
+echo "LIVE_CLOUDFRONT_LEGACY_REDIRECT_DISTRIBUTION=$LEGACY_CF_ID"
+echo 'LIVE_CLOUDFRONT_DISTRIBUTIONS_VERIFIED=true'
 ORIGIN="$(aws elbv2 describe-load-balancers --names sea-n-shore-staging-alb --region ap-south-1 --query 'LoadBalancers[0].DNSName' --output text)"
 [[ "$ORIGIN" == sea-n-shore-staging-alb-*.ap-south-1.elb.amazonaws.com ]]
 # The custom domain rides on the tracked seanshore.in certificate, which must already be ISSUED.
