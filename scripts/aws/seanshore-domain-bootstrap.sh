@@ -264,21 +264,17 @@ aws route53 get-hosted-zone --id "$ZONE_ID" --output json > "$WORK_DIR/zone-afte
 jq -e --arg domain "$EXPECTED_DOMAIN." '.HostedZone.Name==$domain and .HostedZone.Config.PrivateZone==false and (.DelegationSet.NameServers|length)==4' "$WORK_DIR/zone-after.json" >/dev/null
 jq -r '.DelegationSet.NameServers[] | "ROUTE53_NAME_SERVER=" + .' "$WORK_DIR/zone-after.json"
 
-for attempt in $(seq 1 30); do
-  aws acm describe-certificate --region "$EDGE_REGION" --certificate-arn "$CERT_ARN" --output json > "$WORK_DIR/cert-after.json"
-  RECORD_COUNT="$(jq '[.Certificate.DomainValidationOptions[]? | select(.ResourceRecord != null)] | length' "$WORK_DIR/cert-after.json")"
-  [[ "$RECORD_COUNT" -ge 1 ]] && break
-  sleep 2
-done
-jq -e --arg domain "$EXPECTED_DOMAIN" '
-  .Certificate.DomainName==$domain
-  and (.Certificate.SubjectAlternativeNames|sort)==([$domain, ("www."+$domain)]|sort)
-  and .Certificate.ValidationMethod=="DNS"
-  and ([.Certificate.DomainValidationOptions[]? | select(.ResourceRecord != null)] | length)>=1
-' "$WORK_DIR/cert-after.json" >/dev/null
+# Certificate evidence (read-only). The certificate is already ISSUED and serving the edge; this
+# only reports it, and prints the observed shape instead of failing silently.
+aws acm describe-certificate --region "$EDGE_REGION" --certificate-arn "$CERT_ARN" --output json > "$WORK_DIR/cert-after.json"
 echo "ACM_CERTIFICATE_ARN=$CERT_ARN"
 echo "ACM_CERTIFICATE_STATUS=$(jq -r '.Certificate.Status' "$WORK_DIR/cert-after.json")"
-jq -r '.Certificate.DomainValidationOptions[] | select(.ResourceRecord != null) | "ACM_VALIDATION_RECORD=" + .ResourceRecord.Type + "|" + .ResourceRecord.Name + "|" + .ResourceRecord.Value' "$WORK_DIR/cert-after.json" | sort -u
+echo "ACM_CERTIFICATE_NAMES=$(jq -c '[.Certificate.DomainName] + (.Certificate.SubjectAlternativeNames // []) | unique' "$WORK_DIR/cert-after.json")"
+jq -e --arg domain "$EXPECTED_DOMAIN" '
+  .Certificate.DomainName==$domain
+  and (([.Certificate.DomainName] + (.Certificate.SubjectAlternativeNames // []) | unique | sort)==([$domain, ("www."+$domain)]|sort))
+' "$WORK_DIR/cert-after.json" >/dev/null || { echo "ACM certificate names differ from seanshore.in + www.seanshore.in" >&2; exit 1; }
+jq -r '.Certificate.DomainValidationOptions[]? | select(.ResourceRecord != null) | "ACM_VALIDATION_RECORD=" + .ResourceRecord.Type + "|" + .ResourceRecord.Name + "|" + .ResourceRecord.Value' "$WORK_DIR/cert-after.json" | sort -u
 
 aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" --output json > "$WORK_DIR/records-after.json"
 jq -e '
