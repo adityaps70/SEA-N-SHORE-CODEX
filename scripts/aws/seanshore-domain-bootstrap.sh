@@ -138,8 +138,10 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   -target=aws_route53_zone.seanshore \
   -target=aws_acm_certificate.seanshore_edge \
-  -target=aws_route53_record.seanshore_legacy_apex \
-  -target=aws_route53_record.seanshore_legacy_www \
+  -target=aws_route53_record.seanshore_apex_a \
+  -target=aws_route53_record.seanshore_apex_aaaa \
+  -target=aws_route53_record.seanshore_www_a \
+  -target=aws_route53_record.seanshore_www_aaaa \
   -target=aws_route53_record.seanshore_edge_validation \
   -target=aws_route53_record.seanshore_ses_dkim \
   -var-file="$WORK_DIR/variables.json" \
@@ -151,9 +153,27 @@ import json, sys
 allowed={
   'aws_route53_zone.seanshore',
   'aws_acm_certificate.seanshore_edge',
-  'aws_route53_record.seanshore_legacy_apex',
-  'aws_route53_record.seanshore_legacy_www',
 }
+# Phase 2 cutover: the legacy website A records become aliases to the app distribution in place
+# (moved from seanshore_legacy_*), and AAAA aliases are created next to them.
+CLOUDFRONT_HOSTED_ZONE_ID='Z2FDTNDATAQYW2'
+APP_DISTRIBUTION_DOMAIN='d3prih0q6jofyr.cloudfront.net'
+site_records={
+  'aws_route53_record.seanshore_apex_a': ('seanshore.in', 'A', ['update'], 'aws_route53_record.seanshore_legacy_apex'),
+  'aws_route53_record.seanshore_apex_aaaa': ('seanshore.in', 'AAAA', ['create'], None),
+  'aws_route53_record.seanshore_www_a': ('www.seanshore.in', 'A', ['update'], 'aws_route53_record.seanshore_legacy_www'),
+  'aws_route53_record.seanshore_www_aaaa': ('www.seanshore.in', 'AAAA', ['create'], None),
+}
+def is_app_alias(after):
+    aliases=after.get('alias') or []
+    return (
+        len(aliases) == 1
+        and aliases[0].get('name', '').rstrip('.') == APP_DISTRIBUTION_DOMAIN
+        and aliases[0].get('zone_id') == CLOUDFRONT_HOSTED_ZONE_ID
+        and aliases[0].get('evaluate_target_health') is False
+        and not after.get('records')
+        and after.get('ttl') in (None, 0)
+    )
 validation_prefix='aws_route53_record.seanshore_edge_validation['
 ses_dkim_prefix='aws_route53_record.seanshore_ses_dkim['
 stale_ses_dkim_addresses={
@@ -171,6 +191,26 @@ for r in changes:
     ):
         raise SystemExit(f"unexpected domain bootstrap change: {r['address']} {r['change']['actions']}")
     actions = r['change']['actions']
+    if r['address'] in site_records:
+        name, record_type, expected_actions, previous = site_records[r['address']]
+        after = r.get('change', {}).get('after') or {}
+        before = r.get('change', {}).get('before') or {}
+        unknown = r.get('change', {}).get('after_unknown') or {}
+        if actions != expected_actions:
+            raise SystemExit(f"site record {r['address']} must be {expected_actions}, got {actions}")
+        if after.get('name', '').rstrip('.') != name or after.get('type') != record_type:
+            raise SystemExit(f"site record {r['address']} name/type mismatch: {after.get('name')} {after.get('type')}")
+        if unknown.get('alias') is True or unknown.get('name') is True or unknown.get('type') is True:
+            raise SystemExit(f"site record {r['address']} alias target must be known at plan time")
+        if not is_app_alias(after):
+            raise SystemExit(f"site record {r['address']} must alias the app CloudFront distribution")
+        if actions == ['update']:
+            if before.get('records') != ['162.215.226.7'] or before.get('type') != record_type:
+                raise SystemExit(f"site record {r['address']} may only replace the legacy 162.215.226.7 record")
+            if r.get('previous_address') not in (previous, None):
+                raise SystemExit(f"site record {r['address']} unexpected previous address {r.get('previous_address')}")
+        print(f"SEANSHORE_DOMAIN_BOOTSTRAP_SITE_RECORD={r['address']}|{','.join(actions)}|{name}|{record_type}")
+        continue
     if actions == ['create']:
         continue
     if r['address'] in stale_ses_dkim_addresses and actions == ['delete']:
@@ -238,10 +278,33 @@ jq -r '.Certificate.DomainValidationOptions[] | select(.ResourceRecord != null) 
 
 aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" --output json > "$WORK_DIR/records-after.json"
 jq -e '
-  any(.ResourceRecordSets[]; .Name=="seanshore.in." and .Type=="A" and .TTL==300 and .ResourceRecords==[{"Value":"162.215.226.7"}])
-  and any(.ResourceRecordSets[]; .Name=="www.seanshore.in." and .Type=="A" and .TTL==300 and .ResourceRecords==[{"Value":"162.215.226.7"}])
+  [.ResourceRecordSets[] | select((.Name=="seanshore.in." or .Name=="www.seanshore.in.") and (.Type=="A" or .Type=="AAAA"))] as $site
+  | ($site | length) == 4
+  and all($site[]; .AliasTarget.DNSName=="d3prih0q6jofyr.cloudfront.net." and .AliasTarget.HostedZoneId=="Z2FDTNDATAQYW2" and .AliasTarget.EvaluateTargetHealth==false and (.ResourceRecords|not))
+  and ([$site[] | .Name + "/" + .Type] | sort) == ["seanshore.in./A","seanshore.in./AAAA","www.seanshore.in./A","www.seanshore.in./AAAA"]
+  and (any(.ResourceRecordSets[]; (.ResourceRecords // []) | any(.Value=="162.215.226.7")) | not)
 ' "$WORK_DIR/records-after.json" >/dev/null
-echo "LEGACY_DNS_CONTINUITY_RECORDS_VERIFIED=true"
+echo "SITE_ALIAS_RECORDS_VERIFIED=true"
+
+# Authoritative answer straight from the zone's own name servers, then the app over the real
+# hostname pinned to the distribution (public resolvers may still cache the legacy answer).
+ROUTE53_NS="$(jq -r '.DelegationSet.NameServers[0]' "$WORK_DIR/zone-after.json")"
+for host in seanshore.in www.seanshore.in; do
+  AUTH_ANSWER="$(dig +short A "$host" "@$ROUTE53_NS" | sort | tr '\n' ' ')"
+  echo "AUTHORITATIVE_A=$host|$AUTH_ANSWER"
+  [[ -n "$AUTH_ANSWER" && "$AUTH_ANSWER" != *162.215.226.7* ]]
+  AUTH_AAAA="$(dig +short AAAA "$host" "@$ROUTE53_NS" | sort | tr '\n' ' ')"
+  echo "AUTHORITATIVE_AAAA=$host|$AUTH_AAAA"
+  [[ -n "$AUTH_AAAA" ]]
+done
+EDGE_IP="$(dig +short A d3prih0q6jofyr.cloudfront.net | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)"
+[[ -n "$EDGE_IP" ]]
+APEX_STATUS="$(curl --silent --show-error --max-time 45 --resolve "seanshore.in:443:$EDGE_IP" -o "$WORK_DIR/apex-health.json" -w '%{http_code}' "https://seanshore.in/api/health/phase4")"
+[[ "$APEX_STATUS" == 200 ]]
+jq -e '.status == "ok"' "$WORK_DIR/apex-health.json" >/dev/null
+WWW_REDIRECT="$(curl --silent --show-error --max-time 45 --resolve "www.seanshore.in:443:$EDGE_IP" -o /dev/null -w '%{http_code} %{redirect_url}' "https://www.seanshore.in/help?probe=www")"
+[[ "$WWW_REDIRECT" == "301 https://seanshore.in/help?probe=www" ]]
+echo "SEANSHORE_CUTOVER_HTTPS_VERIFIED=true"
 echo "ACM_DNS_VALIDATION_RECORD_COUNT=$(jq '[.ResourceRecordSets[] | select(.Type=="CNAME" and (.Name|startswith("_")))] | length' "$WORK_DIR/records-after.json")"
 
 jq -e '
