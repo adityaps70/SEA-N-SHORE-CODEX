@@ -45,14 +45,32 @@ jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json
 # Count tracked instances, not resource entries: a resource shell left behind without instances
 # still makes Terraform plan a create, so it must not read as reconciled.
 STATE_COUNT="$(jq '[.resources[] | select(.mode=="managed" and .type=="aws_sesv2_email_identity" and .name=="transactional_domain") | .instances[]?] | length' "$WORK_DIR/state.json")"
-if [[ "$STATE_COUNT" == "1" ]]; then
+TRACKED_IDENTITY="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_sesv2_email_identity" and .name=="transactional_domain") | .instances[]? | .attributes.email_identity][0] // empty' "$WORK_DIR/state.json")"
+STALE_IDENTITY=""
+if [[ "$STATE_COUNT" == "1" && "$TRACKED_IDENTITY" == "$IMPORT_ID" ]]; then
   echo "SES_IDENTITY_STATE_ALREADY_RECONCILED=true"
   exit 0
 fi
-[[ "$STATE_COUNT" == "0" ]] || {
-  echo "Unexpected SES identity state count: $STATE_COUNT" >&2
-  exit 1
-}
+if [[ "$STATE_COUNT" == "1" ]]; then
+  # The tracked instance is the previous domain identity. It may only be dropped from state
+  # (state-only, nothing live is touched) when that identity no longer exists in SES.
+  [[ "$TRACKED_IDENTITY" == "seaandshore.in" ]] || {
+    echo "Tracked SES identity $TRACKED_IDENTITY is neither $IMPORT_ID nor the retired seaandshore.in domain; refusing." >&2
+    exit 1
+  }
+  if aws sesv2 get-email-identity --region "$AWS_REGION" --email-identity "$TRACKED_IDENTITY" --output json > "$WORK_DIR/stale-live.json" 2> "$WORK_DIR/stale-live.err"; then
+    echo "Tracked SES identity $TRACKED_IDENTITY still exists in SES; refusing to drop it from state." >&2
+    exit 1
+  fi
+  grep -q "NotFoundException" "$WORK_DIR/stale-live.err" || { cat "$WORK_DIR/stale-live.err" >&2; exit 1; }
+  STALE_IDENTITY="$TRACKED_IDENTITY"
+  echo "SES_IDENTITY_STATE_STALE_INSTANCE=$STALE_IDENTITY|live=NotFoundException"
+else
+  [[ "$STATE_COUNT" == "0" ]] || {
+    echo "Unexpected SES identity state count: $STATE_COUNT" >&2
+    exit 1
+  }
+fi
 
 verify_live_identity() {
   local identity_path="$1"
@@ -201,7 +219,7 @@ jq -e --arg resource "$RESOURCE" '
 
 STATE_SERIAL_BEFORE="$(jq -r '.serial' "$WORK_DIR/state.json")"
 echo "SES_IDENTITY_STATE_ACTION=$ACTION"
-echo "SES_IDENTITY_STATE_COUNT_BEFORE=0"
+echo "SES_IDENTITY_STATE_COUNT_BEFORE=$STATE_COUNT"
 echo "STATE_SERIAL_BEFORE=$STATE_SERIAL_BEFORE"
 echo "SES_IDENTITY_STATE_PLAN_VERIFIED=IMPORT_ONLY"
 echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/before.tfplan" | cut -d' ' -f1)"
@@ -230,6 +248,10 @@ verify_live_identity "$WORK_DIR/live-pre-import.json" "$WORK_DIR/tags-pre-import
 [[ "$(canonical_live_shape "$WORK_DIR/live-pre-import.json")" == "$LIVE_SHAPE_BEFORE" ]]
 live_tags_match_desired "$WORK_DIR/tags-pre-import.json"
 
+if [[ -n "$STALE_IDENTITY" ]]; then
+  echo "REMOVING_STALE_SES_IDENTITY_FROM_TERRAFORM_STATE=$STALE_IDENTITY"
+  terraform -chdir="$APP_DIR" state rm -lock-timeout=60s "$RESOURCE" > "$WORK_DIR/state-rm.log"
+fi
 echo "IMPORTING_EXISTING_SES_IDENTITY_INTO_TERRAFORM_STATE"
 terraform -chdir="$APP_DIR" import -input=false -no-color -var-file="$WORK_DIR/variables.json" "$RESOURCE" "$IMPORT_ID" > "$WORK_DIR/import.log"
 
