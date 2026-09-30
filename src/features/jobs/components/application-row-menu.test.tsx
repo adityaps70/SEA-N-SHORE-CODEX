@@ -80,7 +80,8 @@ describe('application row "…" sheet (phones)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Withdraw application' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('This application can no longer be withdrawn.')
     fireEvent.click(screen.getByRole('button', { name: 'Keep application' }))
-    expect(screen.getByRole('menu', { name: 'Actions for Second Engineer' })).toBeInTheDocument()
+    // Closing the sheet re-opens the menu in a transition; wait for it instead of asserting synchronously.
+    expect(await screen.findByRole('menu', { name: 'Actions for Second Engineer' })).toBeInTheDocument()
   })
 
   it('omits Withdraw once decided, omits Message without a recruiter, and disables it until connected', () => {
