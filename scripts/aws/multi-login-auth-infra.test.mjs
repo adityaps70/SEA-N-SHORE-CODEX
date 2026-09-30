@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
+// Stale state-lock recovery should leave this auth release path plan-safe.
 test('multi-login Cognito infrastructure has a guarded bounded release path', async () => {
   const scriptUrl = new URL('./multi-login-auth-infra.sh', import.meta.url)
   const actionUrl = new URL('./multi-login-auth-infra-action.txt', import.meta.url)
