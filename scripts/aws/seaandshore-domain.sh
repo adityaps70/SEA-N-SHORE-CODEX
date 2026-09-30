@@ -145,48 +145,58 @@ def alias_ok(after):
     aliases=after.get('alias') or []
     return len(aliases)==1 and aliases[0].get('zone_id')==CF_ZONE and aliases[0].get('evaluate_target_health') is False and not after.get('records')
 changes=[r for r in plan.get('resource_changes',[]) if r.get('mode')!='data' and r.get('change',{}).get('actions')!=['no-op']]
+class Refused(SystemExit):
+    pass
+def check(condition, address, after, detail):
+    if not condition:
+        print(f'SEAANDSHORE_DOMAIN_GUARD_REFUSED={address}|{detail}', file=sys.stderr)
+        print(json.dumps(after, sort_keys=True)[:4000], file=sys.stderr)
+        raise Refused(1)
 for r in changes:
     address=r['address']; actions=r['change']['actions']; after=r['change'].get('after') or {}; before=r['change'].get('before') or {}
     if address=='aws_route53_zone.seaandshore':
-        assert actions==['create'] and after.get('name')=='seaandshore.in', address
+        check(actions==['create'] and after.get('name')=='seaandshore.in', address, after, address)
     elif address in expected_records:
         name,rtype,records,ttl=expected_records[address]
-        assert actions==['create'], f'{address} must be create, got {actions}'
-        assert after.get('name','').rstrip('.')==name and after.get('type')==rtype and sorted(after.get('records') or [])==sorted(records) and after.get('ttl')==ttl, f'{address} differs from the legacy snapshot: {after}'
+        check(actions==['create'], address, after, f'{address} must be create, got {actions}')
+        check(after.get('name','').rstrip('.')==name and after.get('type')==rtype and sorted(after.get('records') or [])==sorted(records) and after.get('ttl')==ttl, address, after, f'{address} differs from the legacy snapshot: {after}')
     elif address=='aws_route53_record.seaandshore_apex_a':
-        assert after.get('name','').rstrip('.')=='seaandshore.in' and after.get('type')=='A', address
+        check(after.get('name','').rstrip('.')=='seaandshore.in' and after.get('type')=='A', address, after, address)
         if live:
-            assert actions==['update'] and before.get('records')==[LEGACY_IP] and alias_ok(after), f'{address} stage B must turn the legacy A into the redirect alias: {actions}'
+            check(actions==['update'] and before.get('records')==[LEGACY_IP] and alias_ok(after), address, after, f'{address} stage B must turn the legacy A into the redirect alias: {actions}')
         else:
-            assert actions==['create'] and after.get('records')==[LEGACY_IP] and after.get('ttl')==TTL, f'{address} stage A must copy the legacy A record'
+            check(actions==['create'] and after.get('records')==[LEGACY_IP] and after.get('ttl')==TTL, address, after, f'{address} stage A must copy the legacy A record')
     elif address=='aws_route53_record.seaandshore_www':
-        assert after.get('name','').rstrip('.')=='www.seaandshore.in', address
+        check(after.get('name','').rstrip('.')=='www.seaandshore.in', address, after, address)
         if live:
-            assert actions in (['delete','create'],['create','delete']) and before.get('type')=='CNAME' and after.get('type')=='A' and alias_ok(after), f'{address} stage B must replace the CNAME with the redirect alias: {actions}'
+            check(actions in (['delete','create'],['create','delete']) and before.get('type')=='CNAME' and after.get('type')=='A' and alias_ok(after), address, after, f'{address} stage B must replace the CNAME with the redirect alias: {actions}')
         else:
-            assert actions==['create'] and after.get('type')=='CNAME' and after.get('records')==['seaandshore.in'] and after.get('ttl')==TTL, address
+            check(actions==['create'] and after.get('type')=='CNAME' and after.get('records')==['seaandshore.in'] and after.get('ttl')==TTL, address, after, address)
     elif address in ('aws_route53_record.seaandshore_apex_aaaa[0]','aws_route53_record.seaandshore_www_aaaa[0]'):
-        assert live and actions==['create'] and after.get('type')=='AAAA' and alias_ok(after), address
+        check(live and actions==['create'] and after.get('type')=='AAAA' and alias_ok(after), address, after, address)
     elif address=='aws_acm_certificate.seaandshore_edge':
-        assert actions==['create'] and after.get('domain_name')=='seaandshore.in' and after.get('subject_alternative_names')==['www.seaandshore.in'] and after.get('validation_method')=='DNS', address
+        names=set(after.get('subject_alternative_names') or []) | {after.get('domain_name')}
+        check(actions==['create'], address, after, f'actions {actions}')
+        check(after.get('domain_name')=='seaandshore.in' and names=={'seaandshore.in','www.seaandshore.in'}, address, after, 'certificate names')
+        check(after.get('validation_method')=='DNS', address, after, 'validation method')
     elif address.startswith('aws_route53_record.seaandshore_edge_validation['):
-        assert actions==['create'], address
+        check(actions==['create'], address, after, address)
     elif address=='aws_cloudfront_function.legacy_domain_redirect':
-        assert actions in (['create'],['update']) and after.get('name')=='sea-n-shore-staging-legacy-domain-redirect' and after.get('runtime')=='cloudfront-js-2.0' and after.get('publish') is True and after.get('code')==template, address
+        check(actions in (['create'],['update']) and after.get('name')=='sea-n-shore-staging-legacy-domain-redirect' and after.get('runtime')=='cloudfront-js-2.0' and after.get('publish') is True and after.get('code')==template, address, after, address)
     elif address=='aws_cloudfront_distribution.seaandshore_redirect':
-        assert actions in (['create'],['update']), f'{address} {actions}'
-        assert after.get('enabled') is True and after.get('web_acl_id') in (None,''), address
+        check(actions in (['create'],['update']), address, after, f'{address} {actions}')
+        check(after.get('enabled') is True and after.get('web_acl_id') in (None,''), address, after, address)
         origins=after.get('origin') or []
-        assert len(origins)==1 and origins[0].get('domain_name')=='seanshore.in' and origins[0]['custom_origin_config'][0].get('origin_protocol_policy')=='https-only', address
+        check(len(origins)==1 and origins[0].get('domain_name')=='seanshore.in' and origins[0]['custom_origin_config'][0].get('origin_protocol_policy')=='https-only', address, after, address)
         behavior=(after.get('default_cache_behavior') or [{}])[0]
         assoc=behavior.get('function_association') or []
-        assert len(assoc)==1 and assoc[0].get('event_type')=='viewer-request', address
-        assert not behavior.get('lambda_function_association'), address
+        check(len(assoc)==1 and assoc[0].get('event_type')=='viewer-request', address, after, address)
+        check(not behavior.get('lambda_function_association'), address, after, address)
         cert=(after.get('viewer_certificate') or [{}])[0]
         if live:
-            assert sorted(after.get('aliases') or [])==['seaandshore.in','www.seaandshore.in'] and cert.get('ssl_support_method')=='sni-only' and cert.get('minimum_protocol_version')=='TLSv1.2_2021' and (cert.get('acm_certificate_arn') or '').startswith('arn:aws:acm:us-east-1:310356785722:certificate/'), address
+            check(sorted(after.get('aliases') or [])==['seaandshore.in','www.seaandshore.in'] and cert.get('ssl_support_method')=='sni-only' and cert.get('minimum_protocol_version')=='TLSv1.2_2021' and (cert.get('acm_certificate_arn') or '').startswith('arn:aws:acm:us-east-1:310356785722:certificate/'), address, after, address)
         else:
-            assert not after.get('aliases') and cert.get('cloudfront_default_certificate') is True, address
+            check(not after.get('aliases') and cert.get('cloudfront_default_certificate') is True, address, after, address)
     else:
         raise SystemExit(f'unexpected seaandshore change: {address} {actions}')
     print(f"SEAANDSHORE_DOMAIN_CHANGE={address}|{','.join(actions)}")
