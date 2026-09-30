@@ -123,10 +123,40 @@ jobs:
             test "$has_logo" = "yes" || { echo "${label} homepage HTML does not contain the compact logo asset path." >&2; exit 1; }
           }
 
+          verify_cloudfront_redirect() {
+            local path="$1"
+            local headers="/tmp/cloudfront-redirect.headers"
+            local status
+            status=$(curl --show-error --silent --max-time 45 -D "$headers" -o /dev/null --write-out '%{http_code}' "${CLOUDFRONT_URL}${path}")
+            local location
+            location=$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$headers" | tail -n 1)
+            local expected="${SITE_URL%/}${path}"
+
+            echo "=== CLOUDFRONT REDIRECT ==="
+            echo "path=$path"
+            echo "status=$status"
+            echo "location=${location:-missing}"
+
+            test "$status" = "301" || { echo "CloudFront path $path returned HTTP $status instead of 301." >&2; exit 1; }
+            test "$location" = "$expected" || { echo "CloudFront path $path redirected to unexpected location ${location:-missing}." >&2; exit 1; }
+          }
+
+          verify_cloudfront_api() {
+            CLOUDFRONT_API_STATUS=$(curl --show-error --silent --max-time 45 -o /tmp/cloudfront-phase4-health.json --write-out '%{http_code}' "${CLOUDFRONT_URL}/api/health/phase4")
+            echo "=== CLOUDFRONT API EXEMPTION ==="
+            echo "status=$CLOUDFRONT_API_STATUS"
+            test "$CLOUDFRONT_API_STATUS" = "200" || { echo "CloudFront /api/* exemption failed with HTTP $CLOUDFRONT_API_STATUS." >&2; exit 1; }
+            jq -e '.status == "ok" and .database == true and .identityMappings == true and .contentNetwork == true' /tmp/cloudfront-phase4-health.json >/dev/null || {
+              echo "CloudFront Phase 4 API health payload is not healthy." >&2
+              exit 1
+            }
+          }
+
           verify_asset site "$SITE_URL"
-          verify_asset cloudfront "$CLOUDFRONT_URL"
           verify_page site "$SITE_URL"
-          verify_page cloudfront "$CLOUDFRONT_URL"
+          verify_cloudfront_redirect "$ASSET_PATH"
+          verify_cloudfront_redirect "/"
+          verify_cloudfront_api
 
   staging-runtime-shape:
     runs-on: ubuntu-latest
