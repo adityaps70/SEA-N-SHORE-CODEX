@@ -63,6 +63,8 @@
     "vitest": "^4.1.11"
   },
   "overrides": {
-    "@aws-sdk/credential-provider-login": "3.972.77"
+    "@aws-sdk/credential-provider-login": "3.972.77",
+    "ignore": "7.0.10",
+    "electron-to-chromium": "1.5.439"
   }
 }
