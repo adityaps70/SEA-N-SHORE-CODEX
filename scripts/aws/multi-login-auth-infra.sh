@@ -253,7 +253,169 @@ else
   echo "GOOGLE_FEDERATION_VERIFIED=false"
 fi
 
+# Roll the Google availability flag into the running web task without changing
+# the deployed image, secrets, roles, networking or any other container setting.
 terraform -chdir="$APP_DIR" state pull > "$WORK_DIR/state-after.json"
+CLUSTER_NAME="$(jq -r '
+  [.resources[]
+   | select(.mode=="managed" and .type=="aws_ecs_cluster" and .name=="app")
+   | .instances[0].attributes.name][0] // empty
+' "$WORK_DIR/state-after.json")"
+SERVICE_NAME="$(jq -r '
+  [.resources[]
+   | select(.mode=="managed" and .type=="aws_ecs_service" and .name=="web")
+   | .instances[0].attributes.name][0] // empty
+' "$WORK_DIR/state-after.json")"
+[[ "$CLUSTER_NAME" == "sea-n-shore-staging" ]]
+[[ "$SERVICE_NAME" == "sea-n-shore-staging-web" ]]
+
+aws ecs describe-services \
+  --region "$AWS_REGION" \
+  --cluster "$CLUSTER_NAME" \
+  --services "$SERVICE_NAME" \
+  --output json > "$WORK_DIR/service-before.json"
+jq -e '.failures | length == 0' "$WORK_DIR/service-before.json" >/dev/null
+CURRENT_TASK_ARN="$(jq -r '.services[0].taskDefinition // empty' "$WORK_DIR/service-before.json")"
+[[ "$CURRENT_TASK_ARN" == arn:aws:ecs:*:"$EXPECTED_ACCOUNT":task-definition/sea-n-shore-staging-web:* ]]
+
+aws ecs describe-task-definition \
+  --region "$AWS_REGION" \
+  --task-definition "$CURRENT_TASK_ARN" \
+  --query taskDefinition \
+  --output json > "$WORK_DIR/task-current.json"
+
+DESIRED_GOOGLE_FLAG="$GOOGLE_OAUTH_CREDENTIALS_READY"
+CURRENT_GOOGLE_FLAG="$(jq -r '
+  [.containerDefinitions[]
+   | select(.name=="web")
+   | (.environment // [])[]
+   | select(.name=="AWS_COGNITO_GOOGLE_ENABLED")
+   | .value][0] // "false"
+' "$WORK_DIR/task-current.json")"
+CURRENT_IMAGE="$(jq -r '.containerDefinitions[] | select(.name=="web") | .image // empty' "$WORK_DIR/task-current.json")"
+[[ -n "$CURRENT_IMAGE" ]]
+
+NEW_TASK_ARN="$CURRENT_TASK_ARN"
+if [[ "$CURRENT_GOOGLE_FLAG" != "$DESIRED_GOOGLE_FLAG" ]]; then
+  jq --arg google "$DESIRED_GOOGLE_FLAG" '
+    del(
+      .taskDefinitionArn,
+      .revision,
+      .status,
+      .requiresAttributes,
+      .compatibilities,
+      .registeredAt,
+      .registeredBy
+    )
+    | .containerDefinitions |= map(
+        if .name == "web" then
+          .environment = (
+            ((.environment // []) | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED")))
+            + [{"name":"AWS_COGNITO_GOOGLE_ENABLED","value":$google}]
+          )
+        else . end
+      )
+  ' "$WORK_DIR/task-current.json" > "$WORK_DIR/task-next.json"
+
+  jq '
+    del(
+      .taskDefinitionArn,
+      .revision,
+      .status,
+      .requiresAttributes,
+      .compatibilities,
+      .registeredAt,
+      .registeredBy
+    )
+    | .containerDefinitions |= map(
+        if .name == "web" then
+          .environment = ((.environment // [])
+            | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED"))
+            | sort_by(.name))
+        else . end
+      )
+  ' "$WORK_DIR/task-current.json" > "$WORK_DIR/task-current-normalized.json"
+  jq '
+    .containerDefinitions |= map(
+      if .name == "web" then
+        .environment = ((.environment // [])
+          | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED"))
+          | sort_by(.name))
+      else . end
+    )
+  ' "$WORK_DIR/task-next.json" > "$WORK_DIR/task-next-normalized.json"
+  cmp -s "$WORK_DIR/task-current-normalized.json" "$WORK_DIR/task-next-normalized.json" || {
+    echo "Refusing Google runtime rollout because fields other than AWS_COGNITO_GOOGLE_ENABLED changed." >&2
+    exit 1
+  }
+
+  NEW_TASK_ARN="$(aws ecs register-task-definition \
+    --region "$AWS_REGION" \
+    --cli-input-json "file://$WORK_DIR/task-next.json" \
+    --query 'taskDefinition.taskDefinitionArn' \
+    --output text)"
+  [[ "$NEW_TASK_ARN" == arn:aws:ecs:*:"$EXPECTED_ACCOUNT":task-definition/sea-n-shore-staging-web:* ]]
+
+  aws ecs update-service \
+    --region "$AWS_REGION" \
+    --cluster "$CLUSTER_NAME" \
+    --service "$SERVICE_NAME" \
+    --task-definition "$NEW_TASK_ARN" \
+    --force-new-deployment > "$WORK_DIR/service-update.json"
+
+  aws ecs wait services-stable \
+    --region "$AWS_REGION" \
+    --cluster "$CLUSTER_NAME" \
+    --services "$SERVICE_NAME"
+fi
+
+aws ecs describe-services \
+  --region "$AWS_REGION" \
+  --cluster "$CLUSTER_NAME" \
+  --services "$SERVICE_NAME" \
+  --output json > "$WORK_DIR/service-after.json"
+jq -e --arg task "$NEW_TASK_ARN" '
+  (.failures | length) == 0
+  and .services[0].taskDefinition == $task
+  and .services[0].desiredCount == 1
+  and .services[0].runningCount == 1
+  and .services[0].pendingCount == 0
+  and ([.services[0].deployments[] | select(.status=="PRIMARY")] | length) == 1
+  and ([.services[0].deployments[] | select(.status=="PRIMARY")][0].rolloutState) == "COMPLETED"
+  and ([.services[0].deployments[] | select(.status=="PRIMARY")][0].failedTasks) == 0
+' "$WORK_DIR/service-after.json" >/dev/null
+
+aws ecs describe-task-definition \
+  --region "$AWS_REGION" \
+  --task-definition "$NEW_TASK_ARN" \
+  --query taskDefinition \
+  --output json > "$WORK_DIR/task-after.json"
+jq -e --arg google "$DESIRED_GOOGLE_FLAG" '
+  [.containerDefinitions[]
+   | select(.name=="web")
+   | (.environment // [])[]
+   | select(.name=="AWS_COGNITO_GOOGLE_ENABLED")
+   | .value] == [$google]
+' "$WORK_DIR/task-after.json" >/dev/null
+[[ "$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$WORK_DIR/task-after.json")" == "$CURRENT_IMAGE" ]]
+
+if [[ "$DESIRED_GOOGLE_FLAG" == "true" ]]; then
+  SIGN_IN_HTML="$(curl --fail --silent --show-error --max-time 45 "${PUBLIC_SITE_URL%/}/auth/sign-in?googleProbe=1")"
+  grep -Fq 'Continue with Google' <<<"$SIGN_IN_HTML"
+
+  GOOGLE_START_HEADERS="$WORK_DIR/google-start.headers"
+  GOOGLE_START_STATUS="$(curl --silent --show-error --max-time 45 \
+    -D "$GOOGLE_START_HEADERS" \
+    -o /dev/null \
+    -w '%{http_code}' \
+    "${PUBLIC_SITE_URL%/}/auth/google/start?intent=sign-in")"
+  [[ "$GOOGLE_START_STATUS" =~ ^30[1278]$ ]]
+  GOOGLE_START_LOCATION="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$GOOGLE_START_HEADERS" | tail -n 1)"
+  [[ "$GOOGLE_START_LOCATION" == https://sea-n-shore-staging-310356785722.auth.ap-south-1.amazoncognito.com/oauth2/authorize* ]]
+  [[ "$GOOGLE_START_LOCATION" == *"identity_provider=Google"* ]]
+fi
+echo "GOOGLE_RUNTIME_VERIFIED=true"
+
 STATE_SERIAL_AFTER="$(jq -r '.serial' "$WORK_DIR/state-after.json")"
 [[ "$STATE_SERIAL_AFTER" -ge "$STATE_SERIAL_BEFORE" ]]
 echo "STATE_SERIAL_AFTER=$STATE_SERIAL_AFTER"
