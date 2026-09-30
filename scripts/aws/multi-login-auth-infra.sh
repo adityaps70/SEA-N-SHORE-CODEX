@@ -281,6 +281,14 @@ fi
 # Roll the Google availability flag into the running web task without changing
 # the deployed image, secrets, roles, networking or any other container setting.
 terraform -chdir="$APP_DIR" state pull > "$WORK_DIR/state-after.json"
+COGNITO_DOMAIN_PREFIX="$(jq -r '
+  [.resources[]
+   | select(.mode=="managed" and .type=="aws_cognito_user_pool_domain" and .name=="app")
+   | .instances[0].attributes.domain][0] // empty
+' "$WORK_DIR/state-after.json")"
+[[ -n "$COGNITO_DOMAIN_PREFIX" ]]
+DESIRED_COGNITO_DOMAIN="${COGNITO_DOMAIN_PREFIX}.auth.${AWS_REGION}.amazoncognito.com"
+[[ "$DESIRED_COGNITO_DOMAIN" == "sea-n-shore-staging-${EXPECTED_ACCOUNT}.auth.${AWS_REGION}.amazoncognito.com" ]]
 CLUSTER_NAME="$(jq -r '
   [.resources[]
    | select(.mode=="managed" and .type=="aws_ecs_cluster" and .name=="app")
@@ -317,12 +325,23 @@ CURRENT_GOOGLE_FLAG="$(jq -r '
    | select(.name=="AWS_COGNITO_GOOGLE_ENABLED")
    | .value][0] // "false"
 ' "$WORK_DIR/task-current.json")"
+CURRENT_COGNITO_DOMAIN="$(jq -r '
+  [.containerDefinitions[]
+   | select(.name=="web")
+   | (.environment // [])[]
+   | select(.name=="AWS_COGNITO_DOMAIN")
+   | .value][0] // ""
+' "$WORK_DIR/task-current.json")"
 CURRENT_IMAGE="$(jq -r '.containerDefinitions[] | select(.name=="web") | .image // empty' "$WORK_DIR/task-current.json")"
 [[ -n "$CURRENT_IMAGE" ]]
+echo "CURRENT_GOOGLE_RUNTIME_FLAG=$CURRENT_GOOGLE_FLAG"
+echo "DESIRED_GOOGLE_RUNTIME_FLAG=$DESIRED_GOOGLE_FLAG"
+echo "CURRENT_COGNITO_DOMAIN_PRESENT=$([[ -n "$CURRENT_COGNITO_DOMAIN" ]] && echo true || echo false)"
+echo "DESIRED_COGNITO_DOMAIN=$DESIRED_COGNITO_DOMAIN"
 
 NEW_TASK_ARN="$CURRENT_TASK_ARN"
-if [[ "$CURRENT_GOOGLE_FLAG" != "$DESIRED_GOOGLE_FLAG" ]]; then
-  jq --arg google "$DESIRED_GOOGLE_FLAG" '
+if [[ "$CURRENT_GOOGLE_FLAG" != "$DESIRED_GOOGLE_FLAG" || "$CURRENT_COGNITO_DOMAIN" != "$DESIRED_COGNITO_DOMAIN" ]]; then
+  jq --arg google "$DESIRED_GOOGLE_FLAG" --arg domain "$DESIRED_COGNITO_DOMAIN" '
     del(
       .taskDefinitionArn,
       .revision,
@@ -335,8 +354,11 @@ if [[ "$CURRENT_GOOGLE_FLAG" != "$DESIRED_GOOGLE_FLAG" ]]; then
     | .containerDefinitions |= map(
         if .name == "web" then
           .environment = (
-            ((.environment // []) | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED")))
-            + [{"name":"AWS_COGNITO_GOOGLE_ENABLED","value":$google}]
+            ((.environment // []) | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED" and .name != "AWS_COGNITO_DOMAIN")))
+            + [
+                {"name":"AWS_COGNITO_GOOGLE_ENABLED","value":$google},
+                {"name":"AWS_COGNITO_DOMAIN","value":$domain}
+              ]
           )
         else . end
       )
@@ -355,7 +377,7 @@ if [[ "$CURRENT_GOOGLE_FLAG" != "$DESIRED_GOOGLE_FLAG" ]]; then
     | .containerDefinitions |= map(
         if .name == "web" then
           .environment = ((.environment // [])
-            | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED"))
+            | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED" and .name != "AWS_COGNITO_DOMAIN"))
             | sort_by(.name))
         else . end
       )
@@ -364,13 +386,13 @@ if [[ "$CURRENT_GOOGLE_FLAG" != "$DESIRED_GOOGLE_FLAG" ]]; then
     .containerDefinitions |= map(
       if .name == "web" then
         .environment = ((.environment // [])
-          | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED"))
+          | map(select(.name != "AWS_COGNITO_GOOGLE_ENABLED" and .name != "AWS_COGNITO_DOMAIN"))
           | sort_by(.name))
       else . end
     )
   ' "$WORK_DIR/task-next.json" > "$WORK_DIR/task-next-normalized.json"
   cmp -s "$WORK_DIR/task-current-normalized.json" "$WORK_DIR/task-next-normalized.json" || {
-    echo "Refusing Google runtime rollout because fields other than AWS_COGNITO_GOOGLE_ENABLED changed." >&2
+    echo "Refusing Google runtime rollout because fields other than AWS_COGNITO_GOOGLE_ENABLED and AWS_COGNITO_DOMAIN changed." >&2
     exit 1
   }
 
@@ -421,6 +443,13 @@ jq -e --arg google "$DESIRED_GOOGLE_FLAG" '
    | (.environment // [])[]
    | select(.name=="AWS_COGNITO_GOOGLE_ENABLED")
    | .value] == [$google]
+' "$WORK_DIR/task-after.json" >/dev/null
+jq -e --arg domain "$DESIRED_COGNITO_DOMAIN" '
+  [.containerDefinitions[]
+   | select(.name=="web")
+   | (.environment // [])[]
+   | select(.name=="AWS_COGNITO_DOMAIN")
+   | .value] == [$domain]
 ' "$WORK_DIR/task-after.json" >/dev/null
 [[ "$(jq -r '.containerDefinitions[] | select(.name=="web") | .image' "$WORK_DIR/task-after.json")" == "$CURRENT_IMAGE" ]]
 
