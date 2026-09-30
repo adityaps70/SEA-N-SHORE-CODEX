@@ -13,7 +13,8 @@ case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported edge action." >&2; ex
 APP_DIR="$PWD/infra/aws/app"
 RECOVERY_DIR="$(mktemp -d "$PWD/.edge-recovery-data.XXXXXXXX")"
 PRESERVE_RECOVERY=false
-trap 'if [[ "$PRESERVE_RECOVERY" == true ]]; then echo "PRIVATE_RECOVERY_DIRECTORY=$RECOVERY_DIR" >&2; else rm -rf -- "$RECOVERY_DIR"; fi' EXIT
+TF_TMPDIR="$(mktemp -d /var/tmp/sns-tf.XXXXXX)"
+trap 'if [[ "$PRESERVE_RECOVERY" == true ]]; then echo "PRIVATE_RECOVERY_DIRECTORY=$RECOVERY_DIR" >&2; else rm -rf -- "$RECOVERY_DIR"; fi; rm -rf -- "$TF_TMPDIR"' EXIT
 STATE_BUCKET=sea-n-shore-310356785722-ap-south-1-tfstate
 STATE_KEY=sea-n-shore/staging/terraform.tfstate
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region ap-south-1 "$RECOVERY_DIR/state.json" > "$RECOVERY_DIR/object.json"
@@ -59,10 +60,10 @@ with open(sys.argv[2],'w') as f: json.dump(values,f)
 PY
 # Plain init like the other guarded scripts (the committed lock pins only aws; the module also
 # needs archive/random), then assert the exact provider versions the plan will run with.
-# Terraform stages provider downloads in TMPDIR; the instance's /tmp is a small tmpfs that
-# overflows when several guarded plans run at once, so stage them inside the work directory.
-export TMPDIR="$RECOVERY_DIR/tmp"
-mkdir -p "$TMPDIR"
+# Terraform stages provider downloads and plugin sockets in TMPDIR: the instance's /tmp is a
+# small tmpfs that overflows when several guarded plans run at once, and a socket path must stay
+# under 108 characters, so use a short directory on the main volume.
+export TMPDIR="$TF_TMPDIR"
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" \
   -backend-config=region=ap-south-1 -backend-config=use_lockfile=true > "$RECOVERY_DIR/init.log"
