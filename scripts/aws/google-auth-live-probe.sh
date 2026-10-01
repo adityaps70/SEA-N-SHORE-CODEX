@@ -23,6 +23,11 @@ for intent in sign-in sign-up; do
   LOCATION="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$HEADERS" | tail -n 1)"
   [[ "$LOCATION" == "$EXPECTED_COGNITO_ORIGIN/oauth2/authorize"* ]] || { echo "Google start did not redirect to expected Cognito endpoint for $intent." >&2; exit 1; }
   [[ "$LOCATION" == *"identity_provider=Google"* ]] || { echo "Google start redirect is missing identity_provider=Google for $intent." >&2; exit 1; }
+  [[ "$LOCATION" == *"scope=openid+email+profile+aws.cognito.signin.user.admin"* ]] || {
+    echo "Google start redirect is missing aws.cognito.signin.user.admin for $intent." >&2
+    echo "LOCATION=$LOCATION" >&2
+    exit 1
+  }
   [[ "$LOCATION" == *"redirect_uri=https%3A%2F%2Fseanshore.in%2Fauth%2Fgoogle%2Fcallback"* ]] || {
     echo "Google start redirect uses an unexpected callback URI for $intent." >&2
     echo "LOCATION=$LOCATION" >&2
