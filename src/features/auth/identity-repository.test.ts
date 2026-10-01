@@ -74,7 +74,7 @@ describe('Cognito identity repository', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ profile_id: profileId, onboarding_completed_at: '2026-09-01T00:00:00.000Z' }] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
       .mockResolvedValueOnce({ rows: [] })
     const client = { query: transactionQuery } as unknown as DatabaseQueryClient
     let transactionCalls = 0
@@ -240,7 +240,7 @@ describe('Cognito identity repository', () => {
     const profileId = '44444444-4444-4444-8444-444444444444'
     const transactionQuery = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: profileId, onboarding_completed_at: '2026-09-01T00:00:00.000Z' }] })
       .mockResolvedValueOnce({ rows: [] })
     const client = { query: transactionQuery } as unknown as DatabaseQueryClient
     const withTransaction = async <T>(fn: (value: DatabaseQueryClient) => Promise<T>): Promise<T> => fn(client)
