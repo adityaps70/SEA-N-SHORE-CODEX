@@ -19,45 +19,60 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
-      - name: Verify account and find bootstrap
-        id: instance
+      - name: Verify AWS account
+        run: test "$(aws sts get-caller-identity --query Account --output text)" = "310356785722"
+      - name: Generate 15-minute private PUT URL
+        shell: bash
         run: |
           set -euo pipefail
-          test "$(aws sts get-caller-identity --query Account --output text)" = "310356785722"
-          IDS="$(aws ec2 describe-instances --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)"
-          test "$(jq length <<<"$IDS")" -eq 1
-          echo "id=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_OUTPUT"
-      - name: Generate 15-minute private PUT URL on bootstrap
-        env:
-          INSTANCE_ID: ${{ steps.instance.outputs.id }}
-        run: |
-          set -euo pipefail
-          python3 > /tmp/params.json <<'PY'
-          import json,shlex
-          script="""set -euo pipefail
-          D=$(mktemp -d /var/tmp/sns-presign.XXXXXX)
-          trap 'rm -rf "$D"' EXIT
-          python3 -m venv "$D/venv"
-          "$D/venv/bin/pip" install --quiet boto3
-          "$D/venv/bin/python" - <<'PY2'
-          import boto3
-          url=boto3.client('s3',region_name='ap-south-1').generate_presigned_url(
-              'put_object',
-              Params={'Bucket':'sea-n-shore-staging-310356785722-media','Key':'private-migrations/beaufortmarine.sql'},
-              ExpiresIn=900,
+          python3 <<'PY'
+          import datetime, hashlib, hmac, os, urllib.parse
+
+          method = 'PUT'
+          region = 'ap-south-1'
+          service = 's3'
+          bucket = 'sea-n-shore-staging-310356785722-media'
+          key = 'private-migrations/beaufortmarine.sql'
+          host = f'{bucket}.s3.{region}.amazonaws.com'
+          endpoint = f'https://{host}/{urllib.parse.quote(key, safe="/~")}'
+          access = os.environ['AWS_ACCESS_KEY_ID']
+          secret = os.environ['AWS_SECRET_ACCESS_KEY']
+          token = os.environ['AWS_SESSION_TOKEN']
+          now = datetime.datetime.now(datetime.timezone.utc)
+          amzdate = now.strftime('%Y%m%dT%H%M%SZ')
+          datestamp = now.strftime('%Y%m%d')
+          scope = f'{datestamp}/{region}/{service}/aws4_request'
+          params = {
+              'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+              'X-Amz-Credential': f'{access}/{scope}',
+              'X-Amz-Date': amzdate,
+              'X-Amz-Expires': '900',
+              'X-Amz-Security-Token': token,
+              'X-Amz-SignedHeaders': 'host',
+          }
+          canonical_query = '&'.join(
+              f'{urllib.parse.quote(k, safe="-_.~")}={urllib.parse.quote(v, safe="-_.~")}'
+              for k, v in sorted(params.items())
           )
-          print('LEGACY_UPLOAD_URL='+url)
-          PY2
-          """
-          print(json.dumps({"executionTimeout":["120"],"commands":["bash -lc "+shlex.quote(script)]}))
+          canonical_uri = '/' + urllib.parse.quote(key, safe='/~')
+          canonical_headers = f'host:{host}\n'
+          payload_hash = 'UNSIGNED-PAYLOAD'
+          canonical_request = '\n'.join([
+              method, canonical_uri, canonical_query,
+              canonical_headers, 'host', payload_hash,
+          ])
+          string_to_sign = '\n'.join([
+              'AWS4-HMAC-SHA256',
+              amzdate,
+              scope,
+              hashlib.sha256(canonical_request.encode()).hexdigest(),
+          ])
+          def sign(key_bytes, msg):
+              return hmac.new(key_bytes, msg.encode(), hashlib.sha256).digest()
+          k_date = sign(('AWS4' + secret).encode(), datestamp)
+          k_region = sign(k_date, region)
+          k_service = sign(k_region, service)
+          k_signing = sign(k_service, 'aws4_request')
+          signature = hmac.new(k_signing, string_to_sign.encode(), hashlib.sha256).hexdigest()
+          print('LEGACY_UPLOAD_URL=' + endpoint + '?' + canonical_query + '&X-Amz-Signature=' + signature)
           PY
-          CID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --parameters file:///tmp/params.json --query 'Command.CommandId' --output text)"
-          for i in $(seq 1 30); do
-            S="$(aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)"
-            case "$S" in Pending|InProgress|Delayed) sleep 2;; *) break;; esac
-          done
-          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --output json > /tmp/result.json
-          jq -r '.StandardOutputContent // empty' /tmp/result.json
-          jq -r '.StandardErrorContent // empty' /tmp/result.json >&2
-          test "$(jq -r .Status /tmp/result.json)" = Success
-          grep -q '^LEGACY_UPLOAD_URL=https://' <(jq -r '.StandardOutputContent // empty' /tmp/result.json)
