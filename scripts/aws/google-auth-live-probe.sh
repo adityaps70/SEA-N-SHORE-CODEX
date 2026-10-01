@@ -28,6 +28,11 @@ for intent in sign-in sign-up; do
     echo "LOCATION=$LOCATION" >&2
     exit 1
   }
+  [[ "$LOCATION" == *"prompt=select_account"* ]] || {
+    echo "Google start redirect is missing prompt=select_account for $intent." >&2
+    echo "LOCATION=$LOCATION" >&2
+    exit 1
+  }
   [[ "$LOCATION" == *"redirect_uri=https%3A%2F%2Fseanshore.in%2Fauth%2Fgoogle%2Fcallback"* ]] || {
     echo "Google start redirect uses an unexpected callback URI for $intent." >&2
     echo "LOCATION=$LOCATION" >&2
