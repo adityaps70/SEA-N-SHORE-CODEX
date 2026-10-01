@@ -73,6 +73,27 @@ describe('OnboardingForm persona activation', () => {
     expect(screen.getByLabelText('Who can see my contact details?')).toBeInTheDocument()
   })
 
+  it('prefills restored legacy profile details for review before activation', () => {
+    render(
+      <OnboardingForm
+        initialFullName="Captain Legacy"
+        initialValues={{
+          persona: 'seafarer',
+          location: 'Mumbai, Maharashtra, India',
+          rank: 'Master',
+          currentCompany: 'Ocean Shipping',
+          contactVisibility: 'private',
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Seafarer' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Location')).toHaveValue('Mumbai, Maharashtra, India')
+    expect(screen.getByLabelText('Current or most recent rank')).toHaveValue('Master')
+    expect(screen.getByLabelText('Current / last organisation')).toHaveValue('Ocean Shipping')
+    expect(screen.getByLabelText('Who can see my contact details?')).toHaveValue('private')
+  })
+
   it('shows intent choices and relevant seafarer fields after selecting Seafarer', () => {
     render(<OnboardingForm initialFullName="Asha Singh" />)
 
