@@ -3,6 +3,7 @@
 import { cookies } from 'next/headers'
 import { redirect as nextRedirect } from 'next/navigation'
 import { createCognitoApi } from '@/lib/auth/cognito-api'
+import { createCognitoLogoutUrl } from '@/lib/auth/cognito-oauth'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
 import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 import { createCognitoAuthActions } from './cognito-actions'
@@ -33,6 +34,15 @@ async function getProductionActions(): Promise<CognitoActions> {
 const handlers = createAuthActionHandlers({
   getActions: getProductionActions,
   redirect: nextRedirect,
+  getSignOutDestination: () => {
+    const environment = getCognitoEnvironment()
+    if (!environment.AWS_COGNITO_DOMAIN) return '/'
+    return createCognitoLogoutUrl({
+      domain: environment.AWS_COGNITO_DOMAIN,
+      clientId: environment.AWS_COGNITO_CLIENT_ID,
+      siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+    })
+  },
 })
 
 async function getProductionPhoneActions() {
