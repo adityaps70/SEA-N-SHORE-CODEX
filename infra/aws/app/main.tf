@@ -427,6 +427,10 @@ resource "aws_ecs_task_definition" "web" {
           name      = "REALTIME_TICKET_SECRET"
           valueFrom = aws_secretsmanager_secret.realtime_ticket.arn
         }
+        {
+          name      = "NEWSLETTER_TOKEN_SECRET"
+          valueFrom = aws_secretsmanager_secret.newsletter_token.arn
+        }
       ]
 
       logConfiguration = {
@@ -461,6 +465,7 @@ resource "aws_ecs_task_definition" "web" {
   depends_on = [
     aws_iam_role_policy.ecs_execution_aurora_secret,
     aws_iam_role_policy.ecs_execution_realtime_ticket_secret,
+    aws_iam_role_policy.ecs_execution_newsletter_token_secret,
     aws_iam_role_policy.ecs_task_aurora_secret,
     aws_iam_role_policy.ecs_task_media,
     aws_iam_role_policy.ecs_task_cognito_admin

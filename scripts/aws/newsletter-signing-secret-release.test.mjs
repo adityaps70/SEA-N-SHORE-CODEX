@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-test('newsletter signing secret is isolated, random and injected only where needed', async () => {
+test('newsletter signing secret is isolated, random and injected into the web Terraform task', async () => {
   const terraformUrl = new URL('../../infra/aws/app/newsletter-email.tf', import.meta.url)
   assert.equal(existsSync(terraformUrl), true, 'missing newsletter email Terraform')
   const terraform = await readFile(terraformUrl, 'utf8')
@@ -18,17 +18,22 @@ test('newsletter signing secret is isolated, random and injected only where need
   assert.match(terraform, /role\s+=\s+aws_iam_role\.ecs_execution\.id/)
   assert.match(terraform, /Action\s+=\s+\["secretsmanager:GetSecretValue"\]/)
   assert.doesNotMatch(terraform, /secretsmanager:\*|PutSecretValue|DeleteSecret/)
+
+  const main = await readFile(new URL('../../infra/aws/app/main.tf', import.meta.url), 'utf8')
+  assert.match(main, /name\s+=\s+"NEWSLETTER_TOKEN_SECRET"/)
+  assert.match(main, /valueFrom\s+=\s+aws_secretsmanager_secret\.newsletter_token\.arn/)
+  assert.match(main, /aws_iam_role_policy\.ecs_execution_newsletter_token_secret/)
 })
 
-test('web and outbox task definitions inject the newsletter signing secret', async () => {
-  const main = await readFile(new URL('../../infra/aws/app/main.tf', import.meta.url), 'utf8')
-  const social = await readFile(new URL('../../infra/aws/app/social-events.tf', import.meta.url), 'utf8')
-  for (const source of [main, social]) {
-    assert.match(source, /name\s+=\s+"NEWSLETTER_TOKEN_SECRET"/)
-    assert.match(source, /valueFrom\s+=\s+aws_secretsmanager_secret\.newsletter_token\.arn/)
-  }
-  assert.match(main, /aws_iam_role_policy\.ecs_execution_newsletter_token_secret/)
-  assert.match(social, /aws_iam_role_policy\.ecs_execution_newsletter_token_secret/)
+test('guarded release prepares both web and outbox task families without updating running services', async () => {
+  const script = await readFile(new URL('./newsletter-signing-secret.sh', import.meta.url), 'utf8')
+  assert.match(script, /WEB_TASK_FAMILY="sea-n-shore-staging-web"/)
+  assert.match(script, /OUTBOX_TASK_FAMILY="sea-n-shore-staging-outbox-worker"/)
+  assert.match(script, /NEWSLETTER_TOKEN_SECRET/)
+  assert.match(script, /aws ecs describe-task-definition/)
+  assert.match(script, /aws ecs register-task-definition/)
+  assert.match(script, /NEWSLETTER_TASK_SECRET_PREPARED=/)
+  assert.doesNotMatch(script, /aws ecs update-service/)
 })
 
 test('newsletter signing secret has a guarded one-shot Terraform release path', async () => {
