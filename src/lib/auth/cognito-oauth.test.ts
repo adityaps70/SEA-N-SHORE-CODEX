@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCognitoOAuth, verifyOAuthState } from './cognito-oauth'
+import { createCognitoLogoutUrl, createCognitoOAuth, verifyOAuthState } from './cognito-oauth'
 
 describe('Cognito Google OAuth with PKCE', () => {
   const config = {
@@ -28,10 +28,19 @@ describe('Cognito Google OAuth with PKCE', () => {
       'https://d3prih0q6jofyr.cloudfront.net/auth/google/callback',
     )
     expect(url.searchParams.get('scope')).toBe('openid email profile aws.cognito.signin.user.admin')
+    expect(url.searchParams.get('prompt')).toBe('select_account')
     expect(url.searchParams.get('state')).toBe(request.state)
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.get('code_challenge')).toBeTruthy()
     expect(request.verifier).not.toBe(request.state)
+  })
+
+  it('builds a Cognito browser logout URL that returns to Sea N Shore', () => {
+    const url = new URL(createCognitoLogoutUrl(config))
+    expect(url.origin).toBe('https://sea-n-shore-staging.auth.ap-south-1.amazoncognito.com')
+    expect(url.pathname).toBe('/logout')
+    expect(url.searchParams.get('client_id')).toBe(config.clientId)
+    expect(url.searchParams.get('logout_uri')).toBe('https://d3prih0q6jofyr.cloudfront.net')
   })
 
   it('exchanges an authorization code without requiring a client secret', async () => {
