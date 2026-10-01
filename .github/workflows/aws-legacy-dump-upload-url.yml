@@ -46,7 +46,7 @@ jobs:
               'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
               'X-Amz-Credential': f'{access}/{scope}',
               'X-Amz-Date': amzdate,
-              'X-Amz-Expires': '900',
+              'X-Amz-Expires': '3600',
               'X-Amz-Security-Token': token,
               'X-Amz-SignedHeaders': 'host',
           }
@@ -74,5 +74,14 @@ jobs:
           k_service = sign(k_region, service)
           k_signing = sign(k_service, 'aws4_request')
           signature = hmac.new(k_signing, string_to_sign.encode(), hashlib.sha256).hexdigest()
-          print('LEGACY_UPLOAD_URL=' + endpoint + '?' + canonical_query + '&X-Amz-Signature=' + signature)
+          url = endpoint + '?' + canonical_query + '&X-Amz-Signature=' + signature
+          open('/tmp/legacy-upload-url.txt','w',encoding='utf-8').write(url + '\n')
           PY
+
+      - name: Store URL as short-lived private artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-upload-url
+          path: /tmp/legacy-upload-url.txt
+          retention-days: 1
+          if-no-files-found: error
