@@ -21,6 +21,12 @@ type OnboardingProfileRow = QueryResultRow & {
   full_name: string
   slug?: string | null
   onboarding_completed_at: string | null
+  persona?: string | null
+  location?: string | null
+  headline?: string | null
+  contact_visibility?: 'private' | 'members' | 'public' | null
+  rank?: string | null
+  current_company?: string | null
 }
 
 type ReturningIdRow = QueryResultRow & { id: string }
@@ -29,6 +35,14 @@ export type OnboardingProfile = {
   fullName: string
   slug?: string | null
   onboardingCompletedAt: string | null
+  initialValues?: {
+    persona?: 'seafarer' | 'shore_professional' | 'recruiter_hr' | 'trainer_instructor' | 'student_cadet' | 'seafarer_family' | 'maritime_enthusiast' | 'other'
+    location?: string
+    headline?: string
+    contactVisibility?: 'private' | 'members' | 'public'
+    rank?: string
+    currentCompany?: string
+  }
 }
 
 export function createOnboardingRepository(input: { query: OnboardingQuery }) {
@@ -36,16 +50,47 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
 
   async function getOnboardingProfile(profileId: string): Promise<OnboardingProfile | null> {
     const rows = await query(
-      `select full_name, slug, onboarding_completed_at
-       from public.profiles
-       where id = $1
-         and account_status = 'active'
+      `select
+         p.full_name,
+         p.slug,
+         p.onboarding_completed_at,
+         p.persona,
+         p.location,
+         p.headline,
+         p.contact_visibility,
+         mp.rank,
+         mp.current_company
+       from public.profiles p
+       left join public.maritime_profiles mp on mp.user_id = p.id
+       where p.id = $1
+         and p.account_status = 'active'
        limit 1`,
       [profileId],
     ) as OnboardingProfileRow[]
     const row = rows[0]
     return row
-      ? { fullName: row.full_name, slug: row.slug ?? null, onboardingCompletedAt: row.onboarding_completed_at }
+      ? {
+          fullName: row.full_name,
+          slug: row.slug ?? null,
+          onboardingCompletedAt: row.onboarding_completed_at,
+          initialValues: {
+            persona: row.persona === 'seafarer'
+              || row.persona === 'shore_professional'
+              || row.persona === 'recruiter_hr'
+              || row.persona === 'trainer_instructor'
+              || row.persona === 'student_cadet'
+              || row.persona === 'seafarer_family'
+              || row.persona === 'maritime_enthusiast'
+              || row.persona === 'other'
+              ? row.persona
+              : undefined,
+            location: row.location ?? undefined,
+            headline: row.headline ?? undefined,
+            contactVisibility: row.contact_visibility ?? undefined,
+            rank: row.rank ?? undefined,
+            currentCompany: row.current_company ?? undefined,
+          },
+        }
       : null
   }
 
