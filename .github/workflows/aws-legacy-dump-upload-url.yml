@@ -1,0 +1,59 @@
+name: AWS Legacy Dump Secure Upload URL
+
+on:
+  push:
+    branches: [feat/aws-native-phase-0-1]
+    paths:
+      - .github/workflows/aws-legacy-dump-upload-url.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+      - name: Verify account and find bootstrap
+        id: instance
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "310356785722"
+          IDS="$(aws ec2 describe-instances --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)"
+          test "$(jq length <<<"$IDS")" -eq 1
+          echo "id=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_OUTPUT"
+      - name: Generate 15-minute private PUT URL on bootstrap
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.id }}
+        run: |
+          set -euo pipefail
+          python3 > /tmp/params.json <<'PY'
+          import json,shlex
+          script="""set -euo pipefail
+          python3 - <<'PY2'
+          import boto3
+          url=boto3.client('s3',region_name='ap-south-1').generate_presigned_url(
+              'put_object',
+              Params={'Bucket':'sea-n-shore-staging-310356785722-media','Key':'private-migrations/beaufortmarine.sql'},
+              ExpiresIn=900,
+          )
+          print('LEGACY_UPLOAD_URL='+url)
+          PY2
+          """
+          print(json.dumps({"executionTimeout":["120"],"commands":["bash -lc "+shlex.quote(script)]}))
+          PY
+          CID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --parameters file:///tmp/params.json --query 'Command.CommandId' --output text)"
+          for i in $(seq 1 30); do
+            S="$(aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)"
+            case "$S" in Pending|InProgress|Delayed) sleep 2;; *) break;; esac
+          done
+          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --output json > /tmp/result.json
+          jq -r '.StandardOutputContent // empty' /tmp/result.json
+          jq -r '.StandardErrorContent // empty' /tmp/result.json >&2
+          test "$(jq -r .Status /tmp/result.json)" = Success
+          grep -q '^LEGACY_UPLOAD_URL=https://' <(jq -r '.StandardOutputContent // empty' /tmp/result.json)
