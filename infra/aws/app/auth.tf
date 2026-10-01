@@ -74,7 +74,7 @@ resource "aws_cognito_user_pool_client" "web" {
   supported_identity_providers         = var.enable_google_identity_provider ? ["COGNITO", "Google"] : ["COGNITO"]
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile", "aws.cognito.signin.user.admin"]
   # The canonical domain first, then the CloudFront hostname that keeps working during the move.
   callback_urls = [for origin in local.browser_site_urls : "${origin}/auth/google/callback"]
   logout_urls   = local.browser_site_urls
