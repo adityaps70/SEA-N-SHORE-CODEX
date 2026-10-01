@@ -12,6 +12,7 @@ function fallbackPath(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const environment = getCognitoEnvironment()
+  const intent = request.nextUrl.searchParams.get('intent') === 'sign-up' ? 'sign-up' : 'sign-in'
   if (!environment.AWS_COGNITO_GOOGLE_ENABLED || !environment.AWS_COGNITO_DOMAIN) {
     return NextResponse.redirect(siteUrlFor(fallbackPath(request)))
   }
@@ -31,6 +32,7 @@ export async function GET(request: NextRequest) {
   cookies.setOAuthChallenge({
     state: authorization.state,
     verifier: authorization.verifier,
+    intent,
   })
   response.headers.set('Cache-Control', 'private, no-store')
   return response
