@@ -35,7 +35,11 @@ jobs:
           python3 > /tmp/params.json <<'PY'
           import json,shlex
           script="""set -euo pipefail
-          python3 - <<'PY2'
+          D=$(mktemp -d /var/tmp/sns-presign.XXXXXX)
+          trap 'rm -rf "$D"' EXIT
+          python3 -m venv "$D/venv"
+          "$D/venv/bin/pip" install --quiet boto3
+          "$D/venv/bin/python" - <<'PY2'
           import boto3
           url=boto3.client('s3',region_name='ap-south-1').generate_presigned_url(
               'put_object',
