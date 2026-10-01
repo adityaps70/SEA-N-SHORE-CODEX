@@ -10,6 +10,7 @@ test('live Google auth probe is bounded to the canonical site and expected Cogni
   assert.match(script, /Continue with Google/)
   assert.match(script, /for intent in sign-in sign-up/)
   assert.match(script, /identity_provider=Google/)
+  assert.match(script, /aws\.cognito\.signin\.user\.admin/)
   assert.match(script, /https:\/\/accounts\.google\.com/)
   assert.match(script, /GOOGLE_BUTTON_VERIFIED/)
   assert.match(script, /GOOGLE_COGNITO_START_VERIFIED=/)
