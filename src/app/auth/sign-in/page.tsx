@@ -12,14 +12,14 @@ export const metadata: Metadata = { title: 'Sign in' }
 export default async function SignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ oauthError?: string | string[] }>;
+  searchParams: Promise<{ oauthError?: string | string[]; error?: string | string[] }>;
 }) {
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;
-  const { oauthError } = await searchParams;
+  const { oauthError, error } = await searchParams;
 
   return (
     <AuthShell>
-      <OAuthErrorNotice code={oauthError} />
+      <OAuthErrorNotice code={oauthError ?? error} />
       {/* Phones: Google first (when enabled), then "or" and the email form. Desktop keeps it below the form. */}
       <AuthForm
         mode="sign-in"
