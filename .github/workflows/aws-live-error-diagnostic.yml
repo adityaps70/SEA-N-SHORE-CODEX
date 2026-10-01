@@ -88,3 +88,64 @@ jobs:
             process.exit(1)
           }
           NODE
+
+
+      - name: Trace live Google OAuth click in WebKit
+        run: |
+          node --input-type=module <<'NODE'
+          import { webkit } from '@playwright/test'
+
+          const siteUrl = process.env.SITE_URL
+          if (!siteUrl) throw new Error('Missing public site URL')
+
+          const browser = await webkit.launch()
+          for (const authPage of ['sign-up', 'sign-in']) {
+            const context = await browser.newContext()
+            const page = await context.newPage()
+            const responses = []
+
+            page.on('response', (response) => {
+              if (
+                response.url().includes('/auth/google/')
+                || response.url().includes('amazoncognito.com')
+                || response.url().includes('accounts.google.com')
+              ) {
+                responses.push(`${response.status()} ${response.url()}`)
+              }
+            })
+
+            await page.goto(`${siteUrl.replace(/\/$/, '')}/auth/${authPage}?googleTrace=1`, {
+              waitUntil: 'networkidle',
+              timeout: 60000,
+            })
+
+            const google = page.getByRole('link', { name: /continue with google/i }).first()
+            console.log(`GOOGLE_TRACE_START page=${authPage} href=${await google.getAttribute('href')}`)
+
+            await Promise.all([
+              page.waitForTimeout(1500),
+              google.click(),
+            ])
+
+            await page.waitForTimeout(2500)
+            const finalUrl = page.url()
+            const title = await page.title()
+            const body = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 1200)
+
+            console.log(`GOOGLE_TRACE_FINAL_URL page=${authPage} url=${finalUrl}`)
+            console.log(`GOOGLE_TRACE_TITLE page=${authPage} title=${title}`)
+            console.log(`GOOGLE_TRACE_BODY page=${authPage} body=${body}`)
+            for (const line of responses) console.log(`GOOGLE_TRACE_RESPONSE page=${authPage} ${line}`)
+
+            if (
+              !finalUrl.includes('accounts.google.com')
+              && !finalUrl.includes('amazoncognito.com')
+            ) {
+              console.error(`Google OAuth did not reach Google/Cognito from ${authPage}.`)
+              process.exitCode = 1
+            }
+
+            await context.close()
+          }
+          await browser.close()
+          NODE
