@@ -74,6 +74,7 @@ describe('Cognito identity repository', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
       .mockResolvedValueOnce({ rows: [] })
     const client = { query: transactionQuery } as unknown as DatabaseQueryClient
@@ -109,12 +110,12 @@ describe('Cognito identity repository', () => {
       ['member@example.com'],
     )
     expect(transactionQuery).toHaveBeenNthCalledWith(
-      5,
+      6,
       expect.stringContaining('insert into public.profiles'),
       ['Member One'],
     )
     expect(transactionQuery).toHaveBeenNthCalledWith(
-      6,
+      7,
       expect.stringContaining('insert into public.identity_accounts'),
       [profileId, 'cognito', 'cognito-sub-1', 'member@example.com', 'member@example.com', true, null, false],
     )
@@ -158,6 +159,7 @@ describe('Cognito identity repository', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ profile_id: duplicateProfileId, onboarding_completed_at: null }] })
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [{ profile_id: existingProfileId }] })
       .mockResolvedValueOnce({ rows: [{ profile_id: existingProfileId, onboarding_completed_at: '2026-09-01T00:00:00.000Z' }] })
       .mockResolvedValueOnce({ rows: [] })
@@ -181,6 +183,49 @@ describe('Cognito identity repository', () => {
       && values[1] === 'google-existing-duplicate-sub'
       && values[2] === existingProfileId
       && values[3] === duplicateProfileId)).toBe(true)
+    expect(transactionQuery.mock.calls.some(([sql]) => String(sql).includes('insert into public.profiles'))).toBe(false)
+  })
+
+  it('claims a restricted imported profile when a verified email matches the legacy claim bridge', async () => {
+    const legacyProfileId = '57575757-5757-4575-8575-575757575757'
+    const transactionQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: legacyProfileId }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const client = { query: transactionQuery } as unknown as DatabaseQueryClient
+    const withTransaction = async <T>(fn: (value: DatabaseQueryClient) => Promise<T>): Promise<T> => fn(client)
+    const { createIdentityRepository } = await import('./identity-repository')
+    const repository = createIdentityRepository({ withTransaction })
+
+    await expect(repository.provisionProfileForCognitoPrincipal({
+      ...principal,
+      sub: 'legacy-claim-sub',
+      emailVerified: true,
+    })).resolves.toBe(legacyProfileId)
+
+    expect(transactionQuery.mock.calls.some(([sql, values]) =>
+      String(sql).includes('legacy_profile_claims')
+      && String(sql).includes('claimed_at is null')
+      && Array.isArray(values)
+      && values[0] === 'member@example.com')).toBe(true)
+    expect(transactionQuery.mock.calls.some(([sql, values]) =>
+      String(sql).includes('insert into public.identity_accounts')
+      && Array.isArray(values)
+      && values[0] === legacyProfileId
+      && values[2] === 'legacy-claim-sub')).toBe(true)
+    expect(transactionQuery.mock.calls.some(([sql, values]) =>
+      String(sql).includes('update public.legacy_profile_claims')
+      && Array.isArray(values)
+      && values[0] === legacyProfileId)).toBe(true)
+    expect(transactionQuery.mock.calls.some(([sql, values]) =>
+      String(sql).includes("account_status = 'active'")
+      && Array.isArray(values)
+      && values[0] === legacyProfileId)).toBe(true)
     expect(transactionQuery.mock.calls.some(([sql]) => String(sql).includes('insert into public.profiles'))).toBe(false)
   })
 
