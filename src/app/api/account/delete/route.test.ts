@@ -77,7 +77,7 @@ describe('POST /api/account/delete', () => {
       password: 'CorrectPassword123',
       cognitoSub: 'sub-1',
     })
-    expect(mocks.cookieDelete).toHaveBeenCalledTimes(8)
+    expect(mocks.cookieDelete).toHaveBeenCalledTimes(9)
   })
 
   it('rejects deletion unless the user types DELETE exactly', async () => {
