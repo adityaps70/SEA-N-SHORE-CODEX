@@ -7,6 +7,7 @@ describe('organization billing repository', () => {
   it('returns provider-neutral Organization Pro subscription state without provider secrets', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createBillingRepository({
+      now: () => new Date('2026-09-20T12:00:00.000Z'),
       query: async (text, values) => {
         seen.push({ text, values })
         return [{
