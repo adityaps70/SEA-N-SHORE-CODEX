@@ -27,7 +27,7 @@ describe('Cognito Google OAuth with PKCE', () => {
     expect(url.searchParams.get('redirect_uri')).toBe(
       'https://d3prih0q6jofyr.cloudfront.net/auth/google/callback',
     )
-    expect(url.searchParams.get('scope')).toBe('openid email profile')
+    expect(url.searchParams.get('scope')).toBe('openid email profile aws.cognito.signin.user.admin')
     expect(url.searchParams.get('state')).toBe(request.state)
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.get('code_challenge')).toBeTruthy()
