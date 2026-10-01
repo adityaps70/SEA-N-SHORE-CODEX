@@ -57,7 +57,11 @@ async function apply(plan){
  const {Pool}=await import('pg');for(const k of['AURORA_HOST','AURORA_DATABASE','AURORA_USER','AURORA_PASSWORD'])if(!process.env[k])throw Error(`${k} required`)
  const pool=new Pool({host:process.env.AURORA_HOST,port:Number(process.env.AURORA_PORT||5432),database:process.env.AURORA_DATABASE,user:process.env.AURORA_USER,password:process.env.AURORA_PASSWORD,ssl:process.env.AURORA_SSL!=='false',max:2}),r={merged:0,createdRestricted:0,failed:0,organizations:0}
  try{if(!(await pool.query("select to_regclass('public.legacy_profile_claims') name")).rows[0]?.name)throw Error('Apply migration 0058 first.')
-  for(const p of plan.people)try{(await importPerson(pool,p))==='merged'?r.merged++:r.createdRestricted++}catch(e){r.failed++;console.error('[legacy_import_failed]',Buffer.from(p.email).toString('base64url').slice(0,12),e instanceof Error?e.message:e)}
+  for(const p of plan.people)try{
+   const action=await importPerson(pool,p)
+   if(action==='merged')r.merged++
+   else r.createdRestricted++
+  }catch(e){r.failed++;console.error('[legacy_import_failed]',Buffer.from(p.email).toString('base64url').slice(0,12),e instanceof Error?e.message:e)}
   await pool.query("insert into public.profiles(id,full_name,contact_visibility,account_status) values($1,'Sea N Shore Legacy Import','private','restricted') on conflict(id) do nothing",[SYSTEM])
   for(const o of plan.organizations){await pool.query("insert into public.companies(slug,name,company_type,office_locations,created_by,claim_status) select $1,$2,'Maritime Organization',$3::text[],$4,'unclaimed' where not exists(select 1 from public.companies c where lower(btrim(c.name))=lower(btrim($2))) on conflict(slug) do nothing",[o.slug,o.name,o.location?[o.location]:[],SYSTEM]);r.organizations++}return r
  }finally{await pool.end()}
