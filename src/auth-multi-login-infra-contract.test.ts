@@ -40,6 +40,7 @@ describe('multi-login Cognito infrastructure contract', () => {
     expect(auth).toMatch(/token_request_method\s*=\s*"POST"/)
     expect(auth).toMatch(/token_url\s*=\s*"https:\/\/www\.googleapis\.com\/oauth2\/v4\/token"/)
     expect(auth).toMatch(/username\s*=\s*"sub"/)
+    expect(auth).toMatch(/email_verified\s*=\s*"email_verified"/)
     expect(auth).toMatch(/allowed_oauth_flows\s*=\s*\["code"\]/)
     expect(auth).toMatch(/allowed_oauth_scopes\s*=\s*\[[\s\S]*?"aws\.cognito\.signin\.user\.admin"/)
     expect(auth).toMatch(/callback_urls/)
