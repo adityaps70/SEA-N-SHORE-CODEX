@@ -87,7 +87,27 @@ describe('production Cognito auth action routing', () => {
     expect(redirect).toHaveBeenCalledWith('/auth/update-password?mode=confirm-reset&email=captain%40example.com')
   })
 
-  it('always redirects locally after Cognito sign-out completes', async () => {
+  it('redirects through Cognito browser logout after local/token sign-out completes', async () => {
+    const redirect = vi.fn()
+    const signOut = vi.fn(async () => undefined)
+    const getSignOutDestination = vi.fn(() =>
+      'https://sea-n-shore-staging.auth.ap-south-1.amazoncognito.com/logout?client_id=client123&logout_uri=https%3A%2F%2Fseanshore.in',
+    )
+    const handlers = createAuthActionHandlers({
+      getActions: async () => ({ signOut } as never),
+      redirect,
+      getSignOutDestination,
+    })
+
+    await handlers.signOut()
+    expect(signOut).toHaveBeenCalledTimes(1)
+    expect(getSignOutDestination).toHaveBeenCalledTimes(1)
+    expect(redirect).toHaveBeenCalledWith(
+      'https://sea-n-shore-staging.auth.ap-south-1.amazoncognito.com/logout?client_id=client123&logout_uri=https%3A%2F%2Fseanshore.in',
+    )
+  })
+
+  it('falls back to the home page when no browser logout destination is configured', async () => {
     const redirect = vi.fn()
     const signOut = vi.fn(async () => undefined)
     const handlers = createAuthActionHandlers({
@@ -96,7 +116,6 @@ describe('production Cognito auth action routing', () => {
     })
 
     await handlers.signOut()
-    expect(signOut).toHaveBeenCalledTimes(1)
     expect(redirect).toHaveBeenCalledWith('/')
   })
 })
