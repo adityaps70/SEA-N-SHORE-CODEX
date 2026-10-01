@@ -263,7 +263,9 @@ jq -e '
   and (.UserPoolClient.AllowedOAuthScopes | index("openid")) != null
   and (.UserPoolClient.AllowedOAuthScopes | index("email")) != null
   and (.UserPoolClient.AllowedOAuthScopes | index("profile")) != null
+  and (.UserPoolClient.AllowedOAuthScopes | index("aws.cognito.signin.user.admin")) != null
 ' "$WORK_DIR/client.json" >/dev/null
+echo "COGNITO_CLIENT_SELF_SERVICE_SCOPE_VERIFIED=true"
 
 if [[ "$GOOGLE_OAUTH_CREDENTIALS_READY" == "true" ]]; then
   jq -e '(.UserPoolClient.SupportedIdentityProviders | index("Google")) != null' "$WORK_DIR/client.json" >/dev/null
