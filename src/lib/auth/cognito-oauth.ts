@@ -24,6 +24,14 @@ function callbackUrl(siteUrl: string) {
   return `${siteUrl.replace(/\/+$/g, '')}/auth/google/callback`
 }
 
+export function createCognitoLogoutUrl(config: OAuthConfig) {
+  const domain = normalizedDomain(config.domain)
+  const url = new URL(`https://${domain}/logout`)
+  url.searchParams.set('client_id', config.clientId)
+  url.searchParams.set('logout_uri', config.siteUrl.replace(/\/+$/g, ''))
+  return url.toString()
+}
+
 export function verifyOAuthState(expected: string | null | undefined, actual: string | null | undefined) {
   if (!expected || !actual) return false
   const expectedBuffer = Buffer.from(expected)
@@ -52,6 +60,7 @@ export function createCognitoOAuth(
       url.searchParams.set('client_id', config.clientId)
       url.searchParams.set('redirect_uri', redirectUri)
       url.searchParams.set('scope', 'openid email profile aws.cognito.signin.user.admin')
+      url.searchParams.set('prompt', 'select_account')
       url.searchParams.set('state', state)
       url.searchParams.set('code_challenge_method', 'S256')
       url.searchParams.set('code_challenge', challenge)
