@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 
-const TABLES=['table_address','table_seafearer','table_consultant','table_shore_staff','table_company','table_seafearer_experience','table_seafearer_certificate','table_consultant_qualification']
+const TABLES=['table_address','table_seafearer','table_consultant','table_shore_staff','table_company','table_seafearer_experience','table_seafearer_certificate','table_seafearer_courses','table_consultant_qualification']
 const SOURCE='beaufortmarine', CONFIRM='I_APPROVE_LEGACY_PROFILE_IMPORT'
 const SYSTEM='00000000-0000-4000-8000-000000000058'
 const clean=(v,n=4000)=>v==null?null:(String(v).replace(/\s+/g,' ').trim().slice(0,n)||null)
@@ -21,9 +21,10 @@ function val(v){if(/^NULL$/i.test(v))return null;if(v.startsWith("'")&&v.endsWit
 export function parseLegacyDump(sql){const out=Object.fromEntries(TABLES.map(t=>[t,[]])),re=/INSERT INTO `([^`]+)` VALUES\s*([\s\S]*?);\r?\n/g;for(const m of sql.matchAll(re)){if(!TABLES.includes(m[1]))continue;const c=columns(sql,m[1]);for(const t of tuples(m[2])){const vs=fields(t).map(val);if(vs.length!==c.length)throw Error(`shape:${m[1]}`);out[m[1]].push(Object.fromEntries(c.map((k,i)=>[k,vs[i]])))}}return out}
 
 export function buildImportPlan(t){
- const addr=new Map(t.table_address.map(r=>[Number(r.tlid),r])), exp=new Map, cert=new Map, qual=new Map
+ const addr=new Map(t.table_address.map(r=>[Number(r.tlid),r])), exp=new Map, cert=new Map, courses=new Map, qual=new Map
  for(const r of t.table_seafearer_experience){if(Number(r.status)!==1||!Number(r.seafearerid)||!clean(r.rank))continue;const id=Number(r.seafearerid);if(!exp.has(id))exp.set(id,[]);exp.get(id).push(r)}
  for(const r of t.table_seafearer_certificate){if(Number(r.status)!==1||!Number(r.seafearerid))continue;const id=Number(r.seafearerid);if(!cert.has(id))cert.set(id,[]);cert.get(id).push(r)}
+ for(const r of t.table_seafearer_courses){if(Number(r.status)!==1||!Number(r.seafearerid))continue;const id=Number(r.seafearerid);if(!courses.has(id))courses.set(id,[]);courses.get(id).push(r)}
  for(const r of t.table_consultant_qualification){if(Number(r.status)!==1||!Number(r.consultantid))continue;const id=Number(r.consultantid);if(!qual.has(id))qual.set(id,[]);qual.get(id).push(r)}
  const g=new Map;let invalid=0,tests=0
  const add=(kind,r)=>{if(Number(r.status)!==1)return;const e=normalizeEmail(r.email);if(!e){invalid++;return}if(test(r)){tests++;return}if(!g.has(e))g.set(e,[]);g.get(e).push({kind,r})}
@@ -31,8 +32,17 @@ export function buildImportPlan(t){
  const people=[]
  for(const [email,rs] of g){rs.sort((a,b)=>({SeaFearer:0,Consultant:1,Shore_Staff:2}[a.kind]-({SeaFearer:0,Consultant:1,Shore_Staff:2}[b.kind])));const p=rs[0].r,sea=rs.filter(x=>x.kind==='SeaFearer').map(x=>x.r),con=rs.filter(x=>x.kind==='Consultant').map(x=>x.r),shore=rs.filter(x=>x.kind==='Shore_Staff').map(x=>x.r),ex=sea.flatMap(r=>exp.get(Number(r.tlid))||[]).sort((a,b)=>String(b.joining_date||'').localeCompare(String(a.joining_date||'')))
   const skills=uniq(con.flatMap(r=>(qual.get(Number(r.tlid))||[]).flatMap(q=>Object.entries({internal_audit:'Internal Auditor',lead_auditor:'Lead Auditor',nav_assessor:'Navigation Assessor',sire_inspector:'SIRE Inspector',cdi_inspector:'CDI Inspector',rightship_inspector:'RightShip Inspector',flagstate_inspector:'Flag State Inspector'}).filter(([f])=>/^(yes|1|true)$/i.test(clean(q[f],20)||'')).map(([,x])=>x))),20,80)
-  const credentials=sea.flatMap(r=>(cert.get(Number(r.tlid))||[]).flatMap(c=>{const name=clean([c.certificate_type,c.type||c.lavel].filter(Boolean).join(' - '),180),issuer=clean(c.authority,180);if(!name||!issuer)return[];const expires=d(c.expiry);return[{name,issuer,number:clean(c.certificate_no,180),expires,noExpiry:!expires}]})).slice(0,100)
-  people.push({email,fullName:clean(p.name,160)||email,profileType:sea.length?'seafarer':'maritime_professional',persona:sea.length?'seafarer':'shore_professional',location:sea.map(r=>loc(addr.get(Number(r.com_addressid)))||loc(addr.get(Number(r.per_addressid)))).find(Boolean)??con.map(r=>loc(addr.get(Number(r.addressid)))).find(Boolean)??null,headline:clean(sea.find(r=>clean(r.rank))?.rank??con.find(r=>clean(r.designation))?.designation??shore.find(r=>clean(r.designation))?.designation,160),summary:clean(sea.find(r=>clean(r.summery))?.summery??con.find(r=>clean(r.summery))?.summery,2000),rank:clean(sea.find(r=>clean(r.rank))?.rank,100),company:clean(ex.find(r=>clean(r.company))?.company,160),experienceYears:yrs(sea.map(r=>yrs(r.total_experience)).find(x=>x!=null)??con.map(r=>yrs(r.total_experience)).find(x=>x!=null)),vesselTypes:uniq(ex.map(r=>r.type_of_ship),20,120),skills,experiences:ex.slice(0,100).map(r=>({title:clean(r.rank,160),organization:clean(r.company,180),vesselType:clean(r.type_of_ship,120),start:d(r.joining_date),end:d(r.leaving_date)})),credentials,legacy:rs.map(x=>({object:x.kind,id:Number(x.r.tlid)}))})
+  const courseCredentialRows=sea.flatMap(r=>(courses.get(Number(r.tlid))||[]).flatMap(q=>[
+   ['PSSR',q.pssr_no,q.pssr_inst],['PST',q.pst_no,q.pst_inst],['PSCRB',q.pscrb_no,q.pscrb_inst],
+   [clean(q.firefight_name,180)||'Fire Fighting',q.firefight_no,q.firefight_inst],
+   [clean(q.medicare_name,180)||'Medical Care',q.medicare_no,q.medicare_inst],
+   [clean(q.oiltanker_name,180)||'Oil Tanker Training',q.oiltanker_no,q.oiltanker_inst],
+   [clean(q.chemicaltanker_name,180)||'Chemical Tanker Training',q.chemicaltanker_no,q.chemicaltanker_inst],
+   [clean(q.lpgtanker_name,180)||'LPG Tanker Training',q.lpgtanker_no,q.lpgtanker_inst],
+   ['STSDSD',q.stsd_no,q.stsd_inst],
+  ].flatMap(([name,number,issuer])=>clean(number,180)&&clean(issuer,180)?[{name:clean(name,180),issuer:clean(issuer,180),number:clean(number,180),expires:null,noExpiry:true}]:[])))
+  const credentials=sea.flatMap(r=>(cert.get(Number(r.tlid))||[]).flatMap(c=>{const name=clean([c.certificate_type,c.type||c.lavel].filter(Boolean).join(' - '),180),issuer=clean(c.authority,180);if(!name||!issuer)return[];const expires=d(c.expiry);return[{name,issuer,number:clean(c.certificate_no,180),expires,noExpiry:!expires}]})).concat(courseCredentialRows).slice(0,100)
+  people.push({email,fullName:clean(p.name,160)||email,profileType:sea.length?'seafarer':'maritime_professional',persona:sea.length?'seafarer':'shore_professional',location:sea.map(r=>loc(addr.get(Number(r.com_addressid)))||loc(addr.get(Number(r.per_addressid)))).find(Boolean)??con.map(r=>loc(addr.get(Number(r.addressid)))).find(Boolean)??null,headline:clean(sea.find(r=>clean(r.rank))?.rank??con.find(r=>clean(r.designation))?.designation??shore.find(r=>clean(r.designation))?.designation,160),summary:clean(sea.find(r=>clean(r.summery))?.summery??con.find(r=>clean(r.summery))?.summery,2000),rank:clean(sea.find(r=>clean(r.rank))?.rank,100),company:clean(ex.find(r=>clean(r.company))?.company,160),experienceYears:yrs(sea.map(r=>yrs(r.total_experience)).find(x=>x!=null)),vesselTypes:uniq(ex.map(r=>r.type_of_ship),20,120),skills,experiences:ex.slice(0,100).map(r=>({title:clean(r.rank,160),organization:clean(r.company,180),vesselType:clean(r.type_of_ship,120),start:d(r.joining_date),end:d(r.leaving_date)})),credentials,legacy:rs.map(x=>({object:x.kind,id:Number(x.r.tlid)}))})
  }
  const seen=new Set,organizations=t.table_company.flatMap(r=>{if(Number(r.status)!==1||test(r))return[];const name=clean(r.name,160),k=name?.toLowerCase();if(!name||!k||seen.has(k))return[];seen.add(k);return[{name,slug:slug(name,Number(r.tlid)),location:uniq([r.city,r.state,r.country],3,120).join(', ').slice(0,240)||null}]})
  return{people,organizations,audit:{people:people.length,duplicateEmailGroups:[...g.values()].filter(x=>x.length>1).length,invalidEmailRows:invalid,testRows:tests,organizations:organizations.length}}
