@@ -1,3 +1,4 @@
+import { loadResendApiKey } from '@/lib/email/resend'
 import { getNewsletterConfig, newsletterSendingStatus, type NewsletterConfig } from './config'
 import { newsletterRepository, type ConsentContext, type NewsletterRepository, type NewsletterSubscriber, type SignupOutcome } from './repository'
 import { verifyNewsletterToken, type NewsletterTokenPurpose } from './tokens'
@@ -94,7 +95,7 @@ export function createNewsletterService(deps: { repository?: Repository; config?
         ownershipVerified,
         context,
       })
-      const sendingEnabled = newsletterSendingStatus(config).enabled
+      const sendingEnabled = newsletterSendingStatus(config).enabled && Boolean(await loadResendApiKey())
       const followUp = outcome === 'subscribed' || outcome === 'topics_updated'
         ? 'sync'
         : outcome === 'confirmation_required' || outcome === 'already_pending'

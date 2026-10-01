@@ -100,7 +100,7 @@ describe('newsletter sending through Resend', () => {
     await expect(sender.sendConfirmation('s1')).resolves.toBe('failed')
     expect(repository.clearConfirmationSent).toHaveBeenCalledWith('s1')
     expect(resend.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
-      idempotencyKey: 'newsletter-confirmation/s1/2026-10-01T10:00:00.000Z',
+      idempotencyKey: 'newsletter-confirmation/s1/2026-10-01',
       tags: [{ name: 'category', value: 'newsletter_confirmation' }],
     }))
   })

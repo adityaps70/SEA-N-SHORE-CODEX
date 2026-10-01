@@ -76,7 +76,7 @@ describe('Resend email client', () => {
       apiKey: 're_super_secret',
       fetch: vi.fn(async () => { throw new Error('socket failed with re_super_secret') }),
     })
-    const error = await networkClient.sendEmail({ from: 'a@b.com', to: 'c@d.com', subject: 'x', text: 'x', html: '<p>x</p>' }).catch((value) => value)
+    const error = await networkClient.sendEmail({ from: 'a@b.com', to: 'c@d.com', subject: 'x', text: 'x', html: '<p>x</p>' }).catch((value: unknown) => value)
     expect(error).toBeInstanceOf(ResendApiError)
     expect(error).toMatchObject({ code: 'network_error', status: 0, retryable: true })
     expect(String(error.message)).not.toContain('re_super_secret')

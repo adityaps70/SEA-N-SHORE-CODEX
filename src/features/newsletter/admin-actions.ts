@@ -5,6 +5,7 @@ import { after } from 'next/server'
 import { z } from 'zod'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { userFacingError } from '@/lib/errors/user-messages'
+import { SENDING_DISABLED_MESSAGES } from './config'
 import { newsletterRepository } from './repository'
 import { newsletterCampaignSchema } from './schemas'
 import { createNewsletterSender } from './sending'
@@ -65,9 +66,9 @@ export async function queueNewsletterCampaign(_previous: AdminNewsletterState, f
   if (!admin.ok) return admin.state
 
   const sender = createNewsletterSender()
-  const sending = sender.sendingStatus()
+  const sending = await sender.sendingStatus()
   if (!sending.enabled) {
-    return { status: 'error', message: 'Campaign sending is turned off until Amazon SES production access and the sender are configured.' }
+    return { status: 'error', message: SENDING_DISABLED_MESSAGES[sending.reason] }
   }
 
   const parsed = newsletterCampaignSchema.safeParse({
