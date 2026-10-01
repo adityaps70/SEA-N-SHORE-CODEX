@@ -7,6 +7,7 @@ export const COGNITO_COOKIE_NAMES = {
   phoneChallengeUser: 'sns_cognito_phone_challenge_user',
   oauthState: 'sns_cognito_oauth_state',
   oauthVerifier: 'sns_cognito_oauth_verifier',
+  oauthIntent: 'sns_cognito_oauth_intent',
 } as const
 
 type CookieOptions = {
@@ -103,7 +104,7 @@ export function createCognitoCookieManager(
       store.delete(COGNITO_COOKIE_NAMES.phoneChallengeUser)
     },
 
-    setOAuthChallenge(input: { state: string; verifier: string }) {
+    setOAuthChallenge(input: { state: string; verifier: string; intent: 'sign-in' | 'sign-up' }) {
       const challengeOptions = {
         ...baseOptions,
         maxAge: CHALLENGE_MAX_AGE_SECONDS,
@@ -111,11 +112,13 @@ export function createCognitoCookieManager(
 
       store.set(COGNITO_COOKIE_NAMES.oauthState, input.state, challengeOptions)
       store.set(COGNITO_COOKIE_NAMES.oauthVerifier, input.verifier, challengeOptions)
+      store.set(COGNITO_COOKIE_NAMES.oauthIntent, input.intent, challengeOptions)
     },
 
     clearOAuthChallenge() {
       store.delete(COGNITO_COOKIE_NAMES.oauthState)
       store.delete(COGNITO_COOKIE_NAMES.oauthVerifier)
+      store.delete(COGNITO_COOKIE_NAMES.oauthIntent)
     },
 
     clearCognitoCookies() {
@@ -127,6 +130,7 @@ export function createCognitoCookieManager(
       store.delete(COGNITO_COOKIE_NAMES.phoneChallengeUser)
       store.delete(COGNITO_COOKIE_NAMES.oauthState)
       store.delete(COGNITO_COOKIE_NAMES.oauthVerifier)
+      store.delete(COGNITO_COOKIE_NAMES.oauthIntent)
     },
   }
 }
