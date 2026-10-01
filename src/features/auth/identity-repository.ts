@@ -9,6 +9,7 @@ import {
 type IdentityRow = QueryResultRow & {
   profile_id: string
   account_status?: 'active' | 'restricted' | 'suspended' | 'deletion_requested'
+  onboarding_completed_at?: string | null
 }
 
 type IdentityQuery = (
@@ -66,23 +67,30 @@ export function createIdentityRepository(
 
   async function resolveWithClient(client: DatabaseQueryClient, sub: string) {
     const result = await client.query<IdentityRow>(
-      `select profile_id
-       from public.identity_accounts
-       where provider = $1
-         and provider_subject = $2
-       order by id
+      `select ia.profile_id, p.onboarding_completed_at
+       from public.identity_accounts ia
+       join public.profiles p on p.id = ia.profile_id
+       where ia.provider = $1
+         and ia.provider_subject = $2
+       order by ia.id
        limit 2`,
       ['cognito', sub],
     )
 
     if (result.rows.length === 0) return null
     if (result.rows.length !== 1) throw new IdentityMappingError()
-    return result.rows[0]?.profile_id ?? null
+    const row = result.rows[0]
+    if (!row?.profile_id) throw new IdentityMappingError()
+    return {
+      profileId: row.profile_id,
+      onboardingCompletedAt: row.onboarding_completed_at ?? null,
+    }
   }
 
   async function matchingVerifiedProfileIds(
     client: DatabaseQueryClient,
     principal: CognitoPrincipal,
+    excludeProfileId?: string,
   ): Promise<string[]> {
     const values = identityValues(principal)
     const matches = new Set<string>()
@@ -93,9 +101,10 @@ export function createIdentityRepository(
          from public.identity_accounts
          where email_verified = true
            and lower(email) = lower($1)
+           ${excludeProfileId ? 'and profile_id <> $2' : ''}
          order by profile_id
          limit 2`,
-        [values.email],
+        excludeProfileId ? [values.email, excludeProfileId] : [values.email],
       )
       for (const row of emailRows.rows) matches.add(row.profile_id)
     }
@@ -106,9 +115,10 @@ export function createIdentityRepository(
          from public.identity_accounts
          where phone_number_verified = true
            and phone_number = $1
+           ${excludeProfileId ? 'and profile_id <> $2' : ''}
          order by profile_id
          limit 2`,
-        [values.phoneNumber],
+        excludeProfileId ? [values.phoneNumber, excludeProfileId] : [values.phoneNumber],
       )
       for (const row of phoneRows.rows) matches.add(row.profile_id)
     }
@@ -144,6 +154,38 @@ export function createIdentityRepository(
         values.phoneNumber,
         values.phoneNumberVerified,
       ],
+    )
+  }
+
+  async function profileIsCompletedAndActive(
+    client: DatabaseQueryClient,
+    profileId: string,
+  ) {
+    const result = await client.query<IdentityRow>(
+      `select id as profile_id, onboarding_completed_at
+       from public.profiles
+       where id = $1
+         and account_status = 'active'
+       limit 1`,
+      [profileId],
+    )
+    return Boolean(result.rows[0]?.onboarding_completed_at)
+  }
+
+  async function reassignIdentityMapping(
+    client: DatabaseQueryClient,
+    principal: CognitoPrincipal,
+    fromProfileId: string,
+    toProfileId: string,
+  ) {
+    await client.query(
+      `update public.identity_accounts
+       set profile_id = $3,
+           updated_at = now()
+       where provider = $1
+         and provider_subject = $2
+         and profile_id = $4`,
+      ['cognito', principal.sub, toProfileId, fromProfileId],
     )
   }
 
@@ -217,13 +259,44 @@ export function createIdentityRepository(
           `cognito:${principal.sub}`,
         ])
 
-        const existingProfileId = await resolveWithClient(client, principal.sub)
-        if (existingProfileId) {
+        const existingIdentity = await resolveWithClient(client, principal.sub)
+        const values = identityValues(principal)
+
+        if (existingIdentity) {
+          if (
+            !existingIdentity.onboardingCompletedAt
+            && (values.emailVerified || values.phoneNumberVerified)
+          ) {
+            await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
+              `verified-login:${values.email ?? ''}:${values.phoneNumber ?? ''}`,
+            ])
+
+            const matchedProfileIds = await matchingVerifiedProfileIds(
+              client,
+              principal,
+              existingIdentity.profileId,
+            )
+            const matchedProfileId = matchedProfileIds[0] ?? null
+
+            if (
+              matchedProfileId
+              && await profileIsCompletedAndActive(client, matchedProfileId)
+            ) {
+              await reassignIdentityMapping(
+                client,
+                principal,
+                existingIdentity.profileId,
+                matchedProfileId,
+              )
+              await refreshIdentityMapping(client, principal)
+              return matchedProfileId
+            }
+          }
+
           await refreshIdentityMapping(client, principal)
-          return existingProfileId
+          return existingIdentity.profileId
         }
 
-        const values = identityValues(principal)
         if (values.emailVerified || values.phoneNumberVerified) {
           await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
             `verified-login:${values.email ?? ''}:${values.phoneNumber ?? ''}`,
