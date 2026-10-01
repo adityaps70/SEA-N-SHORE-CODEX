@@ -87,6 +87,71 @@ export function createIdentityRepository(
     }
   }
 
+  async function matchingLegacyProfileIds(
+    client: DatabaseQueryClient,
+    principal: CognitoPrincipal,
+  ): Promise<string[]> {
+    const values = identityValues(principal)
+    const matches = new Set<string>()
+
+    if (values.emailVerified && values.email) {
+      const emailRows = await client.query<IdentityRow>(
+        `select distinct claim.profile_id
+         from public.legacy_profile_claims claim
+         join public.profiles profile on profile.id = claim.profile_id
+         where claim.claimed_at is null
+           and profile.account_status in ('active', 'restricted')
+           and lower(claim.email) = lower($1)
+         order by claim.profile_id
+         limit 2`,
+        [values.email],
+      )
+      for (const row of emailRows.rows) matches.add(row.profile_id)
+    }
+
+    if (values.phoneNumberVerified && values.phoneNumber) {
+      const phoneRows = await client.query<IdentityRow>(
+        `select distinct claim.profile_id
+         from public.legacy_profile_claims claim
+         join public.profiles profile on profile.id = claim.profile_id
+         where claim.claimed_at is null
+           and profile.account_status in ('active', 'restricted')
+           and claim.phone_number = $1
+         order by claim.profile_id
+         limit 2`,
+        [values.phoneNumber],
+      )
+      for (const row of phoneRows.rows) matches.add(row.profile_id)
+    }
+
+    if (matches.size > 1) throw new IdentityMappingError()
+    return [...matches]
+  }
+
+  async function activateLegacyProfile(
+    client: DatabaseQueryClient,
+    profileId: string,
+    principal: CognitoPrincipal,
+  ) {
+    await client.query(
+      `update public.legacy_profile_claims
+       set claimed_at = coalesce(claimed_at, now()),
+           claimed_by_provider_subject = coalesce(claimed_by_provider_subject, $2),
+           updated_at = now()
+       where profile_id = $1
+         and claimed_at is null`,
+      [profileId, principal.sub],
+    )
+    await client.query(
+      `update public.profiles
+       set account_status = 'active',
+           updated_at = now()
+       where id = $1
+         and account_status = 'restricted'`,
+      [profileId],
+    )
+  }
+
   async function matchingVerifiedProfileIds(
     client: DatabaseQueryClient,
     principal: CognitoPrincipal,
@@ -263,33 +328,46 @@ export function createIdentityRepository(
         const values = identityValues(principal)
 
         if (existingIdentity) {
-          if (
-            !existingIdentity.onboardingCompletedAt
-            && (values.emailVerified || values.phoneNumberVerified)
-          ) {
+          if (values.emailVerified || values.phoneNumberVerified) {
             await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
               `verified-login:${values.email ?? ''}:${values.phoneNumber ?? ''}`,
             ])
 
-            const matchedProfileIds = await matchingVerifiedProfileIds(
-              client,
-              principal,
-              existingIdentity.profileId,
-            )
-            const matchedProfileId = matchedProfileIds[0] ?? null
+            if (!existingIdentity.onboardingCompletedAt) {
+              const legacyProfileIds = await matchingLegacyProfileIds(client, principal)
+              const legacyProfileId = legacyProfileIds[0] ?? null
+              if (legacyProfileId && legacyProfileId !== existingIdentity.profileId) {
+                await reassignIdentityMapping(
+                  client,
+                  principal,
+                  existingIdentity.profileId,
+                  legacyProfileId,
+                )
+                await activateLegacyProfile(client, legacyProfileId, principal)
+                await refreshIdentityMapping(client, principal)
+                return legacyProfileId
+              }
 
-            if (
-              matchedProfileId
-              && await profileIsCompletedAndActive(client, matchedProfileId)
-            ) {
-              await reassignIdentityMapping(
+              const matchedProfileIds = await matchingVerifiedProfileIds(
                 client,
                 principal,
                 existingIdentity.profileId,
-                matchedProfileId,
               )
-              await refreshIdentityMapping(client, principal)
-              return matchedProfileId
+              const matchedProfileId = matchedProfileIds[0] ?? null
+
+              if (
+                matchedProfileId
+                && await profileIsCompletedAndActive(client, matchedProfileId)
+              ) {
+                await reassignIdentityMapping(
+                  client,
+                  principal,
+                  existingIdentity.profileId,
+                  matchedProfileId,
+                )
+                await refreshIdentityMapping(client, principal)
+                return matchedProfileId
+              }
             }
           }
 
@@ -308,6 +386,14 @@ export function createIdentityRepository(
         if (matchedProfileId) {
           await insertIdentityMapping(client, matchedProfileId, principal)
           return matchedProfileId
+        }
+
+        const legacyProfileIds = await matchingLegacyProfileIds(client, principal)
+        const legacyProfileId = legacyProfileIds[0] ?? null
+        if (legacyProfileId) {
+          await insertIdentityMapping(client, legacyProfileId, principal)
+          await activateLegacyProfile(client, legacyProfileId, principal)
+          return legacyProfileId
         }
 
         const profileResult = await client.query<IdentityRow>(
