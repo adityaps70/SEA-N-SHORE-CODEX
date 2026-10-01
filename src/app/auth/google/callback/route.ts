@@ -7,8 +7,9 @@ import { createCognitoOAuth, verifyOAuthState } from '@/lib/auth/cognito-oauth'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
 import { siteUrlFor } from '@/lib/site-url'
 
-function redirectWithError(code: string) {
-  const response = NextResponse.redirect(siteUrlFor(`/auth/sign-in?oauthError=${encodeURIComponent(code)}`))
+function redirectWithError(code: string, intent: 'sign-in' | 'sign-up' = 'sign-in') {
+  const authPath = intent === 'sign-up' ? '/auth/sign-up' : '/auth/sign-in'
+  const response = NextResponse.redirect(siteUrlFor(`${authPath}?oauthError=${encodeURIComponent(code)}`))
   const environment = getCognitoEnvironment()
   const cookies = createCognitoCookieManager(
     response.cookies,
@@ -22,8 +23,11 @@ function redirectWithError(code: string) {
 
 export async function GET(request: NextRequest) {
   const environment = getCognitoEnvironment()
+  const intent = request.cookies.get(COGNITO_COOKIE_NAMES.oauthIntent)?.value === 'sign-up'
+    ? 'sign-up'
+    : 'sign-in'
   if (!environment.AWS_COGNITO_GOOGLE_ENABLED || !environment.AWS_COGNITO_DOMAIN) {
-    return redirectWithError('unavailable')
+    return redirectWithError('unavailable', intent)
   }
 
   const actualState = request.nextUrl.searchParams.get('state')
@@ -38,7 +42,7 @@ export async function GET(request: NextRequest) {
     || !verifier
     || !verifyOAuthState(expectedState, actualState)
   ) {
-    return redirectWithError('verification')
+    return redirectWithError('verification', intent)
   }
 
   try {
@@ -59,6 +63,6 @@ export async function GET(request: NextRequest) {
     response.headers.set('Cache-Control', 'private, no-store')
     return response
   } catch {
-    return redirectWithError('exchange')
+    return redirectWithError('exchange', intent)
   }
 }
