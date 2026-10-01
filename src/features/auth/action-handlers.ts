@@ -11,6 +11,7 @@ const POST_SIGN_IN_PATH = '/auth/post-sign-in'
 export function createAuthActionHandlers(input: {
   getActions: () => Promise<CognitoActions>
   redirect: Redirect
+  getSignOutDestination?: () => string
 }) {
   return {
     async signIn(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -67,7 +68,7 @@ export function createAuthActionHandlers(input: {
     async signOut() {
       const actions = await input.getActions()
       await actions.signOut()
-      input.redirect('/')
+      input.redirect(input.getSignOutDestination?.() ?? '/')
     },
   }
 }
