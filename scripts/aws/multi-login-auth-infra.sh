@@ -274,6 +274,8 @@ if [[ "$GOOGLE_OAUTH_CREDENTIALS_READY" == "true" ]]; then
     --user-pool-id "$USER_POOL_ID" \
     --provider-name Google > "$WORK_DIR/google-provider.json"
   jq -e '.IdentityProvider.ProviderType == "Google"' "$WORK_DIR/google-provider.json" >/dev/null
+  jq -e '.IdentityProvider.AttributeMapping.email_verified == "email_verified"' "$WORK_DIR/google-provider.json" >/dev/null
+  echo "GOOGLE_VERIFIED_EMAIL_MAPPING_VERIFIED=true"
   echo "GOOGLE_FEDERATION_VERIFIED=true"
 else
   jq -e '(.UserPoolClient.SupportedIdentityProviders | index("Google")) == null' "$WORK_DIR/client.json" >/dev/null
