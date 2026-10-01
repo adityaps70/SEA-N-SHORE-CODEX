@@ -42,7 +42,7 @@ echo "LEGACY_USER_IMPORT_EXPECTED_BYTES=$EXPECTED_BYTES"
 echo "LEGACY_USER_IMPORT_EXPECTED_SHA256=$EXPECTED_SHA256"
 
 if [[ "$ACTION" == "plan" ]]; then
-  echo "LEGACY_USER_IMPORT_PLAN_ONLY_NO_APPLY"
+  echo "LEGACY_USER_IMPORT_PLAN_ONLY_NO_APPLY=true"
   exit 0
 fi
 
@@ -52,7 +52,7 @@ fi
 # Ensure the claim bridge exists before the data task runs.
 export LEGACY_PROFILE_CLAIMS_EXPECTED_SHA="$LEGACY_USER_IMPORT_EXPECTED_SHA"
 export LEGACY_PROFILE_CLAIMS_MIGRATION_ACTION="migrate-once"
-# The migration script reads its committed action file, which is armed for migrate-once.
+# The claim table is already applied; the migration script is idempotent and verifies it before import.
 bash scripts/aws/legacy-profile-claims-migration.sh
 
 WORK="$(mktemp -d)"
@@ -102,12 +102,14 @@ echo "LEGACY_USER_IMPORT_EXIT_CODE=$EXIT_CODE"
 [[ "$EXIT_CODE" == "0" ]] || { echo "Import task failed: $STOP_REASON" >&2; exit 1; }
 
 LOG_GROUP="/ecs/sea-n-shore-staging/web"
-LOGS="$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" --filter-pattern "$TASK_ID" --query 'events[].message' --output text 2>/dev/null || true)"
-if [[ -z "$LOGS" ]]; then
-  LOGS="$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" --query 'events[].message' --output text 2>/dev/null || true)"
-fi
-printf '%s
-' "$LOGS" | tail -n 80
+LOG_STREAM="web/web/$TASK_ID"
+for attempt in $(seq 1 30); do
+  STREAM_COUNT="$(aws logs describe-log-streams --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --log-stream-name-prefix "$LOG_STREAM" --query 'length(logStreams)' --output text 2>/dev/null || echo 0)"
+  [[ "$STREAM_COUNT" -ge 1 ]] && break
+  sleep 2
+done
+LOGS="$(aws logs get-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --log-stream-name "$LOG_STREAM" --start-from-head --query 'events[].message' --output text 2>/dev/null || true)"
+printf '%s\n' "$LOGS" | tail -n 120
 grep -q '"peopleEligibleForAutomaticImport": 4557' <<<"$LOGS"
 grep -q '"sourceSha256": "f2a2b6b537b5ec1a373ec656409828d889a294aa3a0c7f5895165c1103430efd"' <<<"$LOGS"
 grep -q '"failed": 0' <<<"$LOGS"
