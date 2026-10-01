@@ -4,7 +4,7 @@ import { buildImportPlan, normalizeEmail } from './beaufortmarine-import.mjs'
 const empty = {
   table_address: [], table_seafearer: [], table_consultant: [], table_shore_staff: [],
   table_company: [], table_seafearer_experience: [], table_seafearer_certificate: [],
-  table_consultant_qualification: [],
+  table_seafearer_courses: [], table_consultant_qualification: [],
 }
 
 describe('Beaufort legacy import', () => {
@@ -32,6 +32,9 @@ describe('Beaufort legacy import', () => {
       tlid: 4, status: 1, seafearerid: 1, certificate_type: 'Certificate of Competency',
       type: 'Master', certificate_no: 'COC123', authority: 'DG Shipping', expiry: '2030-01-01 00:00:00',
     })
+    tables.table_seafearer_courses.push({
+      tlid: 6, status: 1, seafearerid: 1, pssr_no: 'PSSR-1', pssr_inst: 'Maritime Academy',
+    })
     tables.table_consultant_qualification.push({
       tlid: 5, status: 1, consultantid: 2, internal_audit: 'yes', lead_auditor: 'yes',
     })
@@ -44,7 +47,7 @@ describe('Beaufort legacy import', () => {
       company: 'Ocean Shipping', vesselTypes: ['Oil Tanker'],
     })
     expect(plan.people[0].skills).toEqual(expect.arrayContaining(['Internal Auditor', 'Lead Auditor']))
-    expect(plan.people[0].credentials).toHaveLength(1)
+    expect(plan.people[0].credentials).toHaveLength(2)
     expect(plan.people[0]).not.toHaveProperty('membership')
     expect(plan.people[0]).not.toHaveProperty('jobApplications')
   })
