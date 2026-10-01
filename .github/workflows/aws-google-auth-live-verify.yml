@@ -11,7 +11,9 @@ on:
       - src/app/auth/sign-in/page.tsx
       - src/app/auth/sign-up/page.tsx
       - src/app/auth/google/start/route.ts
+      - src/app/auth/google/callback/route.ts
       - src/features/auth/components/auth-method-links.tsx
+      - src/lib/auth/cognito-oauth.ts
       - src/lib/env.ts
       - .github/workflows/aws-google-auth-live-verify.yml
   workflow_dispatch:
