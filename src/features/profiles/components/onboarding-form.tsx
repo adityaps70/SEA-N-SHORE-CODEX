@@ -96,6 +96,8 @@ const intentOptions = PROFILE_INTENTS.map((id) => ({ id, label: PROFILE_INTENT_L
 
 type OnboardingFormProps = {
   initialFullName: string
+  /** Existing restored profile values, used when a legacy member claims their account. */
+  initialValues?: ProfileActionState['values']
   /** A rule-valid, available handle generated from the member's name or email. */
   suggestedUsername?: string
   profileId?: string
@@ -160,6 +162,7 @@ const phoneNextClass = 'sticky bottom-[calc(0.75rem+env(safe-area-inset-bottom))
 
 function OnboardingFields({
   initialFullName,
+  initialValues,
   suggestedUsername = '',
   profileId,
   initialDgProfile = null,
@@ -168,7 +171,7 @@ function OnboardingFields({
   phoneStep = 1,
   onPhoneStep,
 }: OnboardingFormProps & { state: ProfileActionState; phoneStep?: PhoneStep; onPhoneStep?: (step: PhoneStep) => void }) {
-  const values = state.values
+  const values = state.values ?? initialValues
   const [persona, setPersona] = useState<Persona | undefined>(values?.persona)
   const [intents, setIntents] = useState<ProfileIntent[]>(readIntents(values?.profileIntents))
   const [dgProfile, setDgProfile] = useState<ProfileDocumentSummary | null>(initialDgProfile)
@@ -552,7 +555,7 @@ async function completeActivationSafely(previousState: ProfileActionState, formD
   }
 }
 
-export function OnboardingForm({ initialFullName, suggestedUsername, profileId, initialDgProfile, registeredOrganization }: OnboardingFormProps) {
+export function OnboardingForm({ initialFullName, initialValues, suggestedUsername, profileId, initialDgProfile, registeredOrganization }: OnboardingFormProps) {
   const [state, formAction, pending] = useActionState(completeActivationSafely, { revision: 0 })
   const [draft, setDraft] = useState<ProfileActionState['values']>()
   const [phoneStep, setPhoneStep] = useState<PhoneStep>(1)
@@ -568,7 +571,11 @@ export function OnboardingForm({ initialFullName, suggestedUsername, profileId, 
     // They left from the organization field, in the last step.
     setPhoneStep(3)
   }, [])
-  const fieldsState = state.values || !draft ? state : { ...state, values: draft }
+  const fieldsState = state.values
+    ? state
+    : draft
+      ? { ...state, values: draft }
+      : { ...state, values: initialValues }
 
   // A rejected submit: on phones show the step with the first problem, then focus it.
   useEffect(() => {
