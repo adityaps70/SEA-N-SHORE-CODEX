@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
 const TABLES=['table_address','table_seafearer','table_consultant','table_shore_staff','table_company','table_seafearer_experience','table_seafearer_certificate','table_seafearer_courses','table_consultant_qualification']
@@ -76,5 +77,26 @@ async function apply(plan){
   for(const o of plan.organizations){await pool.query("insert into public.companies(slug,name,company_type,office_locations,created_by,claim_status) select $1,$2,'Maritime Organization',$3::text[],$4,'unclaimed' where not exists(select 1 from public.companies c where lower(btrim(c.name))=lower(btrim($2))) on conflict(slug) do nothing",[o.slug,o.name,o.location?[o.location]:[],SYSTEM]);r.organizations++}return r
  }finally{await pool.end()}
 }
-async function main(){const path=process.argv[2]||process.env.LEGACY_SQL_DUMP;if(!path)throw Error('Pass legacy SQL dump path.');const plan=buildImportPlan(parseLegacyDump(await readFile(path,'utf8'))),result=(process.env.LEGACY_IMPORT_MODE||'plan')==='apply'?await apply(plan):null;console.log(JSON.stringify({sourceSystem:SOURCE,peopleEligibleForAutomaticImport:plan.audit.people,duplicateLegacyIdentityGroupsMergedByEmail:plan.audit.duplicateEmailGroups,invalidEmailRowsHeldForManualReview:plan.audit.invalidEmailRows,obviousTestRowsExcluded:plan.audit.testRows,organizationsEligibleForUnclaimedPages:plan.audit.organizations,oldPasswordsImported:false,oldMembershipsImported:false,oldJobApplicationsImported:false,oldPaymentHistoryImported:false,applyResult:result},null,2))}
+async function readLegacySource(){
+ const bucket=process.env.LEGACY_S3_BUCKET, key=process.env.LEGACY_S3_KEY
+ if(bucket&&key){
+  const {S3Client,GetObjectCommand}=await import('@aws-sdk/client-s3')
+  const response=await new S3Client({region:process.env.AWS_REGION||'ap-south-1'}).send(new GetObjectCommand({Bucket:bucket,Key:key}))
+  if(!response.Body)throw Error('Legacy S3 object has no body.')
+  return response.Body.transformToString()
+ }
+ const path=process.argv[2]||process.env.LEGACY_SQL_DUMP
+ if(!path)throw Error('Pass legacy SQL dump path or set LEGACY_S3_BUCKET and LEGACY_S3_KEY.')
+ return readFile(path,'utf8')
+}
+async function main(){
+ const sql=await readLegacySource()
+ const bytes=Buffer.byteLength(sql,'utf8'), digest=createHash('sha256').update(sql,'utf8').digest('hex')
+ const expectedHash=process.env.LEGACY_EXPECTED_SHA256
+ const expectedBytes=process.env.LEGACY_EXPECTED_BYTES
+ if(expectedHash&&digest!==expectedHash)throw Error('Legacy SQL SHA256 does not match the approved dump.')
+ if(expectedBytes&&bytes!==Number(expectedBytes))throw Error('Legacy SQL size does not match the approved dump.')
+ const plan=buildImportPlan(parseLegacyDump(sql)),result=(process.env.LEGACY_IMPORT_MODE||'plan')==='apply'?await apply(plan):null
+ console.log(JSON.stringify({sourceSystem:SOURCE,sourceSha256:digest,sourceBytes:bytes,peopleEligibleForAutomaticImport:plan.audit.people,duplicateLegacyIdentityGroupsMergedByEmail:plan.audit.duplicateEmailGroups,invalidEmailRowsHeldForManualReview:plan.audit.invalidEmailRows,obviousTestRowsExcluded:plan.audit.testRows,organizationsEligibleForUnclaimedPages:plan.audit.organizations,oldPasswordsImported:false,oldMembershipsImported:false,oldJobApplicationsImported:false,oldPaymentHistoryImported:false,applyResult:result},null,2))
+}
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)main().catch(e=>{console.error(e instanceof Error?e.message:e);process.exitCode=1})
