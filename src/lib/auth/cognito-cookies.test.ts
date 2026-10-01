@@ -48,6 +48,7 @@ describe('Cognito cookie primitives', () => {
       phoneChallengeUser: 'sns_cognito_phone_challenge_user',
       oauthState: 'sns_cognito_oauth_state',
       oauthVerifier: 'sns_cognito_oauth_verifier',
+      oauthIntent: 'sns_cognito_oauth_intent',
     })
 
     for (const name of Object.values(COGNITO_COOKIE_NAMES)) {
@@ -154,6 +155,7 @@ describe('Cognito cookie primitives', () => {
     cookies.setOAuthChallenge({
       state: 'oauth-state',
       verifier: 'pkce-verifier',
+      intent: 'sign-up',
     })
 
     expect(fake.writes.map((write) => write.name)).toEqual([
@@ -161,6 +163,7 @@ describe('Cognito cookie primitives', () => {
       COGNITO_COOKIE_NAMES.phoneChallengeUser,
       COGNITO_COOKIE_NAMES.oauthState,
       COGNITO_COOKIE_NAMES.oauthVerifier,
+      COGNITO_COOKIE_NAMES.oauthIntent,
     ])
     for (const write of fake.writes) {
       expect(write.options).toMatchObject({
@@ -188,6 +191,7 @@ describe('Cognito cookie primitives', () => {
       COGNITO_COOKIE_NAMES.phoneChallengeUser,
       COGNITO_COOKIE_NAMES.oauthState,
       COGNITO_COOKIE_NAMES.oauthVerifier,
+      COGNITO_COOKIE_NAMES.oauthIntent,
     ])
   })
 })
