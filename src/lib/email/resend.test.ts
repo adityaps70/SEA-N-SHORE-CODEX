@@ -79,7 +79,7 @@ describe('Resend email client', () => {
     const error = await networkClient.sendEmail({ from: 'a@b.com', to: 'c@d.com', subject: 'x', text: 'x', html: '<p>x</p>' }).catch((value: unknown) => value)
     expect(error).toBeInstanceOf(ResendApiError)
     expect(error).toMatchObject({ code: 'network_error', status: 0, retryable: true })
-    expect(String(error.message)).not.toContain('re_super_secret')
+    expect(String(error instanceof Error ? error.message : error)).not.toContain('re_super_secret')
   })
 
   it('reads the API key from environment first, then the production Secrets Manager JSON secret', async () => {
