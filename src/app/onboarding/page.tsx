@@ -56,6 +56,7 @@ export default async function OnboardingPage({
           </div>
           <OnboardingForm
             initialFullName={profile.fullName}
+            initialValues={profile.initialValues}
             suggestedUsername={profile.suggestedUsername}
             profileId={profile.profileId}
             initialDgProfile={profile.dgProfile}
