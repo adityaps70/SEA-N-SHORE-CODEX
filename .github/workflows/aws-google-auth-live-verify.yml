@@ -8,6 +8,7 @@ on:
       - scripts/aws/google-auth-live-probe.sh
       - scripts/aws/google-auth-live-probe.test.mjs
       - scripts/aws/multi-login-auth-infra-action.txt
+      - scripts/aws/staging-deploy-action.txt
       - src/app/auth/sign-in/page.tsx
       - src/app/auth/sign-up/page.tsx
       - src/app/auth/google/start/route.ts
