@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 type IdentityRow = {
   profile_id: string
   account_status?: 'active' | 'restricted' | 'suspended' | 'deletion_requested'
+  onboarding_completed_at?: string | null
 }
 
 const principal: CognitoPrincipal = {
@@ -73,7 +74,7 @@ describe('Cognito identity repository', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ profile_id: profileId }] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: profileId, onboarding_completed_at: '2026-09-01T00:00:00.000Z' }] })
       .mockResolvedValueOnce({ rows: [] })
     const client = { query: transactionQuery } as unknown as DatabaseQueryClient
     let transactionCalls = 0
@@ -147,6 +148,40 @@ describe('Cognito identity repository', () => {
       && Array.isArray(values)
       && values[0] === profileId
       && values[2] === 'google-federated-sub')).toBe(true)
+  })
+
+
+  it('reconnects an existing Google duplicate from incomplete onboarding to the completed profile with the same verified email', async () => {
+    const duplicateProfileId = '88888888-8888-4888-8888-888888888888'
+    const existingProfileId = '99999999-9999-4999-8999-999999999999'
+    const transactionQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: duplicateProfileId, onboarding_completed_at: null }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: existingProfileId }] })
+      .mockResolvedValueOnce({ rows: [{ profile_id: existingProfileId, onboarding_completed_at: '2026-09-01T00:00:00.000Z' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+    const client = { query: transactionQuery } as unknown as DatabaseQueryClient
+    const withTransaction = async <T>(fn: (value: DatabaseQueryClient) => Promise<T>): Promise<T> => fn(client)
+    const { createIdentityRepository } = await import('./identity-repository')
+    const repository = createIdentityRepository({ withTransaction })
+
+    await expect(repository.provisionProfileForCognitoPrincipal({
+      ...principal,
+      sub: 'google-existing-duplicate-sub',
+      username: 'Google_456',
+      emailVerified: true,
+    })).resolves.toBe(existingProfileId)
+
+    expect(transactionQuery.mock.calls.some(([sql, values]) =>
+      String(sql).includes('update public.identity_accounts')
+      && String(sql).includes('set profile_id')
+      && Array.isArray(values)
+      && values[1] === 'google-existing-duplicate-sub'
+      && values[2] === existingProfileId
+      && values[3] === duplicateProfileId)).toBe(true)
+    expect(transactionQuery.mock.calls.some(([sql]) => String(sql).includes('insert into public.profiles'))).toBe(false)
   })
 
   it('links a verified phone login to the existing profile without creating another profile', async () => {
