@@ -2,6 +2,8 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   unavailable: 'Google sign-in is not available right now. Sign in with your email and password, or try Google again later.',
   verification: 'We could not verify the Google sign-in, which can happen if it took too long or was opened in another tab. Please try again.',
   exchange: 'Google sign-in could not be completed. Please try again, or sign in with your email and password.',
+  'post-sign-in-session': 'You signed in with Google, but Sea N Shore could not finish creating your session. Please try Google again.',
+  'post-sign-in-profile': 'You signed in with Google, but Sea N Shore could not load your profile. Please try again.',
 }
 
 export function oauthErrorMessage(code: string | null | undefined) {
