@@ -328,12 +328,15 @@ export function createIdentityRepository(
         const values = identityValues(principal)
 
         if (existingIdentity) {
-          if (values.emailVerified || values.phoneNumberVerified) {
+          if (
+            !existingIdentity.onboardingCompletedAt
+            && (values.emailVerified || values.phoneNumberVerified)
+          ) {
             await client.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
               `verified-login:${values.email ?? ''}:${values.phoneNumber ?? ''}`,
             ])
 
-            if (!existingIdentity.onboardingCompletedAt) {
+            {
               const legacyProfileIds = await matchingLegacyProfileIds(client, principal)
               const legacyProfileId = legacyProfileIds[0] ?? null
               if (legacyProfileId && legacyProfileId !== existingIdentity.profileId) {
