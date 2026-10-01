@@ -155,6 +155,8 @@ jobs:
         run: node --test scripts/aws/ecs-task-cashfree-secret-policy-release.test.mjs
       - name: Verify ECS Resend secret policy release contract
         run: node --test scripts/aws/ecs-resend-secret-policy-release.test.mjs
+      - name: Verify newsletter signing secret release contract
+        run: node --test scripts/aws/newsletter-signing-secret-release.test.mjs
       - name: Verify guarded staging data cleanup contract
         run: node scripts/aws/staging-data-cleanup.test.mjs
       - name: Verify social infrastructure plan classifier
