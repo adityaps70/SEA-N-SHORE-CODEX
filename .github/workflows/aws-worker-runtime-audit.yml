@@ -41,6 +41,7 @@ jobs:
             local json
             json="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$service" --output json)"
             test "$(jq '.failures | length' <<<"$json")" -eq 0
+
             local current primary state desired running pending deployments
             current="$(jq -r '.services[0].taskDefinition // empty' <<<"$json")"
             primary="$(jq -r '[.services[0].deployments[] | select(.status=="PRIMARY")][0].taskDefinition // empty' <<<"$json")"
@@ -49,11 +50,20 @@ jobs:
             running="$(jq -r '.services[0].runningCount // -1' <<<"$json")"
             pending="$(jq -r '.services[0].pendingCount // -1' <<<"$json")"
             deployments="$(jq '.services[0].deployments | length' <<<"$json")"
+
             test -n "$current"
+            test "$current" = "$primary"
+            test "$state" = "COMPLETED"
+            test "$desired" -ge 1
+            test "$running" -eq "$desired"
+            test "$pending" -eq 0
+            test "$deployments" -eq 1
+
             local task image
             task="$(aws ecs describe-task-definition --task-definition "$current" --query taskDefinition --output json)"
             image="$(jq -r --arg NAME "$container" '.containerDefinitions[] | select(.name==$NAME) | .image // empty' <<<"$task")"
             test -n "$image"
+
             echo "WORKER_RUNTIME_SERVICE=$service"
             echo "WORKER_RUNTIME_CURRENT_TASK=$current"
             echo "WORKER_RUNTIME_PRIMARY_TASK=$primary"
@@ -66,101 +76,3 @@ jobs:
 
           audit_service "$OUTBOX_WORKER_SERVICE" "outbox-worker"
           audit_service "$NOTIFICATION_WORKER_SERVICE" "notification-worker"
-
-      - name: Audit recent outbox service events
-        shell: bash
-        run: |
-          set -euo pipefail
-          JSON="$(aws ecs describe-services             --cluster "$ECS_CLUSTER"             --services "$OUTBOX_WORKER_SERVICE"             --output json)"
-          test "$(jq '.failures | length' <<<"$JSON")" -eq 0
-          jq -r '
-            .services[0].events[:30][]
-            | "OUTBOX_SERVICE_EVENT_AT=" + ((.createdAt // "")|tostring)
-              + "|MESSAGE=" + (.message // "")
-          ' <<<"$JSON"
-
-      - name: Audit outbox revision 100 log configuration
-        shell: bash
-        run: |
-          set -euo pipefail
-          TASK="$(aws ecs describe-task-definition             --task-definition sea-n-shore-staging-outbox-worker:100             --query taskDefinition --output json)"
-          jq -r '
-            .containerDefinitions[]
-            | select(.name=="outbox-worker")
-            | "OUTBOX_100_IMAGE=" + (.image // ""),
-              "OUTBOX_100_LOG_DRIVER=" + (.logConfiguration.logDriver // ""),
-              "OUTBOX_100_LOG_GROUP=" + (.logConfiguration.options["awslogs-group"] // ""),
-              "OUTBOX_100_LOG_PREFIX=" + (.logConfiguration.options["awslogs-stream-prefix"] // "")
-          ' <<<"$TASK"
-
-      - name: Discover bootstrap instance
-        id: bootstrap
-        shell: bash
-        run: |
-          set -euo pipefail
-          IDS="$(aws ec2 describe-instances \
-            --region "$AWS_REGION" \
-            --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" \
-            --query 'Reservations[].Instances[].InstanceId' --output json)"
-          test "$(jq 'length' <<<"$IDS")" -eq 1
-          echo "instance_id=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_OUTPUT"
-      - name: Read failed outbox task streams through bootstrap SSM
-        shell: bash
-        env:
-          INSTANCE_ID: ${{ steps.bootstrap.outputs.instance_id }}
-        run: |
-          set -euo pipefail
-          python3 - > /tmp/outbox-log-params.json <<'PY'
-          import json, shlex
-          task_ids = [
-              "b350179017384d5bb4c546ec26e7157c",
-              "9a0dbd8a22ce4e73b179d2582333f636",
-              "38449cbb207548f9bd04b5653577dccb",
-              "7e4fe90708624aed85e523fb41f00438",
-          ]
-          streams = " ".join("worker/outbox-worker/" + task_id for task_id in task_ids)
-          cmd = f'''set -euo pipefail
-          for STREAM in {streams}; do
-            echo "OUTBOX_FAILED_STREAM=$STREAM"
-            aws logs get-log-events \
-              --region ap-south-1 \
-              --log-group-name /ecs/sea-n-shore-staging/outbox-worker \
-              --log-stream-name "$STREAM" \
-              --start-from-head \
-              --limit 1000 \
-              --output json |
-              jq -r '.events[] | "OUTBOX_FAILED_MESSAGE=" + ((.message // "") | gsub("\\n"; " "))'
-          done
-          '''
-          print(json.dumps({
-              "executionTimeout": ["300"],
-              "commands": ["bash -lc " + shlex.quote(cmd)]
-          }))
-          PY
-          CID="$(aws ssm send-command \
-            --region "$AWS_REGION" \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "Read failed Sea N Shore outbox task streams" \
-            --timeout-seconds 300 \
-            --parameters file:///tmp/outbox-log-params.json \
-            --query 'Command.CommandId' --output text)"
-          for i in $(seq 1 60); do
-            S="$(aws ssm get-command-invocation \
-              --region "$AWS_REGION" \
-              --command-id "$CID" \
-              --instance-id "$INSTANCE_ID" \
-              --query Status --output text 2>/dev/null || echo Pending)"
-            case "$S" in Pending|InProgress|Delayed) sleep 5;; *) break;; esac
-          done
-          aws ssm get-command-invocation \
-            --region "$AWS_REGION" \
-            --command-id "$CID" \
-            --instance-id "$INSTANCE_ID" \
-            --output json > /tmp/outbox-log-result.json
-          jq -r '.StandardOutputContent // empty' /tmp/outbox-log-result.json
-          STDERR="$(jq -r '.StandardErrorContent // empty' /tmp/outbox-log-result.json)"
-          if [[ -n "$STDERR" ]]; then
-            printf '%s\n' "$STDERR" >&2
-          fi
-          test "$(jq -r '.Status' /tmp/outbox-log-result.json)" = Success
