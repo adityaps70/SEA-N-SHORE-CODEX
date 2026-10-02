@@ -29,6 +29,6 @@ test('legacy invite migration is additive and guarded', async () => {
 test('outbox worker runs bounded legacy invitation sweeps', async () => {
   const worker = await readFile(new URL('../workers/publish-outbox.ts', import.meta.url), 'utf8')
   assert.match(worker, /createLegacyInviteWorker/)
-  assert.match(worker, /legacyInviteWorker\.runSweep\(25\)/)
+  assert.match(worker, /legacyInviteWorker\.runSweep\(5\)/)
   assert.match(worker, /LEGACY_INVITE_SWEEP_MS = 60 \* 1000/)
 })
