@@ -48,7 +48,8 @@ describe('hashtag repository', () => {
     await expect(repository.getHashtagSummary('#SIRE')).resolves.toEqual({ tag: 'sire', postCount: 5, followerCount: 2 })
     const [sql, values] = callsOf(query)[0]!
     expect(sql.replace(/\s+/g, ' ')).toContain('from public.hashtag_follows hf where hf.hashtag_id = h.id')
-    expect(values).toEqual(['sire'])
+    expect(values?.[0]).toBe('sire')
+    expect(values?.[1]).toBe('(^|[[:space:]]|\\(|\\[|\\{|\'|"|“|‘)#sire([^[:alnum:]_]|$)')
   })
 
   it('counts legacy posts whose hashtag link row is missing by matching the post body', async () => {
