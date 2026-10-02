@@ -54,7 +54,7 @@ describe('feed repository', () => {
     expect(sql).toMatch(/p\.group_id is null/i)
     expect(values?.[0]).toBe(viewerId)
     expect(values?.[1]).toBe('sire')
-    expect(values?.[2]).toBe('(^|[[:space:](\\\\[\\{\\\'"“‘])#sire([^[:alnum:]_]|$)')
+    expect(values?.[2]).toBe('(^|[[:space:]]|\\(|\\[|\\{|\'|"|“|‘)#sire([^[:alnum:]_]|$)')
     expect(values?.[3]).toBe(12)
   })
 
