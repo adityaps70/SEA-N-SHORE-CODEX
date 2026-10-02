@@ -51,6 +51,17 @@ describe('hashtag repository', () => {
     expect(values).toEqual(['sire'])
   })
 
+  it('counts legacy posts whose hashtag link row is missing by matching the post body', async () => {
+    const query = vi.fn(async () => [{ tag: 'sire', post_count: '1', follower_count: 0 }])
+    const repository = createHashtagRepository({ query })
+
+    await expect(repository.getHashtagSummary('sire')).resolves.toEqual({ tag: 'sire', postCount: 1, followerCount: 0 })
+    const [sql, values] = callsOf(query)[0]!
+    expect(sql).toMatch(/p\.body ~\* \$2/i)
+    expect(values?.[0]).toBe('sire')
+    expect(values?.[1]).toBe('(^|[[:space:](\\\\[\\{\\\'"“‘])#sire([^[:alnum:]_]|$)')
+  })
+
   it('returns null for unknown or invalid tags', async () => {
     const query = vi.fn(async () => [])
     const repository = createHashtagRepository({ query })
