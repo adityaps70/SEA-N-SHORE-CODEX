@@ -93,8 +93,8 @@ describe('job lifecycle state machine', () => {
     expect(validateJobTransition(snapshot({ applyUntil: '2026-12-01' }), 'publish', { today })).toMatchObject({ ok: true, applyUntil: '2026-12-01' })
   })
 
-  it('refuses to publish when the joining window has already ended', () => {
-    expect(validateJobTransition(snapshot({ joiningUntil: '2026-09-01' }), 'publish', { today })).toMatchObject({ ok: false, code: 'joining_window_past' })
+  it('does not block publishing on a legacy joining-until value that is no longer editable', () => {
+    expect(validateJobTransition(snapshot({ joiningUntil: '2026-09-01' }), 'publish', { today })).toMatchObject({ ok: true })
   })
 
   it('never lets a moderation-removed job go live again but still allows deleting it', () => {
