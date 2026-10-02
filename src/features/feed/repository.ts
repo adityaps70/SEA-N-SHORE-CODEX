@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
+import { hashtagBodySearchPattern } from '@/features/hashtags/parse'
 import type { FeedCommentRow, FeedPostRow, FeedViewerState, HiddenPostSourceRow } from './mappers'
 import type { FeedCursor, FeedPostType, PostCategory, PostReactionType, ReactionTargetType, RecentlyDeletedPost } from './types'
 
@@ -362,11 +363,26 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     }
     if (lookup.hashtag) {
       values.push(lookup.hashtag)
-      clauses.push(`exists (
-        select 1 from public.post_hashtags tagged_post
-        join public.hashtags tagged on tagged.id = tagged_post.hashtag_id
-        where tagged_post.post_id = p.id and tagged.tag = $${values.length}
-      )`)
+      const indexedTagParameter = values.length
+      const bodyPattern = hashtagBodySearchPattern(lookup.hashtag)
+      if (bodyPattern) {
+        values.push(bodyPattern)
+        const legacyBodyParameter = values.length
+        clauses.push(`(
+          exists (
+            select 1 from public.post_hashtags tagged_post
+            join public.hashtags tagged on tagged.id = tagged_post.hashtag_id
+            where tagged_post.post_id = p.id and tagged.tag = ${indexedTagParameter}
+          )
+          or p.body ~* ${legacyBodyParameter}
+        )`)
+      } else {
+        clauses.push(`exists (
+          select 1 from public.post_hashtags tagged_post
+          join public.hashtags tagged on tagged.id = tagged_post.hashtag_id
+          where tagged_post.post_id = p.id and tagged.tag = ${indexedTagParameter}
+        )`)
+      }
       clauses.push('p.group_id is null')
     }
     if (lookup.cursor) {
