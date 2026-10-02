@@ -1,0 +1,90 @@
+name: AWS Legacy Import Final Verify
+
+on:
+  push:
+    branches: [feat/aws-native-phase-0-1]
+    paths:
+      - .github/workflows/aws-legacy-import-final-verify.yml
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+      - name: Verify final legacy migration state through bootstrap
+        env:
+          EXPECTED_ACCOUNT: "310356785722"
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "$EXPECTED_ACCOUNT"
+          IDS="$(aws ec2 describe-instances             --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running"             --query 'Reservations[].Instances[].InstanceId' --output json)"
+          test "$(jq length <<<"$IDS")" -eq 1
+          INSTANCE_ID="$(jq -r '.[0]' <<<"$IDS")"
+
+          python3 > /tmp/params.json <<'PY'
+          import json, shlex
+          script = r'''set -euo pipefail
+          export AWS_PAGER=""
+          REGION=ap-south-1
+          CLUSTER=sea-n-shore-staging-aurora
+          DB=sea_n_shore
+          BUCKET=sea-n-shore-staging-310356785722-media
+          KEY=private-migrations/beaufortmarine.sql
+
+          CJ="$(aws rds describe-db-clusters --region "$REGION" --db-cluster-identifier "$CLUSTER" --output json)"
+          ARN="$(jq -r '.DBClusters[0].DBClusterArn' <<<"$CJ")"
+          SECRET="$(jq -r '.DBClusters[0].MasterUserSecret.SecretArn' <<<"$CJ")"
+
+          q() {
+            aws rds-data execute-statement               --region "$REGION"               --resource-arn "$ARN"               --secret-arn "$SECRET"               --database "$DB"               --sql "$1"               --output json
+          }
+
+          CLAIM_ROWS="$(q "select count(*)::bigint from public.legacy_profile_claims where source_system='beaufortmarine'" | jq -r '.records[0][0].longValue')"
+          DISTINCT_PROFILES="$(q "select count(distinct profile_id)::bigint from public.legacy_profile_claims where source_system='beaufortmarine'" | jq -r '.records[0][0].longValue')"
+          CLAIMED_PROFILES="$(q "select count(distinct profile_id)::bigint from public.legacy_profile_claims where source_system='beaufortmarine' and claimed_at is not null" | jq -r '.records[0][0].longValue')"
+          RESTRICTED_PROFILES="$(q "select count(distinct c.profile_id)::bigint from public.legacy_profile_claims c join public.profiles p on p.id=c.profile_id where c.source_system='beaufortmarine' and p.account_status='restricted'" | jq -r '.records[0][0].longValue')"
+          ACTIVE_PROFILES="$(q "select count(distinct c.profile_id)::bigint from public.legacy_profile_claims c join public.profiles p on p.id=c.profile_id where c.source_system='beaufortmarine' and p.account_status='active'" | jq -r '.records[0][0].longValue')"
+          UNCLAIMED_ORGS="$(q "select count(*)::bigint from public.companies where created_by='00000000-0000-4000-8000-000000000058'::uuid and claim_status='unclaimed'" | jq -r '.records[0][0].longValue')"
+
+          OBJECT_PRESENT=true
+          if ! aws s3api head-object --region "$REGION" --bucket "$BUCKET" --key "$KEY" >/dev/null 2>&1; then
+            OBJECT_PRESENT=false
+          fi
+
+          echo "LEGACY_FINAL_CLAIM_ROWS=$CLAIM_ROWS"
+          echo "LEGACY_FINAL_DISTINCT_PROFILES=$DISTINCT_PROFILES"
+          echo "LEGACY_FINAL_CLAIMED_PROFILES=$CLAIMED_PROFILES"
+          echo "LEGACY_FINAL_RESTRICTED_PROFILES=$RESTRICTED_PROFILES"
+          echo "LEGACY_FINAL_ACTIVE_PROFILES=$ACTIVE_PROFILES"
+          echo "LEGACY_FINAL_UNCLAIMED_ORGS=$UNCLAIMED_ORGS"
+          echo "LEGACY_FINAL_SOURCE_OBJECT_PRESENT=$OBJECT_PRESENT"
+
+          test "$CLAIM_ROWS" -eq 4650
+          test "$DISTINCT_PROFILES" -eq 4557
+          test "$OBJECT_PRESENT" = false
+          echo "LEGACY_FINAL_VERIFY=PASS"
+          '''
+          print(json.dumps({
+            "executionTimeout": ["600"],
+            "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]
+          }))
+          PY
+
+          CID="$(aws ssm send-command             --instance-ids "$INSTANCE_ID"             --document-name AWS-RunShellScript             --parameters file:///tmp/params.json             --query 'Command.CommandId' --output text)"
+          for i in $(seq 1 120); do
+            S="$(aws ssm get-command-invocation               --command-id "$CID" --instance-id "$INSTANCE_ID"               --query Status --output text 2>/dev/null || echo Pending)"
+            case "$S" in Pending|InProgress|Delayed) sleep 5;; *) break;; esac
+          done
+          aws ssm get-command-invocation             --command-id "$CID" --instance-id "$INSTANCE_ID"             --output json > /tmp/result.json
+          jq -r '.StandardOutputContent // empty' /tmp/result.json
+          jq -r '.StandardErrorContent // empty' /tmp/result.json >&2
+          test "$(jq -r .Status /tmp/result.json)" = Success
+          grep -q 'LEGACY_FINAL_VERIFY=PASS' <(jq -r '.StandardOutputContent // empty' /tmp/result.json)
