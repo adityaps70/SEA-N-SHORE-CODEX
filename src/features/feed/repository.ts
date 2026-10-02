@@ -372,15 +372,15 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
           exists (
             select 1 from public.post_hashtags tagged_post
             join public.hashtags tagged on tagged.id = tagged_post.hashtag_id
-            where tagged_post.post_id = p.id and tagged.tag = ${indexedTagParameter}
+            where tagged_post.post_id = p.id and tagged.tag = $${indexedTagParameter}
           )
-          or p.body ~* ${legacyBodyParameter}
+          or p.body ~* $${legacyBodyParameter}
         )`)
       } else {
         clauses.push(`exists (
           select 1 from public.post_hashtags tagged_post
           join public.hashtags tagged on tagged.id = tagged_post.hashtag_id
-          where tagged_post.post_id = p.id and tagged.tag = ${indexedTagParameter}
+          where tagged_post.post_id = p.id and tagged.tag = $${indexedTagParameter}
         )`)
       }
     }
