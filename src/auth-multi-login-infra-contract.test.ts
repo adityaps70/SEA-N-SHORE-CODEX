@@ -7,6 +7,7 @@ describe('multi-login Cognito infrastructure contract', () => {
   const defineChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-define-auth-challenge.mjs', 'utf8')
   const createChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-create-auth-challenge.mjs', 'utf8')
   const verifyChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-verify-auth-challenge.mjs', 'utf8')
+  const preSignUpLink = fs.readFileSync('infra/aws/app/lambda/cognito-pre-sign-up-link.mjs', 'utf8')
   const variables = fs.readFileSync('infra/aws/app/aws-native-variables.tf', 'utf8')
 
   it('enables custom auth and wires the three Cognito challenge triggers', () => {
@@ -14,7 +15,18 @@ describe('multi-login Cognito infrastructure contract', () => {
     expect(auth).toMatch(/define_auth_challenge\s*=\s*aws_lambda_function\.cognito_define_auth_challenge\.arn/)
     expect(auth).toMatch(/create_auth_challenge\s*=\s*aws_lambda_function\.cognito_create_auth_challenge\.arn/)
     expect(auth).toMatch(/verify_auth_challenge_response\s*=\s*aws_lambda_function\.cognito_verify_auth_challenge\.arn/)
+    expect(auth).toMatch(/pre_sign_up\s*=\s*aws_lambda_function\.cognito_pre_sign_up_link\.arn/)
     expect(auth).toMatch(/cognito-idp\.amazonaws\.com/)
+  })
+
+  it('links verified Google identities to an existing local Cognito user before first federation sign-in', () => {
+    expect(preSignUpLink).toMatch(/PreSignUp_ExternalProvider/)
+    expect(preSignUpLink).toMatch(/AdminLinkProviderForUserCommand/)
+    expect(preSignUpLink).toMatch(/ProviderName:\s*'Google'/)
+    expect(preSignUpLink).toMatch(/ProviderAttributeName:\s*'Cognito_Subject'/)
+    expect(preSignUpLink).toMatch(/email_verified/)
+    expect(auth).toMatch(/cognito-idp:AdminLinkProviderForUser/)
+    expect(auth).toMatch(/cognito-idp:ListUsers/)
   })
 
   it('limits OTP challenge attempts and sends the code only to the Cognito phone attribute', () => {
