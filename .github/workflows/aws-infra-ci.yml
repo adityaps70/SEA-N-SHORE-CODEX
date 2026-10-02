@@ -65,6 +65,8 @@ jobs:
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
       - name: Verify multi-login auth infrastructure release contract
         run: node --test scripts/aws/multi-login-auth-infra.test.mjs
+      - name: Verify Cognito Google/native repair contract
+        run: node --test scripts/aws/cognito-google-native-link-repair.test.mjs
       - name: Verify onboarding e2e guard contract
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
       - name: Verify membership launch sequence contract
