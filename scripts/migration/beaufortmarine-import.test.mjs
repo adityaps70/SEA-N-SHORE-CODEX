@@ -81,6 +81,7 @@ describe('Beaufort legacy import', () => {
     expect(plan.people[0].experiences[0]).toMatchObject({
       start: '2022-06-01',
       end: null,
+      isCurrent: false,
     })
   })
 
