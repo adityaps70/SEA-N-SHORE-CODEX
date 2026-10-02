@@ -343,6 +343,12 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-media"
       },
       {
+        Sid      = "LegacyDumpUploadObject"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-media/private-migrations/beaufortmarine.sql"
+      },
+      {
         Sid      = "DiscoverBootstrapInstance"
         Effect   = "Allow"
         Action   = ["ec2:DescribeInstances"]
