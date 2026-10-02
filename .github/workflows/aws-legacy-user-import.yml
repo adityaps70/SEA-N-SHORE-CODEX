@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: sea-n-shore-legacy-user-import
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   import:
@@ -27,6 +27,14 @@ jobs:
       AWS_REGION: ap-south-1
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve legacy import action
+        id: legacy_action
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(tr -d '[:space:]' < scripts/aws/legacy-user-import-action.txt)"
+          case "$ACTION" in plan|import-once) ;; *) echo "Unsupported action: $ACTION" >&2; exit 1 ;; esac
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
       - name: Wait for exact-head AWS Infrastructure CI
         env:
           GH_TOKEN: ${{ github.token }}
@@ -42,6 +50,7 @@ jobs:
           done
           exit 1
       - name: Wait for exact-head AWS Staging Deploy
+        if: steps.legacy_action.outputs.action == 'import-once'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
