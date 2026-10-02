@@ -93,17 +93,66 @@ jobs:
               "OUTBOX_100_LOG_PREFIX=" + (.logConfiguration.options["awslogs-stream-prefix"] // "")
           ' <<<"$TASK"
 
-      - name: Review recent outbox CloudWatch logs
+      - name: Discover bootstrap instance
+        id: bootstrap
         shell: bash
         run: |
           set -euo pipefail
-          START_MS="$(( $(date -u -d '90 minutes ago' +%s) * 1000 ))"
-          aws logs filter-log-events             --log-group-name /ecs/sea-n-shore-staging/outbox-worker             --start-time "$START_MS"             --limit 10000             --output json > /tmp/outbox-events.json
-          echo "OUTBOX_LOG_EVENT_COUNT=$(jq '.events | length' /tmp/outbox-events.json)"
-          jq -r '
-            .events[]
-            | [
-                "OUTBOX_LOG_STREAM=" + (.logStreamName // ""),
-                "OUTBOX_LOG_MESSAGE=" + ((.message // "") | gsub("\\n"; " "))
-              ][]
-          ' /tmp/outbox-events.json
+          IDS="$(aws ec2 describe-instances \
+            --region "$AWS_REGION" \
+            --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[].Instances[].InstanceId' --output json)"
+          test "$(jq 'length' <<<"$IDS")" -eq 1
+          echo "instance_id=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_OUTPUT"
+
+      - name: Read recent outbox logs through bootstrap SSM
+        shell: bash
+        env:
+          INSTANCE_ID: ${{ steps.bootstrap.outputs.instance_id }}
+        run: |
+          set -euo pipefail
+          python3 - > /tmp/outbox-log-params.json <<'PY'
+          import json, shlex
+          cmd = r'''set -euo pipefail
+          START_MS=$(( $(date -u -d '90 minutes ago' +%s) * 1000 ))
+          aws logs filter-log-events \
+            --region ap-south-1 \
+            --log-group-name /ecs/sea-n-shore-staging/outbox-worker \
+            --start-time "$START_MS" \
+            --limit 10000 \
+            --output json > /tmp/sns-outbox-worker-events.json
+          echo "OUTBOX_SSM_LOG_EVENT_COUNT=$(jq '.events | length' /tmp/sns-outbox-worker-events.json)"
+          jq -r '.events[] | "OUTBOX_SSM_LOG_STREAM=" + (.logStreamName // "") + "\nOUTBOX_SSM_LOG_MESSAGE=" + ((.message // "") | gsub("\\n"; " "))' /tmp/sns-outbox-worker-events.json
+          '''
+          print(json.dumps({
+              "executionTimeout": ["300"],
+              "commands": ["bash -lc " + shlex.quote(cmd)]
+          }))
+          PY
+          CID="$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Read Sea N Shore outbox worker logs" \
+            --timeout-seconds 300 \
+            --parameters file:///tmp/outbox-log-params.json \
+            --query 'Command.CommandId' --output text)"
+          for i in $(seq 1 60); do
+            S="$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "$CID" \
+              --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)"
+            case "$S" in Pending|InProgress|Delayed) sleep 5;; *) break;; esac
+          done
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "$CID" \
+            --instance-id "$INSTANCE_ID" \
+            --output json > /tmp/outbox-log-result.json
+          jq -r '.StandardOutputContent // empty' /tmp/outbox-log-result.json
+          STDERR="$(jq -r '.StandardErrorContent // empty' /tmp/outbox-log-result.json)"
+          if [[ -n "$STDERR" ]]; then
+            printf '%s\n' "$STDERR" >&2
+          fi
+          test "$(jq -r '.Status' /tmp/outbox-log-result.json)" = Success
