@@ -60,6 +60,16 @@ export function isStorableHashtag(tag: string) {
   return NORMALISED_HASHTAG.test(tag)
 }
 
+/**
+ * PostgreSQL-compatible regex used only as a compatibility fallback for posts created before
+ * hashtag indexing existed. It mirrors the clickable hashtag boundaries in findHashtags().
+ */
+export function hashtagBodySearchPattern(value: string) {
+  const tag = normaliseHashtag(value)
+  if (!isStorableHashtag(tag)) return null
+  return `(^|[[:space:]]|\\(|\\[|\\{|'|"|“|‘)#${tag}([^[:alnum:]_]|$)`
+}
+
 /** The hashtag the caret is currently typing ("#sir" -> "sir"), or null. */
 export function activeHashtagQuery(text: string, caret: number): { query: string; start: number } | null {
   const before = text.slice(0, caret)
