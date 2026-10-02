@@ -139,13 +139,6 @@ export function validateJobTransition(
         message: `The apply-by date (${formatLifecycleDate(applyUntil)}) has passed. Choose a new date, or remove it, to ${action === 'republish' ? 'republish' : 'publish'}.`,
       }
     }
-    if (snapshot.joiningUntil && snapshot.joiningUntil < options.today) {
-      return {
-        ok: false,
-        code: 'joining_window_past',
-        message: `The joining window ended on ${formatLifecycleDate(snapshot.joiningUntil)}. Edit the joining dates, then ${action === 'republish' ? 'republish' : 'publish'}.`,
-      }
-    }
   }
 
   return { ok: true, action, to: transition.to, applyUntil }
