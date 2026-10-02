@@ -92,3 +92,18 @@ jobs:
               "OUTBOX_100_LOG_GROUP=" + (.logConfiguration.options["awslogs-group"] // ""),
               "OUTBOX_100_LOG_PREFIX=" + (.logConfiguration.options["awslogs-stream-prefix"] // "")
           ' <<<"$TASK"
+
+      - name: Review recent outbox CloudWatch logs
+        shell: bash
+        run: |
+          set -euo pipefail
+          START_MS="$(( $(date -u -d '90 minutes ago' +%s) * 1000 ))"
+          aws logs filter-log-events             --log-group-name /ecs/sea-n-shore-staging/outbox-worker             --start-time "$START_MS"             --limit 10000             --output json > /tmp/outbox-events.json
+          echo "OUTBOX_LOG_EVENT_COUNT=$(jq '.events | length' /tmp/outbox-events.json)"
+          jq -r '
+            .events[]
+            | [
+                "OUTBOX_LOG_STREAM=" + (.logStreamName // ""),
+                "OUTBOX_LOG_MESSAGE=" + ((.message // "") | gsub("\\n"; " "))
+              ][]
+          ' /tmp/outbox-events.json
