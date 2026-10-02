@@ -1,5 +1,3 @@
-import { publicEnvironment } from '@/lib/env'
-
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) => ({
     '&': '&amp;',
@@ -13,7 +11,7 @@ function escapeHtml(value: string) {
 export const LEGACY_INVITE_FROM = 'Sea N Shore <accounts@mail.seanshore.in>'
 
 export function legacyInviteEmail(input: { fullName: string; claimToken: string; siteUrl?: string }) {
-  const siteUrl = (input.siteUrl ?? publicEnvironment.NEXT_PUBLIC_SITE_URL).replace(/\/+$/g, '')
+  const siteUrl = (input.siteUrl?.trim() || process.env.NEXT_PUBLIC_SITE_URL?.trim() || 'https://seanshore.in').replace(/\/+$/g, '')
   const claimUrl = `${siteUrl}/auth/claim-profile?invite=${encodeURIComponent(input.claimToken)}`
   const name = input.fullName.trim() || 'Sea N Shore member'
   const subject = 'Your Sea N Shore profile is ready to reclaim'

@@ -4,6 +4,21 @@ import { legacyInviteEmail } from './email'
 import { createLegacyInviteWorker } from './sending'
 
 describe('legacy profile invitations', () => {
+  it('can build worker email without importing the strict browser environment', () => {
+    const previous = process.env.NEXT_PUBLIC_SITE_URL
+    delete process.env.NEXT_PUBLIC_SITE_URL
+    try {
+      const email = legacyInviteEmail({
+        fullName: 'Worker Test',
+        claimToken: '33333333-3333-4333-8333-333333333333',
+      })
+      expect(email.claimUrl).toBe('https://seanshore.in/auth/claim-profile?invite=33333333-3333-4333-8333-333333333333')
+    } finally {
+      if (previous === undefined) delete process.env.NEXT_PUBLIC_SITE_URL
+      else process.env.NEXT_PUBLIC_SITE_URL = previous
+    }
+  })
+
   it('builds an account-reconnection email with a private claim token and no newsletter language', () => {
     const email = legacyInviteEmail({
       fullName: 'Captain Test',
