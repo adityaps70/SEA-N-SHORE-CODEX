@@ -151,10 +151,17 @@ describe('hiring server actions', () => {
     expect(mocks.createJob).not.toHaveBeenCalled()
   })
 
-  it('rejects invalid salary and joining ranges', async () => {
+  it('rejects invalid salary ranges', async () => {
     await expect(createHiringJob(createInput({ salaryMin: 9000, salaryMax: 8000 }))).resolves.toMatchObject({ ok: false })
-    await expect(createHiringJob(createInput({ joiningFrom: isoDate(60), joiningUntil: isoDate(50) }))).resolves.toMatchObject({ ok: false })
     expect(mocks.createJob).not.toHaveBeenCalled()
+  })
+
+  it('does not persist a legacy joining-until value for newly posted jobs', async () => {
+    await expect(createHiringJob(createInput({ joiningUntil: isoDate(50) }))).resolves.toEqual({ ok: true, jobId })
+    expect(mocks.createJob).toHaveBeenCalledWith(
+      'recruiter-1',
+      expect.objectContaining({ joiningUntil: null }),
+    )
   })
 
   it('refuses to publish a new job whose apply-by date has already passed', async () => {
@@ -245,6 +252,19 @@ describe('hiring server actions', () => {
     )
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/hiring/jobs/${jobId}/edit`)
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/jobs/${jobId}`)
+  })
+
+  it('preserves a legacy joining-until value when editing through the simplified form', async () => {
+    const legacyJoiningUntil = isoDate(45)
+    mocks.getManagedJob.mockResolvedValueOnce(managedJob({ joiningUntil: legacyJoiningUntil }))
+
+    await expect(updateHiringJob(jobId, updateInput({ joiningUntil: isoDate(90) }))).resolves.toEqual({ ok: true })
+    expect(mocks.updateJob).toHaveBeenCalledWith(
+      'recruiter-1',
+      jobId,
+      expect.objectContaining({ joiningUntil: legacyJoiningUntil }),
+      { expectedStatus: 'published', nextStatus: 'published' },
+    )
   })
 
   it('requires the central publishing capability when updating an organization job', async () => {
