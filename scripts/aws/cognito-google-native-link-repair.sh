@@ -185,6 +185,57 @@ for email, entries in groups.items():
         'provider_subject': provider_subject,
     })
 
+linked_native_users = []
+for user in users:
+    user_attrs = attrs(user)
+    ids = identities(user_attrs)
+    if (
+        user.get('UserStatus') != 'EXTERNAL_PROVIDER'
+        and user.get('Enabled') is not False
+        and user_attrs.get('email_verified') == 'true'
+        and any(
+            isinstance(item, dict) and item.get('providerName') == 'Google'
+            for item in ids
+        )
+    ):
+        linked_native_users.append((user, user_attrs))
+
+email_resolution_ok = 0
+email_resolution_mismatch = 0
+linked_confirmed = 0
+for user, user_attrs in linked_native_users:
+    if user.get('UserStatus') == 'CONFIRMED':
+        linked_confirmed += 1
+    email = normalized_email(user_attrs)
+    username = user.get('Username')
+    if not email or not isinstance(username, str) or not username:
+        email_resolution_mismatch += 1
+        continue
+    result = subprocess.run([
+        'aws', 'cognito-idp', 'admin-get-user',
+        '--region', region,
+        '--user-pool-id', user_pool_id,
+        '--username', email,
+        '--output', 'json',
+    ], capture_output=True, text=True)
+    if result.returncode != 0:
+        email_resolution_mismatch += 1
+        continue
+    try:
+        resolved = json.loads(result.stdout or '{}').get('Username')
+    except json.JSONDecodeError:
+        email_resolution_mismatch += 1
+        continue
+    if resolved == username:
+        email_resolution_ok += 1
+    else:
+        email_resolution_mismatch += 1
+
+print(f'COGNITO_GOOGLE_LINKED_NATIVE_USERS={len(linked_native_users)}')
+print(f'COGNITO_GOOGLE_LINKED_NATIVE_CONFIRMED={linked_confirmed}')
+print(f'COGNITO_GOOGLE_LINKED_EMAIL_RESOLUTION_OK={email_resolution_ok}')
+print(f'COGNITO_GOOGLE_LINKED_EMAIL_RESOLUTION_MISMATCH={email_resolution_mismatch}')
+
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_TOTAL_USERS={len(users)}')
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_DUPLICATE_EMAIL_GROUPS={duplicate_groups}')
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_STRICT_CANDIDATES={len(strict_candidates)}')
