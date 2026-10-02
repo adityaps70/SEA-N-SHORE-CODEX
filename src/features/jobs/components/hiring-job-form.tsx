@@ -41,7 +41,7 @@ function csv(formData: FormData, key: string) {
   return [...new Set(text(formData, key).split(',').map((item) => item.trim()).filter(Boolean))]
 }
 
-function buildInput(formData: FormData, legacyJoiningUntil: string | null = null): HiringJobUpdateInput {
+function buildInput(formData: FormData): HiringJobUpdateInput {
   const domainValue = text(formData, 'domain')
   const salaryPeriodValue = text(formData, 'salaryPeriod')
 
@@ -59,7 +59,6 @@ function buildInput(formData: FormData, legacyJoiningUntil: string | null = null
     experienceMinYears: nullableNumber(formData, 'experienceMinYears'),
     experienceMaxYears: nullableNumber(formData, 'experienceMaxYears'),
     joiningFrom: nullableText(formData, 'joiningFrom'),
-    joiningUntil: legacyJoiningUntil,
     salaryMin: nullableNumber(formData, 'salaryMin'),
     salaryMax: nullableNumber(formData, 'salaryMax'),
     salaryCurrency: nullableText(formData, 'salaryCurrency'),
@@ -95,7 +94,7 @@ export function HiringJobForm(props: HiringJobFormProps) {
   function submit(formData: FormData) {
     setMessage(null)
     setIsError(false)
-    const fields = buildInput(formData, initial?.joiningUntil ?? null)
+    const fields = buildInput(formData)
     const submitted = formData.get('intent')
     const intent: HiringJobSaveIntent = submitted === 'publish' || submitted === 'save' ? submitted : intentRef.current
     setPendingIntent(intent)
