@@ -36,6 +36,7 @@ jobs:
           case "$ACTION" in plan|import-once) ;; *) echo "Unsupported action: $ACTION" >&2; exit 1 ;; esac
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
       - name: Wait for exact-head AWS Infrastructure CI
+        if: steps.legacy_action.outputs.action == 'import-once'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
