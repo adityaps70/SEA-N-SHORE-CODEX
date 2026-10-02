@@ -1,15 +1,26 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ googleEnabled: true, redirect: vi.fn() }))
+const mocks = vi.hoisted(() => ({ googleEnabled: true, redirect: vi.fn(), claimEmail: undefined as string | undefined }))
 
 vi.mock('next/navigation', async (importOriginal) => ({
   ...(await importOriginal<typeof import('next/navigation')>()),
   redirect: mocks.redirect,
 }))
+vi.mock('next/headers', () => ({
+  cookies: async () => ({
+    get: (name: string) => name === 'sns_legacy_claim_email' && mocks.claimEmail
+      ? { name, value: mocks.claimEmail }
+      : undefined,
+  }),
+}))
 
 vi.mock('@/lib/env', () => ({
   getCognitoEnvironment: () => ({ AWS_COGNITO_GOOGLE_ENABLED: mocks.googleEnabled }),
+}))
+vi.mock('@/features/auth/legacy-claim-actions', () => ({
+  LEGACY_CLAIM_EMAIL_COOKIE: 'sns_legacy_claim_email',
+  prepareLegacyProfileClaim: vi.fn(async () => undefined),
 }))
 vi.mock('@/features/auth/actions', () => ({
   signIn: vi.fn(async () => ({})),
@@ -26,9 +37,11 @@ import SignInPage from './sign-in/page'
 import SignUpPage from './sign-up/page'
 import PhoneAuthPage from './phone/page'
 import ForgotPasswordPage from './forgot-password/page'
+import ClaimProfilePage from './claim-profile/page'
 
 beforeEach(() => {
   mocks.googleEnabled = true
+  mocks.claimEmail = undefined
   mocks.redirect.mockReset()
 })
 afterEach(() => cleanup())
@@ -52,6 +65,15 @@ function orderFor(container: HTMLElement, hiddenClass: string) {
 const phoneOrder = (container: HTMLElement) => orderFor(container, 'max-md:hidden')
 const desktopOrder = (container: HTMLElement) => orderFor(container, 'md:hidden')
 
+describe('/auth/sign-in restored-profile continuation', () => {
+  it('prefills the claim email while the short-lived claim cookie exists', async () => {
+    mocks.claimEmail = 'legacy.member@example.com'
+    render(await SignInPage({ searchParams: Promise.resolve({}) }))
+    expect(screen.getByLabelText('Email')).toHaveValue('legacy.member@example.com')
+    expect(screen.getByText(/Finish claiming your restored profile/i)).toBeInTheDocument()
+  })
+})
+
 describe('/auth/sign-in on phones', () => {
   it('puts Google above the email form, then the form, forgot password, Sign in and Join now', async () => {
     const { container } = render(await SignInPage({ searchParams: Promise.resolve({}) }))
@@ -64,6 +86,7 @@ describe('/auth/sign-in on phones', () => {
       'Show password',
       'Forgot password?',
       'Sign in',
+      'Claim your restored profile',
       'Join now',
     ])
 
@@ -85,6 +108,7 @@ describe('/auth/sign-in on phones', () => {
       'Password',
       'Sign in',
       'Continue with Google',
+      'Claim your restored profile',
       'Create your profile',
       'Forgot password?',
     ])
@@ -94,7 +118,7 @@ describe('/auth/sign-in on phones', () => {
     mocks.googleEnabled = false
     const { container } = render(await SignInPage({ searchParams: Promise.resolve({}) }))
     expect(phoneOrder(container).slice(1, 3)).toEqual(['Email', 'Password'])
-    expect(desktopOrder(container).slice(1, 5)).toEqual(['Email', 'Password', 'Sign in', 'Create your profile'])
+    expect(desktopOrder(container).slice(1, 6)).toEqual(['Email', 'Password', 'Sign in', 'Claim your restored profile', 'Create your profile'])
     expect(screen.queryByRole('link', { name: /Continue with Google/ })).not.toBeInTheDocument()
     expect(container.querySelector('[data-auth-methods]')).toBeNull()
     expect(screen.queryByRole('separator', { name: 'or' })).not.toBeInTheDocument()
@@ -133,7 +157,44 @@ describe('/auth/sign-in on phones', () => {
   })
 })
 
+describe('/auth/claim-profile', () => {
+  it('explains the restored-profile flow without revealing whether an email exists', async () => {
+    const { container } = render(await ClaimProfilePage({ searchParams: Promise.resolve({}) }))
+
+    expect(screen.getByRole('heading', { name: 'Claim your restored profile' })).toBeInTheDocument()
+    expect(screen.getByText(/old password was not moved/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Continue with Google/i })).toHaveAttribute(
+      'href',
+      '/auth/google/start?intent=sign-in',
+    )
+    expect(screen.getByLabelText('Old registered email')).toHaveAttribute('type', 'email')
+    expect(screen.getByText(/won't confirm publicly whether an email is in the old database/i)).toBeInTheDocument()
+    expect(phoneOrder(container)).toEqual([
+      'Sea N Shore home',
+      'Continue with Google',
+      'Old registered email',
+      'Continue with email',
+      'Back to sign in',
+    ])
+  })
+
+  it('hides Google when Google sign-in is disabled', async () => {
+    mocks.googleEnabled = false
+    render(await ClaimProfilePage({ searchParams: Promise.resolve({}) }))
+    expect(screen.queryByRole('link', { name: /Continue with Google/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue with email' })).toBeInTheDocument()
+  })
+})
+
 describe('/auth/sign-up on phones', () => {
+  it('prefills the old registered email when entering from the claim flow', async () => {
+    mocks.claimEmail = 'legacy.member@example.com'
+    render(await SignUpPage({ searchParams: Promise.resolve({ legacy: '1' }) }))
+
+    expect(screen.getByLabelText('Email')).toHaveValue('legacy.member@example.com')
+    expect(screen.getByText(/Restored profile claim:/)).toBeInTheDocument()
+  })
+
   it('uses the same order: Google, then the email form', async () => {
     const { container } = render(await SignUpPage({ searchParams: Promise.resolve({}) }))
     expect(phoneOrder(container)).toEqual([
