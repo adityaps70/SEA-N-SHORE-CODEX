@@ -67,38 +67,17 @@ jobs:
           audit_service "$OUTBOX_WORKER_SERVICE" "outbox-worker"
           audit_service "$NOTIFICATION_WORKER_SERVICE" "notification-worker"
 
-      - name: Audit recent stopped outbox tasks
+      - name: Audit recent outbox service events
         shell: bash
         run: |
           set -euo pipefail
-          TASKS="$(aws ecs list-tasks             --cluster "$ECS_CLUSTER"             --service-name "$OUTBOX_WORKER_SERVICE"             --desired-status STOPPED             --max-items 30             --query 'taskArns' --output json)"
-          COUNT="$(jq 'length' <<<"$TASKS")"
-          echo "OUTBOX_STOPPED_TASK_COUNT=$COUNT"
-          if [[ "$COUNT" -eq 0 ]]; then
-            exit 0
-          fi
-
-          mapfile -t ARNS < <(jq -r '.[]' <<<"$TASKS")
-          for ((i=0; i<${#ARNS[@]}; i+=10)); do
-            BATCH=("${ARNS[@]:i:10}")
-            aws ecs describe-tasks               --cluster "$ECS_CLUSTER"               --tasks "${BATCH[@]}"               --output json |
-              jq -r '
-                .tasks[]
-                | [
-                    "OUTBOX_STOPPED_TASK=" + (.taskArn // ""),
-                    "TASK_DEFINITION=" + (.taskDefinitionArn // ""),
-                    "STOP_CODE=" + (.stopCode // ""),
-                    "STOPPED_REASON=" + (.stoppedReason // ""),
-                    "STOPPED_AT=" + ((.stoppedAt // "")|tostring),
-                    (
-                      (.containers // [])[]
-                      | "CONTAINER=" + (.name // "")
-                        + "|EXIT=" + ((.exitCode // -1)|tostring)
-                        + "|REASON=" + (.reason // "")
-                    )
-                  ][]
-              '
-          done
+          JSON="$(aws ecs describe-services             --cluster "$ECS_CLUSTER"             --services "$OUTBOX_WORKER_SERVICE"             --output json)"
+          test "$(jq '.failures | length' <<<"$JSON")" -eq 0
+          jq -r '
+            .services[0].events[:30][]
+            | "OUTBOX_SERVICE_EVENT_AT=" + ((.createdAt // "")|tostring)
+              + "|MESSAGE=" + (.message // "")
+          ' <<<"$JSON"
 
       - name: Audit outbox revision 100 log configuration
         shell: bash
