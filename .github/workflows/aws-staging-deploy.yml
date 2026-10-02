@@ -539,3 +539,5 @@ jobs:
           echo "- desiredCount/runningCount/pendingCount: \`$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT\`" >> "$GITHUB_STEP_SUMMARY"
 
 # legacy-import-rollout-trigger: 2026-10-02
+
+# deployment-refresh: legacy-import-fix-2026-10-02
