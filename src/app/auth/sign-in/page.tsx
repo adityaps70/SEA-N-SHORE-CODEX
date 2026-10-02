@@ -7,7 +7,7 @@ import { AuthShell } from "@/features/auth/components/auth-shell";
 import { signIn } from "@/features/auth/actions";
 import { getCognitoEnvironment } from "@/lib/env";
 import { OAuthErrorNotice } from "@/components/feedback/oauth-error-notice";
-import { LEGACY_CLAIM_EMAIL_COOKIE } from "@/features/auth/legacy-claim-actions";
+import { LEGACY_CLAIM_EMAIL_COOKIE } from "@/features/auth/legacy-claim";
 
 export const metadata: Metadata = { title: 'Sign in' }
 
