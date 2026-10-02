@@ -1,6 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
-import { isStorableHashtag, normaliseHashtag } from './parse'
+import { hashtagBodySearchPattern, isStorableHashtag, normaliseHashtag } from './parse'
 
 /**
  * Hashtags (round 9B): `public.hashtags` holds every tag ever used, normalised (lower-case,
@@ -25,7 +25,7 @@ export const HASHTAG_SUGGESTIONS_LIMIT = 8
 type HashtagQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
 type HashtagSuggestionRow = QueryResultRow & { tag: string; post_count: number | string | null }
-type HashtagSummaryRow = QueryResultRow & { tag: string; post_count: number | string | null; follower_count: number | string | null }
+type HashtagSummaryRow = QueryResultRow & { tag: string; post_count: number | string | null; follower_count: number | string | null; tag_exists?: boolean | null }
 
 function count(value: number | string | null | undefined) {
   const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : value ?? 0
@@ -60,21 +60,45 @@ export function createHashtagRepository(input: { query?: HashtagQuery } = {}) {
     return rows.map((row) => ({ tag: row.tag, postCount: count(row.post_count) }))
   }
 
-  /** Post and follower counts for one tag, or null when nobody has used it yet. */
+  /** Post and follower counts for one tag, including legacy posts created before hashtag indexing. */
   async function getHashtagSummary(tag: string): Promise<HashtagSummary | null> {
     const normalised = normaliseHashtag(tag)
     if (!isStorableHashtag(normalised)) return null
+    const bodyPattern = hashtagBodySearchPattern(normalised)
+    if (!bodyPattern) return null
     const rows = await queryRows(
-      `select h.tag,
-              (${LIVE_PUBLIC_POSTS_SQL}) as post_count,
-              (select count(*)::int from public.hashtag_follows hf where hf.hashtag_id = h.id) as follower_count
-       from public.hashtags h
-       where h.tag = $1`,
-      [normalised],
+      `with requested as (select $1::text as tag)
+       select requested.tag,
+              (
+                select count(*)::int
+                from public.posts p
+                where p.deleted_at is null
+                  and p.group_id is null
+                  and (
+                    exists (
+                      select 1
+                      from public.post_hashtags ph
+                      join public.hashtags indexed on indexed.id = ph.hashtag_id
+                      where ph.post_id = p.id and indexed.tag = requested.tag
+                    )
+                    or p.body ~* $2
+                  )
+              ) as post_count,
+              (
+                select count(*)::int
+                from public.hashtag_follows hf
+                join public.hashtags followed on followed.id = hf.hashtag_id
+                where followed.tag = requested.tag
+              ) as follower_count,
+              exists (select 1 from public.hashtags existing where existing.tag = requested.tag) as tag_exists
+       from requested`,
+      [normalised, bodyPattern],
     ) as HashtagSummaryRow[]
     const row = rows[0]
     if (!row?.tag) return null
-    return { tag: row.tag, postCount: count(row.post_count), followerCount: count(row.follower_count) }
+    const postCount = count(row.post_count)
+    if (!row.tag_exists && postCount === 0) return null
+    return { tag: row.tag, postCount, followerCount: count(row.follower_count) }
   }
 
   /** Follows a tag, creating the tag row when it has never been used in a post yet. */
