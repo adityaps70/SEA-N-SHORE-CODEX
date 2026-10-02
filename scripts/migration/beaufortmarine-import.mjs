@@ -6,9 +6,10 @@ import { pathToFileURL } from 'node:url'
 const TABLES=['table_address','table_seafearer','table_consultant','table_shore_staff','table_company','table_seafearer_experience','table_seafearer_certificate','table_seafearer_courses','table_consultant_qualification']
 const SOURCE='beaufortmarine', CONFIRM='I_APPROVE_LEGACY_PROFILE_IMPORT'
 const SYSTEM='00000000-0000-4000-8000-000000000058'
-const clean=(v,n=4000)=>v==null?null:(String(v).replace(/\s+/g,' ').trim().slice(0,n)||null)
+const clean=(v,n=4000)=>{if(v==null)return null;const text=String(v).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,'').replace(/\s+/g,' ').trim();return Array.from(text).slice(0,n).join('')||null}
 export const normalizeEmail=v=>{const e=clean(v,320)?.toLowerCase();return e&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)?e:null}
 const d=v=>{const s=clean(v,32);return !s||s.startsWith('0000-00-00')?null:s.match(/^(\d{4}-\d{2}-\d{2})/)?.[1]??null}
+const legacyDates=(startValue,endValue)=>{const start=d(startValue),end=d(endValue);return start&&end&&end<start?{start,end:null}:{start,end}}
 const yrs=v=>{const n=Number(v);return Number.isFinite(n)&&n>=0&&n<=70?n:null}
 const uniq=(a,n=20,m=120)=>{const s=new Set,r=[];for(const v of a){const x=clean(v,m),k=x?.toLowerCase();if(x&&k&&!s.has(k)&&r.length<n){s.add(k);r.push(x)}}return r}
 const test=r=>/\btest\b/i.test(clean(r.name,250)||'')||/^test[+._-]?/i.test(clean(r.email,320)||'')||(clean(r.email,320)||'').toLowerCase().endsWith('@example.com')
@@ -43,7 +44,7 @@ export function buildImportPlan(t){
    ['STSDSD',q.stsd_no,q.stsd_inst],
   ].flatMap(([name,number,issuer])=>clean(number,180)&&clean(issuer,180)?[{name:clean(name,180),issuer:clean(issuer,180),number:clean(number,180),expires:null,noExpiry:true}]:[])))
   const credentials=sea.flatMap(r=>(cert.get(Number(r.tlid))||[]).flatMap(c=>{const name=clean([c.certificate_type,c.type||c.lavel].filter(Boolean).join(' - '),180),issuer=clean(c.authority,180);if(!name||!issuer)return[];const expires=d(c.expiry);return[{name,issuer,number:clean(c.certificate_no,180),expires,noExpiry:!expires}]})).concat(courseCredentialRows).slice(0,100)
-  people.push({email,fullName:clean(p.name,160)||email,profileType:sea.length?'seafarer':'maritime_professional',persona:sea.length?'seafarer':'shore_professional',location:sea.map(r=>loc(addr.get(Number(r.com_addressid)))||loc(addr.get(Number(r.per_addressid)))).find(Boolean)??con.map(r=>loc(addr.get(Number(r.addressid)))).find(Boolean)??null,headline:clean(sea.find(r=>clean(r.rank))?.rank??con.find(r=>clean(r.designation))?.designation??shore.find(r=>clean(r.designation))?.designation,160),summary:clean(sea.find(r=>clean(r.summery))?.summery??con.find(r=>clean(r.summery))?.summery,2000),rank:clean(sea.find(r=>clean(r.rank))?.rank,100),company:clean(ex.find(r=>clean(r.company))?.company,160),experienceYears:yrs(sea.map(r=>yrs(r.total_experience)).find(x=>x!=null)),vesselTypes:uniq(ex.map(r=>r.type_of_ship),20,120),skills,experiences:ex.slice(0,100).map(r=>({title:clean(r.rank,160),organization:clean(r.company,180),vesselType:clean(r.type_of_ship,120),start:d(r.joining_date),end:d(r.leaving_date)})),credentials,legacy:rs.map(x=>({object:x.kind,id:Number(x.r.tlid)}))})
+  people.push({email,fullName:clean(p.name,160)||email,profileType:sea.length?'seafarer':'maritime_professional',persona:sea.length?'seafarer':'shore_professional',location:sea.map(r=>loc(addr.get(Number(r.com_addressid)))||loc(addr.get(Number(r.per_addressid)))).find(Boolean)??con.map(r=>loc(addr.get(Number(r.addressid)))).find(Boolean)??null,headline:clean(sea.find(r=>clean(r.rank))?.rank??con.find(r=>clean(r.designation))?.designation??shore.find(r=>clean(r.designation))?.designation,160),summary:clean(sea.find(r=>clean(r.summery))?.summery??con.find(r=>clean(r.summery))?.summery,1800),rank:clean(sea.find(r=>clean(r.rank))?.rank,100),company:clean(ex.find(r=>clean(r.company))?.company,160),experienceYears:yrs(sea.map(r=>yrs(r.total_experience)).find(x=>x!=null)),vesselTypes:uniq(ex.map(r=>r.type_of_ship),20,120),skills,experiences:ex.slice(0,100).map(r=>({title:clean(r.rank,160),organization:clean(r.company,180),vesselType:clean(r.type_of_ship,120),...legacyDates(r.joining_date,r.leaving_date)})),credentials,legacy:rs.map(x=>({object:x.kind,id:Number(x.r.tlid)}))})
  }
  const seen=new Set,organizations=t.table_company.flatMap(r=>{if(Number(r.status)!==1||test(r))return[];const name=clean(r.name,160),k=name?.toLowerCase();if(!name||!k||seen.has(k))return[];seen.add(k);return[{name,slug:slug(name,Number(r.tlid)),location:uniq([r.city,r.state,r.country],3,120).join(', ').slice(0,240)||null}]})
  return{people,organizations,audit:{people:people.length,duplicateEmailGroups:[...g.values()].filter(x=>x.length>1).length,invalidEmailRows:invalid,testRows:tests,organizations:organizations.length}}
@@ -52,7 +53,14 @@ export function buildImportPlan(t){
 async function importPerson(pool,p){
  const c=await pool.connect()
  try{await c.query('begin');await c.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[`legacy:${p.email}`])
-  const found=await c.query("select distinct profile_id from public.identity_accounts where email_verified=true and lower(email)=lower($1) order by profile_id limit 2",[p.email]);if(found.rows.length>1)throw Error('identity_conflict');let id=found.rows[0]?.profile_id
+  const found=await c.query("select distinct profile_id from public.identity_accounts where email_verified=true and lower(email)=lower($1) order by profile_id limit 2",[p.email])
+  if(found.rows.length>1)throw Error('identity_conflict')
+  const legacy=await c.query("select distinct profile_id from public.legacy_profile_claims where source_system=$1 and lower(email)=lower($2) order by profile_id limit 2",[SOURCE,p.email])
+  if(legacy.rows.length>1)throw Error('legacy_claim_conflict')
+  const identityId=found.rows[0]?.profile_id, legacyId=legacy.rows[0]?.profile_id
+  if(identityId&&legacyId&&identityId!==legacyId)throw Error('identity_legacy_conflict')
+  let id=identityId??legacyId
+  const resumed=Boolean(legacyId&&!identityId)
   if(!id){const x=await c.query("insert into public.profiles(id,profile_type,persona,full_name,location,headline,summary,contact_visibility,account_status) values(gen_random_uuid(),$1::public.profile_type,$2,$3,$4,$5,$6,'private','restricted') returning id",[p.profileType,p.persona,p.fullName,p.location,p.headline,p.summary]);id=x.rows[0]?.id}
   await c.query("update public.profiles set profile_type=coalesce(profile_type,$2::public.profile_type),persona=coalesce(persona,$3),location=coalesce(nullif(btrim(location),''),$4),headline=coalesce(nullif(btrim(headline),''),$5),summary=coalesce(nullif(btrim(summary),''),$6),updated_at=now() where id=$1",[id,p.profileType,p.persona,p.location,p.headline,p.summary])
   await c.query("insert into public.maritime_profiles(user_id,rank,current_company,sailing_experience_years,vessel_types,trading_areas,shore_career_preference) values($1,$2,$3,$4,$5::text[],'{}'::text[],false) on conflict(user_id) do update set rank=coalesce(nullif(btrim(public.maritime_profiles.rank),''),excluded.rank),current_company=coalesce(nullif(btrim(public.maritime_profiles.current_company),''),excluded.current_company),sailing_experience_years=coalesce(public.maritime_profiles.sailing_experience_years,excluded.sailing_experience_years),vessel_types=case when cardinality(public.maritime_profiles.vessel_types)=0 then excluded.vessel_types else public.maritime_profiles.vessel_types end,updated_at=now()",[id,p.rank,p.company,p.experienceYears,p.vesselTypes])
@@ -60,17 +68,18 @@ async function importPerson(pool,p){
   for(const x of p.experiences)await c.query("insert into public.profile_experiences(profile_id,track,title,organization,vessel_type,started_on,ended_on,is_current) select $1,'sea_service',$2,$3,$4,$5::date,$6::date,$6::date is null where not exists(select 1 from public.profile_experiences e where e.profile_id=$1 and e.track='sea_service' and lower(e.title)=lower($2) and coalesce(lower(e.organization),'')=coalesce(lower($3),'') and e.started_on is not distinct from $5::date and e.ended_on is not distinct from $6::date)",[id,x.title,x.organization,x.vesselType,x.start,x.end])
   for(const x of p.credentials)await c.query("insert into public.profile_credentials(profile_id,name,issuer,credential_number,expires_on,no_expiry,verification_state) select $1,$2,$3,$4,$5::date,$6,'self_reported' where not exists(select 1 from public.profile_credentials q where q.profile_id=$1 and lower(q.name)=lower($2) and lower(q.issuer)=lower($3) and coalesce(lower(q.credential_number),'')=coalesce(lower($4),''))",[id,x.name,x.issuer,x.number,x.expires,x.noExpiry])
   for(const x of p.legacy)await c.query("insert into public.legacy_profile_claims(source_system,legacy_object,legacy_id,profile_id,email,claimed_at) values($1,$2,$3,$4,$5,case when $6 then now() else null end) on conflict(source_system,legacy_object,legacy_id) do update set profile_id=excluded.profile_id,email=excluded.email,claimed_at=case when public.legacy_profile_claims.claimed_at is not null then public.legacy_profile_claims.claimed_at when $6 then now() else null end,updated_at=now()",[SOURCE,x.object,x.id,id,p.email,Boolean(found.rows[0])])
-  await c.query('commit');return found.rows[0]?'merged':'created'
+  await c.query('commit');return identityId?'merged':resumed?'resumed':'created'
  }catch(e){await c.query('rollback');throw e}finally{c.release()}
 }
 async function apply(plan){
  if(process.env.LEGACY_IMPORT_CONFIRM!==CONFIRM)throw Error(`Set LEGACY_IMPORT_CONFIRM=${CONFIRM}.`)
  const {Pool}=await import('pg');for(const k of['AURORA_HOST','AURORA_DATABASE','AURORA_USER','AURORA_PASSWORD'])if(!process.env[k])throw Error(`${k} required`)
- const pool=new Pool({host:process.env.AURORA_HOST,port:Number(process.env.AURORA_PORT||5432),database:process.env.AURORA_DATABASE,user:process.env.AURORA_USER,password:process.env.AURORA_PASSWORD,ssl:process.env.AURORA_SSL!=='false',max:2}),r={merged:0,createdRestricted:0,failed:0,organizations:0}
+ const pool=new Pool({host:process.env.AURORA_HOST,port:Number(process.env.AURORA_PORT||5432),database:process.env.AURORA_DATABASE,user:process.env.AURORA_USER,password:process.env.AURORA_PASSWORD,ssl:process.env.AURORA_SSL!=='false',max:2}),r={merged:0,resumed:0,createdRestricted:0,failed:0,organizations:0}
  try{if(!(await pool.query("select to_regclass('public.legacy_profile_claims') name")).rows[0]?.name)throw Error('Apply migration 0058 first.')
   for(const p of plan.people)try{
    const action=await importPerson(pool,p)
    if(action==='merged')r.merged++
+   else if(action==='resumed')r.resumed++
    else r.createdRestricted++
   }catch(e){r.failed++;console.error('[legacy_import_failed]',Buffer.from(p.email).toString('base64url').slice(0,12),e instanceof Error?e.message:e)}
   await pool.query("insert into public.profiles(id,full_name,contact_visibility,account_status) values($1,'Sea N Shore Legacy Import','private','restricted') on conflict(id) do nothing",[SYSTEM])
