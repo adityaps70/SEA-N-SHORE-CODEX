@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { GoogleMark } from '@/features/auth/components/google-mark'
 import { AuthShell } from '@/features/auth/components/auth-shell'
 import { prepareLegacyProfileClaim } from '@/features/auth/legacy-claim-actions'
+import { legacyInviteRepository } from '@/features/legacy-invites/repository'
 import { getCognitoEnvironment } from '@/lib/env'
 
 export const metadata: Metadata = { title: 'Claim your old profile' }
@@ -10,11 +11,13 @@ export const metadata: Metadata = { title: 'Claim your old profile' }
 export default async function ClaimProfilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string | string[] }>
+  searchParams: Promise<{ error?: string | string[]; invite?: string | string[] }>
 }) {
   const params = await searchParams
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED
   const emailError = params.error === 'email'
+  const inviteToken = Array.isArray(params.invite) ? params.invite[0] : params.invite
+  const invitedEmail = inviteToken ? await legacyInviteRepository.emailForClaimToken(inviteToken) : null
 
   return (
     <AuthShell>
@@ -64,6 +67,7 @@ export default async function ClaimProfilePage({
             inputMode="email"
             autoCapitalize="none"
             spellCheck={false}
+            defaultValue={invitedEmail ?? ''}
             className="min-h-12 rounded-xl border border-mist-200 bg-white px-4 text-base font-normal outline-none transition focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100"
             aria-describedby="legacy-email-help"
           />

@@ -2,6 +2,7 @@ import { createEventBridgePublisher } from '../../src/lib/aws/eventbridge'
 import { createOutboxPublisher } from '../../src/features/events/outbox-publisher'
 import { deletedPostRetention } from '../../src/features/feed/deleted-post-retention'
 import { createNewsletterWorker } from '../../src/features/newsletter/worker'
+import { createLegacyInviteWorker } from '../../src/features/legacy-invites/sending'
 import { subscriptionService } from '../../src/features/billing/subscription-service'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
@@ -14,8 +15,11 @@ const publisher = createOutboxPublisher({
 const DELETED_POST_RETENTION_SWEEP_MS = 60 * 60 * 1000
 let nextRetentionSweepAt = 0
 const NEWSLETTER_SWEEP_MS = 60 * 1000
+const LEGACY_INVITE_SWEEP_MS = 60 * 1000
 let nextNewsletterSweepAt = 0
+let nextLegacyInviteSweepAt = 0
 const newsletterWorker = createNewsletterWorker()
+const legacyInviteWorker = createLegacyInviteWorker()
 // Plan subscriptions: expire lapsed plans, reconcile open Cashfree mandates, raise due
 // charges in merchant charge mode. Hourly; the job is idempotent.
 const BILLING_SWEEP_MS = 60 * 60 * 1000
@@ -61,6 +65,26 @@ async function runNewsletterSweepIfDue() {
   }
 }
 
+async function runLegacyInviteSweepIfDue() {
+  const now = Date.now()
+  if (now < nextLegacyInviteSweepAt) return
+  nextLegacyInviteSweepAt = now + LEGACY_INVITE_SWEEP_MS
+
+  try {
+    const result = await legacyInviteWorker.runSweep(25)
+    console.info('[legacy_invite_sweep]', {
+      claimed: result.claimed,
+      sent: result.sent,
+      failed: result.failed,
+      skipped: result.skipped,
+      retrying: result.retrying,
+      disabled: result.disabled,
+    })
+  } catch (error) {
+    console.error('[legacy_invite_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function runBillingSweepIfDue() {
   const now = Date.now()
   if (now < nextBillingSweepAt) return
@@ -81,6 +105,7 @@ async function main() {
       console.info('[social_outbox_batch]', result)
       await runRetentionSweepIfDue()
       await runNewsletterSweepIfDue()
+      await runLegacyInviteSweepIfDue()
       await runBillingSweepIfDue()
       if (result.claimed === 0) await sleep(1000)
       if (result.failed > 0) await sleep(2000)

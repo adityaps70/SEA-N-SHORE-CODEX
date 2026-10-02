@@ -8,6 +8,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Mail,
+  MailPlus,
   ShieldAlert,
   ShieldCheck,
   Trash2,
@@ -38,6 +39,7 @@ const sections: Section[] = [
   { href: '/admin/billing', label: 'Billing', icon: CreditCard },
   { href: '/admin/payments', label: 'Payments', icon: Wallet },
   { href: '/admin/newsletter', label: 'Newsletter', icon: Mail },
+  { href: '/admin/legacy-invites', label: 'Legacy invites', icon: MailPlus },
   { href: '/admin/deleted-content', label: 'Deleted content', icon: Trash2 },
   { href: '/admin/audit', label: 'Audit log', icon: Activity },
 ]
