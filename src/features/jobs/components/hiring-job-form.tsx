@@ -41,7 +41,7 @@ function csv(formData: FormData, key: string) {
   return [...new Set(text(formData, key).split(',').map((item) => item.trim()).filter(Boolean))]
 }
 
-function buildInput(formData: FormData): HiringJobUpdateInput {
+function buildInput(formData: FormData, legacyJoiningUntil: string | null = null): HiringJobUpdateInput {
   const domainValue = text(formData, 'domain')
   const salaryPeriodValue = text(formData, 'salaryPeriod')
 
@@ -59,7 +59,7 @@ function buildInput(formData: FormData): HiringJobUpdateInput {
     experienceMinYears: nullableNumber(formData, 'experienceMinYears'),
     experienceMaxYears: nullableNumber(formData, 'experienceMaxYears'),
     joiningFrom: nullableText(formData, 'joiningFrom'),
-    joiningUntil: nullableText(formData, 'joiningUntil'),
+    joiningUntil: legacyJoiningUntil,
     salaryMin: nullableNumber(formData, 'salaryMin'),
     salaryMax: nullableNumber(formData, 'salaryMax'),
     salaryCurrency: nullableText(formData, 'salaryCurrency'),
@@ -95,7 +95,7 @@ export function HiringJobForm(props: HiringJobFormProps) {
   function submit(formData: FormData) {
     setMessage(null)
     setIsError(false)
-    const fields = buildInput(formData)
+    const fields = buildInput(formData, initial?.joiningUntil ?? null)
     const submitted = formData.get('intent')
     const intent: HiringJobSaveIntent = submitted === 'publish' || submitted === 'save' ? submitted : intentRef.current
     setPendingIntent(intent)
@@ -332,25 +332,22 @@ export function HiringJobForm(props: HiringJobFormProps) {
       <section className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
         <div className="mb-5">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Joining & compensation</p>
-          <h2 className="mt-1 text-xl font-bold text-navy-950">Set timing and Salary</h2>
+          <h2 className="mt-1 text-xl font-bold text-navy-950">Set joining date and salary</h2>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <label className={labelClass}>
-            Joining from
+            Joining date
             <input className={inputClass} type="date" name="joiningFrom" defaultValue={initial?.joiningFrom ?? ''} />
           </label>
           <label className={labelClass}>
-            Joining until
-            <input className={inputClass} type="date" name="joiningUntil" defaultValue={initial?.joiningUntil ?? ''} />
-          </label>
-          <label className={labelClass}>
-            Apply until
+            Last date to apply
             <input className={inputClass} type="date" name="applyUntil" defaultValue={initial?.applyUntil ?? ''} />
             <span className="block text-xs font-normal text-muted">Leave empty to keep applications open.</span>
           </label>
-          <div className="hidden lg:block" />
+        </div>
 
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <label className={labelClass}>
             Salary minimum
             <input className={inputClass} type="number" min="0" step="1" name="salaryMin" defaultValue={initial?.salaryMin ?? ''} />
