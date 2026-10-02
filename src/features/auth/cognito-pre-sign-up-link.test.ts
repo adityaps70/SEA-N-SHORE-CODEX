@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 describe('Cognito pre-sign-up Google account linker', () => {
   async function load() {
-    return import('../../infra/aws/app/lambda/cognito-pre-sign-up-link.mjs')
+    return import('../../../infra/aws/app/lambda/cognito-pre-sign-up-link.mjs')
   }
 
   function event(overrides = {}) {
