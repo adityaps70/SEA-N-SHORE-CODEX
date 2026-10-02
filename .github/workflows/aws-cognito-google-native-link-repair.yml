@@ -42,9 +42,9 @@ jobs:
         run: |
           set -euo pipefail
           ACTION="$(tr -d '[:space:]' < scripts/aws/cognito-google-native-link-repair-action.txt)"
-          case "$ACTION" in plan|repair-once) ;; *) echo "Unsupported repair action: $ACTION" >&2; exit 1 ;; esac
-          if [[ "$ACTION" == "repair-once" && "$GITHUB_EVENT_NAME" != "push" ]]; then
-            echo "repair-once is allowed only from an exact branch push." >&2
+          case "$ACTION" in plan|repair-once|send-reset-once) ;; *) echo "Unsupported repair action: $ACTION" >&2; exit 1 ;; esac
+          if [[ "$ACTION" != "plan" && "$GITHUB_EVENT_NAME" != "push" ]]; then
+            echo "$ACTION is allowed only from an exact branch push." >&2
             exit 1
           fi
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
@@ -149,6 +149,8 @@ jobs:
 
           if [[ "$ACTION" == "plan" ]]; then
             grep -q 'COGNITO_GOOGLE_NATIVE_REPAIR_PLAN_ONLY_NO_APPLY=true' <<<"$STDOUT_CONTENT"
+          elif [[ "$ACTION" == "send-reset-once" ]]; then
+            grep -q 'COGNITO_GOOGLE_HISTORICAL_RESET_SENT=true' <<<"$STDOUT_CONTENT"
           else
             grep -q 'COGNITO_GOOGLE_NATIVE_REPAIR_APPLY_VERIFIED=true' <<<"$STDOUT_CONTENT"
           fi
