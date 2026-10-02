@@ -19,10 +19,9 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
-      - name: Inspect failed legacy import task
+      - name: Read failed legacy import CloudWatch stream
         run: |
           set -euo pipefail
           TASK_ID="8f9a63ec775c44e080d0c7150434206f"
-          aws ecs describe-tasks             --region ap-south-1             --cluster sea-n-shore-staging             --tasks "$TASK_ID"             --output json
-          echo "---- CLOUDWATCH ----"
-          aws logs filter-log-events             --region ap-south-1             --log-group-name /ecs/sea-n-shore-staging/web             --start-time $(( ($(date +%s)-1800) * 1000 ))             --query 'events[].message'             --output text
+          STREAM="web/web/$TASK_ID"
+          aws logs filter-log-events             --region ap-south-1             --log-group-name /ecs/sea-n-shore-staging/web             --log-stream-names "$STREAM"             --query 'events[].message'             --output text
