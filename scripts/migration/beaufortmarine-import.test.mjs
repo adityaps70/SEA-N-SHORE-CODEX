@@ -52,6 +52,38 @@ describe('Beaufort legacy import', () => {
     expect(plan.people[0]).not.toHaveProperty('jobApplications')
   })
 
+  it('keeps legacy experience while dropping invalid reversed end dates and sanitizing summary text', () => {
+    const tables = structuredClone(empty)
+    tables.table_seafearer.push({
+      tlid: 10,
+      status: 1,
+      name: 'Captain Legacy',
+      email: 'legacy@example.net',
+      rank: 'Master',
+      summery: 'A'.repeat(1900) + '\u0007' + 'B'.repeat(400),
+      total_experience: 20,
+    })
+    tables.table_seafearer_experience.push({
+      tlid: 11,
+      status: 1,
+      seafearerid: 10,
+      rank: 'Master',
+      company: 'Legacy Shipping',
+      type_of_ship: 'Bulk Carrier',
+      joining_date: '2022-06-01',
+      leaving_date: '2021-06-01',
+    })
+
+    const plan = buildImportPlan(tables)
+    expect(plan.people).toHaveLength(1)
+    expect(Array.from(plan.people[0].summary ?? '')).toHaveLength(1800)
+    expect(plan.people[0].summary).not.toContain('\u0007')
+    expect(plan.people[0].experiences[0]).toMatchObject({
+      start: '2022-06-01',
+      end: null,
+    })
+  })
+
   it('holds invalid emails and obvious test accounts out of automatic import', () => {
     const tables = structuredClone(empty)
     tables.table_shore_staff.push(
