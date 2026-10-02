@@ -36,6 +36,28 @@ describe('feed repository', () => {
     expect(values).toEqual([viewerId, 'safety_lessons', '2026-09-05T06:00:00.000Z', postId, 21])
   })
 
+  it('finds legacy hashtag posts from body text when the hashtag index link is missing', async () => {
+    const query = vi.fn(async () => [] as FeedPostRow[])
+    const { createFeedRepository } = await import('./repository')
+    const repository = createFeedRepository({ query })
+
+    await repository.listFeedRows({
+      viewerProfileId: viewerId,
+      hashtag: 'sire',
+      limit: 12,
+    })
+
+    const [sql, values] = callsOf(query)[0]
+    expect(sql).toMatch(/from public\.post_hashtags tagged_post/i)
+    expect(sql).toMatch(/tagged\.tag = \$2/i)
+    expect(sql).toMatch(/p\.body ~\* \$3/i)
+    expect(sql).toMatch(/p\.group_id is null/i)
+    expect(values?.[0]).toBe(viewerId)
+    expect(values?.[1]).toBe('sire')
+    expect(values?.[2]).toBe('(^|[[:space:](\\\\[\\{\\\'"“‘])#sire([^[:alnum:]_]|$)')
+    expect(values?.[3]).toBe(12)
+  })
+
   it('loads only the signed-in member saved posts in most-recently-saved order', async () => {
     const query = vi.fn(async () => [] as FeedPostRow[])
     const { createFeedRepository } = await import('./repository')
