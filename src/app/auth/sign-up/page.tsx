@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { cookies } from 'next/headers'
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { AuthForm } from "@/features/auth/components/auth-form";
@@ -7,17 +8,21 @@ import { AuthShell } from "@/features/auth/components/auth-shell";
 import { confirmSignUp, resendConfirmationCode, signUp } from "@/features/auth/actions";
 import { getCognitoEnvironment } from "@/lib/env";
 import { OAuthErrorNotice } from "@/components/feedback/oauth-error-notice";
+import { LEGACY_CLAIM_EMAIL_COOKIE } from "@/features/auth/legacy-claim-actions";
 
 export const metadata: Metadata = { title: 'Create your account' }
 
 export default async function SignUpPage({
   searchParams,
 }: {
-  searchParams: Promise<{ confirm?: string; email?: string; resent?: string; resendError?: string; oauthError?: string }>;
+  searchParams: Promise<{ confirm?: string; email?: string; resent?: string; resendError?: string; oauthError?: string; legacy?: string }>;
 }) {
   const params = await searchParams;
   const confirming = params.confirm === "1";
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED;
+  const claimEmail = params.legacy === "1"
+    ? (await cookies()).get(LEGACY_CLAIM_EMAIL_COOKIE)?.value
+    : undefined;
 
   return (
     <AuthShell>
@@ -45,10 +50,18 @@ export default async function SignUpPage({
       ) : (
         <>
           <OAuthErrorNotice code={params.oauthError} />
+          {claimEmail ? (
+            <div className="mt-4 rounded-xl bg-mist-50 p-4 text-sm leading-6 text-muted">
+              <strong className="text-navy-950">Restored profile claim:</strong>{' '}
+              create a new password using your old registered email. After email verification and sign-in,
+              your restored profile will be connected automatically.
+            </div>
+          ) : null}
           {/* Phones: Google first (when enabled), then "or" and the email form. */}
           <AuthForm
             mode="sign-up"
             action={signUp}
+            initialEmail={claimEmail}
             lead={<AuthMethodLinks intent="sign-up" googleEnabled={googleEnabled} placement="above" />}
           />
           <AuthMethodLinks intent="sign-up" googleEnabled={googleEnabled} />
