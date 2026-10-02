@@ -28,6 +28,7 @@ git diff --quiet HEAD -- \
   infra/aws/app/lambda/cognito-define-auth-challenge.mjs \
   infra/aws/app/lambda/cognito-create-auth-challenge.mjs \
   infra/aws/app/lambda/cognito-verify-auth-challenge.mjs \
+  infra/aws/app/lambda/cognito-pre-sign-up-link.mjs \
   scripts/aws/multi-login-auth-infra.sh \
   scripts/aws/multi-login-auth-infra-action.txt \
   scripts/aws/multi-login-auth-infra.test.mjs \
@@ -112,15 +113,21 @@ TARGETS=(
   aws_iam_role.cognito_auth_challenge
   aws_iam_role_policy_attachment.cognito_auth_challenge_logs
   aws_iam_role_policy.cognito_auth_challenge_sms
+  aws_iam_role.cognito_pre_sign_up_link
+  aws_iam_role_policy_attachment.cognito_pre_sign_up_link_logs
+  aws_iam_role_policy.cognito_pre_sign_up_link
   aws_cloudwatch_log_group.cognito_define_auth_challenge
   aws_cloudwatch_log_group.cognito_create_auth_challenge
   aws_cloudwatch_log_group.cognito_verify_auth_challenge
+  aws_cloudwatch_log_group.cognito_pre_sign_up_link
   aws_lambda_function.cognito_define_auth_challenge
   aws_lambda_function.cognito_create_auth_challenge
   aws_lambda_function.cognito_verify_auth_challenge
+  aws_lambda_function.cognito_pre_sign_up_link
   aws_lambda_permission.cognito_define_auth_challenge
   aws_lambda_permission.cognito_create_auth_challenge
   aws_lambda_permission.cognito_verify_auth_challenge
+  aws_lambda_permission.cognito_pre_sign_up_link
   aws_cognito_user_pool.app
   aws_cognito_identity_provider.google
   aws_cognito_user_pool_client.web
@@ -142,15 +149,21 @@ allowed = {
   'aws_iam_role.cognito_auth_challenge',
   'aws_iam_role_policy_attachment.cognito_auth_challenge_logs',
   'aws_iam_role_policy.cognito_auth_challenge_sms',
+  'aws_iam_role.cognito_pre_sign_up_link',
+  'aws_iam_role_policy_attachment.cognito_pre_sign_up_link_logs',
+  'aws_iam_role_policy.cognito_pre_sign_up_link',
   'aws_cloudwatch_log_group.cognito_define_auth_challenge',
   'aws_cloudwatch_log_group.cognito_create_auth_challenge',
   'aws_cloudwatch_log_group.cognito_verify_auth_challenge',
+  'aws_cloudwatch_log_group.cognito_pre_sign_up_link',
   'aws_lambda_function.cognito_define_auth_challenge',
   'aws_lambda_function.cognito_create_auth_challenge',
   'aws_lambda_function.cognito_verify_auth_challenge',
+  'aws_lambda_function.cognito_pre_sign_up_link',
   'aws_lambda_permission.cognito_define_auth_challenge',
   'aws_lambda_permission.cognito_create_auth_challenge',
   'aws_lambda_permission.cognito_verify_auth_challenge',
+  'aws_lambda_permission.cognito_pre_sign_up_link',
   'aws_cognito_user_pool.app',
   'aws_cognito_identity_provider.google[0]',
   'aws_cognito_user_pool_client.web',
@@ -232,7 +245,8 @@ AFTER_CHANGES="$(jq '[.resource_changes[]? | select(.mode != "data") | select(.c
 for fn in \
   sea-n-shore-staging-cognito-define-auth-challenge \
   sea-n-shore-staging-cognito-create-auth-challenge \
-  sea-n-shore-staging-cognito-verify-auth-challenge; do
+  sea-n-shore-staging-cognito-verify-auth-challenge \
+  sea-n-shore-staging-cognito-pre-sign-up-link; do
   aws lambda get-function --region "$AWS_REGION" --function-name "$fn" > "$WORK_DIR/$fn.json"
   jq -e '.Configuration.State == "Active" and .Configuration.Runtime == "nodejs22.x"' "$WORK_DIR/$fn.json" >/dev/null
 done
@@ -248,6 +262,7 @@ jq -e '
   (.UserPool.LambdaConfig.DefineAuthChallenge | type == "string")
   and (.UserPool.LambdaConfig.CreateAuthChallenge | type == "string")
   and (.UserPool.LambdaConfig.VerifyAuthChallengeResponse | type == "string")
+  and (.UserPool.LambdaConfig.PreSignUp | type == "string")
 ' "$WORK_DIR/user-pool.json" >/dev/null
 
 CLIENT_ID="$(jq -r '
