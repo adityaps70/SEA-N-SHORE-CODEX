@@ -60,6 +60,15 @@ test('staging deploy verifies exact completed service revision and its immutable
   assert.match(workflow, /runningCount/)
 })
 
+test('staging web deployment verification supports the configured service scale instead of hardcoding one task', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /DESIRED_COUNT" -ge 1/)
+  assert.match(workflow, /RUNNING_COUNT" -eq "\$DESIRED_COUNT"/)
+  assert.match(workflow, /PRIMARY_DESIRED_COUNT" -eq "\$DESIRED_COUNT"/)
+  assert.match(workflow, /PRIMARY_RUNNING_COUNT" -eq "\$DESIRED_COUNT"/)
+})
+
 test('staging deploy waits for ECS rolloutState COMPLETED before exact verification', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
 

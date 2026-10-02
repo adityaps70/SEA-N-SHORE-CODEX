@@ -499,14 +499,14 @@ jobs:
             echo "exact ECS deployment state attempt=$attempt rolloutState=${PRIMARY_ROLLOUT_STATE:-missing} deployments=$DEPLOYMENT_COUNT counts=$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT"
 
             if [[ "$CURRENT_TASK_ARN" == "$NEW_TASK_ARN" \
-              && "$DESIRED_COUNT" -eq 1 \
-              && "$RUNNING_COUNT" -eq 1 \
+              && "$DESIRED_COUNT" -ge 1 \
+              && "$RUNNING_COUNT" -eq "$DESIRED_COUNT" \
               && "$PENDING_COUNT" -eq 0 \
               && "$DEPLOYMENT_COUNT" -eq 1 \
               && "$PRIMARY_TASK_ARN" == "$NEW_TASK_ARN" \
               && "$PRIMARY_ROLLOUT_STATE" == "COMPLETED" \
-              && "$PRIMARY_DESIRED_COUNT" -eq 1 \
-              && "$PRIMARY_RUNNING_COUNT" -eq 1 \
+              && "$PRIMARY_DESIRED_COUNT" -eq "$DESIRED_COUNT" \
+              && "$PRIMARY_RUNNING_COUNT" -eq "$DESIRED_COUNT" \
               && "$PRIMARY_PENDING_COUNT" -eq 0 \
               && "$PRIMARY_FAILED_TASKS" -eq 0 ]]; then
               break
@@ -520,11 +520,11 @@ jobs:
           done
 
           [[ "$CURRENT_TASK_ARN" == "$NEW_TASK_ARN" ]]
-          [[ "$DESIRED_COUNT" -eq 1 && "$RUNNING_COUNT" -eq 1 && "$PENDING_COUNT" -eq 0 ]]
+          [[ "$DESIRED_COUNT" -ge 1 && "$RUNNING_COUNT" -eq "$DESIRED_COUNT" && "$PENDING_COUNT" -eq 0 ]]
           [[ "$DEPLOYMENT_COUNT" -eq 1 ]]
           [[ "$PRIMARY_TASK_ARN" == "$NEW_TASK_ARN" ]]
           [[ "$PRIMARY_ROLLOUT_STATE" == "COMPLETED" ]]
-          [[ "$PRIMARY_DESIRED_COUNT" -eq 1 && "$PRIMARY_RUNNING_COUNT" -eq 1 && "$PRIMARY_PENDING_COUNT" -eq 0 && "$PRIMARY_FAILED_TASKS" -eq 0 ]]
+          [[ "$PRIMARY_DESIRED_COUNT" -eq "$DESIRED_COUNT" && "$PRIMARY_RUNNING_COUNT" -eq "$DESIRED_COUNT" && "$PRIMARY_PENDING_COUNT" -eq 0 && "$PRIMARY_FAILED_TASKS" -eq 0 ]]
 
           TASK_DEF_JSON="$(aws ecs describe-task-definition --task-definition "$NEW_TASK_ARN" --query taskDefinition --output json)"
           TASK_DEF_IMAGE="$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name == $NAME) | .image // empty' <<<"$TASK_DEF_JSON")"
