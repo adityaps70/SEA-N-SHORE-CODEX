@@ -30,7 +30,7 @@ export default async function HashtagPage({ params }: { params: Promise<{ tag: s
     hashtagRepository.isFollowingHashtag(user.id, tag),
     getFeedPage({ hashtag: tag }),
   ])
-  const postCount = summary?.postCount ?? initialPage.posts.length
+  const postCount = Math.max(summary?.postCount ?? 0, initialPage.posts.length)
   const followerCount = summary?.followerCount ?? 0
 
   return (
