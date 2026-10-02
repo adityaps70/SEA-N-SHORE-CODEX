@@ -18,8 +18,10 @@ vi.mock('next/headers', () => ({
 vi.mock('@/lib/env', () => ({
   getCognitoEnvironment: () => ({ AWS_COGNITO_GOOGLE_ENABLED: mocks.googleEnabled }),
 }))
-vi.mock('@/features/auth/legacy-claim-actions', () => ({
+vi.mock('@/features/auth/legacy-claim', () => ({
   LEGACY_CLAIM_EMAIL_COOKIE: 'sns_legacy_claim_email',
+}))
+vi.mock('@/features/auth/legacy-claim-actions', () => ({
   prepareLegacyProfileClaim: vi.fn(async () => undefined),
 }))
 vi.mock('@/features/auth/actions', () => ({
