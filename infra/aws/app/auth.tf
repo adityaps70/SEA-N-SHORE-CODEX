@@ -9,6 +9,7 @@ resource "aws_cognito_user_pool" "app" {
     define_auth_challenge          = aws_lambda_function.cognito_define_auth_challenge.arn
     create_auth_challenge          = aws_lambda_function.cognito_create_auth_challenge.arn
     verify_auth_challenge_response = aws_lambda_function.cognito_verify_auth_challenge.arn
+    pre_sign_up                    = aws_lambda_function.cognito_pre_sign_up_link.arn
   }
 
   password_policy {
@@ -46,7 +47,8 @@ resource "aws_cognito_user_pool" "app" {
   depends_on = [
     aws_lambda_permission.cognito_define_auth_challenge,
     aws_lambda_permission.cognito_create_auth_challenge,
-    aws_lambda_permission.cognito_verify_auth_challenge
+    aws_lambda_permission.cognito_verify_auth_challenge,
+    aws_lambda_permission.cognito_pre_sign_up_link
   ]
 
   tags = local.common_tags
@@ -156,6 +158,12 @@ data "archive_file" "cognito_verify_auth_challenge" {
   output_path = "${path.module}/.terraform/cognito-verify-auth-challenge.zip"
 }
 
+data "archive_file" "cognito_pre_sign_up_link" {
+  type        = "zip"
+  source_file = "${path.module}/lambda/cognito-pre-sign-up-link.mjs"
+  output_path = "${path.module}/.terraform/cognito-pre-sign-up-link.zip"
+}
+
 resource "aws_iam_role" "cognito_auth_challenge" {
   name = "${local.name_prefix}-cognito-auth-challenge"
 
@@ -176,6 +184,46 @@ resource "aws_iam_role" "cognito_auth_challenge" {
 resource "aws_iam_role_policy_attachment" "cognito_auth_challenge_logs" {
   role       = aws_iam_role.cognito_auth_challenge.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role" "cognito_pre_sign_up_link" {
+  name = "${local.name_prefix}-cognito-pre-sign-up-link"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "cognito_pre_sign_up_link_logs" {
+  role       = aws_iam_role.cognito_pre_sign_up_link.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "cognito_pre_sign_up_link" {
+  name = "${local.name_prefix}-cognito-pre-sign-up-link"
+  role = aws_iam_role.cognito_pre_sign_up_link.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "LinkVerifiedGoogleIdentity"
+      Effect = "Allow"
+      Action = [
+        "cognito-idp:ListUsers",
+        "cognito-idp:AdminLinkProviderForUser"
+      ]
+      Resource = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/${var.aws_region}_*"
+    }]
+  })
 }
 
 resource "aws_iam_role_policy" "cognito_auth_challenge_sms" {
@@ -207,6 +255,12 @@ resource "aws_cloudwatch_log_group" "cognito_create_auth_challenge" {
 
 resource "aws_cloudwatch_log_group" "cognito_verify_auth_challenge" {
   name              = "/aws/lambda/${local.name_prefix}-cognito-verify-auth-challenge"
+  retention_in_days = 14
+  tags              = local.common_tags
+}
+
+resource "aws_cloudwatch_log_group" "cognito_pre_sign_up_link" {
+  name              = "/aws/lambda/${local.name_prefix}-cognito-pre-sign-up-link"
   retention_in_days = 14
   tags              = local.common_tags
 }
@@ -266,6 +320,25 @@ resource "aws_lambda_function" "cognito_verify_auth_challenge" {
   tags = local.common_tags
 }
 
+resource "aws_lambda_function" "cognito_pre_sign_up_link" {
+  function_name    = "${local.name_prefix}-cognito-pre-sign-up-link"
+  role             = aws_iam_role.cognito_pre_sign_up_link.arn
+  runtime          = "nodejs22.x"
+  handler          = "cognito-pre-sign-up-link.handler"
+  filename         = data.archive_file.cognito_pre_sign_up_link.output_path
+  source_code_hash = data.archive_file.cognito_pre_sign_up_link.output_base64sha256
+  timeout          = 10
+  memory_size      = 128
+
+  depends_on = [
+    aws_cloudwatch_log_group.cognito_pre_sign_up_link,
+    aws_iam_role_policy_attachment.cognito_pre_sign_up_link_logs,
+    aws_iam_role_policy.cognito_pre_sign_up_link
+  ]
+
+  tags = local.common_tags
+}
+
 resource "aws_lambda_permission" "cognito_define_auth_challenge" {
   statement_id   = "AllowCognitoDefineAuthChallenge"
   action         = "lambda:InvokeFunction"
@@ -288,6 +361,15 @@ resource "aws_lambda_permission" "cognito_verify_auth_challenge" {
   statement_id   = "AllowCognitoVerifyAuthChallenge"
   action         = "lambda:InvokeFunction"
   function_name  = aws_lambda_function.cognito_verify_auth_challenge.function_name
+  principal      = "cognito-idp.amazonaws.com"
+  source_account = data.aws_caller_identity.current.account_id
+  source_arn     = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/*"
+}
+
+resource "aws_lambda_permission" "cognito_pre_sign_up_link" {
+  statement_id   = "AllowCognitoPreSignUpLink"
+  action         = "lambda:InvokeFunction"
+  function_name  = aws_lambda_function.cognito_pre_sign_up_link.function_name
   principal      = "cognito-idp.amazonaws.com"
   source_account = data.aws_caller_identity.current.account_id
   source_arn     = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/*"
