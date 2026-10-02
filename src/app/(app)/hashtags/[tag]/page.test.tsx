@@ -64,6 +64,16 @@ describe('HashtagPage', () => {
     expect(screen.getByRole('link', { name: 'Back' }).parentElement).toHaveClass('md:hidden')
   })
 
+  it('never reports zero when the signed-in member can see a matching post', async () => {
+    mocks.getHashtagSummary.mockResolvedValue({ tag: 'sire', postCount: 0, followerCount: 0 })
+    mocks.getFeedPage.mockResolvedValue({ posts: [{ id: 'group-post-1' }], nextCursor: null })
+
+    render(await HashtagPage({ params: Promise.resolve({ tag: 'sire' }) }))
+
+    expect(screen.getByTestId('hashtag-post-count')).toHaveTextContent('1 post')
+    expect(screen.getByTestId('feed-list')).toHaveAttribute('data-count', '1')
+  })
+
   it('shows Following when the member already follows the tag', async () => {
     mocks.isFollowingHashtag.mockResolvedValue(true)
     render(await HashtagPage({ params: Promise.resolve({ tag: 'sire' }) }))
