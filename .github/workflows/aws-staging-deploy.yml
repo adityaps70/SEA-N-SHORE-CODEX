@@ -537,3 +537,5 @@ jobs:
           echo "- Image: \`$EXPECTED_IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- rolloutState: \`$PRIMARY_ROLLOUT_STATE\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- desiredCount/runningCount/pendingCount: \`$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT\`" >> "$GITHUB_STEP_SUMMARY"
+
+# legacy-import-rollout-trigger: 2026-10-02
