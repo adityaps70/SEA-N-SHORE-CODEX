@@ -17,7 +17,7 @@ describe('legacy profile invitations', () => {
     expect(email.text.toLowerCase()).not.toContain('subscribe to our newsletter')
   })
 
-  it('queues only bounded eligible batches and SQL excludes claimed/current/ambiguous identities', async () => {
+  it('prepares bounded eligible batches without putting them directly in the send queue', async () => {
     const calls: Array<{ text: string; values: readonly unknown[] }> = []
     const repository = createLegacyInviteRepository({
       query: (async (text: string, values: readonly unknown[] = []) => {
@@ -25,12 +25,30 @@ describe('legacy profile invitations', () => {
         return [{ id: 'i1' }, { id: 'i2' }]
       }) as never,
     })
-    await expect(repository.queueEligible(5000, 'admin-1')).resolves.toBe(2)
+    await expect(repository.prepareEligible(5000, 'admin-1')).resolves.toBe(2)
     expect(calls[0].values).toEqual(['admin-1', 100])
+    expect(calls[0].text).toContain("'prepared'")
     expect(calls[0].text).toContain('claim.claimed_at is null')
     expect(calls[0].text).toContain('count(distinct claim.profile_id) = 1')
     expect(calls[0].text).toContain('identity.email_verified = true')
-    expect(calls[0].text).toContain('legacy_profile_invites')
+  })
+
+  it('requires an explicit transition from prepared to queued and supports cancellation/stop', async () => {
+    const calls: string[] = []
+    const repository = createLegacyInviteRepository({
+      query: (async (text: string) => {
+        calls.push(text)
+        return [{ id: 'i1' }]
+      }) as never,
+    })
+    await expect(repository.startPrepared()).resolves.toBe(1)
+    await expect(repository.cancelPrepared()).resolves.toBe(1)
+    await expect(repository.stopUnsent()).resolves.toBe(1)
+    expect(calls[0]).toContain("where status = 'prepared'")
+    expect(calls[0]).toContain("set status = 'queued'")
+    expect(calls[1]).toContain("set status = 'cancelled'")
+    expect(calls[1]).toContain("where status = 'prepared'")
+    expect(calls[2]).toContain("where status in ('queued', 'failed')")
   })
 
   it('sends through Resend once with a stable idempotency key and skips users no longer eligible', async () => {
@@ -60,8 +78,8 @@ describe('legacy profile invitations', () => {
       markFailed: vi.fn(),
     }
     const resend = { sendEmail: vi.fn(async () => ({ messageId: 'resend-1' })) }
-    const worker = createLegacyInviteWorker({ repository: repository as never, resend, siteUrl: 'https://seanshore.in' })
-    await expect(worker.runSweep(25)).resolves.toMatchObject({ claimed: 2, sent: 1, skipped: 1, failed: 0 })
+    const inviteWorker = createLegacyInviteWorker({ repository: repository as never, resend, siteUrl: 'https://seanshore.in' })
+    await expect(inviteWorker.runSweep(5)).resolves.toMatchObject({ claimed: 2, sent: 1, skipped: 1, failed: 0 })
     expect(resend.sendEmail).toHaveBeenCalledWith(expect.objectContaining({
       from: 'Sea N Shore <accounts@mail.seanshore.in>',
       to: 'old@example.com',

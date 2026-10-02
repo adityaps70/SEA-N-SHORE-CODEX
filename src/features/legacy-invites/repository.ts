@@ -1,7 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 
-export type LegacyInviteStatus = 'queued' | 'sending' | 'sent' | 'failed' | 'skipped'
+export type LegacyInviteStatus = 'prepared' | 'queued' | 'sending' | 'sent' | 'failed' | 'skipped' | 'cancelled'
 
 export type LegacyInviteDelivery = {
   id: string
@@ -15,11 +15,13 @@ export type LegacyInviteDelivery = {
 
 export type LegacyInviteMetrics = {
   eligible: number
+  prepared: number
   queued: number
   sending: number
   sent: number
   failed: number
   skipped: number
+  cancelled: number
 }
 
 export type LegacyInviteRecent = {
@@ -40,7 +42,13 @@ function num(value: unknown) {
 }
 
 function status(value: unknown): LegacyInviteStatus {
-  return value === 'queued' || value === 'sending' || value === 'sent' || value === 'failed' || value === 'skipped'
+  return value === 'prepared'
+    || value === 'queued'
+    || value === 'sending'
+    || value === 'sent'
+    || value === 'failed'
+    || value === 'skipped'
+    || value === 'cancelled'
     ? value
     : 'failed'
 }
@@ -72,6 +80,7 @@ function eligibleSql() {
         select 1
         from public.legacy_profile_invites invite
         where lower(invite.email) = candidate.email
+          and invite.status <> 'cancelled'
       )
   `
 }
@@ -83,33 +92,39 @@ export function createLegacyInviteRepository(input: { query?: Query } = {}) {
     async metrics(): Promise<LegacyInviteMetrics> {
       const rows = await queryRows<{
         eligible: number | string
+        prepared: number | string
         queued: number | string
         sending: number | string
         sent: number | string
         failed: number | string
         skipped: number | string
+        cancelled: number | string
       }>(`
         select
           (select count(*) from (${eligibleSql()}) eligible_rows) as eligible,
+          count(*) filter (where status = 'prepared') as prepared,
           count(*) filter (where status = 'queued') as queued,
           count(*) filter (where status = 'sending') as sending,
           count(*) filter (where status = 'sent') as sent,
           count(*) filter (where status = 'failed') as failed,
-          count(*) filter (where status = 'skipped') as skipped
+          count(*) filter (where status = 'skipped') as skipped,
+          count(*) filter (where status = 'cancelled') as cancelled
         from public.legacy_profile_invites
       `)
       const row = rows[0]
       return {
         eligible: num(row?.eligible),
+        prepared: num(row?.prepared),
         queued: num(row?.queued),
         sending: num(row?.sending),
         sent: num(row?.sent),
         failed: num(row?.failed),
         skipped: num(row?.skipped),
+        cancelled: num(row?.cancelled),
       }
     },
 
-    async queueEligible(limit: number, adminId: string) {
+    async prepareEligible(limit: number, adminId: string) {
       const bounded = Math.max(1, Math.min(100, Math.floor(limit)))
       const rows = await queryRows<{ id: string }>(`
         with eligible as (
@@ -117,17 +132,71 @@ export function createLegacyInviteRepository(input: { query?: Query } = {}) {
           order by email
           limit $2
         )
-        insert into public.legacy_profile_invites (profile_id, email, queued_by)
-        select eligible.profile_id, eligible.email, $1
+        insert into public.legacy_profile_invites (
+          profile_id, email, queued_by, status, attempts, next_attempt_at
+        )
+        select eligible.profile_id, eligible.email, $1, 'prepared', 0, now()
         from eligible
-        on conflict do nothing
+        on conflict (profile_id) do update
+          set email = excluded.email,
+              queued_by = excluded.queued_by,
+              status = 'prepared',
+              attempts = 0,
+              resend_message_id = null,
+              last_error = null,
+              claim_token = gen_random_uuid(),
+              queued_at = now(),
+              last_attempt_at = null,
+              next_attempt_at = now(),
+              sent_at = null,
+              skipped_at = null,
+              updated_at = now()
+          where public.legacy_profile_invites.status = 'cancelled'
         returning id
       `, [adminId, bounded])
       return rows.length
     },
 
-    async claimBatch(limit = 25): Promise<LegacyInviteDelivery[]> {
-      const bounded = Math.max(1, Math.min(50, Math.floor(limit)))
+    async startPrepared() {
+      const rows = await queryRows<{ id: string }>(`
+        update public.legacy_profile_invites
+        set status = 'queued',
+            next_attempt_at = now(),
+            updated_at = now()
+        where status = 'prepared'
+        returning id
+      `)
+      return rows.length
+    },
+
+    async cancelPrepared() {
+      const rows = await queryRows<{ id: string }>(`
+        update public.legacy_profile_invites
+        set status = 'cancelled',
+            last_error = 'cancelled_by_admin_before_send',
+            skipped_at = now(),
+            updated_at = now()
+        where status = 'prepared'
+        returning id
+      `)
+      return rows.length
+    },
+
+    async stopUnsent() {
+      const rows = await queryRows<{ id: string }>(`
+        update public.legacy_profile_invites
+        set status = 'cancelled',
+            last_error = 'stopped_by_admin_before_delivery',
+            skipped_at = now(),
+            updated_at = now()
+        where status in ('queued', 'failed')
+        returning id
+      `)
+      return rows.length
+    },
+
+    async claimBatch(limit = 5): Promise<LegacyInviteDelivery[]> {
+      const bounded = Math.max(1, Math.min(10, Math.floor(limit)))
       return withTransaction(async (client: DatabaseQueryClient) => {
         const result = await client.query<{
           id: string
@@ -239,7 +308,7 @@ export function createLegacyInviteRepository(input: { query?: Query } = {}) {
         select email
         from public.legacy_profile_invites
         where claim_token = $1::uuid
-          and status <> 'skipped'
+          and status not in ('skipped', 'cancelled')
         limit 1
       `, [token])
       return rows[0]?.email ?? null

@@ -71,7 +71,7 @@ async function runLegacyInviteSweepIfDue() {
   nextLegacyInviteSweepAt = now + LEGACY_INVITE_SWEEP_MS
 
   try {
-    const result = await legacyInviteWorker.runSweep(25)
+    const result = await legacyInviteWorker.runSweep(5)
     console.info('[legacy_invite_sweep]', {
       claimed: result.claimed,
       sent: result.sent,
