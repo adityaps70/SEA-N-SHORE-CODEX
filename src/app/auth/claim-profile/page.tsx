@@ -58,6 +58,7 @@ export default async function ClaimProfilePage({
             id="legacy-email"
             name="email"
             type="email"
+            aria-label="Old registered email"
             required
             autoComplete="email"
             inputMode="email"
