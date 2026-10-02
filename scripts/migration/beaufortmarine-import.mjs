@@ -83,19 +83,20 @@ async function readLegacySource(){
   const {S3Client,GetObjectCommand}=await import('@aws-sdk/client-s3')
   const response=await new S3Client({region:process.env.AWS_REGION||'ap-south-1'}).send(new GetObjectCommand({Bucket:bucket,Key:key}))
   if(!response.Body)throw Error('Legacy S3 object has no body.')
-  return response.Body.transformToString()
+  return Buffer.from(await response.Body.transformToByteArray())
  }
  const path=process.argv[2]||process.env.LEGACY_SQL_DUMP
  if(!path)throw Error('Pass legacy SQL dump path or set LEGACY_S3_BUCKET and LEGACY_S3_KEY.')
- return readFile(path,'utf8')
+ return readFile(path)
 }
 async function main(){
- const sql=await readLegacySource()
- const bytes=Buffer.byteLength(sql,'utf8'), digest=createHash('sha256').update(sql,'utf8').digest('hex')
+ const source=await readLegacySource()
+ const bytes=source.length, digest=createHash('sha256').update(source).digest('hex')
  const expectedHash=process.env.LEGACY_EXPECTED_SHA256
  const expectedBytes=process.env.LEGACY_EXPECTED_BYTES
  if(expectedHash&&digest!==expectedHash)throw Error('Legacy SQL SHA256 does not match the approved dump.')
  if(expectedBytes&&bytes!==Number(expectedBytes))throw Error('Legacy SQL size does not match the approved dump.')
+ const sql=source.toString('utf8')
  const plan=buildImportPlan(parseLegacyDump(sql)),result=(process.env.LEGACY_IMPORT_MODE||'plan')==='apply'?await apply(plan):null
  console.log(JSON.stringify({sourceSystem:SOURCE,sourceSha256:digest,sourceBytes:bytes,peopleEligibleForAutomaticImport:plan.audit.people,duplicateLegacyIdentityGroupsMergedByEmail:plan.audit.duplicateEmailGroups,invalidEmailRowsHeldForManualReview:plan.audit.invalidEmailRows,obviousTestRowsExcluded:plan.audit.testRows,organizationsEligibleForUnclaimedPages:plan.audit.organizations,oldPasswordsImported:false,oldMembershipsImported:false,oldJobApplicationsImported:false,oldPaymentHistoryImported:false,applyResult:result},null,2))
 }
