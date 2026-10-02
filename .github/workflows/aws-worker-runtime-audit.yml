@@ -104,8 +104,7 @@ jobs:
             --query 'Reservations[].Instances[].InstanceId' --output json)"
           test "$(jq 'length' <<<"$IDS")" -eq 1
           echo "instance_id=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_OUTPUT"
-
-      - name: Read recent outbox logs through bootstrap SSM
+      - name: Read failed outbox task streams through bootstrap SSM
         shell: bash
         env:
           INSTANCE_ID: ${{ steps.bootstrap.outputs.instance_id }}
@@ -113,16 +112,25 @@ jobs:
           set -euo pipefail
           python3 - > /tmp/outbox-log-params.json <<'PY'
           import json, shlex
-          cmd = r'''set -euo pipefail
-          START_MS=$(( $(date -u -d '90 minutes ago' +%s) * 1000 ))
-          aws logs filter-log-events \
-            --region ap-south-1 \
-            --log-group-name /ecs/sea-n-shore-staging/outbox-worker \
-            --start-time "$START_MS" \
-            --limit 10000 \
-            --output json > /tmp/sns-outbox-worker-events.json
-          echo "OUTBOX_SSM_LOG_EVENT_COUNT=$(jq '.events | length' /tmp/sns-outbox-worker-events.json)"
-          jq -r '.events[] | "OUTBOX_SSM_LOG_STREAM=" + (.logStreamName // "") + "\nOUTBOX_SSM_LOG_MESSAGE=" + ((.message // "") | gsub("\\n"; " "))' /tmp/sns-outbox-worker-events.json
+          task_ids = [
+              "b350179017384d5bb4c546ec26e7157c",
+              "9a0dbd8a22ce4e73b179d2582333f636",
+              "38449cbb207548f9bd04b5653577dccb",
+              "7e4fe90708624aed85e523fb41f00438",
+          ]
+          streams = " ".join("worker/outbox-worker/" + task_id for task_id in task_ids)
+          cmd = f'''set -euo pipefail
+          for STREAM in {streams}; do
+            echo "OUTBOX_FAILED_STREAM=$STREAM"
+            aws logs get-log-events \
+              --region ap-south-1 \
+              --log-group-name /ecs/sea-n-shore-staging/outbox-worker \
+              --log-stream-name "$STREAM" \
+              --start-from-head \
+              --limit 1000 \
+              --output json |
+              jq -r '.events[] | "OUTBOX_FAILED_MESSAGE=" + ((.message // "") | gsub("\\n"; " "))'
+          done
           '''
           print(json.dumps({
               "executionTimeout": ["300"],
@@ -133,7 +141,7 @@ jobs:
             --region "$AWS_REGION" \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --comment "Read Sea N Shore outbox worker logs" \
+            --comment "Read failed Sea N Shore outbox task streams" \
             --timeout-seconds 300 \
             --parameters file:///tmp/outbox-log-params.json \
             --query 'Command.CommandId' --output text)"
