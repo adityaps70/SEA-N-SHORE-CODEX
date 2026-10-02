@@ -41,7 +41,6 @@ const jobFieldsSchema = z.object({
   experienceMinYears: z.number().min(0).max(80).nullable(),
   experienceMaxYears: z.number().min(0).max(80).nullable(),
   joiningFrom: dateSchema,
-  joiningUntil: dateSchema,
   salaryMin: z.number().min(0).max(100000000).nullable(),
   salaryMax: z.number().min(0).max(100000000).nullable(),
   salaryCurrency: z.string().trim().min(3).max(8).nullable(),
@@ -57,9 +56,6 @@ const jobFieldsSchema = z.object({
   }
   if (value.experienceMinYears !== null && value.experienceMaxYears !== null && value.experienceMinYears > value.experienceMaxYears) {
     context.addIssue({ code: 'custom', path: ['experienceMaxYears'], message: 'Maximum experience must be at least the minimum experience.' })
-  }
-  if (value.joiningFrom && value.joiningUntil && value.joiningFrom > value.joiningUntil) {
-    context.addIssue({ code: 'custom', path: ['joiningUntil'], message: 'Joining end date must be on or after the start date.' })
   }
 })
 
@@ -214,7 +210,7 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
       deleted: false,
       moderationRemoved: false,
       applyUntil: parsed.data.applyUntil,
-      joiningUntil: parsed.data.joiningUntil,
+      joiningUntil: null,
       applicantCount: 0,
       canDelete: true,
     }, 'publish', { today })
@@ -230,7 +226,7 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
   try {
     const user = await requireAwsUser()
     await requirePublishCapability(user.id, parsed.data.publisherType === 'personal' ? null : parsed.data.companyId)
-    const jobId = await hiringRepository.createJob(user.id, parsed.data)
+    const jobId = await hiringRepository.createJob(user.id, { ...parsed.data, joiningUntil: null })
     await flagAutomatedJobModeration(jobId, moderation)
     refreshJobMutation(jobId)
     return { ok: true, jobId }
@@ -265,7 +261,7 @@ export async function updateHiringJob(
     if (parsedIntent.data === 'publish' && job.status !== 'published') {
       const action: JobLifecycleAction = job.status === 'draft' ? 'publish' : 'republish'
       const transition = validateJobTransition(
-        { ...managedJobLifecycle(job), joiningUntil: parsed.data.joiningUntil },
+        managedJobLifecycle(job),
         action,
         { today, applyUntil: parsed.data.applyUntil },
       )
@@ -280,7 +276,7 @@ export async function updateHiringJob(
     if (moderation.decision === 'block') throw new HiringValidationError(moderationBlockMessage())
 
     await requirePublishCapability(user.id, job.companyId)
-    await hiringRepository.updateJob(user.id, parsedJobId.data, parsed.data, {
+    await hiringRepository.updateJob(user.id, parsedJobId.data, { ...parsed.data, joiningUntil: job.joiningUntil }, {
       expectedStatus: job.status,
       nextStatus,
     })
