@@ -383,7 +383,6 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
           where tagged_post.post_id = p.id and tagged.tag = ${indexedTagParameter}
         )`)
       }
-      clauses.push('p.group_id is null')
     }
     if (lookup.cursor) {
       values.push(lookup.cursor.createdAt)
