@@ -52,7 +52,7 @@ export type HiringJobInput = {
   experienceMinYears: number | null
   experienceMaxYears: number | null
   joiningFrom: string | null
-  joiningUntil: string | null
+  joiningUntil?: string | null
   salaryMin: number | null
   salaryMax: number | null
   salaryCurrency: string | null
