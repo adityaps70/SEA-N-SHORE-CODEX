@@ -59,7 +59,7 @@ describe('hashtag repository', () => {
     const [sql, values] = callsOf(query)[0]!
     expect(sql).toMatch(/p\.body ~\* \$2/i)
     expect(values?.[0]).toBe('sire')
-    expect(values?.[1]).toBe('(^|[[:space:](\\\\[\\{\\\'"“‘])#sire([^[:alnum:]_]|$)')
+    expect(values?.[1]).toBe('(^|[[:space:]]|\\(|\\[|\\{|\'|"|“|‘)#sire([^[:alnum:]_]|$)')
   })
 
   it('returns null for unknown or invalid tags', async () => {
