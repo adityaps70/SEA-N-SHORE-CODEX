@@ -27,7 +27,7 @@ git diff --quiet HEAD -- \
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in
-  plan|repair-once) ;;
+  plan|repair-once|send-reset-once) ;;
   *) echo "Unsupported Cognito Google/native repair action." >&2; exit 1 ;;
 esac
 
@@ -45,7 +45,13 @@ USER_POOL_ID="$(jq -r '
    | select(.mode=="managed" and .type=="aws_cognito_user_pool" and .name=="app")
    | .instances[0].attributes.id][0] // empty
 ' "$WORK_DIR/state.json")"
+CLIENT_ID="$(jq -r '
+  [.resources[]
+   | select(.mode=="managed" and .type=="aws_cognito_user_pool_client" and .name=="web")
+   | .instances[0].attributes.id][0] // empty
+' "$WORK_DIR/state.json")"
 [[ "$USER_POOL_ID" == ap-south-1_* ]]
+[[ "$CLIENT_ID" =~ ^[a-z0-9]+$ ]]
 
 CLUSTER_JSON="$(aws rds describe-db-clusters \
   --region "$AWS_REGION" \
@@ -68,7 +74,8 @@ python3 - \
   "$AWS_REGION" \
   "$CLUSTER_ARN" \
   "$SECRET_ARN" \
-  "$DATABASE_NAME" <<'PY'
+  "$DATABASE_NAME" \
+  "$CLIENT_ID" <<'PY'
 import hashlib
 import json
 import re
@@ -76,7 +83,7 @@ import subprocess
 import sys
 from collections import defaultdict
 
-users_path, action, user_pool_id, region, cluster_arn, secret_arn, database = sys.argv[1:]
+users_path, action, user_pool_id, region, cluster_arn, secret_arn, database, client_id = sys.argv[1:]
 
 with open(users_path, encoding='utf-8') as handle:
     users = json.load(handle).get('Users', [])
@@ -231,10 +238,63 @@ for user, user_attrs in linked_native_users:
     else:
         email_resolution_mismatch += 1
 
+historically_repaired_targets = []
+for user, user_attrs in linked_native_users:
+    native_sub = user_attrs.get('sub')
+    email = normalized_email(user_attrs)
+    username = user.get('Username')
+    if not all(isinstance(value, str) and value for value in (native_sub, email, username)):
+        continue
+
+    response = run_json('linked_profile_identity_count', [
+        'aws', 'rds-data', 'execute-statement',
+        '--region', region,
+        '--resource-arn', cluster_arn,
+        '--secret-arn', secret_arn,
+        '--database', database,
+        '--sql',
+        """select p.id::text as profile_id,
+                  (p.onboarding_completed_at is not null) as completed,
+                  p.account_status::text as account_status,
+                  count(all_ids.id)::int as cognito_identity_count
+             from public.identity_accounts native
+             join public.profiles p on p.id = native.profile_id
+             join public.identity_accounts all_ids
+               on all_ids.profile_id = native.profile_id
+              and all_ids.provider = 'cognito'
+            where native.provider = 'cognito'
+              and native.provider_subject = :native_sub
+            group by p.id, p.onboarding_completed_at, p.account_status""",
+        '--parameters', json.dumps([
+            {'name': 'native_sub', 'value': {'stringValue': native_sub}},
+        ]),
+        '--format-records-as', 'JSON',
+        '--output', 'json',
+    ])
+
+    try:
+        rows = json.loads(response.get('formattedRecords') or '[]')
+    except json.JSONDecodeError:
+        rows = []
+
+    if (
+        len(rows) == 1
+        and rows[0].get('completed') is True
+        and rows[0].get('account_status') in ('active', 'restricted')
+        and isinstance(rows[0].get('cognito_identity_count'), int)
+        and rows[0].get('cognito_identity_count') > 1
+    ):
+        historically_repaired_targets.append({
+            'email': email,
+            'username': username,
+            'native_sub': native_sub,
+        })
+
 print(f'COGNITO_GOOGLE_LINKED_NATIVE_USERS={len(linked_native_users)}')
 print(f'COGNITO_GOOGLE_LINKED_NATIVE_CONFIRMED={linked_confirmed}')
 print(f'COGNITO_GOOGLE_LINKED_EMAIL_RESOLUTION_OK={email_resolution_ok}')
 print(f'COGNITO_GOOGLE_LINKED_EMAIL_RESOLUTION_MISMATCH={email_resolution_mismatch}')
+print(f'COGNITO_GOOGLE_HISTORICAL_REPAIR_TARGETS={len(historically_repaired_targets)}')
 
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_TOTAL_USERS={len(users)}')
 print(f'COGNITO_GOOGLE_NATIVE_REPAIR_DUPLICATE_EMAIL_GROUPS={duplicate_groups}')
@@ -305,6 +365,28 @@ print(
 
 if action == 'plan':
     print('COGNITO_GOOGLE_NATIVE_REPAIR_PLAN_ONLY_NO_APPLY=true')
+    raise SystemExit(0)
+
+if action == 'send-reset-once':
+    if len(historically_repaired_targets) != 1:
+        raise SystemExit('historical_repair_target_not_unique')
+
+    target = historically_repaired_targets[0]
+    response = run_json('forgot_password', [
+        'aws', 'cognito-idp', 'forgot-password',
+        '--region', region,
+        '--client-id', client_id,
+        '--username', target['email'],
+        '--output', 'json',
+    ])
+    details = response.get('CodeDeliveryDetails') or {}
+    medium = details.get('DeliveryMedium')
+    attribute = details.get('AttributeName')
+    if medium != 'EMAIL' or attribute != 'email':
+        raise SystemExit('unexpected_recovery_delivery')
+    print('COGNITO_GOOGLE_HISTORICAL_RESET_DELIVERY_MEDIUM=EMAIL')
+    print('COGNITO_GOOGLE_HISTORICAL_RESET_ATTRIBUTE=email')
+    print('COGNITO_GOOGLE_HISTORICAL_RESET_SENT=true')
     raise SystemExit(0)
 
 if len(db_verified) != len(strict_candidates):
