@@ -161,6 +161,8 @@ jobs:
         run: node --test scripts/aws/legacy-profile-invites-migration.test.mjs
       - name: Verify legacy invite controls migration contract
         run: node --test scripts/aws/legacy-invite-controls-migration.test.mjs
+      - name: Verify community categories migration contract
+        run: node --test scripts/aws/community-categories-migration.test.mjs
       - name: Verify newsletter signing secret release contract
         run: node --test scripts/aws/newsletter-signing-secret-release.test.mjs
       - name: Verify guarded staging data cleanup contract
