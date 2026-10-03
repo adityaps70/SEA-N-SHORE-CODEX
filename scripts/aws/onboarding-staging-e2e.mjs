@@ -220,10 +220,10 @@ async function signUp(user) {
   try {
     for (let attempt = 0; attempt <= SIGNUP_THROTTLE_RETRY_DELAYS_MS.length; attempt += 1) {
       await page.goto(siteUrl + '/auth/sign-up', { waitUntil: 'networkidle' })
-      await page.getByLabel('Full name').fill(user.fullName)
-      await page.getByLabel('Email').fill(user.email)
-      await page.getByLabel('Password').fill(user.password)
-      await page.getByRole('button', { name: 'Create account' }).click()
+      await page.getByLabel('Full name', { exact: true }).fill(user.fullName)
+      await page.getByLabel('Email', { exact: true }).fill(user.email)
+      await page.getByLabel('Password', { exact: true }).fill(user.password)
+      await page.getByRole('button', { name: 'Create account', exact: true }).click()
 
       const authError = page.locator('p[role="alert"]')
       const authStatus = page.locator('p[role="status"]')
@@ -270,9 +270,9 @@ async function signUp(user) {
 
 async function signIn(page, user) {
   await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'networkidle' })
-  await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByLabel('Email', { exact: true }).fill(user.email)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await page.waitForURL((url) => url.pathname === '/onboarding', { timeout: 20_000 })
   await expect(page.getByRole('heading', { name: 'Set your course in the global shipping community.' })).toBeVisible()
 }

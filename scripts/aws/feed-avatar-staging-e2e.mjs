@@ -55,9 +55,9 @@ async function newSignedInPage(user) {
   contexts.push(context)
   const page = await context.newPage()
   await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'domcontentloaded' })
-  await page.getByLabel('Email').fill(user.email)
-  await page.getByLabel('Password').fill(user.password)
-  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.getByLabel('Email', { exact: true }).fill(user.email)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await page.waitForURL((url) => !url.pathname.startsWith('/auth/'), { timeout: 20_000 })
   return { context, page }
 }
