@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PUBLIC_SITE_URL="${PUBLIC_SITE_URL:-https://seanshore.in}"
-EXPECTED_COGNITO_ORIGIN="https://sea-n-shore-staging-310356785722.auth.ap-south-1.amazoncognito.com"
+EXPECTED_COGNITO_ORIGIN="https://auth.seanshore.in"
 EXPECTED_GOOGLE_ORIGIN="https://accounts.google.com"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT
@@ -55,6 +55,29 @@ for intent in sign-in sign-up; do
     exit 1
   }
   echo "GOOGLE_PROVIDER_REDIRECT_VERIFIED=$intent"
+
+  # Google answers an unregistered redirect_uri with a 400 or a redirect to /signin/oauth/error.
+  GOOGLE_HEADERS="$WORK_DIR/google-$intent.headers"
+  GOOGLE_STATUS="$(curl --silent --show-error --max-time 45 -D "$GOOGLE_HEADERS" -o "$WORK_DIR/google-$intent.body" -w '%{http_code}' "$COGNITO_LOCATION")"
+  GOOGLE_LOCATION="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$GOOGLE_HEADERS" | tail -n 1)"
+  if [[ ! "$GOOGLE_STATUS" =~ ^(200|30[1278])$ || "$GOOGLE_LOCATION" == *"/signin/oauth/error"* ]] || grep -q 'redirect_uri_mismatch' "$WORK_DIR/google-$intent.body"; then
+    echo "Google rejected the Cognito redirect URI for $intent (status $GOOGLE_STATUS)." >&2
+    exit 1
+  fi
+  echo "GOOGLE_REDIRECT_URI_ACCEPTED=$intent"
 done
+
+CLIENT_ID="$(grep -o 'client_id=[^&]*' <<<"$LOCATION" | head -n 1 | cut -d= -f2)"
+[[ "$CLIENT_ID" =~ ^[a-z0-9]+$ ]] || { echo "Could not read the Cognito client id from the Google start redirect." >&2; exit 1; }
+LOGOUT_HEADERS="$WORK_DIR/logout.headers"
+LOGOUT_STATUS="$(curl --silent --show-error --max-time 45 -D "$LOGOUT_HEADERS" -o /dev/null -w '%{http_code}' \
+  "$EXPECTED_COGNITO_ORIGIN/logout?client_id=$CLIENT_ID&logout_uri=https%3A%2F%2Fseanshore.in")"
+LOGOUT_LOCATION="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$LOGOUT_HEADERS" | tail -n 1)"
+[[ "$LOGOUT_STATUS" =~ ^30[1278]$ && "$LOGOUT_LOCATION" =~ ^https://seanshore\.in/?$ ]] || {
+  echo "Cognito sign-out did not return to the site (status $LOGOUT_STATUS)." >&2
+  echo "LOGOUT_LOCATION=$LOGOUT_LOCATION" >&2
+  exit 1
+}
+echo "COGNITO_SIGN_OUT_VERIFIED=true"
 
 echo "GOOGLE_AUTH_LIVE_VERIFIED=true"

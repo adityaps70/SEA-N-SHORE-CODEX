@@ -1,6 +1,6 @@
 # Branded Cognito hosted domain so Google's consent screen shows auth.seanshore.in instead of
-# the amazoncognito.com prefix. The prefix domain (aws_cognito_user_pool_domain.app) stays in
-# place: the running app keeps using it until AWS_COGNITO_DOMAIN is switched separately.
+# the amazoncognito.com prefix. AWS_COGNITO_DOMAIN points here; the prefix domain
+# (aws_cognito_user_pool_domain.app) stays in place for its already-registered redirect URI.
 locals {
   cognito_custom_auth_domain = "auth.seanshore.in"
 }
