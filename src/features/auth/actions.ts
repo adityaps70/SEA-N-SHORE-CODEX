@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { redirect as nextRedirect } from 'next/navigation'
 import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { createCognitoLogoutUrl } from '@/lib/auth/cognito-oauth'
+import { AFTER_SIGN_OUT_COOKIE, AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS } from '@/lib/auth/after-sign-out'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
 import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 import { createCognitoAuthActions } from './cognito-actions'
@@ -102,6 +103,22 @@ export async function updatePassword(state: AuthActionState, formData: FormData)
 }
 
 export async function signOut(): Promise<void> {
+  return handlers.signOut()
+}
+
+/**
+ * Onboarding's "Not you? Use a different email": signs out like `signOut`, then the proxy sends
+ * the site root (Cognito's only allowed logout return) on to sign-up.
+ */
+export async function signOutToSignUp(): Promise<void> {
+  const cookieStore = await cookies()
+  cookieStore.set(AFTER_SIGN_OUT_COOKIE, '/auth/sign-up', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: !getCognitoEnvironment().AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    path: '/',
+    maxAge: AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS,
+  })
   return handlers.signOut()
 }
 

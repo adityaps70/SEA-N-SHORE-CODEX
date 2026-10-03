@@ -50,3 +50,13 @@ describe('onboarding UI contract', () => {
     expect(form).toContain("persona === 'seafarer_family'")
   })
 })
+
+describe('onboarding sign-out (round 10)', () => {
+  it('lets a member who used the wrong email sign out and go back to sign-up', () => {
+    expect(page).toContain('action={signOutToSignUp}')
+    expect(page).toContain('Not you? Use a different email')
+    const actions = readFileSync('src/features/auth/actions.ts', 'utf8')
+    expect(actions).toContain("cookieStore.set(AFTER_SIGN_OUT_COOKIE, '/auth/sign-up'")
+    expect(readFileSync('src/proxy.ts', 'utf8')).toContain('afterSignOutRedirect(request)')
+  })
+})
