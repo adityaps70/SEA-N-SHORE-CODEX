@@ -55,7 +55,7 @@ describe('JobListRow (phones)', () => {
     expect(within(row).getByRole('link', { name: job.title })).toHaveAttribute('href', `/jobs/${job.id}`)
     expect(within(row).getByText('Star Sea Management')).toBeInTheDocument()
     expect(within(row).getByText('United Arab Emirates · Immediate joining')).toBeInTheDocument()
-    expect(row).toHaveTextContent('82% match·Easy Apply·3d')
+    expect(row).toHaveTextContent('Strong match · 82%·Easy Apply·3d')
     const bookmark = within(row).getByRole('button', { name: `Save ${job.title}` })
     expect(bookmark).toHaveAttribute('aria-pressed', 'true')
     expect(bookmark).toHaveAttribute('data-variant', 'icon')

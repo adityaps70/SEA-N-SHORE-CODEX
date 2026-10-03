@@ -312,6 +312,24 @@ describe('jobs hiring repository', () => {
     expect(seen[0]?.text).toContain('a.cv_storage_path')
   })
 
+  it('scores applicants with the same match the candidate sees, from their profile type and rank keys (round 12)', async () => {
+    const rows = [
+      { ...applicantRow, application_id: 'application-co', candidate_persona: 'seafarer', candidate_role_key: 'chief_officer', job_department_key: 'deck_officers', job_accepted_role_keys: ['master'] },
+      { ...applicantRow, application_id: 'application-enthusiast', candidate_persona: 'maritime_enthusiast', candidate_role_key: null, job_department_key: 'deck_officers', job_accepted_role_keys: ['master'] },
+      { ...applicantRow, application_id: 'application-master', candidate_persona: 'seafarer', candidate_role_key: 'master', job_department_key: 'deck_officers', job_accepted_role_keys: ['master'] },
+    ]
+    const repository = createHiringRepository({ query: async () => rows })
+
+    const applicants = await repository.listApplicants('user-1', 'job-1')
+    expect(applicants.map((applicant) => applicant.applicationId)).toEqual(['application-master', 'application-co', 'application-enthusiast'])
+    const byId = new Map(applicants.map((applicant) => [applicant.applicationId, applicant]))
+    expect(byId.get('application-co')!.match.score).toBeLessThanOrEqual(60)
+    expect(byId.get('application-co')!.candidate.rank).toBe('Chief Officer')
+    expect(byId.get('application-enthusiast')!.match.score).toBeNull()
+    expect(byId.get('application-master')!.match.score).toBe(100)
+    expect(byId.get('application-master')!.match.band).toBe('strong')
+  })
+
   it('loads authorized application review history and company-private recruiter notes', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createHiringRepository({

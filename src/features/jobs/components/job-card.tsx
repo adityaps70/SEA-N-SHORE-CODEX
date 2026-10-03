@@ -3,6 +3,7 @@ import { ArrowRight, BadgeCheck, CalendarClock, MapPin, Ship, WalletCards } from
 import { Card } from '@/components/ui/card'
 import { isApplyUntilOpen, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
+import { jobMatchDisplay } from '../match-display'
 import { ApplyJobButton } from './apply-job-button'
 import { JobCompanyLogo } from './job-company-identity'
 import { SaveJobButton } from './save-job-button'
@@ -40,6 +41,8 @@ export function JobCard({
   const salary = formatSalary(job)
   const acceptingApplications = isApplyUntilOpen(job.applyUntil, todayIsoDate())
   const joining = formatDate(job.joiningFrom, 'Joining')
+  // Round 12: no badge for no match or below 40%; banded labels from 40%.
+  const display = jobMatchDisplay(match)
   const strongestReason = match?.reasons[0] ?? null
   const warning = match?.missingRequirements[0] ?? match?.warnings[0] ?? null
   const chips = [job.rank, job.department, job.domain === 'sea' ? job.vesselTypes[0] : null]
@@ -128,16 +131,16 @@ export function JobCard({
 
       <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted">{job.summary}</p>
 
-      {match ? (
+      {display?.showInList ? (
         <div data-job-match className="mt-4 border-t border-mist-100 pt-3">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-bold text-ocean-700">Your match</span>
-            <span className="rounded-full bg-navy-950 px-2.5 py-1 text-xs font-black text-white">{match.score}%</span>
+            <span className="rounded-full bg-navy-950 px-2.5 py-1 text-xs font-black text-white">{display.text}</span>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-mist-100">
             <div
               className="h-full rounded-full bg-teal-400"
-              style={{ width: `${Math.max(0, Math.min(100, match.score))}%` }}
+              style={{ width: `${Math.max(0, Math.min(100, display.score))}%` }}
             />
           </div>
           {strongestReason ? (

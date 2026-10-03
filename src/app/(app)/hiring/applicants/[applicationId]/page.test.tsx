@@ -72,7 +72,7 @@ describe('applicant review page', () => {
     expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/hiring/jobs/job-1/applicants')
     expect(screen.getByRole('button', { name: 'More applicant actions' })).toBeInTheDocument()
     const chips = screen.getByLabelText('Applicant highlights')
-    expect(within(chips).getByText('88% match')).toBeInTheDocument()
+    expect(within(chips).getByText('Strong match · 88%')).toBeInTheDocument()
     expect(within(chips).getByRole('link', { name: 'CV (PDF)' })).toHaveAttribute('href', `/api/jobs/applications/${applicationId}/cv`)
     expect(within(chips).getByRole('link', { name: 'DG profile' })).toBeInTheDocument()
 

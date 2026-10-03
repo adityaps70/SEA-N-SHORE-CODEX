@@ -16,6 +16,7 @@ import { ReportJobButton } from '@/features/jobs/components/report-job-button'
 import { SaveJobButton } from '@/features/jobs/components/save-job-button'
 import { isApplyUntilOpen, todayIsoDate } from '@/features/jobs/job-lifecycle'
 import { getJobDetailState } from '@/features/jobs/queries'
+import { jobMatchDisplay } from '@/features/jobs/match-display'
 import { relativeTimeFrom } from '@/lib/relative-time'
 
 function formatDate(value: string | null) {
@@ -50,6 +51,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const postedAge = relativeTimeFrom(job.publishedAt ?? job.createdAt)
   const postedLabel = postedAge ? `Posted ${postedAge}${/^\d+[mhd]$/.test(postedAge) ? ' ago' : ''}` : null
   const metaChip = 'inline-flex items-center gap-1.5 max-md:rounded-full max-md:bg-mist-50 max-md:px-2.5 max-md:py-1 max-md:text-[13px] max-md:font-semibold max-md:text-navy-900'
+  // Round 12: null → no badge; below 40 the page says "Low match" and what is missing.
+  const display = jobMatchDisplay(match)
   const closedNotice = alreadyApplied
     ? null
     : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">Applications for this job closed on {formatDate(job.applyUntil)}.</p>
@@ -81,7 +84,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
           <p className="mt-6 text-lg leading-8 text-ink max-md:mt-4 max-md:text-[15px] max-md:leading-6">{job.summary}</p>
 
-          {match ? <div className="mt-5 md:hidden"><JobMatchRow match={match} /></div> : null}
+          {match && display ? <div className="mt-5 md:hidden"><JobMatchRow match={match} /></div> : null}
+          {match?.notice ? <p className="mt-5 rounded-xl bg-mist-50 px-4 py-3 text-sm text-muted" data-testid="job-match-notice">{match.notice}</p> : null}
 
           <div className="mt-6 grid gap-3 max-md:mt-5 max-md:grid-cols-2 max-md:gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {job.rank ? <div className="rounded-2xl bg-mist-50 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-muted">Rank / role</p><p className="mt-1 font-semibold text-navy-950">{job.rank}</p></div> : null}
@@ -92,15 +96,15 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             {job.recruiterVerified ? <div className="rounded-2xl bg-emerald-50 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">Recruiter</p><p className="mt-1 inline-flex items-center gap-1 font-semibold text-emerald-900"><BadgeCheck aria-hidden="true" className="size-4" />Verified recruiter</p></div> : null}
           </div>
 
-          {match ? (
+          {match && display ? (
             <section aria-labelledby="maritime-match-heading" className="mt-8 overflow-hidden max-md:hidden rounded-[1.5rem] border border-ocean-700/20 bg-mist-50">
-              <div className="flex items-center justify-between gap-4 bg-navy-950 px-5 py-4 text-white"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Sea N Shore intelligence</p><h2 id="maritime-match-heading" className="mt-1 text-xl font-semibold">Your Maritime Match</h2></div><div className="text-right"><p className="text-3xl font-bold">{match.score}%</p><p className="text-xs text-white/60">profile fit</p></div></div>
+              <div className="flex items-center justify-between gap-4 bg-navy-950 px-5 py-4 text-white"><div><p className="text-xs font-semibold uppercase tracking-[.14em] text-white/60">Sea N Shore intelligence</p><h2 id="maritime-match-heading" className="mt-1 text-xl font-semibold">Your Maritime Match</h2></div><div className="text-right">{display.band === 'low' ? <p className="text-2xl font-bold">Low match</p> : <><p className="text-3xl font-bold">{display.score}%</p><p className="text-xs text-white/60">{display.label}</p></>}</div></div>
               <div className="grid gap-5 p-5 md:grid-cols-2">
                 <div><h3 className="text-sm font-semibold text-navy-950">What matches</h3>{match.reasons.length ? <ul className="mt-3 space-y-2">{match.reasons.map((reason) => <li key={reason} className="flex items-start gap-2 text-sm leading-6 text-ink"><CheckCircle2 aria-hidden="true" className="mt-1 size-4 shrink-0 text-emerald-700" />{reason}</li>)}</ul> : <p className="mt-2 text-sm text-muted">Add more Maritime Passport details to improve match explanations.</p>}</div>
                 <div><h3 className="text-sm font-semibold text-navy-950">Check before applying</h3>{match.missingRequirements.length || match.warnings.length ? <ul className="mt-3 space-y-2">{[...match.missingRequirements, ...match.warnings].map((warning) => <li key={warning} className="flex items-start gap-2 text-sm leading-6 text-amber-900"><TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0" />{warning}</li>)}</ul> : <p className="mt-2 text-sm font-medium text-emerald-800">No major profile gaps detected.</p>}</div>
               </div>
             </section>
-          ) : !profileReady ? <div className="mt-8 rounded-2xl max-md:mt-5 border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">Complete your <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Maritime Passport</Link> to see an explainable fit score for this job.</div> : null}
+          ) : !profileReady && !match?.notice ? <div className="mt-8 rounded-2xl max-md:mt-5 border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">Complete your <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Maritime Passport</Link> to see an explainable fit score for this job.</div> : null}
 
           <div className="mt-8 grid gap-7 border-t border-mist-100 pt-7 max-md:mt-5 max-md:gap-5 max-md:pt-5">
             <section aria-labelledby="job-description-heading"><h2 id="job-description-heading" className="text-xl font-semibold text-navy-950 max-md:text-lg max-md:font-bold">About the role</h2><ClampedText text={job.description} className="mt-3 whitespace-pre-line text-sm leading-7 text-ink max-md:mt-2 max-md:text-[15px] max-md:leading-6" /></section>

@@ -2,6 +2,8 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { scoreJobMatch } from './matching'
+import { PERSONAS, type Persona } from '@/features/profiles/persona'
+import { jobDepartmentDisplay, jobRankDisplay, roleDisplayLabel } from '@/features/roles/taxonomy'
 import type { JobApplicationCvReference } from './application-media'
 import { validateApplicationStatusChange } from './application-status'
 import type { JobLifecycleSnapshot } from './job-lifecycle'
@@ -131,6 +133,15 @@ export type HiringApplicantCandidate = {
   location: string | null
   headline: string | null
   rank: string | null
+  /** Round 12: profile type and structured rank keys, for the same match the candidate sees. */
+  persona?: Persona | null
+  profileType?: string | null
+  roleKey?: string | null
+  roleOtherText?: string | null
+  cadetStageKey?: string | null
+  targetRoleKey?: string | null
+  occupationText?: string | null
+  experienceTitles?: string[]
   sailingExperienceYears: number | null
   vesselTypes: string[]
   tradingAreas: string[]
@@ -289,6 +300,14 @@ type ApplicantRow = QueryResultRow & {
   candidate_location: string | null
   headline: string | null
   candidate_rank: string | null
+  candidate_persona?: string | null
+  candidate_profile_type?: string | null
+  candidate_role_key?: string | null
+  candidate_role_other_text?: string | null
+  candidate_cadet_stage_key?: string | null
+  candidate_target_role_key?: string | null
+  candidate_occupation_text?: string | null
+  candidate_experience_titles?: string[] | null
   sailing_experience_years: string | number | null
   candidate_vessel_types: string[] | null
   trading_areas: string[] | null
@@ -317,6 +336,10 @@ type ApplicantRow = QueryResultRow & {
   job_domain: string | null
   department: string | null
   job_rank: string | null
+  job_department_key?: string | null
+  job_accepted_role_keys?: string[] | null
+  job_role_other_text?: string | null
+  job_min_match_to_apply?: string | number | null
   job_vessel_types: string[] | null
   experience_min_years: string | number | null
   experience_max_years: string | number | null
@@ -447,6 +470,18 @@ const APPLICANT_SELECT = `
     p.location as candidate_location,
     p.headline,
     mp.rank as candidate_rank,
+    p.persona as candidate_persona,
+    p.profile_type::text as candidate_profile_type,
+    p.role_key as candidate_role_key,
+    p.role_other_text as candidate_role_other_text,
+    p.cadet_stage_key as candidate_cadet_stage_key,
+    p.target_role_key as candidate_target_role_key,
+    p.occupation_text as candidate_occupation_text,
+    coalesce((
+      select array_agg(pe.title order by pe.sort_order, pe.title)
+      from public.profile_experiences pe
+      where pe.profile_id = p.id and pe.track in ('shore_role', 'other_maritime')
+    ), '{}'::text[]) as candidate_experience_titles,
     mp.sailing_experience_years,
     mp.vessel_types as candidate_vessel_types,
     mp.trading_areas,
@@ -502,6 +537,10 @@ const APPLICANT_SELECT = `
     j.job_domain,
     j.department,
     j.rank as job_rank,
+    j.department_key as job_department_key,
+    j.accepted_role_keys as job_accepted_role_keys,
+    j.role_other_text as job_role_other_text,
+    j.min_match_to_apply as job_min_match_to_apply,
     j.vessel_types as job_vessel_types,
     j.experience_min_years,
     j.experience_max_years,
@@ -679,7 +718,15 @@ function mapCandidate(row: ApplicantRow): HiringApplicantCandidate {
     avatarPath: accountActive ? row.avatar_path ?? null : null,
     location: row.candidate_location ?? null,
     headline: row.headline ?? null,
-    rank: row.candidate_rank ?? null,
+    rank: roleDisplayLabel({ roleKey: row.candidate_role_key, otherText: row.candidate_role_other_text, legacyText: row.candidate_rank }),
+    persona: PERSONAS.find((persona) => persona === row.candidate_persona) ?? null,
+    profileType: row.candidate_profile_type ?? null,
+    roleKey: row.candidate_role_key ?? null,
+    roleOtherText: row.candidate_role_other_text ?? null,
+    cadetStageKey: row.candidate_cadet_stage_key ?? null,
+    targetRoleKey: row.candidate_target_role_key ?? null,
+    occupationText: row.candidate_occupation_text ?? null,
+    experienceTitles: Array.isArray(row.candidate_experience_titles) ? row.candidate_experience_titles : [],
     sailingExperienceYears: numberOrNull(row.sailing_experience_years),
     vesselTypes: Array.isArray(row.candidate_vessel_types) ? row.candidate_vessel_types : [],
     tradingAreas: Array.isArray(row.trading_areas) ? row.trading_areas : [],
@@ -699,6 +746,15 @@ function mapCandidate(row: ApplicantRow): HiringApplicantCandidate {
 
 function candidateProfile(candidate: HiringApplicantCandidate): JobCandidateProfile {
   return {
+    persona: candidate.persona ?? null,
+    profileType: candidate.profileType ?? null,
+    roleKey: candidate.roleKey ?? null,
+    roleOtherText: candidate.roleOtherText ?? null,
+    cadetStageKey: candidate.cadetStageKey ?? null,
+    targetRoleKey: candidate.targetRoleKey ?? null,
+    headline: candidate.headline,
+    occupationText: candidate.occupationText ?? null,
+    experienceTitles: candidate.experienceTitles ?? [],
     rank: candidate.rank,
     sailingExperienceYears: candidate.sailingExperienceYears,
     vesselTypes: candidate.vesselTypes,
@@ -730,8 +786,12 @@ function mapApplicantJob(row: ApplicantRow): JobListing {
     createdAt: timestampValue(row.job_created_at),
     publishedAt: nullableTimestampValue(row.job_published_at),
     domain: jobDomain(row.job_domain),
-    department: row.department ?? null,
-    rank: row.job_rank ?? null,
+    department: jobDepartmentDisplay({ departmentKey: row.job_department_key, department: row.department }),
+    rank: jobRankDisplay({ acceptedRoleKeys: row.job_accepted_role_keys, roleOtherText: row.job_role_other_text, rank: row.job_rank }),
+    departmentKey: row.job_department_key ?? null,
+    acceptedRoleKeys: Array.isArray(row.job_accepted_role_keys) ? row.job_accepted_role_keys : [],
+    roleOtherText: row.job_role_other_text ?? null,
+    minMatchToApply: minMatchValue(row.job_min_match_to_apply),
     vesselTypes: Array.isArray(row.job_vessel_types) ? row.job_vessel_types : [],
     experienceMinYears: numberOrNull(row.experience_min_years),
     experienceMaxYears: numberOrNull(row.experience_max_years),
@@ -777,9 +837,9 @@ function cvReference(
   }
 }
 
-/** Best match first, then the most recent application. Dates are ISO strings at this point. */
+/** Best match first (no score last), then the most recent application. Dates are ISO strings at this point. */
 function compareApplicants(left: HiringApplicant, right: HiringApplicant) {
-  return right.match.score - left.match.score
+  return (right.match.score ?? -1) - (left.match.score ?? -1)
     || right.appliedAt.localeCompare(left.appliedAt)
     || left.applicationId.localeCompare(right.applicationId)
 }

@@ -4,6 +4,7 @@ import { planVisibleSql } from '@/features/billing/plan-visibility'
 import type { JobApplicationCvReference } from './application-media'
 import { APPLICANT_WITHDRAWABLE_STATUSES } from './application-status'
 import { jobDepartmentDisplay, jobRankDisplay, roleByKey, rolesFor } from '@/features/roles/taxonomy'
+import { PERSONAS } from '@/features/profiles/persona'
 import type {
   JobAlert,
   JobApplication,
@@ -84,6 +85,15 @@ type ApplicationRow = QueryResultRow & {
 }
 
 type CandidateRow = QueryResultRow & {
+  persona?: string | null
+  profile_type?: string | null
+  role_key?: string | null
+  role_other_text?: string | null
+  cadet_stage_key?: string | null
+  target_role_key?: string | null
+  headline?: string | null
+  occupation_text?: string | null
+  experience_titles?: string[] | null
   rank: string | null
   sailing_experience_years: string | number | null
   vessel_types: string[] | null
@@ -451,6 +461,19 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
   async function getCandidateProfile(profileId: string): Promise<JobCandidateProfile | null> {
     const rows = await queryRows(
       `select
+         p.persona,
+         p.profile_type::text as profile_type,
+         p.role_key,
+         p.role_other_text,
+         p.cadet_stage_key,
+         p.target_role_key,
+         p.headline,
+         p.occupation_text,
+         coalesce((
+           select array_agg(pe.title order by pe.sort_order, pe.title)
+           from public.profile_experiences pe
+           where pe.profile_id = p.id and pe.track in ('shore_role', 'other_maritime')
+         ), '{}'::text[]) as experience_titles,
          mp.rank,
          mp.sailing_experience_years,
          mp.vessel_types,
@@ -489,6 +512,15 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     const row = rows[0]
     if (!row) return null
     return {
+      persona: PERSONAS.find((persona) => persona === row.persona) ?? null,
+      profileType: row.profile_type ?? null,
+      roleKey: row.role_key ?? null,
+      roleOtherText: row.role_other_text ?? null,
+      cadetStageKey: row.cadet_stage_key ?? null,
+      targetRoleKey: row.target_role_key ?? null,
+      headline: row.headline ?? null,
+      occupationText: row.occupation_text ?? null,
+      experienceTitles: Array.isArray(row.experience_titles) ? row.experience_titles : [],
       rank: row.rank ?? null,
       sailingExperienceYears: numberOrNull(row.sailing_experience_years),
       vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],

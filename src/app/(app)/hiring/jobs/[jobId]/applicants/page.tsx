@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { jobMatchDisplay } from '@/features/jobs/match-display'
 import { notFound } from 'next/navigation'
 import { FileText, MessageSquareText } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
@@ -137,6 +138,7 @@ export default async function HiringApplicantsPage({
         {applicants.map((applicant) => {
           const candidate = applicant.candidate
           const profileHref = candidate.slug ? `/people/${candidate.slug}` : null
+          const display = jobMatchDisplay(applicant.match)
           return (
             <article key={applicant.applicationId} className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:rounded-2xl max-md:p-4 max-md:shadow-none sm:p-6">
               <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -150,7 +152,7 @@ export default async function HiringApplicantsPage({
                       <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${HIRING_APPLICATION_STATUS_BADGES[applicant.status]}`}>
                         {HIRING_APPLICATION_STATUS_LABELS[applicant.status]}
                       </span>
-                      {applicant.match.score >= 80 ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">Strong Match</span> : null}
+                      {display?.band === 'strong' ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">Strong match</span> : null}
                     </div>
                     {candidate.headline ? <p className="mt-1 text-sm text-muted">{candidate.headline}</p> : null}
                     {!candidate.accountActive ? <p className="mt-1 text-sm font-semibold text-amber-900">This member’s account is no longer active. Their application is kept for your records.</p> : null}
@@ -191,7 +193,15 @@ export default async function HiringApplicantsPage({
                 <div className="flex items-center justify-between gap-4 max-md:border-t max-md:border-mist-100 max-md:pt-3 lg:flex-col lg:items-end">
                   <div className="text-left lg:text-right">
                     <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted">Match</p>
-                    <p className="mt-1 text-3xl font-black text-navy-950 max-md:mt-0 max-md:text-2xl">{applicant.match.score}%</p>
+                    {/* Round 12: the same numbers and labels the candidate sees. */}
+                    {display && display.band !== 'low' ? (
+                      <>
+                        <p className="mt-1 text-3xl font-black text-navy-950 max-md:mt-0 max-md:text-2xl">{display.score}%</p>
+                        <p className="text-xs font-semibold text-muted">{display.label}</p>
+                      </>
+                    ) : (
+                      <p className="mt-1 text-lg font-black text-navy-950 max-md:mt-0">{display ? display.label : 'Not scored'}</p>
+                    )}
                   </div>
                   <Link href={`/hiring/applicants/${applicant.applicationId}`} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-900">
                     Review application
