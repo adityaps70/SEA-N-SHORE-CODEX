@@ -9,28 +9,25 @@ import {
   Pencil,
   Plus,
   Ship,
-  Trash2,
-  X,
 } from 'lucide-react'
+import type { Persona } from '../persona'
 import {
   createProfileExperience,
   deleteProfileExperience,
   updateProfileExperience,
   type ProfilePortfolioActionState,
 } from '../profile-portfolio-actions'
+import {
+  defaultExperienceTrackForPersona,
+  EXPERIENCE_TRACK_LABELS,
+  experienceTracksForPersona,
+} from '../profile-persona-rules'
 import type { ProfileExperienceRecord, ProfileExperienceTrack } from '../profile-portfolio-types'
-import { PHONE_ICON_ADD_BUTTON_CLASS, ProfileSection, ProfileSectionEditButton } from './profile-section'
+import { ProfileCardFieldError, ProfileCardForm, profileCardLabelClass, useProfileCardEditor } from './profile-card-editing'
+import { PHONE_ICON_ADD_BUTTON_CLASS, ProfileSection } from './profile-section'
 import { PhoneShowAll } from './profile-show-all'
 
 const initialActionState: ProfilePortfolioActionState = {}
-
-
-const trackLabels: Record<ProfileExperienceTrack, string> = {
-  sea_service: 'Sea service',
-  shore_role: 'Shore role',
-  training: 'Training / education',
-  other_maritime: 'Other maritime role',
-}
 
 function monthYear(value: string | null) {
   if (!value) return null
@@ -47,19 +44,44 @@ function periodLabel(record: ProfileExperienceRecord) {
   return start ?? end ?? null
 }
 
-function FieldError({ state, name }: { state: ProfilePortfolioActionState; name: string }) {
-  const message = state.fieldErrors?.[name]?.[0]
-  return message ? <p className="mt-1 text-xs font-medium text-red-700">{message}</p> : null
+/** Field labels follow the experience type (round 11). */
+function trackFieldLabels(track: ProfileExperienceTrack) {
+  if (track === 'sea_service') {
+    return { title: 'Rank / role', organization: 'Company / ship manager', current: 'I currently hold this role' }
+  }
+  if (track === 'training') {
+    return { title: 'Course / programme', organization: 'Institute', current: 'I am still on this course' }
+  }
+  return { title: 'Job title', organization: 'Organization', current: 'I work here now' }
 }
 
+const itemPencilClass = 'grid size-9 shrink-0 place-items-center rounded-full border border-mist-200 text-muted transition-colors hover:border-ocean-400 hover:text-ocean-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-600 max-md:size-11 max-md:border-transparent'
+
+/**
+ * One experience item's in-place form (add or edit). Editing an item also offers Delete, confirmed
+ * in place. Sea service, with its vessel fields, is offered to seafarers and cadets, and kept for
+ * a record that already is sea service, so nothing saved is hidden.
+ */
 function ExperienceEditor({
+  cardId,
   record,
+  persona,
   onClose,
+  onDirty,
 }: {
+  cardId: string
   record?: ProfileExperienceRecord
+  persona: Persona | null
   onClose: () => void
+  onDirty: () => void
 }) {
-  const [track, setTrack] = useState<ProfileExperienceTrack>(record?.track ?? 'sea_service')
+  const tracks: ProfileExperienceTrack[] = persona
+    ? experienceTracksForPersona(persona, record?.track)
+    : ['sea_service', 'shore_role', 'training', 'other_maritime']
+  const [track, setTrack] = useState<ProfileExperienceTrack>(record?.track ?? (persona ? defaultExperienceTrackForPersona(persona) : 'sea_service'))
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, startDelete] = useTransition()
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   async function submit(previousState: ProfilePortfolioActionState, formData: FormData) {
     const nextState = record
@@ -70,45 +92,70 @@ function ExperienceEditor({
     return nextState
   }
 
+  function remove() {
+    if (!record) return
+    setDeleteError(null)
+    startDelete(async () => {
+      const result = await deleteProfileExperience(record.id)
+      if (result.success) onClose()
+      else setDeleteError(result.error ?? 'We could not delete this experience.')
+    })
+  }
+
   const [state, formAction, pending] = useActionState(submit, initialActionState)
+  const busy = pending || deleting
   const seaService = track === 'sea_service'
+  const labels = trackFieldLabels(track)
+  // Training shows course, institute, dates and description; a location saved earlier stays editable.
+  const showLocation = !seaService && (track !== 'training' || Boolean(record?.location))
   const inputClass = 'mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none transition focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100'
-  const labelClass = 'block text-sm font-semibold text-navy-950'
+  const labelClass = profileCardLabelClass
+  const errors = state.fieldErrors
 
   return (
-    <form action={formAction} className="mt-5 rounded-2xl border border-ocean-100 bg-ocean-50/35 p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[.13em] text-ocean-700">{record ? 'Edit experience' : 'Add experience'}</p>
-          <p className="mt-1 text-sm leading-5 text-muted">The fields change to match sea service, shore work and training roles.</p>
-        </div>
-        <button type="button" onClick={onClose} aria-label="Close experience editor" className="grid size-9 shrink-0 place-items-center rounded-full border border-mist-200 bg-white text-muted hover:text-navy-950">
-          <X aria-hidden="true" className="size-4" />
+    <ProfileCardForm
+      cardId={cardId}
+      label={record ? `Edit ${record.title}` : 'Add experience'}
+      action={formAction}
+      pending={busy}
+      onCancel={onClose}
+      onDirty={onDirty}
+      error={state.error ?? deleteError}
+      submitLabel={record ? 'Save experience' : 'Add experience'}
+      className="mt-5 rounded-2xl border border-ocean-100 bg-ocean-50/35 p-4 sm:p-5"
+      footerStart={record && !confirmingDelete ? (
+        <button
+          type="button"
+          onClick={() => setConfirmingDelete(true)}
+          disabled={busy}
+          aria-label={`Delete ${record.title}`}
+          className="min-h-10 rounded-xl px-3 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:opacity-60"
+        >
+          Delete
         </button>
-      </div>
+      ) : null}
+    >
+      <p className="text-xs font-semibold uppercase tracking-[.13em] text-ocean-700">{record ? 'Edit experience' : 'Add experience'}</p>
 
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <label className={labelClass}>
           Experience type
           <select name="track" value={track} onChange={(event) => setTrack(event.target.value as ProfileExperienceTrack)} className={inputClass}>
-            <option value="sea_service">Sea service</option>
-            <option value="shore_role">Shore role</option>
-            <option value="training">Training / education</option>
-            <option value="other_maritime">Other maritime role</option>
+            {tracks.map((entry) => <option key={entry} value={entry}>{EXPERIENCE_TRACK_LABELS[entry]}</option>)}
           </select>
-          <FieldError state={state} name="track" />
+          <ProfileCardFieldError fieldErrors={errors} name="track" />
         </label>
 
         <label className={labelClass}>
-          {seaService ? 'Rank / role' : 'Job title / role'}
+          {labels.title}
           <input name="title" maxLength={160} defaultValue={record?.title ?? ''} className={inputClass} />
-          <FieldError state={state} name="title" />
+          <ProfileCardFieldError fieldErrors={errors} name="title" />
         </label>
 
         <label className={labelClass}>
-          {seaService ? 'Company / ship manager' : 'Organisation / company'}
+          {labels.organization}
           <input name="organization" maxLength={180} defaultValue={record?.organization ?? ''} className={inputClass} />
-          <FieldError state={state} name="organization" />
+          <ProfileCardFieldError fieldErrors={errors} name="organization" />
         </label>
 
         {seaService ? (
@@ -116,36 +163,36 @@ function ExperienceEditor({
             <label className={labelClass}>
               Vessel
               <input name="vessel" maxLength={160} defaultValue={record?.vessel ?? ''} className={inputClass} />
-              <FieldError state={state} name="vessel" />
+              <ProfileCardFieldError fieldErrors={errors} name="vessel" />
             </label>
             <label className={labelClass}>
               Vessel type
               <input name="vesselType" maxLength={120} defaultValue={record?.vesselType ?? ''} className={inputClass} placeholder="Oil tanker, LNG, bulk carrier…" />
-              <FieldError state={state} name="vesselType" />
+              <ProfileCardFieldError fieldErrors={errors} name="vesselType" />
             </label>
           </>
-        ) : (
+        ) : showLocation ? (
           <label className={labelClass}>
             Location
             <input name="location" maxLength={160} defaultValue={record?.location ?? ''} className={inputClass} />
-            <FieldError state={state} name="location" />
+            <ProfileCardFieldError fieldErrors={errors} name="location" />
           </label>
-        )}
+        ) : null}
 
         <label className={labelClass}>
           Start date
           <input name="startedOn" type="date" defaultValue={record?.startedOn ?? ''} className={inputClass} />
-          <FieldError state={state} name="startedOn" />
+          <ProfileCardFieldError fieldErrors={errors} name="startedOn" />
         </label>
         <label className={labelClass}>
           End date
           <input name="endedOn" type="date" defaultValue={record?.endedOn ?? ''} className={inputClass} />
-          <FieldError state={state} name="endedOn" />
+          <ProfileCardFieldError fieldErrors={errors} name="endedOn" />
         </label>
 
         <label className="flex min-h-11 items-center gap-3 self-end rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950">
           <input name="isCurrent" type="checkbox" defaultChecked={record?.isCurrent ?? false} />
-          I currently hold this role
+          {labels.current}
         </label>
 
         {seaService ? (
@@ -153,17 +200,17 @@ function ExperienceEditor({
             <label className={labelClass}>
               Cargo experience
               <input name="cargoExperience" maxLength={2400} defaultValue={record?.cargoExperience.join(', ') ?? ''} className={inputClass} placeholder="Crude oil, CPP, chemicals…" />
-              <FieldError state={state} name="cargoExperience" />
+              <ProfileCardFieldError fieldErrors={errors} name="cargoExperience" />
             </label>
             <label className={labelClass}>
               Engine experience
               <input name="engineExperience" maxLength={2400} defaultValue={record?.engineExperience.join(', ') ?? ''} className={inputClass} placeholder="MAN B&W, Wärtsilä, Sulzer…" />
-              <FieldError state={state} name="engineExperience" />
+              <ProfileCardFieldError fieldErrors={errors} name="engineExperience" />
             </label>
             <label className={labelClass}>
               Trading areas
               <input name="tradingAreas" maxLength={2400} defaultValue={record?.tradingAreas.join(', ') ?? ''} className={inputClass} placeholder="Worldwide, Arabian Gulf, Europe…" />
-              <FieldError state={state} name="tradingAreas" />
+              <ProfileCardFieldError fieldErrors={errors} name="tradingAreas" />
             </label>
           </>
         ) : null}
@@ -172,44 +219,55 @@ function ExperienceEditor({
       <label className={`${labelClass} mt-4`}>
         Description
         <textarea name="description" maxLength={4000} rows={4} defaultValue={record?.description ?? ''} className={`${inputClass} py-3`} />
-        <FieldError state={state} name="description" />
+        <ProfileCardFieldError fieldErrors={errors} name="description" />
       </label>
 
-      {state.error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
-
-      <div className="mt-4 flex flex-wrap justify-end gap-2">
-        <button type="button" onClick={onClose} className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Cancel</button>
-        <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">
-          {pending ? 'Saving…' : record ? 'Save experience' : 'Add experience'}
-        </button>
-      </div>
-    </form>
+      {record && confirmingDelete ? (
+        <div
+          role="group"
+          aria-label={`Confirm deleting ${record.title}`}
+          className="mt-4 rounded-xl border border-red-100 bg-red-50 p-3"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setConfirmingDelete(false)
+            }
+          }}
+        >
+          <p className="text-sm text-red-800">Delete this experience from your profile?</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button type="button" onClick={remove} disabled={busy} className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-semibold text-white transition-colors hover:bg-red-800 disabled:opacity-60">
+              {deleting ? 'Deleting…' : 'Delete experience'}
+            </button>
+            <button type="button" autoFocus onClick={() => setConfirmingDelete(false)} disabled={busy} className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300">
+              Keep it
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </ProfileCardForm>
   )
 }
 
 function ExperienceEntry({
   record,
   editable,
-  phoneEditing = false,
-  onEdit,
+  persona,
 }: {
   record: ProfileExperienceRecord
   editable: boolean
-  /** Phones hide the per-entry edit/delete buttons until the section pencil is on. */
-  phoneEditing?: boolean
-  onEdit: () => void
+  persona: Persona | null
 }) {
-  const [deleting, startDelete] = useTransition()
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const editor = useProfileCardEditor(`experience:${record.id}`, record.title)
   const period = periodLabel(record)
   const seaService = record.track === 'sea_service'
 
-  function remove() {
-    setDeleteError(null)
-    startDelete(async () => {
-      const result = await deleteProfileExperience(record.id)
-      if (!result.success) setDeleteError(result.error ?? 'We could not delete this experience.')
-    })
+  if (editable && editor.editing) {
+    return (
+      <div className="pl-0 sm:pl-2">
+        <ExperienceEditor cardId={`experience:${record.id}`} record={record} persona={persona} onClose={editor.close} onDirty={editor.markDirty} />
+      </div>
+    )
   }
 
   return (
@@ -219,7 +277,7 @@ function ExperienceEntry({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full bg-ocean-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.1em] text-ocean-700">{trackLabels[record.track]}</span>
+              <span className="rounded-full bg-ocean-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[.1em] text-ocean-700">{EXPERIENCE_TRACK_LABELS[record.track]}</span>
               {record.isCurrent ? <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-800">Current</span> : null}
             </div>
             <h3 className="mt-2 text-base font-semibold text-navy-950">{record.title}</h3>
@@ -237,14 +295,9 @@ function ExperienceEntry({
           </div>
 
           {editable ? (
-            <div className={`flex shrink-0 gap-1 ${phoneEditing ? '' : 'max-md:hidden'}`}>
-              <button type="button" onClick={onEdit} aria-label={`Edit ${record.title}`} className="grid size-9 place-items-center rounded-full border border-mist-200 text-muted hover:border-ocean-400 hover:text-ocean-700">
-                <Pencil aria-hidden="true" className="size-4" />
-              </button>
-              <button type="button" onClick={remove} disabled={deleting} aria-label={`Delete ${record.title}`} className="grid size-9 place-items-center rounded-full border border-mist-200 text-muted hover:border-red-200 hover:text-red-700 disabled:opacity-50">
-                <Trash2 aria-hidden="true" className="size-4" />
-              </button>
-            </div>
+            <button ref={editor.triggerRef} type="button" onClick={editor.open} aria-label={`Edit ${record.title}`} className={itemPencilClass}>
+              <Pencil aria-hidden="true" className="size-4" />
+            </button>
           ) : null}
         </div>
 
@@ -258,7 +311,6 @@ function ExperienceEntry({
         ) : null}
 
         {record.description ? <p className="mt-4 whitespace-pre-line text-sm leading-6 text-ink">{record.description}</p> : null}
-        {deleteError ? <p role="alert" className="mt-3 text-sm font-medium text-red-700">{deleteError}</p> : null}
       </div>
     </article>
   )
@@ -267,13 +319,15 @@ function ExperienceEntry({
 export function ProfileCareerTimeline({
   experiences,
   editable = false,
+  persona = null,
 }: {
   experiences: ProfileExperienceRecord[]
   editable?: boolean
+  /** The owner's profile type: picks the default experience type and whether sea service is offered. */
+  persona?: Persona | null
 }) {
-  const [adding, setAdding] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [phoneEditing, setPhoneEditing] = useState(false)
+  const adder = useProfileCardEditor('experience:new', 'Add experience')
+  const adding = editable && adder.editing
 
   if (!editable && experiences.length === 0) return null
 
@@ -282,23 +336,13 @@ export function ProfileCareerTimeline({
       id="profile-experience"
       title="Experience"
       action={editable && !adding ? (
-        <>
-          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add experience">
-            <Plus aria-hidden="true" className="size-4 max-md:size-5" />
-            <span className="max-md:sr-only">Add experience</span>
-          </button>
-          {experiences.length ? (
-            <ProfileSectionEditButton
-              label="Edit experience entries"
-              pressed={phoneEditing}
-              onClick={() => setPhoneEditing((value) => !value)}
-              className="md:hidden"
-            />
-          ) : null}
-        </>
+        <button ref={adder.triggerRef} type="button" onClick={adder.open} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add experience">
+          <Plus aria-hidden="true" className="size-4 max-md:size-5" />
+          <span className="max-md:sr-only">Add experience</span>
+        </button>
       ) : null}
     >
-      {adding ? <ExperienceEditor onClose={() => setAdding(false)} /> : null}
+      {adding ? <ExperienceEditor cardId="experience:new" persona={persona} onClose={adder.close} onDirty={adder.markDirty} /> : null}
 
       {experiences.length ? (
         <PhoneShowAll
@@ -306,21 +350,19 @@ export function ProfileCareerTimeline({
           className="relative mt-6 space-y-4 before:absolute before:bottom-6 before:left-3 before:top-2 before:w-px before:bg-mist-100 max-md:mt-4 max-md:space-y-5 max-md:before:hidden"
         >
           {experiences.map((record) => (
-            editingId === record.id ? (
-              <div key={record.id} className="pl-0 sm:pl-2">
-                <ExperienceEditor record={record} onClose={() => setEditingId(null)} />
-              </div>
-            ) : (
-              <ExperienceEntry key={record.id} record={record} editable={editable} phoneEditing={phoneEditing} onEdit={() => { setEditingId(record.id); setAdding(false) }} />
-            )
+            <ExperienceEntry key={record.id} record={record} editable={editable} persona={persona} />
           ))}
         </PhoneShowAll>
       ) : editable && !adding ? (
         <div className="mt-6 rounded-2xl border border-dashed border-mist-100 bg-mist-50/50 p-6 text-center">
           <Briefcase aria-hidden="true" className="mx-auto size-7 text-ocean-600" />
           <p className="mt-2 text-sm font-semibold text-navy-950">Build your career timeline</p>
-          <p className="mt-1 text-sm text-muted">Add sea service, shore positions, training roles and other maritime experience.</p>
-          <button type="button" onClick={() => { setAdding(true); setEditingId(null) }} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
+          <p className="mt-1 text-sm text-muted">
+            {persona && persona !== 'seafarer' && persona !== 'student_cadet'
+              ? 'Add the jobs, roles and training that tell people what you do.'
+              : 'Add sea service, shore positions, training roles and other maritime experience.'}
+          </p>
+          <button type="button" onClick={adder.open} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
             <Plus aria-hidden="true" className="size-4" />
             Add your first experience
           </button>
