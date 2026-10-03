@@ -337,6 +337,27 @@ jobs:
             esac
           done
           echo 'ONBOARDING_E2E_ADMIN_CONFIRM_VERIFIED=true'
+          # Once Cognito email goes through the Resend sender, every disposable sign-up must have
+          # been decrypted by it (it never emails reserved @example.com addresses) with no failures.
+          SENDER_FN=sea-n-shore-staging-cognito-resend-email-sender
+          SENDER_ARN=$(aws cognito-idp describe-user-pool --region \"$AWS_REGION\" --user-pool-id \"$POOL_ID\" --query 'UserPool.LambdaConfig.CustomEmailSender.LambdaArn' --output text)
+          if [[ \"$SENDER_ARN\" == *\":function:$SENDER_FN\" ]]; then
+            START_MS=$(( $(date +%s) - 1200 ))000
+            EXPECTED={len(emails)}
+            SKIPS=0
+            for attempt in $(seq 1 24); do
+              SKIPS=$(aws logs filter-log-events --region \"$AWS_REGION\" --log-group-name /aws/lambda/$SENDER_FN --start-time \"$START_MS\" --filter-pattern '\"reserved_recipient\"' --query 'length(events)' --output text)
+              [[ \"$SKIPS\" -ge \"$EXPECTED\" ]] && break
+              sleep 5
+            done
+            FAILURES=$(aws logs filter-log-events --region \"$AWS_REGION\" --log-group-name /aws/lambda/$SENDER_FN --start-time \"$START_MS\" --filter-pattern '?\"decrypt_failed\" ?\"send_failed\" ?\"no_recipient\"' --query 'length(events)' --output text)
+            echo \"ONBOARDING_E2E_RESEND_SENDER_DECRYPTED=$SKIPS\"
+            echo \"ONBOARDING_E2E_RESEND_SENDER_FAILURES=$FAILURES\"
+            [[ \"$SKIPS\" -ge \"$EXPECTED\" && \"$FAILURES\" == 0 ]]
+            echo 'ONBOARDING_E2E_RESEND_SENDER_VERIFIED=true'
+          else
+            echo 'ONBOARDING_E2E_RESEND_SENDER_VERIFIED=not-enabled'
+          fi
           """
           print(json.dumps({"executionTimeout": ["300"], "commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
           PYTHON
@@ -365,6 +386,7 @@ jobs:
           fi
           [[ "$(jq -r '.Status' /tmp/onboarding-e2e-confirm-result.json)" == Success ]]
           jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-confirm-result.json | grep -q '^ONBOARDING_E2E_ADMIN_CONFIRM_VERIFIED=true$'
+          jq -r '.StandardOutputContent // empty' /tmp/onboarding-e2e-confirm-result.json | grep -Eq '^ONBOARDING_E2E_RESEND_SENDER_VERIFIED=(true|not-enabled)$'
 
       - name: Run staging sign-in and onboarding browser journeys
         id: journeys

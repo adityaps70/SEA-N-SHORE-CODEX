@@ -120,7 +120,7 @@ describe('Cognito custom email sender: Resend delivery', () => {
       request: {
         type: 'customEmailSenderRequestV1',
         code: item.message,
-        userAttributes: { email: ' Member@Example.com ', email_verified: 'false' },
+        userAttributes: { email: ' Member@Mariners.in ', email_verified: 'false' },
       },
     }
   }
@@ -148,7 +148,7 @@ describe('Cognito custom email sender: Resend delivery', () => {
     const body = JSON.parse(String(init.body))
     expect(body).toMatchObject({
       from: 'Sea N Shore <accounts@mail.seanshore.in>',
-      to: ['member@example.com'],
+      to: ['member@mariners.in'],
       subject: 'Your Sea N Shore confirmation code',
     })
     expect(body.text).toContain('Your code: 482913')
@@ -186,7 +186,7 @@ describe('Cognito custom email sender: Resend delivery', () => {
     const joined = deps.logs.join('\n')
     expect(joined).toContain('"outcome":"sent"')
     expect(joined).not.toContain('482913')
-    expect(joined.toLowerCase()).not.toContain('member@example.com')
+    expect(joined.toLowerCase()).not.toContain('member@mariners.in')
   })
 
   it('accepts a plain API key secret', async () => {
@@ -229,6 +229,31 @@ describe('Cognito custom email sender: Resend delivery', () => {
     noEmail.request.userAttributes.email = 'not an email'
     await expect(createHandler({ environment, ...deps })(noEmail)).rejects.toThrow('cognito_email_recipient_missing')
     expect(deps.fetch).not.toHaveBeenCalled()
+  })
+
+  it('decrypts but never sends to reserved test domains such as the E2E @example.com users', async () => {
+    const { createHandler, isReservedRecipient } = await load()
+    const deps = setup()
+    const reserved = event()
+    reserved.request.userAttributes.email = 'sea-n-shore-e2e-1-seafarer@example.com'
+    await expect(createHandler({ environment, ...deps })(reserved)).resolves.toBeUndefined()
+    expect(deps.kms.decrypt).toHaveBeenCalledTimes(1)
+    expect(deps.fetch).not.toHaveBeenCalled()
+    expect(deps.secrets.getSecretValue).not.toHaveBeenCalled()
+    expect(deps.logs.join('\n')).toContain('"outcome":"reserved_recipient"')
+    expect(deps.logs.join('\n')).not.toContain('example.com')
+
+    // A bad code to a reserved address still fails, so the E2E evidence proves real decryption.
+    const bad = event('CustomEmailSender_SignUp', { ...fixture(SIGNED_V1), message: tampered(fixture(SIGNED_V1).message, (b) => { b[b.length - 3] ^= 1 }) })
+    bad.request.userAttributes.email = 'sea-n-shore-e2e-1-seafarer@example.com'
+    await expect(createHandler({ environment, ...deps })(bad)).rejects.toThrow('cognito_email_decrypt_failed')
+
+    for (const address of ['a@example.com', 'a@mail.example.org', 'a@example.net', 'a@host.test', 'a@x.invalid', 'a@localhost', 'a@site.example']) {
+      expect(isReservedRecipient(address), address).toBe(true)
+    }
+    for (const address of ['a@gmail.com', 'a@seanshore.in', 'a@notexample.com', 'a@example.com.au']) {
+      expect(isReservedRecipient(address), address).toBe(false)
+    }
   })
 
   it('skips account-takeover notices without sending', async () => {

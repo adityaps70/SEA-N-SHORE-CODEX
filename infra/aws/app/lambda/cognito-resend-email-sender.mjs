@@ -399,6 +399,18 @@ export function accountEmail(triggerSource, secret, siteUrl = DEFAULT_SITE_URL) 
   return { subject: template.subject, text, html }
 }
 
+// RFC 2606 / 6761 reserved names can never receive mail; sending there only bounces and hurts
+// the Resend sender reputation (the staging E2E signs up disposable @example.com users).
+const RESERVED_DOMAINS = new Set(['example.com', 'example.net', 'example.org'])
+const RESERVED_TLDS = new Set(['test', 'example', 'invalid', 'localhost'])
+
+export function isReservedRecipient(email) {
+  const domain = clean(email).toLowerCase().split('@').pop() ?? ''
+  const labels = domain.split('.')
+  if (RESERVED_TLDS.has(labels.at(-1))) return true
+  return [...RESERVED_DOMAINS].some((reserved) => domain === reserved || domain.endsWith('.' + reserved))
+}
+
 function recipient(event) {
   const email = clean(event?.request?.userAttributes?.email).toLowerCase()
   return /^[^\s@"<>]+@[^\s@"<>]+\.[^\s@"<>]+$/.test(email) ? email : null
@@ -453,6 +465,11 @@ export function createHandler(input = {}) {
       throw new Error('cognito_email_decrypt_failed')
     }
     if (!secret) throw new Error('cognito_email_secret_empty')
+    if (isReservedRecipient(to)) {
+      // Decrypted successfully (which the staging E2E checks for) but nothing to deliver.
+      log({ outcome: 'reserved_recipient', triggerSource })
+      return
+    }
 
     const email = accountEmail(triggerSource, secret, environment.SITE_URL)
     // Cognito retries a failed invocation; the same encrypted code must not send twice.
