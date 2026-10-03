@@ -43,7 +43,7 @@ SECRET_ARN="$(jq -r '.DBClusters[0].MasterUserSecret.SecretArn // empty' <<<"$CL
 
 read_profile() {
   local EMAIL="$1"
-  local SQL="SELECT coalesce(p.persona,''), coalesce(array_to_string(p.profile_intents,','),''), coalesce(p.profile_type::text,''), coalesce(p.headline,''), coalesce(p.specialization,''), coalesce(p.institution_name,''), coalesce(p.community_relationship,''), coalesce(mp.current_company,''), coalesce(mp.rank,''), CASE WHEN mp.user_id IS NULL THEN 'true' ELSE 'false' END, CASE WHEN p.onboarding_completed_at IS NOT NULL THEN 'true' ELSE 'false' END FROM public.identity_accounts ia JOIN public.profiles p ON p.id=ia.profile_id LEFT JOIN public.maritime_profiles mp ON mp.user_id=p.id WHERE ia.provider='cognito' AND ia.email='$EMAIL'"
+  local SQL="SELECT coalesce(p.persona,''), coalesce(array_to_string(p.profile_intents,','),''), coalesce(p.profile_type::text,''), coalesce(p.headline,''), coalesce(p.specialization,''), coalesce(p.institution_name,''), coalesce(p.community_relationship,''), coalesce(mp.current_company,''), coalesce(mp.rank,''), CASE WHEN mp.user_id IS NULL THEN 'true' ELSE 'false' END, CASE WHEN p.onboarding_completed_at IS NOT NULL THEN 'true' ELSE 'false' END, coalesce(p.role_department_key,''), coalesce(p.role_key,''), coalesce(p.cadet_stage_key,''), coalesce(p.target_department_key,''), coalesce(p.target_role_key,''), coalesce(p.occupation_text,'') FROM public.identity_accounts ia JOIN public.profiles p ON p.id=ia.profile_id LEFT JOIN public.maritime_profiles mp ON mp.user_id=p.id WHERE ia.provider='cognito' AND ia.email='$EMAIL'"
   aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$SQL" --output json | jq -r '.records[0] | map(.stringValue // "") | @tsv'
 }
 
@@ -56,13 +56,14 @@ FAMILY_ROW="$(read_profile "${EMAILS[family]}")"
 ENTHUSIAST_ROW="$(read_profile "${EMAILS[enthusiast]}")"
 OTHER_ROW="$(read_profile "${EMAILS[other]}")"
 
-[[ "$SEAFARER_ROW" == $'seafarer\tfind_jobs\tseafarer\tChief Engineer\t\t\t\tE2E Shipping\tChief Engineer\tfalse\ttrue' ]]
-[[ "$SHORE_ROW" == $'shore_professional\tnetwork\tmaritime_professional\tMarine Superintendent\t\t\t\tE2E Shore\t\tfalse\ttrue' ]]
-[[ "$RECRUITER_ROW" == $'recruiter_hr\thire\trecruiter\tCrewing Manager\t\t\t\tE2E Manning\t\tfalse\ttrue' ]]
-[[ "$TRAINER_ROW" == $'trainer_instructor\tteach\ttrainer\tSIRE 2.0\tSIRE 2.0\t\t\tE2E Academy\t\tfalse\ttrue' ]]
-[[ "$STUDENT_ROW" == $'student_cadet\tlearn\tmaritime_professional\tStudent / Cadet\t\tE2E Maritime Institute\t\t\t\ttrue\ttrue' ]]
-[[ "$FAMILY_ROW" == $'seafarer_family\tcommunity\tmaritime_professional\tSeafarer Family\t\t\tSpouse / partner\t\t\ttrue\ttrue' ]]
-[[ "$ENTHUSIAST_ROW" == $'maritime_enthusiast\tattend_events\tmaritime_professional\tMaritime Enthusiast\t\t\t\t\t\ttrue\ttrue' ]]
-[[ "$OTHER_ROW" == $'other\thost_events\tmaritime_professional\tMaritime technology supporter\t\t\t\t\t\ttrue\ttrue' ]]
+# Round 12: the structured role keys (department, rank / role, cadet stage, target role, occupation) follow each row.
+[[ "$SEAFARER_ROW" == $'seafarer\tfind_jobs\tseafarer\tMaster / Captain\t\t\t\tE2E Shipping\tMaster / Captain\tfalse\ttrue\tdeck_officers\tmaster\t\t\t\t' ]]
+[[ "$SHORE_ROW" == $'shore_professional\tnetwork\tmaritime_professional\tMarine Superintendent\t\t\t\tE2E Shore\t\tfalse\ttrue\ttechnical_fleet\tmarine_superintendent\t\t\t\t' ]]
+[[ "$RECRUITER_ROW" == $'recruiter_hr\thire\trecruiter\tCrewing Manager\t\t\t\tE2E Manning\t\tfalse\ttrue\trecruitment_hr\thr_crewing_manager\t\t\t\t' ]]
+[[ "$TRAINER_ROW" == $'trainer_instructor\tteach\ttrainer\tSIRE 2.0\tSIRE 2.0\t\t\tE2E Academy\t\tfalse\ttrue\ttraining\tsimulator_instructor\t\t\t\t' ]]
+[[ "$STUDENT_ROW" == $'student_cadet\tlearn\tmaritime_professional\tDeck Cadet (on board)\t\tE2E Maritime Institute\t\t\t\ttrue\ttrue\t\t\tdeck_cadet\tdeck_officers\tthird_officer\t' ]]
+[[ "$FAMILY_ROW" == $'seafarer_family\tcommunity\tmaritime_professional\tSeafarer Family\t\t\tSpouse / partner\t\t\ttrue\ttrue\t\t\t\t\t\t' ]]
+[[ "$ENTHUSIAST_ROW" == $'maritime_enthusiast\tattend_events\tmaritime_professional\tWeb developer\t\t\t\t\t\ttrue\ttrue\t\t\t\t\t\tWeb developer' ]]
+[[ "$OTHER_ROW" == $'other\thost_events\tmaritime_professional\tMaritime technology supporter\t\t\t\t\t\ttrue\ttrue\t\t\t\t\t\tMaritime technology supporter' ]]
 
 echo "ONBOARDING_E2E_PERSONA_PERSISTENCE_VERIFIED=true"

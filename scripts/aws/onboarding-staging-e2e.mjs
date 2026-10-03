@@ -19,8 +19,9 @@ const personaSpecs = [
     intent: 'Host events',
     fields: [
       ['Location', 'Chennai'],
-      ['How would you describe yourself?', 'Maritime technology supporter'],
+      [/^Occupation \/ role/, 'Maritime technology supporter'],
     ],
+    absent: ['Department', 'Current or most recent rank'],
   },
   {
     key: 'seafarer',
@@ -28,9 +29,14 @@ const personaSpecs = [
     intent: 'Find jobs',
     fields: [
       ['Location', 'Mumbai'],
-      ['Current or most recent rank', 'Chief Engineer'],
       ['Current / last organisation', 'E2E Shipping'],
     ],
+    // Round 12: Department → Rank pickers, never a typed rank.
+    selects: [
+      ['Department', 'deck_officers'],
+      ['Current or most recent rank', 'master'],
+    ],
+    rankDisabledUntilDepartment: 'Current or most recent rank',
     verifyUsernameLifecycle: true,
   },
   {
@@ -39,9 +45,13 @@ const personaSpecs = [
     intent: 'Network',
     fields: [
       ['Location', 'Singapore'],
-      ['Current role / designation', 'Marine Superintendent'],
       ['Current organisation', 'E2E Shore'],
     ],
+    selects: [
+      ['Department (function)', 'technical_fleet'],
+      ['Role', 'marine_superintendent'],
+    ],
+    absent: ['Current role / designation'],
   },
   {
     key: 'recruiter',
@@ -49,9 +59,12 @@ const personaSpecs = [
     intent: 'Hire people',
     fields: [
       ['Location', 'Mumbai'],
-      ['Role / designation', 'Crewing Manager'],
       ['Current organisation', 'E2E Manning'],
     ],
+    selects: [
+      ['Role', 'hr_crewing_manager'],
+    ],
+    absent: ['Role / designation'],
   },
   {
     key: 'trainer',
@@ -61,6 +74,9 @@ const personaSpecs = [
       ['Location', 'Kochi'],
       ['Training specialization', 'SIRE 2.0'],
       ['Organisation / institute', 'E2E Academy'],
+    ],
+    selects: [
+      ['Role', 'simulator_instructor'],
     ],
   },
   {
@@ -72,6 +88,15 @@ const personaSpecs = [
       ['Location', 'Pune'],
       ['Institute / academy', 'E2E Maritime Institute'],
     ],
+    // The target job role is suggested from the stage: Deck Cadet → Third Officer.
+    selects: [
+      ['Current stage', 'deck_cadet'],
+    ],
+    expectValues: [
+      ['Target department', 'deck_officers'],
+      ['Target job role (rank / role)', 'third_officer'],
+    ],
+    absent: ['Current or most recent rank'],
   },
   {
     key: 'family',
@@ -82,6 +107,7 @@ const personaSpecs = [
       ['Location', 'Goa'],
       ['Relationship to the maritime community', 'Spouse / partner'],
     ],
+    absent: ['Department', 'Current or most recent rank'],
   },
   {
     key: 'enthusiast',
@@ -90,7 +116,11 @@ const personaSpecs = [
     intent: 'Attend events',
     fields: [
       ['Location', 'Visakhapatnam'],
+      [/^Occupation \/ role/, 'Web developer'],
     ],
+    // A Maritime Enthusiast gets only an occupation, and is not matched or allowed to apply on sea jobs.
+    absent: ['Department', 'Department (function)', 'Current or most recent rank', 'Role'],
+    verifySeaJobGate: true,
   },
 ]
 
@@ -374,6 +404,38 @@ async function verifyUsernameEditLifecycle(page, user, initialUsername, takenUse
   console.log('ONBOARDING_E2E_USERNAME_LIMIT_AUDIT_VERIFIED=true')
 }
 
+/**
+ * Round 12: a Maritime Enthusiast sees no match % on sea jobs, and a sea job with a minimum match
+ * refuses them with the seafarer message instead of an Apply button.
+ */
+async function verifySeaJobGate(page) {
+  await page.goto(siteUrl + '/jobs?mode=sea', { waitUntil: 'networkidle' })
+  const body = await page.locator('main').innerText()
+  assert.doesNotMatch(body, /(Partial|Good|Strong) match · \d+%|\d+% match/, 'A Maritime Enthusiast must not see a match % on sea jobs')
+  console.log('ONBOARDING_E2E_ENTHUSIAST_NO_SEA_MATCH_VERIFIED=true')
+
+  const hrefs = await page.locator('a[href^="/jobs/"]').evaluateAll((anchors) => anchors
+    .map((anchor) => anchor.getAttribute('href'))
+    .filter((href) => typeof href === 'string' && /^\/jobs\/[0-9a-f-]{36}$/.test(href)))
+  const jobHrefs = [...new Set(hrefs)]
+  assert.ok(jobHrefs.length, 'Expected at least one live sea job to check the apply gate')
+
+  let refused = false
+  for (const href of jobHrefs) {
+    await page.goto(siteUrl + href, { waitUntil: 'networkidle' })
+    await expect(page.getByText('Sea-going role. Your profile type is Maritime Enthusiast.', { exact: true }).first()).toBeVisible()
+    const gate = page.getByText('This role is for seafarers. Update your profile type if this is wrong.', { exact: true }).first()
+    if (await gate.count()) {
+      await expect(gate).toBeVisible()
+      await expect(page.getByRole('button', { name: /^(Easy Apply|Apply now)$/ })).toHaveCount(0)
+      refused = true
+      break
+    }
+  }
+  assert.ok(refused, 'Expected a sea job with a minimum match to refuse a Maritime Enthusiast')
+  console.log('ONBOARDING_E2E_ENTHUSIAST_SEA_JOB_REFUSED_VERIFIED=true')
+}
+
 async function completePersona(user, takenUsername) {
   const context = await browser.newContext(user.mobile ? { viewport: { width: 390, height: 844 } } : {})
   const page = await context.newPage()
@@ -385,15 +447,32 @@ async function completePersona(user, takenUsername) {
   })
   await personaButton.click()
   await expect(personaButton).toHaveAttribute('aria-pressed', 'true')
+  // Phones walk through onboarding one step at a time (round 8): Continue shows the next step.
+  if (user.mobile) await page.getByRole('button', { name: 'Continue', exact: true }).click()
   await expect(page.getByText('What are you here to do?', { exact: true })).toBeVisible()
 
   const intentButton = page.getByRole('button', { name: user.intent, exact: true })
   await intentButton.click()
   await expect(intentButton).toHaveAttribute('aria-pressed', 'true')
+  if (user.mobile) await page.getByRole('button', { name: 'Continue', exact: true }).click()
 
   for (const [label, value] of user.fields) {
-    await page.getByLabel(label, { exact: true }).fill(value)
+    await page.getByLabel(label, { exact: typeof label === 'string' }).fill(value)
   }
+  for (const label of user.absent ?? []) {
+    await expect(page.getByLabel(label, { exact: true })).toHaveCount(0)
+  }
+  if (user.rankDisabledUntilDepartment) {
+    await expect(page.getByLabel(user.rankDisabledUntilDepartment, { exact: true })).toBeDisabled()
+    console.log('ONBOARDING_E2E_RANK_WAITS_FOR_DEPARTMENT_VERIFIED=true')
+  }
+  for (const [label, value] of user.selects ?? []) {
+    await page.getByLabel(label, { exact: true }).selectOption(value)
+  }
+  for (const [label, value] of user.expectValues ?? []) {
+    await expect(page.getByLabel(label, { exact: true })).toHaveValue(value)
+  }
+  if (user.selects || user.absent) console.log('ONBOARDING_E2E_ROLE_PICKERS_VERIFIED=' + user.key)
 
   await verifyAccessibility(page, user.label)
   if (user.mobile) await verifyMobileLayout(page, user.label)
@@ -417,6 +496,7 @@ async function completePersona(user, takenUsername) {
     await verifyExistingLegacyProfileUrl(page)
     await verifyUsernameEditLifecycle(page, user, username, takenUsername)
   }
+  if (user.verifySeaJobGate) await verifySeaJobGate(page)
 
   console.log(personaMarkers[user.key])
   await context.close()
