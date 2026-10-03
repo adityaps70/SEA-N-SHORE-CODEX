@@ -6,7 +6,9 @@ on:
       - feat/aws-native-phase-0-1
     paths:
       - infra/aws/app/auth.tf
+      - infra/aws/app/cognito-email-sender.tf
       - infra/aws/app/lambda/cognito-pre-sign-up-link.mjs
+      - infra/aws/app/lambda/cognito-resend-email-sender.mjs
       - infra/aws/app/main.tf
       - infra/aws/app/aws-native-variables.tf
       - infra/aws/app/lambda/cognito-define-auth-challenge.mjs

@@ -187,6 +187,24 @@ test('admin confirmation proves deferred signups exist and surfaces Cognito fail
   assert.match(waitBlock, /ONBOARDING E2E ADMIN CONFIRM STDERR/)
 })
 
+test('once Cognito email goes through Resend, every disposable sign-up must be decrypted by the sender', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const confirmStart = workflow.indexOf('- name: Confirm disposable sign-ups through staging bootstrap')
+  const confirmEnd = workflow.indexOf('- name: Wait for disposable sign-up confirmation')
+  const confirmBlock = workflow.slice(confirmStart, confirmEnd)
+  assert.match(confirmBlock, /SENDER_FN=sea-n-shore-staging-cognito-resend-email-sender/)
+  assert.match(confirmBlock, /UserPool\.LambdaConfig\.CustomEmailSender\.LambdaArn/)
+  assert.match(confirmBlock, /EXPECTED=\{len\(emails\)\}/)
+  assert.match(confirmBlock, /reserved_recipient/)
+  assert.match(confirmBlock, /\?\\"decrypt_failed\\" \?\\"send_failed\\" \?\\"no_recipient\\"/)
+  assert.match(confirmBlock, /ONBOARDING_E2E_RESEND_SENDER_VERIFIED=true/)
+  assert.match(confirmBlock, /ONBOARDING_E2E_RESEND_SENDER_VERIFIED=not-enabled/)
+
+  const waitEnd = workflow.indexOf('- name: Run staging sign-in and onboarding browser journeys')
+  const waitBlock = workflow.slice(confirmEnd, waitEnd)
+  assert.match(waitBlock, /\^ONBOARDING_E2E_RESEND_SENDER_VERIFIED=\(true\|not-enabled\)\$/)
+})
+
 test('public signup is quota-aware and creates all eight persona accounts', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const browserScript = readFileSync(browserScriptPath, 'utf8')

@@ -10,6 +10,16 @@ resource "aws_cognito_user_pool" "app" {
     create_auth_challenge          = aws_lambda_function.cognito_create_auth_challenge.arn
     verify_auth_challenge_response = aws_lambda_function.cognito_verify_auth_challenge.arn
     pre_sign_up                    = aws_lambda_function.cognito_pre_sign_up_link.arn
+    # Account emails go through Resend (cognito-email-sender.tf); the key encrypts the codes.
+    kms_key_id = var.enable_cognito_resend_email ? aws_kms_key.cognito_email_sender.arn : null
+
+    dynamic "custom_email_sender" {
+      for_each = var.enable_cognito_resend_email ? [1] : []
+      content {
+        lambda_arn     = aws_lambda_function.cognito_resend_email_sender.arn
+        lambda_version = "V1_0"
+      }
+    }
   }
 
   password_policy {
@@ -48,7 +58,8 @@ resource "aws_cognito_user_pool" "app" {
     aws_lambda_permission.cognito_define_auth_challenge,
     aws_lambda_permission.cognito_create_auth_challenge,
     aws_lambda_permission.cognito_verify_auth_challenge,
-    aws_lambda_permission.cognito_pre_sign_up_link
+    aws_lambda_permission.cognito_pre_sign_up_link,
+    aws_lambda_permission.cognito_resend_email_sender
   ]
 
   tags = local.common_tags
