@@ -1,10 +1,11 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useActionState, useState } from 'react'
+import { useActionState } from 'react'
 import { Compass, Gauge, Ship, ShipWheel, Waves, type LucideIcon } from 'lucide-react'
 import { updateProfileProfessionalSection, type ProfileInlineActionState } from '../profile-inline-actions'
 import type { PublicProfile } from '../types'
+import { ProfileCardFieldError, ProfileCardForm, profileCardInputClass, profileCardLabelClass, useProfileCardEditor } from './profile-card-editing'
 import { ProfileField, ProfileFieldList, ProfileSection, ProfileSectionEditButton } from './profile-section'
 import { formatYears } from '@/lib/format'
 
@@ -12,26 +13,70 @@ type Detail = { label: string; value: string; icon: LucideIcon }
 
 const initialState: ProfileInlineActionState = {}
 
-function FieldError({ state, name }: { state: ProfileInlineActionState; name: string }) {
-  const message = state.fieldErrors?.[name]?.[0]
-  return message ? <p className="mt-1 text-xs font-medium text-red-700">{message}</p> : null
-}
-
-export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
-  const router = useRouter()
-  const [editing, setEditing] = useState(false)
-
+/** Maritime Experience's edit form: rank, vessel, sailing years, vessel types, trading areas, shore preference. */
+function MaritimeProfileEditor({
+  profile,
+  onClose,
+  onSaved,
+  onDirty,
+}: {
+  profile: PublicProfile
+  onClose: () => void
+  onSaved: () => void
+  onDirty: () => void
+}) {
   async function submitProfessional(previousState: ProfileInlineActionState, formData: FormData) {
     const nextState = await updateProfileProfessionalSection(previousState, formData)
-    if (nextState.success) {
-      setEditing(false)
-      router.refresh()
-    }
+    if (nextState.success) onSaved()
     return nextState
   }
 
   const [state, formAction, pending] = useActionState(submitProfessional, initialState)
+  const inputClass = profileCardInputClass
+  const labelClass = profileCardLabelClass
+
+  return (
+    <ProfileCardForm cardId="profile-maritime" label="Edit Professional Record" action={formAction} pending={pending} onCancel={onClose} onDirty={onDirty} error={state.error} className="mt-5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className={labelClass}>
+          Rank
+          <input name="rank" maxLength={100} defaultValue={profile.rank ?? ''} className={inputClass} />
+          <ProfileCardFieldError fieldErrors={state.fieldErrors} name="rank" />
+        </label>
+        <label className={labelClass}>
+          Current vessel
+          <input name="currentVessel" maxLength={160} defaultValue={profile.currentVessel ?? ''} className={inputClass} />
+          <ProfileCardFieldError fieldErrors={state.fieldErrors} name="currentVessel" />
+        </label>
+        <label className={labelClass}>
+          Sailing experience years
+          <input name="sailingExperienceYears" type="number" min={0} max={70} defaultValue={profile.sailingExperienceYears?.toString() ?? ''} className={inputClass} />
+          <ProfileCardFieldError fieldErrors={state.fieldErrors} name="sailingExperienceYears" />
+        </label>
+        <label className={labelClass}>
+          Vessel types
+          <input name="vesselTypes" maxLength={2000} defaultValue={profile.vesselTypes.join(', ')} className={inputClass} />
+          <ProfileCardFieldError fieldErrors={state.fieldErrors} name="vesselTypes" />
+        </label>
+        <label className={labelClass}>
+          Trading areas
+          <input name="tradingAreas" maxLength={2000} defaultValue={profile.tradingAreas.join(', ')} className={inputClass} />
+          <ProfileCardFieldError fieldErrors={state.fieldErrors} name="tradingAreas" />
+        </label>
+        <label className="flex min-h-10 items-center gap-3 self-end rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950">
+          <input name="shoreCareerPreference" type="checkbox" defaultChecked={profile.shoreCareerPreference} />
+          Interested in shore opportunities
+        </label>
+      </div>
+    </ProfileCardForm>
+  )
+}
+
+export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
+  const router = useRouter()
+  const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-maritime', 'Maritime Experience')
   const editable = Boolean(editHref)
+  const editing = editable && editorEditing
   const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
 
   const details: Detail[] = [
@@ -51,9 +96,6 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
   if (!isSeafarer) return null
   if (!editable && !details.length) return null
 
-  const inputClass = 'mt-1 min-h-10 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500'
-  const labelClass = 'block text-sm font-semibold text-navy-950'
-
   return (
     <ProfileSection
       id="profile-maritime"
@@ -63,53 +105,20 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
           {profile.shoreCareerPreference && !editing ? (
             <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-semibold text-ocean-700">Open to shore career</span>
           ) : null}
-          {editable ? <ProfileSectionEditButton label="Edit Professional Record" onClick={() => setEditing(true)} /> : null}
+          {editable && !editing ? <ProfileSectionEditButton label="Edit Professional Record" onClick={openEditor} buttonRef={editorTriggerRef} /> : null}
         </>
       )}
     >
       {editing ? (
-        <form action={formAction} className="mt-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className={labelClass}>
-              Rank
-              <input name="rank" maxLength={100} defaultValue={profile.rank ?? ''} className={inputClass} />
-              <FieldError state={state} name="rank" />
-            </label>
-            <label className={labelClass}>
-              Current vessel
-              <input name="currentVessel" maxLength={160} defaultValue={profile.currentVessel ?? ''} className={inputClass} />
-              <FieldError state={state} name="currentVessel" />
-            </label>
-            <label className={labelClass}>
-              Sailing experience years
-              <input name="sailingExperienceYears" type="number" min={0} max={70} defaultValue={profile.sailingExperienceYears?.toString() ?? ''} className={inputClass} />
-              <FieldError state={state} name="sailingExperienceYears" />
-            </label>
-            <label className={labelClass}>
-              Vessel types
-              <input name="vesselTypes" maxLength={2000} defaultValue={profile.vesselTypes.join(', ')} className={inputClass} />
-              <FieldError state={state} name="vesselTypes" />
-            </label>
-            <label className={labelClass}>
-              Trading areas
-              <input name="tradingAreas" maxLength={2000} defaultValue={profile.tradingAreas.join(', ')} className={inputClass} />
-              <FieldError state={state} name="tradingAreas" />
-            </label>
-            <label className="flex min-h-10 items-center gap-3 self-end rounded-xl border border-mist-100 bg-white px-3 text-sm font-semibold text-navy-950">
-              <input name="shoreCareerPreference" type="checkbox" defaultChecked={profile.shoreCareerPreference} />
-              Interested in shore opportunities
-            </label>
-          </div>
-          {state.error ? <p role="alert" className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p> : null}
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setEditing(false)} className="min-h-10 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">
-              Cancel
-            </button>
-            <button type="submit" disabled={pending} className="min-h-10 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white disabled:opacity-60 enabled:hover:bg-navy-800 transition-colors disabled:cursor-not-allowed">
-              {pending ? 'Saving…' : 'Save'}
-            </button>
-          </div>
-        </form>
+        <MaritimeProfileEditor
+          profile={profile}
+          onClose={closeEditor}
+          onDirty={markEditorDirty}
+          onSaved={() => {
+            closeEditor()
+            router.refresh()
+          }}
+        />
       ) : details.length ? (
         <ProfileFieldList className="mt-5">
           {details.map(({ label, value, icon }) => (

@@ -59,4 +59,19 @@ describe('getProfileReadiness', () => {
     expect(result.nextSteps).toContain('Add vessel types and trading areas')
     expect(result.nextSteps).toContain('Add professional skills')
   })
+  it('does not ask a maritime enthusiast for sea service, vessels or credentials (round 11)', () => {
+    const result = getProfileReadiness(buildProfile({
+      profileType: 'maritime_professional',
+      persona: 'maritime_enthusiast',
+      rank: null,
+      currentCompany: null,
+      currentVessel: null,
+      sailingExperienceYears: null,
+      vesselTypes: [],
+      tradingAreas: [],
+    }))
+
+    expect(result.score).toBe(100)
+    expect(result.nextSteps.join(' ')).not.toMatch(/rank|vessel|sea-service|credential|certificate/i)
+  })
 })
