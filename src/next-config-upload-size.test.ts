@@ -10,20 +10,20 @@ describe('Next.js server action upload envelope', () => {
     })
   })
 
-  it('allows signed reads from the private staging media bucket', () => {
-    expect(nextConfig.images?.remotePatterns).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        protocol: 'https',
-        hostname: 'sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com',
-        pathname: '/**',
-      }),
-    ]))
+  // Rewritten in Round 13: hourly pre-signed S3 URLs are no longer optimized (that re-encoded
+  // every photo each hour); only stable signed media links and landing photos are.
+  it('optimizes stable signed media links and landing photos, never pre-signed S3 URLs', () => {
+    expect(nextConfig.images?.remotePatterns).toBeUndefined()
+    expect(nextConfig.images?.localPatterns).toEqual([
+      { pathname: '/api/media/image/**' },
+      { pathname: '/landing/**', search: '' },
+    ])
   })
 
-  it('serves resized WebP only (AVIF smears graphics) and keeps results cached for the signed URL window', () => {
+  it('serves resized WebP only (AVIF smears graphics) and keeps results for the stable link lifetime', () => {
     expect(nextConfig.images).toMatchObject({
       formats: ['image/webp'],
-      minimumCacheTTL: 3600,
+      minimumCacheTTL: 7 * 24 * 60 * 60,
     })
     expect(nextConfig.images?.formats).not.toContain('image/avif')
   })
