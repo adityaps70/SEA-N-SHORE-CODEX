@@ -28,18 +28,22 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const discovery = await getJobsDiscovery(rawParams)
   const { filters, items, profileReady } = discovery
   const alertQuery = serialize(rawParams) || 'mode=for-you'
-  const activeFilterCount = [filters.ranks.length, filters.vesselTypes.length, filters.regions.length, filters.certificates.length, filters.visas.length, filters.minExperienceYears !== null ? 1 : 0, filters.joiningWithinDays !== null ? 1 : 0, filters.salaryMin !== null ? 1 : 0, filters.verifiedOnly ? 1 : 0, filters.urgentOnly ? 1 : 0, filters.easyApplyOnly ? 1 : 0].reduce((sum, value) => sum + value, 0)
+  const activeFilterCount = [filters.department ? 1 : 0, filters.ranks.length, filters.vesselTypes.length, filters.regions.length, filters.certificates.length, filters.visas.length, filters.minExperienceYears !== null ? 1 : 0, filters.joiningWithinDays !== null ? 1 : 0, filters.salaryMin !== null ? 1 : 0, filters.verifiedOnly ? 1 : 0, filters.urgentOnly ? 1 : 0, filters.easyApplyOnly ? 1 : 0].reduce((sum, value) => sum + value, 0)
   const hasSearchConstraints = Boolean(filters.query || activeFilterCount || filters.mode !== 'for-you')
   const sortLabel = filters.sort === 'recommended'
     ? 'Recommended'
-    : filters.sort === 'recent'
+    : filters.sort === 'best'
+      ? 'Best match'
+      : filters.sort === 'recent'
       ? 'Newest'
       : filters.sort === 'joining'
         ? 'Joining soonest'
         : 'Highest salary'
   const sortCaption = filters.sort === 'recommended'
     ? 'Recommended for you using your maritime profile when available.'
-    : filters.sort === 'recent'
+    : filters.sort === 'best'
+      ? 'Highest match first; jobs without a match score last.'
+      : filters.sort === 'recent'
       ? 'Newest opportunities first, based on published date.'
       : filters.sort === 'joining'
         ? 'Roles with the nearest joining windows first.'

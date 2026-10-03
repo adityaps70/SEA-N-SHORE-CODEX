@@ -3,6 +3,7 @@ import { query as databaseQuery } from '@/lib/db/client'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import type { JobApplicationCvReference } from './application-media'
 import { APPLICANT_WITHDRAWABLE_STATUSES } from './application-status'
+import { jobDepartmentDisplay, jobRankDisplay, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import type {
   JobAlert,
   JobApplication,
@@ -52,6 +53,10 @@ type JobRow = QueryResultRow & {
   easy_apply: boolean | null
   certificate_requirements: string[] | null
   visa_requirements: string[] | null
+  department_key?: string | null
+  accepted_role_keys?: string[] | null
+  role_other_text?: string | null
+  min_match_to_apply?: string | number | null
 }
 
 type ApplicationEventRow = {
@@ -147,8 +152,9 @@ function mapJob(row: JobRow): JobListing {
     createdAt: timestampValue(row.created_at),
     publishedAt: nullableTimestampValue(row.published_at),
     domain: row.job_domain === 'shore' ? 'shore' : 'sea',
-    department: row.department ?? null,
-    rank: row.rank ?? null,
+    // Round 12: taxonomy labels when the job has keys, else its old text.
+    department: jobDepartmentDisplay({ departmentKey: row.department_key, department: row.department }),
+    rank: jobRankDisplay({ acceptedRoleKeys: row.accepted_role_keys, roleOtherText: row.role_other_text, rank: row.rank }),
     vesselTypes: Array.isArray(row.vessel_types) ? row.vessel_types : [],
     experienceMinYears: numberOrNull(row.experience_min_years),
     experienceMaxYears: numberOrNull(row.experience_max_years),
@@ -163,7 +169,17 @@ function mapJob(row: JobRow): JobListing {
     visaRequirements: Array.isArray(row.visa_requirements) ? row.visa_requirements : [],
     urgent: Boolean(row.urgent),
     easyApply: row.easy_apply !== false,
+    departmentKey: row.department_key ?? null,
+    acceptedRoleKeys: Array.isArray(row.accepted_role_keys) ? row.accepted_role_keys : [],
+    roleOtherText: row.role_other_text ?? null,
+    minMatchToApply: minMatchValue(row.min_match_to_apply),
   }
+}
+
+/** A stored minimum match; 70 (the default) when the column is not there yet. */
+function minMatchValue(value: string | number | null | undefined): number {
+  const parsed = numberOrNull(value ?? null)
+  return parsed === null ? 70 : Math.min(100, Math.max(0, Math.round(parsed)))
 }
 
 function mapEvent(row: ApplicationEventRow): JobApplicationEvent {
@@ -242,6 +258,10 @@ const JOB_COLUMNS = `
     j.sailing_regions,
     j.urgent,
     j.easy_apply,
+    j.department_key,
+    j.accepted_role_keys,
+    j.role_other_text,
+    j.min_match_to_apply,
     coalesce((
       select array_agg(r.certificate_name order by r.certificate_name)
       from public.job_certificate_requirements r
@@ -277,6 +297,15 @@ const JOB_PLAN_VISIBLE = planVisibleSql('job', 'j')
 const OPEN_JOB_WHERE = `j.status = 'published'
          and j.deleted_at is null
          and ${JOB_PLAN_VISIBLE}`
+
+/** Lower-case labels and synonyms of these rank keys, to match older jobs that only have rank text. */
+function legacyRankTexts(keys: readonly string[]): string[] {
+  return [...new Set(keys.flatMap((key) => {
+    const role = roleByKey(key)
+    if (!role || role.other) return [key.toLocaleLowerCase()]
+    return [role.label, ...role.synonyms].map((text) => text.toLocaleLowerCase())
+  }))]
+}
 
 function normalizeLower(values: readonly string[]) {
   return values.map((value) => value.toLocaleLowerCase())
@@ -316,7 +345,17 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
         coalesce(j.rank, '') || ' ' || coalesce(j.department, '')
       ) @@ websearch_to_tsquery('simple'::regconfig, ${queryParam})`)
     }
-    if (filters.ranks.length) where.push(`lower(j.rank) = any(${bind(normalizeLower(filters.ranks))}::text[])`)
+    if (filters.department) {
+      // Round 12: the department key, or for an older job without one its department or rank text.
+      const departmentParam = bind(filters.department)
+      const legacyParam = bind(legacyRankTexts(rolesFor(filters.department).map((role) => role.key)))
+      where.push(`(j.department_key = ${departmentParam} or (j.department_key is null and lower(j.rank) = any(${legacyParam}::text[])))`)
+    }
+    if (filters.ranks.length) {
+      const keysParam = bind(filters.ranks)
+      const legacyParam = bind(legacyRankTexts(filters.ranks))
+      where.push(`(j.accepted_role_keys && ${keysParam}::text[] or (cardinality(j.accepted_role_keys) = 0 and lower(j.rank) = any(${legacyParam}::text[])))`)
+    }
     if (filters.vesselTypes.length) where.push(`j.vessel_types && ${bind(filters.vesselTypes)}::text[]`)
     if (filters.minExperienceYears !== null) {
       where.push(`(j.experience_min_years is null or j.experience_min_years <= ${bind(filters.minExperienceYears)})`)

@@ -25,11 +25,14 @@ export const JOB_APPLICATION_STATUS_LABELS: Record<JobApplicationStatus, string>
 
 export type JobDomain = 'sea' | 'shore'
 export type JobSalaryPeriod = 'day' | 'month' | 'year'
-export type JobSort = 'recommended' | 'recent' | 'joining' | 'salary'
+export type JobSort = 'recommended' | 'best' | 'recent' | 'joining' | 'salary'
 
 export type JobSearchFilters = {
   query: string
   mode: JobDiscoveryMode
+  /** Round 12: a taxonomy department key. */
+  department?: string | null
+  /** Taxonomy rank / role keys (old saved alerts may still hold label text). */
   ranks: string[]
   vesselTypes: string[]
   minExperienceYears: number | null
@@ -93,6 +96,12 @@ export type JobListing = {
   domain: JobDomain
   department: string | null
   rank: string | null
+  /** Round 12: taxonomy department and accepted rank / role keys; empty for jobs from before. */
+  departmentKey?: string | null
+  acceptedRoleKeys?: string[]
+  roleOtherText?: string | null
+  /** Minimum match needed to apply, 0 = off. */
+  minMatchToApply?: number
   vesselTypes: string[]
   experienceMinYears: number | null
   experienceMaxYears: number | null

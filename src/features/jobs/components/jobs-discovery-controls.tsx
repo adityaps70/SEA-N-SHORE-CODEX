@@ -3,7 +3,8 @@
 import { Filter, X } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTransition } from 'react'
-import { MARITIME_CERTIFICATES, MARITIME_VISAS, SEA_RANKS, SHORE_ROLES, VESSEL_TYPES } from '../catalog'
+import { MARITIME_CERTIFICATES, MARITIME_VISAS, VESSEL_TYPES } from '../catalog'
+import { jobDepartments, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import { activeJobFilters } from '../filter-state'
 import type { JobSearchFilters } from '../types'
 
@@ -23,7 +24,12 @@ export function JobsDiscoveryControls({ filters, resultCount, className = '' }: 
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [pending, startTransition] = useTransition()
-  const ranks = filters.mode === 'shore' ? SHORE_ROLES : SEA_RANKS
+  // Round 12: the same Department → Rank lists as profiles and the job form.
+  const departments = jobDepartments().filter((department) =>
+    filters.mode === 'sea' || filters.mode === 'shore' ? department.domain === filters.mode : true)
+  // An older link with only a rank shows that rank's department.
+  const selectedDepartment = filters.department ?? roleByKey(filters.ranks[0])?.department ?? ''
+  const ranks = rolesFor(selectedDepartment).filter((role) => !role.other)
 
   const activeFilters = activeJobFilters(filters)
 
@@ -39,7 +45,18 @@ export function JobsDiscoveryControls({ filters, resultCount, className = '' }: 
   }
 
   function remove(key: string) {
-    navigate((params) => params.delete(key))
+    navigate((params) => {
+      params.delete(key)
+      // A rank belongs to its department: removing the department removes the rank too.
+      if (key === 'department') params.delete('rank')
+    })
+  }
+
+  function updateDepartment(value: string) {
+    navigate((params) => {
+      replaceValue(params, 'department', value)
+      params.delete('rank')
+    })
   }
 
   function clearAll() {
@@ -72,9 +89,14 @@ export function JobsDiscoveryControls({ filters, resultCount, className = '' }: 
       ) : null}
 
       <div className="mt-4 space-y-4">
+        <label className="block text-xs font-semibold text-navy-950">Department
+          <select value={selectedDepartment} onChange={(event) => updateDepartment(event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink">
+            <option value="">Any department</option>{departments.map((department) => <option key={department.key} value={department.key}>{department.label}</option>)}
+          </select>
+        </label>
         <label className="block text-xs font-semibold text-navy-950">Rank / position
-          <select value={filters.ranks[0] ?? ''} onChange={(event) => update('rank', event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink">
-            <option value="">Any rank</option>{ranks.map((rank) => <option key={rank} value={rank}>{rank}</option>)}
+          <select value={filters.ranks[0] ?? ''} onChange={(event) => update('rank', event.target.value)} disabled={!selectedDepartment} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink disabled:bg-mist-50">
+            <option value="">{selectedDepartment ? 'Any rank' : 'Choose a department first'}</option>{ranks.map((rank) => <option key={rank.key} value={rank.key}>{rank.label}</option>)}
           </select>
         </label>
         <label className="block text-xs font-semibold text-navy-950">Vessel type
@@ -101,7 +123,7 @@ export function JobsDiscoveryControls({ filters, resultCount, className = '' }: 
 
         <label className="block text-xs font-semibold text-navy-950">Sort results
           <select value={filters.sort} onChange={(event) => update('sort', event.target.value)} className="mt-1 min-h-11 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm font-medium text-ink">
-            <option value="recommended">Recommended</option><option value="recent">Newest first</option><option value="joining">Joining soonest</option><option value="salary">Highest salary</option>
+            <option value="recommended">Recommended</option><option value="best">Best match</option><option value="recent">Newest first</option><option value="joining">Joining soonest</option><option value="salary">Highest salary</option>
           </select>
         </label>
       </div>

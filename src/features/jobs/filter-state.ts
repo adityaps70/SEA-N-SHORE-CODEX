@@ -1,4 +1,5 @@
 import type { JobSearchFilters } from './types'
+import { departmentByKey, roleByKey } from '@/features/roles/taxonomy'
 
 /** A filter currently applied to job discovery, keyed by its URL parameter. */
 export type ActiveJobFilter = { key: string; label: string }
@@ -9,7 +10,8 @@ export type ActiveJobFilter = { key: string; label: string }
  */
 export function activeJobFilters(filters: JobSearchFilters): ActiveJobFilter[] {
   return [
-    ...filters.ranks.map((value) => ({ key: 'rank', label: value })),
+    ...(filters.department ? [{ key: 'department', label: departmentByKey(filters.department)?.label ?? filters.department }] : []),
+    ...filters.ranks.map((value) => ({ key: 'rank', label: roleByKey(value)?.label ?? value })),
     ...filters.vesselTypes.map((value) => ({ key: 'vessel', label: value })),
     ...filters.regions.map((value) => ({ key: 'region', label: value })),
     ...filters.certificates.map((value) => ({ key: 'certificate', label: value })),
@@ -25,6 +27,7 @@ export function activeJobFilters(filters: JobSearchFilters): ActiveJobFilter[] {
 /** Sort options, in the order both the desktop select and the phone sheet show them. */
 export const JOB_SORT_OPTIONS = [
   { value: 'recommended', label: 'Recommended' },
+  { value: 'best', label: 'Best match' },
   { value: 'recent', label: 'Newest' },
   { value: 'joining', label: 'Joining soonest' },
   { value: 'salary', label: 'Highest salary' },

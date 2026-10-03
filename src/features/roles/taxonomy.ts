@@ -390,6 +390,16 @@ export function acceptedRolesLabel(keys: readonly string[], otherText?: string |
   return labels.length ? labels.join(', ') : null
 }
 
+/** What a job shows for its rank: the accepted rank labels when it has keys, else its old rank text. */
+export function jobRankDisplay(job: { acceptedRoleKeys?: readonly string[] | null; roleOtherText?: string | null; rank?: string | null }): string | null {
+  return acceptedRolesLabel(job.acceptedRoleKeys ?? [], job.roleOtherText) ?? job.rank?.trim() ?? null
+}
+
+/** What a job shows for its department: the taxonomy label when it has a key, else its old text. */
+export function jobDepartmentDisplay(job: { departmentKey?: string | null; department?: string | null }): string | null {
+  return departmentByKey(job.departmentKey)?.label ?? job.department?.trim() ?? null
+}
+
 /* ---------- Student / Cadet ---------- */
 
 export const CADET_STAGES = [

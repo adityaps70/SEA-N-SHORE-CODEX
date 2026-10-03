@@ -63,6 +63,11 @@ export type HiringJobInput = {
   status: HiringJobStatus
   certificates: string[]
   visas: string[]
+  /** Round 12: department and accepted ranks / roles (taxonomy keys), and the minimum match to apply (0 = off). */
+  departmentKey?: string | null
+  acceptedRoleKeys?: string[]
+  roleOtherText?: string | null
+  minMatchToApply?: number
 }
 
 /** Job details that can be edited. The lifecycle status only changes through job-lifecycle.ts. */
@@ -244,6 +249,10 @@ type EditableJobRow = QueryResultRow & {
   apply_until: string | Date | null
   certificates: string[] | null
   visas: string[] | null
+  department_key?: string | null
+  accepted_role_keys?: string[] | null
+  role_other_text?: string | null
+  min_match_to_apply?: string | number | null
 }
 
 type CredentialRow = { name: string; expires_at: string | null; verified: boolean }
@@ -619,6 +628,12 @@ export function managedJobLifecycle(job: ManagedHiringJobSummary): JobLifecycleS
   }
 }
 
+/** A stored minimum match, 70 when the column is missing (before migration 0062). */
+export function minMatchValue(value: string | number | null | undefined): number {
+  const parsed = numberOrNull(value ?? null)
+  return parsed === null ? 70 : Math.min(100, Math.max(0, Math.round(parsed)))
+}
+
 function mapEditableJob(row: EditableJobRow): HiringEditableJob {
   return {
     id: row.id,
@@ -647,6 +662,10 @@ function mapEditableJob(row: EditableJobRow): HiringEditableJob {
     status: row.status,
     certificates: Array.isArray(row.certificates) ? row.certificates : [],
     visas: Array.isArray(row.visas) ? row.visas : [],
+    departmentKey: row.department_key ?? null,
+    acceptedRoleKeys: Array.isArray(row.accepted_role_keys) ? row.accepted_role_keys : [],
+    roleOtherText: row.role_other_text ?? null,
+    minMatchToApply: minMatchValue(row.min_match_to_apply),
   }
 }
 
@@ -1031,6 +1050,10 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
         j.urgent,
         j.easy_apply,
         j.apply_until,
+        j.department_key,
+        j.accepted_role_keys,
+        j.role_other_text,
+        j.min_match_to_apply,
         coalesce((
           select array_agg(cr.certificate_name order by cr.certificate_name)
           from public.job_certificate_requirements cr
@@ -1118,18 +1141,20 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
            title, company_name, company_id, created_by_user_id, location, summary, description, requirements,
            apply_until, status, job_domain, department, rank, vessel_types, experience_min_years, experience_max_years,
            joining_from, joining_until, salary_min, salary_max, salary_currency, salary_period, sailing_regions,
-           urgent, easy_apply, published_at
+           urgent, easy_apply, published_at, department_key, accepted_role_keys, role_other_text, min_match_to_apply
          ) values (
            $1, $2, $3, $4, $5, $6, $7, $8,
            $9, $10::public.job_listing_status, $11, $12, $13, $14::text[], $15, $16,
            $17, $18, $19, $20, $21, $22, $23::text[],
-           $24, $25, case when $10::public.job_listing_status = 'published'::public.job_listing_status then now() else null end
+           $24, $25, case when $10::public.job_listing_status = 'published'::public.job_listing_status then now() else null end,
+           $26, $27::text[], $28, $29::smallint
          ) returning id`,
         [
           job.title, publisherName, publisherCompanyId, userId, job.location, job.summary, job.description, job.requirements,
           job.applyUntil, job.status, job.domain, job.department, job.rank, job.vesselTypes, job.experienceMinYears,
           job.experienceMaxYears, job.joiningFrom, job.joiningUntil, job.salaryMin, job.salaryMax, job.salaryCurrency,
           job.salaryPeriod, job.regions, job.urgent, job.easyApply,
+          job.departmentKey ?? null, job.acceptedRoleKeys ?? [], job.roleOtherText ?? null, job.minMatchToApply ?? 70,
         ],
       )
       const jobId = typeof rows[0]?.id === 'string' ? rows[0].id : null
@@ -1218,6 +1243,10 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
                when $8::public.job_listing_status = 'closed'::public.job_listing_status then coalesce(archived_at, now())
                else null
              end,
+             department_key = case when $29::boolean then $25 else department_key end,
+             accepted_role_keys = case when $29::boolean then $26::text[] else accepted_role_keys end,
+             role_other_text = case when $29::boolean then $27 else role_other_text end,
+             min_match_to_apply = coalesce($28::smallint, min_match_to_apply),
              updated_at = now()
          where id = $1
            and status = $24::public.job_listing_status
@@ -1228,6 +1257,8 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
           job.domain, job.department, job.rank, job.vesselTypes, job.experienceMinYears, job.experienceMaxYears,
           job.joiningFrom, job.joiningUntil, job.salaryMin, job.salaryMax, job.salaryCurrency, job.salaryPeriod,
           job.regions, job.urgent, job.easyApply, change.expectedStatus,
+          job.departmentKey ?? null, job.acceptedRoleKeys ?? [], job.roleOtherText ?? null, job.minMatchToApply ?? null,
+          job.departmentKey !== undefined || job.acceptedRoleKeys !== undefined,
         ],
       )
       if (!updated[0]) throw new Error('job_state_changed')
