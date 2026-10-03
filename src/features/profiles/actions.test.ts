@@ -363,6 +363,47 @@ describe('completed profile update action', () => {
     )
   })
 
+  it('saves a rank left from an earlier profile as typed, even when the profile type drops rank (round 10b)', async () => {
+    mockedGetOwnProfile.mockResolvedValueOnce({
+      id: viewerId,
+      slug: 'mentor-example',
+      profileType: 'mentor',
+      identityRoot: 'professional',
+      fullName: 'Mentor Example',
+      avatarPath: null,
+      location: 'Mumbai',
+      headline: 'Maritime Mentor',
+      summary: 'Experienced maritime mentor supporting safer professional development.',
+      rank: 'captain',
+      currentCompany: null,
+      currentVessel: null,
+      sailingExperienceYears: null,
+      vesselTypes: [],
+      tradingAreas: [],
+      shoreCareerPreference: false,
+      availability: null,
+      skills: ['Mentoring'],
+      contactVisibility: 'members',
+      onboardingCompletedAt: '2026-09-01T00:00:00.000Z',
+    })
+    const formData = validForm()
+    formData.set('fullName', 'Mentor Example')
+    formData.set('slug', 'mentor-example')
+    formData.set('headline', 'Maritime Mentor')
+    formData.set('summary', 'Experienced maritime mentor supporting safer professional development.')
+    formData.set('skills', 'Mentoring')
+    formData.set('rank', '  Master  ')
+
+    await expect(updateProfile({}, formData)).rejects.toThrow('NEXT_REDIRECT:/profile')
+
+    expect(mockedUpdateProfile).toHaveBeenCalledWith(
+      viewerId,
+      expect.objectContaining({ profileType: 'mentor', rank: 'Master' }),
+      true,
+      expect.objectContaining({ rankSubmitted: true }),
+    )
+  })
+
   it('persists company name for Shipowner organisation identities', async () => {
     mockedGetOwnProfile.mockResolvedValueOnce({
       id: viewerId,
