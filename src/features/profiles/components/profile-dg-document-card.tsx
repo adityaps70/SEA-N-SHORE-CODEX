@@ -57,21 +57,21 @@ export function ProfileDgDocumentCard({
   profileId: string
   document: ProfileDocumentSummary | null
 }) {
-  const editor = useProfileCardEditor('profile-dg-document', 'DG Shipping profile')
+  const { editing: editorEditing, open: openEditor, close: closeEditor, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-dg-document', 'DG Shipping profile')
 
   return (
     <ProfileSection
       id="profile-dg-document"
       title="DG Shipping profile"
       description={DG_PROFILE_EXPLANATION}
-      action={editor.editing ? null : <ProfileSectionEditButton label="Edit DG Shipping profile" onClick={editor.open} buttonRef={editor.triggerRef} />}
+      action={editorEditing ? null : <ProfileSectionEditButton label="Edit DG Shipping profile" onClick={openEditor} buttonRef={editorTriggerRef} />}
     >
       <p className="mt-1 flex items-start gap-1.5 text-xs leading-5 text-muted">
         <Lock aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
         {DG_PROFILE_VISIBILITY}
       </p>
-      {editor.editing ? (
-        <DgDocumentEditor profileId={profileId} document={document} onClose={editor.close} />
+      {editorEditing ? (
+        <DgDocumentEditor profileId={profileId} document={document} onClose={closeEditor} />
       ) : document ? (
         <div className="mt-4 flex min-w-0 items-start gap-3 rounded-2xl border border-mist-100 bg-white p-4">
           <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-mist-50 text-ocean-700">

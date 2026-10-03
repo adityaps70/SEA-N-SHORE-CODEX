@@ -258,14 +258,14 @@ function ExperienceEntry({
   editable: boolean
   persona: Persona | null
 }) {
-  const editor = useProfileCardEditor(`experience:${record.id}`, record.title)
+  const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor(`experience:${record.id}`, record.title)
   const period = periodLabel(record)
   const seaService = record.track === 'sea_service'
 
-  if (editable && editor.editing) {
+  if (editable && editorEditing) {
     return (
       <div className="pl-0 sm:pl-2">
-        <ExperienceEditor cardId={`experience:${record.id}`} record={record} persona={persona} onClose={editor.close} onDirty={editor.markDirty} />
+        <ExperienceEditor cardId={`experience:${record.id}`} record={record} persona={persona} onClose={closeEditor} onDirty={markEditorDirty} />
       </div>
     )
   }
@@ -295,7 +295,7 @@ function ExperienceEntry({
           </div>
 
           {editable ? (
-            <button ref={editor.triggerRef} type="button" onClick={editor.open} aria-label={`Edit ${record.title}`} className={itemPencilClass}>
+            <button ref={editorTriggerRef} type="button" onClick={openEditor} aria-label={`Edit ${record.title}`} className={itemPencilClass}>
               <Pencil aria-hidden="true" className="size-4" />
             </button>
           ) : null}
@@ -326,8 +326,8 @@ export function ProfileCareerTimeline({
   /** The owner's profile type: picks the default experience type and whether sea service is offered. */
   persona?: Persona | null
 }) {
-  const adder = useProfileCardEditor('experience:new', 'Add experience')
-  const adding = editable && adder.editing
+  const { editing: adderEditing, open: openAdder, close: closeAdder, markDirty: markAdderDirty, triggerRef: adderTriggerRef } = useProfileCardEditor('experience:new', 'Add experience')
+  const adding = editable && adderEditing
 
   if (!editable && experiences.length === 0) return null
 
@@ -336,13 +336,13 @@ export function ProfileCareerTimeline({
       id="profile-experience"
       title="Experience"
       action={editable && !adding ? (
-        <button ref={adder.triggerRef} type="button" onClick={adder.open} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add experience">
+        <button ref={adderTriggerRef} type="button" onClick={openAdder} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add experience">
           <Plus aria-hidden="true" className="size-4 max-md:size-5" />
           <span className="max-md:sr-only">Add experience</span>
         </button>
       ) : null}
     >
-      {adding ? <ExperienceEditor cardId="experience:new" persona={persona} onClose={adder.close} onDirty={adder.markDirty} /> : null}
+      {adding ? <ExperienceEditor cardId="experience:new" persona={persona} onClose={closeAdder} onDirty={markAdderDirty} /> : null}
 
       {experiences.length ? (
         <PhoneShowAll
@@ -362,7 +362,7 @@ export function ProfileCareerTimeline({
               ? 'Add the jobs, roles and training that tell people what you do.'
               : 'Add sea service, shore positions, training roles and other maritime experience.'}
           </p>
-          <button type="button" onClick={adder.open} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
+          <button type="button" onClick={openAdder} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
             <Plus aria-hidden="true" className="size-4" />
             Add your first experience
           </button>

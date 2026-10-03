@@ -4,7 +4,7 @@ import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { createContext, createElement, useActionState, useEffect, useState } from 'react'
+import { createContext, createElement, useActionState, useEffect, useRef, useState } from 'react'
 import { Building2, MapPin, Pencil, type LucideProps } from 'lucide-react'
 import { organizationPageHref } from '../organization-link'
 import { updateProfileIdentitySection, type ProfileInlineActionState } from '../profile-inline-actions'
@@ -170,17 +170,20 @@ export function ProfileHeader({
   registeredOrganization?: PickerOrganization | null
 }) {
   const router = useRouter()
-  const editor = useProfileCardEditor('profile-header', 'Basic information')
+  const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-header', 'Basic information')
   const editable = Boolean(editHref)
-  const editing = editable && editor.editing
-  const { open: openEditor } = editor
+  const editing = editable && editorEditing
 
+  // Back from registering an organization from the picker: open the editor once, with it linked.
+  const autoOpenedRef = useRef(false)
   useEffect(() => {
-    if (editable && registeredOrganization) openEditor()
+    if (!editable || !registeredOrganization || autoOpenedRef.current) return
+    autoOpenedRef.current = true
+    openEditor()
   }, [editable, registeredOrganization, openEditor])
 
   function saved() {
-    editor.close()
+    closeEditor()
     // Drop ?registered= once the organization is saved, so it is not offered again.
     if (registeredOrganization) router.replace('/profile', { scroll: false })
     else router.refresh()
@@ -253,7 +256,7 @@ export function ProfileHeader({
             </h1>
             {editable && !editing ? (
               <button
-                ref={editor.triggerRef}
+                ref={editorTriggerRef}
                 type="button"
                 onClick={openEditor}
                 aria-label="Edit basic information"
@@ -315,9 +318,9 @@ export function ProfileHeader({
             profile={profile}
             contactVisibility={contactVisibility}
             registeredOrganization={registeredOrganization}
-            onClose={editor.close}
+            onClose={closeEditor}
             onSaved={saved}
-            onDirty={editor.markDirty}
+            onDirty={markEditorDirty}
           />
         ) : actions ? (
           <div data-testid="profile-header-actions" className="mt-5 w-full max-md:mt-4">

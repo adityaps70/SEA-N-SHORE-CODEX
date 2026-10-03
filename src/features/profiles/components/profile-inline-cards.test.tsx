@@ -170,12 +170,6 @@ function inProvider(children: ReactNode) {
   return <ProfileCardEditingProvider>{children}</ProfileCardEditingProvider>
 }
 
-function formOf(element: HTMLElement) {
-  const form = element.closest('form')
-  if (!form) throw new Error('not inside a form')
-  return form
-}
-
 function lastFormData(mock: ReturnType<typeof vi.fn>) {
   const call = mock.mock.calls.at(-1)
   return call?.[call.length - 1] as FormData
@@ -439,7 +433,7 @@ describe('Organizations card', () => {
       <ProfileOrganizations
         organizations={organizations}
         editable
-        current={{ name: 'Harbour Crew', organization: { id: organizations[0]!.id, slug: 'harbour-crew', name: 'Harbour Crew', logoUrl: null } }}
+        current={{ name: 'Harbour Crew', organization: { id: organizations[0]!.id, slug: 'harbour-crew', name: 'Harbour Crew', logoUrl: null, verified: true } }}
       />,
     ))
     fireEvent.click(screen.getByRole('button', { name: 'Edit organizations' }))
@@ -572,5 +566,16 @@ describe('DG profile card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(screen.queryByRole('button', { name: 'Add DG profile PDF' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit DG Shipping profile' })).toHaveFocus()
+  })
+})
+
+describe('back from registering an organization', () => {
+  it('opens the header editor once with the new organization linked, and Cancel closes it for good', () => {
+    const registered = { id: '77777777-7777-4777-8777-777777777777', name: 'Blue Anchor Marine', pending: true }
+    render(inProvider(<ProfileHeader profile={enthusiast} editHref="inline" registeredOrganization={registered} />))
+    expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('Blue Anchor Marine')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('combobox', { name: 'Current organization' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit basic information' })).toBeInTheDocument()
   })
 })

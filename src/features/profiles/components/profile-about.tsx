@@ -54,10 +54,10 @@ function ProfileAboutEditor({
 
 export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
   const router = useRouter()
-  const editor = useProfileCardEditor('profile-about', 'About')
+  const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-about', 'About')
   const [expanded, setExpanded] = useState(false)
   const editable = Boolean(editHref)
-  const editing = editable && editor.editing
+  const editing = editable && editorEditing
   /** Long introductions show four lines and a "…more" toggle on phones. */
   const clampOnPhones = (profile.summary?.length ?? 0) > PHONE_SUMMARY_CLAMP_CHARS || (profile.summary?.split('\n').length ?? 0) > 4
 
@@ -67,15 +67,15 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
     <ProfileSection
       id="profile-about"
       title="About"
-      action={editable && !editing ? <ProfileSectionEditButton label="Edit About" onClick={editor.open} buttonRef={editor.triggerRef} /> : null}
+      action={editable && !editing ? <ProfileSectionEditButton label="Edit About" onClick={openEditor} buttonRef={editorTriggerRef} /> : null}
     >
       {editing ? (
         <ProfileAboutEditor
           profile={profile}
-          onClose={editor.close}
-          onDirty={editor.markDirty}
+          onClose={closeEditor}
+          onDirty={markEditorDirty}
           onSaved={() => {
-            editor.close()
+            closeEditor()
             router.refresh()
           }}
         />

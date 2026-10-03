@@ -200,14 +200,14 @@ function CredentialEntry({
   credential: ProfileCredentialRecord
   editable: boolean
 }) {
-  const editor = useProfileCardEditor(`credential:${credential.id}`, credential.name)
+  const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor(`credential:${credential.id}`, credential.name)
   const issued = dateLabel(credential.issuedOn)
   const expiry = credential.noExpiry ? 'No expiry' : dateLabel(credential.expiresOn)
 
-  if (editable && editor.editing) {
+  if (editable && editorEditing) {
     return (
       <div className="lg:col-span-2">
-        <CredentialEditor cardId={`credential:${credential.id}`} credential={credential} onClose={editor.close} onDirty={editor.markDirty} />
+        <CredentialEditor cardId={`credential:${credential.id}`} credential={credential} onClose={closeEditor} onDirty={markEditorDirty} />
       </div>
     )
   }
@@ -233,7 +233,7 @@ function CredentialEntry({
         </div>
 
         {editable ? (
-          <button ref={editor.triggerRef} type="button" onClick={editor.open} aria-label={`Edit ${credential.name}`} className={itemPencilClass}>
+          <button ref={editorTriggerRef} type="button" onClick={openEditor} aria-label={`Edit ${credential.name}`} className={itemPencilClass}>
             <Pencil aria-hidden="true" className="size-4" />
           </button>
         ) : null}
@@ -264,9 +264,9 @@ export function ProfileCredentialWallet({
   /** The owner's profile type; null keeps the card for everyone. */
   persona?: Persona | null
 }) {
-  const adder = useProfileCardEditor('credential:new', 'Add credential')
+  const { editing: adderEditing, open: openAdder, close: closeAdder, markDirty: markAdderDirty, triggerRef: adderTriggerRef } = useProfileCardEditor('credential:new', 'Add credential')
   const canAdd = editable && (!persona || personaUsesCredentials(persona))
-  const adding = canAdd && adder.editing
+  const adding = canAdd && adderEditing
 
   if (credentials.length === 0 && !canAdd) return null
 
@@ -275,13 +275,13 @@ export function ProfileCredentialWallet({
       id="profile-credentials"
       title="Licences & Credentials"
       action={canAdd && !adding ? (
-        <button ref={adder.triggerRef} type="button" onClick={adder.open} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add credential">
+        <button ref={adderTriggerRef} type="button" onClick={openAdder} className={PHONE_ICON_ADD_BUTTON_CLASS} aria-label="Add credential">
           <Plus aria-hidden="true" className="size-4 max-md:size-5" />
           <span className="max-md:sr-only">Add credential</span>
         </button>
       ) : null}
     >
-      {adding ? <CredentialEditor cardId="credential:new" onClose={adder.close} onDirty={adder.markDirty} /> : null}
+      {adding ? <CredentialEditor cardId="credential:new" onClose={closeAdder} onDirty={markAdderDirty} /> : null}
 
       {credentials.length ? (
         <PhoneShowAll noun="credentials" className="mt-6 grid gap-3 max-md:mt-4 max-md:gap-5 lg:grid-cols-2" itemClassName="contents">
@@ -294,7 +294,7 @@ export function ProfileCredentialWallet({
           <FileCheck2 aria-hidden="true" className="mx-auto size-7 text-ocean-600" />
           <p className="mt-2 text-sm font-semibold text-navy-950">Add your maritime credentials</p>
           <p className="mt-1 text-sm text-muted">New credentials are self-reported until a formal evidence review confirms them.</p>
-          <button type="button" onClick={adder.open} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
+          <button type="button" onClick={openAdder} className="mt-4 inline-flex min-h-10 items-center gap-2 rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">
             <Plus aria-hidden="true" className="size-4" />
             Add your first credential
           </button>

@@ -74,9 +74,9 @@ function MaritimeProfileEditor({
 
 export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
   const router = useRouter()
-  const editor = useProfileCardEditor('profile-maritime', 'Maritime Experience')
+  const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-maritime', 'Maritime Experience')
   const editable = Boolean(editHref)
-  const editing = editable && editor.editing
+  const editing = editable && editorEditing
   const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
 
   const details: Detail[] = [
@@ -105,17 +105,17 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
           {profile.shoreCareerPreference && !editing ? (
             <span className="rounded-full bg-mist-50 px-3 py-1 text-xs font-semibold text-ocean-700">Open to shore career</span>
           ) : null}
-          {editable && !editing ? <ProfileSectionEditButton label="Edit Professional Record" onClick={editor.open} buttonRef={editor.triggerRef} /> : null}
+          {editable && !editing ? <ProfileSectionEditButton label="Edit Professional Record" onClick={openEditor} buttonRef={editorTriggerRef} /> : null}
         </>
       )}
     >
       {editing ? (
         <MaritimeProfileEditor
           profile={profile}
-          onClose={editor.close}
-          onDirty={editor.markDirty}
+          onClose={closeEditor}
+          onDirty={markEditorDirty}
           onSaved={() => {
-            editor.close()
+            closeEditor()
             router.refresh()
           }}
         />

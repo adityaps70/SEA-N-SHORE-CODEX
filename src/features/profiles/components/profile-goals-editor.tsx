@@ -134,7 +134,7 @@ export function ProfileGoalsBox({
   /** The box's read-only content. */
   children: ReactNode
 }) {
-  const editor = useProfileCardEditor('profile-goals', 'Profile type & goals')
+  const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-goals', 'Profile type & goals')
   const icon = profileIdentityIcon(profile)
 
   return (
@@ -143,12 +143,12 @@ export function ProfileGoalsBox({
       title="Profile"
       icon={icon}
       // While editing, the box takes the card's full width so the fields have room.
-      className={editor.editing ? 'md:col-span-3' : undefined}
-      action={editor.editing ? null : (
-        <ProfileSectionEditButton label="Edit profile type and goals" onClick={editor.open} buttonRef={editor.triggerRef} className="-mr-1 -mt-1 bg-white" />
+      className={editorEditing ? 'md:col-span-3' : undefined}
+      action={editorEditing ? null : (
+        <ProfileSectionEditButton label="Edit profile type and goals" onClick={openEditor} buttonRef={editorTriggerRef} className="-mr-1 -mt-1 bg-white" />
       )}
     >
-      {editor.editing ? <ProfileGoalsBoxEditor profile={profile} onClose={editor.close} onDirty={editor.markDirty} /> : children}
+      {editorEditing ? <ProfileGoalsBoxEditor profile={profile} onClose={closeEditor} onDirty={markEditorDirty} /> : children}
     </MembershipPanel>
   )
 }

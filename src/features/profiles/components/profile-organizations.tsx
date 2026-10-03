@@ -161,10 +161,10 @@ export function ProfileOrganizations({
   /** Organisation accounts do not show a current organization in their header. */
   organisationAccount?: boolean
 }) {
-  const editor = useProfileCardEditor('profile-organizations', 'Organizations')
+  const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-organizations', 'Organizations')
   const canChooseCurrent = editable && !organisationAccount
     && (organizations.length > 0 || Boolean(current.organization || current.name?.trim()))
-  const editing = canChooseCurrent && editor.editing
+  const editing = canChooseCurrent && editorEditing
 
   if (!editable && !organizations.length) return null
   const manages = organizations.filter((organization) => organization.relation === 'manages')
@@ -175,16 +175,16 @@ export function ProfileOrganizations({
       id="profile-organizations"
       title="Organizations"
       action={canChooseCurrent && !editing ? (
-        <ProfileSectionEditButton label="Edit organizations" onClick={editor.open} buttonRef={editor.triggerRef} />
+        <ProfileSectionEditButton label="Edit organizations" onClick={openEditor} buttonRef={editorTriggerRef} />
       ) : null}
     >
       {editing ? (
         <ProfileOrganizationsEditor
           organizations={organizations}
           current={current}
-          onClose={editor.close}
-          onDirty={editor.markDirty}
-          onSaved={editor.close}
+          onClose={closeEditor}
+          onDirty={markEditorDirty}
+          onSaved={closeEditor}
         />
       ) : organizations.length ? (
         <>

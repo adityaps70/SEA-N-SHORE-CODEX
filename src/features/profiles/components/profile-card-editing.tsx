@@ -139,20 +139,26 @@ export function useProfileCardEditor(id: string, label: string) {
     wasEditingRef.current = editing
   }, [editing])
 
+  // The provider's functions are stable, so open / close / markDirty keep their identity while
+  // other cards open and close.
+  const request = context?.request
+  const closeCard = context?.close
+  const markCardDirty = context?.markDirty
+
   const open = useCallback(() => {
-    if (context) context.request({ id, label })
+    if (request) request({ id, label })
     else setLocalEditing(true)
-  }, [context, id, label])
+  }, [request, id, label])
 
   const close = useCallback(() => {
     restoreFocusRef.current = true
-    if (context) context.close(id)
+    if (closeCard) closeCard(id)
     else setLocalEditing(false)
-  }, [context, id])
+  }, [closeCard, id])
 
   const markDirty = useCallback(() => {
-    context?.markDirty(id)
-  }, [context, id])
+    markCardDirty?.(id)
+  }, [markCardDirty, id])
 
   return { editing, open, close, markDirty, triggerRef }
 }
