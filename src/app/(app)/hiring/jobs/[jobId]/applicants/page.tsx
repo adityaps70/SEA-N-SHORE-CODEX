@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { jobMatchDisplay } from '@/features/jobs/match-display'
+import { JobDepartmentBanner } from '@/features/jobs/components/job-department-banner'
 import { notFound } from 'next/navigation'
 import { FileText, MessageSquareText } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
@@ -101,6 +102,14 @@ export default async function HiringApplicantsPage({
               ? 'Candidates are ordered by Sea N Shore Match using structured Rank, Vessel experience, credentials and other maritime profile signals.'
               : presentation.description}
           </p>
+          {/* Round 12: the minimum match to apply, changeable any time from Edit vacancy. */}
+          <p className="mt-2 text-sm text-navy-900" data-testid="job-min-match">
+            <span className="font-semibold">Minimum match to apply:</span>{' '}
+            {job.minMatchToApply === 0 ? 'Off (anyone can apply)' : `${job.minMatchToApply ?? 70}%`}
+            {' · '}
+            <Link href={`/hiring/jobs/${jobId}/edit`} className="font-semibold text-ocean-700 hover:underline">Change</Link>
+          </p>
+          {!job.departmentKey && job.status === 'published' ? <JobDepartmentBanner href={`/hiring/jobs/${jobId}/edit`} className="mt-3" /> : null}
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 max-md:hidden">
           <Link href={`/hiring/jobs/${jobId}/edit`} className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 hover:bg-mist-50">Edit vacancy</Link>

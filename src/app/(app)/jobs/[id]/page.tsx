@@ -17,6 +17,8 @@ import { SaveJobButton } from '@/features/jobs/components/save-job-button'
 import { isApplyUntilOpen, todayIsoDate } from '@/features/jobs/job-lifecycle'
 import { getJobDetailState } from '@/features/jobs/queries'
 import { jobMatchDisplay } from '@/features/jobs/match-display'
+import { evaluateApplyGate } from '@/features/jobs/apply-gate'
+import { ApplyGateNotice } from '@/features/jobs/components/apply-gate-notice'
 import { relativeTimeFrom } from '@/lib/relative-time'
 
 function formatDate(value: string | null) {
@@ -53,6 +55,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const metaChip = 'inline-flex items-center gap-1.5 max-md:rounded-full max-md:bg-mist-50 max-md:px-2.5 max-md:py-1 max-md:text-[13px] max-md:font-semibold max-md:text-navy-900'
   // Round 12: null → no badge; below 40 the page says "Low match" and what is missing.
   const display = jobMatchDisplay(match)
+  // Round 12: the same minimum-match gate applyToJob enforces on the server.
+  const gate = evaluateApplyGate(job, match)
   const closedNotice = alreadyApplied
     ? null
     : <p className="rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-900">Applications for this job closed on {formatDate(job.applyUntil)}.</p>
@@ -86,6 +90,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
 
           {match && display ? <div className="mt-5 md:hidden"><JobMatchRow match={match} /></div> : null}
           {match?.notice ? <p className="mt-5 rounded-xl bg-mist-50 px-4 py-3 text-sm text-muted" data-testid="job-match-notice">{match.notice}</p> : null}
+          {!alreadyApplied && acceptingApplications ? <ApplyGateNotice gate={gate} className="mt-4 md:hidden" /> : null}
 
           <div className="mt-6 grid gap-3 max-md:mt-5 max-md:grid-cols-2 max-md:gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {job.rank ? <div className="rounded-2xl bg-mist-50 p-4"><p className="text-xs font-semibold uppercase tracking-wider text-muted">Rank / role</p><p className="mt-1 font-semibold text-navy-950">{job.rank}</p></div> : null}
@@ -115,7 +120,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </article>
 
         <aside className="min-w-0 space-y-4 self-start max-md:pb-4 lg:sticky lg:top-20">
-          <div className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:hidden"><p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Apply with Sea N Shore</p><p className="mt-2 text-sm leading-6 text-muted">Your professional identity and Maritime Passport stay connected to this application.</p><div className="mt-4 flex flex-wrap gap-2">{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} /> : closedNotice}<SaveJobButton jobId={job.id} initialSaved={isSaved} /></div><div className="mt-4 border-t border-mist-100 pt-3"><JobShareActions jobId={job.id} jobTitle={job.title} companyName={job.companyName} /></div></div>
+          <div className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] max-md:hidden"><p className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">Apply with Sea N Shore</p><p className="mt-2 text-sm leading-6 text-muted">Your professional identity and Maritime Passport stay connected to this application.</p><div className="mt-4 flex flex-wrap gap-2">{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} gate={gate} /> : closedNotice}<SaveJobButton jobId={job.id} initialSaved={isSaved} /></div><div className="mt-4 border-t border-mist-100 pt-3"><JobShareActions jobId={job.id} jobTitle={job.title} companyName={job.companyName} /></div></div>
           <section aria-labelledby="job-company-heading" className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
             <h2 id="job-company-heading" className="text-xs font-semibold uppercase tracking-[.12em] text-ocean-700">{job.companyId ? 'Posted by' : 'Posted by a recruiter'}</h2>
             <div className="mt-3">
@@ -137,7 +142,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         </aside>
       </div>
 
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-3 flex items-center gap-2 border-t border-mist-100 bg-white px-4 py-3 shadow-[0_-8px_24px_rgb(7_27_45/0.08)] md:hidden" data-testid="job-apply-bar"><SaveJobButton jobId={job.id} initialSaved={isSaved} variant="bar" />{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} variant="bar" label={job.easyApply ? 'Easy Apply' : 'Apply now'} /> : <span className="flex-1 text-center text-sm font-semibold text-amber-900">Applications closed</span>}</div>
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 mt-3 flex items-center gap-2 border-t border-mist-100 bg-white px-4 py-3 shadow-[0_-8px_24px_rgb(7_27_45/0.08)] md:hidden" data-testid="job-apply-bar"><SaveJobButton jobId={job.id} initialSaved={isSaved} variant="bar" />{acceptingApplications || alreadyApplied ? <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} variant="bar" label={job.easyApply ? 'Easy Apply' : 'Apply now'} gate={gate} /> : <span className="flex-1 text-center text-sm font-semibold text-amber-900">Applications closed</span>}</div>
     </section>
   )
 }

@@ -10,16 +10,19 @@ import {
   verifyPendingJobApplicationCv,
   type JobApplicationCvReference,
 } from './application-media'
+import { applyGateError, evaluateApplyGate, type ApplyGate } from './apply-gate'
+import { scoreJobMatch } from './matching'
 import { jobsRepository } from './repository'
 import { parseJobSearchParams } from './search'
+import type { JobListing } from './types'
 
 export type ApplyToJobResult =
   | { ok: true; alreadyApplied: boolean }
-  | { ok: false; error: string }
+  | { ok: false; error: string; gate?: ApplyGate }
 
 export type PrepareJobApplicationCvResult =
   | ({ ok: true; uploadUrl: string } & JobApplicationCvReference)
-  | { ok: false; error: string }
+  | { ok: false; error: string; gate?: ApplyGate }
 
 export type JobMutationResult = { ok: true } | { ok: false; error: string }
 
@@ -59,6 +62,12 @@ function isUniqueViolation(error: unknown) {
   return Boolean(error && typeof error === 'object' && 'code' in error && error.code === '23505')
 }
 
+/** Round 12: the minimum match to apply, checked on the server with the same match the member sees. */
+async function applyGateFor(job: JobListing, applicantId: string): Promise<ApplyGate> {
+  const profile = await jobsRepository.getCandidateProfile(applicantId)
+  return evaluateApplyGate(job, profile ? scoreJobMatch(job, profile) : null)
+}
+
 function revalidateCandidateJobs(jobId?: string) {
   revalidatePath('/jobs')
   revalidatePath('/jobs/saved')
@@ -87,6 +96,9 @@ export async function prepareJobApplicationCvUpload(
   if (!job || !await jobsRepository.isAcceptingApplications(parsedJobId.data)) {
     return { ok: false, error: 'This job is no longer accepting applications.' }
   }
+  const gate = await applyGateFor(job, user.id)
+  const refusal = applyGateError(gate)
+  if (refusal) return { ok: false, error: refusal, gate }
 
   try {
     const upload = await createPendingJobApplicationCvUpload({
@@ -133,6 +145,10 @@ export async function applyToJob(
   if (await jobsRepository.hasApplied(parsed.data, user.id)) {
     return { ok: true, alreadyApplied: true }
   }
+
+  const gate = await applyGateFor(job, user.id)
+  const refusal = applyGateError(gate)
+  if (refusal) return { ok: false, error: refusal, gate }
 
   let cv: JobApplicationCvReference | null = null
   if (cvInput) {

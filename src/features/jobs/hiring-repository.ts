@@ -115,6 +115,9 @@ export type ManagedHiringJobSummary = HiringJobSummary & {
   canDelete: boolean
   /** Nobody else can see it because the owner's plan ended (kept; back on renewal). */
   hiddenForPlan?: boolean
+  /** Round 12: null until the recruiter picks a department and accepted ranks. */
+  departmentKey?: string | null
+  minMatchToApply?: number
 }
 
 export type HiringJobStateChange = {
@@ -225,6 +228,8 @@ type ManagedJobRow = HiringJobSummaryRow & {
   moderation_removed?: boolean | null
   can_delete?: boolean | null
   hidden_for_plan?: boolean | null
+  department_key?: string | null
+  min_match_to_apply?: string | number | null
 }
 
 type PersonalPublisherRow = QueryResultRow & {
@@ -424,6 +429,8 @@ function managedJobSelect(userParam: string, rolesParam: string) {
          j.status::text as status,
          j.job_domain,
          j.rank,
+         j.department_key,
+         j.min_match_to_apply,
          j.vessel_types,
          j.location,
          j.urgent,
@@ -638,6 +645,8 @@ function mapHiringJobSummary(row: HiringJobSummaryRow): HiringJobSummary {
 function mapManagedJob(row: ManagedJobRow): ManagedHiringJobSummary {
   return {
     ...mapHiringJobSummary(row),
+    departmentKey: row.department_key ?? null,
+    minMatchToApply: minMatchValue(row.min_match_to_apply),
     companyId: row.company_id ?? null,
     publisherName: row.publisher_name ?? 'Personal recruiter',
     companySlug: row.company_slug ?? null,

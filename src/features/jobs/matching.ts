@@ -210,7 +210,8 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
   if (job.experienceMinYears !== null) {
     possible += MATCH_WEIGHTS.experience
     if (profile.sailingExperienceYears === null) {
-      profileGaps.push({ key: 'sea_time', label: 'Your sea service (years)' })
+      // Seafarers record sea time on their profile; a cadet without it simply does not meet the minimum.
+      if (persona === 'seafarer') profileGaps.push({ key: 'sea_time', label: 'Your sea service (years)' })
       pushUnique(missingRequirements, `${job.experienceMinYears}+ years experience`)
     } else if (profile.sailingExperienceYears >= job.experienceMinYears) {
       earned += MATCH_WEIGHTS.experience
@@ -223,7 +224,7 @@ export function scoreJobMatch(job: JobListing, profile: JobCandidateProfile, tod
   // Vessel background: satisfied by any required vessel type.
   if (job.vesselTypes.length) {
     possible += MATCH_WEIGHTS.vessel
-    if (!profile.vesselTypes.length) profileGaps.push({ key: 'vessel_types', label: 'Vessel types you have sailed on' })
+    if (!profile.vesselTypes.length && persona === 'seafarer') profileGaps.push({ key: 'vessel_types', label: 'Vessel types you have sailed on' })
     const matchedVessel = job.vesselTypes.find((vessel) => includesCI(profile.vesselTypes, vessel))
     if (matchedVessel) {
       earned += MATCH_WEIGHTS.vessel

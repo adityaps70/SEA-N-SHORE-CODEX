@@ -1,9 +1,12 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useId, useState, useTransition } from 'react'
 import { CheckCircle2, FileText, Send, Upload, X, Zap } from 'lucide-react'
 import { applyToJob, prepareJobApplicationCvUpload } from '../actions'
+import type { ApplyGate } from '../apply-gate'
 import { MAX_JOB_APPLICATION_CV_BYTES } from '../application-media-policy'
+import { ApplyGateNotice } from './apply-gate-notice'
 
 export function ApplyJobButton({
   jobId,
@@ -11,9 +14,12 @@ export function ApplyJobButton({
   compact = false,
   variant,
   label,
+  gate,
 }: {
   jobId: string
   alreadyApplied: boolean
+  /** Round 12: whether the member may apply (minimum match, profile type, missing profile items). */
+  gate?: ApplyGate
   compact?: boolean
   /** 'bar' is the filled pill in the phone sticky apply bar. */
   variant?: 'bar'
@@ -27,7 +33,10 @@ export function ApplyJobButton({
   const [coverNote, setCoverNote] = useState('')
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
+  const [refusedGate, setRefusedGate] = useState<ApplyGate | null>(null)
   const coverNoteId = useId()
+  // The server's answer wins over the gate the page was rendered with.
+  const currentGate = refusedGate ?? gate ?? { status: 'open' as const }
 
   useEffect(() => {
     if (!open) return
@@ -48,6 +57,32 @@ export function ApplyJobButton({
       >
         <CheckCircle2 aria-hidden="true" className="size-4" /> {compact || bar ? 'Applied' : 'Application submitted'}
       </div>
+    )
+  }
+
+  if (currentGate.status !== 'open') {
+    if (!compact && !bar) return <ApplyGateNotice gate={currentGate} className="w-full" />
+    const pillClass = bar
+      ? 'inline-flex min-h-11 flex-1 items-center justify-center rounded-full px-4 text-center text-[13px] font-semibold leading-tight'
+      : 'inline-flex min-h-10 items-center rounded-xl px-4 text-sm font-semibold'
+    if (currentGate.status === 'incomplete') {
+      return (
+        <Link href={currentGate.gaps[0]?.href ?? '/profile'} className={`${pillClass} bg-amber-50 text-amber-900 hover:bg-amber-100`}>
+          {currentGate.message}
+        </Link>
+      )
+    }
+    if (currentGate.status === 'sea_job_profile_type') {
+      return (
+        <Link href={currentGate.href} title={currentGate.message} className={`${pillClass} bg-amber-50 text-amber-900 hover:bg-amber-100`}>
+          {bar ? 'For seafarers · update profile type' : 'For seafarers'}
+        </Link>
+      )
+    }
+    return (
+      <button type="button" disabled title={currentGate.message} className={`${pillClass} cursor-not-allowed bg-mist-50 text-muted`}>
+        {bar ? currentGate.message : `Below minimum (${currentGate.minimum}%)`}
+      </button>
     )
   }
 
@@ -83,6 +118,10 @@ export function ApplyJobButton({
         })
         if (!prepared.ok) {
           setError(prepared.error)
+          if (prepared.gate) {
+            setRefusedGate(prepared.gate)
+            setOpen(false)
+          }
           return
         }
 
@@ -115,6 +154,10 @@ export function ApplyJobButton({
         setOpen(false)
       } else {
         setError(result.error)
+        if (result.gate) {
+          setRefusedGate(result.gate)
+          setOpen(false)
+        }
       }
     })
   }

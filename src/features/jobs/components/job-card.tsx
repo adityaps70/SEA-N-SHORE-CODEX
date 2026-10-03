@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card'
 import { isApplyUntilOpen, todayIsoDate } from '../job-lifecycle'
 import type { JobListing, JobMatchResult } from '../types'
 import { jobMatchDisplay } from '../match-display'
+import { evaluateApplyGate } from '../apply-gate'
 import { ApplyJobButton } from './apply-job-button'
 import { JobCompanyLogo } from './job-company-identity'
 import { SaveJobButton } from './save-job-button'
@@ -43,6 +44,7 @@ export function JobCard({
   const joining = formatDate(job.joiningFrom, 'Joining')
   // Round 12: no badge for no match or below 40%; banded labels from 40%.
   const display = jobMatchDisplay(match)
+  const gate = match ? evaluateApplyGate(job, match) : undefined
   const strongestReason = match?.reasons[0] ?? null
   const warning = match?.missingRequirements[0] ?? match?.warnings[0] ?? null
   const chips = [job.rank, job.department, job.domain === 'sea' ? job.vesselTypes[0] : null]
@@ -157,7 +159,7 @@ export function JobCard({
             Applications closed
           </span>
         ) : job.easyApply ? (
-          <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact />
+          <ApplyJobButton jobId={job.id} alreadyApplied={alreadyApplied} compact gate={gate} />
         ) : (
           <Link
             href={`/jobs/${job.id}`}
