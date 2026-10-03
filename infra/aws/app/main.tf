@@ -76,21 +76,21 @@ variable "task_cpu" {
 }
 
 variable "task_memory" {
-  description = "Fargate memory in MiB."
+  description = "Fargate memory in MiB (Round 13: 2048; the deploy workflow never copies below it)."
   type        = number
-  default     = 1024
+  default     = 2048
 }
 
 variable "desired_count" {
-  description = "Initial ECS desired task count."
+  description = "Initial ECS desired task count (Round 13: two tasks so one OOM or deploy never empties the target group)."
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "min_capacity" {
-  description = "Minimum ECS task count for autoscaling."
+  description = "Minimum ECS task count for autoscaling (Round 13: never scale in below two tasks)."
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "max_capacity" {
@@ -519,9 +519,11 @@ resource "aws_ecs_service" "web" {
 }
 
 resource "aws_appautoscaling_target" "web" {
-  max_capacity       = var.max_capacity
-  min_capacity       = var.min_capacity
-  resource_id        = "service/${aws_ecs_cluster.app.name}/${aws_ecs_service.web.name}"
+  max_capacity = var.max_capacity
+  min_capacity = var.min_capacity
+  # Built from names rather than resource references (same value) so a targeted plan of the
+  # scaling and alarm resources does not pull in the service and its task definition.
+  resource_id        = "service/${local.name_prefix}/${local.name_prefix}-web"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }

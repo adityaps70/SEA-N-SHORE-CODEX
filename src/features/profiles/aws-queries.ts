@@ -3,7 +3,7 @@ import {
   requireAwsUser,
   type AwsVerifiedUser,
 } from '@/features/auth/aws-queries'
-import { createMediaReadUrl } from '@/lib/aws/storage'
+import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import { isSyntheticDiscoveryText } from '@/lib/public-discovery'
 import { createProfileMediaRepository, profileMediaRepository } from './profile-media-repository'
 import { createProfileRepository } from './repository'
@@ -22,7 +22,7 @@ export function createAwsProfileQueries(input: {
   createReadUrl?: (key: string) => Promise<string>
 }) {
   const mediaRepository = input.mediaRepository ?? profileMediaRepository
-  const createReadUrl = input.createReadUrl ?? createMediaReadUrl
+  const createReadUrl = input.createReadUrl ?? createMediaImageSrc
 
   async function hydrateProfiles<T extends PublicProfile>(profiles: T[]): Promise<T[]> {
     if (!profiles.length) return profiles

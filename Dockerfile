@@ -29,6 +29,18 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV NODE_EXTRA_CA_CERTS=/app/certs/ap-south-1-bundle.pem
 
+# Round 13: the web task was OOM-killed with a bare "Killed" (native memory, not the JS heap).
+# jemalloc returns freed native memory (libvips/sharp buffers) instead of fragmenting glibc arenas.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libjemalloc2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && test -f /usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+ENV MALLOC_CONF=background_thread:true,dirty_decay_ms:5000,muzzy_decay_ms:5000
+# About 60% of the 2048 MiB task: a real JS leak now fails with a heap error and stack trace
+# instead of a silent SIGKILL.
+ENV NODE_OPTIONS=--max-old-space-size=1228
+
 COPY --from=builder /app ./
 
 RUN mkdir -p /app/certs \
@@ -43,4 +55,6 @@ RUN mkdir -p /app/certs \
 USER node
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Node directly (no npm wrapper, so SIGTERM reaches the server for a clean drain). The keep-alive
+# timeout outlives the ALB's 60 s idle timeout, so the ALB never reuses a socket Node has closed.
+CMD ["node", "node_modules/next/dist/bin/next", "start", "--keepAliveTimeout", "65000"]

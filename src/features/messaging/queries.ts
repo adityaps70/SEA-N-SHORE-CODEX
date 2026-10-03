@@ -1,5 +1,5 @@
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { createMediaReadUrl } from '@/lib/aws/storage'
+import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import {
   isImageMessageAttachmentMime,
   isVideoMessageAttachmentMime,
@@ -250,7 +250,7 @@ export function createMessagingQueries(input: {
 const productionMessagingQueries = createMessagingQueries({
   requireUser: requireAwsUser,
   repository: messagingRepository,
-  createReadUrl: createMediaReadUrl,
+  createReadUrl: createMediaImageSrc,
 })
 
 export const getConversationInbox = productionMessagingQueries.getConversationInbox

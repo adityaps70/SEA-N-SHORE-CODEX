@@ -1,4 +1,4 @@
-import { createMediaReadUrl } from '@/lib/aws/storage'
+import { createMediaImageSrc } from '@/lib/images/media-image-src'
 
 type SignUrl = (key: string, expiresInSeconds: number) => Promise<string>
 
@@ -10,7 +10,7 @@ type SignUrl = (key: string, expiresInSeconds: number) => Promise<string>
  */
 export async function withAdminAvatarUrls<T extends { avatarPath?: string | null }>(
   rows: readonly T[],
-  signUrl: SignUrl = createMediaReadUrl,
+  signUrl: SignUrl = createMediaImageSrc,
 ): Promise<Array<T & { avatarUrl: string | null }>> {
   const paths = [...new Set(rows.map((row) => row.avatarPath?.trim()).filter((path): path is string => Boolean(path)))]
   const signed = new Map(await Promise.all(paths.map(async (path) => {

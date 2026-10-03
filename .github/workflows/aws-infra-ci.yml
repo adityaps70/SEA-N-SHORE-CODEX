@@ -67,6 +67,8 @@ jobs:
         run: node --test scripts/aws/multi-login-auth-infra.test.mjs
       - name: Verify web memory diagnostic stays read-only
         run: node --test scripts/aws/web-memory-diagnostic.test.mjs
+      - name: Verify web resilience infrastructure release contract
+        run: node --test scripts/aws/web-resilience-infra.test.mjs
       - name: Verify Cognito custom domain release contract
         run: node --test scripts/aws/cognito-custom-domain-infra.test.mjs
       - name: Verify Cognito Google/native repair contract
