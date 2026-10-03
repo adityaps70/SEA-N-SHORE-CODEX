@@ -437,21 +437,34 @@ if [[ "$CURRENT_GOOGLE_FLAG" != "$DESIRED_GOOGLE_FLAG" || "$CURRENT_COGNITO_DOMA
     --services "$SERVICE_NAME"
 fi
 
-aws ecs describe-services \
-  --region "$AWS_REGION" \
-  --cluster "$CLUSTER_NAME" \
-  --services "$SERVICE_NAME" \
-  --output json > "$WORK_DIR/service-after.json"
-jq -e --arg task "$NEW_TASK_ARN" '
-  (.failures | length) == 0
-  and .services[0].taskDefinition == $task
-  and .services[0].desiredCount == 1
-  and .services[0].runningCount == 1
-  and .services[0].pendingCount == 0
-  and ([.services[0].deployments[] | select(.status=="PRIMARY")] | length) == 1
-  and ([.services[0].deployments[] | select(.status=="PRIMARY")][0].rolloutState) == "COMPLETED"
-  and ([.services[0].deployments[] | select(.status=="PRIMARY")][0].failedTasks) == 0
-' "$WORK_DIR/service-after.json" >/dev/null
+# Same bar as the staging deploy's exact-deployment check: the service may run more than one
+# task, and rolloutState can reach COMPLETED a little after services-stable returns.
+SERVICE_SETTLED=false
+for attempt in $(seq 1 30); do
+  aws ecs describe-services \
+    --region "$AWS_REGION" \
+    --cluster "$CLUSTER_NAME" \
+    --services "$SERVICE_NAME" \
+    --output json > "$WORK_DIR/service-after.json"
+  echo "WEB_SERVICE_STATE=$(jq -c '{desired: .services[0].desiredCount, running: .services[0].runningCount, pending: .services[0].pendingCount, deployments: (.services[0].deployments | length), rollout: ([.services[0].deployments[] | select(.status=="PRIMARY")][0].rolloutState), failedTasks: ([.services[0].deployments[] | select(.status=="PRIMARY")][0].failedTasks)}' "$WORK_DIR/service-after.json")"
+  if jq -e --arg task "$NEW_TASK_ARN" '
+    (.failures | length) == 0
+    and .services[0].taskDefinition == $task
+    and .services[0].desiredCount >= 1
+    and .services[0].runningCount == .services[0].desiredCount
+    and .services[0].pendingCount == 0
+    and (.services[0].deployments | length) == 1
+    and ([.services[0].deployments[] | select(.status=="PRIMARY")][0].taskDefinition) == $task
+    and ([.services[0].deployments[] | select(.status=="PRIMARY")][0].rolloutState) == "COMPLETED"
+    and ([.services[0].deployments[] | select(.status=="PRIMARY")][0].runningCount) == .services[0].desiredCount
+    and ([.services[0].deployments[] | select(.status=="PRIMARY")][0].failedTasks) == 0
+  ' "$WORK_DIR/service-after.json" >/dev/null; then
+    SERVICE_SETTLED=true
+    break
+  fi
+  sleep 5
+done
+[[ "$SERVICE_SETTLED" == true ]] || { echo "Web service did not settle on $NEW_TASK_ARN after the rollout." >&2; exit 1; }
 
 aws ecs describe-task-definition \
   --region "$AWS_REGION" \
