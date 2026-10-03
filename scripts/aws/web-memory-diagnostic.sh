@@ -168,9 +168,11 @@ PY
 
 echo "== Web logs (last ${HOURS}h) =="
 START_MS="$(( $(date -u -d "$START" +%s) * 1000 ))"
+# filter-log-events prints one count per result page; awk sums them.
 for pattern in '"FATAL ERROR"' '"heap out of memory"' '"Killed"' '"_next/image"' '"ECONNRESET"' '"Error:"'; do
   COUNT="$(aws logs filter-log-events --region "$AWS_REGION" --log-group-name "$LOG_GROUP" --start-time "$START_MS" \
-    --filter-pattern "$pattern" --max-items 20000 --query 'length(events)' --output text 2>/dev/null || echo error)"
+    --filter-pattern "$pattern" --max-items 20000 --query 'length(events)' --output text 2>/dev/null \
+    | awk '{s += $1} END {print s + 0}' || echo error)"
   echo "WEB_LOG_COUNT pattern=$pattern count=$COUNT"
 done
 echo "WEB_MEMORY_DIAGNOSTIC_VERIFIED=true"

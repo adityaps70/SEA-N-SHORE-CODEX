@@ -23,6 +23,8 @@ test('web memory diagnostic never prints container environment or secrets', () =
   assert.match(script, /MINUTE_OF_HOUR_MEM_AVG/)
   assert.match(script, /SCALABLE_TARGET_MIN=/)
   assert.match(script, /WEB_MEMORY_DIAGNOSTIC_VERIFIED=true/)
+  // filter-log-events prints one count per result page; the counts must be summed.
+  assert.match(script, /--query 'length\(events\)' --output text 2>\/dev\/null \\\n\s+\| awk '\{s \+= \$1\} END \{print s \+ 0\}'/)
 })
 
 test('web memory diagnostic workflow waits for CI and runs the pinned commit read-only', () => {

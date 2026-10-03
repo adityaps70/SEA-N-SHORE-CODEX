@@ -199,6 +199,8 @@ test('once Cognito email goes through Resend, every disposable sign-up must be d
   assert.match(confirmBlock, /\?\\"decrypt_failed\\" \?\\"send_failed\\" \?\\"no_recipient\\"/)
   assert.match(confirmBlock, /ONBOARDING_E2E_RESEND_SENDER_VERIFIED=true/)
   assert.match(confirmBlock, /ONBOARDING_E2E_RESEND_SENDER_VERIFIED=not-enabled/)
+  // filter-log-events prints one count per result page ("8\n0"); both counts must be summed.
+  assert.equal((confirmBlock.match(/--query 'length\(events\)' --output text \| awk '\{\{s \+= \$1\}\} END \{\{print s \+ 0\}\}'/g) ?? []).length, 2)
 
   const waitEnd = workflow.indexOf('- name: Run staging sign-in and onboarding browser journeys')
   const waitBlock = workflow.slice(confirmEnd, waitEnd)
