@@ -23,7 +23,7 @@ python3 - "$MIGRATION" <<'PY'
 import re,sys
 sql=open(sys.argv[1],encoding='utf-8').read().strip()
 parts=[p.strip() for p in re.split(r'^\s*-- statement-breakpoint\s*$',sql,flags=re.M) if p.strip()]
-if len(parts)!=10: raise SystemExit(f'expected 10 statements, found {len(parts)}')
+if len(parts)!=11: raise SystemExit(f'expected 11 statements, found {len(parts)}')
 for p in parts:
     code='\n'.join(x for x in p.splitlines() if not x.lstrip().startswith('--')).strip()
     if re.search(r'\b(drop\s+(table|column|type|schema|index)|truncate|delete\s+from)\b',code,re.I):
@@ -62,6 +62,7 @@ report(){
     echo "STRUCTURED_ROLES_${stage}_JOBS_MAPPED=$(count "SELECT count(*)::bigint FROM public.jobs j WHERE j.rank IS NOT NULL AND j.department_key IS NOT NULL")"
     echo "STRUCTURED_ROLES_${stage}_JOBS_UNMAPPED=$(count "SELECT count(*)::bigint FROM public.jobs j WHERE j.rank IS NOT NULL AND j.department_key IS NULL")"
     echo "STRUCTURED_ROLES_${stage}_OPEN_JOBS_MIN_MATCH_70=$(count "SELECT count(*)::bigint FROM public.jobs j WHERE j.status = 'published' AND j.deleted_at IS NULL AND j.min_match_to_apply = 70")"
+    echo "STRUCTURED_ROLES_${stage}_OPEN_JOBS_MIN_MATCH_0=$(count "SELECT count(*)::bigint FROM public.jobs j WHERE j.status = 'published' AND j.deleted_at IS NULL AND j.min_match_to_apply = 0")"
   fi
 }
 

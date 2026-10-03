@@ -15,8 +15,8 @@ function valuesOf(statement: string, name: string): string[][] {
 }
 
 describe('migration 0062: structured roles (round 12)', () => {
-  it('is non-destructive and split into the ten statements the guarded script expects', () => {
-    expect(statements).toHaveLength(10)
+  it('is non-destructive and split into the eleven statements the guarded script expects', () => {
+    expect(statements).toHaveLength(11)
     expect(sql).not.toMatch(/drop\s+(table|column|type|schema|index)|truncate|delete\s+from/i)
   })
 
@@ -37,6 +37,12 @@ describe('migration 0062: structured roles (round 12)', () => {
   it('only gives a job a department of the same domain (sea / shore)', () => {
     expect(valuesOf(statements[9], 'department_domains')).toEqual(ROLE_DEPARTMENTS.map((department) => [department.key, department.domain]))
     expect(statements[9]).toContain("dd.domain = coalesce(j.job_domain, 'sea')")
+  })
+
+  it('turns the minimum off only for older shore jobs left without a department', () => {
+    expect(statements[10]).toContain('set min_match_to_apply = 0')
+    expect(statements[10]).toContain('where j.department_key is null')
+    expect(statements[10]).toContain("coalesce(j.job_domain, 'sea') = 'shore'")
   })
 
   it('normalises old text the way normaliseRoleText does', () => {

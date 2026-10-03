@@ -11,6 +11,9 @@
 -- 3. Backfill: old rank texts that match a taxonomy label or synonym (the same list
 --    normaliseLegacyRank uses, compared case, space and punctuation-insensitively) get keys.
 --    Only rows without a key are touched, so re-running changes nothing. Unmapped rows stay null.
+-- 4. Existing shore jobs that still have no department after the backfill would be gated only by
+--    job-title word overlap, so their minimum match starts at 0 (off) until the recruiter picks a
+--    department and accepted roles. Every other job keeps the default 70.
 -- Non-destructive: adds columns, check constraints and indexes, fills empty keys; deletes nothing.
 
 alter table public.profiles
@@ -982,4 +985,12 @@ where j.department_key is null
   and j.rank is not null
   and m.rank_text = btrim(regexp_replace(lower(replace(j.rank, '&', ' and ')), '[^a-z0-9]+', ' ', 'g'))
   and dd.domain = coalesce(j.job_domain, 'sea');
+-- statement-breakpoint
+
+update public.jobs j
+set min_match_to_apply = 0
+where j.department_key is null
+  and coalesce(j.job_domain, 'sea') = 'shore'
+  and j.min_match_to_apply = 70
+  and j.created_at < now();
 -- statement-breakpoint
