@@ -105,6 +105,30 @@ describe('ProfileHeader', () => {
     expect(screen.getByRole('button', { name: 'Change profile photo' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Change cover photo' })).toBeInTheDocument()
   })
+  it('keeps an organization and rank from an earlier profile editable in the inline editor (round 10)', () => {
+    render(
+      <ProfileHeader
+        profile={{ ...profile, profileType: 'maritime_professional', persona: 'maritime_enthusiast', currentCompany: 'ig computers', rank: 'captain' }}
+        editHref="/profile/edit#identity"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
+    expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('ig computers')
+    expect(screen.getByRole('textbox', { name: /Rank or role/ })).toHaveValue('captain')
+  })
+
+  it('does not add organization or rank fields to the inline editor when nothing is saved for a persona without them', () => {
+    render(
+      <ProfileHeader
+        profile={{ ...profile, profileType: 'maritime_professional', persona: 'maritime_enthusiast', currentCompany: null, rank: null }}
+        editHref="/profile/edit#identity"
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
+    expect(screen.queryByRole('combobox', { name: 'Current organization' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
+  })
+
   it('lets the phone "…" sheet in its actions open the same inline editor, including contact visibility', () => {
     render(
       <ProfileHeader

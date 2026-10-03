@@ -28,6 +28,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     profileId: string,
     data: ProfileIdentitySectionInput,
     isMaritime: boolean,
+    options: { rankSubmitted?: boolean } = {},
   ) {
     return input.withTransaction(async (client) => {
       const locked = await client.query<LockedProfileRow>(
@@ -85,6 +86,13 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
              current_company_id = excluded.current_company_id,
              updated_at = now()`,
           [profileId, data.currentCompany ?? null, data.currentCompany ? data.currentCompanyId ?? null : null],
+        )
+      }
+      if (options.rankSubmitted) {
+        // Round 10: only the rank column; a member without a maritime row has no rank to change.
+        await client.query(
+          `update public.maritime_profiles set rank = $2, updated_at = now() where user_id = $1`,
+          [profileId, data.rank?.trim() ? data.rank.trim() : null],
         )
       }
       return true

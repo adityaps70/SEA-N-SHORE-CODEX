@@ -115,7 +115,9 @@ export async function updateProfileIdentitySection(
     await updateProfileIdentitySectionWithAurora(
       user.id,
       identity,
-      profile.persona ? personaUsesProfessionalCompany(profile.persona) : true,
+      // Round 10: a saved organization stays editable even when the persona does not ask for one.
+      (profile.persona ? personaUsesProfessionalCompany(profile.persona) : true) || formData.has('currentCompany'),
+      { rankSubmitted: formData.has('rank') },
     )
     await flagProfileModeration(user.id, moderation)
   } catch (error) {

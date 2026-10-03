@@ -88,9 +88,13 @@ export function ProfileHeader({
     className: 'size-3.5',
   } as LucideProps)
   const secondaryIdentities = profile.secondaryIdentities ?? []
-  const showCompanyField = profile.persona
+  // Round 10: an organization or rank saved by an earlier profile still shows on posts, so keep it editable.
+  const showCompanyField = (profile.persona
     ? personaUsesProfessionalCompany(profile.persona)
-    : profile.identityRoot !== 'organisation'
+    : profile.identityRoot !== 'organisation')
+    || (profile.identityRoot !== 'organisation' && Boolean(profile.currentCompany?.trim() || profile.currentOrganization))
+  const isSeafarer = profile.persona === 'seafarer' || (!profile.persona && profile.profileType === 'seafarer')
+  const showSavedRankField = !isSeafarer && Boolean(profile.rank?.trim())
   const companyFieldLabel = 'Current organization'
   const inputClass = 'mt-1 min-h-10 w-full rounded-xl border border-mist-100 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500'
   const labelClass = 'block text-sm font-semibold text-navy-950'
@@ -252,6 +256,14 @@ export function ProfileHeader({
                   inputClassName={inputClass}
                   returnTo="/profile/edit"
                 />
+              ) : null}
+              {showSavedRankField ? (
+                <label className={labelClass}>
+                  Rank or role
+                  <input name="rank" maxLength={100} defaultValue={profile.rank ?? ''} className={inputClass} aria-describedby="profile-header-rank-hint" />
+                  <span id="profile-header-rank-hint" className="mt-1 block text-xs font-normal text-muted">Shown next to your name on posts. Clear it if it no longer applies.</span>
+                  <FieldError state={state} name="rank" />
+                </label>
               ) : null}
               <label className={labelClass}>
                 Contact visibility
