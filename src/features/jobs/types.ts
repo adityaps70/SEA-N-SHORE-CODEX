@@ -1,4 +1,5 @@
 import type { JobDiscoveryMode } from './catalog'
+import type { Persona } from '@/features/profiles/persona'
 
 export const JOB_APPLICATION_STATUSES = [
   'applied',
@@ -25,11 +26,14 @@ export const JOB_APPLICATION_STATUS_LABELS: Record<JobApplicationStatus, string>
 
 export type JobDomain = 'sea' | 'shore'
 export type JobSalaryPeriod = 'day' | 'month' | 'year'
-export type JobSort = 'recommended' | 'recent' | 'joining' | 'salary'
+export type JobSort = 'recommended' | 'best' | 'recent' | 'joining' | 'salary'
 
 export type JobSearchFilters = {
   query: string
   mode: JobDiscoveryMode
+  /** Round 12: a taxonomy department key. */
+  department?: string | null
+  /** Taxonomy rank / role keys (old saved alerts may still hold label text). */
   ranks: string[]
   vesselTypes: string[]
   minExperienceYears: number | null
@@ -53,6 +57,18 @@ export type JobCredential = {
 }
 
 export type JobCandidateProfile = {
+  /** Round 12: profile type and structured rank keys (see features/roles/taxonomy). */
+  persona?: Persona | null
+  profileType?: string | null
+  roleKey?: string | null
+  roleOtherText?: string | null
+  cadetStageKey?: string | null
+  targetRoleKey?: string | null
+  headline?: string | null
+  occupationText?: string | null
+  /** Titles of shore-role and other experience, compared with shore job titles. */
+  experienceTitles?: string[]
+  /** The old free-text rank, used when no key is saved yet. */
   rank: string | null
   sailingExperienceYears: number | null
   vesselTypes: string[]
@@ -64,11 +80,25 @@ export type JobCandidateProfile = {
   skills: string[]
 }
 
+export type JobMatchBand = 'low' | 'partial' | 'good' | 'strong'
+
+/** Profile data a job asks for that the member has not added yet (round 12 apply gate). */
+export type JobProfileGapKey = 'rank' | 'target_role' | 'role' | 'certificates' | 'sea_time' | 'vessel_types'
+export type JobProfileGap = { key: JobProfileGapKey; label: string }
+
 export type JobMatchResult = {
-  score: number
+  /** 0..100 over the criteria the job specifies, or null when nothing is comparable. */
+  score: number | null
+  band?: JobMatchBand | null
   reasons: string[]
   missingRequirements: string[]
   warnings: string[]
+  /** A quiet line shown instead of a %, e.g. "Sea-going role. Your profile type is Maritime Enthusiast." */
+  notice?: string | null
+  /** A sea-going job and a profile type that is not matched for sea jobs (only Seafarer and Student / Cadet are). */
+  seaJobForOtherProfileType?: boolean
+  /** Data the job asks for that the profile is missing. */
+  profileGaps?: JobProfileGap[]
 }
 
 export type JobListing = {
@@ -93,6 +123,12 @@ export type JobListing = {
   domain: JobDomain
   department: string | null
   rank: string | null
+  /** Round 12: taxonomy department and accepted rank / role keys; empty for jobs from before. */
+  departmentKey?: string | null
+  acceptedRoleKeys?: string[]
+  roleOtherText?: string | null
+  /** Minimum match needed to apply, 0 = off. */
+  minMatchToApply?: number
   vesselTypes: string[]
   experienceMinYears: number | null
   experienceMaxYears: number | null

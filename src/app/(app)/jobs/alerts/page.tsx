@@ -5,6 +5,7 @@ import { CreateJobAlertSheet, DeleteJobAlertButton, JobAlertForm } from '@/featu
 import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
 import { MyJobsChips } from '@/features/jobs/components/my-jobs-chips'
 import { getJobAlerts } from '@/features/jobs/queries'
+import { roleByKey } from '@/features/roles/taxonomy'
 
 export const metadata: Metadata = { title: 'Job alerts' }
 
@@ -20,7 +21,7 @@ function serialize(params: RawParams) {
 }
 
 function describeFilters(filters: { mode: string; ranks: string[]; vesselTypes: string[]; regions: string[]; query: string }) {
-  return [filters.mode === 'for-you' ? 'For You' : filters.mode, filters.ranks[0], filters.vesselTypes[0], filters.regions[0], filters.query].filter(Boolean).join(' · ')
+  return [filters.mode === 'for-you' ? 'For You' : filters.mode, filters.ranks[0] ? roleByKey(filters.ranks[0])?.label ?? filters.ranks[0] : null, filters.vesselTypes[0], filters.regions[0], filters.query].filter(Boolean).join(' · ')
 }
 
 export default async function JobAlertsPage({ searchParams }: { searchParams: Promise<RawParams> }) {

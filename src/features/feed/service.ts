@@ -13,6 +13,7 @@ import {
   type PhotoTagInput,
 } from './repository'
 import { createFeedSocialWriterForClient, type FeedSocialWriter } from './social-writer'
+import { roleDisplayLabel } from '@/features/roles/taxonomy'
 import type { PostCategory, PostReactionType, ReactionDetailsPage, ReactionTargetType } from './types'
 
 type FeedTransaction = <T>(fn: (repository: FeedRepository, social?: FeedSocialWriter) => Promise<T>) => Promise<T>
@@ -515,7 +516,7 @@ export function createFeedService(input: {
         avatarPath: row.avatar_path,
         avatarUrl: row.avatar_path ? signedUrls.get(row.avatar_path) ?? null : null,
         headline: row.headline,
-        rank: row.rank,
+        rank: roleDisplayLabel({ roleKey: row.role_key, otherText: row.role_other_text, legacyText: row.rank }),
         currentCompany: row.current_company,
         reaction: row.reaction_type,
         reactedAt: row.reacted_at,

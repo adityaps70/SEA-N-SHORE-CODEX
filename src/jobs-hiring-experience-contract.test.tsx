@@ -47,7 +47,12 @@ describe('premium hiring workspace contract', () => {
     expect(form).toContain('updateHiringJob')
     expect(form).toContain('Sea job')
     expect(form).toContain('Shore job')
-    expect(form).toContain('Rank / position')
+    // Round 12: Department → accepted ranks / roles from the taxonomy, never a typed rank.
+    expect(form).toContain('AcceptedRolesPicker')
+    expect(form).not.toContain('name="rank" defaultValue')
+    expect(source('src/features/roles/components/accepted-roles-picker.tsx')).toContain('Accepted ranks / roles')
+    expect(form).toContain('Minimum match to apply')
+    expect(form).toContain('0 turns it off')
     expect(form).toContain('Vessel types')
     expect(form).toContain('Experience')
     expect(form).toContain('Joining date')

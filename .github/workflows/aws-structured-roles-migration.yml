@@ -1,0 +1,86 @@
+name: AWS Structured Roles Migration
+
+on:
+  push:
+    branches: [feat/aws-native-phase-0-1]
+    paths:
+      - infra/aws/database/migrations/0062_structured_roles.sql
+      - scripts/aws/structured-roles-migration.sh
+      - scripts/aws/structured-roles-migration-action.txt
+      - scripts/aws/structured-roles-migration.test.mjs
+      - .github/workflows/aws-structured-roles-migration.yml
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-structured-roles
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      AWS_REGION: ap-south-1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for exact-head AWS Infrastructure CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "$API")"
+            STATUS="$(jq -r '[.workflow_runs[]|select(.name=="AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[]|select(.name=="AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            if [[ "$STATUS" == completed ]]; then [[ "$CONCLUSION" == success ]]; exit; fi
+            sleep 10
+          done
+          exit 1
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+      - name: Verify AWS account and discover bootstrap
+        id: instance
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "310356785722"
+          IDS="$(aws ec2 describe-instances --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)"
+          test "$(jq length <<<"$IDS")" -eq 1
+          echo "id=$(jq -r '.[0]' <<<"$IDS")" >> "$GITHUB_OUTPUT"
+      - name: Execute guarded migration
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - "$SHA" > /tmp/params.json <<'PY'
+          import json,shlex,sys
+          sha=sys.argv[1]
+          cmd=f"""set -euo pipefail
+          D=$(mktemp -d /var/tmp/sns-structured-roles.XXXXXX)
+          trap 'rm -rf "$D"' EXIT
+          git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$D/repo"
+          cd "$D/repo"
+          git checkout --quiet --detach {sha}
+          export STRUCTURED_ROLES_EXPECTED_SHA={sha}
+          bash scripts/aws/structured-roles-migration.sh
+          """
+          print(json.dumps({"executionTimeout":["1200"],"commands":["runuser -u ssm-user -- bash -lc "+shlex.quote(cmd)]}))
+          PY
+          CID="$(aws ssm send-command --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --parameters file:///tmp/params.json --query 'Command.CommandId' --output text)"
+          for i in $(seq 1 240); do
+            S="$(aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)"
+            case "$S" in Pending|InProgress|Delayed) sleep 5;; *) break;; esac
+          done
+          aws ssm get-command-invocation --command-id "$CID" --instance-id "$INSTANCE_ID" --output json > /tmp/result.json
+          jq -r '.StandardOutputContent // empty' /tmp/result.json
+          jq -r '.StandardErrorContent // empty' /tmp/result.json >&2
+          test "$(jq -r .Status /tmp/result.json)" = Success
+          OUT="$(jq -r '.StandardOutputContent // empty' /tmp/result.json)"
+          grep -Eq 'STRUCTURED_ROLES_(PLAN_ONLY_NO_APPLY|APPLY_VERIFIED|ALREADY_APPLIED)=true' <<<"$OUT"

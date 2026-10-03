@@ -206,7 +206,10 @@ describe('header card (round 11)', () => {
     expect(screen.getByRole('textbox', { name: 'Headline' })).toHaveValue('Maritime enthusiast')
     expect(screen.getByRole('textbox', { name: 'Location' })).toHaveValue('Lucknow')
     expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('ig computers')
-    expect(screen.getByRole('textbox', { name: /Rank or role/ })).toHaveValue('captain')
+    // Round 12: an enthusiast has no rank list; the rank saved by an earlier profile can only be removed.
+    expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Remove “captain” from next to my name' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Occupation \/ role/ })).toHaveValue('')
     expect(screen.getByRole('combobox', { name: 'Contact visibility' })).toHaveValue('public')
     // The header's own photo buttons are untouched; no link leaves for /profile/edit.
     expect(document.querySelector('a[href^="/profile/edit"]')).toBeNull()
@@ -217,12 +220,15 @@ describe('header card (round 11)', () => {
     const pencil = screen.getByRole('button', { name: 'Edit basic information' })
     fireEvent.click(pencil)
     fireEvent.change(screen.getByRole('combobox', { name: 'Current organization' }), { target: { value: '' } })
-    fireEvent.change(screen.getByRole('textbox', { name: /Rank or role/ }), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Remove “captain” from next to my name' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => expect(mocks.updateProfileIdentitySection).toHaveBeenCalledTimes(1))
     const data = lastFormData(mocks.updateProfileIdentitySection)
-    expect(data.get('rank')).toBe('')
+    // The server turns this into a cleared rank text (applyProfileRoleFields); no rank is typed.
+    expect(data.get('clearRank')).toBe('on')
+    expect(data.get('roleFields')).toBe('1')
+    expect(data.has('rank')).toBe(false)
     expect(data.get('currentCompany')).toBe('')
     expect(data.get('persona')).toBe('maritime_enthusiast')
     await waitFor(() => expect(screen.queryByRole('form', { name: 'Edit basic information' })).not.toBeInTheDocument())
@@ -236,16 +242,22 @@ describe('header card (round 11)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit basic information' }))
     const type = screen.getByRole('combobox', { name: 'Profile type' })
 
-    expect(screen.queryByRole('textbox', { name: /rank/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /rank/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /Occupation \/ role/ })).toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Current organization' })).not.toBeInTheDocument()
 
     fireEvent.change(type, { target: { value: 'seafarer' } })
-    expect(screen.getByRole('textbox', { name: /Current or most recent rank/ })).toBeRequired()
+    expect(screen.getByRole('combobox', { name: 'Department' })).toBeRequired()
+    expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toBeRequired()
+    expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toBeDisabled()
+    expect(screen.queryByRole('textbox', { name: /Occupation/ })).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: 'Current organization' })).toBeInTheDocument()
 
     fireEvent.change(type, { target: { value: 'student_cadet' } })
     expect(screen.getByRole('textbox', { name: 'Institute / academy' })).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /rank/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Current stage' })).toBeRequired()
+    expect(screen.getByRole('combobox', { name: 'Target job role (rank / role)' })).toBeRequired()
+    expect(screen.queryByRole('combobox', { name: 'Current or most recent rank' })).not.toBeInTheDocument()
 
     fireEvent.change(type, { target: { value: 'seafarer_family' } })
     expect(screen.getByRole('textbox', { name: 'Relationship to the maritime community' })).toBeInTheDocument()
@@ -264,7 +276,8 @@ describe('header card (round 11)', () => {
     expect(screen.getByRole('textbox', { name: 'Institute / academy' })).toHaveValue('IMU Chennai')
     fireEvent.change(screen.getByRole('combobox', { name: 'Profile type' }), { target: { value: 'seafarer' } })
     expect(screen.getByRole('textbox', { name: 'Institute / academy' })).toHaveValue('IMU Chennai')
-    expect(screen.getByRole('textbox', { name: /Current or most recent rank/ })).toHaveValue('captain')
+    // The saved "captain" is recognised and pre-selected once the type has a rank list.
+    expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toHaveValue('master')
   })
 
   it('never gives organisation accounts a profile type, organization or rank field', () => {
@@ -273,6 +286,7 @@ describe('header card (round 11)', () => {
     expect(screen.queryByRole('combobox', { name: 'Profile type' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Current organization' })).not.toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: /rank/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: /rank|Department/i })).not.toBeInTheDocument()
   })
 
   it('shows "Saving…" and disables both buttons while saving, and shows errors inline under the field', async () => {
@@ -311,11 +325,11 @@ describe('Cancel and Esc', () => {
   it('Esc cancels the open card', () => {
     render(inProvider(<MaritimeProfileCard profile={seafarer} editHref="inline" />))
     fireEvent.click(screen.getByRole('button', { name: 'Edit Professional Record' }))
-    const rank = screen.getByRole('textbox', { name: 'Rank' })
-    fireEvent.change(rank, { target: { value: 'Chief Officer' } })
+    const rank = screen.getByRole('combobox', { name: 'Current or most recent rank' })
+    fireEvent.change(rank, { target: { value: 'chief_officer' } })
     fireEvent.keyDown(rank, { key: 'Escape' })
 
-    expect(screen.queryByRole('textbox', { name: 'Rank' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Current or most recent rank' })).not.toBeInTheDocument()
     expect(screen.getByText('Master')).toBeInTheDocument()
     expect(mocks.updateProfileProfessionalSection).not.toHaveBeenCalled()
   })
@@ -334,14 +348,17 @@ describe('Cancel and Esc', () => {
     await waitFor(() => expect(screen.queryByRole('textbox', { name: 'About' })).not.toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Professional Record' }))
-    for (const [name, value] of [['Rank', 'Master'], ['Current vessel', 'MT Example'], ['Vessel types', 'Oil Tanker'], ['Trading areas', 'Worldwide']]) {
+    expect(screen.getByRole('combobox', { name: 'Department' })).toHaveValue('deck_officers')
+    expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toHaveValue('master')
+    for (const [name, value] of [['Current vessel', 'MT Example'], ['Vessel types', 'Oil Tanker'], ['Trading areas', 'Worldwide']]) {
       expect(screen.getByRole('textbox', { name })).toHaveValue(value)
     }
     expect(screen.getByRole('spinbutton', { name: 'Sailing experience years' })).toHaveValue(18)
     expect(screen.getByRole('checkbox', { name: 'Interested in shore opportunities' })).toBeChecked()
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() => expect(mocks.updateProfileProfessionalSection).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Rank' })).not.toBeInTheDocument())
+    expect(lastFormData(mocks.updateProfileProfessionalSection).get('roleKey')).toBe('master')
+    await waitFor(() => expect(screen.queryByRole('combobox', { name: 'Current or most recent rank' })).not.toBeInTheDocument())
   })
 })
 
@@ -361,7 +378,7 @@ describe('one card at a time', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit About' }))
     fireEvent.click(screen.getByRole('button', { name: 'Edit Professional Record' }))
     expect(screen.queryByRole('textbox', { name: 'About' })).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Rank' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toBeInTheDocument()
     expect(screen.queryByTestId('profile-discard-prompt')).not.toBeInTheDocument()
   })
 

@@ -41,7 +41,10 @@ describe('ProfileEditForm', () => {
     expect(screen.getByText('Username changes remaining: 2 of 2.')).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: /^headline$/i })).toHaveValue('Master Mariner')
     expect(screen.getByRole('textbox', { name: /skills/i })).toHaveValue('Navigation, SIRE 2.0')
-    expect(screen.getByRole('textbox', { name: /^rank$/i })).toHaveValue('Master')
+    // Round 12: the rank is picked (Department → Rank), never typed; the saved "Master" is pre-selected.
+    expect(screen.queryByRole('textbox', { name: /^rank$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Department' })).toHaveValue('deck_officers')
+    expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toHaveValue('master')
 
     const profileType = container.querySelector<HTMLInputElement>('input[name="profileType"]')
     expect(profileType).toHaveValue('seafarer')
@@ -119,10 +122,10 @@ describe('ProfileEditForm', () => {
     expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
   })
 
-  it('keeps an organization and rank saved by an earlier profile editable, because posts still show them (round 10)', () => {
+  it('keeps an organization saved by an earlier profile editable, and no longer offers a typed rank (round 12)', () => {
     render(<ProfileEditForm profile={{ ...profile, persona: 'maritime_enthusiast', currentCompany: 'ig computers', currentOrganization: null, rank: 'captain' }} />)
     expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('ig computers')
-    expect(screen.getByRole('textbox', { name: /Rank or role/ })).toHaveValue('captain')
-    expect(screen.getByText('Shown next to your name on posts. Clear it if it no longer applies.')).toBeInTheDocument()
+    // The saved rank is removed from "Profile type & goals" above; nobody types a rank any more.
+    expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
   })
 })

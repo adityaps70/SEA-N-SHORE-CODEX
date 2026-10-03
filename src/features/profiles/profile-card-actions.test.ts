@@ -185,3 +185,47 @@ describe('Organizations card action', () => {
     expect(mocks.setCurrentOrganization).not.toHaveBeenCalled()
   })
 })
+
+describe('structured rank / role on profile cards (round 12)', () => {
+  it('saves the picked department and rank keys, with the rank label as the text shown on posts', async () => {
+    const form = headerForm({ persona: 'seafarer', roleFields: '1', roleDepartmentKey: 'deck_officers', roleKey: 'chief_officer' })
+    form.delete('rank')
+    await expect(updateProfileIdentitySection({}, form)).resolves.toMatchObject({ success: true })
+
+    const [, identity, , options] = mocks.updateIdentity.mock.calls[0]!
+    expect(identity.rank).toBe('Chief Officer')
+    expect(options).toMatchObject({
+      rankSubmitted: true,
+      role: { roleDepartmentKey: 'deck_officers', roleKey: 'chief_officer', roleOtherText: null, occupationText: null },
+    })
+  })
+
+  it('rejects a rank key that is not in the taxonomy, without saving', async () => {
+    const result = await updateProfileIdentitySection({}, headerForm({ persona: 'seafarer', roleFields: '1', roleDepartmentKey: 'deck_officers', roleKey: 'admiral_of_the_fleet' }))
+    expect(result.fieldErrors?.roleKey).toEqual(['Choose a rank from the list.'])
+    expect(mocks.updateIdentity).not.toHaveBeenCalled()
+  })
+
+  it('gives a Maritime Enthusiast an occupation and leaves the saved rank text alone', async () => {
+    const form = headerForm({ roleFields: '1', occupationText: 'Web developer' })
+    await updateProfileIdentitySection({}, form)
+    const [, , , options] = mocks.updateIdentity.mock.calls[0]!
+    expect(options.rankSubmitted).toBe(false)
+    expect(options.role).toMatchObject({ occupationText: 'Web developer', roleKey: null })
+  })
+
+  it('saves a cadet target role from the Access & goals box', async () => {
+    const form = new FormData()
+    for (const [name, value] of Object.entries({
+      persona: 'student_cadet',
+      profileIntents: JSON.stringify(['find_jobs']),
+      roleFields: '1',
+      cadetStageKey: 'deck_cadet',
+      targetDepartmentKey: 'deck_officers',
+      targetRoleKey: 'third_officer',
+    })) form.set(name, value)
+    await expect(updateProfileGoalsSection({}, form)).resolves.toMatchObject({ success: true })
+    const [, , options] = mocks.updateGoals.mock.calls[0]!
+    expect(options.role).toMatchObject({ cadetStageKey: 'deck_cadet', targetRoleKey: 'third_officer', roleKey: null })
+  })
+})

@@ -2,6 +2,9 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { scoreJobMatch } from './matching'
+import { PERSONAS, type Persona } from '@/features/profiles/persona'
+import { jobDepartmentDisplay, jobRankDisplay, roleDisplayLabel } from '@/features/roles/taxonomy'
+import { matchPersonaSql } from '@/features/roles/sql'
 import type { JobApplicationCvReference } from './application-media'
 import { validateApplicationStatusChange } from './application-status'
 import type { JobLifecycleSnapshot } from './job-lifecycle'
@@ -63,6 +66,11 @@ export type HiringJobInput = {
   status: HiringJobStatus
   certificates: string[]
   visas: string[]
+  /** Round 12: department and accepted ranks / roles (taxonomy keys), and the minimum match to apply (0 = off). */
+  departmentKey?: string | null
+  acceptedRoleKeys?: string[]
+  roleOtherText?: string | null
+  minMatchToApply?: number
 }
 
 /** Job details that can be edited. The lifecycle status only changes through job-lifecycle.ts. */
@@ -108,6 +116,9 @@ export type ManagedHiringJobSummary = HiringJobSummary & {
   canDelete: boolean
   /** Nobody else can see it because the owner's plan ended (kept; back on renewal). */
   hiddenForPlan?: boolean
+  /** Round 12: null until the recruiter picks a department and accepted ranks. */
+  departmentKey?: string | null
+  minMatchToApply?: number
 }
 
 export type HiringJobStateChange = {
@@ -126,6 +137,15 @@ export type HiringApplicantCandidate = {
   location: string | null
   headline: string | null
   rank: string | null
+  /** Round 12: profile type and structured rank keys, for the same match the candidate sees. */
+  persona?: Persona | null
+  profileType?: string | null
+  roleKey?: string | null
+  roleOtherText?: string | null
+  cadetStageKey?: string | null
+  targetRoleKey?: string | null
+  occupationText?: string | null
+  experienceTitles?: string[]
   sailingExperienceYears: number | null
   vesselTypes: string[]
   tradingAreas: string[]
@@ -209,6 +229,8 @@ type ManagedJobRow = HiringJobSummaryRow & {
   moderation_removed?: boolean | null
   can_delete?: boolean | null
   hidden_for_plan?: boolean | null
+  department_key?: string | null
+  min_match_to_apply?: string | number | null
 }
 
 type PersonalPublisherRow = QueryResultRow & {
@@ -244,6 +266,10 @@ type EditableJobRow = QueryResultRow & {
   apply_until: string | Date | null
   certificates: string[] | null
   visas: string[] | null
+  department_key?: string | null
+  accepted_role_keys?: string[] | null
+  role_other_text?: string | null
+  min_match_to_apply?: string | number | null
 }
 
 type CredentialRow = { name: string; expires_at: string | null; verified: boolean }
@@ -280,6 +306,13 @@ type ApplicantRow = QueryResultRow & {
   candidate_location: string | null
   headline: string | null
   candidate_rank: string | null
+  candidate_persona?: string | null
+  candidate_role_key?: string | null
+  candidate_role_other_text?: string | null
+  candidate_cadet_stage_key?: string | null
+  candidate_target_role_key?: string | null
+  candidate_occupation_text?: string | null
+  candidate_experience_titles?: string[] | null
   sailing_experience_years: string | number | null
   candidate_vessel_types: string[] | null
   trading_areas: string[] | null
@@ -308,6 +341,10 @@ type ApplicantRow = QueryResultRow & {
   job_domain: string | null
   department: string | null
   job_rank: string | null
+  job_department_key?: string | null
+  job_accepted_role_keys?: string[] | null
+  job_role_other_text?: string | null
+  job_min_match_to_apply?: string | number | null
   job_vessel_types: string[] | null
   experience_min_years: string | number | null
   experience_max_years: string | number | null
@@ -392,6 +429,8 @@ function managedJobSelect(userParam: string, rolesParam: string) {
          j.status::text as status,
          j.job_domain,
          j.rank,
+         j.department_key,
+         j.min_match_to_apply,
          j.vessel_types,
          j.location,
          j.urgent,
@@ -438,6 +477,17 @@ const APPLICANT_SELECT = `
     p.location as candidate_location,
     p.headline,
     mp.rank as candidate_rank,
+    ${matchPersonaSql('p')} as candidate_persona,
+    p.role_key as candidate_role_key,
+    p.role_other_text as candidate_role_other_text,
+    p.cadet_stage_key as candidate_cadet_stage_key,
+    p.target_role_key as candidate_target_role_key,
+    p.occupation_text as candidate_occupation_text,
+    coalesce((
+      select array_agg(pe.title order by pe.sort_order, pe.title)
+      from public.profile_experiences pe
+      where pe.profile_id = p.id and pe.track in ('shore_role', 'other_maritime')
+    ), '{}'::text[]) as candidate_experience_titles,
     mp.sailing_experience_years,
     mp.vessel_types as candidate_vessel_types,
     mp.trading_areas,
@@ -493,6 +543,10 @@ const APPLICANT_SELECT = `
     j.job_domain,
     j.department,
     j.rank as job_rank,
+    j.department_key as job_department_key,
+    j.accepted_role_keys as job_accepted_role_keys,
+    j.role_other_text as job_role_other_text,
+    j.min_match_to_apply as job_min_match_to_apply,
     j.vessel_types as job_vessel_types,
     j.experience_min_years,
     j.experience_max_years,
@@ -590,6 +644,8 @@ function mapHiringJobSummary(row: HiringJobSummaryRow): HiringJobSummary {
 function mapManagedJob(row: ManagedJobRow): ManagedHiringJobSummary {
   return {
     ...mapHiringJobSummary(row),
+    departmentKey: row.department_key ?? null,
+    minMatchToApply: minMatchValue(row.min_match_to_apply),
     companyId: row.company_id ?? null,
     publisherName: row.publisher_name ?? 'Personal recruiter',
     companySlug: row.company_slug ?? null,
@@ -617,6 +673,12 @@ export function managedJobLifecycle(job: ManagedHiringJobSummary): JobLifecycleS
     applicantCount: job.applicantCount,
     canDelete: job.canDelete,
   }
+}
+
+/** A stored minimum match, 70 when the column is missing (before migration 0062). */
+export function minMatchValue(value: string | number | null | undefined): number {
+  const parsed = numberOrNull(value ?? null)
+  return parsed === null ? 70 : Math.min(100, Math.max(0, Math.round(parsed)))
 }
 
 function mapEditableJob(row: EditableJobRow): HiringEditableJob {
@@ -647,6 +709,10 @@ function mapEditableJob(row: EditableJobRow): HiringEditableJob {
     status: row.status,
     certificates: Array.isArray(row.certificates) ? row.certificates : [],
     visas: Array.isArray(row.visas) ? row.visas : [],
+    departmentKey: row.department_key ?? null,
+    acceptedRoleKeys: Array.isArray(row.accepted_role_keys) ? row.accepted_role_keys : [],
+    roleOtherText: row.role_other_text ?? null,
+    minMatchToApply: minMatchValue(row.min_match_to_apply),
   }
 }
 
@@ -660,7 +726,14 @@ function mapCandidate(row: ApplicantRow): HiringApplicantCandidate {
     avatarPath: accountActive ? row.avatar_path ?? null : null,
     location: row.candidate_location ?? null,
     headline: row.headline ?? null,
-    rank: row.candidate_rank ?? null,
+    rank: roleDisplayLabel({ roleKey: row.candidate_role_key, otherText: row.candidate_role_other_text, legacyText: row.candidate_rank }),
+    persona: PERSONAS.find((persona) => persona === row.candidate_persona) ?? null,
+    roleKey: row.candidate_role_key ?? null,
+    roleOtherText: row.candidate_role_other_text ?? null,
+    cadetStageKey: row.candidate_cadet_stage_key ?? null,
+    targetRoleKey: row.candidate_target_role_key ?? null,
+    occupationText: row.candidate_occupation_text ?? null,
+    experienceTitles: Array.isArray(row.candidate_experience_titles) ? row.candidate_experience_titles : [],
     sailingExperienceYears: numberOrNull(row.sailing_experience_years),
     vesselTypes: Array.isArray(row.candidate_vessel_types) ? row.candidate_vessel_types : [],
     tradingAreas: Array.isArray(row.trading_areas) ? row.trading_areas : [],
@@ -680,6 +753,15 @@ function mapCandidate(row: ApplicantRow): HiringApplicantCandidate {
 
 function candidateProfile(candidate: HiringApplicantCandidate): JobCandidateProfile {
   return {
+    persona: candidate.persona ?? null,
+    profileType: candidate.profileType ?? null,
+    roleKey: candidate.roleKey ?? null,
+    roleOtherText: candidate.roleOtherText ?? null,
+    cadetStageKey: candidate.cadetStageKey ?? null,
+    targetRoleKey: candidate.targetRoleKey ?? null,
+    headline: candidate.headline,
+    occupationText: candidate.occupationText ?? null,
+    experienceTitles: candidate.experienceTitles ?? [],
     rank: candidate.rank,
     sailingExperienceYears: candidate.sailingExperienceYears,
     vesselTypes: candidate.vesselTypes,
@@ -711,8 +793,12 @@ function mapApplicantJob(row: ApplicantRow): JobListing {
     createdAt: timestampValue(row.job_created_at),
     publishedAt: nullableTimestampValue(row.job_published_at),
     domain: jobDomain(row.job_domain),
-    department: row.department ?? null,
-    rank: row.job_rank ?? null,
+    department: jobDepartmentDisplay({ departmentKey: row.job_department_key, department: row.department }),
+    rank: jobRankDisplay({ acceptedRoleKeys: row.job_accepted_role_keys, roleOtherText: row.job_role_other_text, rank: row.job_rank }),
+    departmentKey: row.job_department_key ?? null,
+    acceptedRoleKeys: Array.isArray(row.job_accepted_role_keys) ? row.job_accepted_role_keys : [],
+    roleOtherText: row.job_role_other_text ?? null,
+    minMatchToApply: minMatchValue(row.job_min_match_to_apply),
     vesselTypes: Array.isArray(row.job_vessel_types) ? row.job_vessel_types : [],
     experienceMinYears: numberOrNull(row.experience_min_years),
     experienceMaxYears: numberOrNull(row.experience_max_years),
@@ -758,9 +844,9 @@ function cvReference(
   }
 }
 
-/** Best match first, then the most recent application. Dates are ISO strings at this point. */
+/** Best match first (no score last), then the most recent application. Dates are ISO strings at this point. */
 function compareApplicants(left: HiringApplicant, right: HiringApplicant) {
-  return right.match.score - left.match.score
+  return (right.match.score ?? -1) - (left.match.score ?? -1)
     || right.appliedAt.localeCompare(left.appliedAt)
     || left.applicationId.localeCompare(right.applicationId)
 }
@@ -1031,6 +1117,10 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
         j.urgent,
         j.easy_apply,
         j.apply_until,
+        j.department_key,
+        j.accepted_role_keys,
+        j.role_other_text,
+        j.min_match_to_apply,
         coalesce((
           select array_agg(cr.certificate_name order by cr.certificate_name)
           from public.job_certificate_requirements cr
@@ -1118,18 +1208,20 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
            title, company_name, company_id, created_by_user_id, location, summary, description, requirements,
            apply_until, status, job_domain, department, rank, vessel_types, experience_min_years, experience_max_years,
            joining_from, joining_until, salary_min, salary_max, salary_currency, salary_period, sailing_regions,
-           urgent, easy_apply, published_at
+           urgent, easy_apply, published_at, department_key, accepted_role_keys, role_other_text, min_match_to_apply
          ) values (
            $1, $2, $3, $4, $5, $6, $7, $8,
            $9, $10::public.job_listing_status, $11, $12, $13, $14::text[], $15, $16,
            $17, $18, $19, $20, $21, $22, $23::text[],
-           $24, $25, case when $10::public.job_listing_status = 'published'::public.job_listing_status then now() else null end
+           $24, $25, case when $10::public.job_listing_status = 'published'::public.job_listing_status then now() else null end,
+           $26, $27::text[], $28, $29::smallint
          ) returning id`,
         [
           job.title, publisherName, publisherCompanyId, userId, job.location, job.summary, job.description, job.requirements,
           job.applyUntil, job.status, job.domain, job.department, job.rank, job.vesselTypes, job.experienceMinYears,
           job.experienceMaxYears, job.joiningFrom, job.joiningUntil, job.salaryMin, job.salaryMax, job.salaryCurrency,
           job.salaryPeriod, job.regions, job.urgent, job.easyApply,
+          job.departmentKey ?? null, job.acceptedRoleKeys ?? [], job.roleOtherText ?? null, job.minMatchToApply ?? 70,
         ],
       )
       const jobId = typeof rows[0]?.id === 'string' ? rows[0].id : null
@@ -1218,6 +1310,10 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
                when $8::public.job_listing_status = 'closed'::public.job_listing_status then coalesce(archived_at, now())
                else null
              end,
+             department_key = case when $29::boolean then $25 else department_key end,
+             accepted_role_keys = case when $29::boolean then $26::text[] else accepted_role_keys end,
+             role_other_text = case when $29::boolean then $27 else role_other_text end,
+             min_match_to_apply = coalesce($28::smallint, min_match_to_apply),
              updated_at = now()
          where id = $1
            and status = $24::public.job_listing_status
@@ -1228,6 +1324,8 @@ export function createHiringRepository(input: { query?: HiringQuery; transaction
           job.domain, job.department, job.rank, job.vesselTypes, job.experienceMinYears, job.experienceMaxYears,
           job.joiningFrom, job.joiningUntil, job.salaryMin, job.salaryMax, job.salaryCurrency, job.salaryPeriod,
           job.regions, job.urgent, job.easyApply, change.expectedStatus,
+          job.departmentKey ?? null, job.acceptedRoleKeys ?? [], job.roleOtherText ?? null, job.minMatchToApply ?? null,
+          job.departmentKey !== undefined || job.acceptedRoleKeys !== undefined,
         ],
       )
       if (!updated[0]) throw new Error('job_state_changed')

@@ -7,6 +7,7 @@ import type {
 } from './profile-inline-schemas'
 import type { ProfilePreferencesInput, RetainedPersonaDetails } from './profile-preferences'
 import { createProfilePreferencesService } from './profile-preferences-service'
+import { UPDATE_PROFILE_ROLE_SQL, profileRoleValues, type ProfileRoleSelection } from '@/features/roles/profile-role-input'
 
 type ReturningIdRow = QueryResultRow & { id: string }
 type LockedProfileRow = QueryResultRow & {
@@ -56,6 +57,11 @@ async function updateRank(client: DatabaseQueryClient, profileId: string, rank?:
   )
 }
 
+async function saveRole(client: DatabaseQueryClient, profileId: string, role?: ProfileRoleSelection | null) {
+  // Round 12: the structured department / rank, cadet stage and target role, and occupation.
+  if (role) await client.query(UPDATE_PROFILE_ROLE_SQL, profileRoleValues(profileId, role))
+}
+
 function unavailable(): never {
   throw new Error('profile_edit_unavailable')
 }
@@ -69,7 +75,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     profileId: string,
     data: ProfileIdentitySectionInput,
     isMaritime: boolean,
-    options: { rankSubmitted?: boolean; preferences?: ProfileCardPreferences } = {},
+    options: { rankSubmitted?: boolean; preferences?: ProfileCardPreferences; role?: ProfileRoleSelection | null } = {},
   ) {
     return input.withTransaction(async (client) => {
       const locked = await client.query<LockedProfileRow>(
@@ -122,6 +128,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
       if (options.preferences) await savePreferencesWithClient(client, profileId, options.preferences)
       if (isMaritime) await upsertCurrentOrganization(client, profileId, data)
       if (options.rankSubmitted) await updateRank(client, profileId, data.rank)
+      await saveRole(client, profileId, options.role)
       return true
     })
   }
@@ -153,7 +160,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     })
   }
 
-  async function updateProfessional(profileId: string, data: ProfileProfessionalSectionInput) {
+  async function updateProfessional(profileId: string, data: ProfileProfessionalSectionInput, role?: ProfileRoleSelection | null) {
     return input.withTransaction(async (client) => {
       await client.query(
         `insert into public.maritime_profiles (
@@ -178,6 +185,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
           data.shoreCareerPreference,
         ],
       )
+      await saveRole(client, profileId, role)
       return true
     })
   }
@@ -188,13 +196,33 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
    */
   async function updateGoals(
     profileId: string,
-    preferences: ProfileCardPreferences,
-    options: { organization?: ProfileCurrentOrganization; rankSubmitted?: boolean; rank?: string } = {},
+    preferences: ProfileCardPreferences | null,
+    options: { organization?: ProfileCurrentOrganization; rankSubmitted?: boolean; rank?: string; role?: ProfileRoleSelection | null } = {},
   ) {
     return input.withTransaction(async (client) => {
-      await savePreferencesWithClient(client, profileId, preferences)
+      if (preferences) await savePreferencesWithClient(client, profileId, preferences)
       if (options.organization) await upsertCurrentOrganization(client, profileId, options.organization)
       if (options.rankSubmitted) await updateRank(client, profileId, options.rank)
+      await saveRole(client, profileId, options.role)
+      return true
+    })
+  }
+
+  /**
+   * Round 12 "Select your rank" banner: only the structured role, plus the rank text shown on posts
+   * for a seafarer (a maritime row is created when there is none yet).
+   */
+  async function updateRole(profileId: string, role: ProfileRoleSelection, rankText: string | null) {
+    return input.withTransaction(async (client) => {
+      await saveRole(client, profileId, role)
+      if (rankText) {
+        await client.query(
+          `insert into public.maritime_profiles (user_id, rank, vessel_types, trading_areas, shore_career_preference, updated_at)
+           values ($1, $2, '{}'::text[], '{}'::text[], false, now())
+           on conflict (user_id) do update set rank = excluded.rank, updated_at = now()`,
+          [profileId, rankText],
+        )
+      }
       return true
     })
   }
@@ -207,7 +235,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     })
   }
 
-  return { updateIdentity, updateAbout, updateProfessional, updateGoals, setCurrentOrganization }
+  return { updateIdentity, updateAbout, updateProfessional, updateGoals, setCurrentOrganization, updateRole }
 }
 
 const productionService = createProfileInlineEditService({
@@ -219,3 +247,4 @@ export const updateProfileAboutSectionWithAurora = productionService.updateAbout
 export const updateProfileProfessionalSectionWithAurora = productionService.updateProfessional
 export const updateProfileGoalsSectionWithAurora = productionService.updateGoals
 export const setProfileCurrentOrganizationWithAurora = productionService.setCurrentOrganization
+export const updateProfileRoleWithAurora = productionService.updateRole

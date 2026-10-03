@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   isAcceptingApplications: vi.fn(),
   hasApplied: vi.fn(),
   createApplication: vi.fn(),
+  getCandidateProfile: vi.fn(),
   createPendingJobApplicationCvUpload: vi.fn(),
   verifyPendingJobApplicationCv: vi.fn(),
   removeJobApplicationCv: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('./repository', () => ({
     isAcceptingApplications: mocks.isAcceptingApplications,
     hasApplied: mocks.hasApplied,
     createApplication: mocks.createApplication,
+    getCandidateProfile: mocks.getCandidateProfile,
   },
 }))
 
@@ -57,6 +59,7 @@ describe('applyToJob', () => {
     mocks.isAcceptingApplications.mockResolvedValue(true)
     mocks.hasApplied.mockResolvedValue(false)
     mocks.createApplication.mockResolvedValue(undefined)
+    mocks.getCandidateProfile.mockResolvedValue(null)
     mocks.createPendingJobApplicationCvUpload.mockResolvedValue({
       storagePath: 'job-applications/viewer-1/11111111-1111-4111-8111-111111111111/cv.pdf',
       fileName: 'resume.pdf',
@@ -167,5 +170,97 @@ describe('applyToJob', () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/jobs')
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/jobs/${jobId}`)
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/activities')
+  })
+})
+
+describe('minimum match to apply, enforced on the server (round 12)', () => {
+  const seaJob = {
+    ...job,
+    domain: 'sea',
+    department: 'Deck officers',
+    rank: 'Master / Captain',
+    departmentKey: 'deck_officers',
+    acceptedRoleKeys: ['master'],
+    vesselTypes: ['Oil Tanker'],
+    experienceMinYears: null,
+    regions: [],
+    certificateRequirements: [],
+    visaRequirements: [],
+    minMatchToApply: 70,
+  }
+  const seafarer = {
+    persona: 'seafarer',
+    roleKey: 'master',
+    rank: 'Master / Captain',
+    sailingExperienceYears: 20,
+    vesselTypes: ['Oil Tanker'],
+    tradingAreas: [],
+    availability: null,
+    certificates: [],
+    visas: [],
+    shoreCareerPreference: false,
+    skills: [],
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.requireAwsUser.mockResolvedValue({ id: 'viewer-1', cognitoSub: 'sub-1', email: null })
+    mocks.userCan.mockResolvedValue(true)
+    mocks.isMemberReady.mockResolvedValue(true)
+    mocks.getPublishedJob.mockResolvedValue(seaJob)
+    mocks.isAcceptingApplications.mockResolvedValue(true)
+    mocks.hasApplied.mockResolvedValue(false)
+    mocks.createApplication.mockResolvedValue(undefined)
+  })
+
+  it('refuses an application below the minimum with the score and what is missing', async () => {
+    mocks.getCandidateProfile.mockResolvedValue({ ...seafarer, roleKey: 'chief_officer', rank: 'Chief Officer' })
+    const result = await applyToJob(jobId)
+    expect(result).toMatchObject({ ok: false, gate: { status: 'below_minimum', minimum: 70 } })
+    expect(result.ok ? '' : result.error).toBe('Below this job’s minimum (70%) · you’re at 60%. Missing: Master / Captain.')
+    expect(mocks.createApplication).not.toHaveBeenCalled()
+  })
+
+  it('lets a match at or above the minimum apply as usual', async () => {
+    mocks.getCandidateProfile.mockResolvedValue(seafarer)
+    await expect(applyToJob(jobId)).resolves.toEqual({ ok: true, alreadyApplied: false })
+    expect(mocks.createApplication).toHaveBeenCalled()
+  })
+
+  it('lets anyone apply when the minimum is 0', async () => {
+    mocks.getPublishedJob.mockResolvedValue({ ...seaJob, minMatchToApply: 0 })
+    mocks.getCandidateProfile.mockResolvedValue({ ...seafarer, persona: 'maritime_enthusiast', roleKey: null })
+    await expect(applyToJob(jobId)).resolves.toEqual({ ok: true, alreadyApplied: false })
+  })
+
+  it('asks a member with an incomplete profile for the exact missing items', async () => {
+    mocks.getCandidateProfile.mockResolvedValue({ ...seafarer, roleKey: null, rank: null, vesselTypes: [] })
+    const result = await applyToJob(jobId)
+    expect(result).toMatchObject({
+      ok: false,
+      gate: {
+        status: 'incomplete',
+        gaps: [
+          { key: 'rank', href: `/profile?edit=profile-header&job=${jobId}` },
+          { key: 'vessel_types', href: `/profile?edit=profile-maritime&job=${jobId}` },
+        ],
+      },
+    })
+    expect(result.ok ? '' : result.error).toBe('Complete your profile to apply: Your current or most recent rank, Vessel types you have sailed on.')
+    expect(mocks.createApplication).not.toHaveBeenCalled()
+  })
+
+  it('refuses a sea job to a profile type other than Seafarer or Student / Cadet', async () => {
+    mocks.getCandidateProfile.mockResolvedValue({ ...seafarer, persona: 'maritime_enthusiast', roleKey: null })
+    const result = await applyToJob(jobId)
+    expect(result).toMatchObject({ ok: false, error: 'This role is for seafarers. Update your profile type if this is wrong.', gate: { status: 'sea_job_profile_type' } })
+    expect(mocks.createApplication).not.toHaveBeenCalled()
+  })
+
+  it('refuses the CV upload step for the same reasons', async () => {
+    mocks.getCandidateProfile.mockResolvedValue({ ...seafarer, persona: 'maritime_enthusiast', roleKey: null })
+    await expect(prepareJobApplicationCvUpload(jobId, { fileName: 'cv.pdf', mimeType: 'application/pdf', sizeBytes: 100 }))
+      .resolves.toMatchObject({ ok: false, gate: { status: 'sea_job_profile_type' } })
+    expect(mocks.createPendingJobApplicationCvUpload).not.toHaveBeenCalled()
   })
 })

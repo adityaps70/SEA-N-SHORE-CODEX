@@ -22,6 +22,7 @@ import {
   type JobLifecycleAction,
 } from './job-lifecycle'
 import { JOB_APPLICATION_STATUSES, type JobApplicationStatus } from './types'
+import { validateJobRoles } from '@/features/roles/job-role-input'
 
 const uuidSchema = z.string().uuid()
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter dates as full dates.').nullable()
@@ -50,6 +51,15 @@ const jobFieldsSchema = z.object({
   applyUntil: dateSchema,
   certificates: z.array(z.string().trim().min(1).max(160)).max(50),
   visas: z.array(z.string().trim().min(1).max(160)).max(30),
+  // Round 12: checked against the taxonomy in withJobRoles.
+  departmentKey: z.string().trim().max(64).nullable().optional(),
+  acceptedRoleKeys: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+  roleOtherText: z.string().trim().max(100).nullable().optional(),
+  minMatchToApply: z.number({ error: 'Set the minimum match to apply between 0 and 100 (0 turns it off).' })
+    .int('Set the minimum match to apply as a whole number.')
+    .min(0, 'Set the minimum match to apply between 0 and 100 (0 turns it off).')
+    .max(100, 'Set the minimum match to apply between 0 and 100 (0 turns it off).')
+    .optional(),
 }).superRefine((value, context) => {
   if (value.salaryMin !== null && value.salaryMax !== null && value.salaryMin > value.salaryMax) {
     context.addIssue({ code: 'custom', path: ['salaryMax'], message: 'Maximum salary must be at least the minimum salary.' })
@@ -146,6 +156,7 @@ function assessJobContent(input: HiringJobUpdateInput, status: HiringJobStatus) 
     input.title,
     input.department,
     input.rank,
+    input.roleOtherText,
     input.location,
     input.summary,
     input.description,
@@ -176,6 +187,32 @@ async function flagAutomatedJobModeration(jobId: string, assessment: AutomatedMo
   }
 }
 
+/**
+ * Validates the department, accepted ranks / roles and minimum match (round 12) and keeps the old
+ * department / rank text columns in step with the picked labels. New jobs need a department and at
+ * least one accepted rank; an edit that does not carry the fields leaves them as saved.
+ */
+function withJobRoles<T extends HiringJobUpdateInput>(input: T, requireDepartment: boolean): { ok: true; data: T } | { ok: false; error: string } {
+  const submitted = input.departmentKey !== undefined || input.acceptedRoleKeys !== undefined
+  if (!submitted && !requireDepartment) return { ok: true, data: input }
+  const roles = validateJobRoles(input, { domain: input.domain, requireDepartment })
+  if (!roles.ok) return roles
+  const selection = roles.data
+  return {
+    ok: true,
+    data: {
+      ...input,
+      domain: selection.domain,
+      department: selection.departmentLabel ?? input.department,
+      rank: selection.rankLabel ?? input.rank,
+      departmentKey: selection.departmentKey,
+      acceptedRoleKeys: selection.acceptedRoleKeys,
+      roleOtherText: selection.roleOtherText,
+      minMatchToApply: input.minMatchToApply === undefined && !requireDepartment ? undefined : selection.minMatchToApply,
+    },
+  }
+}
+
 function refreshJobMutation(jobId: string) {
   revalidatePath('/hiring')
   revalidatePath('/hiring/jobs')
@@ -202,6 +239,9 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
   const parsed = createJobSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
   if (parsed.data.status === 'closed') return { ok: false, error: 'New jobs are saved as a draft or published. Archive a job after it has been live.' }
+  const withRoles = withJobRoles(parsed.data, true)
+  if (!withRoles.ok) return withRoles
+  const jobInput = withRoles.data
 
   const today = todayIsoDate()
   if (parsed.data.status === 'published') {
@@ -220,13 +260,13 @@ export async function createHiringJob(input: HiringJobInput): Promise<HiringCrea
     if (!dates.ok) return { ok: false, error: dates.message }
   }
 
-  const moderation = assessJobContent(parsed.data, parsed.data.status)
+  const moderation = assessJobContent(jobInput, jobInput.status)
   if (moderation.decision === 'block') return { ok: false, error: moderationBlockMessage() }
 
   try {
     const user = await requireAwsUser()
-    await requirePublishCapability(user.id, parsed.data.publisherType === 'personal' ? null : parsed.data.companyId)
-    const jobId = await hiringRepository.createJob(user.id, { ...parsed.data, joiningUntil: null })
+    await requirePublishCapability(user.id, jobInput.publisherType === 'personal' ? null : jobInput.companyId)
+    const jobId = await hiringRepository.createJob(user.id, { ...jobInput, joiningUntil: null })
     await flagAutomatedJobModeration(jobId, moderation)
     refreshJobMutation(jobId)
     return { ok: true, jobId }
@@ -251,6 +291,9 @@ export async function updateHiringJob(
   if (!parsedJobId.success) return { ok: false, error: 'This job link is not valid. Open the job again from Your jobs.' }
   if (!parsed.success) return { ok: false, error: validationError(parsed.error) }
   if (!parsedIntent.success) return { ok: false, error: 'Choose whether to save or publish the job.' }
+  const withRoles = withJobRoles(parsed.data, false)
+  if (!withRoles.ok) return withRoles
+  const jobInput = withRoles.data
 
   try {
     const user = await requireAwsUser()
@@ -263,20 +306,20 @@ export async function updateHiringJob(
       const transition = validateJobTransition(
         managedJobLifecycle(job),
         action,
-        { today, applyUntil: parsed.data.applyUntil },
+        { today, applyUntil: jobInput.applyUntil },
       )
       if (!transition.ok) throw new HiringValidationError(transition.message)
       nextStatus = transition.to
     }
 
-    const dates = validateApplyUntilForStatus(nextStatus, parsed.data.applyUntil, today)
+    const dates = validateApplyUntilForStatus(nextStatus, jobInput.applyUntil, today)
     if (!dates.ok) throw new HiringValidationError(dates.message)
 
-    const moderation = assessJobContent(parsed.data, nextStatus)
+    const moderation = assessJobContent(jobInput, nextStatus)
     if (moderation.decision === 'block') throw new HiringValidationError(moderationBlockMessage())
 
     await requirePublishCapability(user.id, job.companyId)
-    await hiringRepository.updateJob(user.id, parsedJobId.data, { ...parsed.data, joiningUntil: job.joiningUntil }, {
+    await hiringRepository.updateJob(user.id, parsedJobId.data, { ...jobInput, joiningUntil: job.joiningUntil }, {
       expectedStatus: job.status,
       nextStatus,
     })

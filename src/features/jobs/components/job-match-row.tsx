@@ -4,6 +4,7 @@ import { CheckCircle2, ChevronRight, Target, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { BottomSheet } from '@/components/ui/mobile-sheet'
 import type { JobMatchResult } from '../types'
+import { jobMatchDisplay } from '../match-display'
 import { SheetPortal } from './sheet-portal'
 
 /**
@@ -12,6 +13,8 @@ import { SheetPortal } from './sheet-portal'
  */
 export function JobMatchRow({ match }: { match: JobMatchResult }) {
   const [open, setOpen] = useState(false)
+  const display = jobMatchDisplay(match)
+  const title = !display ? 'Maritime Match' : display.text
   const gaps = [...match.missingRequirements, ...match.warnings]
   const summary = [
     `${match.reasons.length} thing${match.reasons.length === 1 ? '' : 's'} match`,
@@ -28,13 +31,13 @@ export function JobMatchRow({ match }: { match: JobMatchResult }) {
       >
         <Target aria-hidden="true" className="size-6 shrink-0" />
         <span className="min-w-0 flex-1">
-          <span className="block text-base font-bold">{match.score}% Maritime Match</span>
+          <span className="block text-base font-bold">{title}</span>
           <span className="block text-[13px] text-white/75">{summary}</span>
         </span>
         <ChevronRight aria-hidden="true" className="size-5 shrink-0" />
       </button>
       <SheetPortal>
-      <BottomSheet open={open} onClose={() => setOpen(false)} title={`${match.score}% Maritime Match`} desktop="hidden">
+      <BottomSheet open={open} onClose={() => setOpen(false)} title={title} desktop="hidden">
         <div className="space-y-5 px-3 pb-2 pt-1">
           <section>
             <h3 className="text-sm font-bold text-navy-950">What matches</h3>

@@ -55,7 +55,7 @@ describe('jobs engagement actions', () => {
     expect(mocks.createJobAlert).toHaveBeenCalledWith(
       'viewer-1',
       'Chief Officer tanker',
-      expect.objectContaining({ mode: 'sea', ranks: ['Chief Officer'], vesselTypes: ['Oil Tanker'], urgentOnly: true }),
+      expect.objectContaining({ mode: 'sea', ranks: ['chief_officer'], vesselTypes: ['Oil Tanker'], urgentOnly: true }),
       'daily',
     )
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/jobs/alerts')

@@ -38,7 +38,14 @@ function focusCardForm(id: string) {
   form.focus({ preventScroll: true })
 }
 
-export function ProfileCardEditingProvider({ children }: { children: ReactNode }) {
+export function ProfileCardEditingProvider({
+  children,
+  openOnLoad = null,
+}: {
+  children: ReactNode
+  /** Round 12: a card a link asked to open (e.g. from a job's "Complete your profile to apply"). */
+  openOnLoad?: CardRef | null
+}) {
   const [active, setActive] = useState<CardRef | null>(null)
   const [pending, setPending] = useState<CardRef | null>(null)
   const activeRef = useRef<CardRef | null>(null)
@@ -77,6 +84,16 @@ export function ProfileCardEditingProvider({ children }: { children: ReactNode }
     setPending(null)
     if (activeRef.current) focusCardForm(activeRef.current.id)
   }
+
+  // Open the linked card once, then bring its form into view when it has rendered.
+  const openedOnLoadRef = useRef(false)
+  useEffect(() => {
+    if (!openOnLoad || openedOnLoadRef.current) return
+    openedOnLoadRef.current = true
+    activate(openOnLoad)
+    const frame = window.requestAnimationFrame(() => focusCardForm(openOnLoad.id))
+    return () => window.cancelAnimationFrame(frame)
+  }, [openOnLoad, activate])
 
   const value = useMemo(() => ({ activeId: active?.id ?? null, request, close, markDirty }), [active, request, close, markDirty])
 

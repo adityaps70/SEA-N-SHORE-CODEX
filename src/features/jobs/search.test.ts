@@ -23,7 +23,9 @@ describe('jobs search filters', () => {
     })).toEqual({
       query: 'chief officer',
       mode: 'sea',
-      ranks: ['Chief Officer'],
+      // Round 12: rank filters are taxonomy keys; an old rank name is converted.
+      department: null,
+      ranks: ['chief_officer'],
       vesselTypes: ['Oil Tanker', 'LNG'],
       minExperienceYears: 5,
       joiningWithinDays: 7,
@@ -61,5 +63,14 @@ describe('jobs search filters', () => {
   it('maps urgent and recent discovery modes to explicit filter semantics', () => {
     expect(parseJobSearchParams({ mode: 'urgent' })).toMatchObject({ mode: 'urgent', urgentOnly: true })
     expect(parseJobSearchParams({ mode: 'recent' })).toMatchObject({ mode: 'recent', postedWithinDays: 7 })
+  })
+})
+
+describe('department and rank filters (round 12)', () => {
+  it('keeps known department and rank keys, converts old rank names and drops unknown text', () => {
+    expect(parseJobSearchParams({ department: 'deck_officers', rank: 'master' })).toMatchObject({ department: 'deck_officers', ranks: ['master'] })
+    expect(parseJobSearchParams({ rank: 'Captain,Sea wizard' }).ranks).toEqual(['master'])
+    expect(parseJobSearchParams({ department: 'moon_base' }).department).toBeNull()
+    expect(parseJobSearchParams({ sort: 'best' }).sort).toBe('best')
   })
 })

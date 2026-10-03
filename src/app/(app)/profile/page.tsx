@@ -1,4 +1,6 @@
+import Link from 'next/link'
 import type { Metadata } from 'next'
+import { PROFILE_EDIT_LINK_CARDS } from '@/features/jobs/apply-gate'
 import { redirect } from 'next/navigation'
 import { RailFooter } from '@/components/navigation/rail-footer'
 import { getAccessContext } from '@/features/access/server'
@@ -23,6 +25,7 @@ import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-qu
 import { getOwnDgProfileDocument } from '@/features/profiles/profile-document-service'
 import { getProfileNetworkSummary } from '@/features/profiles/profile-network-stats'
 import { getOwnProfile, getOwnRegisteredOrganization, getProfileOrganizations } from '@/features/profiles/queries'
+import { RankSelectionPrompt } from '@/features/roles/components/rank-selection-prompt'
 
 export const metadata: Metadata = { title: 'My profile' }
 
@@ -34,7 +37,7 @@ export default async function OwnProfilePage({
   searchParams,
 }: {
   /** `registered`: an organization the member just registered from the header's organization picker. */
-  searchParams?: Promise<{ registered?: string | string[] }>
+  searchParams?: Promise<{ registered?: string | string[]; edit?: string | string[]; job?: string | string[] }>
 } = {}) {
   const user = await requireAwsUser()
   const [profile, portfolio, recommendations, access, organizations, networkSummary, dgProfile] = await Promise.all([
@@ -48,14 +51,26 @@ export default async function OwnProfilePage({
   ])
   if (!profile) redirect('/onboarding')
   const isSeafarer = profile.persona ? profile.persona === 'seafarer' : profile.profileType === 'seafarer'
-  const registered = (await searchParams)?.registered
+  const params = await searchParams
+  const registered = params?.registered
+  // Round 12: "Complete your profile to apply" links open the right in-place editor.
+  const editCard = typeof params?.edit === 'string' && PROFILE_EDIT_LINK_CARDS[params.edit]
+    ? { id: params.edit, label: PROFILE_EDIT_LINK_CARDS[params.edit]! }
+    : null
+  const returnJobId = typeof params?.job === 'string' && /^[0-9a-f-]{36}$/i.test(params.job) ? params.job : null
   const registeredOrganization = registered ? await getOwnRegisteredOrganization(registered) : null
   const persona = personaForProfile(profile)
 
   return (
-    <ProfileCardEditingProvider>
+    <ProfileCardEditingProvider openOnLoad={editCard}>
+    {returnJobId ? (
+      <p role="status" className="mt-2 rounded-xl border border-ocean-100 bg-ocean-50 px-4 py-3 text-sm text-ocean-900">
+        Save your changes, then <Link href={`/jobs/${returnJobId}`} className="font-semibold underline-offset-2 hover:underline">go back to the job</Link> to check again.
+      </p>
+    ) : null}
     <section className="grid gap-4 py-2 max-md:-mt-4 max-md:gap-2 max-md:py-0 sm:py-5 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="grid min-w-0 gap-4 max-md:gap-2">
+        <RankSelectionPrompt profile={profile} />
         <ProfileHeader
           profile={profile}
           editHref="inline"

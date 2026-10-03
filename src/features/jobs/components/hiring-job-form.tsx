@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation'
 import { createHiringJob, updateHiringJob, type HiringJobSaveIntent } from '../hiring-actions'
 import type { HiringEditableJob, HiringJobInput, HiringJobUpdateInput } from '../hiring-repository'
 import type { HiringPublisherOption } from '../publishers'
+import { AcceptedRolesPicker, type AcceptedRolesValue } from '@/features/roles/components/accepted-roles-picker'
+import { DEFAULT_MIN_MATCH_TO_APPLY } from '@/features/roles/job-role-input'
+import { domainForDepartment, normaliseLegacyRank, roleByKey } from '@/features/roles/taxonomy'
 
 type HiringJobFormProps =
   | { mode: 'create'; publisherOptions: HiringPublisherOption[]; initial?: never; jobId?: never; publishLabel?: never }
@@ -44,8 +47,13 @@ function csv(formData: FormData, key: string) {
 function buildInput(formData: FormData): HiringJobUpdateInput {
   const domainValue = text(formData, 'domain')
   const salaryPeriodValue = text(formData, 'salaryPeriod')
+  const minMatch = nullableNumber(formData, 'minMatchToApply')
 
   return {
+    departmentKey: nullableText(formData, 'departmentKey'),
+    acceptedRoleKeys: formData.getAll('acceptedRoleKeys').map(String),
+    roleOtherText: nullableText(formData, 'roleOtherText'),
+    minMatchToApply: minMatch ?? DEFAULT_MIN_MATCH_TO_APPLY,
     title: text(formData, 'title'),
     domain: domainValue === 'shore' ? 'shore' : 'sea',
     department: nullableText(formData, 'department'),
@@ -75,6 +83,18 @@ function join(values: string[] | undefined) {
   return values?.join(', ') ?? ''
 }
 
+/** The saved department and ranks, or for an older job the rank its text is recognised as. */
+function initialRoles(initial: HiringEditableJob | undefined): AcceptedRolesValue {
+  if (initial?.departmentKey) {
+    return { departmentKey: initial.departmentKey, acceptedRoleKeys: initial.acceptedRoleKeys ?? [], otherText: initial.roleOtherText ?? '' }
+  }
+  const recognised = roleByKey(normaliseLegacyRank(initial?.rank))
+  if (recognised && domainForDepartment(recognised.department) === (initial?.domain ?? 'sea')) {
+    return { departmentKey: recognised.department, acceptedRoleKeys: [recognised.key], otherText: '' }
+  }
+  return { departmentKey: '', acceptedRoleKeys: [], otherText: '' }
+}
+
 export function HiringJobForm(props: HiringJobFormProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -85,6 +105,9 @@ export function HiringJobForm(props: HiringJobFormProps) {
     ? props.publisherOptions.find((option) => option.canPublish) ?? props.publisherOptions[0] ?? null
     : null
   const [publisherKey, setPublisherKey] = useState(initialPublisher?.key ?? '')
+  const [roles, setRoles] = useState<AcceptedRolesValue>(() => initialRoles(initial))
+  // Domain follows the department; it stays editable only while no department is chosen.
+  const departmentDomain = domainForDepartment(roles.departmentKey)
   const intentRef = useRef<HiringJobSaveIntent>('save')
   const [pendingIntent, setPendingIntent] = useState<HiringJobSaveIntent>('save')
   const selectedPublisher = props.mode === 'create'
@@ -244,23 +267,34 @@ export function HiringJobForm(props: HiringJobFormProps) {
             <input className={inputClass} name="title" defaultValue={initial?.title ?? ''} placeholder="Chief Officer" required />
           </label>
 
-          <label className={labelClass}>
-            Job type
-            <select className={inputClass} name="domain" defaultValue={initial?.domain ?? 'sea'}>
-              <option value="sea">Sea job</option>
-              <option value="shore">Shore job</option>
-            </select>
-          </label>
+          <AcceptedRolesPicker value={roles} onChange={setRoles} labelClassName={labelClass} inputClassName={inputClass} />
 
-          <label className={labelClass}>
-            Department
-            <input className={inputClass} name="department" defaultValue={initial?.department ?? ''} placeholder="Deck, Engine, QHSE" />
-          </label>
+          <div className={labelClass}>
+            <label htmlFor="hiring-job-domain">Job type</label>
+            {departmentDomain ? (
+              <>
+                <select id="hiring-job-domain" className={inputClass} value={departmentDomain} disabled aria-describedby="hiring-job-domain-hint">
+                  <option value="sea">Sea job</option>
+                  <option value="shore">Shore job</option>
+                </select>
+                <input type="hidden" name="domain" value={departmentDomain} />
+                <span id="hiring-job-domain-hint" className="block text-xs font-normal text-muted">Set by the department.</span>
+              </>
+            ) : (
+              <select id="hiring-job-domain" className={inputClass} name="domain" defaultValue={initial?.domain ?? 'sea'}>
+                <option value="sea">Sea job</option>
+                <option value="shore">Shore job</option>
+              </select>
+            )}
+          </div>
 
-          <label className={labelClass}>
-            Rank / position
-            <input className={inputClass} name="rank" defaultValue={initial?.rank ?? ''} placeholder="Chief Officer" />
-          </label>
+          {!roles.departmentKey && initial ? (
+            // An older job keeps its saved department and rank text until a department is picked.
+            <>
+              <input type="hidden" name="department" value={initial.department ?? ''} />
+              <input type="hidden" name="rank" value={initial.rank ?? ''} />
+            </>
+          ) : null}
 
           <label className={labelClass}>
             Location
@@ -385,6 +419,23 @@ export function HiringJobForm(props: HiringJobFormProps) {
                 Easy Apply
               </label>
             </div>
+            <label className={`${labelClass} mt-4 block max-w-xs`}>
+              Minimum match to apply
+              <span className="flex items-center gap-2">
+                <input
+                  className={inputClass}
+                  type="number"
+                  name="minMatchToApply"
+                  min={0}
+                  max={100}
+                  step={1}
+                  defaultValue={initial?.minMatchToApply ?? DEFAULT_MIN_MATCH_TO_APPLY}
+                  aria-describedby="hiring-job-min-match-hint"
+                />
+                <span className="text-sm font-semibold text-muted">%</span>
+              </span>
+              <span id="hiring-job-min-match-hint" className="block text-xs font-normal text-muted">0 turns it off. Candidates below this match can’t apply.</span>
+            </label>
             <p className="mt-3 text-xs leading-5 text-muted">
               {props.mode === 'create'
                 ? 'Save a draft to finish later, or publish now to start receiving applications.'

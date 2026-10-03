@@ -647,6 +647,8 @@ function defaultTransaction<T>(work: (query: AdminQuery) => Promise<T>) {
   }))
 }
 
+export type AdminOtherRoleText = { text: string; profileCount: number; jobCount: number }
+
 export function createAdminRepository(input: { query?: AdminQuery; transaction?: AdminTransaction; now?: () => number } = {}) {
   const queryRows: AdminQuery = input.query ?? ((text, values) => databaseQuery<QueryResultRow>(text, values))
   const transaction = input.transaction ?? defaultTransaction
@@ -741,6 +743,40 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
       publishedJobs: numberValue(row?.published_jobs),
       publishedEvents: numberValue(row?.published_events),
     }
+  }
+
+  /**
+   * Round 12: texts typed for "Other (type your own)" rank / role in the last `days` days, counted
+   * for profiles (by last update) and jobs (by creation), so common ones can join the taxonomy.
+   * Read-only.
+   */
+  async function listOtherRoleTexts(userId: string, input: { days?: number; limit?: number } = {}): Promise<AdminOtherRoleText[]> {
+    await requirePlatformAdministrator(queryRows, userId)
+    const days = Math.min(Math.max(Math.trunc(input.days ?? 90), 1), 365)
+    const limit = Math.min(Math.max(Math.trunc(input.limit ?? 50), 1), 200)
+    const rows = await queryRows(
+      `with typed as (
+         select lower(btrim(p.role_other_text)) as normalized, btrim(p.role_other_text) as text, 'profile'::text as source
+         from public.profiles p
+         where p.role_other_text is not null
+           and p.updated_at >= now() - ($1::int * interval '1 day')
+         union all
+         select lower(btrim(j.role_other_text)), btrim(j.role_other_text), 'job'::text
+         from public.jobs j
+         where j.role_other_text is not null
+           and j.deleted_at is null
+           and j.created_at >= now() - ($1::int * interval '1 day')
+       )
+       select min(text) as text,
+              count(*) filter (where source = 'profile') as profile_count,
+              count(*) filter (where source = 'job') as job_count
+       from typed
+       group by normalized
+       order by count(*) desc, min(text) asc
+       limit $2`,
+      [days, limit],
+    ) as Array<QueryResultRow & { text: string; profile_count: string | number; job_count: string | number }>
+    return rows.map((row) => ({ text: row.text, profileCount: numberValue(row.profile_count), jobCount: numberValue(row.job_count) }))
   }
 
   async function listModerationCases(
@@ -1819,6 +1855,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
   return {
     isPlatformAdministrator,
     getAdminDashboardMetrics,
+    listOtherRoleTexts,
     listModerationCases,
     listAuditEvents,
     moderateContent,
