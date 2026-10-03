@@ -114,7 +114,7 @@ export function CommunityCategoryGrid({ counts }: { counts: Partial<Record<Commu
         <li key={category} className="min-w-0">
           <Link
             href={communityHref({ view: 'all', category })}
-            className="flex min-h-14 min-w-0 items-center gap-2.5 rounded-xl border border-mist-100 bg-white px-3 py-2 transition hover:border-ocean-200 hover:bg-ocean-50"
+            className="flex min-h-14 min-w-0 items-center gap-2.5 rounded-xl border border-mist-200 bg-white px-3 py-2 transition hover:border-ocean-200 hover:bg-ocean-50"
           >
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-mist-50 text-ocean-700">
               <GroupIcon icon={COMMUNITY_CATEGORY_ICONS[category]} aria-hidden="true" className="size-4" />

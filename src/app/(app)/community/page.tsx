@@ -230,7 +230,7 @@ function DiscoverView({ mine, suggestedBySignals, active, categoryCounts }: Disc
 
         <Link
           href={communityHref({ view: 'all' })}
-          className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-mist-100 bg-white px-4 text-sm font-bold text-navy-950 shadow-[var(--shadow-card)] transition hover:border-ocean-200 hover:bg-ocean-50 max-md:shadow-none"
+          className="flex min-h-12 items-center justify-between gap-3 rounded-2xl border border-mist-200 bg-white px-4 text-sm font-bold text-navy-950 shadow-[var(--shadow-card)] transition hover:border-ocean-200 hover:bg-ocean-50 max-md:shadow-none"
         >
           Browse all communities
           <ChevronRight aria-hidden="true" className="size-4 text-muted" />

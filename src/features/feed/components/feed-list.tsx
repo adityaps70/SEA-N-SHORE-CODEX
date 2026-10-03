@@ -71,17 +71,17 @@ export function FeedList({
         setError(result.error)
         return
       }
-      let added = 0
+      const shown = new Set(posts.map((post) => post.id))
+      const added = result.page.posts.filter((post) => !shown.has(post.id)).length
       setPosts((current) => {
         const seen = new Set(current.map((post) => post.id))
         const unseen = result.page.posts.filter((post) => !seen.has(post.id))
-        added = unseen.length
         return unseen.length ? [...current, ...unseen] : current
       })
       // A page with nothing new (or a cursor that did not move) is the end: stop asking.
       const next = result.page.nextCursor
       const moved = next && (next.id !== cursor.id || next.createdAt !== cursor.createdAt)
-      setCursor(moved && (added > 0 || result.page.posts.length > 0) ? next : null)
+      setCursor(moved && added > 0 ? next : null)
     } catch {
       failedRef.current = true
       setError('We could not load more posts.')
@@ -89,7 +89,7 @@ export function FeedList({
       inFlightRef.current = false
       setLoading(false)
     }
-  }, [category, cursor, groupId, hashtag])
+  }, [category, cursor, groupId, hashtag, posts])
 
   // The observer reads the latest loader through a ref, so it is created once per cursor
   // instead of being torn down (and immediately re-fired) on every loading toggle.
