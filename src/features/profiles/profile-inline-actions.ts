@@ -9,10 +9,11 @@ import { getAwsOwnProfile } from './aws-queries'
 import { optionalOrganizationIdSchema } from './organization-link'
 import { organizationLinkRepository } from './organization-link-repository'
 import { resolveCurrentOrganizationLink } from './organization-link-service'
-import { applyProfileRoleFields, type ProfileRoleSelection } from '@/features/roles/profile-role-input'
+import { applyProfileRoleFields, parseProfileRoleFields, profileRoleFieldsSubmitted, type ProfileRoleSelection } from '@/features/roles/profile-role-input'
 import { PERSONAS, personaUsesProfessionalCompany, type Persona, type ProfileIntent } from './persona'
 import {
   setProfileCurrentOrganizationWithAurora,
+  updateProfileRoleWithAurora,
   updateProfileAboutSectionWithAurora,
   updateProfileGoalsSectionWithAurora,
   updateProfileIdentitySectionWithAurora,
@@ -414,5 +415,36 @@ export async function updateProfileProfessionalSection(
   }
 
   revalidateProfilePaths(profile.slug)
+  return successState(previousState)
+}
+
+/**
+ * Round 12 "Select your rank so jobs can match you" banner on Home and My Profile: saves only the
+ * Department → Rank (or a cadet's stage and target role) for the member's profile type.
+ */
+export async function updateProfileRoleSection(
+  previousState: ProfileInlineActionState,
+  formData: FormData,
+): Promise<ProfileInlineActionState> {
+  const user = await requireAwsUser()
+  const profile = await getAwsOwnProfile()
+  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+  if (!profileRoleFieldsSubmitted(formData)) return nextFailure(previousState, { error: 'Choose your rank from the list.' })
+
+  const persona = personaForProfile(profile)
+  const parsed = parseProfileRoleFields(Object.fromEntries(formData), persona)
+  if (!parsed.ok) return nextFailure(previousState, { fieldErrors: parsed.fieldErrors })
+  const moderation = assessProfileSection({ other: parsed.data.roleOtherText ?? '' })
+  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
+
+  try {
+    await updateProfileRoleWithAurora(user.id, parsed.data, persona === 'seafarer' ? parsed.rankText : null)
+    await flagProfileModeration(user.id, moderation)
+  } catch {
+    return nextFailure(previousState, { error: 'We could not save your rank. Please try again.' })
+  }
+
+  revalidateProfilePaths(profile.slug)
+  revalidatePath('/jobs')
   return successState(previousState)
 }

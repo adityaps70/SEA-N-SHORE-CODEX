@@ -25,6 +25,7 @@ import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-qu
 import { getOwnDgProfileDocument } from '@/features/profiles/profile-document-service'
 import { getProfileNetworkSummary } from '@/features/profiles/profile-network-stats'
 import { getOwnProfile, getOwnRegisteredOrganization, getProfileOrganizations } from '@/features/profiles/queries'
+import { RankSelectionPrompt } from '@/features/roles/components/rank-selection-prompt'
 
 export const metadata: Metadata = { title: 'My profile' }
 
@@ -69,6 +70,7 @@ export default async function OwnProfilePage({
     ) : null}
     <section className="grid gap-4 py-2 max-md:-mt-4 max-md:gap-2 max-md:py-0 sm:py-5 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="grid min-w-0 gap-4 max-md:gap-2">
+        <RankSelectionPrompt profile={profile} />
         <ProfileHeader
           profile={profile}
           editHref="inline"

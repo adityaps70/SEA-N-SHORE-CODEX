@@ -404,3 +404,28 @@ describe('platform admin user controls', () => {
     })
   })
 })
+
+describe('admin Other ranks / roles list (round 12)', () => {
+  it('fails closed for a non-admin', async () => {
+    const seen: string[] = []
+    const repository = createAdminRepository({ query: async (text) => { seen.push(text); return [{ allowed: false }] } })
+    await expect(repository.listOtherRoleTexts('not-admin')).rejects.toThrow('admin_forbidden')
+    expect(seen.some((text) => text.includes('role_other_text'))).toBe(false)
+  })
+
+  it('counts typed "Other" ranks per text over the last 90 days for profiles and jobs', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createAdminRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('public.user_roles')) return [{ allowed: true }]
+        return [{ text: 'Ice Navigator', profile_count: '3', job_count: '1' }]
+      },
+    })
+    await expect(repository.listOtherRoleTexts(adminId)).resolves.toEqual([{ text: 'Ice Navigator', profileCount: 3, jobCount: 1 }])
+    const list = seen.find((entry) => entry.text.includes('role_other_text'))
+    expect(list?.text).toContain('from public.profiles p')
+    expect(list?.text).toContain('from public.jobs j')
+    expect(list?.values).toEqual([90, 50])
+  })
+})

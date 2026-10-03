@@ -208,6 +208,25 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     })
   }
 
+  /**
+   * Round 12 "Select your rank" banner: only the structured role, plus the rank text shown on posts
+   * for a seafarer (a maritime row is created when there is none yet).
+   */
+  async function updateRole(profileId: string, role: ProfileRoleSelection, rankText: string | null) {
+    return input.withTransaction(async (client) => {
+      await saveRole(client, profileId, role)
+      if (rankText) {
+        await client.query(
+          `insert into public.maritime_profiles (user_id, rank, vessel_types, trading_areas, shore_career_preference, updated_at)
+           values ($1, $2, '{}'::text[], '{}'::text[], false, now())
+           on conflict (user_id) do update set rank = excluded.rank, updated_at = now()`,
+          [profileId, rankText],
+        )
+      }
+      return true
+    })
+  }
+
   /** The Organizations card (round 11): which organization the header shows, or none. */
   async function setCurrentOrganization(profileId: string, organization: ProfileCurrentOrganization) {
     return input.withTransaction(async (client) => {
@@ -216,7 +235,7 @@ export function createProfileInlineEditService(input: { withTransaction: Transac
     })
   }
 
-  return { updateIdentity, updateAbout, updateProfessional, updateGoals, setCurrentOrganization }
+  return { updateIdentity, updateAbout, updateProfessional, updateGoals, setCurrentOrganization, updateRole }
 }
 
 const productionService = createProfileInlineEditService({
@@ -228,3 +247,4 @@ export const updateProfileAboutSectionWithAurora = productionService.updateAbout
 export const updateProfileProfessionalSectionWithAurora = productionService.updateProfessional
 export const updateProfileGoalsSectionWithAurora = productionService.updateGoals
 export const setProfileCurrentOrganizationWithAurora = productionService.setCurrentOrganization
+export const updateProfileRoleWithAurora = productionService.updateRole

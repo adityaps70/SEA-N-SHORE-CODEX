@@ -137,3 +137,18 @@ describe('role taxonomy', () => {
     expect(acceptedRolesLabel(['master', 'chief_officer'])).toBe('Master / Captain, Chief Officer')
   })
 })
+
+describe('rank selection banner', () => {
+  it('asks seafarers and cadets without a key, and members whose old rank text is not recognised', async () => {
+    const { profileNeedsRankSelection } = await import('./taxonomy')
+    expect(profileNeedsRankSelection({ persona: 'seafarer', roleKey: null, rank: 'Captain' })).toBe(true)
+    expect(profileNeedsRankSelection({ persona: 'seafarer', roleKey: 'master' })).toBe(false)
+    expect(profileNeedsRankSelection({ persona: 'student_cadet', targetRoleKey: null })).toBe(true)
+    expect(profileNeedsRankSelection({ persona: 'shore_professional', rank: 'Chief Wizard' })).toBe(true)
+    expect(profileNeedsRankSelection({ persona: 'shore_professional', rank: 'Fleet Manager' })).toBe(false)
+    expect(profileNeedsRankSelection({ persona: 'shore_professional', rank: null })).toBe(false)
+    expect(profileNeedsRankSelection({ persona: 'maritime_enthusiast', rank: 'Captain' })).toBe(false)
+    expect(profileNeedsRankSelection({ persona: null, profileType: 'seafarer', roleKey: null })).toBe(true)
+    expect(profileNeedsRankSelection({ persona: 'seafarer', identityRoot: 'organisation' })).toBe(false)
+  })
+})

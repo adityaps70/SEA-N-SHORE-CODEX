@@ -504,3 +504,23 @@ export function normaliseLegacyRankForPersona(text: string | null | undefined, p
   if (role && allowed.has(role.department)) return key
   return ROLES.find((entry) => entry.sameAs === key && allowed.has(entry.department))?.key ?? null
 }
+
+/**
+ * Round 12 banner: a Seafarer or Student / Cadet without a rank key, or a member whose old rank
+ * text could not be recognised, is asked once to pick their rank so jobs can match them.
+ */
+export function profileNeedsRankSelection(profile: {
+  persona?: Persona | null
+  profileType?: string | null
+  identityRoot?: string | null
+  roleKey?: string | null
+  targetRoleKey?: string | null
+  rank?: string | null
+}): boolean {
+  if (profile.identityRoot === 'organisation') return false
+  const persona = rankPersonaFor(profile.persona, profile.profileType)
+  if (persona === 'seafarer') return !profile.roleKey
+  if (persona === 'student_cadet') return !profile.targetRoleKey
+  if (!personaPicksRole(persona) || profile.roleKey) return false
+  return Boolean(profile.rank?.trim()) && !normaliseLegacyRankForPersona(profile.rank, persona)
+}

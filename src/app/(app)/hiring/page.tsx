@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { JobDepartmentBanner } from '@/features/jobs/components/job-department-banner'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { getAccessContext } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
@@ -26,6 +27,8 @@ export default async function HiringPage() {
   const blockedPublishers = publisherOptions.filter((option) => !option.canPublish)
 
   const today = todayIsoDate()
+  // Round 12: open jobs still matched from their old rank text.
+  const jobsWithoutDepartment = jobs.filter((job) => job.status === 'published' && !job.departmentKey)
   const metricCards = [
     ['Active Jobs', metrics.activeJobs],
     ['Applicants', metrics.applicants],
@@ -76,6 +79,13 @@ export default async function HiringPage() {
       ) : null}
 
       <HiringSubnav active="overview" />
+      {jobsWithoutDepartment.length ? (
+        <JobDepartmentBanner
+          href={jobsWithoutDepartment.length === 1 ? `/hiring/jobs/${jobsWithoutDepartment[0]!.id}/edit` : '/hiring/jobs'}
+          count={jobsWithoutDepartment.length}
+          className="mt-4"
+        />
+      ) : null}
 
       <section aria-label="Hiring overview" className="grid gap-3 max-md:grid-cols-2 max-md:gap-2 sm:grid-cols-2 lg:grid-cols-5">
         {metricCards.map(([label, value]) => (
