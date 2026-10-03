@@ -7,7 +7,7 @@ import { moderationRepository } from '@/features/moderation/repository'
 import { getAwsOwnProfile } from './aws-queries'
 import { completeActivationWithAurora, completeOnboardingWithAurora } from './onboarding-service'
 import { updateProfileWithAurora } from './profile-edit-service'
-import { onboardingActivationSchema, onboardingSchema } from './schemas'
+import { editableRankSchema, onboardingActivationSchema, onboardingSchema } from './schemas'
 import { organizationLinkRepository } from './organization-link-repository'
 import { resolveCurrentOrganizationLink } from './organization-link-service'
 import { PERSONAS, type Persona } from './persona'
@@ -366,7 +366,13 @@ export async function updateProfile(
   const parsed = onboardingSchema.safeParse({ ...rawValues, profileType: profile.profileType })
   if (!parsed.success) return validationFailure(previousState, formData, parsed.error)
 
-  const linked = await linkCurrentOrganization(parsed.data, user.id)
+  // A rank left from an earlier profile is saved as typed, or cleared, even for profile types whose schema drops rank.
+  const rankSubmitted = formData.has('rank')
+  const rank = rankSubmitted ? editableRankSchema.safeParse({ rank: rawValues.rank }) : null
+  if (rank && !rank.success) return validationFailure(previousState, formData, rank.error)
+  const input = rank?.success ? { ...parsed.data, rank: rank.data.rank } : parsed.data
+
+  const linked = await linkCurrentOrganization(input, user.id)
   if (!linked) return failureState(previousState, formData, { error: ORGANIZATION_LOOKUP_FAILED })
   if (!linked.ok) return failureState(previousState, formData, { fieldErrors: linked.fieldErrors })
   const data = linked.data
@@ -378,7 +384,10 @@ export async function updateProfile(
 
   try {
     // A cleared organization field clears the saved organization; an absent field leaves it alone.
-    await updateProfileWithAurora(user.id, data, true, { currentCompanySubmitted: formData.has('currentCompany') })
+    await updateProfileWithAurora(user.id, data, true, {
+      currentCompanySubmitted: formData.has('currentCompany'),
+      rankSubmitted,
+    })
     await flagProfileModeration(user.id, moderation)
   } catch (error) {
     if (isUniqueViolation(error)) {

@@ -98,6 +98,15 @@ const onboardingFieldsSchema = z
 
 export const onboardingSchema = z.preprocess(discardIrrelevantMaritimeValues, onboardingFieldsSchema)
 
+/**
+ * A rank the edit form submits for a profile type that does not ask for one (round 10b): the rank
+ * saved by an earlier profile, which still shows on posts. The onboarding schema drops rank for those
+ * types, so the edit action reads it with this instead.
+ */
+export const editableRankSchema = z.object({
+  rank: optionalText(100, 'Keep your rank to 100 characters or fewer.'),
+})
+
 export type OnboardingInput = z.infer<typeof onboardingSchema>
 
 const profileIntentsSchema = z.preprocess(

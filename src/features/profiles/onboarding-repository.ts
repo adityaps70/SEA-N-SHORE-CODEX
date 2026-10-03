@@ -251,6 +251,17 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     )
   }
 
+  /**
+   * Sets only the rank (round 10): lets a member whose profile type is not Seafarer edit or clear
+   * a rank saved by an earlier profile, which still shows next to their name on posts.
+   */
+  async function updateRank(profileId: string, rank?: string) {
+    await query(
+      `update public.maritime_profiles set rank = $2, updated_at = now() where user_id = $1`,
+      [profileId, rank?.trim() ? rank.trim() : null],
+    )
+  }
+
   async function deleteMaritimeProfile(profileId: string) {
     await query(`delete from public.maritime_profiles where user_id = $1`, [profileId])
   }
@@ -280,6 +291,7 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     upsertMaritimeProfile,
     upsertActivationMaritimeProfile,
     upsertCurrentOrganization,
+    updateRank,
     deleteMaritimeProfile,
     replaceSkills,
     finalizeOnboarding,
