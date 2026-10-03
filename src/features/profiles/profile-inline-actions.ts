@@ -1,23 +1,32 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assessPlatformText, automatedModerationDetails, moderationBlockMessage, type AutomatedModerationAssessment } from '@/features/moderation/automated'
 import { moderationRepository } from '@/features/moderation/repository'
 import { getAwsOwnProfile } from './aws-queries'
+import { optionalOrganizationIdSchema } from './organization-link'
 import { organizationLinkRepository } from './organization-link-repository'
 import { resolveCurrentOrganizationLink } from './organization-link-service'
-import { personaUsesProfessionalCompany } from './persona'
+import { personaUsesProfessionalCompany, type ProfileIntent } from './persona'
 import {
+  setProfileCurrentOrganizationWithAurora,
   updateProfileAboutSectionWithAurora,
+  updateProfileGoalsSectionWithAurora,
   updateProfileIdentitySectionWithAurora,
   updateProfileProfessionalSectionWithAurora,
+  type ProfileCardPreferences,
 } from './profile-inline-edit-service'
 import {
   profileAboutSectionSchema,
   profileIdentitySectionSchema,
   profileProfessionalSectionSchema,
 } from './profile-inline-schemas'
+import { personaForProfile } from './profile-persona-rules'
+import { profilePreferencesSchema, retainedPersonaDetailsSchema } from './profile-preferences'
+import { editableRankSchema } from './schemas'
+import type { OwnProfile } from './types'
 
 export type ProfileInlineActionState = {
   error?: string
@@ -88,6 +97,66 @@ function revalidateProfilePaths(slug: string) {
   revalidatePath(`/people/${slug}`)
 }
 
+type CardPreferencesResult =
+  | { ok: true; preferences?: ProfileCardPreferences }
+  | { ok: false; fieldErrors: Record<string, string[]> }
+
+function sameText(left: unknown, right: string | null | undefined) {
+  const submitted = typeof left === 'string' ? left.trim() : ''
+  return submitted === (right?.trim() ?? '')
+}
+
+/**
+ * Reads a profile type (persona) change submitted with a card, validated by the same schema as the
+ * profile type & goals form. Saved persona details that the editor kept on screen are retained.
+ * A profile from before personas existed only takes a persona when the member changed something.
+ */
+function readCardPreferences(
+  profile: OwnProfile,
+  formData: FormData,
+  intents: ProfileIntent[] | string,
+): CardPreferencesResult {
+  const raw = Object.fromEntries(formData)
+  const parsed = profilePreferencesSchema.safeParse({ ...raw, profileIntents: intents })
+  if (!parsed.success) return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]> }
+  const retained = retainedPersonaDetailsSchema.safeParse(raw)
+  if (!retained.success) return { ok: false, fieldErrors: retained.error.flatten().fieldErrors as Record<string, string[]> }
+
+  if (parsed.data.persona === 'seafarer') {
+    const rank = typeof raw.rank === 'string' ? raw.rank.trim() : ''
+    if (rank.length < 2) return { ok: false, fieldErrors: { rank: ['Add your current or most recent rank.'] } }
+  }
+
+  if (!profile.persona && typeof intents !== 'string') {
+    const unchanged = parsed.data.persona === personaForProfile(profile)
+      && sameText(raw.familyRelationship, profile.communityRelationship)
+      && sameText(raw.institutionName, profile.institutionName)
+      && sameText(raw.specialization, profile.specialization)
+    if (unchanged) return { ok: true }
+  }
+
+  return {
+    ok: true,
+    preferences: {
+      data: parsed.data,
+      retained: {
+        communityRelationship: formData.has('familyRelationship') ? retained.data.familyRelationship ?? null : null,
+        institutionName: formData.has('institutionName') ? retained.data.institutionName ?? null : null,
+        specialization: formData.has('specialization') ? retained.data.specialization ?? null : null,
+      },
+    },
+  }
+}
+
+function savedIntents(profile: OwnProfile): ProfileIntent[] {
+  return profile.profileIntents?.length ? profile.profileIntents : ['community']
+}
+
+/**
+ * The header pencil: profile type, name, username, headline, location, current organization,
+ * rank and contact visibility (round 11). A profile type change saves through the preferences
+ * service in the same transaction.
+ */
 export async function updateProfileIdentitySection(
   previousState: ProfileInlineActionState,
   formData: FormData,
@@ -99,6 +168,14 @@ export async function updateProfileIdentitySection(
   const parsed = profileIdentitySectionSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return validationFailure(previousState, parsed.error)
 
+  const organisationAccount = profile.identityRoot === 'organisation'
+  let preferences: ProfileCardPreferences | undefined
+  if (!organisationAccount && formData.has('persona')) {
+    const read = readCardPreferences(profile, formData, savedIntents(profile))
+    if (!read.ok) return nextFailure(previousState, { fieldErrors: read.fieldErrors })
+    preferences = read.preferences
+  }
+
   let identity = parsed.data
   try {
     const linked = await resolveCurrentOrganizationLink(parsed.data, organizationLinkRepository, { userId: user.id })
@@ -108,16 +185,17 @@ export async function updateProfileIdentitySection(
     return nextFailure(previousState, { error: 'We could not check the organization you chose. Please try again.' })
   }
 
-  const moderation = assessProfileSection(identity)
+  const moderation = assessProfileSection({ ...identity, ...preferences?.data, ...preferences?.retained })
   if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
 
+  const persona = preferences?.data.persona ?? profile.persona
   try {
     await updateProfileIdentitySectionWithAurora(
       user.id,
       identity,
       // Round 10: a saved organization stays editable even when the persona does not ask for one.
-      (profile.persona ? personaUsesProfessionalCompany(profile.persona) : true) || formData.has('currentCompany'),
-      { rankSubmitted: formData.has('rank') },
+      (persona ? personaUsesProfessionalCompany(persona) : true) || formData.has('currentCompany'),
+      preferences ? { rankSubmitted: formData.has('rank'), preferences } : { rankSubmitted: formData.has('rank') },
     )
     await flagProfileModeration(user.id, moderation)
   } catch (error) {
@@ -132,6 +210,116 @@ export async function updateProfileIdentitySection(
 
   revalidateProfilePaths(profile.slug)
   if (parsed.data.slug !== profile.slug) revalidatePath(`/people/${parsed.data.slug}`)
+  return successState(previousState)
+}
+
+/**
+ * The Profile box of "Access & goals" (round 11), and the profile type & goals form on Edit
+ * profile: profile type, goals and the persona details, plus the organization and rank it shows.
+ */
+export async function updateProfileGoalsSection(
+  previousState: ProfileInlineActionState,
+  formData: FormData,
+): Promise<ProfileInlineActionState> {
+  const user = await requireAwsUser()
+  const profile = await getAwsOwnProfile()
+  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+
+  const intents = formData.get('profileIntents')
+  const read = readCardPreferences(profile, formData, typeof intents === 'string' ? intents : '')
+  if (!read.ok) return nextFailure(previousState, { fieldErrors: read.fieldErrors })
+  const preferences = read.preferences
+  if (!preferences) return successState(previousState)
+
+  const rankSubmitted = formData.has('rank')
+  const rank = rankSubmitted ? editableRankSchema.safeParse({ rank: formData.get('rank') }) : null
+  if (rank && !rank.success) return validationFailure(previousState, rank.error)
+
+  let organization: { currentCompany?: string; currentCompanyId?: string } | undefined
+  if (formData.has('currentCompany') && profile.identityRoot !== 'organisation') {
+    const submitted = organizationFieldsSchema.safeParse(Object.fromEntries(formData))
+    if (!submitted.success) return validationFailure(previousState, submitted.error)
+    try {
+      const linked = await resolveCurrentOrganizationLink(submitted.data, organizationLinkRepository, { userId: user.id })
+      if (!linked.ok) return nextFailure(previousState, { fieldErrors: linked.fieldErrors })
+      organization = linked.data
+    } catch {
+      return nextFailure(previousState, { error: 'We could not check the organization you chose. Please try again.' })
+    }
+  }
+
+  const moderation = assessProfileSection({ ...preferences.data, ...preferences.retained, ...organization, rank: rank?.data?.rank })
+  if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
+
+  try {
+    await updateProfileGoalsSectionWithAurora(user.id, preferences, {
+      organization,
+      rankSubmitted,
+      rank: rank?.success ? rank.data.rank : undefined,
+    })
+    await flagProfileModeration(user.id, moderation)
+  } catch {
+    return nextFailure(previousState, { error: 'We could not save your profile type and goals. Please try again.' })
+  }
+
+  revalidateProfilePaths(profile.slug)
+  return successState(previousState)
+}
+
+const organizationFieldsSchema = z.object({
+  currentCompany: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() ? value.trim() : undefined),
+    z.string().max(160, 'Keep the organization name to 160 characters or fewer.').optional(),
+  ),
+  currentCompanyId: optionalOrganizationIdSchema,
+})
+
+/**
+ * The Organizations card pencil (round 11): which of the member's organizations the header shows
+ * as their current one, keep the organization already saved, or show none. Only organizations the
+ * member belongs to on Sea N Shore can be chosen.
+ */
+export async function updateProfileCurrentOrganization(
+  previousState: ProfileInlineActionState,
+  formData: FormData,
+): Promise<ProfileInlineActionState> {
+  const user = await requireAwsUser()
+  const profile = await getAwsOwnProfile()
+  if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+  if (profile.identityRoot === 'organisation') {
+    return nextFailure(previousState, { error: 'Organisation accounts do not show a current organization.' })
+  }
+
+  const choice = formData.get('currentOrganization')
+  if (choice === 'keep') return successState(previousState)
+
+  let organization: { currentCompany?: string; currentCompanyId?: string }
+  if (choice === 'none') {
+    organization = {}
+  } else {
+    const id = optionalOrganizationIdSchema.safeParse(choice)
+    if (!id.success || !id.data) {
+      return nextFailure(previousState, { fieldErrors: { currentOrganization: ['Choose one of your organizations, or none.'] } })
+    }
+    try {
+      const memberships = await organizationLinkRepository.listProfileOrganizations(user.id, 50)
+      const membership = memberships.find((entry) => entry.id === id.data)
+      if (!membership) {
+        return nextFailure(previousState, { fieldErrors: { currentOrganization: ['You can only choose an organization you belong to.'] } })
+      }
+      organization = { currentCompany: membership.name, currentCompanyId: membership.id }
+    } catch {
+      return nextFailure(previousState, { error: 'We could not check your organizations. Please try again.' })
+    }
+  }
+
+  try {
+    await setProfileCurrentOrganizationWithAurora(user.id, organization)
+  } catch {
+    return nextFailure(previousState, { error: 'We could not save your current organization. Please try again.' })
+  }
+
+  revalidateProfilePaths(profile.slug)
   return successState(previousState)
 }
 
