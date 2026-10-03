@@ -12,6 +12,7 @@ export type ProfileEditRepository = Pick<
   | 'upsertMaritimeProfile'
   | 'upsertActivationMaritimeProfile'
   | 'upsertCurrentOrganization'
+  | 'updateRank'
   | 'deleteMaritimeProfile'
   | 'replaceSkills'
 >
@@ -27,7 +28,7 @@ export function createProfileEditService(input: { withTransaction: ProfileEditTr
     actorId: string,
     data: OnboardingInput,
     supportsCurrentCompany = data.profileType === 'seafarer' || data.profileType === 'maritime_professional',
-    options: { currentCompanySubmitted?: boolean } = {},
+    options: { currentCompanySubmitted?: boolean; rankSubmitted?: boolean } = {},
   ) {
     return input.withTransaction(async (repository) => {
       const current = await repository.lockCompletedProfile(actorId)
@@ -48,6 +49,10 @@ export function createProfileEditService(input: { withTransaction: ProfileEditTr
       } else if (supportsCurrentCompany && (options.currentCompanySubmitted || data.currentCompany !== undefined)) {
         // Only the organization changes here, so legacy details such as rank are kept.
         await repository.upsertCurrentOrganization(actorId, data.currentCompany, data.currentCompanyId)
+      }
+      if (data.profileType !== 'seafarer' && options.rankSubmitted) {
+        // Round 10: a rank saved by an earlier profile is shown on posts, so the member can edit or clear it.
+        await repository.updateRank(actorId, data.rank)
       }
 
       await repository.replaceSkills(actorId, data.skills)

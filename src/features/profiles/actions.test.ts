@@ -318,7 +318,7 @@ describe('completed profile update action', () => {
         skills: ['Navigation', 'SIRE 2.0'],
       }),
       true,
-      { currentCompanySubmitted: true },
+      { currentCompanySubmitted: true, rankSubmitted: true },
     )
   })
 
@@ -359,7 +359,7 @@ describe('completed profile update action', () => {
       viewerId,
       expect.objectContaining({ profileType: 'mentor', currentCompany: 'New Shipping Co' }),
       true,
-      { currentCompanySubmitted: true },
+      { currentCompanySubmitted: true, rankSubmitted: true },
     )
   })
 
@@ -406,7 +406,7 @@ describe('completed profile update action', () => {
         currentCompany: 'Beaufort Marine Services',
       }),
       true,
-      { currentCompanySubmitted: true },
+      { currentCompanySubmitted: true, rankSubmitted: true },
     )
   })
 
@@ -446,7 +446,7 @@ describe('current organization link', () => {
       viewerId,
       expect.objectContaining({ currentCompany: 'Oceanic Ship Management', currentCompanyId: organizationId }),
       true,
-      { currentCompanySubmitted: true },
+      { currentCompanySubmitted: true, rankSubmitted: true },
     )
   })
 
@@ -479,7 +479,7 @@ describe('current organization link', () => {
       viewerId,
       expect.objectContaining({ currentCompany: 'Example Shipping', currentCompanyId: undefined }),
       true,
-      { currentCompanySubmitted: true },
+      { currentCompanySubmitted: true, rankSubmitted: true },
     )
   })
 

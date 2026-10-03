@@ -18,9 +18,10 @@ function repositoryDouble(
   const upsertMaritimeProfile: ProfileEditRepository['upsertMaritimeProfile'] = vi.fn(async () => undefined)
   const upsertActivationMaritimeProfile: ProfileEditRepository['upsertActivationMaritimeProfile'] = vi.fn(async () => undefined)
   const upsertCurrentOrganization: ProfileEditRepository['upsertCurrentOrganization'] = vi.fn(async () => undefined)
+  const updateRank: ProfileEditRepository['updateRank'] = vi.fn(async () => undefined)
   const deleteMaritimeProfile: ProfileEditRepository['deleteMaritimeProfile'] = vi.fn(async () => undefined)
   const replaceSkills: ProfileEditRepository['replaceSkills'] = vi.fn(async () => undefined)
-  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, upsertActivationMaritimeProfile, upsertCurrentOrganization, deleteMaritimeProfile, replaceSkills }
+  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, upsertActivationMaritimeProfile, upsertCurrentOrganization, updateRank, deleteMaritimeProfile, replaceSkills }
 }
 
 function withRepository(repository: ProfileEditRepository) {
@@ -131,6 +132,19 @@ describe('completed profile edit service', () => {
     await service.updateProfile(actorId, input('mentor'), true, { currentCompanySubmitted: true })
 
     expect(vi.mocked(repository.upsertCurrentOrganization)).toHaveBeenCalledWith(actorId, undefined, undefined)
+  })
+
+  it('saves or clears a rank left from an earlier profile when the edit form submits it (round 10)', async () => {
+    const repository = repositoryDouble()
+    const service = createProfileEditService({ withTransaction: withRepository(repository) })
+
+    await service.updateProfile(actorId, { ...input('mentor'), rank: undefined }, true, { rankSubmitted: true })
+    expect(vi.mocked(repository.updateRank)).toHaveBeenCalledWith(actorId, undefined)
+    expect(vi.mocked(repository.upsertMaritimeProfile)).not.toHaveBeenCalled()
+
+    const untouched = repositoryDouble()
+    await createProfileEditService({ withTransaction: withRepository(untouched) }).updateProfile(actorId, input('mentor'), true, { rankSubmitted: false })
+    expect(vi.mocked(untouched.updateRank)).not.toHaveBeenCalled()
   })
 
   it('leaves the saved organization alone when the form has no organization field', async () => {

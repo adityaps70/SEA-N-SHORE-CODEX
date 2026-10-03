@@ -113,8 +113,16 @@ describe('ProfileEditForm', () => {
     expect(screen.getByText('Linked to the Oceanic Ship Management page on Sea N Shore')).toBeInTheDocument()
   })
 
-  it('does not ask for an organization when the persona has none', () => {
-    render(<ProfileEditForm profile={{ ...profile, persona: 'maritime_enthusiast' }} />)
+  it('does not ask for an organization or rank when the persona has none and nothing is saved', () => {
+    render(<ProfileEditForm profile={{ ...profile, persona: 'maritime_enthusiast', currentCompany: null, currentOrganization: null, rank: null }} />)
     expect(screen.queryByRole('combobox', { name: 'Current organization' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Rank or role/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps an organization and rank saved by an earlier profile editable, because posts still show them (round 10)', () => {
+    render(<ProfileEditForm profile={{ ...profile, persona: 'maritime_enthusiast', currentCompany: 'ig computers', currentOrganization: null, rank: 'captain' }} />)
+    expect(screen.getByRole('combobox', { name: 'Current organization' })).toHaveValue('ig computers')
+    expect(screen.getByRole('textbox', { name: /Rank or role/ })).toHaveValue('captain')
+    expect(screen.getByText('Shown next to your name on posts. Clear it if it no longer applies.')).toBeInTheDocument()
   })
 })

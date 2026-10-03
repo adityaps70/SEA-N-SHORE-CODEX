@@ -378,7 +378,10 @@ export async function updateProfile(
 
   try {
     // A cleared organization field clears the saved organization; an absent field leaves it alone.
-    await updateProfileWithAurora(user.id, data, true, { currentCompanySubmitted: formData.has('currentCompany') })
+    await updateProfileWithAurora(user.id, data, true, {
+      currentCompanySubmitted: formData.has('currentCompany'),
+      rankSubmitted: formData.has('rank'),
+    })
     await flagProfileModeration(user.id, moderation)
   } catch (error) {
     if (isUniqueViolation(error)) {
