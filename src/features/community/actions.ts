@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { CommunityServiceError, communityService, type CommunityServiceErrorCode } from './service'
 import {
+  COMMUNITY_CATEGORIES,
   GROUP_DESCRIPTION_MAX_LENGTH,
   GROUP_ICON_NAMES,
   GROUP_JOIN_POLICIES,
@@ -28,6 +29,11 @@ const groupEditSchema = z.object({
   visibility: z.enum(GROUP_VISIBILITIES),
   joinPolicy: z.enum(GROUP_JOIN_POLICIES, { message: 'Choose Open or Approval required.' }),
   icon: z.preprocess((value) => (typeof value === 'string' && value ? value : null), z.enum(GROUP_ICON_NAMES).nullable()),
+  // Round 10: omitted keeps the stored category; '' or null clears it.
+  category: z.preprocess(
+    (value) => (value === undefined ? undefined : typeof value === 'string' && value ? value : null),
+    z.enum(COMMUNITY_CATEGORIES, { message: 'Choose a category from the list.' }).nullable().optional(),
+  ),
 })
 
 const ERROR_MESSAGES: Record<CommunityServiceErrorCode, string> = {
@@ -148,6 +154,7 @@ export async function updateGroup(input: {
   visibility: string
   joinPolicy: string
   icon: string | null
+  category?: string | null
 }): Promise<CommunityActionResult> {
   const parsed = groupEditSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the group details and try again.' }

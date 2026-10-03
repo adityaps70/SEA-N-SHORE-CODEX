@@ -90,21 +90,19 @@ describe('HomePage profile completeness evidence', () => {
     expect(screen.getByText('Credential count 1')).toBeInTheDocument()
   })
 
-  it('renders the topic chips above the feed and filters the feed by the chosen category', async () => {
+  it('shows no topic chips on any screen size but still honours a ?category= link', async () => {
     render(await HomePage({ searchParams: Promise.resolve({ category: 'safety_lessons' }) }))
 
     expect(mockedGetFeedPage).toHaveBeenCalledWith({ category: 'safety_lessons' })
-    const chips = screen.getByRole('navigation', { name: 'Filter maritime feed' })
-    expect(chips.compareDocumentPosition(screen.getByText(/^Feed list/)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(screen.getByRole('link', { name: 'Safety Lessons' })).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('link', { name: 'All' })).toHaveAttribute('href', '/home')
+    expect(screen.queryByRole('navigation', { name: 'Filter maritime feed' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Safety Lessons' })).not.toBeInTheDocument()
     expect(screen.getByText('Feed list safety_lessons with 0 suggestions')).toBeInTheDocument()
   })
 
   it('ignores an unknown category', async () => {
     render(await HomePage({ searchParams: Promise.resolve({ category: 'gossip' }) }))
     expect(mockedGetFeedPage).toHaveBeenCalledWith({ category: undefined })
-    expect(screen.getByRole('link', { name: 'All' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByText('Feed list all with 0 suggestions')).toBeInTheDocument()
   })
 
   it('passes ?compose= to the composer and hides its trigger card on phones', async () => {

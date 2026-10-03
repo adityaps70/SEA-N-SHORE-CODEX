@@ -294,6 +294,27 @@ describe('platform admin user controls', () => {
     expect(deletedSeen[1]?.values).toEqual(['deletion_requested', 100])
   })
 
+  it('counts users with the same search and status filter as the list', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createAdminRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('public.user_roles ur')) return [{ allowed: true }]
+        return [{ total: '1234' }]
+      },
+    })
+
+    await expect(repository.countUsers(adminId, { query: 'Meera', status: 'active' })).resolves.toBe(1234)
+    expect(seen[1]?.text).toContain('count(distinct p.id)')
+    expect(seen[1]?.text).toContain('lower(coalesce(ia.email')
+    expect(seen[1]?.text).toContain('p.account_status::text = $2')
+    expect(seen[1]?.values).toEqual(['%meera%', 'active'])
+
+    await repository.countUsers(adminId, { query: '', status: 'all' })
+    expect(seen[3]?.text).toContain("p.account_status::text <> 'deletion_requested'")
+    expect(seen[3]?.values).toEqual([])
+  })
+
   it('binds the default admin user list limit instead of sending an unused query parameter', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const repository = createAdminRepository({

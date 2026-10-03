@@ -5,6 +5,7 @@ import { suggestedGroupSlugs } from './suggestions'
 import {
   isGroupAdminRole,
   type CommunityGroup,
+  type CommunityCategory,
   type GroupJoinPolicy,
   type GroupVisibility,
   type MembershipStatus,
@@ -41,6 +42,8 @@ export type GroupInput = {
   icon: string | null
   /** Round 9C join setting; when omitted the repository keeps the stored value (or derives it from visibility on create). */
   joinPolicy?: GroupJoinPolicy
+  /** Round 10 category; when omitted the stored category is kept (none on create). */
+  category?: CommunityCategory | null
 }
 
 export function joinRequestDedupeKey(groupId: string, requesterId: string, recipientId: string) {
@@ -276,6 +279,7 @@ export function createCommunityService(input: {
       createdBy: actorId,
       ownerId: group.ownerId,
       ownerCompanyId: group.ownerCompanyId ?? null,
+      category: group.category ?? null,
     })
     await repository.insertAuditEvent(actorId, 'community.group_created', groupId, {
       slug,

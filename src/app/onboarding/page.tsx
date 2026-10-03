@@ -1,7 +1,10 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { Wordmark } from '@/components/brand/wordmark'
+import { LogOut } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { signOutToSignUp } from '@/features/auth/actions'
+import { requireAwsUser } from '@/features/auth/aws-queries'
 import { OnboardingForm } from '@/features/profiles/components/onboarding-form'
 import { getOwnOnboardingSetup, getOwnRegisteredOrganization } from '@/features/profiles/queries'
 
@@ -17,6 +20,8 @@ export default async function OnboardingPage({
 
   if (profile.onboardingCompletedAt) redirect('/home')
   const registeredOrganization = await getOwnRegisteredOrganization((await searchParams)?.registered)
+  // Cached per request: the same verified user getOwnOnboardingSetup already loaded.
+  const { email } = await requireAwsUser()
 
   return (
     <main
@@ -26,9 +31,27 @@ export default async function OnboardingPage({
       <div className="mx-auto max-w-5xl">
         <div className="flex min-h-16 items-center justify-between gap-4 border-b border-mist-100 max-md:min-h-14">
           <Wordmark compact />
-          <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm max-md:hidden">
-            Professional onboarding
-          </span>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="rounded-full border border-mist-100 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[.16em] text-ocean-700 shadow-sm max-lg:hidden">
+              Professional onboarding
+            </span>
+            {/* Round 10: signed up with the wrong email? Sign out and start again from sign-up. */}
+            <form action={signOutToSignUp} className="flex min-w-0 items-center gap-2">
+              {email ? (
+                <span className="truncate text-xs text-muted max-sm:hidden" title={email}>
+                  Signed in as <span className="font-semibold text-navy-900">{email}</span>
+                </span>
+              ) : null}
+              <button
+                type="submit"
+                className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-mist-200 bg-white px-3 text-xs font-semibold text-navy-900 shadow-sm transition hover:border-ocean-300 hover:text-ocean-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+              >
+                <LogOut aria-hidden="true" className="size-3.5" />
+                <span className="sm:hidden">Sign out</span>
+                <span className="max-sm:hidden">Not you? Use a different email</span>
+              </button>
+            </form>
+          </div>
         </div>
 
         {/* Phones skip the intro: the form's own progress bar and step titles replace it. */}

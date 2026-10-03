@@ -11,6 +11,7 @@ import { validateCommunityImage, type CommunityMediaKind } from './media'
 import { uploadCommunityMedia } from './media-service'
 import { communityService } from './service'
 import {
+  COMMUNITY_CATEGORIES,
   GROUP_DESCRIPTION_MAX_LENGTH,
   GROUP_JOIN_POLICIES,
   GROUP_NAME_MAX_LENGTH,
@@ -28,6 +29,8 @@ const createSchema = z.object({
   rules: z.string().trim().max(GROUP_RULES_MAX_LENGTH, 'The rules are too long (4,000 characters at most).'),
   joinPolicy: z.enum(GROUP_JOIN_POLICIES, { message: 'Choose how members join: Open or Approval required.' }),
   visibility: z.enum(GROUP_VISIBILITIES, { message: 'Choose Public or Private.' }),
+  // Round 10: optional; '' means no category.
+  category: z.preprocess((value) => (typeof value === 'string' && value ? value : null), z.enum(COMMUNITY_CATEGORIES, { message: 'Choose a category from the list.' }).nullable()),
 })
 
 function readForm(formData: FormData, keys: string[]) {
@@ -46,7 +49,7 @@ function chosenImage(formData: FormData, field: string): File | null {
  */
 export async function createCommunity(_previous: CreateCommunityState, formData: FormData): Promise<CreateCommunityState> {
   const user = await requireAwsUser()
-  const parsed = createSchema.safeParse(readForm(formData, ['as', 'name', 'description', 'rules', 'joinPolicy', 'visibility']))
+  const parsed = createSchema.safeParse(readForm(formData, ['as', 'name', 'description', 'rules', 'joinPolicy', 'visibility', 'category']))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the community details and try again.' }
 
   const images: Array<{ kind: CommunityMediaKind; file: File }> = []
@@ -83,6 +86,7 @@ export async function createCommunity(_previous: CreateCommunityState, formData:
       icon: null,
       ownerId: user.id,
       ownerCompanyId,
+      category: parsed.data.category,
     })
   } catch (error) {
     return { ok: false, error: await communityErrorMessage(error, 'We could not create the community. Please try again.') }

@@ -8,7 +8,7 @@ import { downscaleImage, isDownscalableImage } from '@/lib/images/downscale-imag
 import { createCommunity, type CreateCommunityState } from '../create-actions'
 import { CREATE_AS_SELF } from '../eligibility'
 import { COMMUNITY_IMAGE_CONTENT_TYPES, validateCommunityImage, type CommunityMediaKind } from '../media'
-import { GROUP_DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type GroupJoinPolicy, type GroupVisibility } from '../types'
+import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type GroupJoinPolicy, type GroupVisibility } from '../types'
 
 /** One identity the member may create as: themselves (`me`) or an organization (its id). */
 export type CreateCommunityIdentity = { value: string; label: string; hint?: string }
@@ -162,6 +162,15 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
       <label className={labelClass}>
         Description
         <textarea name="description" rows={4} maxLength={GROUP_DESCRIPTION_MAX_LENGTH} className={`${areaClass} mt-1.5`} placeholder="What the community is about and who it is for." />
+      </label>
+
+      <label className={labelClass}>
+        Category
+        <select name="category" defaultValue="" className={`${inputClass} mt-1.5`} aria-describedby="community-category-hint">
+          <option value="">No category</option>
+          {COMMUNITY_CATEGORIES.map((category) => <option key={category} value={category}>{COMMUNITY_CATEGORY_LABELS[category]}</option>)}
+        </select>
+        <span id="community-category-hint" className={hintClass}>Helps members find the community under Browse by category.</span>
       </label>
 
       <label className={labelClass}>

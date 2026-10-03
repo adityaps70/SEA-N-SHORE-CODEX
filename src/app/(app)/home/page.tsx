@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { getFeedPage } from '@/features/feed/queries'
 import { parseFeedCategory } from '@/features/feed/schemas'
-import { FeedCategoryFilter } from '@/features/feed/components/feed-category-filter'
 import { FeedLayout } from '@/features/feed/components/feed-layout'
 import { FeedList } from '@/features/feed/components/feed-list'
 import { PostComposer } from '@/features/feed/components/post-composer'
@@ -36,19 +35,6 @@ export default async function HomePage({
     experienceCount: portfolio.experiences.length,
     credentialCount: portfolio.credentials.length,
   }
-  const feedVersion = initialPage.posts
-    .map((post) => [
-      post.id,
-      post.updatedAt,
-      post.likeCount,
-      post.commentCount,
-      post.viewerLiked ? 1 : 0,
-      post.viewerSaved ? 1 : 0,
-      post.poll?.totalVotes ?? 0,
-      post.poll?.viewerOptionId ?? '',
-    ].join(':'))
-    .join('|')
-
   return (
     <FeedLayout
       profile={profile}
@@ -60,11 +46,11 @@ export default async function HomePage({
       <div id="feed-composer" className="scroll-mt-24">
         <PostComposer profile={profile} defaultCategory={category} composeRequest={composeRequest} hideTriggerOnPhones />
       </div>
-      {/* Topic chips are a phone addition (round 8); desktop and tablet keep today's feed. */}
-      <FeedCategoryFilter category={category} className="md:hidden" />
       <div className="mt-4 max-md:mt-1">
+        {/* Keyed by category only: a reaction or comment refreshes the first page, which FeedList and
+            PostCard reconcile in place, so the loaded pages and scroll position survive (round 10). */}
         <FeedList
-          key={`${category ?? 'all'}:${feedVersion}`}
+          key={category ?? 'all'}
           initialPage={initialPage}
           category={category}
           suggestions={suggestions}

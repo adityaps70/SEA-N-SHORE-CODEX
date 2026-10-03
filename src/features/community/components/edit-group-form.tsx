@@ -5,7 +5,7 @@ import { useState, useTransition } from 'react'
 import { primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { updateGroup } from '../actions'
 import { GROUP_ICON_LABELS } from '../group-icons'
-import { GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_RULES_MAX_LENGTH, type CommunityGroup, type GroupJoinPolicy } from '../types'
+import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_RULES_MAX_LENGTH, type CommunityGroup, type GroupJoinPolicy } from '../types'
 
 const inputClass = 'min-h-11 w-full rounded-xl border border-mist-200 bg-white px-3 text-sm text-ink outline-none focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100'
 const areaClass = 'w-full rounded-xl border border-mist-200 bg-white px-3 py-2 text-sm leading-6 text-ink outline-none focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100'
@@ -24,6 +24,7 @@ export function EditGroupForm({ group, doneHref }: { group: CommunityGroup; done
   const [visibility, setVisibility] = useState(group.visibility)
   const [joinPolicy, setJoinPolicy] = useState<GroupJoinPolicy>(group.joinPolicy)
   const [icon, setIcon] = useState(group.icon ?? '')
+  const [category, setCategory] = useState<string>(group.category ?? '')
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -32,7 +33,7 @@ export function EditGroupForm({ group, doneHref }: { group: CommunityGroup; done
     event.preventDefault()
     setError('')
     startTransition(async () => {
-      const result = await updateGroup({ groupId: group.id, description, rules, visibility, joinPolicy, icon: icon || null }).catch(() => null)
+      const result = await updateGroup({ groupId: group.id, description, rules, visibility, joinPolicy, icon: icon || null, category: category || null }).catch(() => null)
       if (!result || !result.ok) {
         setError(result?.error ?? 'We could not save the group. Check your connection and try again.')
         return
@@ -80,6 +81,13 @@ export function EditGroupForm({ group, doneHref }: { group: CommunityGroup; done
           <select name="icon" value={icon} onChange={(event) => setIcon(event.target.value)} className={`${inputClass} mt-1.5`}>
             <option value="">Default (people)</option>
             {GROUP_ICON_NAMES.map((name) => <option key={name} value={name}>{GROUP_ICON_LABELS[name]}</option>)}
+          </select>
+        </label>
+        <label className="block text-sm font-semibold text-navy-950 sm:col-span-2">
+          Category
+          <select name="category" value={category} onChange={(event) => setCategory(event.target.value)} className={`${inputClass} mt-1.5`}>
+            <option value="">No category</option>
+            {COMMUNITY_CATEGORIES.map((value) => <option key={value} value={value}>{COMMUNITY_CATEGORY_LABELS[value]}</option>)}
           </select>
         </label>
       </div>

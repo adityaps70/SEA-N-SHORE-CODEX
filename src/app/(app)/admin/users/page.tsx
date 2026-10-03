@@ -27,8 +27,9 @@ import { pluralize } from '@/lib/format'
 
 export const metadata: Metadata = { title: 'Users · Admin' }
 
-/** Shared with the organizations directory so both admin lists page the same way. */
+/** Default page size, shared with the organizations directory; ?size= picks 25, 50 or 100 (round 10). */
 const PAGE_SIZE = 50
+const PAGE_SIZES = [25, 50, 100] as const
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
@@ -56,6 +57,11 @@ function readSingle(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] ?? '' : value ?? ''
 }
 
+function readPageSize(value: string | string[] | undefined) {
+  const size = Number.parseInt(readSingle(value), 10)
+  return (PAGE_SIZES as readonly number[]).includes(size) ? size : PAGE_SIZE
+}
+
 function readStatus(value: string | string[] | undefined): AdminUserStatusFilter {
   const candidate = readSingle(value)
   return candidate === 'all' || ADMIN_USER_STATUSES.includes(candidate as AdminUserStatus)
@@ -70,15 +76,20 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
   const admin = await requireAwsUser()
   const hideTestAccounts = readSingle(params.test) === 'hide'
   const page = readAdminPage(params.page)
-  // One extra row tells us whether there is a next page.
-  const fetched = await adminRepository.searchUsers(admin.id, {
-    query,
-    status,
-    limit: PAGE_SIZE + 1,
-    offset: (page - 1) * PAGE_SIZE,
-  })
-  const hasNextPage = fetched.length > PAGE_SIZE
-  const results = fetched.slice(0, PAGE_SIZE)
+  const pageSize = readPageSize(params.size)
+  // One extra row tells us whether there is a next page; the count uses the same filter.
+  const [fetched, totalUsers] = await Promise.all([
+    adminRepository.searchUsers(admin.id, {
+      query,
+      status,
+      limit: pageSize + 1,
+      offset: (page - 1) * pageSize,
+    }),
+    adminRepository.countUsers(admin.id, { query, status }),
+  ])
+  const hasNextPage = fetched.length > pageSize
+  const results = fetched.slice(0, pageSize)
+  const totalPages = Math.max(1, Math.ceil(totalUsers / pageSize))
 
   const viewingDeletionRecords = status === 'deletion_requested'
   const testAccounts = viewingDeletionRecords ? 0 : results.filter(looksLikeTestAccount).length
@@ -86,21 +97,22 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
     hideTestAccounts && !viewingDeletionRecords ? results.filter((user) => !looksLikeTestAccount(user)) : results,
   )
 
-  function usersHref(next: { status?: AdminUserStatusFilter; hideTest?: boolean; page?: number }) {
+  function usersHref(next: { status?: AdminUserStatusFilter; hideTest?: boolean; page?: number; size?: number }) {
     const search = new URLSearchParams()
     if (query) search.set('q', query)
     const nextStatus = next.status ?? status
     if (nextStatus !== 'all') search.set('status', nextStatus)
     if (next.hideTest ?? hideTestAccounts) search.set('test', 'hide')
+    const nextSize = next.size ?? pageSize
+    if (nextSize !== PAGE_SIZE) search.set('size', String(nextSize))
     // Changing a filter starts again from the first page.
     if (next.page && next.page > 1) search.set('page', String(next.page))
     const value = search.toString()
     return `/admin/users${value ? `?${value}` : ''}`
   }
 
-  const resultsLabel = page > 1 || hasNextPage
-    ? `${pluralize(users.length, 'result')} on page ${page}`
-    : pluralize(users.length, 'result')
+  const countNoun = viewingDeletionRecords ? 'record' : 'user'
+  const resultsLabel = `${totalUsers.toLocaleString('en-IN')} ${totalUsers === 1 ? countNoun : `${countNoun}s`}${query ? ' found' : ''} · Page ${Math.min(page, totalPages).toLocaleString('en-IN')} of ${totalPages.toLocaleString('en-IN')}`
 
   const filterOptions = (['all', ...ADMIN_USER_STATUSES] as AdminUserStatusFilter[]).map((item) => ({
     href: usersHref({ status: item }),
@@ -146,6 +158,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
           </label>
           {status !== 'all' ? <input type="hidden" name="status" value={status} /> : null}
           {hideTestAccounts ? <input type="hidden" name="test" value="hide" /> : null}
+          {pageSize !== PAGE_SIZE ? <input type="hidden" name="size" value={pageSize} /> : null}
           <button type="submit" className="min-h-9 rounded-lg bg-navy-950 px-3 text-sm font-semibold text-white hover:bg-navy-900 max-md:min-h-11 max-md:rounded-xl max-md:px-4">
             Search
           </button>
@@ -247,12 +260,45 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
         )}
       </AdminPanel>
 
-      <AdminPagination
-        label="User list pages"
-        page={page}
-        hasNext={hasNextPage}
-        hrefFor={(target) => usersHref({ page: target })}
-      />
+      <div className="flex flex-col gap-3">
+        <AdminPagination
+          label="User list pages"
+          page={page}
+          hasNext={hasNextPage}
+          totalPages={totalPages}
+          hrefFor={(target) => usersHref({ page: target })}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+          <nav aria-label="Users per page" className="flex items-center gap-1">
+            <span className="mr-1">Show</span>
+            {PAGE_SIZES.map((size) => (
+              size === pageSize
+                ? <span key={size} aria-current="true" className="inline-flex min-h-8 items-center rounded-lg bg-navy-950 px-2.5 text-xs font-semibold text-white tabular-nums">{size}</span>
+                : <Link key={size} href={usersHref({ size, page: 1 })} className="inline-flex min-h-8 items-center rounded-lg border border-mist-200 bg-white px-2.5 text-xs font-semibold text-navy-950 tabular-nums hover:border-ocean-200 hover:bg-ocean-50">{size}</Link>
+            ))}
+            <span className="ml-1">per page</span>
+          </nav>
+          {totalPages > 1 ? (
+            <form method="get" action="/admin/users" className="flex items-center gap-2">
+              {query ? <input type="hidden" name="q" value={query} /> : null}
+              {status !== 'all' ? <input type="hidden" name="status" value={status} /> : null}
+              {hideTestAccounts ? <input type="hidden" name="test" value="hide" /> : null}
+              {pageSize !== PAGE_SIZE ? <input type="hidden" name="size" value={pageSize} /> : null}
+              <label htmlFor="admin-users-jump">Go to page</label>
+              <input
+                id="admin-users-jump"
+                type="number"
+                name="page"
+                min={1}
+                max={totalPages}
+                defaultValue={Math.min(page, totalPages)}
+                className="min-h-8 w-20 rounded-lg border border-mist-200 bg-white px-2 text-sm text-navy-950 tabular-nums outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100"
+              />
+              <button type="submit" className="min-h-8 rounded-lg border border-mist-200 bg-white px-3 text-xs font-semibold text-navy-950 hover:border-ocean-200 hover:bg-ocean-50">Go</button>
+            </form>
+          ) : null}
+        </div>
+      </div>
     </main>
   )
 }

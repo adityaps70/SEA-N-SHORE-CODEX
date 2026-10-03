@@ -2,7 +2,8 @@
 
 import { postLoadingPriority } from '../post-loading-priority'
 import Link from 'next/link'
-import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from 'react'
+import { CheckCircle2 } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import type { NetworkProfile } from '@/features/network/types'
 import { loadFeedPage } from '../actions'
 import type { FeedPage, FeedPost, PostCategory } from '../types'
@@ -37,8 +38,14 @@ export function FeedList({
   const [cursor, setCursor] = useState(initialPage.nextCursor)
   const [freshPosts, setFreshPosts] = useState<FeedPost[]>([])
   const [error, setError] = useState('')
-  const [pending, startTransition] = useTransition()
+  const [loading, setLoading] = useState(false)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  /** One request at a time: the observer can fire again before React re-renders. */
+  const inFlightRef = useRef(false)
+  /** After a failed page the observer stops auto-retrying; the member taps "Try again". */
+  const failedRef = useRef(false)
+  const groupId = scope?.groupId
+  const hashtag = scope?.hashtag
 
   if (canonicalPage !== initialPage) {
     const canonicalIds = new Set(initialPage.posts.map((post) => post.id))
@@ -51,22 +58,43 @@ export function FeedList({
     setCursor((current) => current === canonicalPage.nextCursor ? initialPage.nextCursor : current)
   }
 
-  const loadMore = useCallback(() => {
-    if (!cursor || pending) return
+  const loadMore = useCallback(async () => {
+    if (!cursor || inFlightRef.current) return
+    inFlightRef.current = true
+    failedRef.current = false
     setError('')
-    startTransition(async () => {
-      const result = await loadFeedPage({ category, ...scope, cursor, limit: 12 })
+    setLoading(true)
+    try {
+      const result = await loadFeedPage({ category, ...(groupId ? { groupId } : {}), ...(hashtag ? { hashtag } : {}), cursor, limit: 12 })
       if (!result.ok) {
+        failedRef.current = true
         setError(result.error)
         return
       }
+      const shown = new Set(posts.map((post) => post.id))
+      const added = result.page.posts.filter((post) => !shown.has(post.id)).length
       setPosts((current) => {
         const seen = new Set(current.map((post) => post.id))
-        return [...current, ...result.page.posts.filter((post) => !seen.has(post.id))]
+        const unseen = result.page.posts.filter((post) => !seen.has(post.id))
+        return unseen.length ? [...current, ...unseen] : current
       })
-      setCursor(result.page.nextCursor)
-    })
-  }, [category, cursor, pending, scope])
+      // A page with nothing new (or a cursor that did not move) is the end: stop asking.
+      const next = result.page.nextCursor
+      const moved = next && (next.id !== cursor.id || next.createdAt !== cursor.createdAt)
+      setCursor(moved && added > 0 ? next : null)
+    } catch {
+      failedRef.current = true
+      setError('We could not load more posts.')
+    } finally {
+      inFlightRef.current = false
+      setLoading(false)
+    }
+  }, [category, cursor, groupId, hashtag, posts])
+
+  // The observer reads the latest loader through a ref, so it is created once per cursor
+  // instead of being torn down (and immediately re-fired) on every loading toggle.
+  const loadMoreRef = useRef(loadMore)
+  useEffect(() => { loadMoreRef.current = loadMore }, [loadMore])
 
   useEffect(() => {
     if (!cursor || typeof IntersectionObserver === 'undefined') return
@@ -74,11 +102,12 @@ export function FeedList({
     if (!node) return
 
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) loadMore()
-    }, { rootMargin: '400px 0px' })
+      if (failedRef.current) return
+      if (entries.some((entry) => entry.isIntersecting)) void loadMoreRef.current()
+    }, { rootMargin: '600px 0px' })
     observer.observe(node)
     return () => observer.disconnect()
-  }, [cursor, loadMore])
+  }, [cursor])
 
   useEffect(() => {
     let active = true
@@ -88,7 +117,7 @@ export function FeedList({
       if (checking) return
       checking = true
       try {
-        const result = await loadFeedPage({ category, ...scope, limit: 12 })
+        const result = await loadFeedPage({ category, ...(groupId ? { groupId } : {}), ...(hashtag ? { hashtag } : {}), limit: 12 })
         if (!active || !result.ok) return
         setPosts((current) => {
           const seen = new Set(current.map((post) => post.id))
@@ -106,7 +135,7 @@ export function FeedList({
       active = false
       window.clearInterval(interval)
     }
-  }, [category, scope])
+  }, [category, groupId, hashtag])
 
   function showFreshPosts() {
     setPosts((current) => {
@@ -156,19 +185,43 @@ export function FeedList({
           {peoplePositions.has(index) ? <FeedPeopleRow profiles={suggestions} /> : null}
         </Fragment>
       ))}
-      {error ? <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 max-md:mx-4">{error}</p> : null}
-      {cursor ? (
-        <div ref={sentinelRef} className="flex justify-center pt-1" aria-label="Load more posts">
+      {/* Fixed-height footer: loading, retry and the end state swap in place, so the page never jumps. */}
+      <div ref={sentinelRef} className="flex min-h-24 flex-col items-center justify-center gap-2 px-4 py-4 text-center" aria-live="polite">
+        {error ? (
+          <>
+            <p role="alert" className="text-sm text-red-700">{error}</p>
+            <button
+              type="button"
+              onClick={() => { void loadMore() }}
+              className="min-h-10 rounded-full border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-900 hover:border-ocean-500 hover:text-ocean-700"
+            >
+              Try again
+            </button>
+          </>
+        ) : cursor ? (
           <button
             type="button"
-            disabled={pending}
-            onClick={loadMore}
+            disabled={loading}
+            onClick={() => { void loadMore() }}
+            aria-label="Load more posts"
             className="min-h-11 rounded-xl border border-mist-200 bg-white px-5 text-sm font-semibold text-navy-900 shadow-sm hover:border-ocean-500 hover:text-ocean-700 disabled:opacity-60"
           >
-            {pending ? 'Loading…' : 'Load more'}
+            {loading ? 'Loading…' : 'Load more'}
           </button>
-        </div>
-      ) : null}
+        ) : (
+          <div data-testid="feed-end" className="flex flex-col items-center gap-2">
+            <span className="inline-flex size-9 items-center justify-center rounded-full bg-teal-50 text-teal-700"><CheckCircle2 aria-hidden className="size-5" /></span>
+            <p className="text-sm font-semibold text-navy-950">You&apos;re all caught up</p>
+            {groupId || hashtag ? null : (<>
+            <p className="max-w-sm text-xs leading-5 text-muted">Follow more people or join a community to see more maritime posts here.</p>
+            <div className="flex flex-wrap justify-center gap-2 pt-1">
+              <Link href="/network" className="inline-flex min-h-9 items-center rounded-full border border-mist-200 bg-white px-3.5 text-xs font-semibold text-navy-900 hover:border-ocean-300">Find people</Link>
+              <Link href="/community" className="inline-flex min-h-9 items-center rounded-full border border-mist-200 bg-white px-3.5 text-xs font-semibold text-navy-900 hover:border-ocean-300">Join communities</Link>
+            </div>
+            </>)}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

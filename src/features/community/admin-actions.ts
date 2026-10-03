@@ -7,6 +7,7 @@ import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { communityErrorMessage } from './actions'
 import { communityService } from './service'
 import {
+  COMMUNITY_CATEGORIES,
   GROUP_DESCRIPTION_MAX_LENGTH,
   GROUP_ICON_NAMES,
   GROUP_JOIN_POLICIES,
@@ -24,9 +25,11 @@ const groupFieldsSchema = z.object({
   visibility: z.enum(GROUP_VISIBILITIES, { message: 'Choose Public or Private.' }),
   joinPolicy: z.enum(GROUP_JOIN_POLICIES, { message: 'Choose Open or Approval required.' }),
   icon: z.preprocess((value) => (typeof value === 'string' && value ? value : null), z.enum(GROUP_ICON_NAMES).nullable()),
+  // Round 10: '' (No category) clears it.
+  category: z.preprocess((value) => (typeof value === 'string' && value ? value : null), z.enum(COMMUNITY_CATEGORIES, { message: 'Choose a category from the list.' }).nullable()),
 })
 
-const GROUP_FIELD_KEYS = ['name', 'description', 'rules', 'visibility', 'joinPolicy', 'icon']
+const GROUP_FIELD_KEYS = ['name', 'description', 'rules', 'visibility', 'joinPolicy', 'icon', 'category']
 
 const createSchema = groupFieldsSchema.extend({
   owner: z.string().trim().min(3, 'Enter the owner’s sign-in email or profile handle.').max(320),

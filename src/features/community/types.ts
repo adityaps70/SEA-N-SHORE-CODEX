@@ -1,5 +1,7 @@
 /** Community groups (round 9B): `public.community_groups` and `public.community_group_memberships`. */
 
+import { POST_CATEGORIES, POST_CATEGORY_LABELS, type PostCategory } from '@/features/feed/types'
+
 export const GROUP_ROLES = ['member', 'admin', 'owner'] as const
 export type GroupRole = (typeof GROUP_ROLES)[number]
 
@@ -24,8 +26,34 @@ export type GroupOwnerOrganization = {
 }
 
 /** Icon names stored on `community_groups.icon`; each maps to a lucide icon in `group-icons.ts`. */
-export const GROUP_ICON_NAMES = ['ShieldCheck', 'UsersRound', 'Wrench', 'BookOpenCheck', 'BadgeQuestionMark'] as const
+export const GROUP_ICON_NAMES = [
+  'ShieldCheck', 'UsersRound', 'Wrench', 'BookOpenCheck', 'BadgeQuestionMark',
+  // Round 10: the category communities seeded by migration 0061.
+  'Newspaper', 'BriefcaseBusiness', 'LifeBuoy', 'Trophy', 'GraduationCap', 'Lightbulb',
+] as const
 export type GroupIconName = (typeof GROUP_ICON_NAMES)[number]
+
+/**
+ * Round 10: a community's category is one of the feed's post categories (the former phone Home
+ * chips). Migration 0061 seeds one community per category with the same name.
+ */
+export const COMMUNITY_CATEGORIES = POST_CATEGORIES
+export type CommunityCategory = PostCategory
+export const COMMUNITY_CATEGORY_LABELS: Record<CommunityCategory, string> = POST_CATEGORY_LABELS
+
+export function isCommunityCategory(value: unknown): value is CommunityCategory {
+  return typeof value === 'string' && (COMMUNITY_CATEGORIES as readonly string[]).includes(value)
+}
+
+/** How the full directory is ordered (round 10). */
+export const DIRECTORY_SORTS = ['active', 'members', 'name', 'newest'] as const
+export type DirectorySort = (typeof DIRECTORY_SORTS)[number]
+export const DIRECTORY_SORT_LABELS: Record<DirectorySort, string> = {
+  active: 'Most active',
+  members: 'Most members',
+  name: 'A to Z',
+  newest: 'Newest',
+}
 
 export const GROUP_NAME_MAX_LENGTH = 80
 export const GROUP_SLUG_MAX_LENGTH = 80
@@ -58,6 +86,10 @@ export type CommunityGroup = {
   ownerOrganization: GroupOwnerOrganization | null
   /** The signed-in viewer's membership row, or null when they never joined (or left). */
   viewerMembership: ViewerMembership | null
+  /** Round 10: the community's category, or null when none is set. */
+  category?: CommunityCategory | null
+  /** Round 10: live posts in the last 7 days ("Popular this week", new-post hints). */
+  recentPostCount?: number
 }
 
 export type GroupMember = {
@@ -92,6 +124,8 @@ export type AdminCommunityGroup = {
   ownerOrganization: GroupOwnerOrganization | null
   archivedAt: string | null
   createdAt: string
+  /** Round 10. */
+  category?: CommunityCategory | null
 }
 
 /** Signals used to suggest groups to a member (see `suggestions.ts`). */

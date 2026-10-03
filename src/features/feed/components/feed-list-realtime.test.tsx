@@ -101,3 +101,66 @@ describe('FeedList incremental freshness', () => {
     expect(screen.queryByText('Current post')).not.toBeInTheDocument()
   })
 })
+describe('FeedList end of feed', () => {
+  it('shows a calm end state and stops requesting once the last page has loaded', async () => {
+    render(<FeedList initialPage={{ posts: [first], nextCursor: cursor }} />)
+
+    await act(async () => {
+      mocks.observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(await screen.findByText('Older post')).toBeInTheDocument()
+    expect(await screen.findByText("You're all caught up")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /load more posts/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Join communities' })).toHaveAttribute('href', '/community')
+
+    await act(async () => {
+      mocks.observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(mocks.loadFeedPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a second intersection while a page is still loading', async () => {
+    let resolvePage: (value: unknown) => void = () => {}
+    mocks.loadFeedPage.mockImplementationOnce(() => new Promise((resolve) => { resolvePage = resolve }))
+    render(<FeedList initialPage={{ posts: [first], nextCursor: cursor }} />)
+
+    await act(async () => {
+      mocks.observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+      mocks.observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(mocks.loadFeedPage).toHaveBeenCalledTimes(1)
+
+    await act(async () => { resolvePage({ ok: true, page: { posts: [older], nextCursor: null } }) })
+    expect(await screen.findByText('Older post')).toBeInTheDocument()
+  })
+
+  it('treats a page with no new posts as the end instead of looping', async () => {
+    mocks.loadFeedPage.mockResolvedValueOnce({ ok: true, page: { posts: [first], nextCursor: { createdAt: older.createdAt, id: older.id } } })
+    render(<FeedList initialPage={{ posts: [first], nextCursor: cursor }} />)
+
+    await act(async () => {
+      mocks.observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(await screen.findByText("You're all caught up")).toBeInTheDocument()
+    expect(mocks.loadFeedPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('stops auto-loading after an error and retries only when asked', async () => {
+    mocks.loadFeedPage.mockResolvedValueOnce({ ok: false, error: 'We could not load more posts.' })
+    render(<FeedList initialPage={{ posts: [first], nextCursor: cursor }} />)
+
+    await act(async () => {
+      mocks.observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(await screen.findByRole('alert')).toHaveTextContent('We could not load more posts.')
+
+    await act(async () => {
+      mocks.observerCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(mocks.loadFeedPage).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByText('Older post')).toBeInTheDocument()
+    expect(mocks.loadFeedPage).toHaveBeenCalledTimes(2)
+  })
+})
