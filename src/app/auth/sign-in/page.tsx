@@ -3,13 +3,21 @@ import { Wordmark } from "@/components/brand/wordmark";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { signIn, signInWithGoogle } from "@/features/auth/actions";
 
-export default function SignInPage() {
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string }>;
+}) {
+  const params = await searchParams;
+  const defaultEmail =
+    typeof params.email === "string" ? params.email.trim().toLowerCase() : "";
   return (
     <AuthPage>
       <AuthForm
         mode="sign-in"
         action={signIn}
         googleAction={signInWithGoogle}
+        defaultEmail={defaultEmail}
       />
       <p className="mt-6 text-sm text-muted">
         New to Sea N Shore?{" "}
