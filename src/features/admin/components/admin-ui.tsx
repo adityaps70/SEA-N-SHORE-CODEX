@@ -149,27 +149,62 @@ export function readAdminPage(value: string | string[] | undefined) {
   return Number.isFinite(page) && page > 1 ? Math.min(page, 10_000) : 1
 }
 
-/** Previous / next links under an admin list. Renders nothing when everything fits on one page. */
+/** Page numbers to link around the current page: first, last and two either side, with gaps as null. */
+export function adminPageWindow(page: number, totalPages: number): Array<number | null> {
+  const pages = new Set<number>([1, totalPages])
+  for (let candidate = page - 2; candidate <= page + 2; candidate += 1) {
+    if (candidate >= 1 && candidate <= totalPages) pages.add(candidate)
+  }
+  const sorted = [...pages].sort((left, right) => left - right)
+  const result: Array<number | null> = []
+  sorted.forEach((value, index) => {
+    if (index > 0 && value - sorted[index - 1] > 1) result.push(null)
+    result.push(value)
+  })
+  return result
+}
+
+/**
+ * Previous / next links under an admin list. Renders nothing when everything fits on one page.
+ * Pass `totalPages` (round 10) to show "Page 2 of 25" and numbered links to jump between pages.
+ */
 export function AdminPagination({
   label,
   page,
   hasNext,
   hrefFor,
+  totalPages,
 }: {
   label: string
   page: number
   hasNext: boolean
   hrefFor: (page: number) => string
+  totalPages?: number
 }) {
-  if (page <= 1 && !hasNext) return null
+  if (page <= 1 && !hasNext && (!totalPages || totalPages <= 1)) return null
   const linkClass = 'inline-flex min-h-9 items-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 transition hover:border-ocean-200 hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500'
   const disabledClass = 'inline-flex min-h-9 items-center rounded-lg border border-mist-100 px-3 text-sm font-semibold text-muted'
+  const numberClass = 'inline-flex min-h-9 min-w-9 items-center justify-center rounded-lg px-2 text-sm font-semibold tabular-nums transition'
   return (
-    <nav aria-label={label} className="flex items-center justify-between gap-3">
+    <nav aria-label={label} className="flex flex-wrap items-center justify-between gap-3">
       {page > 1
         ? <Link href={hrefFor(page - 1)} rel="prev" className={linkClass}>Previous</Link>
         : <span aria-disabled="true" className={disabledClass}>Previous</span>}
-      <p className="text-sm font-medium text-muted">Page {page}</p>
+      {totalPages && totalPages > 1 ? (
+        <div className="flex flex-wrap items-center justify-center gap-1">
+          <p className="mr-2 text-sm font-medium text-muted md:hidden">Page {page} of {totalPages}</p>
+          <ul className="flex items-center gap-1 max-md:hidden">
+            {adminPageWindow(page, totalPages).map((value, index) => (
+              <li key={value ?? `gap-${index}`}>
+                {value === null ? <span className="px-1 text-sm text-muted">…</span>
+                  : value === page
+                    ? <span aria-current="page" className={`${numberClass} bg-navy-950 text-white`}>{value}</span>
+                    : <Link href={hrefFor(value)} aria-label={`Page ${value}`} className={`${numberClass} border border-mist-200 bg-white text-navy-950 hover:border-ocean-200 hover:bg-ocean-50`}>{value}</Link>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : <p className="text-sm font-medium text-muted">Page {page}</p>}
       {hasNext
         ? <Link href={hrefFor(page + 1)} rel="next" className={linkClass}>Next</Link>
         : <span aria-disabled="true" className={disabledClass}>Next</span>}

@@ -5,6 +5,7 @@ import type { AdminUserSummary } from '@/features/admin/repository'
 const mocks = vi.hoisted(() => ({
   requireAwsUser: vi.fn(),
   searchUsers: vi.fn(),
+  countUsers: vi.fn(),
 }))
 
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
@@ -17,6 +18,7 @@ vi.mock('@/features/admin/repository', async (importOriginal) => {
     ...original,
     adminRepository: {
       searchUsers: mocks.searchUsers,
+      countUsers: mocks.countUsers,
     },
   }
 })
@@ -45,6 +47,31 @@ describe('/admin/users', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1', cognitoSub: 'admin-sub', email: 'admin@example.com' })
     mocks.searchUsers.mockResolvedValue([])
+    mocks.countUsers.mockResolvedValue(0)
+  })
+
+  it('shows the total user count and "Page X of Y", counting with the same filters as the list', async () => {
+    const member: AdminUserSummary = { ...deletedRecord, id: 'u-1', fullName: 'Meera Kulkarni', slug: 'meera-k', email: 'meera@example.net', status: 'active' }
+    mocks.searchUsers.mockResolvedValue(Array.from({ length: 26 }, (_, index) => ({ ...member, id: `u-${index}` })))
+    mocks.countUsers.mockResolvedValue(1234)
+
+    render(await AdminUsersPage({ searchParams: Promise.resolve({ q: 'meera', status: 'active', size: '25', page: '2' }) }))
+
+    expect(mocks.searchUsers).toHaveBeenCalledWith('admin-1', { query: 'meera', status: 'active', limit: 26, offset: 25 })
+    expect(mocks.countUsers).toHaveBeenCalledWith('admin-1', { query: 'meera', status: 'active' })
+    expect(screen.getByText(/1,234 users found · Page 2 of 50/)).toBeInTheDocument()
+    const pages = screen.getByRole('navigation', { name: 'User list pages' })
+    expect(within(pages).getByRole('link', { name: 'Page 50' })).toHaveAttribute('href', '/admin/users?q=meera&status=active&size=25&page=50')
+    expect(within(pages).getByText('2')).toHaveAttribute('aria-current', 'page')
+    const sizes = screen.getByRole('navigation', { name: 'Users per page' })
+    expect(within(sizes).getByRole('link', { name: '100' })).toHaveAttribute('href', '/admin/users?q=meera&status=active&size=100')
+    expect(screen.getByLabelText('Go to page')).toHaveAttribute('max', '50')
+  })
+
+  it('falls back to 50 per page for an unknown ?size=', async () => {
+    render(await AdminUsersPage({ searchParams: Promise.resolve({ size: '7' }) }))
+    expect(mocks.searchUsers).toHaveBeenCalledWith('admin-1', { query: '', status: 'all', limit: 51, offset: 0 })
+    expect(screen.getByText(/0 users · Page 1 of 1/)).toBeInTheDocument()
   })
 
   it('treats permanently deleted profiles as audit records rather than manageable users', async () => {
@@ -137,6 +164,7 @@ describe('/admin/users', () => {
       ...deletedRecord, id: `u-${index}`, fullName: `Member ${index}`, slug: `member-${index}`, email: `m${index}@example.net`, status: 'active',
     }))
     mocks.searchUsers.mockResolvedValue(many)
+    mocks.countUsers.mockResolvedValue(151)
 
     render(await AdminUsersPage({ searchParams: Promise.resolve({ status: 'active', page: '2' }) }))
 
@@ -146,6 +174,6 @@ describe('/admin/users', () => {
     expect(pages).toHaveTextContent('Page 2')
     expect(screen.getByRole('link', { name: 'Previous' })).toHaveAttribute('href', '/admin/users?status=active')
     expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute('href', '/admin/users?status=active&page=3')
-    expect(screen.getByText(/50 results on page 2/)).toBeInTheDocument()
+    expect(screen.getByText(/151 users · Page 2 of 4/)).toBeInTheDocument()
   })
 })

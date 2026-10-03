@@ -1232,11 +1232,8 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     })
   }
 
-  async function searchUsers(
-    adminId: string,
-    input: AdminUserSearch,
-  ): Promise<AdminUserSummary[]> {
-    await requirePlatformAdministrator(queryRows, adminId)
+  /** The WHERE clause shared by the user list and its total count, so both always agree. */
+  function adminUserFilter(input: Pick<AdminUserSearch, 'query' | 'status'>) {
     const values: unknown[] = []
     const where: string[] = []
     const normalizedQuery = input.query.trim().toLowerCase()
@@ -1259,8 +1256,33 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     } else {
       where.push("p.account_status::text <> 'deletion_requested'")
     }
+    return { values, where }
+  }
 
-    values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 100))
+  /** How many accounts match the same search and status filter as `searchUsers` (round 10). */
+  async function countUsers(adminId: string, input: Pick<AdminUserSearch, 'query' | 'status'>): Promise<number> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const { values, where } = adminUserFilter(input)
+    const rows = await queryRows(
+      `select count(distinct p.id) as total
+       from public.profiles p
+       left join public.identity_accounts ia
+         on ia.profile_id = p.id and ia.provider = 'cognito'
+       ${where.length ? `where ${where.join(' and ')}` : ''}`,
+      values,
+    ) as Array<{ total: number | string | null }>
+    return Number(rows[0]?.total ?? 0)
+  }
+
+  async function searchUsers(
+    adminId: string,
+    input: AdminUserSearch,
+  ): Promise<AdminUserSummary[]> {
+    await requirePlatformAdministrator(queryRows, adminId)
+    const { values, where } = adminUserFilter(input)
+
+    // 101 lets a 100-row page fetch one look-ahead row.
+    values.push(Math.min(Math.max(Math.trunc(input.limit), 1), 101))
     const limitParameter = String.fromCharCode(36) + values.length
     const offset = Math.max(Math.trunc(input.offset ?? 0), 0)
     let offsetSql = ''
@@ -1803,6 +1825,7 @@ export function createAdminRepository(input: { query?: AdminQuery; transaction?:
     listDeletedPosts,
     restoreDeletedPost,
     searchUsers,
+    countUsers,
     getAdminUser,
     listUserAccountHistory,
     setUserAccountStatus,
