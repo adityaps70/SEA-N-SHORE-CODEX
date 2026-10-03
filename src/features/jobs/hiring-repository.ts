@@ -4,6 +4,7 @@ import { planVisibleSql } from '@/features/billing/plan-visibility'
 import { scoreJobMatch } from './matching'
 import { PERSONAS, type Persona } from '@/features/profiles/persona'
 import { jobDepartmentDisplay, jobRankDisplay, roleDisplayLabel } from '@/features/roles/taxonomy'
+import { matchPersonaSql } from '@/features/roles/sql'
 import type { JobApplicationCvReference } from './application-media'
 import { validateApplicationStatusChange } from './application-status'
 import type { JobLifecycleSnapshot } from './job-lifecycle'
@@ -306,7 +307,6 @@ type ApplicantRow = QueryResultRow & {
   headline: string | null
   candidate_rank: string | null
   candidate_persona?: string | null
-  candidate_profile_type?: string | null
   candidate_role_key?: string | null
   candidate_role_other_text?: string | null
   candidate_cadet_stage_key?: string | null
@@ -477,8 +477,7 @@ const APPLICANT_SELECT = `
     p.location as candidate_location,
     p.headline,
     mp.rank as candidate_rank,
-    p.persona as candidate_persona,
-    p.profile_type::text as candidate_profile_type,
+    ${matchPersonaSql('p')} as candidate_persona,
     p.role_key as candidate_role_key,
     p.role_other_text as candidate_role_other_text,
     p.cadet_stage_key as candidate_cadet_stage_key,
@@ -729,7 +728,6 @@ function mapCandidate(row: ApplicantRow): HiringApplicantCandidate {
     headline: row.headline ?? null,
     rank: roleDisplayLabel({ roleKey: row.candidate_role_key, otherText: row.candidate_role_other_text, legacyText: row.candidate_rank }),
     persona: PERSONAS.find((persona) => persona === row.candidate_persona) ?? null,
-    profileType: row.candidate_profile_type ?? null,
     roleKey: row.candidate_role_key ?? null,
     roleOtherText: row.candidate_role_other_text ?? null,
     cadetStageKey: row.candidate_cadet_stage_key ?? null,

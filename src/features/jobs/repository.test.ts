@@ -133,7 +133,7 @@ describe('jobs repository', () => {
       query: async (text, values) => {
         seen.push({ text, values })
         return [{
-          persona: 'seafarer', profile_type: 'seafarer', role_key: 'chief_officer', role_other_text: null, cadet_stage_key: null,
+          persona: 'seafarer', role_key: 'chief_officer', role_other_text: null, cadet_stage_key: null,
           target_role_key: null, headline: 'Chief Officer', occupation_text: null, experience_titles: [],
           rank: 'Chief Officer', sailing_experience_years: '7.5', vessel_types: ['Oil Tanker'], trading_areas: ['Worldwide'],
           availability: '2026-09-18', shore_career_preference: false, skills: ['Leadership'],
@@ -143,7 +143,7 @@ describe('jobs repository', () => {
     })
 
     await expect(repository.getCandidateProfile('viewer-1')).resolves.toEqual({
-      persona: 'seafarer', profileType: 'seafarer', roleKey: 'chief_officer', roleOtherText: null, cadetStageKey: null,
+      persona: 'seafarer', roleKey: 'chief_officer', roleOtherText: null, cadetStageKey: null,
       targetRoleKey: null, headline: 'Chief Officer', occupationText: null, experienceTitles: [],
       rank: 'Chief Officer', sailingExperienceYears: 7.5, vesselTypes: ['Oil Tanker'], tradingAreas: ['Worldwide'],
       availability: '2026-09-18', shoreCareerPreference: false, skills: ['Leadership'],

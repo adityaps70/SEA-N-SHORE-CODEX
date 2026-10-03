@@ -5,6 +5,7 @@ import type { JobApplicationCvReference } from './application-media'
 import { APPLICANT_WITHDRAWABLE_STATUSES } from './application-status'
 import { jobDepartmentDisplay, jobRankDisplay, roleByKey, rolesFor } from '@/features/roles/taxonomy'
 import { PERSONAS } from '@/features/profiles/persona'
+import { matchPersonaSql } from '@/features/roles/sql'
 import type {
   JobAlert,
   JobApplication,
@@ -86,7 +87,6 @@ type ApplicationRow = QueryResultRow & {
 
 type CandidateRow = QueryResultRow & {
   persona?: string | null
-  profile_type?: string | null
   role_key?: string | null
   role_other_text?: string | null
   cadet_stage_key?: string | null
@@ -461,8 +461,7 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
   async function getCandidateProfile(profileId: string): Promise<JobCandidateProfile | null> {
     const rows = await queryRows(
       `select
-         p.persona,
-         p.profile_type::text as profile_type,
+         ${matchPersonaSql('p')} as persona,
          p.role_key,
          p.role_other_text,
          p.cadet_stage_key,
@@ -513,7 +512,6 @@ export function createJobsRepository(input: { query?: JobsQuery } = {}) {
     if (!row) return null
     return {
       persona: PERSONAS.find((persona) => persona === row.persona) ?? null,
-      profileType: row.profile_type ?? null,
       roleKey: row.role_key ?? null,
       roleOtherText: row.role_other_text ?? null,
       cadetStageKey: row.cadet_stage_key ?? null,
