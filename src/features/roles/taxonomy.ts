@@ -464,3 +464,33 @@ export function cadetStageRoleKey(stage: string | null | undefined): string | nu
   if (stage === 'engine_cadet') return 'engine_cadet'
   return null
 }
+
+/* ---------- Legacy conversion ---------- */
+
+/** Every normalised text normaliseLegacyRank recognises, with its key (migration 0062 backfills from the same list). */
+export function legacyRankEntries(): Array<[text: string, key: string]> {
+  return [...legacyLookup.entries()]
+}
+
+/** The persona whose rank lists an older profile edits as (same mapping as personaForProfile). */
+export function rankPersonaFor(persona: Persona | null | undefined, profileType?: string | null): Persona {
+  if (persona) return persona
+  if (profileType === 'seafarer') return 'seafarer'
+  if (profileType === 'recruiter') return 'recruiter_hr'
+  if (profileType === 'trainer') return 'trainer_instructor'
+  return 'shore_professional'
+}
+
+/**
+ * normaliseLegacyRank, limited to the departments the persona picks from. A recognised rank in
+ * another persona's list resolves to the same job in this persona's list when there is one (a
+ * recruiter's "Crewing Manager"), otherwise null.
+ */
+export function normaliseLegacyRankForPersona(text: string | null | undefined, persona: Persona | null | undefined): string | null {
+  const key = normaliseLegacyRank(text)
+  if (!key) return null
+  const allowed = new Set(departmentsFor(persona).map((department) => department.key))
+  const role = roleByKey(key)
+  if (role && allowed.has(role.department)) return key
+  return ROLES.find((entry) => entry.sameAs === key && allowed.has(entry.department))?.key ?? null
+}
