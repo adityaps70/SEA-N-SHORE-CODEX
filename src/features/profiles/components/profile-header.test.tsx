@@ -140,7 +140,7 @@ describe('ProfileHeader', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'More profile actions' }))
-    fireEvent.click(screen.getByRole('menuitem', { name: /Edit basic information/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /Edit profile/ }))
     expect(screen.getByRole('textbox', { name: 'Full name' })).toHaveValue('Member A')
     expect(screen.getByRole('combobox', { name: 'Contact visibility' })).toHaveValue('public')
   })
