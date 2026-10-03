@@ -31,7 +31,7 @@ import { getFeedPage } from '@/features/feed/queries'
 import { OrganizationPageTabs } from '@/features/organizations/components/organization-page-tabs'
 import { PageSection } from '@/features/organizations/components/organization-page-content'
 import { getOwnProfile } from '@/features/profiles/queries'
-import { createMediaReadUrl } from '@/lib/aws/storage'
+import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import { pluralize } from '@/lib/format'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -51,7 +51,7 @@ function single(value: string | string[] | undefined) {
 async function withAvatars(members: GroupMember[]) {
   return Promise.all(members.map(async (member) => ({
     ...member,
-    avatarUrl: member.avatarPath ? await createMediaReadUrl(member.avatarPath).catch(() => null) : null,
+    avatarUrl: member.avatarPath ? await createMediaImageSrc(member.avatarPath).catch(() => null) : null,
   })))
 }
 

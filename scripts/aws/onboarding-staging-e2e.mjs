@@ -274,7 +274,8 @@ async function signIn(page, user) {
   await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await page.waitForURL((url) => url.pathname === '/onboarding', { timeout: 20_000 })
-  await expect(page.getByRole('heading', { name: 'Set your course in the global shipping community.' })).toBeVisible()
+  // The intro heading is hidden on phones (Round 8 mobile layout); the identity step is on every viewport.
+  await expect(page.getByRole('group', { name: 'Which best describes you?' })).toBeVisible()
 }
 
 async function expectUsernameAvailable(page, username) {

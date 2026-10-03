@@ -127,3 +127,9 @@ test('staging deploy promotes outbox and notification workers with the same immu
   assert.match(workflow, /runningCount/)
   assert.match(workflow, /pendingCount/)
 })
+
+test('staging deploy never shrinks the web task below 2048 MiB / 512 CPU (Round 13)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  assert.match(workflow, /\| \.memory = \(if \(\(\.memory \/\/ "0"\) \| tonumber\) < 2048 then "2048" else \.memory end\)/)
+  assert.match(workflow, /\| \.cpu = \(if \(\(\.cpu \/\/ "0"\) \| tonumber\) < 512 then "512" else \.cpu end\)/)
+})

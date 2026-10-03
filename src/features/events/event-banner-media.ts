@@ -1,4 +1,5 @@
-import { createMediaReadUrl, createMediaUploadUrl, headMediaObject } from '@/lib/aws/storage'
+import { createMediaUploadUrl, headMediaObject } from '@/lib/aws/storage'
+import { createMediaImageSrc } from '@/lib/images/media-image-src'
 import {
   EVENT_BANNER_MAX_BYTES,
   buildEventBannerStoragePath,
@@ -42,7 +43,7 @@ export async function resolveEventBannerReference(reference: string | null): Pro
   if (isLegacyEventBannerUrl(reference)) return reference
   if (!isEventBannerStoragePath(reference)) return null
   try {
-    return await createMediaReadUrl(reference)
+    return await createMediaImageSrc(reference)
   } catch {
     return null
   }

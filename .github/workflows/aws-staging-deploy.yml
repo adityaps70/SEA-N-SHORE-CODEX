@@ -282,6 +282,9 @@ jobs:
               .registeredAt,
               .registeredBy
             )
+            # Round 13: never shrink the web task below 2048 MiB / 0.5 vCPU when copying it.
+            | .memory = (if ((.memory // "0") | tonumber) < 2048 then "2048" else .memory end)
+            | .cpu = (if ((.cpu // "0") | tonumber) < 512 then "512" else .cpu end)
             | .containerDefinitions |= map(
                 if .name == $NAME then
                   .image = $IMAGE
