@@ -15,6 +15,7 @@ type AuthFormProps = {
   mode: AuthMode;
   action: AuthAction;
   googleAction?: () => Promise<void>;
+  defaultEmail?: string;
 };
 
 const labels: Record<AuthMode, { title: string; submit: string }> = {
@@ -33,7 +34,7 @@ const labels: Record<AuthMode, { title: string; submit: string }> = {
   },
 };
 
-export function AuthForm({ mode, action, googleAction }: AuthFormProps) {
+export function AuthForm({ mode, action, googleAction, defaultEmail }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const [confirmationError, setConfirmationError] = useState<string>();
   const showName = mode === "sign-up";
@@ -80,6 +81,7 @@ export function AuthForm({ mode, action, googleAction }: AuthFormProps) {
             name="email"
             type="email"
             autoComplete="email"
+            defaultValue={defaultEmail}
             required
           />
         )}
