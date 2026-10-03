@@ -19,6 +19,7 @@ import { PERSONA_ICONS } from '../persona-icons'
 import { DgProfileUpload } from './dg-profile-upload'
 import { OrganizationPicker, type PickerOrganization } from './organization-picker'
 import { UsernameField } from './username-field'
+import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
 
 function firstError(state: ProfileActionState, field: string) {
   return state.fieldErrors?.[field]?.[0]
@@ -313,15 +314,26 @@ function OnboardingFields({
               autoComplete="address-level2"
             />
 
+            {/* Round 12: Department → Rank / Role (or stage and target role, or occupation) for this profile type. */}
+            <ProfileRoleFields
+              key={persona}
+              persona={persona}
+              initial={{
+                roleDepartmentKey: values?.roleDepartmentKey,
+                roleKey: values?.roleKey,
+                roleOtherText: values?.roleOtherText,
+                cadetStageKey: values?.cadetStageKey,
+                cadetCourseKey: values?.cadetCourseKey,
+                targetDepartmentKey: values?.targetDepartmentKey,
+                targetRoleKey: values?.targetRoleKey,
+                occupationText: values?.occupationText,
+                legacyRank: values?.rank,
+              }}
+              error={(name) => firstError(state, name)}
+            />
+
             {persona === 'seafarer' ? (
               <>
-                <Field
-                  label="Current or most recent rank"
-                  name="rank"
-                  defaultValue={values?.rank}
-                  error={firstError(state, 'rank')}
-                  required
-                />
                 <OnboardingOrganizationPicker
                   registeredOrganization={registeredOrganization}
                   label="Current / last organisation"
@@ -334,12 +346,6 @@ function OnboardingFields({
 
             {persona === 'shore_professional' ? (
               <>
-                <Field
-                  label="Current role / designation"
-                  name="headline"
-                  defaultValue={values?.headline}
-                  error={firstError(state, 'headline')}
-                />
                 <OnboardingOrganizationPicker
                   registeredOrganization={registeredOrganization}
                   label="Current organisation"
@@ -352,12 +358,6 @@ function OnboardingFields({
 
             {persona === 'recruiter_hr' ? (
               <>
-                <Field
-                  label="Role / designation"
-                  name="headline"
-                  defaultValue={values?.headline}
-                  error={firstError(state, 'headline')}
-                />
                 <OnboardingOrganizationPicker
                   registeredOrganization={registeredOrganization}
                   label="Current organisation"
@@ -406,14 +406,6 @@ function OnboardingFields({
               />
             ) : null}
 
-            {persona === 'other' ? (
-              <Field
-                label="How would you describe yourself?"
-                name="headline"
-                defaultValue={values?.headline}
-                error={firstError(state, 'headline')}
-              />
-            ) : null}
           </div>
 
           {persona === 'seafarer' && profileId ? (
@@ -510,6 +502,14 @@ const onboardingFieldLabels: Record<string, string> = {
   institutionName: 'Institute / academy',
   familyRelationship: 'Relationship',
   contactVisibility: 'Contact visibility',
+  roleDepartmentKey: 'Department',
+  roleKey: 'Rank / role',
+  roleOtherText: 'Your rank / role',
+  cadetStageKey: 'Current stage',
+  cadetCourseKey: 'Course',
+  targetDepartmentKey: 'Target department',
+  targetRoleKey: 'Target job role',
+  occupationText: 'Occupation / role',
 }
 
 function captureSubmittedActivationValues(formData: FormData): ProfileActionState['values'] {
@@ -534,6 +534,14 @@ function captureSubmittedActivationValues(formData: FormData): ProfileActionStat
     specialization: text('specialization'),
     institutionName: text('institutionName'),
     familyRelationship: text('familyRelationship'),
+    roleDepartmentKey: text('roleDepartmentKey'),
+    roleKey: text('roleKey'),
+    roleOtherText: text('roleOtherText'),
+    cadetStageKey: text('cadetStageKey'),
+    cadetCourseKey: text('cadetCourseKey'),
+    targetDepartmentKey: text('targetDepartmentKey'),
+    targetRoleKey: text('targetRoleKey'),
+    occupationText: text('occupationText'),
     contactVisibility: contactVisibilityValue === 'private'
       || contactVisibilityValue === 'members'
       || contactVisibilityValue === 'public'

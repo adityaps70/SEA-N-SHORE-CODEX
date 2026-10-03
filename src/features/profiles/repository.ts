@@ -28,6 +28,14 @@ type ProfileRow = QueryResultRow & {
   community_relationship?: string | null
   institution_name?: string | null
   specialization?: string | null
+  role_department_key?: string | null
+  role_key?: string | null
+  role_other_text?: string | null
+  cadet_stage_key?: string | null
+  cadet_course_key?: string | null
+  target_department_key?: string | null
+  target_role_key?: string | null
+  occupation_text?: string | null
   full_name: string
   avatar_path: string | null
   cover_path?: string | null
@@ -84,6 +92,14 @@ const PROFILE_SELECT = `
     p.community_relationship,
     p.institution_name,
     p.specialization,
+    p.role_department_key,
+    p.role_key,
+    p.role_other_text,
+    p.cadet_stage_key,
+    p.cadet_course_key,
+    p.target_department_key,
+    p.target_role_key,
+    p.occupation_text,
     p.full_name,
     p.avatar_path,
     p.cover_path,
@@ -175,6 +191,14 @@ function normalizePublicRow(row: ProfileRow): PublicProfileRow | null {
     community_relationship: row.community_relationship ?? null,
     institution_name: row.institution_name ?? null,
     specialization: row.specialization ?? null,
+    role_department_key: row.role_department_key ?? null,
+    role_key: row.role_key ?? null,
+    role_other_text: row.role_other_text ?? null,
+    cadet_stage_key: row.cadet_stage_key ?? null,
+    cadet_course_key: row.cadet_course_key ?? null,
+    target_department_key: row.target_department_key ?? null,
+    target_role_key: row.target_role_key ?? null,
+    occupation_text: row.occupation_text ?? null,
     full_name: row.full_name,
     avatar_path: row.avatar_path,
     cover_path: row.cover_path ?? null,
@@ -350,6 +374,8 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
            p.community_relationship,
            p.institution_name,
            p.specialization,
+           p.role_other_text,
+           p.occupation_text,
            array_to_string(p.secondary_identities, ' '),
            mp.rank,
            mp.current_company,

@@ -19,9 +19,10 @@ function repositoryDouble(
   const upsertActivationMaritimeProfile: ProfileEditRepository['upsertActivationMaritimeProfile'] = vi.fn(async () => undefined)
   const upsertCurrentOrganization: ProfileEditRepository['upsertCurrentOrganization'] = vi.fn(async () => undefined)
   const updateRank: ProfileEditRepository['updateRank'] = vi.fn(async () => undefined)
+  const updateProfileRole: ProfileEditRepository['updateProfileRole'] = vi.fn(async () => undefined)
   const deleteMaritimeProfile: ProfileEditRepository['deleteMaritimeProfile'] = vi.fn(async () => undefined)
   const replaceSkills: ProfileEditRepository['replaceSkills'] = vi.fn(async () => undefined)
-  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, upsertActivationMaritimeProfile, upsertCurrentOrganization, updateRank, deleteMaritimeProfile, replaceSkills }
+  return { lockCompletedProfile, updateCompletedProfile, upsertMaritimeProfile, upsertActivationMaritimeProfile, upsertCurrentOrganization, updateRank, updateProfileRole, deleteMaritimeProfile, replaceSkills }
 }
 
 function withRepository(repository: ProfileEditRepository) {

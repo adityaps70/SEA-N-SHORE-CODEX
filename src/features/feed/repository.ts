@@ -52,6 +52,8 @@ export type ReactorRow = QueryResultRow & {
   avatar_path: string | null
   headline: string | null
   rank: string | null
+  role_key?: string | null
+  role_other_text?: string | null
   current_company: string | null
   reaction_type: PostReactionType
   reacted_at: string
@@ -128,6 +130,8 @@ const FEED_ROW_SELECT = `
       'full_name', author.full_name,
       'avatar_path', author.avatar_path,
       'headline', author.headline,
+      'role_key', author.role_key,
+      'role_other_text', author.role_other_text,
       'maritime_profiles', case
         when maritime.user_id is null then null
         else json_build_object('rank', maritime.rank, 'current_company', maritime.current_company)
@@ -586,6 +590,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
          reactor.avatar_path,
          reactor.headline,
          maritime.rank,
+         reactor.role_key,
+         reactor.role_other_text,
          maritime.current_company,
          reaction.reaction_type::text as reaction_type,
          reaction.created_at as reacted_at
@@ -632,6 +638,8 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
            'full_name', author.full_name,
            'avatar_path', author.avatar_path,
            'headline', author.headline,
+           'role_key', author.role_key,
+           'role_other_text', author.role_other_text,
            'maritime_profiles', case when maritime.user_id is null then null else json_build_object('rank', maritime.rank, 'current_company', maritime.current_company) end
          ) as profiles,
          case when c.deleted_at is null then json_build_object(

@@ -3,6 +3,7 @@ import {
   createOnboardingRepositoryForClient,
   type OnboardingRepository,
 } from './onboarding-repository'
+import type { ProfileRoleSelection } from '@/features/roles/profile-role-input'
 import type { OnboardingInput } from './schemas'
 
 export type ProfileEditRepository = Pick<
@@ -13,6 +14,7 @@ export type ProfileEditRepository = Pick<
   | 'upsertActivationMaritimeProfile'
   | 'upsertCurrentOrganization'
   | 'updateRank'
+  | 'updateProfileRole'
   | 'deleteMaritimeProfile'
   | 'replaceSkills'
 >
@@ -28,7 +30,7 @@ export function createProfileEditService(input: { withTransaction: ProfileEditTr
     actorId: string,
     data: OnboardingInput,
     supportsCurrentCompany = data.profileType === 'seafarer' || data.profileType === 'maritime_professional',
-    options: { currentCompanySubmitted?: boolean; rankSubmitted?: boolean } = {},
+    options: { currentCompanySubmitted?: boolean; rankSubmitted?: boolean; role?: ProfileRoleSelection | null } = {},
   ) {
     return input.withTransaction(async (repository) => {
       const current = await repository.lockCompletedProfile(actorId)
@@ -55,6 +57,7 @@ export function createProfileEditService(input: { withTransaction: ProfileEditTr
         await repository.updateRank(actorId, data.rank)
       }
 
+      if (options.role) await repository.updateProfileRole(actorId, options.role)
       await repository.replaceSkills(actorId, data.skills)
       return true
     })

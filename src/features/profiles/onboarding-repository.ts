@@ -1,5 +1,6 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
+import { UPDATE_PROFILE_ROLE_SQL, profileRoleValues, type ProfileRoleSelection } from '@/features/roles/profile-role-input'
 import type { OnboardingActivationInput, OnboardingInput } from './schemas'
 import type { ProfileType } from './types'
 
@@ -262,6 +263,11 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     )
   }
 
+  /** Round 12: the structured department / rank, cadet stage and target role, and occupation. */
+  async function updateProfileRole(profileId: string, role: ProfileRoleSelection) {
+    await query(UPDATE_PROFILE_ROLE_SQL, profileRoleValues(profileId, role))
+  }
+
   async function deleteMaritimeProfile(profileId: string) {
     await query(`delete from public.maritime_profiles where user_id = $1`, [profileId])
   }
@@ -292,6 +298,7 @@ export function createOnboardingRepository(input: { query: OnboardingQuery }) {
     upsertActivationMaritimeProfile,
     upsertCurrentOrganization,
     updateRank,
+    updateProfileRole,
     deleteMaritimeProfile,
     replaceSkills,
     finalizeOnboarding,

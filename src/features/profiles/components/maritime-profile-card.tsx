@@ -8,6 +8,7 @@ import type { PublicProfile } from '../types'
 import { ProfileCardFieldError, ProfileCardForm, profileCardInputClass, profileCardLabelClass, useProfileCardEditor } from './profile-card-editing'
 import { ProfileField, ProfileFieldList, ProfileSection, ProfileSectionEditButton } from './profile-section'
 import { formatYears } from '@/lib/format'
+import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
 
 type Detail = { label: string; value: string; icon: LucideIcon }
 
@@ -38,11 +39,17 @@ function MaritimeProfileEditor({
   return (
     <ProfileCardForm cardId="profile-maritime" label="Edit Professional Record" action={formAction} pending={pending} onCancel={onClose} onDirty={onDirty} error={state.error} className="mt-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className={labelClass}>
-          Rank
-          <input name="rank" maxLength={100} defaultValue={profile.rank ?? ''} className={inputClass} />
-          <ProfileCardFieldError fieldErrors={state.fieldErrors} name="rank" />
-        </label>
+        <ProfileRoleFields
+          persona="seafarer"
+          variant="card"
+          initial={{
+            roleDepartmentKey: profile.roleDepartmentKey,
+            roleKey: profile.roleKey,
+            roleOtherText: profile.roleOtherText,
+            legacyRank: profile.roleKey ? null : profile.rank,
+          }}
+          error={(name) => state.fieldErrors?.[name]?.[0]}
+        />
         <label className={labelClass}>
           Current vessel
           <input name="currentVessel" maxLength={160} defaultValue={profile.currentVessel ?? ''} className={inputClass} />

@@ -9,7 +9,8 @@ import { getAwsOwnProfile } from './aws-queries'
 import { optionalOrganizationIdSchema } from './organization-link'
 import { organizationLinkRepository } from './organization-link-repository'
 import { resolveCurrentOrganizationLink } from './organization-link-service'
-import { personaUsesProfessionalCompany, type ProfileIntent } from './persona'
+import { applyProfileRoleFields, type ProfileRoleSelection } from '@/features/roles/profile-role-input'
+import { PERSONAS, personaUsesProfessionalCompany, type Persona, type ProfileIntent } from './persona'
 import {
   setProfileCurrentOrganizationWithAurora,
   updateProfileAboutSectionWithAurora,
@@ -148,6 +149,17 @@ function readCardPreferences(
   }
 }
 
+/** Adds the structured role to a service call only when the form carried one. */
+function withRole(role: ProfileRoleSelection | null) {
+  return role ? { role } : {}
+}
+
+/** The persona a form saves as: the submitted profile type, else the saved one. */
+function submittedPersona(profile: OwnProfile, formData: FormData): Persona {
+  const submitted = PERSONAS.find((entry) => entry === formData.get('persona'))
+  return submitted ?? personaForProfile(profile)
+}
+
 function savedIntents(profile: OwnProfile): ProfileIntent[] {
   return profile.profileIntents?.length ? profile.profileIntents : ['community']
 }
@@ -159,11 +171,16 @@ function savedIntents(profile: OwnProfile): ProfileIntent[] {
  */
 export async function updateProfileIdentitySection(
   previousState: ProfileInlineActionState,
-  formData: FormData,
+  submittedForm: FormData,
 ): Promise<ProfileInlineActionState> {
   const user = await requireAwsUser()
   const profile = await getAwsOwnProfile()
   if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
+
+  // Round 12: Department → Rank / Role pickers; the rank text follows the picked rank.
+  const applied = applyProfileRoleFields(submittedForm, submittedPersona(profile, submittedForm))
+  if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
+  const formData = applied.formData
 
   const parsed = profileIdentitySectionSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) return validationFailure(previousState, parsed.error)
@@ -195,7 +212,9 @@ export async function updateProfileIdentitySection(
       identity,
       // Round 10: a saved organization stays editable even when the persona does not ask for one.
       (persona ? personaUsesProfessionalCompany(persona) : true) || formData.has('currentCompany'),
-      preferences ? { rankSubmitted: formData.has('rank'), preferences } : { rankSubmitted: formData.has('rank') },
+      preferences
+        ? { rankSubmitted: formData.has('rank'), preferences, ...withRole(applied.role) }
+        : { rankSubmitted: formData.has('rank'), ...withRole(applied.role) },
     )
     await flagProfileModeration(user.id, moderation)
   } catch (error) {
@@ -219,17 +238,32 @@ export async function updateProfileIdentitySection(
  */
 export async function updateProfileGoalsSection(
   previousState: ProfileInlineActionState,
-  formData: FormData,
+  submittedForm: FormData,
 ): Promise<ProfileInlineActionState> {
   const user = await requireAwsUser()
   const profile = await getAwsOwnProfile()
   if (!profile) return nextFailure(previousState, { error: 'We could not load your profile. Please refresh and try again.' })
 
+  const applied = applyProfileRoleFields(submittedForm, submittedPersona(profile, submittedForm))
+  if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
+  const formData = applied.formData
+
   const intents = formData.get('profileIntents')
   const read = readCardPreferences(profile, formData, typeof intents === 'string' ? intents : '')
   if (!read.ok) return nextFailure(previousState, { fieldErrors: read.fieldErrors })
   const preferences = read.preferences
-  if (!preferences) return successState(previousState)
+  if (!preferences) {
+    // An older profile that kept its profile type can still pick its rank / role.
+    if (applied.role) {
+      try {
+        await updateProfileGoalsSectionWithAurora(user.id, null, { role: applied.role })
+      } catch {
+        return nextFailure(previousState, { error: 'We could not save your profile type and goals. Please try again.' })
+      }
+      revalidateProfilePaths(profile.slug)
+    }
+    return successState(previousState)
+  }
 
   const rankSubmitted = formData.has('rank')
   const rank = rankSubmitted ? editableRankSchema.safeParse({ rank: formData.get('rank') }) : null
@@ -256,6 +290,7 @@ export async function updateProfileGoalsSection(
       organization,
       rankSubmitted,
       rank: rank?.success ? rank.data.rank : undefined,
+      ...withRole(applied.role),
     })
     await flagProfileModeration(user.id, moderation)
   } catch {
@@ -349,7 +384,7 @@ export async function updateProfileAboutSection(
 
 export async function updateProfileProfessionalSection(
   previousState: ProfileInlineActionState,
-  formData: FormData,
+  submittedForm: FormData,
 ): Promise<ProfileInlineActionState> {
   const user = await requireAwsUser()
   const profile = await getAwsOwnProfile()
@@ -358,6 +393,9 @@ export async function updateProfileProfessionalSection(
   if (!isSeafarer) {
     return nextFailure(previousState, { error: 'Maritime experience is available only for Seafarer profiles.' })
   }
+  const applied = applyProfileRoleFields(submittedForm, 'seafarer')
+  if (!applied.ok) return nextFailure(previousState, { fieldErrors: applied.fieldErrors })
+  const formData = applied.formData
 
   const parsed = profileProfessionalSectionSchema.safeParse({
     ...Object.fromEntries(formData),
@@ -368,7 +406,8 @@ export async function updateProfileProfessionalSection(
   if (moderation.decision === 'block') return nextFailure(previousState, { error: moderationBlockMessage() })
 
   try {
-    await updateProfileProfessionalSectionWithAurora(user.id, parsed.data)
+    if (applied.role) await updateProfileProfessionalSectionWithAurora(user.id, parsed.data, applied.role)
+    else await updateProfileProfessionalSectionWithAurora(user.id, parsed.data)
     await flagProfileModeration(user.id, moderation)
   } catch {
     return nextFailure(previousState, { error: 'We could not save this section. Please try again.' })

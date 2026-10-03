@@ -46,7 +46,7 @@ describe('own profile section controls', () => {
     render(<MaritimeProfileCard profile={profile} editHref="/profile/edit#professional" />)
     const edit = screen.getByRole('button', { name: 'Edit Professional Record' })
     fireEvent.click(edit)
-    expect(screen.getByRole('textbox', { name: 'Rank' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Current or most recent rank' })).toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Availability' })).not.toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Onboard' })).not.toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Ashore' })).not.toBeInTheDocument()

@@ -1,7 +1,8 @@
 'use client'
 
 import { PERSONAS, PERSONA_LABELS, type Persona } from '../persona'
-import { personaDetailFields, rankFieldLabel } from '../profile-persona-rules'
+import { ProfileRoleFields } from '@/features/roles/components/profile-role-fields'
+import { personaDetailFields } from '../profile-persona-rules'
 import type { PublicProfile } from '../types'
 import { OrganizationPicker, type PickerOrganization } from './organization-picker'
 import { ProfileCardFieldError, profileCardInputClass, profileCardLabelClass } from './profile-card-editing'
@@ -31,7 +32,7 @@ export function PersonaSelect({
 
 /**
  * The persona details, shown live as the profile type changes, the same way onboarding does:
- * rank for Seafarer, institute for Student / Cadet, relationship for Seafarer Family,
+ * Department → Rank / Role (round 12), institute for Student / Cadet, relationship for Seafarer Family,
  * specialization for Trainer, organization for working personas. A value that is already saved
  * always stays visible and editable (round 10). Organisation accounts never get organization or rank.
  */
@@ -58,7 +59,8 @@ export function PersonaDetailFields({
     specialization: profile.specialization,
   }, { organisationAccount: profile.identityRoot === 'organisation' })
   const show = (field: (typeof fields)[number]) => fields.includes(field) && visible[field]
-  const rankRequired = persona === 'seafarer'
+  // Organisation accounts never get a rank; every other profile type gets its role questions.
+  const showRoleFields = fields.includes('rank') && profile.identityRoot !== 'organisation'
 
   return (
     <>
@@ -73,22 +75,24 @@ export function PersonaDetailFields({
           returnTo="/profile"
         />
       ) : null}
-      {show('rank') ? (
-        <label className={profileCardLabelClass}>
-          {rankFieldLabel(persona)}
-          <input
-            name="rank"
-            maxLength={100}
-            required={rankRequired}
-            defaultValue={profile.rank ?? ''}
-            className={profileCardInputClass}
-            aria-describedby="profile-card-rank-hint"
-          />
-          <span id="profile-card-rank-hint" className="mt-1 block text-xs font-normal text-muted">
-            {rankRequired ? 'Shown next to your name on posts.' : 'Shown next to your name on posts. Clear it if it no longer applies.'}
-          </span>
-          <ProfileCardFieldError fieldErrors={fieldErrors} name="rank" />
-        </label>
+      {showRoleFields ? (
+        // Round 12: Department → Rank / Role, cadet stage and target role, or occupation for this profile type.
+        <ProfileRoleFields
+          persona={persona}
+          variant="card"
+          initial={{
+            roleDepartmentKey: profile.roleDepartmentKey,
+            roleKey: profile.roleKey,
+            roleOtherText: profile.roleOtherText,
+            cadetStageKey: profile.cadetStageKey,
+            cadetCourseKey: profile.cadetCourseKey,
+            targetDepartmentKey: profile.targetDepartmentKey,
+            targetRoleKey: profile.targetRoleKey,
+            occupationText: profile.occupationText,
+            legacyRank: profile.roleKey ? null : profile.rank,
+          }}
+          error={(name) => fieldErrors?.[name]?.[0]}
+        />
       ) : null}
       {show('institution') ? (
         <label className={profileCardLabelClass}>
