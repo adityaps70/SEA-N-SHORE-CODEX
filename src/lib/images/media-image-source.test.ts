@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { OPTIMIZED_MEDIA_IMAGE_HOSTNAMES, avatarPx, avatarSizes, isOptimizedMediaImageUrl } from './media-image-source'
+import { avatarPx, avatarSizes, isOptimizedMediaImageUrl } from './media-image-source'
 
 describe('optimized media image sources', () => {
-  it('only optimizes https URLs on the private media bucket host', () => {
-    const [host] = OPTIMIZED_MEDIA_IMAGE_HOSTNAMES
-    expect(isOptimizedMediaImageUrl(`https://${host}/profiles/a/avatar.webp?X-Amz-Signature=abc`)).toBe(true)
-    expect(isOptimizedMediaImageUrl(`http://${host}/profiles/a/avatar.webp`)).toBe(false)
+  // Rewritten in Round 13: pre-signed S3 URLs change every clock hour, so optimizing them made the
+  // web task re-encode every photo at once each hour. Only stable signed links are optimized now.
+  it('optimizes stable signed media links and static landing photos only', () => {
+    expect(isOptimizedMediaImageUrl('/api/media/image/profiles/a/avatar-1.webp?w=1&s=abc')).toBe(true)
+    expect(isOptimizedMediaImageUrl('/landing/ph_hero.webp')).toBe(true)
+    expect(isOptimizedMediaImageUrl('https://sea-n-shore-staging-310356785722-media.s3.ap-south-1.amazonaws.com/profiles/a/avatar.webp?X-Amz-Signature=abc')).toBe(false)
     expect(isOptimizedMediaImageUrl('https://media.example/avatar.webp')).toBe(false)
     expect(isOptimizedMediaImageUrl('/api/company-logo/1')).toBe(false)
     expect(isOptimizedMediaImageUrl('/api/messages/attachments/1')).toBe(false)
+    expect(isOptimizedMediaImageUrl('/landing/../api/x')).toBe(false)
     expect(isOptimizedMediaImageUrl('blob:https://seanshore.example/1')).toBe(false)
     expect(isOptimizedMediaImageUrl('data:image/png;base64,AAAA')).toBe(false)
     expect(isOptimizedMediaImageUrl('https://')).toBe(false)

@@ -51,7 +51,7 @@ import {
 import { isWellbeingType, organizationTypeHasField, wellbeingServiceLabel } from '@/features/organizations/organization-types'
 import { organizationRepository } from '@/features/organizations/repository'
 import { organizationWorkspaceRepository, type OrganizationWorkspace } from '@/features/organizations/workspace-repository'
-import { createMediaReadUrl } from '@/lib/aws/storage'
+import { createMediaImageSrc } from '@/lib/images/media-image-src'
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params
@@ -168,7 +168,7 @@ export default async function OrganizationPage({
     people?.ok
       ? Promise.all(people.value.map(async (person): Promise<OrganizationPersonView> => ({
           ...person,
-          avatarUrl: person.avatarPath ? await createMediaReadUrl(person.avatarPath).catch(() => null) : null,
+          avatarUrl: person.avatarPath ? await createMediaImageSrc(person.avatarPath).catch(() => null) : null,
         })))
       : [],
   ])
