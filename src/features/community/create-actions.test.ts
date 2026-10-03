@@ -66,7 +66,7 @@ describe('createCommunity', () => {
     await expect(createCommunity(null, form({ ...validFields, as: 'me' }))).rejects.toThrow('NEXT_REDIRECT:/community/tanker-cargo-officers')
     expect(mocks.getCommunityCreationEligibility).toHaveBeenCalledWith(userId)
     expect(mocks.createGroup).toHaveBeenCalledWith(userId, {
-      name: 'Tanker Cargo Officers', description: 'Cargo ops.', rules: 'Be kind.', visibility: 'public', joinPolicy: 'approval', icon: null, ownerId: userId, ownerCompanyId: null,
+      name: 'Tanker Cargo Officers', description: 'Cargo ops.', rules: 'Be kind.', visibility: 'public', joinPolicy: 'approval', icon: null, ownerId: userId, ownerCompanyId: null, category: null,
     })
     expect(mocks.uploadCommunityMedia).not.toHaveBeenCalled()
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/community')

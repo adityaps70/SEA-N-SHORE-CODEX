@@ -4,7 +4,7 @@ import { useActionState } from 'react'
 import { primaryButtonClass } from '@/components/ui/interactive-styles'
 import { createGroupAsAdmin, setGroupOwnerAsAdmin, updateGroupAsAdmin, type AdminGroupFormState } from '../admin-actions'
 import { GROUP_ICON_LABELS } from '../group-icons'
-import { GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type AdminCommunityGroup } from '../types'
+import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_ICON_NAMES, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type AdminCommunityGroup } from '../types'
 import { JOIN_POLICY_OPTIONS } from './edit-group-form'
 
 const inputClass = 'min-h-10 w-full rounded-lg border border-mist-200 bg-white px-3 text-sm text-navy-950 outline-none focus:border-ocean-400 focus:ring-2 focus:ring-ocean-100'
@@ -59,6 +59,13 @@ export function AdminGroupForm({ group }: { group?: AdminCommunityGroup }) {
           <select name="icon" defaultValue={group?.icon ?? ''} className={`${inputClass} mt-1 normal-case tracking-normal`}>
             <option value="">Default (people)</option>
             {GROUP_ICON_NAMES.map((name) => <option key={name} value={name}>{GROUP_ICON_LABELS[name]}</option>)}
+          </select>
+        </label>
+        <label className={labelClass}>
+          Category
+          <select name="category" defaultValue={group?.category ?? ''} className={`${inputClass} mt-1 normal-case tracking-normal`}>
+            <option value="">No category</option>
+            {COMMUNITY_CATEGORIES.map((category) => <option key={category} value={category}>{COMMUNITY_CATEGORY_LABELS[category]}</option>)}
           </select>
         </label>
       </div>

@@ -1,15 +1,18 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, type DatabaseQueryClient } from '@/lib/db/client'
-import type {
-  AdminCommunityGroup,
-  CommunityGroup,
-  GroupJoinPolicy,
-  GroupMember,
-  GroupRole,
-  GroupSuggestionSignals,
-  GroupVisibility,
-  MembershipStatus,
-  ViewerMembership,
+import {
+  isCommunityCategory,
+  type AdminCommunityGroup,
+  type CommunityCategory,
+  type CommunityGroup,
+  type DirectorySort,
+  type GroupJoinPolicy,
+  type GroupMember,
+  type GroupRole,
+  type GroupSuggestionSignals,
+  type GroupVisibility,
+  type MembershipStatus,
+  type ViewerMembership,
 } from './types'
 
 type CommunityQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
@@ -33,6 +36,8 @@ type GroupRow = QueryResultRow & {
   member_count: number | string
   viewer_role: GroupRole | null
   viewer_status: MembershipStatus | null
+  category?: string | null
+  recent_post_count?: number | string | null
 }
 
 type MemberRow = QueryResultRow & {
@@ -73,6 +78,7 @@ type AdminGroupRow = QueryResultRow & {
   owner_company_name?: string | null
   archived_at: string | null
   created_at: string
+  category?: string | null
 }
 
 type SignalRow = QueryResultRow & { rank: string | null; vessel_types: string[] | null; persona: string | null }
@@ -117,6 +123,8 @@ function mapGroup(row: GroupRow): CommunityGroup {
     createdBy: row.created_by,
     ownerOrganization: mapOwnerOrganization(row),
     viewerMembership: row.viewer_role && row.viewer_status ? { role: row.viewer_role, status: row.viewer_status } : null,
+    category: isCommunityCategory(row.category) ? row.category : null,
+    recentPostCount: Number(row.recent_post_count ?? 0),
   }
 }
 
@@ -153,6 +161,7 @@ function mapAdminGroup(row: AdminGroupRow): AdminCommunityGroup {
     ownerOrganization: mapOwnerOrganization(row),
     archivedAt: row.archived_at,
     createdAt: row.created_at,
+    category: isCommunityCategory(row.category) ? row.category : null,
   }
 }
 
@@ -163,9 +172,10 @@ function likePattern(search: string) {
 
 /** `$1` must be the viewer's profile id. */
 const GROUP_SELECT = `
-  select g.id, g.slug, g.name, g.description, g.rules, g.cover_path, g.icon_path, g.icon, g.visibility, g.join_policy, g.created_by, g.archived_at,
+  select g.id, g.slug, g.name, g.description, g.rules, g.cover_path, g.icon_path, g.icon, g.visibility, g.join_policy, g.category, g.created_by, g.archived_at,
          g.owner_company_id, owner_company.slug as owner_company_slug, owner_company.name as owner_company_name,
          (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'active') as member_count,
+         (select count(*) from public.posts recent where recent.group_id = g.id and recent.deleted_at is null and recent.created_at > now() - interval '7 days') as recent_post_count,
          vm.role as viewer_role,
          vm.status as viewer_status
   from public.community_groups g
@@ -202,6 +212,80 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
       search ? [viewerId, limit, likePattern(search)] : [viewerId, limit],
     ) as GroupRow[]
     return rows.map(mapGroup)
+  }
+
+  /**
+   * Round 10: the full directory behind "Browse all" / search, one page at a time, with the
+   * category, join-setting and sort filters. `total` counts every match for "Page X of Y".
+   */
+  async function browseDirectory(viewerId: string, options: {
+    search?: string
+    category?: CommunityCategory | null
+    joinPolicy?: GroupJoinPolicy | null
+    sort?: DirectorySort
+    /** Leave out groups the viewer belongs to or asked to join ("Popular this week"). */
+    notJoined?: boolean
+    limit?: number
+    offset?: number
+  } = {}) {
+    const search = options.search?.trim() ?? ''
+    const values: unknown[] = [viewerId]
+    const where = ['g.archived_at is null']
+    if (search) {
+      values.push(likePattern(search))
+      where.push(`(g.name ilike $${values.length} escape '\\' or g.description ilike $${values.length} escape '\\')`)
+    }
+    if (options.category) {
+      values.push(options.category)
+      where.push(`g.category = $${values.length}`)
+    }
+    if (options.joinPolicy) {
+      values.push(options.joinPolicy)
+      where.push(`g.join_policy = $${values.length}`)
+    }
+    if (options.notJoined) where.push(`(vm.status is null or vm.status not in ('active', 'pending'))`)
+    const whereSql = where.join(' and ')
+    const order = {
+      active: 'order by recent_post_count desc, member_count desc, lower(g.name), g.id',
+      members: 'order by member_count desc, lower(g.name), g.id',
+      name: 'order by lower(g.name), g.id',
+      newest: 'order by g.created_at desc, g.id',
+    }[options.sort ?? 'active']
+    const limit = Math.min(Math.max(Math.trunc(options.limit ?? 24), 1), 100)
+    const offset = Math.max(Math.trunc(options.offset ?? 0), 0)
+    const [rows, totals] = await Promise.all([
+      queryRows(
+        `${GROUP_SELECT}
+         where ${whereSql}
+         ${order}
+         limit $${values.length + 1} offset $${values.length + 2}`,
+        [...values, limit, offset],
+      ) as Promise<GroupRow[]>,
+      queryRows(
+        `select count(*)::int as total
+         from public.community_groups g
+         left join public.community_group_memberships vm on vm.group_id = g.id and vm.profile_id = $1
+         where ${whereSql}`,
+        values,
+      ) as Promise<Array<QueryResultRow & { total: number | string }>>,
+    ])
+    return { groups: rows.map(mapGroup), total: Number(totals[0]?.total ?? 0) }
+  }
+
+  /** Round 10: live communities per category, for the "Browse by category" chips. */
+  async function countByCategory() {
+    const rows = await queryRows(
+      `select g.category, count(*)::int as total
+       from public.community_groups g
+       where g.archived_at is null and g.category is not null
+       group by g.category`,
+    ) as Array<QueryResultRow & { category: string; total: number | string }>
+    const counts: Partial<Record<CommunityCategory, number>> = {}
+    for (const row of rows) {
+      const category: unknown = row.category
+      if (isCommunityCategory(category)) counts[category] = Number(row.total)
+    }
+    return counts
   }
 
   /** Groups the viewer belongs to or has asked to join (live groups only). */
@@ -438,12 +522,14 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     ownerId: string
     /** Organization Pro: the organization that owns the community. */
     ownerCompanyId?: string | null
+    /** Round 10. */
+    category?: CommunityCategory | null
   }) {
     const rows = await queryRows(
-      `insert into public.community_groups (name, slug, description, rules, icon, visibility, join_policy, created_by, owner_company_id)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `insert into public.community_groups (name, slug, description, rules, icon, visibility, join_policy, created_by, owner_company_id, category)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        returning id`,
-      [input.name, input.slug, input.description, input.rules, input.icon, input.visibility, input.joinPolicy ?? (input.visibility === 'private' ? 'approval' : 'open'), input.createdBy, input.ownerCompanyId ?? null],
+      [input.name, input.slug, input.description, input.rules, input.icon, input.visibility, input.joinPolicy ?? (input.visibility === 'private' ? 'approval' : 'open'), input.createdBy, input.ownerCompanyId ?? null, input.category ?? null],
     ) as IdRow[]
     const groupId = rows[0]?.id
     if (!groupId) throw new Error('community_group_create_failed')
@@ -463,13 +549,16 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     visibility: GroupVisibility
     icon: string | null
     joinPolicy?: GroupJoinPolicy
+    /** Round 10: undefined keeps the stored category; null clears it. */
+    category?: CommunityCategory | null
   }) {
     const rows = await queryRows(
       `update public.community_groups
-       set name = $2, description = $3, rules = $4, visibility = $5, icon = $6, join_policy = coalesce($7, join_policy), updated_at = now()
+       set name = $2, description = $3, rules = $4, visibility = $5, icon = $6, join_policy = coalesce($7, join_policy),
+           category = case when $8::boolean then $9::text else category end, updated_at = now()
        where id = $1
        returning id`,
-      [groupId, input.name, input.description, input.rules, input.visibility, input.icon, input.joinPolicy ?? null],
+      [groupId, input.name, input.description, input.rules, input.visibility, input.icon, input.joinPolicy ?? null, input.category !== undefined, input.category ?? null],
     ) as IdRow[]
     return rows.length === 1
   }
@@ -511,7 +600,7 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
     const values: unknown[] = []
     if (search) values.push(likePattern(search))
     const rows = await queryRows(
-      `select g.id, g.slug, g.name, g.description, g.rules, g.icon, g.icon_path, g.visibility, g.join_policy, g.archived_at, g.created_at,
+      `select g.id, g.slug, g.name, g.description, g.rules, g.icon, g.icon_path, g.visibility, g.join_policy, g.category, g.archived_at, g.created_at,
               g.owner_company_id, owner_company.slug as owner_company_slug, owner_company.name as owner_company_name,
               (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'active') as member_count,
               (select count(*) from public.community_group_memberships c where c.group_id = g.id and c.status = 'pending') as pending_count,
@@ -694,6 +783,8 @@ export function createCommunityRepository(input: { query?: CommunityQuery } = {}
 
   return {
     listDirectory,
+    browseDirectory,
+    countByCategory,
     listViewerGroups,
     listBySlugs,
     searchGroups,
