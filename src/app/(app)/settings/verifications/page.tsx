@@ -1,0 +1,192 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
+import { CalendarDays, CheckCircle2, Clock3, GraduationCap, ShieldAlert, UserSearch } from 'lucide-react'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { learningRepository, type MentorApplicationState } from '@/features/learning/repository'
+import { creatorVerificationRepository } from '@/features/verifications/repository'
+import type { CreatorVerificationState } from '@/features/verifications/application'
+
+export const metadata: Metadata = { title: 'Verifications · Settings' }
+
+function statusDetails(state: CreatorVerificationState | null) {
+  if (!state) return { label: 'Not applied', tone: 'bg-mist-50 text-muted' }
+  if (state.status === 'approved') return { label: 'Verified', tone: 'bg-emerald-50 text-emerald-800' }
+  if (state.status === 'pending') return { label: 'Under review', tone: 'bg-amber-50 text-amber-900' }
+  if (state.status === 'suspended') return { label: 'Suspended', tone: 'bg-red-50 text-red-800' }
+  return { label: 'Action required', tone: 'bg-orange-50 text-orange-900' }
+}
+
+function trainerStatusDetails(state: MentorApplicationState) {
+  if (state.kind === 'none') return { label: 'Not applied', tone: 'bg-mist-50 text-muted' }
+  if (state.kind === 'mentor' && state.mentorStatus === 'active') return { label: 'Verified', tone: 'bg-emerald-50 text-emerald-800' }
+  if (state.kind === 'mentor' && state.mentorStatus === 'suspended') return { label: 'Suspended', tone: 'bg-red-50 text-red-800' }
+  if (state.kind === 'application' && state.status === 'pending') return { label: 'Under review', tone: 'bg-amber-50 text-amber-900' }
+  if (state.kind === 'application' && (state.status === 'changes_requested' || state.status === 'rejected')) {
+    return { label: 'Action required', tone: 'bg-orange-50 text-orange-900' }
+  }
+  return { label: 'Approval processing', tone: 'bg-sky-50 text-sky-900' }
+}
+
+function TrainerVerificationCard({ state }: { state: MentorApplicationState }) {
+  const status = trainerStatusDetails(state)
+  const actionable = state.kind === 'none'
+    || (state.kind === 'application' && (state.status === 'changes_requested' || state.status === 'rejected'))
+
+  return (
+    <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
+          <GraduationCap aria-hidden="true" className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-bold text-navy-950">Trainer verification</h2>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${status.tone}`}>{status.label}</span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            For maritime trainers and instructors who want to publish courses under their personal identity. Trainer verification establishes trust; Creator Pro is a separate publishing entitlement.
+          </p>
+        </div>
+      </div>
+
+      {state.kind !== 'none' && state.adminReviewNote ? (
+        <div className="mt-4 rounded-xl bg-mist-50 p-4 text-sm leading-6 text-navy-900">
+          <span className="font-semibold">Review note:</span> {state.adminReviewNote}
+        </div>
+      ) : null}
+
+      <div className="mt-5">
+        {actionable ? (
+          <Link href="/learn/teach" className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
+            {state.kind === 'none' ? 'Apply for verification' : 'Update and resubmit'}
+          </Link>
+        ) : state.kind === 'application' && state.status === 'pending' ? (
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
+            <Clock3 aria-hidden="true" className="size-4" /> Sea N Shore review in progress
+          </span>
+        ) : state.kind === 'mentor' && state.mentorStatus === 'active' ? (
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-800">
+            <CheckCircle2 aria-hidden="true" className="size-4" /> Approved Trainer verification
+          </span>
+        ) : state.kind === 'mentor' && state.mentorStatus === 'suspended' ? (
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-red-800">
+            <ShieldAlert aria-hidden="true" className="size-4" /> Contact Sea N Shore support about this verification
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-sky-800">
+            <Clock3 aria-hidden="true" className="size-4" /> Trainer approval is being finalized
+          </span>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function VerificationCard({
+  title,
+  description,
+  href,
+  state,
+  icon: Icon,
+}: {
+  title: string
+  description: string
+  href: string
+  state: CreatorVerificationState | null
+  icon: typeof UserSearch
+}) {
+  const status = statusDetails(state)
+  const actionable = !state || state.status === 'rejected'
+
+  return (
+    <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-700">
+          <Icon aria-hidden="true" className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-bold text-navy-950">{title}</h2>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${status.tone}`}>{status.label}</span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-muted">{description}</p>
+        </div>
+      </div>
+
+      {state?.reviewNote ? (
+        <div className="mt-4 rounded-xl bg-mist-50 p-4 text-sm leading-6 text-navy-900">
+          <span className="font-semibold">Review note:</span> {state.reviewNote}
+        </div>
+      ) : null}
+
+      <div className="mt-5">
+        {actionable ? (
+          <Link href={href} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
+            {state?.status === 'rejected' ? 'Update and resubmit' : 'Apply for verification'}
+          </Link>
+        ) : state?.status === 'pending' ? (
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-amber-900">
+            <Clock3 aria-hidden="true" className="size-4" /> Sea N Shore review in progress
+          </span>
+        ) : state?.status === 'approved' ? (
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-800">
+            <CheckCircle2 aria-hidden="true" className="size-4" /> Approved professional verification
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-2 text-sm font-semibold text-red-800">
+            <ShieldAlert aria-hidden="true" className="size-4" /> Contact Sea N Shore support about this verification
+          </span>
+        )}
+      </div>
+    </article>
+  )
+}
+
+export default async function VerificationSettingsPage() {
+  const user = await requireAwsUser()
+  const [recruiter, eventHost, trainer] = await Promise.all([
+    creatorVerificationRepository.getState(user.id, 'recruiter'),
+    creatorVerificationRepository.getState(user.id, 'event_host'),
+    learningRepository.getMentorApplicationState(user.id),
+  ])
+
+  return (
+    <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-8 max-md:space-y-4 max-md:px-0 max-md:pt-0 sm:px-6 lg:px-8">
+      <MobilePageBar backHref="/settings" title="Verifications" />
+      <div className="max-md:hidden">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Trust & professional capabilities</p>
+        <h1 className="mt-2 text-3xl font-bold text-navy-950">Verifications</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+          Verification confirms that Sea N Shore has reviewed your professional experience for a specific capability. Each verification is independent.
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-ocean-100 bg-ocean-50/60 px-4 py-3 text-sm leading-6 text-navy-900">
+        <strong>Verification does not activate a paid plan.</strong> Publishing still requires the relevant Creator Pro entitlement. Organization publishing uses the organization&apos;s own verification, role and plan.
+      </div>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <VerificationCard
+          title="Recruiter verification"
+          description="For independent recruiters and crewing professionals who want to publish jobs under their personal professional identity."
+          href="/settings/verifications/recruiter"
+          state={recruiter}
+          icon={UserSearch}
+        />
+        <VerificationCard
+          title="Event Host verification"
+          description="For independent organizers who want to publish maritime webinars, workshops, conferences or professional community events personally."
+          href="/settings/verifications/event-host"
+          state={eventHost}
+          icon={CalendarDays}
+        />
+        <TrainerVerificationCard state={trainer} />
+      </section>
+
+      <Link href="/settings" className="inline-flex text-sm font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
+        ← Back to Settings
+      </Link>
+    </main>
+  )
+}

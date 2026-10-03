@@ -3,9 +3,11 @@
 import Link from 'next/link'
 import { Bell, CheckCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
-import { markAllNotificationsRead, markNotificationRead } from '../actions'
+import { useCallback, useEffect, useState, useTransition } from 'react'
+import { loadNotificationChrome, markAllNotificationsRead, markNotificationRead } from '../actions'
+import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import type { NetworkNotification } from '../types'
+import { NotificationActorAvatar, NotificationPostThumb } from './notification-visuals'
 
 function notificationDate(timestamp: string) {
   return new Intl.DateTimeFormat('en-GB', {
@@ -24,8 +26,36 @@ export function NotificationBell({
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [notifications, setNotifications] = useState(recent)
+  const [localUnreadCount, setLocalUnreadCount] = useState(unreadCount)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
+  const closePopover = useCallback(() => setOpen(false), [])
+  const rootRef = useDismissibleLayer<HTMLDivElement>(open, closePopover)
+
+  useEffect(() => {
+    let active = true
+    let checking = false
+
+    const refreshSnapshot = async () => {
+      if (checking) return
+      checking = true
+      try {
+        const result = await loadNotificationChrome()
+        if (!active || !result.ok) return
+        setNotifications(result.chrome.recent)
+        setLocalUnreadCount(result.chrome.unreadCount)
+      } finally {
+        checking = false
+      }
+    }
+
+    const interval = window.setInterval(() => { void refreshSnapshot() }, 30_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [])
 
   function openNotification(notification: NetworkNotification) {
     if (pending) return
@@ -42,14 +72,26 @@ export function NotificationBell({
         setError(result.error)
         return
       }
+      const readAt = new Date().toISOString()
+      setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item))
+      setLocalUnreadCount((current) => Math.max(0, current - 1))
       setOpen(false)
       router.push(notification.destination)
-      router.refresh()
     })
   }
 
+  /** Opening the post preview link marks the notification read without holding up navigation. */
+  function openPreview(notification: NetworkNotification) {
+    setOpen(false)
+    if (notification.readAt) return
+    const readAt = new Date().toISOString()
+    setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item))
+    setLocalUnreadCount((current) => Math.max(0, current - 1))
+    void markNotificationRead(notification.id).catch(() => undefined)
+  }
+
   function markAll() {
-    if (!unreadCount || pending) return
+    if (!localUnreadCount || pending) return
     setError('')
     startTransition(async () => {
       const result = await markAllNotificationsRead()
@@ -57,12 +99,14 @@ export function NotificationBell({
         setError(result.error)
         return
       }
-      router.refresh()
+      const readAt = new Date().toISOString()
+      setNotifications((current) => current.map((notification) => notification.readAt ? notification : { ...notification, readAt }))
+      setLocalUnreadCount(0)
     })
   }
 
   return (
-    <div className="relative">
+    <div ref={rootRef} className="relative">
       <button
         type="button"
         aria-label="Notifications"
@@ -71,21 +115,21 @@ export function NotificationBell({
         className="relative grid min-h-10 min-w-10 place-items-center rounded-lg text-navy-900 hover:bg-mist-50"
       >
         <Bell aria-hidden="true" className="size-5" />
-        {unreadCount > 0 ? (
+        {localUnreadCount > 0 ? (
           <span className="absolute right-0 top-0 inline-flex min-w-5 -translate-y-1/4 translate-x-1/4 items-center justify-center rounded-full bg-ocean-700 px-1 text-[10px] font-bold leading-5 text-white">
-            {unreadCount > 9 ? '9+' : unreadCount}
+            {localUnreadCount > 9 ? '9+' : localUnreadCount}
           </span>
         ) : null}
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-xl">
+        <div role="region" aria-label="Notifications panel" className="absolute right-0 z-50 mt-2 w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-mist-100 bg-white shadow-xl">
           <div className="flex items-center justify-between gap-3 border-b border-mist-100 px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-navy-950">Notifications</p>
-              <p className="text-xs text-muted">{unreadCount ? `${unreadCount} unread` : 'You are up to date'}</p>
+              <p className="text-xs text-muted">{localUnreadCount ? `${localUnreadCount} unread` : 'You are up to date'}</p>
             </div>
-            {unreadCount ? (
+            {localUnreadCount ? (
               <button type="button" disabled={pending} onClick={markAll} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-ocean-700 hover:bg-mist-50 disabled:opacity-50">
                 <CheckCheck aria-hidden="true" className="size-4" />
                 Mark all read
@@ -93,20 +137,33 @@ export function NotificationBell({
             ) : null}
           </div>
 
-          {recent.length ? (
+          {notifications.length ? (
             <div className="max-h-96 overflow-y-auto py-1">
-              {recent.map((notification) => (
-                <button
-                  key={notification.id}
-                  type="button"
-                  disabled={pending}
-                  onClick={() => openNotification(notification)}
-                  className={`block w-full px-4 py-3 text-left hover:bg-mist-50 disabled:opacity-60 ${notification.readAt ? '' : 'bg-ocean-50/50'}`}
-                >
-                  <span className="block text-sm font-medium leading-5 text-navy-950">{notification.message}</span>
-                  <time dateTime={notification.createdAt} className="mt-1 block text-xs text-muted">{notificationDate(notification.createdAt)}</time>
-                </button>
-              ))}
+              {notifications.map((notification) => {
+                const unread = !notification.readAt
+                return (
+                  <div
+                    key={notification.id}
+                    data-notification-state={unread ? 'unread' : 'read'}
+                    className={`relative flex w-full items-center gap-2.5 px-4 py-2.5 transition hover:bg-mist-50 ${unread ? 'border-l-4 border-ocean-700 bg-ocean-50 pl-3' : ''}`}
+                  >
+                    <NotificationActorAvatar notification={notification} size="size-10" />
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => openNotification(notification)}
+                      className="block min-w-0 flex-1 cursor-pointer rounded-lg py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/40 disabled:opacity-60"
+                    >
+                      <span className={`block text-sm leading-5 text-navy-950 ${unread ? 'font-bold' : 'font-medium'}`}>{notification.message}</span>
+                      <span className="mt-1 flex items-center gap-2">
+                        {unread ? <span aria-hidden="true" className="size-1.5 rounded-full bg-ocean-700" /> : null}
+                        <time dateTime={notification.createdAt} className="text-xs text-muted">{notificationDate(notification.createdAt)}</time>
+                      </span>
+                    </button>
+                    <NotificationPostThumb notification={notification} size="size-11" onOpen={() => openPreview(notification)} />
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div className="px-5 py-8 text-center">

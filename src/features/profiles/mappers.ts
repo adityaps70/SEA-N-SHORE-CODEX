@@ -1,3 +1,4 @@
+import { mapLinkedOrganization } from './organization-link'
 import type { PublicProfile, PublicProfileRow } from './types'
 
 export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
@@ -7,13 +8,27 @@ export function mapPublicProfile(row: PublicProfileRow): PublicProfile {
     id: row.id,
     slug: row.slug,
     profileType: row.profile_type,
+    identityRoot: row.identity_root ?? null,
+    primaryIdentity: row.primary_identity ?? null,
+    primaryIdentityFamily: row.primary_identity_family ?? null,
+    secondaryIdentities: row.secondary_identities ?? [],
+    persona: row.persona ?? null,
+    profileIntents: row.profile_intents ?? [],
+    communityRelationship: row.community_relationship ?? null,
+    institutionName: row.institution_name ?? null,
+    specialization: row.specialization ?? null,
     fullName: row.full_name,
     avatarPath: row.avatar_path,
+    avatarUrl: null,
+    coverPath: row.cover_path ?? null,
+    coverUrl: null,
     location: row.location,
     headline: row.headline,
     summary: row.summary,
     rank: maritime?.rank ?? null,
     currentCompany: maritime?.current_company ?? null,
+    currentCompanyId: maritime?.current_company_id ?? null,
+    currentOrganization: mapLinkedOrganization(row.current_organization),
     currentVessel: maritime?.current_vessel ?? null,
     sailingExperienceYears: maritime?.sailing_experience_years ?? null,
     vesselTypes: maritime?.vessel_types ?? [],

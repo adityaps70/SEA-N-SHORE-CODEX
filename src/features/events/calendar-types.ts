@@ -1,0 +1,108 @@
+import type { PaymentCurrency } from '@/features/payments/types'
+
+export const CALENDAR_EVENT_FORMATS = ['online', 'in_person', 'hybrid'] as const
+export const CALENDAR_EVENT_STATUSES = ['draft', 'published', 'cancelled'] as const
+export const CALENDAR_EVENT_CATEGORIES = ['training', 'safety', 'technical', 'regulatory', 'careers', 'leadership', 'networking', 'community'] as const
+export const CALENDAR_EVENT_TYPES = ['webinar', 'masterclass', 'conference', 'workshop', 'meetup', 'networking', 'community'] as const
+export const CALENDAR_REGISTRATION_MODES = ['open', 'closed'] as const
+export const CALENDAR_EVENT_PRICING = ['free', 'paid'] as const
+
+export type CalendarEventFormat = typeof CALENDAR_EVENT_FORMATS[number]
+export type CalendarEventStatus = typeof CALENDAR_EVENT_STATUSES[number]
+export type CalendarEventCategory = typeof CALENDAR_EVENT_CATEGORIES[number]
+export type CalendarEventType = typeof CALENDAR_EVENT_TYPES[number]
+export type CalendarRegistrationMode = typeof CALENDAR_REGISTRATION_MODES[number]
+export type CalendarEventPricing = typeof CALENDAR_EVENT_PRICING[number]
+export type CalendarEventCurrency = PaymentCurrency
+export type EditableCalendarEventStatus = Exclude<CalendarEventStatus, 'cancelled'>
+export type CalendarEventPublisherType = 'personal' | 'organization'
+
+export type CalendarSpeakerDetail = {
+  name: string
+  title: string
+  organization: string
+}
+
+export type CalendarEventFilters = {
+  search?: string
+  category?: CalendarEventCategory
+  eventType?: CalendarEventType
+  format?: CalendarEventFormat
+  location?: string
+}
+
+export type CalendarEventInput = {
+  title: string
+  summary: string
+  description: string
+  category: CalendarEventCategory
+  eventType: CalendarEventType
+  format: CalendarEventFormat
+  status: EditableCalendarEventStatus
+  startAt: string
+  endAt: string
+  timezone: string
+  locationName: string | null
+  locationAddress: string | null
+  city: string | null
+  country: string | null
+  meetingUrl: string | null
+  topics: string[]
+  agenda: string[]
+  speakers: string[]
+  speakerDetails: CalendarSpeakerDetail[]
+  capacity: number | null
+  bannerUrl: string | null
+  registrationMode: CalendarRegistrationMode
+  registrationClosesAt: string | null
+  /** Free events use one-click registration; paid events take payment inside Sea N Shore. */
+  pricing: CalendarEventPricing
+  /** Ticket price in minor units (paise / cents). Null for free events. */
+  priceMinor: number | null
+  currency: CalendarEventCurrency | null
+}
+
+export type CalendarEventField = keyof CalendarEventInput | 'publisher'
+export type CalendarFieldErrors = Partial<Record<CalendarEventField, string>>
+
+export type CalendarEventCreateInput = CalendarEventInput & {
+  publisherType: CalendarEventPublisherType
+  companyId: string | null
+}
+
+export type CalendarEvent = Omit<CalendarEventInput, 'status'> & {
+  id: string
+  hostUserId: string
+  hostName: string
+  hostSlug: string | null
+  publisherType: CalendarEventPublisherType
+  companyId: string | null
+  publisherName: string
+  publisherSlug: string | null
+  publisherVerified: boolean
+  status: CalendarEventStatus
+  bannerStoragePath: string | null
+  attendeeCount: number
+  viewerIsAttending: boolean
+  /** The viewer's seat was bought through Sea N Shore checkout. */
+  viewerHasPaid: boolean
+  viewerIsHost: boolean
+  /** Hidden from everyone else because the owner's plan ended (kept; back on renewal). */
+  hiddenForPlan?: boolean
+  registrationOpen: boolean
+  isPast: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type CalendarActionResult =
+  | { ok: true }
+  | { ok: false; error: string; fieldErrors?: CalendarFieldErrors }
+
+export type CalendarCreateResult =
+  | { ok: true; eventId: string }
+  | { ok: false; error: string; fieldErrors?: CalendarFieldErrors }
+
+export type EventBannerUploadResult =
+  | { ok: true; upload: { storagePath: string; uploadUrl: string } }
+  | { ok: false; error: string }

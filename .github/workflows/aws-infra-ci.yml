@@ -1,22 +1,208 @@
 name: AWS Infrastructure CI
 
 on:
+  workflow_dispatch:
   push:
-    branches: [infra/aws-migration]
     paths:
       - Dockerfile
       - .dockerignore
+      - next.config.ts
+      - src/**
+      - public/brand/**
       - infra/aws/**
+      - scripts/aws/**
+      - scripts/migration/**
+      - scripts/workers/**
+      - vitest.config.ts
+      - tsconfig.json
+      - package.json
+      - package-lock.json
       - .github/workflows/aws-*.yml
   pull_request:
     branches: [main]
     paths:
       - Dockerfile
       - .dockerignore
+      - next.config.ts
+      - src/**
+      - public/brand/**
       - infra/aws/**
+      - scripts/aws/**
+      - scripts/migration/**
+      - scripts/workers/**
+      - vitest.config.ts
+      - tsconfig.json
+      - package.json
+      - package-lock.json
       - .github/workflows/aws-*.yml
 
 jobs:
+  remote-execution-contract:
+    name: GitHub SSM execution contract
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify edge recovery plan guard
+        run: python3 scripts/aws/check-edge-plan.test.py
+      - name: Verify edge recovery distribution inventory contract
+        run: node --test scripts/aws/edge-recovery-distributions.test.mjs
+      - name: Verify Server Action edge header contract
+        run: python3 scripts/aws/server-action-edge-header.test.py
+      - name: Verify canonical host redirect function
+        run: node --test scripts/aws/canonical-host-redirect.test.mjs
+      - name: Verify legacy domain redirect function and guarded release contract
+        run: node --test scripts/aws/legacy-domain-redirect.test.mjs scripts/aws/seaandshore-domain.test.mjs
+      - name: Verify edge state audit contract
+        run: node --test scripts/aws/audit-edge-state.test.mjs
+      - name: Verify guarded Terraform state unlock contract
+        run: node --test scripts/aws/terraform-state-unlock.test.mjs
+      - name: Verify remote execution security contract
+        run: node --test scripts/aws/remote-execution-config.test.mjs
+      - name: Verify remote runtime log window contract
+        run: node --test scripts/aws/remote-verify-log-window.test.mjs
+      - name: Verify staging deploy guard contract
+        run: node --test scripts/aws/staging-deploy-guard.test.mjs
+      - name: Verify multi-login auth infrastructure release contract
+        run: node --test scripts/aws/multi-login-auth-infra.test.mjs
+      - name: Verify Cognito custom domain release contract
+        run: node --test scripts/aws/cognito-custom-domain-infra.test.mjs
+      - name: Verify Cognito Google/native repair contract
+        run: node --test scripts/aws/cognito-google-native-link-repair.test.mjs
+      - name: Verify onboarding e2e guard contract
+        run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
+      - name: Verify membership launch sequence contract
+        run: node --test scripts/aws/membership-launch-sequence.test.mjs
+      - name: Verify membership launch child workflow contract
+        run: node --test scripts/aws/membership-launch-child-workflows.test.mjs
+      - name: Verify organization hiring e2e guard contract
+        run: node --test scripts/aws/organization-hiring-e2e-guard.test.mjs
+      - name: Verify learning assignment review e2e guard contract
+        run: node --test scripts/aws/learning-assignment-review-e2e-guard.test.mjs
+      - name: Verify events e2e guard contract
+        run: node --test scripts/aws/events-e2e-guard.test.mjs
+      - name: Verify realtime messaging e2e guard contract
+        run: node --test scripts/aws/realtime-e2e-guard.test.mjs
+      - name: Verify public marketing home resilience contract
+        run: node --test scripts/aws/marketing-home-resilience.test.mjs
+      - name: Verify post media migration contract
+        run: node --test scripts/aws/migrate-post-media-to-s3.test.mjs
+      - name: Verify post media video schema contract
+        run: node --test scripts/aws/post-media-video-schema.test.mjs
+      - name: Verify feed social interaction schema contract
+        run: node --test scripts/aws/feed-social-interactions-schema.test.mjs
+      - name: Verify jobs intelligence schema contract
+        run: node --test scripts/aws/jobs-intelligence-schema.test.mjs
+      - name: Verify organization hiring approval schema contract
+        run: node --test scripts/aws/organization-hiring-approval-schema.test.mjs
+      - name: Verify learning foundation schema contract
+        run: node --test scripts/aws/learning-foundation-schema.test.mjs
+      - name: Verify jobs intelligence migration guard
+        run: node --test scripts/aws/jobs-intelligence-migration.test.mjs
+      - name: Verify organization hiring approval migration guard
+        run: node --test scripts/aws/organization-hiring-approval-migration.test.mjs
+      - name: Verify learning foundation migration guard
+        run: node --test scripts/aws/learning-foundation-migration.test.mjs
+      - name: Verify learning launch migration guard
+        run: node --test scripts/aws/learning-launch-migration.test.mjs
+      - name: Verify LMS Phase 1 migration guard
+        run: node --test scripts/aws/learning-lms-phase-1-migration.test.mjs
+      - name: Verify learning quiz resilience migration guard
+        run: node --test scripts/aws/learning-quiz-resilience-migration.test.mjs
+      - name: Verify learning course discoverability migration guard
+        run: node --test scripts/aws/learning-course-discoverability-migration.test.mjs
+      - name: Verify profile username migration guard
+        run: node --test scripts/aws/profile-username-migration.test.mjs
+      - name: Verify messaging migration guard
+        run: node --test scripts/aws/messaging-migration.test.mjs
+      - name: Verify post repost migration guard
+        run: node --test scripts/aws/post-reposts-migration.test.mjs
+      - name: Verify direct media upload CORS contract
+        run: node --test scripts/aws/post-media-upload-cors.test.mjs
+      - name: Verify deterministic AWS SDK install contract
+        run: node --test scripts/aws/aws-sdk-version-contract.test.mjs
+      - name: Verify deterministic npm transitive resolution
+        run: node --test scripts/aws/npm-resolution-contract.test.mjs
+      - name: Verify database reconciliation contract
+        run: node --test scripts/migration/reconcile-postgres.test.mjs
+      - name: Verify storage reconciliation contract
+        run: node --test scripts/migration/reconcile-storage.test.mjs
+      - name: Verify identity reconciliation contract
+        run: node --test scripts/migration/reconcile-identities.test.mjs
+      - name: Verify Phase 5B SES readiness contract
+        run: node --test scripts/aws/phase5b-ses-readiness.test.mjs
+      - name: Verify Phase 5B SES Terraform contract
+        run: node --test scripts/aws/phase5b-ses-terraform.test.mjs
+      - name: Verify SES identity tag permission contract
+        run: node --test scripts/aws/ses-identity-tags-permission.test.mjs
+      - name: Verify Phase 5B SES cutover contract
+        run: node --test scripts/aws/phase5b-ses-cutover.test.mjs
+      - name: Verify event outbox schema contract
+        run: node --test scripts/aws/event-outbox-schema.test.mjs
+      - name: Verify profile media schema contract
+        run: node --test scripts/aws/profile-media-schema.test.mjs
+      - name: Verify exact profile identity schema contract
+        run: node --test scripts/aws/profile-identity-schema.test.mjs
+      - name: Verify Maritime Passport schema contract
+        run: node --test scripts/aws/profile-passport-schema.test.mjs
+      - name: Verify social event Terraform contract
+        run: node --test scripts/aws/social-events-terraform.test.mjs
+      - name: Verify realtime messaging Terraform contract
+        run: node --test scripts/aws/realtime-messaging-terraform.test.mjs
+      - name: Verify shared IAM runtime audit contract
+        run: node --test scripts/aws/social-shared-iam-runtime-audit.test.mjs
+      - name: Verify ECS task Aurora policy release contract
+        run: node --test scripts/aws/ecs-task-aurora-policy-release.test.mjs
+      - name: Verify ECS task media policy state release contract
+        run: node --test scripts/aws/ecs-task-media-policy-state-release.test.mjs
+      - name: Verify ECS task Cashfree secret policy release contract
+        run: node --test scripts/aws/ecs-task-cashfree-secret-policy-release.test.mjs
+      - name: Verify ECS Resend secret policy release contract
+        run: node --test scripts/aws/ecs-resend-secret-policy-release.test.mjs
+      - name: Verify legacy profile invitation migration contract
+        run: node --test scripts/aws/legacy-profile-invites-migration.test.mjs
+      - name: Verify legacy invite controls migration contract
+        run: node --test scripts/aws/legacy-invite-controls-migration.test.mjs
+      - name: Verify community categories migration contract
+        run: node --test scripts/aws/community-categories-migration.test.mjs
+      - name: Verify newsletter signing secret release contract
+        run: node --test scripts/aws/newsletter-signing-secret-release.test.mjs
+      - name: Verify guarded staging data cleanup contract
+        run: node scripts/aws/staging-data-cleanup.test.mjs
+      - name: Verify social infrastructure plan classifier
+        run: node --test scripts/aws/social-events-plan-classifier.test.mjs
+      - name: Verify social event parity runtime audit contract
+        run: node --test scripts/aws/audit-social-event-parity.test.mjs
+      - name: Verify Aurora migration semantic audit contract
+        run: node --test scripts/aws/audit-aurora-migration-parity.test.mjs
+      - name: Verify Aurora identity parity audit contract
+        run: node --test scripts/aws/audit-aurora-data-parity.test.mjs
+      - name: Verify origin TLS certificate state selector contract
+        run: node --test scripts/aws/origin-tls-certificate.test.mjs
+      - name: Verify social worker contract
+        run: node --test scripts/workers/worker-contract.test.mjs
+
+  application:
+    name: Application verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify AWS application independence
+        run: bash scripts/aws/check-phase4-supabase-runtime.sh
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies with known-good npm
+        run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+
   terraform:
     name: Terraform validate
     runs-on: ubuntu-latest
@@ -29,22 +215,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.10.5
-
       - name: Terraform format
-        run: terraform fmt -check -recursive infra/aws
-
+        run: terraform fmt -check -diff -recursive infra/aws
       - name: Terraform init
         working-directory: ${{ matrix.directory }}
         run: terraform init -backend=false
-
       - name: Terraform validate
-        working-directory: ${{ matrix.directory }}
         run: terraform validate
+        working-directory: ${{ matrix.directory }}
+
+  guard:
+    name: Terraform plan guard tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies with known-good npm
+        run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
+      - name: Run guard tests
+        run: npm test -- scripts/aws/check-terraform-plan.test.mjs
+      - name: Verify realtime authorizer origin allowlist
+        run: node --test scripts/aws/realtime-authorizer-origins.test.mjs
+      - name: Verify live Google auth probe contract
+        run: node --test scripts/aws/google-auth-live-probe.test.mjs
 
   container:
     name: Docker build
@@ -52,11 +253,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Build production image
         run: |
           docker build \
             --build-arg NEXT_PUBLIC_SITE_URL=http://localhost:3000 \
-            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://sea-n-shore-test.supabase.co \
-            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_test_key_for_ci_only \
             -t sea-n-shore:ci .

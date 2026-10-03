@@ -1,0 +1,200 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { z } from 'zod'
+import { Building2, ExternalLink, UserRound } from 'lucide-react'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { adminRepository } from '@/features/admin/repository'
+import { adminMembershipRepository } from '@/features/admin/membership-repository'
+import { AdminEntitlementControlPanel } from '@/features/admin/components/admin-entitlement-control-panel'
+import { OrganizationReviewActions } from '@/features/admin/components/organization-review-actions'
+import {
+  isWellbeingType,
+  organizationTypeHasField,
+  organizationVerificationChecks,
+  wellbeingServiceLabel,
+} from '@/features/organizations/organization-types'
+
+export const metadata: Metadata = { title: 'Organization application · Admin' }
+
+function valueOrDash(value: string | null | undefined) {
+  return value?.trim() || '—'
+}
+
+function dateLabel(value: string | null) {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(date)
+}
+
+function Detail({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs font-bold uppercase tracking-[0.13em] text-muted">{label}</dt>
+      <dd className="mt-1 text-sm leading-6 text-navy-950">{value}</dd>
+    </div>
+  )
+}
+
+export default async function AdminOrganizationReviewPage({ params }: { params: Promise<{ applicationId: string }> }) {
+  const { applicationId } = await params
+  if (!z.string().uuid().safeParse(applicationId).success) notFound()
+
+  const user = await requireAwsUser()
+  const review = await adminRepository.getOrganizationApplicationReview(user.id, applicationId)
+  if (!review) notFound()
+  const membership = await adminMembershipRepository.getOrganizationAccessOverview(user.id, review.company.id)
+  if (!membership) notFound()
+  const typeCode = review.company.typeCode
+  const details = review.company.details
+  const has = (field: Parameters<typeof organizationTypeHasField>[1]) => organizationTypeHasField(typeCode, field)
+
+  return (
+    <main className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <Link href="/admin/organizations?view=queue" className="text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline">← Organization reviews</Link>
+          <h2 className="mt-2 text-3xl font-bold text-navy-950">{review.company.name}</h2>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+            <span className="rounded-full bg-mist-50 px-2.5 py-1 text-muted">{review.status.replaceAll('_', ' ')}</span>
+            {review.company.verified ? <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-800">Verified employer</span> : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-amber-800">Not verified</span>}
+          </div>
+        </div>
+        <p className="text-sm text-muted">Submitted {dateLabel(review.submittedAt)}</p>
+      </div>
+
+      <section className="grid gap-5 lg:grid-cols-[1.35fr_0.85fr]">
+        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-xl bg-mist-50 text-navy-950"><Building2 aria-hidden="true" className="size-5" /></span>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Employer record</p>
+              <h3 className="text-xl font-bold text-navy-950">Organization information</h3>
+            </div>
+          </div>
+
+          <dl className="mt-6 grid gap-5 sm:grid-cols-2">
+            <Detail label="Organization type" value={valueOrDash(review.company.type)} />
+            <Detail label="Website" value={valueOrDash(review.company.website)} />
+            <Detail label="Official work email" value={review.officialEmail} />
+            <Detail label="Registration / reference" value={valueOrDash(review.registrationReference)} />
+            {has('recruitmentLicence') ? <Detail label="Recruitment licence (RPSL / MLC)" value={valueOrDash(details.recruitmentLicence)} /> : null}
+            {has('fleetSize') ? <Detail label="Number of vessels" value={typeof details.fleetSize === 'number' ? String(details.fleetSize) : '—'} /> : null}
+            {has('fleetSummary') || review.company.fleetSummary ? <Detail label="Fleet summary" value={valueOrDash(review.company.fleetSummary)} /> : null}
+            {has('vesselTypes') || review.company.vesselTypes.length ? <Detail label="Vessel types" value={review.company.vesselTypes.length ? review.company.vesselTypes.join(', ') : '—'} /> : null}
+            {isWellbeingType(typeCode) ? (
+              <>
+                <Detail label="Services offered" value={details.servicesOffered?.length ? details.servicesOffered.map(wellbeingServiceLabel).join(', ') : '—'} />
+                <Detail label="Languages" value={details.languages?.length ? details.languages.join(', ') : '—'} />
+                <Detail label="24/7 helpline" value={typeof details.helpline24x7 === 'boolean' ? (details.helpline24x7 ? 'Yes' : 'No') : '—'} />
+              </>
+            ) : null}
+            {has('accreditation') ? <Detail label="Accreditation" value={valueOrDash(details.accreditation)} /> : null}
+            <Detail label="Office locations" value={review.company.officeLocations.length ? review.company.officeLocations.join(', ') : '—'} />
+            <Detail label="Last updated" value={dateLabel(review.updatedAt)} />
+          </dl>
+
+          <div className="mt-6 rounded-xl border border-ocean-100 bg-ocean-50/50 p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.13em] text-ocean-800">Checks for this type</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-navy-950">
+              {organizationVerificationChecks(typeCode).map((check) => <li key={check}>{check}</li>)}
+            </ul>
+          </div>
+
+          <div className="mt-6 border-t border-mist-100 pt-5">
+            <p className="text-xs font-bold uppercase tracking-[0.13em] text-muted">Description</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-navy-950">{valueOrDash(review.company.description)}</p>
+          </div>
+
+          <div className="mt-5 border-t border-mist-100 pt-5">
+            <p className="text-xs font-bold uppercase tracking-[0.13em] text-muted">Supporting notes</p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-navy-950">{valueOrDash(review.supportingNotes)}</p>
+          </div>
+        </article>
+
+        <div className="space-y-5">
+          <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-xl bg-mist-50 text-navy-950"><UserRound aria-hidden="true" className="size-5" /></span>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Applicant</p>
+                <h3 className="text-lg font-bold text-navy-950">{review.applicant.fullName}</h3>
+              </div>
+            </div>
+            <dl className="mt-5 space-y-4">
+              <Detail label="Applicant relationship" value={review.applicantRole} />
+              <Detail label="Profile headline" value={valueOrDash(review.applicant.headline)} />
+              <Detail label="Requested membership" value={valueOrDash(review.applicant.membershipRole)} />
+              <Detail label="Membership approved" value={dateLabel(review.applicant.membershipApprovedAt)} />
+            </dl>
+            {review.applicant.slug ? (
+              <Link href={`/people/${review.applicant.slug}`} className="mt-5 inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 hover:text-navy-950 hover:underline">
+                View member profile <ExternalLink aria-hidden="true" className="size-4" />
+              </Link>
+            ) : null}
+          </article>
+
+          {review.adminReviewNote ? (
+            <article className="rounded-[1.5rem] border border-amber-100 bg-amber-50 p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.13em] text-amber-800">Previous reviewer note</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-amber-950">{review.adminReviewNote}</p>
+              <p className="mt-3 text-xs text-amber-800">Reviewed {dateLabel(review.reviewedAt)}</p>
+            </article>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Organization membership</p>
+          <h2 className="mt-1 text-xl font-bold text-navy-950">Plan & workspace access</h2>
+          <dl className="mt-5 space-y-4">
+            <Detail
+              label="Current plan"
+              value={membership.plan === 'organization_pro' ? 'Organization Pro' : 'Sea N Shore Member · Free'}
+            />
+            <Detail label="Organization verification" value={membership.verified ? 'Verified' : 'Not verified'} />
+            <Detail
+              label="Subscription status"
+              value={membership.subscription?.status?.replaceAll('_', ' ') ?? 'No paid subscription record'}
+            />
+            <Detail
+              label="Billing period ends"
+              value={membership.subscription?.currentPeriodEndsAt ? dateLabel(membership.subscription.currentPeriodEndsAt) : '—'}
+            />
+          </dl>
+        </article>
+
+        <article className="rounded-[1.5rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)] sm:p-6">
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-teal-700">Workspace team</p>
+          <h2 className="mt-1 text-xl font-bold text-navy-950">Authorized managers</h2>
+          <div className="mt-5 divide-y divide-mist-100">
+            {membership.managers.map((manager) => (
+              <div key={manager.profileId} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-navy-950">{manager.fullName}</p>
+                  <p className="mt-1 text-xs capitalize text-muted">{manager.role.replaceAll('_', ' ')} · Approved {dateLabel(manager.approvedAt)}</p>
+                </div>
+                {manager.slug ? (
+                  <Link href={`/people/${manager.slug}`} className="text-xs font-bold text-ocean-700 hover:underline">View profile →</Link>
+                ) : null}
+              </div>
+            ))}
+            {membership.managers.length === 0 ? <p className="py-4 text-sm text-muted">No approved manager roles are recorded.</p> : null}
+          </div>
+        </article>
+      </section>
+
+      <div>
+        <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-muted">Entitlement history & controls</p>
+        <AdminEntitlementControlPanel
+          subjectType="company"
+          subjectId={review.company.id}
+          entitlementHistory={membership.entitlementHistory}
+        />
+      </div>
+
+      <OrganizationReviewActions applicationId={review.applicationId} status={review.status} />
+    </main>
+  )
+}

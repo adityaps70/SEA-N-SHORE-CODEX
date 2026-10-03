@@ -1,0 +1,137 @@
+import { CognitoApiError, type CognitoPrincipal } from '@/lib/auth/cognito-api'
+import { describe, expect, it, vi } from 'vitest'
+
+const principal: CognitoPrincipal = {
+  sub: 'cognito-sub-1',
+  email: 'member@example.com',
+  emailVerified: true,
+  name: 'Member One',
+}
+
+describe('AWS auth queries', () => {
+  it('returns null when no verified Cognito principal exists', async () => {
+    const getPrincipal = vi.fn(async () => null)
+    const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
+    const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
+    const { createAwsAuthQueries } = await import('./aws-queries')
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus })
+
+    await expect(queries.getAwsVerifiedUser()).resolves.toBeNull()
+    expect(resolveProfileId).not.toHaveBeenCalled()
+    expect(provisionProfileId).not.toHaveBeenCalled()
+  })
+
+  it('provisions one incomplete profile when the verified Cognito subject has no permanent mapping', async () => {
+    const getPrincipal = vi.fn(async () => principal)
+    const resolveProfileId = vi.fn(async () => null)
+    const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
+    const { createAwsAuthQueries } = await import('./aws-queries')
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus })
+
+    await expect(queries.getAwsVerifiedUser()).resolves.toEqual({
+      id: '22222222-2222-4222-8222-222222222222',
+      cognitoSub: 'cognito-sub-1',
+      email: 'member@example.com',
+    })
+    expect(resolveProfileId).toHaveBeenCalledWith('cognito-sub-1')
+    expect(provisionProfileId).toHaveBeenCalledWith(principal)
+  })
+
+  it('does not provision when the permanent profile mapping already exists', async () => {
+    const getPrincipal = vi.fn(async () => principal)
+    const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
+    const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
+    const { createAwsAuthQueries } = await import('./aws-queries')
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus })
+
+    await expect(queries.getAwsVerifiedUser()).resolves.toEqual({
+      id: '11111111-1111-4111-8111-111111111111',
+      cognitoSub: 'cognito-sub-1',
+      email: 'member@example.com',
+    })
+    expect(provisionProfileId).not.toHaveBeenCalled()
+  })
+
+  it('reuses one verified-user lookup across repeated authenticated reads in a request', async () => {
+    const getPrincipal = vi.fn(async () => principal)
+    const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
+    const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    let cached: Promise<unknown> | null = null
+    const cacheVerifiedUser = <T>(loader: () => Promise<T>) => () => {
+      cached ??= loader()
+      return cached as Promise<T>
+    }
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
+    const { createAwsAuthQueries } = await import('./aws-queries')
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus, cacheVerifiedUser })
+
+    await Promise.all([
+      queries.requireAwsUser(),
+      queries.requireAwsUser(),
+      queries.getAwsVerifiedUser(),
+      queries.requireAwsUser(),
+    ])
+
+    expect(getPrincipal).toHaveBeenCalledTimes(1)
+    expect(resolveProfileId).toHaveBeenCalledTimes(1)
+    expect(provisionProfileId).not.toHaveBeenCalled()
+  })
+
+  it('rejects suspended and deleted profiles even when their Cognito access token is still valid', async () => {
+    const getPrincipal = vi.fn(async () => principal)
+    const resolveProfileId = vi.fn(async () => '11111111-1111-4111-8111-111111111111')
+    const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const { createAwsAuthQueries } = await import('./aws-queries')
+
+    for (const status of ['suspended', 'deletion_requested'] as const) {
+      const queries = createAwsAuthQueries({
+        getPrincipal,
+        resolveProfileId,
+        provisionProfileId,
+        getProfileAccountStatus: vi.fn(async () => status),
+      })
+
+      await expect(queries.getAwsVerifiedUser()).resolves.toBeNull()
+      await expect(queries.requireAwsUser()).rejects.toThrow('Authentication required.')
+    }
+  })
+
+  it('treats only a real Cognito authorization failure as an unauthenticated principal', async () => {
+    const { resolveCognitoPrincipalFromAccessToken } = await import('./aws-queries')
+    const api = {
+      getUser: vi.fn(async () => {
+        throw new CognitoApiError('NotAuthorizedException')
+      }),
+    }
+
+    await expect(resolveCognitoPrincipalFromAccessToken(api, 'expired-access-token')).resolves.toBeNull()
+  })
+
+  it('does not turn transient Cognito failures into a logout', async () => {
+    const { resolveCognitoPrincipalFromAccessToken } = await import('./aws-queries')
+    const throttled = new CognitoApiError('TooManyRequestsException')
+    const transport = new CognitoApiError('TransportError')
+
+    await expect(resolveCognitoPrincipalFromAccessToken({
+      getUser: vi.fn(async () => { throw throttled }),
+    }, 'valid-access-token')).rejects.toBe(throttled)
+
+    await expect(resolveCognitoPrincipalFromAccessToken({
+      getUser: vi.fn(async () => { throw transport }),
+    }, 'valid-access-token')).rejects.toBe(transport)
+  })
+
+  it('fails safely when an authenticated AWS user is required but unavailable', async () => {
+    const getPrincipal = vi.fn(async () => null)
+    const resolveProfileId = vi.fn(async () => null)
+    const provisionProfileId = vi.fn(async () => '22222222-2222-4222-8222-222222222222')
+    const getProfileAccountStatus = vi.fn(async () => 'active' as const)
+    const { AwsAuthenticationRequiredError, createAwsAuthQueries } = await import('./aws-queries')
+    const queries = createAwsAuthQueries({ getPrincipal, resolveProfileId, provisionProfileId, getProfileAccountStatus })
+
+    await expect(queries.requireAwsUser()).rejects.toBeInstanceOf(AwsAuthenticationRequiredError)
+  })
+})

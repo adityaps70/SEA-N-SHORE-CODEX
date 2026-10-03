@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calculateProfileCompletion } from './profile-completion'
+import { calculateProfileCompletion, nextProfileCompletionHint } from './profile-completion'
 import type { OwnProfile } from '@/features/profiles/types'
 
 function profile(overrides: Partial<OwnProfile> = {}): OwnProfile {
@@ -27,18 +27,62 @@ function profile(overrides: Partial<OwnProfile> = {}): OwnProfile {
   }
 }
 
+const completePortfolio = { experienceCount: 1, credentialCount: 1 }
+
 describe('calculateProfileCompletion', () => {
-  it('returns 100 for a fully populated maritime profile', () => {
-    expect(calculateProfileCompletion(profile())).toBe(100)
+  it('returns 100 for a fully populated maritime profile with experience and credentials', () => {
+    expect(calculateProfileCompletion(profile(), completePortfolio)).toBe(100)
   })
 
-  it('returns 50 when four of eight maritime completion fields are missing', () => {
+  it('does not report 100 when the professional portfolio is empty', () => {
+    expect(calculateProfileCompletion(profile(), { experienceCount: 0, credentialCount: 0 })).toBe(80)
+  })
+
+  it('returns 60 when four of ten maritime completion checks are missing', () => {
     expect(calculateProfileCompletion(profile({
       location: null,
       skills: [],
       currentCompany: null,
       sailingExperienceYears: null,
-    }))).toBe(50)
+    }), completePortfolio)).toBe(60)
+  })
+
+  it('does not impose seafarer completion requirements on Family or Enthusiast personas', () => {
+    expect(calculateProfileCompletion(profile({
+      profileType: 'maritime_professional',
+      persona: 'seafarer_family',
+      rank: null,
+      currentCompany: null,
+      sailingExperienceYears: null,
+      communityRelationship: 'Spouse',
+    }))).toBe(100)
+
+    expect(calculateProfileCompletion(profile({
+      profileType: 'maritime_professional',
+      persona: 'maritime_enthusiast',
+      rank: null,
+      currentCompany: null,
+      sailingExperienceYears: null,
+    }))).toBe(100)
+  })
+
+  it('uses persona-specific profile details instead of legacy maritime type for completion', () => {
+    expect(calculateProfileCompletion(profile({
+      profileType: 'maritime_professional',
+      persona: 'student_cadet',
+      institutionName: 'Indian Maritime University',
+      rank: null,
+      currentCompany: null,
+      sailingExperienceYears: null,
+    }))).toBe(100)
+
+    expect(calculateProfileCompletion(profile({
+      profileType: 'trainer',
+      persona: 'trainer_instructor',
+      specialization: null,
+      rank: null,
+      sailingExperienceYears: null,
+    }))).toBeLessThan(100)
   })
 
   it('uses only generic fields for non-maritime profile types', () => {
@@ -50,3 +94,33 @@ describe('calculateProfileCompletion', () => {
     }))).toBe(100)
   })
 })
+
+describe('nextProfileCompletionHint', () => {
+  it('names the first missing item in the completeness order', () => {
+    expect(nextProfileCompletionHint(profile({ sailingExperienceYears: null }), completePortfolio)).toBe('Add sea service to get better job matches')
+    expect(nextProfileCompletionHint(profile({ headline: null, sailingExperienceYears: null }), completePortfolio)).toBe('Add a headline so people know what you do')
+    expect(nextProfileCompletionHint(profile(), { experienceCount: 1, credentialCount: 0 })).toBe('Add your certificates to get better job matches')
+  })
+
+  it('returns null for a complete profile', () => {
+    expect(nextProfileCompletionHint(profile(), completePortfolio)).toBeNull()
+  })
+})
+
+describe('profile completion for personas without credentials (round 11)', () => {
+  it('never asks a maritime enthusiast or a seafarer family member for credentials', () => {
+    for (const persona of ['maritime_enthusiast', 'seafarer_family'] as const) {
+      const member = profile({
+        profileType: 'maritime_professional',
+        persona,
+        communityRelationship: persona === 'seafarer_family' ? 'Spouse of a Chief Engineer' : null,
+        rank: null,
+        currentCompany: null,
+        sailingExperienceYears: null,
+      })
+      expect(calculateProfileCompletion(member, { experienceCount: 0, credentialCount: 0 })).toBe(100)
+      expect(nextProfileCompletionHint(member, { experienceCount: 0, credentialCount: 0 })).toBeNull()
+    }
+  })
+})
+

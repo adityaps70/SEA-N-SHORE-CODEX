@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import {
+  acceptConnectionRequestWithAurora,
+  followProfileWithAurora,
+  sendConnectionRequestWithAurora,
+} from './service'
 import {
   acceptConnectionRequest,
   followProfile,
@@ -7,59 +12,78 @@ import {
 } from './actions'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('@/features/auth/queries', () => ({
-  requireUser: vi.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111' })),
+vi.mock('@/features/auth/aws-queries', () => ({
+  requireAwsUser: vi.fn(async () => ({
+    id: '11111111-1111-4111-8111-111111111111',
+    cognitoSub: 'cognito-sub-1',
+    email: 'member@example.com',
+  })),
 }))
-vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient: vi.fn() }))
+vi.mock('./service', () => ({
+  followProfileWithAurora: vi.fn(async () => true),
+  unfollowProfileWithAurora: vi.fn(async () => true),
+  sendConnectionRequestWithAurora: vi.fn(async () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+  cancelConnectionRequestWithAurora: vi.fn(async () => true),
+  acceptConnectionRequestWithAurora: vi.fn(async () => true),
+  declineConnectionRequestWithAurora: vi.fn(async () => true),
+  removeConnectionWithAurora: vi.fn(async () => true),
+  blockProfileWithAurora: vi.fn(async () => true),
+  unblockProfileWithAurora: vi.fn(async () => true),
+}))
 
-const mockedCreateServerSupabaseClient = vi.mocked(createServerSupabaseClient)
+const mockedRequireAwsUser = vi.mocked(requireAwsUser)
+const mockedFollow = vi.mocked(followProfileWithAurora)
+const mockedSendRequest = vi.mocked(sendConnectionRequestWithAurora)
+const mockedAccept = vi.mocked(acceptConnectionRequestWithAurora)
+
+const viewerId = '11111111-1111-4111-8111-111111111111'
+const targetId = '22222222-2222-4222-8222-222222222222'
+const connectionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 
 describe('network actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockedRequireAwsUser.mockResolvedValue({
+      id: viewerId,
+      cognitoSub: 'cognito-sub-1',
+      email: 'member@example.com',
+    })
+    mockedFollow.mockResolvedValue(true)
+    mockedSendRequest.mockResolvedValue(connectionId)
+    mockedAccept.mockResolvedValue(true)
   })
 
-  it('rejects invalid profile ids before Supabase is created', async () => {
+  it('rejects invalid profile ids before resolving AWS identity or calling the service', async () => {
     expect(await followProfile('not-a-uuid')).toEqual({
       ok: false,
       error: 'Invalid member.',
     })
-    expect(mockedCreateServerSupabaseClient).not.toHaveBeenCalled()
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
+    expect(mockedFollow).not.toHaveBeenCalled()
   })
 
-  it('calls the exact follow RPC argument', async () => {
-    const rpc = vi.fn(async () => ({ data: true, error: null }))
-    mockedCreateServerSupabaseClient.mockResolvedValue({ rpc } as never)
-
-    const targetId = '22222222-2222-4222-8222-222222222222'
+  it('calls follow with the permanent viewer profile UUID and target UUID', async () => {
     expect(await followProfile(targetId)).toEqual({ ok: true })
-    expect(rpc).toHaveBeenCalledWith('follow_profile', { p_target_id: targetId })
+    expect(mockedFollow).toHaveBeenCalledWith(viewerId, targetId)
   })
 
-  it('calls the exact send-request RPC argument', async () => {
-    const rpc = vi.fn(async () => ({ data: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', error: null }))
-    mockedCreateServerSupabaseClient.mockResolvedValue({ rpc } as never)
-
-    const targetId = '22222222-2222-4222-8222-222222222222'
+  it('calls send-request with the permanent viewer profile UUID and target UUID', async () => {
     expect(await sendConnectionRequest(targetId)).toEqual({ ok: true })
-    expect(rpc).toHaveBeenCalledWith('send_connection_request', { p_target_id: targetId })
+    expect(mockedSendRequest).toHaveBeenCalledWith(viewerId, targetId)
   })
 
-  it('rejects invalid connection ids before Supabase is created', async () => {
+  it('rejects invalid connection ids before resolving AWS identity or calling the service', async () => {
     expect(await acceptConnectionRequest('not-a-uuid')).toEqual({
       ok: false,
       error: 'Invalid connection request.',
     })
-    expect(mockedCreateServerSupabaseClient).not.toHaveBeenCalled()
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
+    expect(mockedAccept).not.toHaveBeenCalled()
   })
 
-  it('calls the exact accept RPC argument', async () => {
-    const rpc = vi.fn(async () => ({ data: true, error: null }))
-    mockedCreateServerSupabaseClient.mockResolvedValue({ rpc } as never)
-
-    const connectionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  it('calls accept with the permanent viewer profile UUID and connection UUID', async () => {
     expect(await acceptConnectionRequest(connectionId)).toEqual({ ok: true })
-    expect(rpc).toHaveBeenCalledWith('accept_connection_request', { p_connection_id: connectionId })
+    expect(mockedAccept).toHaveBeenCalledWith(viewerId, connectionId)
   })
 
   it.each([
@@ -69,10 +93,9 @@ describe('network actions', () => {
     ['network_action_not_allowed', 'This interaction is not available.'],
     ['network_self_interaction', 'You cannot perform this action on your own profile.'],
   ])('maps %s to safe copy', async (message, expected) => {
-    const rpc = vi.fn(async () => ({ data: null, error: { message } }))
-    mockedCreateServerSupabaseClient.mockResolvedValue({ rpc } as never)
+    mockedFollow.mockRejectedValueOnce(new Error(message))
 
-    const result = await followProfile('22222222-2222-4222-8222-222222222222')
+    const result = await followProfile(targetId)
     expect(result).toEqual({ ok: false, error: expected })
   })
 })

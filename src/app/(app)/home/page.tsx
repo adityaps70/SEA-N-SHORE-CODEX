@@ -1,50 +1,60 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { getFeedPage } from '@/features/feed/queries'
 import { parseFeedCategory } from '@/features/feed/schemas'
-import { FeedCategoryFilter } from '@/features/feed/components/feed-category-filter'
 import { FeedLayout } from '@/features/feed/components/feed-layout'
 import { FeedList } from '@/features/feed/components/feed-list'
 import { PostComposer } from '@/features/feed/components/post-composer'
+import { parseComposeRequest } from '@/features/feed/compose-request'
 import { getPeopleYouMayKnow } from '@/features/network/queries'
+import { getHomeRailData } from '@/features/profiles/home-rail-queries'
+import { getOwnProfilePortfolio } from '@/features/profiles/profile-portfolio-queries'
 import { getOwnProfile } from '@/features/profiles/queries'
+
+export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string }>
+  searchParams: Promise<{ category?: string; compose?: string }>
 }) {
   const profile = await getOwnProfile()
   if (!profile) redirect('/onboarding')
 
-  const { category: categoryValue } = await searchParams
+  const { category: categoryValue, compose } = await searchParams
   const category = parseFeedCategory(categoryValue)
-  const [initialPage, suggestions] = await Promise.all([
+  // /home?compose=update|photo|document|question|poll (phone Create sheet) opens the composer.
+  const composeRequest = parseComposeRequest(compose)
+  const [initialPage, suggestions, portfolio, rail] = await Promise.all([
     getFeedPage({ category }),
-    getPeopleYouMayKnow(4),
+    getPeopleYouMayKnow(5),
+    getOwnProfilePortfolio(),
+    getHomeRailData(profile.id),
   ])
-  const feedVersion = initialPage.posts
-    .map((post) => [
-      post.id,
-      post.updatedAt,
-      post.likeCount,
-      post.commentCount,
-      post.viewerLiked ? 1 : 0,
-      post.viewerSaved ? 1 : 0,
-      post.poll?.totalVotes ?? 0,
-      post.poll?.viewerOptionId ?? '',
-    ].join(':'))
-    .join('|')
-
+  const portfolioCompletion = {
+    experienceCount: portfolio.experiences.length,
+    credentialCount: portfolio.credentials.length,
+  }
   return (
-    <FeedLayout profile={profile} category={category} suggestions={suggestions}>
+    <FeedLayout
+      profile={profile}
+      portfolioCompletion={portfolioCompletion}
+      suggestions={suggestions.slice(0, 3)}
+      verified={rail.verified}
+    >
+      {/* On phones the trigger card is hidden: the Post tab's Create sheet opens the composer. */}
       <div id="feed-composer" className="scroll-mt-24">
-        <PostComposer profile={profile} defaultCategory={category} />
+        <PostComposer profile={profile} defaultCategory={category} composeRequest={composeRequest} hideTriggerOnPhones />
       </div>
-      <div className="mt-4">
-        <FeedCategoryFilter category={category} />
-      </div>
-      <div className="mt-4">
-        <FeedList key={`${category ?? 'all'}:${feedVersion}`} initialPage={initialPage} category={category} />
+      <div className="mt-4 max-md:mt-1">
+        {/* Keyed by category only: a reaction or comment refreshes the first page, which FeedList and
+            PostCard reconcile in place, so the loaded pages and scroll position survive (round 10). */}
+        <FeedList
+          key={category ?? 'all'}
+          initialPage={initialPage}
+          category={category}
+          suggestions={suggestions}
+        />
       </div>
     </FeedLayout>
   )

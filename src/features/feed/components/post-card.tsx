@@ -1,19 +1,46 @@
 'use client'
 
-import Image from 'next/image'
+import type { PostLoadingPriority } from '../post-loading-priority'
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
-import { Bookmark, Heart, MessageCircle } from 'lucide-react'
-import { useState, useTransition } from 'react'
+import { Globe, MessageCircle, Plus, X } from 'lucide-react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { Card } from '@/components/ui/card'
-import { setPostLiked, setPostSaved } from '../actions'
-import { POST_CATEGORY_LABELS, type FeedPost } from '../types'
+import { removeGroupPost } from '@/features/community/actions'
+import { ReportContentButton } from '@/features/moderation/components/report-content-button'
+import { followProfile, unfollowProfile } from '@/features/network/actions'
+import { deletePost, setPostHidden, setPostReaction, setPostSaved } from '../actions'
+import {
+  EMPTY_REACTION_SUMMARY,
+  POST_REACTIONS,
+  POST_REACTION_META,
+  reactionCount,
+  type FeedAuthor,
+  type FeedComment,
+  type FeedMention,
+  type FeedOrganization,
+  type FeedOrganizationMention,
+  type FeedPost,
+  type FeedRepostSource,
+  type PostReactionType,
+  type ReactionSummary,
+} from '../types'
+import { AuthorAvatarLink, OrganizationLogoLink, initials, publishedAsHref } from './author-avatar'
 import { CommentThread } from './comment-thread'
+import { EditPostDialog } from './edit-post-dialog'
+import { FeedDialog } from './feed-dialog'
+import { ExpandableText } from './expandable-text'
 import { PollCard } from './poll-card'
+import { PostActionsMenu } from './post-actions-menu'
+import { POST_ACTION_BUTTON_CLASS, POST_ACTION_LABEL_CLASS } from './post-action-styles'
+import { PhotoTagsLine } from './photo-tags-line'
+import { PostMedia } from './post-media'
+import { ReactionDetailsModal } from './reaction-details-modal'
+import { ReactionPicker } from './reaction-picker'
+import { ReactionSummaryTrigger } from './reaction-summary'
+import { SendPostButton } from './send-post-button'
 import { SharePostButton } from './share-post-button'
-
-function initials(name: string) {
-  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('')
-}
+import { copyToClipboard, postPermalink, type FeedNotice } from './share-utils'
 
 function relativeTime(timestamp: string) {
   const seconds = Math.round((new Date(timestamp).getTime() - Date.now()) / 1000)
@@ -25,131 +52,693 @@ function relativeTime(timestamp: string) {
   return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(timestamp))
 }
 
-export function PostCard({ post, detail = false }: { post: FeedPost; detail?: boolean }) {
-  const [liked, setLiked] = useState(post.viewerLiked)
-  const [saved, setSaved] = useState(post.viewerSaved)
-  const [likeCount, setLikeCount] = useState(post.likeCount)
-  const [commentsOpen, setCommentsOpen] = useState(detail)
-  const [error, setError] = useState('')
-  const [pending, startTransition] = useTransition()
+function initialSummary(post: FeedPost): ReactionSummary {
+  return post.reactionSummary ?? { ...EMPTY_REACTION_SUMMARY, like: post.likeCount }
+}
 
-  function changeLike() {
-    const next = !liked
-    const previousLiked = liked
-    const previousCount = likeCount
-    setLiked(next)
-    setLikeCount((count) => Math.max(0, count + (next ? 1 : -1)))
-    setError('')
+function updateSummary(summary: ReactionSummary, previous: PostReactionType | null, next: PostReactionType | null) {
+  const updated = { ...summary }
+  if (previous) updated[previous] = Math.max(0, updated[previous] - 1)
+  if (next) updated[next] += 1
+  return updated
+}
+
+function RepostSourcePoll({ source }: { source: FeedRepostSource }) {
+  if (!source.poll) return null
+  const totalVotes = source.poll.options.reduce((total, option) => total + option.voteCount, 0)
+  return (
+    <div className="mt-4 rounded-2xl border border-mist-100 bg-mist-50/60 p-4" aria-label="Original post poll">
+      <p className="text-sm font-semibold text-navy-950">Technical poll</p>
+      <div className="mt-2 space-y-2">
+        {source.poll.options.map((option) => {
+          const percentage = totalVotes ? Math.round((option.voteCount / totalVotes) * 100) : 0
+          return (
+            <div key={option.id} className="flex min-h-10 items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-sm text-navy-900">
+              <span className="font-medium">{option.label}</span>
+              <span className="shrink-0 text-xs font-semibold text-muted">{percentage}% · {option.voteCount}</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="mt-2 text-xs text-muted">{totalVotes} {totalVotes === 1 ? 'vote' : 'votes'} · Open the original post to vote.</p>
+    </div>
+  )
+}
+
+function authorContext(author: FeedAuthor) {
+  return [author.rank ?? author.headline, author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'
+}
+
+/** The name a post is shown under: its organization, or the person who wrote it. */
+function publishedAsName(post: { author: FeedAuthor; organization?: FeedOrganization | null }) {
+  return post.organization?.name ?? post.author.fullName
+}
+
+function RepostSourceCard({ source, expanded = false }: { source: FeedRepostSource; expanded?: boolean }) {
+  const media = source.mediaItems?.length ? source.mediaItems : source.media ? [source.media] : []
+  const organization = source.organization ?? null
+  const name = publishedAsName(source)
+  return (
+    <section
+      role="region"
+      aria-label={`Original post by ${name}`}
+      className="rounded-2xl border border-mist-100 bg-mist-50/35 p-4 sm:p-5"
+    >
+      <div className="flex items-start gap-3">
+        {organization
+          ? <OrganizationLogoLink organization={organization} className="size-10 rounded-xl" />
+          : <AuthorAvatarLink author={source.author} className="size-10 rounded-xl text-xs" />}
+        <div className="min-w-0 flex-1">
+          <Link href={publishedAsHref(source)} className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline">
+            {name}
+          </Link>
+          <p className="mt-0.5 truncate text-xs text-muted">
+            {organization ? 'Organization' : authorContext(source.author)}
+          </p>
+          <time suppressHydrationWarning dateTime={source.createdAt} title={new Date(source.createdAt).toISOString()} className="mt-1 block text-xs text-muted">
+            {relativeTime(source.createdAt)}
+          </time>
+        </div>
+      </div>
+
+      <ExpandableText
+        body={source.body}
+        mentions={source.mentions}
+        organizationMentions={source.organizationMentions}
+        defaultExpanded={expanded}
+        className="mt-4 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
+      />
+      {media.some((item) => item.signedUrl) ? <PostMedia media={media} authorName={source.author.fullName} postId={source.id} photoTags={source.photoTags} /> : null}
+      {source.photoTags?.length ? <PhotoTagsLine tags={source.photoTags} /> : null}
+      <RepostSourcePoll source={source} />
+      <Link href={`/posts/${source.id}`} className="mt-4 inline-flex text-sm font-semibold text-ocean-700 hover:text-ocean-800">
+        View original post
+      </Link>
+    </section>
+  )
+}
+
+function PostNotice({ notice, onDismiss }: { notice: FeedNotice; onDismiss(): void }) {
+  const error = notice.tone === 'error'
+  return (
+    <div
+      role={error ? 'alert' : 'status'}
+      className={`mx-4 mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-3 py-2 text-sm sm:mx-5 ${error ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-900'}`}
+    >
+      <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{notice.text}</span>
+      {notice.href ? (
+        <Link href={notice.href} className="font-semibold underline underline-offset-2 hover:no-underline">{notice.hrefLabel ?? 'Open'}</Link>
+      ) : null}
+      {notice.action ? (
+        <button type="button" onClick={notice.action.onClick} className="font-semibold underline underline-offset-2 hover:no-underline">
+          {notice.action.label}
+        </button>
+      ) : null}
+      <button type="button" onClick={onDismiss} aria-label="Dismiss message" className="-mr-1 grid size-7 place-items-center rounded-full hover:bg-white/60">
+        <X aria-hidden="true" className="size-3.5" />
+      </button>
+    </div>
+  )
+}
+
+/** The comment the phone feed previews under a post: the newest top-level comment, as the thread shows first. */
+export function topComment(comments: FeedComment[]) {
+  const roots = comments.filter((comment) => !comment.parentCommentId && !comment.deleted)
+  return roots[roots.length - 1] ?? null
+}
+
+/** Phone feed: one comment under the post, as a bubble that opens the post. */
+function TopCommentPreview({ postId, comment }: { postId: string; comment: FeedComment }) {
+  return (
+    <Link
+      href={`/posts/${postId}#comment-${comment.id}`}
+      aria-label={`Comment by ${comment.author.fullName}: ${comment.body.slice(0, 80)}. Open the post`}
+      data-testid="top-comment-preview"
+      className="flex items-start gap-2.5 px-4 pb-3 pt-1 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500 md:hidden"
+    >
+      <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-mist-100 text-[11px] font-semibold text-navy-950">
+        {comment.author.avatarUrl ? (
+          <MediaImage
+            avatar
+            src={comment.author.avatarUrl}
+            alt=""
+            fill
+            sizes="32px"
+            className="object-cover"
+            fallback={<span aria-hidden="true">{initials(comment.author.fullName)}</span>}
+          />
+        ) : <span aria-hidden="true">{initials(comment.author.fullName)}</span>}
+      </span>
+      <span className="min-w-0 rounded-2xl bg-mist-100 px-3 py-2">
+        <span className="block truncate text-[13px] font-semibold text-navy-950">{comment.author.fullName}</span>
+        <span className="line-clamp-2 break-words text-sm leading-5 text-ink [overflow-wrap:anywhere]">{comment.body}</span>
+      </span>
+    </Link>
+  )
+}
+
+export function PostCard({
+  post,
+  detail = false,
+  readOnly = false,
+  flushOnPhones = false,
+  loadingPriority,
+  roleBadge,
+}: {
+  post: FeedPost
+  detail?: boolean
+  readOnly?: boolean
+  /**
+   * Phone layout of the Home feed and the post page: a square edge-to-edge card without side
+   * borders, and "+ Follow" in the header. Profile and organization post lists keep cards.
+   */
+  flushOnPhones?: boolean
+  /**
+   * Set for the first posts of a list (see `postLoadingPriority`): the author photo and first
+   * image load eagerly instead of lazily; `lead` also fetches that image with high priority.
+   */
+  loadingPriority?: PostLoadingPriority
+  /** Round 9C: "Owner" / "Moderator" chip next to the author inside a community's Posts tab. */
+  roleBadge?: string
+}) {
+  const [canonicalPost, setCanonicalPost] = useState(post)
+  const [reaction, setReaction] = useState<PostReactionType | null>(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
+  const [summary, setSummary] = useState<ReactionSummary>(() => initialSummary(post))
+  const [saved, setSaved] = useState(post.viewerSaved)
+  const [following, setFollowing] = useState(Boolean(post.viewerFollowsAuthor))
+  const [composerOpen, setComposerOpen] = useState(detail && !readOnly)
+  const [reactionsOpen, setReactionsOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmGroupRemove, setConfirmGroupRemove] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleted, setDeleted] = useState(false)
+  const [hidden, setHidden] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [edited, setEdited] = useState<{ body: string; mentions: FeedMention[]; organizationMentions: FeedOrganizationMention[] } | null>(null)
+  const [notice, setNotice] = useState<FeedNotice | null>(null)
+  const [pending, startTransition] = useTransition()
+  const [visibilityPending, startVisibilityTransition] = useTransition()
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null)
+
+  if (canonicalPost !== post) {
+    setCanonicalPost(post)
+    setReaction(post.viewerReaction ?? (post.viewerLiked ? 'like' : null))
+    setSummary(initialSummary(post))
+    setSaved(post.viewerSaved)
+    setFollowing(Boolean(post.viewerFollowsAuthor))
+    setEdited(null)
+  }
+
+  useEffect(() => {
+    if (!notice || notice.tone === 'error') return
+    const timer = window.setTimeout(() => setNotice(null), notice.action ? 10_000 : 6_000)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+
+  function changeReaction(next: PostReactionType | null) {
+    if (readOnly || pending) return
+    const previousReaction = reaction
+    const previousSummary = summary
+    setReaction(next)
+    setSummary(updateSummary(summary, previousReaction, next))
+    setNotice(null)
     startTransition(async () => {
-      const result = await setPostLiked(post.id, next)
+      const result = await setPostReaction(post.id, next)
       if (!result.ok) {
-        setLiked(previousLiked)
-        setLikeCount(previousCount)
-        setError(result.error)
+        setReaction(previousReaction)
+        setSummary(previousSummary)
+        setNotice({ text: result.error, tone: 'error' })
       }
     })
   }
 
   function changeSaved() {
+    if (readOnly) return
     const next = !saved
     const previous = saved
     setSaved(next)
-    setError('')
+    setNotice(null)
     startTransition(async () => {
       const result = await setPostSaved(post.id, next)
       if (!result.ok) {
         setSaved(previous)
-        setError(result.error)
+        setNotice({ text: result.error, tone: 'error' })
+        return
       }
+      setNotice(next
+        ? { text: 'Post saved.', tone: 'success', href: '/saved', hrefLabel: 'View saved posts' }
+        : { text: 'Removed from your saved posts.', tone: 'success' })
     })
   }
 
+  async function copyLink() {
+    const url = postPermalink(post.id)
+    const copied = await copyToClipboard(url)
+    setNotice(copied
+      ? { text: 'Link copied. Paste it anywhere to share this post.', tone: 'success' }
+      : { text: `We could not copy automatically. Copy this link instead: ${url}`, tone: 'error' })
+  }
+
+  function changeHidden(next: boolean) {
+    if (readOnly || visibilityPending) return
+    setNotice(null)
+    startVisibilityTransition(async () => {
+      const result = await setPostHidden(post.id, next)
+      if (!result.ok) {
+        setNotice({ text: result.error, tone: 'error' })
+        return
+      }
+      setHidden(next)
+      if (!next) setNotice({ text: 'Post restored to your feed.', tone: 'success' })
+    })
+  }
+
+  function changeFollowing(next: boolean) {
+    if (readOnly || pending) return
+    setNotice(null)
+    startTransition(async () => {
+      const result = next ? await followProfile(post.author.id) : await unfollowProfile(post.author.id)
+      if (!result.ok) {
+        setNotice({ text: result.error, tone: 'error' })
+        return
+      }
+      setFollowing(next)
+      setNotice(next
+        ? { text: `You are following ${post.author.fullName} again.`, tone: 'success' }
+        : {
+          text: `You unfollowed ${post.author.fullName}.`,
+          tone: 'success',
+          action: { label: 'Undo', onClick: () => changeFollowing(true) },
+        })
+    })
+  }
+
+  function followAuthor() {
+    if (readOnly || pending) return
+    setNotice(null)
+    startTransition(async () => {
+      const result = await followProfile(post.author.id)
+      if (!result.ok) {
+        setNotice({ text: result.error, tone: 'error' })
+        return
+      }
+      setFollowing(true)
+      setNotice({ text: `You are now following ${post.author.fullName}.`, tone: 'success' })
+    })
+  }
+
+  function removePost() {
+    if (readOnly || pending) return
+    setDeleteError('')
+    startTransition(async () => {
+      const result = await deletePost(post.id)
+      if (!result.ok) {
+        setDeleteError(`${result.error} Please try again.`)
+        return
+      }
+      setConfirmDelete(false)
+      setDeleted(true)
+    })
+  }
+
+  /** Group admins remove a post from their group (round 9B); the author can restore it for 30 days. */
+  function removeFromGroup() {
+    if (readOnly || pending) return
+    setDeleteError('')
+    startTransition(async () => {
+      const result = await removeGroupPost(post.id)
+      if (!result.ok) {
+        setDeleteError(`${result.error} Please try again.`)
+        return
+      }
+      setConfirmGroupRemove(false)
+      setDeleted(true)
+    })
+  }
+
+  const cardShape = flushOnPhones ? 'max-md:rounded-none max-md:border-x-0 max-md:shadow-none' : ''
+
+  if (deleted) {
+    return (
+      <Card className={`border border-mist-100 ${cardShape}`}>
+        <div role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-4 text-sm text-navy-900 sm:px-5">
+          <span className="font-semibold">Post deleted.</span>
+          {post.viewerOwns ? (
+            <>
+              <span className="text-muted">You can restore it for 30 days.</span>
+              <Link href="/activities?tab=deleted" className="font-semibold text-ocean-700 hover:text-ocean-800 hover:underline">Recently deleted</Link>
+            </>
+          ) : (
+            <span className="text-muted">It no longer appears in the feed or on the organization page.</span>
+          )}
+        </div>
+      </Card>
+    )
+  }
+
+  if (hidden) {
+    return (
+      <Card className={`border border-mist-100 ${cardShape}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-5">
+          <div role="status" className="min-w-0">
+            <p className="text-sm font-semibold text-navy-950">Post hidden</p>
+            <p className="mt-0.5 text-sm text-muted">You won&apos;t see this post from {publishedAsName(post)} in your feed.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => changeHidden(false)}
+            disabled={visibilityPending}
+            className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 disabled:opacity-60"
+          >
+            {visibilityPending ? 'Restoring…' : 'Undo'}
+          </button>
+        </div>
+        {notice?.tone === 'error' ? <PostNotice notice={notice} onDismiss={() => setNotice(null)} /> : null}
+      </Card>
+    )
+  }
+
+  const isRepost = post.postType === 'repost'
+  const isOwner = Boolean(post.viewerOwns)
+  const canEdit = post.viewerCanEdit ?? isOwner
+  const canDelete = post.viewerCanDelete ?? isOwner
+  const organization = post.organization ?? null
+  const displayName = publishedAsName(post)
+  const body = edited?.body ?? post.body
+  const mentions = edited?.mentions ?? post.mentions
+  const organizationMentions = edited?.organizationMentions ?? post.organizationMentions
+  const postMedia = post.mediaItems?.length ? post.mediaItems : post.media ? [post.media] : []
+  const repostCommentary = isRepost ? body.trim() : ''
+  const shareSource = isRepost && post.repostOf
+    ? { id: post.repostOf.id, authorName: publishedAsName(post.repostOf), body: post.repostOf.body }
+    : { id: post.id, authorName: displayName, body }
+  const canRepost = !isRepost || Boolean(post.repostOf)
+  const totalReactions = reactionCount(summary)
+  // Phones: "+ Follow" in the header for people the viewer does not follow yet (organizations are followed on their page).
+  const canFollow = flushOnPhones && !readOnly && !isOwner && !organization && post.viewerFollowsAuthor !== undefined && !following
+  const previewComment = !detail && !readOnly ? topComment(post.comments) : null
+  const activeReactions = POST_REACTIONS.filter((type) => summary[type] > 0)
+
   return (
-    <Card className="overflow-hidden border border-mist-100">
+    <Card className={`overflow-visible border border-mist-100 ${cardShape}`}>
       <article aria-labelledby={`post-author-${post.id}`}>
         <header className="flex items-start gap-3 px-4 pt-4 sm:px-5 sm:pt-5">
-          <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-mist-100 text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
-            {initials(post.author.fullName)}
-          </div>
+          {organization
+            ? <OrganizationLogoLink organization={organization} className="size-11 rounded-xl" />
+            : <AuthorAvatarLink author={post.author} className="size-11 rounded-2xl text-sm" loading={loadingPriority ? 'eager' : 'lazy'} />}
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <Link id={`post-author-${post.id}`} href={`/people/${post.author.slug}`} className="font-semibold text-navy-950 hover:text-ocean-700">
-                {post.author.fullName}
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <Link
+                id={`post-author-${post.id}`}
+                href={publishedAsHref(post)}
+                className="font-semibold text-navy-950 hover:text-ocean-700 hover:underline"
+              >
+                {displayName}
               </Link>
-              <span className="rounded-full bg-mist-50 px-2 py-1 text-[11px] font-semibold text-ocean-700">
-                {POST_CATEGORY_LABELS[post.category]}
-              </span>
+              {roleBadge && !organization ? <span className="rounded-md bg-ocean-50 px-1.5 text-[11px] font-bold text-ocean-700">{roleBadge}</span> : null}
+              {isRepost ? <span className="text-xs font-medium text-muted">{repostCommentary ? 'reposted with thoughts' : 'reposted'}</span> : null}
             </div>
             <p className="mt-0.5 truncate text-sm text-muted">
-              {[post.author.rank ?? post.author.headline, post.author.currentCompany].filter(Boolean).join(' · ') || 'Maritime professional'}
+              {organization
+                ? (canEdit || canDelete) && !isOwner
+                  ? `Organization · Posted by ${post.author.fullName}`
+                  : isOwner ? 'Organization · Posted by you' : 'Organization'
+                : authorContext(post.author)}
             </p>
-            <time suppressHydrationWarning dateTime={post.createdAt} title={new Date(post.createdAt).toISOString()} className="mt-1 block text-xs text-muted">
-              {relativeTime(post.createdAt)}
-            </time>
+            <p className="mt-1 flex items-center gap-1 text-xs text-muted">
+              <time suppressHydrationWarning dateTime={post.createdAt} title={new Date(post.createdAt).toISOString()}>
+                {relativeTime(post.createdAt)}
+              </time>
+              <span aria-hidden="true" className="md:hidden">·</span>
+              <Globe role="img" aria-label="Visible to the Sea N Shore community" className="size-3.5 md:hidden" />
+              {post.group ? (
+                // Round 9B: the community group the post was published in.
+                <>
+                  <span aria-hidden="true">·</span>
+                  <Link
+                    href={`/community/${post.group.slug}`}
+                    className="flex min-w-0 items-center gap-1 font-semibold text-navy-900 hover:text-ocean-700 hover:underline"
+                    aria-label={`Posted in ${post.group.name}`}
+                  >
+                    {post.group.iconUrl ? (
+                      // Round 9C: the community photo, 16px, next to the group name.
+                      <MediaImage src={post.group.iconUrl} alt="" width={16} height={16} sizes="16px" className="size-4 shrink-0 rounded-[4px] object-cover" />
+                    ) : null}
+                    <span className="truncate">in {post.group.name}</span>
+                  </Link>
+                </>
+              ) : null}
+            </p>
           </div>
+          {canFollow ? (
+            <button
+              type="button"
+              onClick={followAuthor}
+              disabled={pending}
+              aria-label={`Follow ${post.author.fullName}`}
+              className="-my-1 inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 text-[15px] font-semibold text-ocean-700 hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500 disabled:opacity-60 md:hidden"
+            >
+              <Plus aria-hidden="true" className="size-4" strokeWidth={2.5} />
+              Follow
+            </button>
+          ) : null}
+          {!readOnly ? (
+            <PostActionsMenu
+              authorName={displayName}
+              isOwner={isOwner}
+              canEdit={canEdit}
+              canDelete={canDelete}
+              saved={saved}
+              // Following is about people; organization posts are followed through the organization.
+              canUnfollow={!isOwner && !organization && following}
+              pending={pending || visibilityPending}
+              onToggleSave={changeSaved}
+              onCopyLink={() => { void copyLink() }}
+              onHide={() => changeHidden(true)}
+              onUnfollow={() => changeFollowing(false)}
+              onReport={() => setReportOpen(true)}
+              onDelete={() => { setDeleteError(''); setConfirmDelete(true) }}
+              onEdit={() => setEditOpen(true)}
+              canModerateGroup={Boolean(post.viewerCanModerateGroup && post.group)}
+              onRemoveFromGroup={() => { setDeleteError(''); setConfirmGroupRemove(true) }}
+              triggerRef={menuTriggerRef}
+            />
+          ) : null}
         </header>
 
         <div className="px-4 pb-4 pt-4 sm:px-5">
-          <p className="whitespace-pre-wrap text-[15px] leading-7 text-ink">{post.body}</p>
-
-          {post.media?.signedUrl ? (
-            <div className="relative mt-4 aspect-[16/9] overflow-hidden rounded-2xl border border-mist-100 bg-mist-50">
-              <Image
-                src={post.media.signedUrl}
-                alt={post.media.altText ?? `Image attached to ${post.author.fullName}'s post`}
-                fill
-                sizes="(max-width: 768px) 100vw, 720px"
-                className="object-cover"
+          {isRepost && post.repostOf ? (
+            <>
+              {repostCommentary ? (
+                <ExpandableText
+                  body={repostCommentary}
+                  mentions={mentions}
+                  organizationMentions={organizationMentions}
+                  defaultExpanded={detail}
+                  className="mb-3 break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
+                />
+              ) : null}
+              <RepostSourceCard source={post.repostOf} expanded={detail} />
+            </>
+          ) : (
+            <>
+              <ExpandableText
+                body={body}
+                mentions={mentions}
+                organizationMentions={organizationMentions}
+                defaultExpanded={detail}
+                className="break-words whitespace-pre-wrap [overflow-wrap:anywhere] text-[15px] leading-7 text-ink"
               />
+              {postMedia.some((item) => item.signedUrl) ? (
+                <PostMedia
+                  media={postMedia}
+                  authorName={displayName}
+                  flush={flushOnPhones}
+                  loading={loadingPriority ? 'eager' : 'lazy'}
+                  fetchPriority={loadingPriority === 'lead' ? 'high' : undefined}
+                  postId={post.id}
+                  photoTags={post.photoTags}
+                />
+              ) : null}
+              {post.photoTags?.length ? <PhotoTagsLine tags={post.photoTags} /> : null}
+              {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
+            </>
+          )}
+        </div>
+
+        {readOnly ? (
+          <div className="flex items-center justify-between gap-2 border-t border-mist-100 px-4 py-2 sm:px-5">
+            <SharePostButton postId={post.id} authorName={displayName} allowRepost={false} allowSend={false} menuAlign="start" />
+            <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} />
+          </div>
+        ) : (
+          <>
+            {totalReactions > 0 || post.commentCount > 0 ? (
+              <div data-testid="post-counts" className="flex min-h-10 items-center gap-1.5 px-4 text-[13px] text-muted md:hidden">
+                {totalReactions > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setReactionsOpen(true)}
+                    aria-label={`${totalReactions} ${totalReactions === 1 ? 'reaction' : 'reactions'}, see who reacted`}
+                    className="inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+                  >
+                    <span aria-hidden="true" className="inline-flex items-center -space-x-1">
+                      {activeReactions.map((type) => <span key={type} className="text-sm leading-none">{POST_REACTION_META[type].emoji}</span>)}
+                    </span>
+                    <span className="tabular-nums">{totalReactions}</span>
+                  </button>
+                ) : null}
+                {totalReactions > 0 && post.commentCount > 0 ? <span aria-hidden="true">·</span> : null}
+                {post.commentCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setComposerOpen(true)}
+                    className="inline-flex min-h-10 cursor-pointer items-center rounded-lg hover:text-ocean-700 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ocean-500"
+                  >
+                    {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <div
+              role="group"
+              aria-label="Post actions"
+              // No query container on phones: the Repost sheet inside must stay fixed to the screen, not to this row.
+              className="@container flex items-center justify-between gap-2 border-t border-mist-100 px-3 py-2 sm:px-4 max-md:px-1 max-md:py-0.5 max-md:[container-type:normal]"
+            >
+              <div data-testid="post-primary-actions" className="flex min-w-0 items-center gap-1.5 @min-[26rem]:gap-2 max-md:grid max-md:w-full max-md:grid-cols-4 max-md:gap-0">
+                <ReactionPicker value={reaction} disabled={pending} onChange={changeReaction} count={totalReactions} variant="post" />
+                <button
+                  type="button"
+                  onClick={() => setComposerOpen(true)}
+                  aria-label="Comment"
+                  aria-expanded={composerOpen}
+                  aria-controls={`comments-${post.id}`}
+                  title="Comment"
+                  className={POST_ACTION_BUTTON_CLASS}
+                >
+                  <MessageCircle aria-hidden="true" className="size-5" />
+                  <span className={POST_ACTION_LABEL_CLASS}>Comment</span>
+                  {post.commentCount > 0 ? <span data-testid="comment-count" aria-hidden="true" className="tabular-nums max-md:hidden">{post.commentCount}</span> : null}
+                </button>
+                <SharePostButton
+                  postId={post.id}
+                  repostPostId={shareSource.id}
+                  authorName={shareSource.authorName}
+                  source={{ authorName: shareSource.authorName, body: shareSource.body }}
+                  variant="action"
+                  allowRepost={canRepost}
+                  menuAlign="start"
+                  onNotice={setNotice}
+                />
+                <SendPostButton postId={post.id} authorName={displayName} onNotice={setNotice} variant="action" />
+              </div>
+              {/* Phones show the reactions in the counts line above instead. */}
+              <ReactionSummaryTrigger summary={summary} onOpen={() => setReactionsOpen(true)} className="max-md:hidden" />
             </div>
-          ) : null}
+          </>
+        )}
 
-          {post.poll ? <PollCard postId={post.id} poll={post.poll} /> : null}
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-mist-100 px-4 py-2 text-xs text-muted sm:px-5">
-          <span>{likeCount} {likeCount === 1 ? 'like' : 'likes'}</span>
-          <button type="button" onClick={() => setCommentsOpen(true)} className="min-h-9 rounded-lg px-2 hover:bg-mist-50 hover:text-navy-900">
-            {post.commentCount} {post.commentCount === 1 ? 'comment' : 'comments'}
-          </button>
-        </div>
-
-        <div className="grid grid-cols-4 border-t border-mist-100 px-2 py-1 sm:px-3">
-          <button
-            type="button"
-            aria-pressed={liked}
-            disabled={pending}
-            onClick={changeLike}
-            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${liked ? 'text-ocean-700' : 'text-navy-900'}`}
+        {notice ? <PostNotice notice={notice} onDismiss={() => setNotice(null)} /> : null}
+        {previewComment && !composerOpen ? <TopCommentPreview postId={post.id} comment={previewComment} /> : null}
+        {(post.commentCount > 0 || composerOpen) ? (
+          // Phones: the feed shows the one-comment preview above until Comment is tapped.
+          <div className={previewComment && !composerOpen ? 'max-md:hidden' : undefined}>
+            <CommentThread
+              postId={post.id}
+              postAuthorId={post.author.id}
+              comments={post.comments}
+              readOnly={readOnly}
+              composerOpen={composerOpen}
+              expandReplies={detail}
+            />
+          </div>
+        ) : null}
+        <ReactionDetailsModal
+          open={reactionsOpen}
+          targetType="post"
+          targetId={post.id}
+          summary={summary}
+          onClose={() => setReactionsOpen(false)}
+        />
+        {reportOpen ? (
+          <ReportContentButton
+            targetType="post"
+            targetId={post.id}
+            label="Report post"
+            defaultOpen
+            hideTrigger
+            onClose={() => {
+              setReportOpen(false)
+              menuTriggerRef.current?.focus()
+            }}
+          />
+        ) : null}
+        {editOpen ? (
+          <EditPostDialog
+            postId={post.id}
+            postType={post.postType}
+            body={body}
+            mentions={mentions ?? []}
+            organizationMentions={organizationMentions ?? []}
+            publishedAs={displayName}
+            onClose={() => setEditOpen(false)}
+            onSaved={(savedPost, savedOrganizationMentions) => {
+              setEdited({ body: savedPost.body, mentions: savedPost.mentions ?? [], organizationMentions: savedOrganizationMentions })
+              setNotice({ text: 'Your changes are saved.', tone: 'success' })
+            }}
+            returnFocusRef={menuTriggerRef}
+          />
+        ) : null}
+        {confirmGroupRemove && post.group ? (
+          <FeedDialog
+            role="alertdialog"
+            size="sm"
+            title="Remove this post from the group?"
+            description={`It will be removed from ${post.group.name} and the feed for everyone, including ${post.author.fullName}, who wrote it. They can restore it from My Activities › Recently deleted for 30 days.`}
+            onClose={() => { if (!pending) setConfirmGroupRemove(false) }}
+            closeLabel="Keep post"
+            returnFocusRef={menuTriggerRef}
+            initialFocusSelector="[data-autofocus]"
           >
-            <Heart aria-hidden="true" className="size-5" fill={liked ? 'currentColor' : 'none'} />
-            <span className="hidden sm:inline">Like</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setCommentsOpen((value) => !value)}
-            aria-expanded={commentsOpen}
-            aria-controls={`comments-${post.id}`}
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold text-navy-900 hover:bg-mist-50"
+            {deleteError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p> : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" data-autofocus onClick={() => setConfirmGroupRemove(false)} disabled={pending} className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
+                Cancel
+              </button>
+              <button type="button" onClick={removeFromGroup} disabled={pending} className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60">
+                {pending ? 'Removing…' : 'Remove from group'}
+              </button>
+            </div>
+          </FeedDialog>
+        ) : null}
+        {confirmDelete ? (
+          <FeedDialog
+            role="alertdialog"
+            size="sm"
+            title="Delete this post?"
+            description={isOwner
+              ? organization
+                ? `It will be removed from the feed and from ${organization.name}'s page. You can restore it from My Activities › Recently deleted for 30 days.`
+                : 'It will be removed from the feed and your profile. You can restore it from My Activities › Recently deleted for 30 days.'
+              : `It will be removed from the feed and from ${organization?.name ?? 'the organization'}'s page for everyone, including ${post.author.fullName}, who wrote it.`}
+            onClose={() => { if (!pending) setConfirmDelete(false) }}
+            closeLabel="Keep post"
+            returnFocusRef={menuTriggerRef}
+            initialFocusSelector="[data-autofocus]"
           >
-            <MessageCircle aria-hidden="true" className="size-5" />
-            <span className="hidden sm:inline">Comment</span>
-          </button>
-          <SharePostButton postId={post.id} />
-          <button
-            type="button"
-            aria-pressed={saved}
-            disabled={pending}
-            onClick={changeSaved}
-            className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-2 text-sm font-semibold hover:bg-mist-50 ${saved ? 'text-ocean-700' : 'text-navy-900'}`}
-          >
-            <Bookmark aria-hidden="true" className="size-5" fill={saved ? 'currentColor' : 'none'} />
-            <span className="hidden sm:inline">Save</span>
-          </button>
-        </div>
-
-        {error ? <p role="alert" className="mx-4 mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 sm:mx-5">{error}</p> : null}
-        {commentsOpen ? <CommentThread postId={post.id} comments={post.comments} /> : null}
+            {deleteError ? <p role="alert" className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{deleteError}</p> : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" data-autofocus onClick={() => setConfirmDelete(false)} disabled={pending} className="min-h-10 rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-60">
+                Cancel
+              </button>
+              <button type="button" onClick={removePost} disabled={pending} className="min-h-10 rounded-xl bg-red-700 px-4 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60">
+                {pending ? 'Deleting…' : 'Delete post'}
+              </button>
+            </div>
+          </FeedDialog>
+        ) : null}
       </article>
     </Card>
   )

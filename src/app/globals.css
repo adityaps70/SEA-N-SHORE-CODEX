@@ -3,9 +3,26 @@
 :root {
   --navy-950: #071b2d;
   --navy-900: #0b2740;
+  --navy-800: #11314d;
+  --navy-700: #173c5c;
+  --navy-500: #3d5f7d;
+  --navy-300: #86a2ba;
+  --navy-200: #b3c6d6;
+  --navy-100: #d9e3ec;
+  --navy-50: #eef3f7;
+  --ocean-900: #053a51;
+  --ocean-800: #064b68;
   --ocean-700: #075e82;
+  --ocean-600: #09739a;
   --ocean-500: #0c8bb3;
+  --ocean-400: #3aa6c6;
+  --ocean-300: #72c3da;
+  --ocean-200: #a9dcea;
+  --ocean-100: #d5eef5;
+  --ocean-50: #eef8fb;
   --teal-500: #18a99a;
+  --mist-300: #c7d6dc;
+  --mist-200: #dde8ec;
   --mist-100: #edf4f6;
   --mist-50: #f7fafb;
   --verification-gold: #c99332;
@@ -17,11 +34,30 @@
 }
 
 @theme inline {
+  /* Every shade used in the UI must exist here; undefined shades silently render
+     as nothing (audit Sept 2026 found bg-ocean-50, border-mist-200 etc. missing). */
   --color-navy-950: var(--navy-950);
   --color-navy-900: var(--navy-900);
+  --color-navy-800: var(--navy-800);
+  --color-navy-700: var(--navy-700);
+  --color-navy-500: var(--navy-500);
+  --color-navy-300: var(--navy-300);
+  --color-navy-200: var(--navy-200);
+  --color-navy-100: var(--navy-100);
+  --color-navy-50: var(--navy-50);
+  --color-ocean-900: var(--ocean-900);
+  --color-ocean-800: var(--ocean-800);
   --color-ocean-700: var(--ocean-700);
+  --color-ocean-600: var(--ocean-600);
   --color-ocean-500: var(--ocean-500);
+  --color-ocean-400: var(--ocean-400);
+  --color-ocean-300: var(--ocean-300);
+  --color-ocean-200: var(--ocean-200);
+  --color-ocean-100: var(--ocean-100);
+  --color-ocean-50: var(--ocean-50);
   --color-teal-500: var(--teal-500);
+  --color-mist-300: var(--mist-300);
+  --color-mist-200: var(--mist-200);
   --color-mist-100: var(--mist-100);
   --color-mist-50: var(--mist-50);
   --color-verification-gold: var(--verification-gold);
@@ -32,7 +68,59 @@
 * { box-sizing: border-box; }
 html { background: var(--mist-50); color: var(--ink); }
 body { min-height: 100vh; margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
-:focus-visible { outline: 3px solid var(--ocean-700); outline-offset: 3px; }
+
+/* Tailwind v4's preflight gives buttons the default arrow cursor. Every clickable control
+   shows the pointer, and disabled ones show not-allowed. Kept in the base layer so utilities
+   such as cursor-zoom-in still win. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  select:not(:disabled),
+  label[for],
+  label:has(> input[type="checkbox"], > input[type="radio"]),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="range"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  select:disabled,
+  input:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: none !important;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--teal-500) !important;
+}
+
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible,
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible,
+input[type="range"]:focus-visible,
+input[type="file"]:focus-visible {
+  outline: 1px solid var(--teal-500);
+  outline-offset: 2px;
+}
 
 .onboarding-maritime-fields { display: grid; }
 
@@ -47,3 +135,9 @@ body { min-height: 100vh; margin: 0; font-family: Inter, ui-sans-serif, system-u
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Round 8 phone bottom sheets */
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }

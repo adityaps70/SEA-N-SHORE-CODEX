@@ -4,8 +4,6 @@ environment                  = "staging"
 ecr_repository_name          = "sea-n-shore"
 image_tag                    = "REPLACE_WITH_EXISTING_ECR_IMAGE_TAG"
 site_url                     = "https://staging.example.com"
-supabase_url                 = "https://rrxyiwajrzcepyvscidh.supabase.co"
-supabase_publishable_key     = "REPLACE_WITH_CURRENT_PUBLISHABLE_KEY"
 certificate_arn              = ""
 allowed_ingress_cidrs        = ["0.0.0.0/0"]
 task_cpu                     = 512
@@ -13,3 +11,14 @@ task_memory                  = 1024
 desired_count                = 1
 min_capacity                 = 1
 max_capacity                 = 4
+
+aurora_engine_version           = "16.3"
+aurora_min_acu                  = 0
+aurora_max_acu                  = 2
+aurora_auto_pause_seconds       = 900
+enable_google_identity_provider = false
+
+ses_domain               = "seanshore.in"
+ses_from_address         = "no-reply@seanshore.in"
+ses_from_display_name    = "Sea N Shore"
+enable_cognito_ses_email = false

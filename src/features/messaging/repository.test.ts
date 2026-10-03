@@ -1,0 +1,405 @@
+import { describe, expect, it, vi } from 'vitest'
+
+const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
+const TARGET_ID = '22222222-2222-4222-8222-222222222222'
+const CONVERSATION_ID = '44444444-4444-4444-8444-444444444444'
+const MESSAGE_ID = '55555555-5555-4555-8555-555555555555'
+const CLIENT_MESSAGE_ID = '66666666-6666-4666-8666-666666666666'
+
+type QueryCall = [text: string, values?: readonly unknown[]]
+
+function callsOf(query: { mock: { calls: unknown[] } }): QueryCall[] {
+  return query.mock.calls as unknown as QueryCall[]
+}
+
+describe('Aurora messaging repository', () => {
+  it('uses canonical pair ordering for direct-conversation lookup and creation', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: CONVERSATION_ID }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.findDirectConversationByPair(TARGET_ID, VIEWER_ID)
+    await repository.insertDirectConversation(TARGET_ID, VIEWER_ID)
+
+    const [low, high] = [VIEWER_ID, TARGET_ID].sort()
+    expect(query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('direct_user_low_id = $1 and direct_user_high_id = $2'),
+      [low, high],
+    )
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/insert into public\.conversations[\s\S]+conversation_participants/i),
+      [low, high],
+    )
+  })
+
+  it('checks conversation membership with a parameterized participant query', async () => {
+    const query = vi.fn(async () => [{ allowed: true }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.isParticipant(VIEWER_ID, CONVERSATION_ID)).resolves.toBe(true)
+
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('from public.conversation_participants'),
+      [CONVERSATION_ID, VIEWER_ID],
+    )
+  })
+
+  it('resolves the other direct participant and returns null when the actor is not in the pair', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce([{ other_profile_id: TARGET_ID }])
+      .mockResolvedValueOnce([])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(
+      repository.findOtherParticipantId(CONVERSATION_ID, VIEWER_ID),
+    ).resolves.toBe(TARGET_ID)
+    await expect(
+      repository.findOtherParticipantId(CONVERSATION_ID, '99999999-9999-4999-8999-999999999999'),
+    ).resolves.toBeNull()
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('conversation_participants')
+    expect(text).toContain('profile_id <>')
+    expect(values).toEqual([CONVERSATION_ID, VIEWER_ID])
+  })
+
+  it('looks up retry idempotency by sender and client message id', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.findMessageByClientId(VIEWER_ID, CLIENT_MESSAGE_ID)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('from public.messages')
+    expect(String(sql)).toContain('sender_profile_id = $1')
+    expect(String(sql)).toContain('client_message_id = $2')
+    expect(values).toEqual([VIEWER_ID, CLIENT_MESSAGE_ID])
+  })
+
+  it('persists a message with explicit conversation, sender, client id and normalized body', async () => {
+    const query = vi.fn(async () => [{
+      id: MESSAGE_ID,
+      conversation_id: CONVERSATION_ID,
+      sender_profile_id: VIEWER_ID,
+      client_message_id: CLIENT_MESSAGE_ID,
+      body: 'Good day, Captain.',
+      created_at: '2026-09-13T00:01:00.000Z',
+      edited_at: null,
+      deleted_at: null,
+    }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.insertMessage({
+      conversationId: CONVERSATION_ID,
+      senderProfileId: VIEWER_ID,
+      clientMessageId: CLIENT_MESSAGE_ID,
+      body: 'Good day, Captain.',
+    })
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('insert into public.messages')
+    expect(values).toEqual([
+      CONVERSATION_ID,
+      VIEWER_ID,
+      CLIENT_MESSAGE_ID,
+      'Good day, Captain.',
+      null,
+      null,
+      null,
+      null,
+      null,
+    ])
+  })
+
+  it('edits only the message body and stamps edited_at', async () => {
+    const editedAt = '2026-09-13T00:05:59.000Z'
+    const query = vi.fn(async () => [{
+      id: MESSAGE_ID,
+      conversation_id: CONVERSATION_ID,
+      sender_profile_id: VIEWER_ID,
+      client_message_id: CLIENT_MESSAGE_ID,
+      body: 'Updated bridge note.',
+      created_at: '2026-09-13T00:01:00.000Z',
+      edited_at: editedAt,
+      deleted_at: null,
+    }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.editMessageBody(
+      MESSAGE_ID,
+      'Updated bridge note.',
+      editedAt,
+    )).resolves.toMatchObject({
+      id: MESSAGE_ID,
+      body: 'Updated bridge note.',
+      edited_at: editedAt,
+    })
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('update public.messages')
+    expect(text).toContain('body = $2')
+    expect(text).toContain('edited_at = $3::timestamptz')
+    expect(text).toContain('deleted_at is null')
+    expect(values).toEqual([MESSAGE_ID, 'Updated bridge note.', editedAt])
+  })
+
+  it('advances the cached last message by the same created_at/id tuple ordering as thread pagination', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+    const createdAt = '2026-09-13T00:01:00.000Z'
+
+    await repository.updateConversationLastMessage(
+      CONVERSATION_ID,
+      MESSAGE_ID,
+      createdAt,
+    )
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('update public.conversations')
+    expect(text).toContain('last_message_at < $3::timestamptz')
+    expect(text).toContain('last_message_at = $3::timestamptz')
+    expect(text).toContain('last_message_id is null')
+    expect(text).toContain('last_message_id < $2::uuid')
+    expect(values).toEqual([CONVERSATION_ID, MESSAGE_ID, createdAt])
+  })
+
+  it('loads thread history through participant authorization and a stable created_at/id cursor', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.listMessageRows({
+      viewerProfileId: VIEWER_ID,
+      conversationId: CONVERSATION_ID,
+      cursor: {
+        createdAt: '2026-09-13T00:01:00.000Z',
+        id: MESSAGE_ID,
+      },
+      limit: 31,
+    })
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('from public.messages')
+    expect(text).toContain('conversation_participants')
+    expect(text).toContain('m.created_at <')
+    expect(text).toContain('m.created_at =')
+    expect(text).toContain('m.id <')
+    expect(text).toContain('order by m.created_at desc, m.id desc')
+    expect(values).toEqual([
+      CONVERSATION_ID,
+      VIEWER_ID,
+      '2026-09-13T00:01:00.000Z',
+      MESSAGE_ID,
+      31,
+    ])
+  })
+
+  it('uses the requested parameterized limit for realtime catch-up with and without a cursor', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.listMessageRowsAfter({
+      viewerProfileId: VIEWER_ID,
+      conversationId: CONVERSATION_ID,
+      limit: 73,
+    })
+
+    let [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('limit $3')
+    expect(String(sql)).not.toMatch(/\blimit\s+3\b/i)
+    expect(values).toEqual([CONVERSATION_ID, VIEWER_ID, 73])
+
+    query.mockClear()
+    await repository.listMessageRowsAfter({
+      viewerProfileId: VIEWER_ID,
+      conversationId: CONVERSATION_ID,
+      after: {
+        createdAt: '2026-09-13T00:01:00.000Z',
+        id: MESSAGE_ID,
+      },
+      limit: 41,
+    })
+
+    ;[sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql)).toContain('limit $5')
+    expect(String(sql)).not.toMatch(/\blimit\s+5\b/i)
+    expect(values).toEqual([
+      CONVERSATION_ID,
+      VIEWER_ID,
+      '2026-09-13T00:01:00.000Z',
+      MESSAGE_ID,
+      41,
+    ])
+  })
+
+  it('advances read state monotonically instead of allowing an older message to move it backwards', async () => {
+    const query = vi.fn(async () => [{ advanced: true }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.advanceReadState(
+      VIEWER_ID,
+      CONVERSATION_ID,
+      MESSAGE_ID,
+      '2026-09-13T00:01:00.000Z',
+    )).resolves.toBe(true)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('from public.messages')
+    expect(text).toContain('update public.conversation_participants')
+    expect(text).toContain('last_read_message_id = target.id')
+    expect(text).toContain('last_read_at = target.created_at')
+    expect(text).toContain('current_cursor.created_at')
+    expect(text).not.toContain('$4::timestamptz')
+    expect(values).toEqual([
+      CONVERSATION_ID,
+      VIEWER_ID,
+      MESSAGE_ID,
+    ])
+  })
+
+  it('counts unread conversations once regardless of how many unread messages each sender has sent', async () => {
+    const query = vi.fn(async () => [{ count: 3 }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.countUnreadMessages(VIEWER_ID)).resolves.toBe(3)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('count(distinct unread_message.conversation_id)')
+    expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
+    expect(text).toContain('unread_message.deleted_at is null')
+    expect(text).toContain('read_cursor')
+    expect(values).toEqual([VIEWER_ID])
+  })
+
+  it('builds inbox rows only from conversations in which the viewer is a participant', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.listInboxRows(VIEWER_ID, { limit: 30 })
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('conversation_participants')
+    expect(text).toContain('last_message_at')
+    expect(text).toMatch(/last_read_at|last_read_message_id/)
+    expect(text).toContain('order by')
+    expect(values).toEqual([VIEWER_ID, 30])
+  })
+
+  it('finds existing direct conversations with a set of peers, scoped to the viewer as participant', async () => {
+    const query = vi.fn(async () => [{
+      conversation_id: CONVERSATION_ID,
+      peer_profile_id: TARGET_ID,
+      last_message_at: new Date('2026-09-20T10:00:00.000Z'),
+    }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    const result = await repository.listDirectConversationsWithPeers(VIEWER_ID, [TARGET_ID])
+
+    expect(result.get(TARGET_ID)).toEqual({
+      conversationId: CONVERSATION_ID,
+      lastMessageAt: '2026-09-20T10:00:00.000Z',
+    })
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('join public.conversation_participants cp')
+    expect(text).toContain('cp.profile_id = $1')
+    expect(text).toContain('any($2::uuid[])')
+    expect(values).toEqual([VIEWER_ID, [TARGET_ID]])
+
+    query.mockClear()
+    await expect(repository.listDirectConversationsWithPeers(VIEWER_ID, [])).resolves.toEqual(new Map())
+    expect(query).not.toHaveBeenCalled()
+  })
+
+  it('deletes a conversation for one participant only by stamping their own cleared_before marker', async () => {
+    const query = vi.fn()
+      .mockResolvedValueOnce([{ advanced: true }])
+      .mockResolvedValueOnce([])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.clearConversationForParticipant(VIEWER_ID, CONVERSATION_ID)).resolves.toBe(true)
+    await expect(repository.clearConversationForParticipant(TARGET_ID, CONVERSATION_ID)).resolves.toBe(false)
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    const text = String(sql).toLowerCase()
+    expect(text).toContain('update public.conversation_participants')
+    expect(text).toContain('set cleared_before')
+    expect(text).toContain('where conversation_id = $1')
+    expect(text).toContain('and profile_id = $2')
+    // Only the actor's participant row changes; no message is deleted or edited.
+    expect(text).not.toContain('delete from')
+    expect(text).not.toContain('update public.messages')
+    expect(values).toEqual([CONVERSATION_ID, VIEWER_ID])
+  })
+
+  it('hides messages from before the viewer deleted the conversation in history, catch-up and reply previews', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.listMessageRows({ viewerProfileId: VIEWER_ID, conversationId: CONVERSATION_ID, limit: 30 })
+    await repository.listMessageRowsAfter({ viewerProfileId: VIEWER_ID, conversationId: CONVERSATION_ID, limit: 30 })
+
+    for (const [sql, values] of callsOf(query)) {
+      const text = String(sql).toLowerCase()
+      expect(text).toContain('cp.profile_id = $2')
+      expect(text).toContain('cp.cleared_before is null or m.created_at > cp.cleared_before')
+      expect(text).toContain('reply.created_at <= cp.cleared_before')
+      expect(values?.slice(0, 2)).toEqual([CONVERSATION_ID, VIEWER_ID])
+    }
+  })
+
+  it('refuses attachment and reaction access to messages the viewer deleted', async () => {
+    const query = vi.fn(async () => [])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await expect(repository.findMessageAccessibleToParticipant(VIEWER_ID, MESSAGE_ID)).resolves.toBeNull()
+
+    const [sql, values] = callsOf(query)[0] ?? []
+    expect(String(sql).toLowerCase()).toContain('cp.cleared_before is null or m.created_at > cp.cleared_before')
+    expect(values).toEqual([VIEWER_ID, MESSAGE_ID])
+  })
+
+  it('keeps a deleted conversation out of the inbox and unread count until a newer message arrives', async () => {
+    const query = vi.fn(async () => [{ count: 0 }])
+    const { createMessagingRepository } = await import('./repository')
+    const repository = createMessagingRepository({ query })
+
+    await repository.listInboxRows(VIEWER_ID, { limit: 30 })
+    await repository.countUnreadMessages(VIEWER_ID)
+
+    const [inboxSql] = callsOf(query)[0] ?? []
+    const inboxText = String(inboxSql).toLowerCase()
+    expect(inboxText).toContain('mine.cleared_before is null')
+    expect(inboxText).toContain('c.last_message_at > mine.cleared_before')
+    expect(inboxText).toContain('unread_message.created_at > mine.cleared_before')
+    expect(inboxText).toContain('p.slug as other_slug')
+
+    const [countSql] = callsOf(query)[1] ?? []
+    expect(String(countSql).toLowerCase()).toContain('unread_message.created_at > mine.cleared_before')
+  })
+})

@@ -1,0 +1,153 @@
+name: AWS Live Error Diagnostic
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-live-error-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  webkit-sign-in-probe:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 12
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve public site URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SITE="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+          [[ "$SITE" =~ ^https://[a-z0-9.-]+$ ]] || { echo "scripts/aws/public-site-url.txt must hold one https origin." >&2; exit 1; }
+          echo "SITE_URL=$SITE" >> "$GITHUB_ENV"
+          echo "Public site URL: $SITE"
+
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies with known-good npm
+        run: npx -y npm@11.6.0 install --include=dev --no-audit --no-fund --package-lock=false
+
+      - name: Install WebKit
+        run: npx playwright install --with-deps webkit
+
+      - name: Reproduce live sign-in page in WebKit
+        run: |
+          node --input-type=module <<'NODE'
+          import { webkit } from '@playwright/test'
+
+          const siteUrl = process.env.SITE_URL
+          if (!siteUrl) throw new Error('Missing staging variable NEXT_PUBLIC_SITE_URL')
+
+          const browser = await webkit.launch()
+          const context = await browser.newContext()
+          const page = await context.newPage()
+          const diagnostics = []
+
+          page.on('pageerror', (error) => diagnostics.push(`PAGEERROR ${error.name}: ${error.message}`))
+          page.on('console', (message) => {
+            if (message.type() === 'error') diagnostics.push(`CONSOLE_ERROR ${message.text()}`)
+          })
+          page.on('requestfailed', (request) => {
+            diagnostics.push(`REQUEST_FAILED ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ''}`)
+          })
+          page.on('response', (response) => {
+            if (response.status() >= 400) diagnostics.push(`HTTP_${response.status()} ${response.url()}`)
+          })
+
+          const response = await page.goto(`${siteUrl.replace(/\/$/, '')}/auth/sign-in?rev=11`, {
+            waitUntil: 'networkidle',
+            timeout: 60000,
+          })
+
+          console.log(`NAV_STATUS ${response?.status() ?? 'none'}`)
+          console.log(`TITLE ${await page.title()}`)
+          const text = (await page.locator('body').innerText()).replace(/\s+/g, ' ').trim()
+          console.log(`BODY_TEXT ${text.slice(0, 1000)}`)
+
+          for (const line of diagnostics) console.log(line)
+
+          const hasExpectedForm = await page.getByRole('heading', { name: 'Welcome back' }).count()
+          const hasServerError = /This page couldn.?t load|A server error occurred/i.test(text)
+          console.log(`EXPECTED_FORM_COUNT ${hasExpectedForm}`)
+          console.log(`SERVER_ERROR_PAGE ${hasServerError}`)
+
+          await browser.close()
+
+          if (hasExpectedForm !== 1 || hasServerError || diagnostics.some((line) => line.startsWith('PAGEERROR '))) {
+            process.exit(1)
+          }
+          NODE
+
+
+      - name: Trace live Google OAuth click in WebKit
+        run: |
+          node --input-type=module <<'NODE'
+          import { webkit } from '@playwright/test'
+
+          const siteUrl = process.env.SITE_URL
+          if (!siteUrl) throw new Error('Missing public site URL')
+
+          const browser = await webkit.launch()
+          for (const authPage of ['sign-up', 'sign-in']) {
+            const context = await browser.newContext()
+            const page = await context.newPage()
+            const responses = []
+
+            page.on('response', (response) => {
+              if (
+                response.url().includes('/auth/google/')
+                || response.url().includes('amazoncognito.com')
+                || response.url().includes('auth.seanshore.in')
+                || response.url().includes('accounts.google.com')
+              ) {
+                responses.push(`${response.status()} ${response.url()}`)
+              }
+            })
+
+            await page.goto(`${siteUrl.replace(/\/$/, '')}/auth/${authPage}?googleTrace=1`, {
+              waitUntil: 'networkidle',
+              timeout: 60000,
+            })
+
+            const google = page.getByRole('link', { name: /continue with google/i }).first()
+            console.log(`GOOGLE_TRACE_START page=${authPage} href=${await google.getAttribute('href')}`)
+
+            await Promise.all([
+              page.waitForTimeout(1500),
+              google.click(),
+            ])
+
+            await page.waitForTimeout(2500)
+            const finalUrl = page.url()
+            const title = await page.title()
+            const body = (await page.locator('body').innerText().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 1200)
+
+            console.log(`GOOGLE_TRACE_FINAL_URL page=${authPage} url=${finalUrl}`)
+            console.log(`GOOGLE_TRACE_TITLE page=${authPage} title=${title}`)
+            console.log(`GOOGLE_TRACE_BODY page=${authPage} body=${body}`)
+            for (const line of responses) console.log(`GOOGLE_TRACE_RESPONSE page=${authPage} ${line}`)
+
+            if (
+              !finalUrl.includes('accounts.google.com')
+              && !finalUrl.includes('amazoncognito.com')
+              && !finalUrl.includes('auth.seanshore.in')
+            ) {
+              console.error(`Google OAuth did not reach Google/Cognito from ${authPage}.`)
+              process.exitCode = 1
+            }
+
+            await context.close()
+          }
+          await browser.close()
+          NODE

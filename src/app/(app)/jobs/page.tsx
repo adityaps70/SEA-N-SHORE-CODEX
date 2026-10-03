@@ -1,53 +1,120 @@
-import { Anchor, BriefcaseBusiness, Building2, Compass, FileCheck2, Sparkles } from 'lucide-react'
-import { ProductSurface } from '@/components/product/product-surface'
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import { BellRing, BriefcaseBusiness, ChevronRight, Search } from 'lucide-react'
+import { PremiumPageHero } from '@/components/product/premium-page-hero'
+import { JobCard } from '@/features/jobs/components/job-card'
+import { JobListRow, JobRowList } from '@/features/jobs/components/job-list-row'
+import { JobsDiscoveryControls } from '@/features/jobs/components/jobs-discovery-controls'
+import { JobsMobileToolbar } from '@/features/jobs/components/jobs-mobile-toolbar'
+import { JobsSubnav } from '@/features/jobs/components/jobs-subnav'
+import { JOB_DISCOVERY_MODES } from '@/features/jobs/catalog'
+import { getJobsDiscovery } from '@/features/jobs/queries'
 
-const items = [
-  {
-    title: 'Sailing opportunities',
-    description: 'Discover roles shaped around rank, vessel type, contract, joining window, certification and sea-time requirements.',
-    meta: 'At sea',
-    icon: Anchor,
-  },
-  {
-    title: 'Shore career pathways',
-    description: 'Translate sailing experience into superintendent, vetting, operations, training, survey and commercial career directions.',
-    meta: 'Career transition',
-    icon: Compass,
-  },
-  {
-    title: 'Company hiring desks',
-    description: 'A dedicated recruiter workflow for maritime companies to publish roles, review candidates and manage applications.',
-    meta: 'Recruitment',
-    icon: Building2,
-  },
-  {
-    title: 'Application workspace',
-    description: 'Keep saved jobs and applications in one professional workspace with clear status and next-action visibility.',
-    meta: 'Candidate',
-    icon: BriefcaseBusiness,
-  },
-  {
-    title: 'Credential-aware matching',
-    description: 'Match opportunity requirements against professional profile data instead of relying on keyword-only job search.',
-    meta: 'Profile intelligence',
-    icon: FileCheck2,
-  },
-  {
-    title: 'Career recommendations',
-    description: 'Use rank, vessel experience and professional interests to surface relevant maritime roles and skill gaps.',
-    meta: 'AI-ready',
-    icon: Sparkles,
-  },
-]
+export const metadata: Metadata = { title: 'Jobs' }
 
-export default function JobsPage() {
+type RawParams = Record<string, string | string[] | undefined>
+
+function serialize(params: RawParams) {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (Array.isArray(value)) value.forEach((item) => query.append(key, item))
+    else if (value) query.set(key, value)
+  })
+  return query.toString()
+}
+
+export default async function JobsPage({ searchParams }: { searchParams: Promise<RawParams> }) {
+  const rawParams = await searchParams
+  const discovery = await getJobsDiscovery(rawParams)
+  const { filters, items, profileReady } = discovery
+  const alertQuery = serialize(rawParams) || 'mode=for-you'
+  const activeFilterCount = [filters.ranks.length, filters.vesselTypes.length, filters.regions.length, filters.certificates.length, filters.visas.length, filters.minExperienceYears !== null ? 1 : 0, filters.joiningWithinDays !== null ? 1 : 0, filters.salaryMin !== null ? 1 : 0, filters.verifiedOnly ? 1 : 0, filters.urgentOnly ? 1 : 0, filters.easyApplyOnly ? 1 : 0].reduce((sum, value) => sum + value, 0)
+  const hasSearchConstraints = Boolean(filters.query || activeFilterCount || filters.mode !== 'for-you')
+  const sortLabel = filters.sort === 'recommended'
+    ? 'Recommended'
+    : filters.sort === 'recent'
+      ? 'Newest'
+      : filters.sort === 'joining'
+        ? 'Joining soonest'
+        : 'Highest salary'
+  const sortCaption = filters.sort === 'recommended'
+    ? 'Recommended for you using your maritime profile when available.'
+    : filters.sort === 'recent'
+      ? 'Newest opportunities first, based on published date.'
+      : filters.sort === 'joining'
+        ? 'Roles with the nearest joining windows first.'
+        : 'Roles ordered by the strongest advertised salary first.'
+
   return (
-    <ProductSurface
-      eyebrow="Sea N Shore Jobs"
-      title="Maritime opportunities, built around your real experience."
-      description="A recruitment ecosystem designed to understand rank, vessel type, experience and career direction — for both sailing and shore opportunities."
-      note="The professional profile is already the identity foundation. Job posting, applications and matching will connect to that same record rather than creating a separate job-portal identity."
-      items={items}
-    />
+    <section className="pb-2 pt-0 md:py-5">
+      <JobsMobileToolbar filters={filters} resultCount={items.length} />
+
+      <PremiumPageHero
+        className="max-md:hidden"
+        eyebrow="Sea N Shore Jobs Intelligence"
+        title="Find your next sea or shore role"
+        description="Every listing shows how well it matches your rank, experience, vessels and certificates."
+      >
+        <form action="/jobs" method="get" role="search" className="mt-4 grid gap-2 rounded-2xl bg-white p-2 sm:grid-cols-[1fr_180px_auto]">
+          <input type="hidden" name="mode" value={filters.mode} />
+          <input type="hidden" name="sort" value={filters.sort} />
+          <label className="relative block">
+            <span className="sr-only">Search maritime jobs</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+            <input name="q" type="search" defaultValue={filters.query} maxLength={120} placeholder="Position, rank, company or keyword" className="min-h-12 w-full rounded-xl bg-mist-50 py-3 pl-10 pr-3 text-sm text-ink outline-none focus:ring-1 focus:ring-teal-200" />
+          </label>
+          <input name="region" defaultValue={filters.regions[0] ?? ''} placeholder="Region / location" className="min-h-12 rounded-xl bg-mist-50 px-3 text-sm text-ink outline-none focus:ring-1 focus:ring-teal-200" />
+          <button type="submit" className="min-h-12 rounded-xl bg-teal-400 px-6 text-sm font-bold text-navy-950 hover:bg-teal-300">Search jobs</button>
+        </form>
+      </PremiumPageHero>
+
+      <JobsSubnav active="discover" className="max-md:hidden" />
+
+      <div className="mt-4 flex gap-2 overflow-x-auto pb-1 max-md:hidden">
+        {JOB_DISCOVERY_MODES.map((mode) => <Link key={mode.value} href={`/jobs?mode=${mode.value}`} className={filters.mode === mode.value ? 'shrink-0 rounded-full bg-navy-950 px-4 py-2 text-sm font-semibold text-white' : 'shrink-0 rounded-full border border-mist-200 bg-white px-4 py-2 text-sm font-semibold text-navy-950 hover:bg-mist-50'}>{mode.label}</Link>)}
+      </div>
+
+      {!profileReady ? <div className="mt-4 rounded-2xl max-md:mt-2 border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"><strong>Complete your Maritime Passport for smarter recommendations.</strong> Your job search still works, but match scores become useful once rank, vessel experience and credentials are available. <Link href="/profile" className="font-semibold underline hover:text-amber-950 hover:decoration-2">Complete profile</Link></div> : null}
+
+      <div className="mt-5 grid gap-5 max-md:mt-2 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <JobsDiscoveryControls filters={filters} resultCount={items.length} className="max-md:hidden" />
+
+        <div className="min-w-0">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 max-md:mb-0 max-md:-mx-4 max-md:flex-nowrap max-md:border-t max-md:border-mist-100 max-md:bg-white max-md:px-4 max-md:pt-4">
+            <div className="min-w-0">
+              <h2 className="text-lg font-bold text-navy-950 md:hidden">{filters.mode === 'for-you' ? 'Top picks for you' : 'Jobs for you'}</h2>
+              <p className="text-sm font-semibold text-navy-950 max-md:text-[13px] max-md:font-normal max-md:text-muted">{items.length} matching opportunit{items.length === 1 ? 'y' : 'ies'}<span className="md:hidden"> · {sortLabel}</span></p>
+              <p className="mt-0.5 text-xs font-semibold text-navy-700 max-md:hidden">Sort by: {sortLabel}</p>
+              <p className="mt-0.5 text-xs text-muted max-md:hidden">{sortCaption}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2"><Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-950 hover:bg-mist-50 max-md:min-h-11 max-md:rounded-full max-md:border-0 max-md:px-2 max-md:text-ocean-700"><BellRing aria-hidden="true" className="size-4" />Create alert</Link></div>
+          </div>
+          {items.length ? (
+            <>
+              <div className="-mx-4 bg-white md:hidden">
+                <JobRowList label="Jobs">
+                  {items.map(({ job, match, isSaved, alreadyApplied }) => <JobListRow key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}
+                </JobRowList>
+              </div>
+              <div className="grid gap-4 max-md:hidden xl:grid-cols-2">{items.map(({ job, match, isSaved, alreadyApplied }) => <JobCard key={job.id} job={job} match={match} isSaved={isSaved} alreadyApplied={alreadyApplied} />)}</div>
+            </>
+          ) : (
+            <div className="rounded-[1.5rem] border border-dashed border-mist-100 bg-white px-6 py-12 text-center">
+              <BriefcaseBusiness aria-hidden="true" className="mx-auto size-6 text-muted" />
+              <p className="mt-3 font-semibold text-navy-950">{hasSearchConstraints ? 'No roles match these filters yet.' : 'No maritime roles are live yet.'}</p>
+              <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">{hasSearchConstraints ? 'Try widening the rank, vessel, joining-date or salary requirements—or clear filters to see more opportunities.' : 'New verified maritime opportunities will appear here as employers publish them.'}</p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                {hasSearchConstraints ? <Link href="/jobs?mode=for-you" className="inline-flex min-h-10 items-center rounded-xl border border-mist-200 px-4 text-sm font-semibold text-navy-950 hover:border-ocean-300 hover:bg-mist-50 transition-colors">Clear all filters</Link> : null}
+                <Link href={`/jobs/alerts?${alertQuery}`} className="inline-flex min-h-10 items-center rounded-xl bg-navy-950 px-4 text-sm font-semibold text-white hover:bg-navy-800 transition-colors">Create job alert</Link>
+              </div>
+            </div>
+          )}
+          <Link href="/hiring" className="-mx-4 mt-2 flex min-h-14 items-center gap-3 border-y border-mist-100 bg-white px-4 text-[15px] text-navy-950 hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ocean-500 md:hidden">
+            <BriefcaseBusiness aria-hidden="true" className="size-5 shrink-0" />
+            <span className="min-w-0 flex-1"><strong className="font-semibold">Hiring?</strong> Post or manage jobs</span>
+            <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted" />
+          </Link>
+        </div>
+      </div>
+    </section>
   )
 }

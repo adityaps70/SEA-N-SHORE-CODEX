@@ -9,3 +9,18 @@ test-results/
 coverage/
 tsconfig.tsbuildinfo
 .DS_Store
+
+# Terraform local state, plans, generated plan JSON, and local variables
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/tfplan
+infra/aws/**/plan*.json
+**/terraform.tfvars
+**/terraform.tfvars.json
+crash.log
+crash.*.log
+
+# Local migration evidence; upload backups to the dedicated private S3 bucket instead
+artifacts/migration/

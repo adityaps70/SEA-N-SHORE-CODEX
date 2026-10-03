@@ -1,88 +1,138 @@
 'use server'
 
-import { redirect } from 'next/navigation'
-import { z } from 'zod'
-import { publicEnvironment } from '@/lib/env'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
-import { resetPasswordSchema, signInSchema, signUpSchema } from './schemas'
+import { cookies } from 'next/headers'
+import { redirect as nextRedirect } from 'next/navigation'
+import { createCognitoApi } from '@/lib/auth/cognito-api'
+import { createCognitoLogoutUrl } from '@/lib/auth/cognito-oauth'
+import { AFTER_SIGN_OUT_COOKIE, AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS } from '@/lib/auth/after-sign-out'
+import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
+import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
+import { createCognitoAuthActions } from './cognito-actions'
+import { createPhoneAuthActions, type PhoneAuthActionState } from './phone-auth-actions'
+import { createPhoneAuthAdmin } from './phone-auth-admin'
+import { createPhoneAuthActionHandlers } from './phone-action-handlers'
 
-export type AuthActionState = { error?: string; message?: string }
+export type { AuthActionState } from './action-handlers'
 
-const existingAccountErrorCodes = new Set(['email_exists', 'user_already_exists', 'identity_already_exists'])
-const signupSuccessState = { message: 'Check your email to continue.' }
+type CognitoActions = ReturnType<typeof createCognitoAuthActions>
 
-export async function signUp(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const parsed = signUpSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check your details.' }
-
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase.auth.signUp({
-    email: parsed.data.email,
-    password: parsed.data.password,
-    options: {
-      data: { full_name: parsed.data.fullName },
-      emailRedirectTo: `${publicEnvironment.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/onboarding`,
-    },
+async function getProductionActions(): Promise<CognitoActions> {
+  const cookieStore = await cookies()
+  const environment = getCognitoEnvironment()
+  const api = createCognitoApi({
+    region: environment.AWS_COGNITO_REGION,
+    clientId: environment.AWS_COGNITO_CLIENT_ID,
   })
 
-  if (!error || existingAccountErrorCodes.has(error.code ?? '')) return signupSuccessState
-  return { error: 'We could not create your account. Please try again.' }
-}
-
-export async function signIn(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const parsed = signInSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return { error: 'Enter a valid email and password.' }
-
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase.auth.signInWithPassword(parsed.data)
-  if (error) return { error: 'Email or password is incorrect.' }
-
-  const { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('onboarding_completed_at')
-    .eq('id', data.user.id)
-    .maybeSingle()
-
-  if (profileError) return { error: 'We could not finish signing you in. Please try again.' }
-  redirect(profile?.onboarding_completed_at ? '/home' : '/onboarding')
-}
-
-export async function signInWithGoogle() {
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: `${publicEnvironment.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/onboarding` },
+  return createCognitoAuthActions({
+    api,
+    cookieStore: cookieStore as unknown as Parameters<typeof createCognitoAuthActions>[0]['cookieStore'],
+    siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+    allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
   })
-  if (error || !data.url) redirect('/auth/sign-in?error=oauth')
-  redirect(data.url)
 }
 
-export async function requestPasswordReset(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const parsed = resetPasswordSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return { error: 'Enter a valid email address.' }
+const handlers = createAuthActionHandlers({
+  getActions: getProductionActions,
+  redirect: nextRedirect,
+  getSignOutDestination: () => {
+    const environment = getCognitoEnvironment()
+    if (!environment.AWS_COGNITO_DOMAIN) return '/'
+    return createCognitoLogoutUrl({
+      domain: environment.AWS_COGNITO_DOMAIN,
+      clientId: environment.AWS_COGNITO_CLIENT_ID,
+      siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+    })
+  },
+})
 
-  const supabase = await createServerSupabaseClient()
-  await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: `${publicEnvironment.NEXT_PUBLIC_SITE_URL}/auth/callback?next=/auth/update-password`,
+async function getProductionPhoneActions() {
+  const cookieStore = await cookies()
+  const environment = getCognitoEnvironment()
+  const api = createCognitoApi({
+    region: environment.AWS_COGNITO_REGION,
+    clientId: environment.AWS_COGNITO_CLIENT_ID,
   })
-  return { message: 'If the account exists, a reset link is on its way.' }
+  const admin = createPhoneAuthAdmin({
+    userPoolId: environment.AWS_COGNITO_USER_POOL_ID,
+    region: environment.AWS_COGNITO_REGION,
+  })
+
+  return createPhoneAuthActions({
+    api,
+    admin,
+    cookieStore: cookieStore as unknown as Parameters<typeof createPhoneAuthActions>[0]['cookieStore'],
+    siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+    allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+  })
 }
 
-export async function updatePassword(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const password = formData.get('password')
-  const passwordConfirmation = formData.get('passwordConfirmation')
-  const parsed = z.string().min(12).max(72).safeParse(password)
-  if (!parsed.success) return { error: 'Use at least 12 characters.' }
-  if (password !== passwordConfirmation) return { error: 'Passwords do not match.' }
+const phoneHandlers = createPhoneAuthActionHandlers({
+  getActions: getProductionPhoneActions,
+  redirect: nextRedirect,
+})
 
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase.auth.updateUser({ password: parsed.data })
-  if (error) return { error: 'The password could not be updated. Request a new reset link.' }
-  redirect('/home')
+export async function signIn(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.signIn(state, formData)
 }
 
-export async function signOut() {
-  const supabase = await createServerSupabaseClient()
-  await supabase.auth.signOut()
-  redirect('/')
+export async function signUp(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.signUp(state, formData)
+}
+
+export async function confirmSignUp(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.confirmSignUp(state, formData)
+}
+
+export async function resendConfirmationCode(formData: FormData): Promise<void> {
+  const actions = await getProductionActions()
+  const email = String(formData.get('email') ?? '').trim().toLowerCase()
+  const result = await actions.resendConfirmationCode({}, formData)
+  const params = new URLSearchParams({ confirm: '1', email })
+  if (result.message === 'Confirmation code sent.') params.set('resent', '1')
+  else params.set('resendError', '1')
+  nextRedirect(`/auth/sign-up?${params.toString()}`)
+}
+
+export async function requestPasswordReset(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.requestPasswordReset(state, formData)
+}
+
+export async function updatePassword(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return handlers.updatePassword(state, formData)
+}
+
+export async function signOut(): Promise<void> {
+  return handlers.signOut()
+}
+
+/**
+ * Onboarding's "Not you? Use a different email": signs out like `signOut`, then the proxy sends
+ * the site root (Cognito's only allowed logout return) on to sign-up.
+ */
+export async function signOutToSignUp(): Promise<void> {
+  const cookieStore = await cookies()
+  cookieStore.set(AFTER_SIGN_OUT_COOKIE, '/auth/sign-up', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: !getCognitoEnvironment().AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    path: '/',
+    maxAge: AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS,
+  })
+  return handlers.signOut()
+}
+
+
+export async function requestPhoneOtp(
+  state: PhoneAuthActionState,
+  formData: FormData,
+): Promise<PhoneAuthActionState> {
+  return phoneHandlers.requestOtp(state, formData)
+}
+
+export async function confirmPhoneOtp(
+  state: PhoneAuthActionState,
+  formData: FormData,
+): Promise<PhoneAuthActionState> {
+  return phoneHandlers.confirmOtp(state, formData)
 }

@@ -1,0 +1,129 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import test from 'node:test'
+
+const workflowPath = '.github/workflows/aws-staging-deploy.yml'
+const actionPath = 'scripts/aws/staging-deploy-action.txt'
+
+test('staging deploy supports an explicit exact-head push trigger without weakening manual dispatch', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const action = readFileSync(actionPath, 'utf8').trim()
+
+  assert.ok(['plan', 'deploy-once'].includes(action), `Unexpected staging deploy action: ${action}`)
+  assert.match(workflow, /workflow_dispatch:/)
+  assert.match(workflow, /push:\s*\n\s*branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
+  assert.match(workflow, /scripts\/aws\/staging-deploy-action\.txt/)
+  assert.match(workflow, /scripts\/aws\/staging-deploy-guard\.test\.mjs/)
+  assert.match(workflow, /environment:\s*staging/)
+  assert.match(workflow, /actions:\s*read/)
+  assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+  assert.match(workflow, /Exact-head AWS Infrastructure CI is not green/)
+  assert.match(workflow, /STAGING_DEPLOY_ACTION/)
+  assert.match(workflow, /deploy-once/)
+  assert.match(workflow, /DEPLOY_TO_ECS/)
+  assert.match(workflow, /IMAGE_TAG="\$\{GITHUB_SHA\}-\$\{GITHUB_RUN_ID\}"/)
+})
+
+test('staging deploy builds with the exact canonical and CloudFront Server Action origins and the repository site URL', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const siteUrl = readFileSync('scripts/aws/public-site-url.txt', 'utf8').trim()
+
+  assert.match(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*https:\/\/seanshore\.in,https:\/\/d3prih0q6jofyr\.cloudfront\.net/)
+  assert.match(workflow, /--build-arg SERVER_ACTION_ALLOWED_ORIGINS="\$SERVER_ACTION_ALLOWED_ORIGINS"/)
+  assert.match(workflow, /--build-arg NEXT_PUBLIC_SITE_URL="\$NEXT_PUBLIC_SITE_URL"/)
+  assert.doesNotMatch(workflow, /SERVER_ACTION_ALLOWED_ORIGINS:\s*['"]?\*/)
+  assert.doesNotMatch(workflow, /vars\.NEXT_PUBLIC_SITE_URL/)
+  assert.match(workflow, /Resolve public site URL/)
+  assert.match(workflow, /scripts\/aws\/public-site-url\.txt/)
+  assert.match(workflow, /echo "NEXT_PUBLIC_SITE_URL=\$SITE" >> "\$GITHUB_ENV"/)
+  assert.ok(['https://seanshore.in', 'https://d3prih0q6jofyr.cloudfront.net'].includes(siteUrl), `Unexpected public site URL: ${siteUrl}`)
+})
+
+test('staging deploy verifies exact completed service revision and its immutable task-definition image without ListTasks permission', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /Verify exact ECS deployment/)
+  assert.match(workflow, /describe-services/)
+  assert.doesNotMatch(workflow, /aws ecs list-tasks/)
+  assert.doesNotMatch(workflow, /aws ecs describe-tasks/)
+  assert.match(workflow, /aws ecs describe-task-definition/)
+  assert.match(workflow, /NEW_TASK_ARN/)
+  assert.match(workflow, /steps\.image\.outputs\.uri/)
+  assert.match(workflow, /EXPECTED_IMAGE_URI/)
+  assert.match(workflow, /DEPLOYMENT_COUNT/)
+  assert.match(workflow, /PRIMARY_TASK_ARN/)
+  assert.match(workflow, /PRIMARY_ROLLOUT_STATE/)
+  assert.match(workflow, /COMPLETED/)
+  assert.match(workflow, /failedTasks/)
+  assert.match(workflow, /TASK_DEF_IMAGE/)
+  assert.match(workflow, /desiredCount/)
+  assert.match(workflow, /runningCount/)
+})
+
+test('staging web deployment verification supports the configured service scale instead of hardcoding one task', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /DESIRED_COUNT" -ge 1/)
+  assert.match(workflow, /RUNNING_COUNT" -eq "\$DESIRED_COUNT"/)
+  assert.match(workflow, /PRIMARY_DESIRED_COUNT" -eq "\$DESIRED_COUNT"/)
+  assert.match(workflow, /PRIMARY_RUNNING_COUNT" -eq "\$DESIRED_COUNT"/)
+})
+
+test('staging deploy waits for ECS rolloutState COMPLETED before exact verification', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /for attempt in \$\(seq 1 30\)/)
+  assert.match(workflow, /PRIMARY_ROLLOUT_STATE/)
+  assert.match(workflow, /sleep 5/)
+  assert.match(workflow, /Timed out waiting for exact ECS deployment completion/)
+})
+
+test('staging image verification uses docker push digest evidence without requiring ecr DescribeImages permission', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.doesNotMatch(workflow, /aws ecr describe-images/)
+  assert.match(workflow, /PUSH_OUTPUT=.*docker push/)
+  assert.match(workflow, /IMAGE_DIGEST/)
+  assert.match(workflow, /sha256:\[0-9a-f\]\{64\}/)
+  assert.match(workflow, /digest=\$IMAGE_DIGEST/)
+})
+
+test('one-shot staging deploy applies and verifies only the restricted browser PUT CORS rule on the media bucket', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /Apply restricted browser PUT CORS to media bucket/)
+  assert.match(workflow, /aws s3api put-bucket-cors/)
+  assert.match(workflow, /--bucket "\$AWS_MEDIA_BUCKET"/)
+  assert.match(workflow, /"AllowedMethods":\["PUT"\]/)
+  assert.match(workflow, /"AllowedOrigins":\(\$origins\|split\(","\)\)/)
+  assert.match(workflow, /AllowedOrigins == \(\$origins\|split\(","\)\)/)
+  assert.match(workflow, /"AllowedHeaders":\["Content-Type"\]/)
+  assert.match(workflow, /"MaxAgeSeconds":300/)
+  assert.match(workflow, /aws s3api get-bucket-cors/)
+  assert.match(workflow, /MEDIA_CORS_VERIFIED=true/)
+  assert.doesNotMatch(workflow, /"AllowedOrigins":\["\*"\]/)
+  assert.doesNotMatch(workflow, /"AllowedHeaders":\["\*"\]/)
+})
+
+
+
+test('staging deploy promotes outbox and notification workers with the same immutable image', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+
+  assert.match(workflow, /OUTBOX_WORKER_SERVICE:\s*sea-n-shore-staging-outbox-worker/)
+  assert.match(workflow, /NOTIFICATION_WORKER_SERVICE:\s*sea-n-shore-staging-notification-worker/)
+  assert.match(workflow, /OUTBOX_WORKER_TASK_DEFINITION:\s*sea-n-shore-staging-outbox-worker/)
+  assert.match(workflow, /NOTIFICATION_WORKER_TASK_DEFINITION:\s*sea-n-shore-staging-notification-worker/)
+  assert.match(workflow, /Promote event worker task definitions/)
+  assert.match(workflow, /Deploy event workers and wait for stability/)
+  assert.match(workflow, /Verify exact event worker deployments/)
+  assert.match(workflow, /steps\.image\.outputs\.uri/)
+  assert.match(workflow, /outbox-worker/)
+  assert.match(workflow, /notification-worker/)
+  assert.match(workflow, /WORKER_EXPECTED_IMAGE_URI/)
+  assert.match(workflow, /rolloutState/)
+  assert.match(workflow, /COMPLETED/)
+  assert.match(workflow, /desiredCount/)
+  assert.match(workflow, /runningCount/)
+  assert.match(workflow, /pendingCount/)
+})

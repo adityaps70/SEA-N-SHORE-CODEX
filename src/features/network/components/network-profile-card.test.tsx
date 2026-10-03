@@ -1,10 +1,20 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { NetworkProfile } from '../types'
 import { NetworkProfileCard } from './network-profile-card'
 
-vi.mock('./relationship-controls', () => ({
-  RelationshipControls: () => <div>Relationship actions</div>,
+vi.mock('./connection-primary-action', () => ({
+  ConnectionPrimaryAction: () => <button type="button">Connect</button>,
+}))
+vi.mock('./person-card-actions', () => ({
+  PersonCardActions: ({ slug, layout }: { slug: string; layout?: string }) => <div data-testid="person-card-actions" data-slug={slug} data-layout={layout ?? 'card'}>Full actions</div>,
+}))
+
+vi.mock('@/features/messaging/components/start-conversation-button', () => ({
+  StartConversationButton: ({ targetProfileId }: { targetProfileId: string }) => (
+    <button type="button" data-testid="message-cta">Message {targetProfileId}</button>
+  ),
 }))
 
 const profile: NetworkProfile = {
@@ -28,17 +38,48 @@ const profile: NetworkProfile = {
   relationship: { following: false, connection: { kind: 'none', connectionId: null } },
 }
 
+afterEach(() => cleanup())
+
 describe('NetworkProfileCard', () => {
-  it('shows real maritime profile context and actions', () => {
+  it('uses a LinkedIn-style suggested-person card while keeping Sea N Shore styling', async () => {
+    const user = userEvent.setup()
     render(<NetworkProfileCard profile={profile} />)
     expect(screen.getByText('Capt. Meera Nair')).toBeInTheDocument()
     expect(screen.getByText('Master Mariner | Tanker Operations')).toBeInTheDocument()
-    expect(screen.getByText('Mumbai, India')).toBeInTheDocument()
     expect(screen.getByText(/Master · Ocean Example/)).toBeInTheDocument()
-    expect(screen.getByText('SIRE 2.0')).toBeInTheDocument()
-    expect(screen.getByText('+1')).toBeInTheDocument()
-    expect(screen.getByText('Relationship actions')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /View professional profile/i })).toHaveAttribute('href', '/people/capt-meera-nair')
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /dismiss capt\. meera nair suggestion/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Capt. Meera Nair' })).toHaveAttribute('href', '/people/capt-meera-nair')
     expect(screen.queryByText(/Verified|Reputation/i)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /dismiss capt\. meera nair suggestion/i }))
+    expect(screen.queryByText('Capt. Meera Nair')).not.toBeInTheDocument()
+  })
+
+  it('keeps the primary relationship action surface available for connected profiles', () => {
+    const connectedProfile: NetworkProfile = {
+      ...profile,
+      relationship: {
+        following: false,
+        connection: {
+          kind: 'connected',
+          connectionId: '33333333-3333-4333-8333-333333333333',
+        },
+      },
+    }
+
+    render(<NetworkProfileCard profile={connectedProfile} />)
+
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
+  })
+
+  it('renders the full network action set for search results', () => {
+    render(<NetworkProfileCard profile={profile} actions="full" />)
+    expect(screen.getByTestId('person-card-actions')).toHaveAttribute('data-slug', 'capt-meera-nair')
+    expect(screen.queryByRole('button', { name: 'Connect' })).not.toBeInTheDocument()
+    // Headline, rank · organization and location, like the network cards.
+    expect(screen.getByText('Master Mariner | Tanker Operations')).toBeInTheDocument()
+    expect(screen.getByText(/Master · Ocean Example/)).toBeInTheDocument()
+    expect(screen.getByText('Mumbai, India')).toBeInTheDocument()
   })
 })

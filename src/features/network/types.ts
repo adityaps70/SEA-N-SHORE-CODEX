@@ -4,6 +4,9 @@ export const NETWORK_TABS = ['discover', 'connections', 'requests', 'following']
 
 export type NetworkTab = (typeof NETWORK_TABS)[number]
 
+export const NETWORK_FOLLOW_VIEWS = ['following', 'followers'] as const
+export type NetworkFollowView = (typeof NETWORK_FOLLOW_VIEWS)[number]
+
 export type ConnectionRelationship =
   | { kind: 'none'; connectionId: null }
   | { kind: 'incoming_pending'; connectionId: string }
@@ -17,6 +20,7 @@ export type RelationshipState = {
 
 export type NetworkProfile = PublicProfile & {
   relationship: RelationshipState
+  relationshipSince?: string | null
 }
 
 export type NetworkConnectionRow = {
@@ -35,4 +39,6 @@ export type NetworkHubData = {
   receivedRequests: NetworkProfile[]
   sentRequests: NetworkProfile[]
   incomingRequestCount: number
+  totalCount: number
+  followView?: NetworkFollowView
 }

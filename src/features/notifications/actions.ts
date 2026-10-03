@@ -2,10 +2,19 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { requireUser } from '@/features/auth/queries'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { userFacingError } from '@/lib/errors/user-messages'
+import { getNotificationChrome, getNotifications } from './queries'
+import {
+  deleteNotificationInAurora,
+  markAllNotificationsReadInAurora,
+  markNotificationReadInAurora,
+} from './repository'
+import type { NetworkNotification, NotificationChrome } from './types'
 
 export type NotificationActionResult = { ok: true } | { ok: false; error: string }
+export type NotificationChromeResult = { ok: true; chrome: NotificationChrome } | { ok: false; error: string }
+export type NotificationsResult = { ok: true; notifications: NetworkNotification[] } | { ok: false; error: string }
 
 const notificationIdSchema = z.string().uuid()
 
@@ -15,33 +24,63 @@ function revalidateNotificationSurfaces() {
   revalidatePath('/network')
 }
 
+export async function loadNotificationChrome(): Promise<NotificationChromeResult> {
+  try {
+    return { ok: true, chrome: await getNotificationChrome() }
+  } catch {
+    return { ok: false, error: 'We could not refresh your notifications. They will update again shortly.' }
+  }
+}
+
+export async function loadNotifications(): Promise<NotificationsResult> {
+  try {
+    return { ok: true, notifications: await getNotifications() }
+  } catch {
+    return { ok: false, error: 'We could not refresh your notifications.' }
+  }
+}
+
 export async function markNotificationRead(id: string): Promise<NotificationActionResult> {
   const parsed = notificationIdSchema.safeParse(id)
   if (!parsed.success) return { ok: false, error: 'Invalid notification.' }
 
-  const user = await requireUser()
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase
-    .from('notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('id', parsed.data)
-    .eq('recipient_id', user.id)
+  try {
+    const user = await requireAwsUser()
+    const updated = await markNotificationReadInAurora(user.id, parsed.data)
+    if (!updated) return { ok: false, error: 'This notification is no longer available. Refresh the page to see your latest notifications.' }
+  } catch (error) {
+    return { ok: false, error: userFacingError(error, 'We could not update this notification. Please try again.') }
+  }
 
-  if (error) return { ok: false, error: 'We could not update this notification.' }
   revalidateNotificationSurfaces()
   return { ok: true }
 }
 
 export async function markAllNotificationsRead(): Promise<NotificationActionResult> {
-  const user = await requireUser()
-  const supabase = await createServerSupabaseClient()
-  const { error } = await supabase
-    .from('notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('recipient_id', user.id)
-    .is('read_at', null)
+  try {
+    const user = await requireAwsUser()
+    await markAllNotificationsReadInAurora(user.id)
+  } catch (error) {
+    return { ok: false, error: userFacingError(error, 'We could not mark your notifications as read. Please try again.') }
+  }
 
-  if (error) return { ok: false, error: 'We could not mark your notifications as read.' }
+  revalidateNotificationSurfaces()
+  return { ok: true }
+}
+
+/** Deletes one of the signed-in member's own notifications (the phone row "…" sheet). */
+export async function deleteNotification(id: string): Promise<NotificationActionResult> {
+  const parsed = notificationIdSchema.safeParse(id)
+  if (!parsed.success) return { ok: false, error: 'Invalid notification.' }
+
+  try {
+    const user = await requireAwsUser()
+    const deleted = await deleteNotificationInAurora(user.id, parsed.data)
+    if (!deleted) return { ok: false, error: 'This notification is no longer available. Refresh the page to see your latest notifications.' }
+  } catch (error) {
+    return { ok: false, error: userFacingError(error, 'We could not delete this notification. Please try again.') }
+  }
+
   revalidateNotificationSurfaces()
   return { ok: true }
 }

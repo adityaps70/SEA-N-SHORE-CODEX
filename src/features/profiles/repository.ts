@@ -1,0 +1,402 @@
+import type { QueryResultRow } from 'pg'
+import { query as databaseQuery } from '@/lib/db/client'
+import { mapPublicProfile } from './mappers'
+import { organizationClaimStatusSql } from '@/features/organizations/unclaimed-organization-policy'
+import { listableOrganizationSql } from './organization-link-repository'
+import { PERSONAS, PROFILE_INTENTS, type Persona, type ProfileIntent } from './persona'
+import {
+  PROFILE_TYPES,
+  type ContactVisibility,
+  type IdentityRoot,
+  type OwnProfile,
+  type OwnProfileRow,
+  type ProfileType,
+  type PublicProfile,
+  type PublicProfileRow,
+} from './types'
+
+type ProfileRow = QueryResultRow & {
+  id: string
+  slug: string | null
+  profile_type: string | null
+  identity_root?: string | null
+  primary_identity?: string | null
+  primary_identity_family?: string | null
+  secondary_identities?: string[] | null
+  persona?: string | null
+  profile_intents?: string[] | null
+  community_relationship?: string | null
+  institution_name?: string | null
+  specialization?: string | null
+  full_name: string
+  avatar_path: string | null
+  cover_path?: string | null
+  location: string | null
+  headline: string | null
+  summary: string | null
+  contact_visibility?: string | null
+  onboarding_completed_at?: string | null
+  username_change_count?: number | null
+  username_auto_generated?: boolean | null
+  maritime_profiles: PublicProfileRow['maritime_profiles']
+  current_organization?: unknown
+  profile_skills: Array<{ skill: string }> | null
+}
+
+type ProfileQuery = (
+  text: string,
+  values?: readonly unknown[],
+) => Promise<ProfileRow[]>
+
+export type PublicProfileLookup = {
+  viewerProfileId?: string
+}
+
+export type PublicProfileBySlugLookup = PublicProfileLookup & {
+  slug: string
+}
+
+export type PublicProfileByIdLookup = PublicProfileLookup & {
+  profileId: string
+}
+
+export type PublicProfilesByIdsLookup = PublicProfileLookup & {
+  ids: string[]
+}
+
+export type DiscoveryCandidateLookup = {
+  viewerProfileId: string
+  limit: number
+  searchQuery?: string
+}
+
+const PROFILE_SELECT = `
+  select
+    p.id,
+    p.slug,
+    p.profile_type::text as profile_type,
+    p.identity_root,
+    p.primary_identity,
+    p.primary_identity_family,
+    p.secondary_identities,
+    p.persona,
+    p.profile_intents,
+    p.community_relationship,
+    p.institution_name,
+    p.specialization,
+    p.full_name,
+    p.avatar_path,
+    p.cover_path,
+    p.location,
+    p.headline,
+    p.summary,
+    p.contact_visibility::text as contact_visibility,
+    p.onboarding_completed_at,
+    p.username_change_count,
+    p.username_auto_generated,
+    case
+      when mp.user_id is null then null
+      else json_build_object(
+        'rank', mp.rank,
+        'current_company', mp.current_company,
+        'current_company_id', mp.current_company_id,
+        'current_vessel', mp.current_vessel,
+        'sailing_experience_years', mp.sailing_experience_years,
+        'vessel_types', mp.vessel_types,
+        'trading_areas', mp.trading_areas,
+        'shore_career_preference', mp.shore_career_preference,
+        'availability', mp.availability
+      )
+    end as maritime_profiles,
+    case
+      when linked_org.id is null then null
+      else json_build_object(
+        'id', linked_org.id,
+        'slug', linked_org.slug,
+        'name', linked_org.name,
+        'has_logo', linked_org.logo_path is not null and btrim(linked_org.logo_path) <> '',
+        'verified', coalesce(linked_org.is_verified, false),
+        'unclaimed', ${organizationClaimStatusSql('linked_org')} = 'unclaimed'
+      )
+    end as current_organization,
+    coalesce(
+      (
+        select json_agg(
+          json_build_object('skill', ps.skill)
+          order by ps.created_at asc, ps.skill asc
+        )
+        from public.profile_skills ps
+        where ps.user_id = p.id
+      ),
+      '[]'::json
+    ) as profile_skills
+  from public.profiles p
+  left join public.maritime_profiles mp on mp.user_id = p.id
+  left join public.companies linked_org
+    on linked_org.id = mp.current_company_id
+   and ${listableOrganizationSql('linked_org')}
+`
+
+function isProfileType(value: unknown): value is ProfileType {
+  return PROFILE_TYPES.includes(value as ProfileType)
+}
+
+function isIdentityRoot(value: unknown): value is IdentityRoot {
+  return value === 'professional' || value === 'organisation'
+}
+
+function isPersona(value: unknown): value is Persona {
+  return PERSONAS.includes(value as Persona)
+}
+
+function isProfileIntent(value: unknown): value is ProfileIntent {
+  return PROFILE_INTENTS.includes(value as ProfileIntent)
+}
+
+function isContactVisibility(value: unknown): value is ContactVisibility {
+  return value === 'private' || value === 'members' || value === 'public'
+}
+
+function normalizePublicRow(row: ProfileRow): PublicProfileRow | null {
+  if (!row.slug || !isProfileType(row.profile_type)) return null
+
+  return {
+    id: row.id,
+    slug: row.slug,
+    profile_type: row.profile_type,
+    identity_root: row.identity_root == null || isIdentityRoot(row.identity_root) ? row.identity_root : null,
+    primary_identity: row.primary_identity ?? null,
+    primary_identity_family: row.primary_identity_family ?? null,
+    secondary_identities: Array.isArray(row.secondary_identities) ? row.secondary_identities : [],
+    persona: row.persona == null || isPersona(row.persona) ? row.persona : null,
+    profile_intents: Array.isArray(row.profile_intents)
+      ? row.profile_intents.filter(isProfileIntent)
+      : [],
+    community_relationship: row.community_relationship ?? null,
+    institution_name: row.institution_name ?? null,
+    specialization: row.specialization ?? null,
+    full_name: row.full_name,
+    avatar_path: row.avatar_path,
+    cover_path: row.cover_path ?? null,
+    location: row.location,
+    headline: row.headline,
+    summary: row.summary,
+    maritime_profiles: row.maritime_profiles,
+    current_organization: row.current_organization ?? null,
+    profile_skills: Array.isArray(row.profile_skills) ? row.profile_skills : [],
+  }
+}
+
+function mapPublicRows(rows: readonly ProfileRow[]): PublicProfile[] {
+  return rows.flatMap((row) => {
+    const normalized = normalizePublicRow(row)
+    return normalized ? [mapPublicProfile(normalized)] : []
+  })
+}
+
+function blockVisibilitySql(viewerParameter: number) {
+  return `
+    and not exists (
+      select 1
+      from public.user_blocks b
+      where (b.blocker_id = $${viewerParameter} and b.blocked_id = p.id)
+         or (b.blocker_id = p.id and b.blocked_id = $${viewerParameter})
+    )
+  `
+}
+
+function requireAtMostOne(rows: readonly ProfileRow[]) {
+  if (rows.length > 1) {
+    throw new Error('Unable to load this professional profile.')
+  }
+  return rows[0] ?? null
+}
+
+function searchTokens(value?: string) {
+  return (value ?? '')
+    .trim()
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
+}
+
+export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
+  const queryRows: ProfileQuery = input.query ?? ((text, values) =>
+    databaseQuery<ProfileRow>(text, values))
+
+  async function getOwnProfile(profileId: string): Promise<OwnProfile | null> {
+    const rows = await queryRows(
+      `${PROFILE_SELECT}
+       where p.id = $1
+       limit 2`,
+      [profileId],
+    )
+    const row = requireAtMostOne(rows)
+    if (!row || !row.onboarding_completed_at || !isContactVisibility(row.contact_visibility)) {
+      return null
+    }
+
+    const normalized = normalizePublicRow(row)
+    if (!normalized) return null
+
+    const ownRow: OwnProfileRow = {
+      ...normalized,
+      contact_visibility: row.contact_visibility,
+      onboarding_completed_at: row.onboarding_completed_at,
+      username_change_count: Number(row.username_change_count ?? 0),
+    }
+
+    return {
+      ...mapPublicProfile(ownRow),
+      contactVisibility: ownRow.contact_visibility,
+      onboardingCompletedAt: ownRow.onboarding_completed_at as string,
+      usernameChangeCount: ownRow.username_change_count,
+      usernameAutoGenerated: row.username_auto_generated === true,
+    }
+  }
+
+  async function getPublicProfileBySlug(
+    lookup: PublicProfileBySlugLookup,
+  ): Promise<PublicProfile | null> {
+    const blocked = lookup.viewerProfileId ? blockVisibilitySql(2) : ''
+    const values = lookup.viewerProfileId
+      ? [lookup.slug, lookup.viewerProfileId]
+      : [lookup.slug]
+    const rows = await queryRows(
+      `${PROFILE_SELECT}
+       where p.slug = $1
+         and p.account_status = 'active'
+         and p.onboarding_completed_at is not null
+         ${blocked}
+       limit 2`,
+      values,
+    )
+    const row = requireAtMostOne(rows)
+    if (!row) return null
+
+    const normalized = normalizePublicRow(row)
+    return normalized ? mapPublicProfile(normalized) : null
+  }
+
+  async function getPublicProfileById(
+    lookup: PublicProfileByIdLookup,
+  ): Promise<PublicProfile | null> {
+    const blocked = lookup.viewerProfileId ? blockVisibilitySql(2) : ''
+    const values = lookup.viewerProfileId
+      ? [lookup.profileId, lookup.viewerProfileId]
+      : [lookup.profileId]
+    const rows = await queryRows(
+      `${PROFILE_SELECT}
+       where p.id = $1
+         and p.account_status = 'active'
+         and p.onboarding_completed_at is not null
+         ${blocked}
+       limit 2`,
+      values,
+    )
+    const row = requireAtMostOne(rows)
+    if (!row) return null
+
+    const normalized = normalizePublicRow(row)
+    return normalized ? mapPublicProfile(normalized) : null
+  }
+
+  async function getPublicProfilesByIds(
+    lookup: PublicProfilesByIdsLookup,
+  ): Promise<PublicProfile[]> {
+    if (lookup.ids.length === 0) return []
+
+    const uniqueIds = [...new Set(lookup.ids)]
+    const blocked = lookup.viewerProfileId ? blockVisibilitySql(2) : ''
+    const values = lookup.viewerProfileId
+      ? [uniqueIds, lookup.viewerProfileId]
+      : [uniqueIds]
+    const rows = await queryRows(
+      `${PROFILE_SELECT}
+       where p.id = any($1::uuid[])
+         and p.account_status = 'active'
+         and p.onboarding_completed_at is not null
+         ${blocked}`,
+      values,
+    )
+
+    const profiles = mapPublicRows(rows)
+    const byId = new Map(profiles.map((profile) => [profile.id, profile]))
+    return lookup.ids.flatMap((id) => {
+      const profile = byId.get(id)
+      return profile ? [profile] : []
+    })
+  }
+
+  async function getDiscoveryCandidates(
+    lookup: DiscoveryCandidateLookup,
+  ): Promise<PublicProfile[]> {
+    const limit = Math.min(Math.max(Math.trunc(lookup.limit), 1), 60)
+    const tokens = searchTokens(lookup.searchQuery)
+    const hasSearch = tokens.length > 0
+    const searchSql = hasSearch
+      ? `
+         and lower(concat_ws(' ',
+           p.full_name,
+           p.slug,
+           p.location,
+           p.headline,
+           p.summary,
+           p.primary_identity,
+           p.primary_identity_family,
+           p.persona,
+           array_to_string(p.profile_intents, ' '),
+           p.community_relationship,
+           p.institution_name,
+           p.specialization,
+           array_to_string(p.secondary_identities, ' '),
+           mp.rank,
+           mp.current_company,
+           mp.current_vessel,
+           array_to_string(mp.vessel_types, ' '),
+           array_to_string(mp.trading_areas, ' '),
+           coalesce((
+             select string_agg(ps_search.skill, ' ' order by ps_search.skill)
+             from public.profile_skills ps_search
+             where ps_search.user_id = p.id
+           ), '')
+         )) like all($2::text[])
+       `
+      : ''
+    const limitParameter = hasSearch ? 3 : 2
+    const values: readonly unknown[] = hasSearch
+      ? [lookup.viewerProfileId, tokens.map((token) => `%${token}%`), limit]
+      : [lookup.viewerProfileId, limit]
+
+    const rows = await queryRows(
+      `${PROFILE_SELECT}
+       where p.id <> $1
+         and p.account_status = 'active'
+         and p.onboarding_completed_at is not null
+         ${blockVisibilitySql(1)}
+         ${searchSql}
+       order by p.updated_at desc, p.id asc
+       limit $${limitParameter}`,
+      values,
+    )
+
+    return mapPublicRows(rows)
+  }
+
+  return {
+    getOwnProfile,
+    getPublicProfileBySlug,
+    getPublicProfileById,
+    getPublicProfilesByIds,
+    getDiscoveryCandidates,
+  }
+}
+
+const profileRepository = createProfileRepository()
+
+export const getOwnProfileFromAurora = profileRepository.getOwnProfile
+export const getPublicProfileBySlugFromAurora = profileRepository.getPublicProfileBySlug
+export const getPublicProfileByIdFromAurora = profileRepository.getPublicProfileById
+export const getPublicProfilesByIdsFromAurora = profileRepository.getPublicProfilesByIds
+export const getDiscoveryCandidatesFromAurora = profileRepository.getDiscoveryCandidates

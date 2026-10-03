@@ -1,163 +1,102 @@
-import { requireUser } from '@/features/auth/queries'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
-import { mapPublicProfile } from './mappers'
-import type { ContactVisibility, OwnProfile, OwnProfileRow, ProfileType, PublicProfile, PublicProfileRow } from './types'
+import { cache } from 'react'
+import {
+  getAwsNetworkProfiles,
+  getAwsOwnProfile,
+  getAwsPublicProfileBySlug,
+  getAwsPublicProfilesByIds,
+} from './aws-queries'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import type { PickerOrganization } from './components/organization-picker'
+import { getOnboardingProfileFromAurora, type OnboardingProfile } from './onboarding-repository'
+import { organizationLinkRepository, type ProfileOrganization } from './organization-link-repository'
+import type { ProfileDocumentSummary } from './profile-document-policy'
+import { getOwnDgProfileDocument } from './profile-document-service'
+import type { OwnProfile, PublicProfile } from './types'
+import { isValidUsername } from './username'
+import { suggestAvailableUsernameFromAurora } from './username-availability'
 
-const PUBLIC_PROFILE_SELECT = `
-  id,
-  slug,
-  profile_type,
-  full_name,
-  avatar_path,
-  location,
-  headline,
-  summary,
-  maritime_profiles (
-    rank,
-    current_company,
-    current_vessel,
-    sailing_experience_years,
-    vessel_types,
-    trading_areas,
-    shore_career_preference,
-    availability
-  ),
-  profile_skills (skill)
-` as const
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-const OWN_PROFILE_SELECT = `${PUBLIC_PROFILE_SELECT}, contact_visibility, onboarding_completed_at` as const
+export const getPublicProfileBySlug = cache(async (slug: string): Promise<PublicProfile | null> => {
+  return getAwsPublicProfileBySlug(slug)
+})
 
-function isProfileType(value: unknown): value is ProfileType {
-  return [
-    'seafarer',
-    'maritime_professional',
-    'company',
-    'trainer',
-    'mentor',
-    'recruiter',
-    'service_provider',
-  ].includes(String(value))
-}
-
-function isContactVisibility(value: unknown): value is ContactVisibility {
-  return value === 'private' || value === 'members' || value === 'public'
-}
-
-function normalizeProfileRow(row: {
-  id: string
-  slug: string | null
-  profile_type: string | null
-  full_name: string
-  avatar_path: string | null
-  location: string | null
-  headline: string | null
-  summary: string | null
-  maritime_profiles: PublicProfileRow['maritime_profiles'] | PublicProfileRow['maritime_profiles'][]
-  profile_skills: Array<{ skill: string }>
-}): PublicProfileRow | null {
-  if (!row.slug || !isProfileType(row.profile_type)) return null
-  const maritime = Array.isArray(row.maritime_profiles) ? row.maritime_profiles[0] ?? null : row.maritime_profiles
-
-  return {
-    id: row.id,
-    slug: row.slug,
-    profile_type: row.profile_type,
-    full_name: row.full_name,
-    avatar_path: row.avatar_path,
-    location: row.location,
-    headline: row.headline,
-    summary: row.summary,
-    maritime_profiles: maritime,
-    profile_skills: row.profile_skills ?? [],
-  }
-}
-
-function mapProfileRows(rows: unknown[]): PublicProfile[] {
-  return rows.flatMap((row) => {
-    const normalized = normalizeProfileRow(row as Parameters<typeof normalizeProfileRow>[0])
-    return normalized ? [mapPublicProfile(normalized)] : []
-  })
-}
-
-export async function getPublicProfileBySlug(slug: string): Promise<PublicProfile | null> {
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(PUBLIC_PROFILE_SELECT)
-    .eq('slug', slug)
-    .eq('account_status', 'active')
-    .not('onboarding_completed_at', 'is', null)
-    .maybeSingle()
-
-  if (error) throw new Error('Unable to load this professional profile.')
-  if (!data) return null
-
-  const normalized = normalizeProfileRow(data)
-  return normalized ? mapPublicProfile(normalized) : null
-}
-
-export async function getOwnProfile(): Promise<OwnProfile | null> {
-  const user = await requireUser()
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(OWN_PROFILE_SELECT)
-    .eq('id', user.id)
-    .maybeSingle()
-
-  if (error || !data) throw new Error('Unable to load your professional profile.')
-  if (!data.onboarding_completed_at || !isContactVisibility(data.contact_visibility)) return null
-
-  const normalized = normalizeProfileRow(data)
-  if (!normalized) return null
-
-  const ownRow: OwnProfileRow = {
-    ...normalized,
-    contact_visibility: data.contact_visibility,
-    onboarding_completed_at: data.onboarding_completed_at,
-  }
-
-  return {
-    ...mapPublicProfile(ownRow),
-    contactVisibility: ownRow.contact_visibility,
-    onboardingCompletedAt: ownRow.onboarding_completed_at as string,
-  }
-}
+// Request-scoped cache: the app shell (header avatar) and the page both need the
+// viewer's profile, so one Aurora query serves every caller in the same render.
+export const getOwnProfile = cache(async (): Promise<OwnProfile | null> => {
+  return getAwsOwnProfile()
+})
 
 export async function getNetworkProfiles(limit = 18): Promise<PublicProfile[]> {
-  const user = await requireUser()
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(PUBLIC_PROFILE_SELECT)
-    .eq('account_status', 'active')
-    .not('onboarding_completed_at', 'is', null)
-    .neq('id', user.id)
-    .order('updated_at', { ascending: false })
-    .order('id', { ascending: true })
-    .limit(Math.min(Math.max(limit, 1), 60))
-
-  if (error) throw new Error('Unable to load the professional network.')
-  return mapProfileRows(data ?? [])
+  return getAwsNetworkProfiles(limit)
 }
 
 export async function getPublicProfilesByIds(ids: string[]): Promise<PublicProfile[]> {
-  if (!ids.length) return []
+  return getAwsPublicProfilesByIds(ids)
+}
 
-  const supabase = await createServerSupabaseClient()
-  const { data, error } = await supabase
-    .from('profiles')
-    .select(PUBLIC_PROFILE_SELECT)
-    .in('id', [...new Set(ids)])
-    .eq('account_status', 'active')
-    .not('onboarding_completed_at', 'is', null)
+export async function getOwnOnboardingProfile(): Promise<OnboardingProfile> {
+  const user = await requireAwsUser()
+  const profile = await getOnboardingProfileFromAurora(user.id)
+  if (!profile) throw new Error('Unable to load your profile.')
+  return profile
+}
 
-  if (error) throw new Error('Unable to load these professional profiles.')
+export type OnboardingSetup = OnboardingProfile & {
+  profileId: string
+  suggestedUsername: string
+  dgProfile: ProfileDocumentSummary | null
+}
 
-  const profiles = mapProfileRows(data ?? [])
-  const byId = new Map(profiles.map((profile) => [profile.id, profile]))
-  return ids.flatMap((id) => {
-    const profile = byId.get(id)
-    return profile ? [profile] : []
-  })
+/**
+ * Everything the onboarding screen needs, including a ready-to-use username
+ * so a first-time member never starts from an empty or invalid handle. Both
+ * extras degrade gracefully: the submit step generates a username itself and
+ * the DG profile upload works without an initial document.
+ */
+export async function getOwnOnboardingSetup(): Promise<OnboardingSetup> {
+  const user = await requireAwsUser()
+  const profile = await getOnboardingProfileFromAurora(user.id)
+  if (!profile) throw new Error('Unable to load your profile.')
+  if (profile.onboardingCompletedAt) {
+    return { ...profile, profileId: user.id, suggestedUsername: profile.slug ?? '', dgProfile: null }
+  }
+
+  const [suggestedUsername, dgProfile] = await Promise.all([
+    profile.slug && isValidUsername(profile.slug)
+      ? Promise.resolve(profile.slug)
+      : suggestAvailableUsernameFromAurora(user.id, { fullName: profile.fullName, email: user.email }).catch(() => ''),
+    getOwnDgProfileDocument(user.id).catch(() => null),
+  ])
+
+  return { ...profile, profileId: user.id, suggestedUsername, dgProfile }
+}
+
+/**
+ * The organization a member just registered from the organization picker
+ * (`?registered=<id>` on their return), so the picker can link it. Only the
+ * member's own organization that Sea N Shore is still verifying, or a listed
+ * one, is returned; anything else is ignored.
+ */
+export async function getOwnRegisteredOrganization(value: unknown): Promise<PickerOrganization | null> {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (typeof raw !== 'string' || !UUID_PATTERN.test(raw)) return null
+  try {
+    const user = await requireAwsUser()
+    const pending = await organizationLinkRepository.getOwnPendingOrganization(user.id, raw)
+    if (pending) return { id: pending.id, name: pending.name, logoUrl: pending.logoUrl, verified: pending.verified, pending: true }
+    const listed = await organizationLinkRepository.getListableOrganization(raw)
+    return listed ? { id: listed.id, name: listed.name, logoUrl: listed.logoUrl, verified: listed.verified, unclaimed: listed.unclaimed } : null
+  } catch {
+    return null
+  }
+}
+
+/** Organizations shown in the Organizations section of a profile; empty when they cannot be loaded. */
+export async function getProfileOrganizations(profileId: string): Promise<ProfileOrganization[]> {
+  try {
+    return await organizationLinkRepository.listProfileOrganizations(profileId)
+  } catch {
+    return []
+  }
 }

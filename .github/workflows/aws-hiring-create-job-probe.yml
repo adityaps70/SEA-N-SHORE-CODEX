@@ -1,0 +1,131 @@
+name: AWS Hiring Create Job Probe
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - scripts/aws/hiring-create-job-probe-action.txt
+      - scripts/aws/hiring-create-job-probe.cjs
+      - scripts/aws/hiring-create-job-probe-remote.sh
+      - scripts/aws/hiring-create-job-probe-guard.test.mjs
+      - src/features/jobs/hiring-create-job-probe-contract.test.ts
+      - .github/workflows/aws-hiring-create-job-probe.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+concurrency:
+  group: sea-n-shore-hiring-create-job-probe
+  cancel-in-progress: false
+
+jobs:
+  hiring-create-job-probe:
+    if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      AWS_REGION: ap-south-1
+
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Resolve hiring create-job probe action
+        id: action
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(tr -d '[:space:]' < scripts/aws/hiring-create-job-probe-action.txt)"
+          echo "HIRING_CREATE_JOB_PROBE_ACTION=$ACTION" >> "$GITHUB_ENV"
+          case "$ACTION" in
+            plan)
+              echo "run_probe=false" >> "$GITHUB_OUTPUT"
+              ;;
+            probe-once)
+              [[ "$GITHUB_EVENT_NAME" == push ]] || { echo "probe-once is permitted only from an exact branch push." >&2; exit 1; }
+              [[ "$GITHUB_REF" == refs/heads/feat/aws-native-phase-0-1 ]] || { echo "probe-once is restricted to feat/aws-native-phase-0-1." >&2; exit 1; }
+              echo "run_probe=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported hiring create-job probe action: $ACTION" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Wait for exact-head AWS Infrastructure CI
+        if: steps.action.outputs.run_probe == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&per_page=100"
+          for attempt in $(seq 1 90); do
+            JSON="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "$API")"
+            STATUS="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].status // "missing"' <<<"$JSON")"
+            CONCLUSION="$(jq -r '[.workflow_runs[] | select(.name == "AWS Infrastructure CI")][0].conclusion // ""' <<<"$JSON")"
+            echo "exact-head CI status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [[ "$STATUS" == completed ]]; then
+              [[ "$CONCLUSION" == success ]] || { echo "Exact-head AWS Infrastructure CI is not green." >&2; exit 1; }
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for exact-head AWS Infrastructure CI." >&2
+          exit 1
+
+      - name: Guard probe against a moved branch
+        if: steps.action.outputs.run_probe == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE_HEAD="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)"
+          [[ "$REMOTE_HEAD" == "$GITHUB_SHA" ]] || { echo "Branch moved after hiring probe started; refusing stale execution." >&2; exit 1; }
+
+      - name: Configure AWS credentials with GitHub OIDC
+        if: steps.action.outputs.run_probe == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ap-south-1
+
+      - name: Verify staging AWS account
+        if: steps.action.outputs.run_probe == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          [[ "$ACCOUNT_ID" == 310356785722 ]] || { echo "Refusing hiring probe in unexpected AWS account $ACCOUNT_ID." >&2; exit 1; }
+
+      - name: Discover bootstrap instance
+        if: steps.action.outputs.run_probe == 'true'
+        id: instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          INSTANCE_IDS=$(aws ec2 describe-instances --region "$AWS_REGION" --filters "Name=tag:Name,Values=sea-n-shore-bootstrap" "Name=instance-state-name,Values=running" --query 'Reservations[].Instances[].InstanceId' --output json)
+          COUNT=$(jq 'length' <<<"$INSTANCE_IDS")
+          [[ "$COUNT" -eq 1 ]] || { echo "Expected exactly one running bootstrap; found $COUNT." >&2; exit 1; }
+          echo "instance_id=$(jq -r '.[0]' <<<"$INSTANCE_IDS")" >> "$GITHUB_OUTPUT"
+
+      - name: Use Node 22 for SSM probe wrapper
+        if: steps.action.outputs.run_probe == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run rollback-only hiring create-job probe
+        if: steps.action.outputs.run_probe == 'true'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          HIRING_CREATE_JOB_PROBE_MARKER: ${{ github.run_id }}
+        run: node scripts/aws/hiring-create-job-probe.cjs
+
+      - name: Plan-only guard status
+        if: steps.action.outputs.run_probe != 'true'
+        run: echo 'HIRING_CREATE_JOB_PROBE_PLAN_ONLY=true'

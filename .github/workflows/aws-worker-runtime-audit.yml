@@ -1,0 +1,78 @@
+name: AWS Worker Runtime Audit
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-worker-runtime-audit.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+      OUTBOX_WORKER_SERVICE: sea-n-shore-staging-outbox-worker
+      NOTIFICATION_WORKER_SERVICE: sea-n-shore-staging-notification-worker
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Audit live worker services
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit_service() {
+            local service="$1"
+            local container="$2"
+            local json
+            json="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$service" --output json)"
+            test "$(jq '.failures | length' <<<"$json")" -eq 0
+
+            local current primary state desired running pending deployments
+            current="$(jq -r '.services[0].taskDefinition // empty' <<<"$json")"
+            primary="$(jq -r '[.services[0].deployments[] | select(.status=="PRIMARY")][0].taskDefinition // empty' <<<"$json")"
+            state="$(jq -r '[.services[0].deployments[] | select(.status=="PRIMARY")][0].rolloutState // empty' <<<"$json")"
+            desired="$(jq -r '.services[0].desiredCount // -1' <<<"$json")"
+            running="$(jq -r '.services[0].runningCount // -1' <<<"$json")"
+            pending="$(jq -r '.services[0].pendingCount // -1' <<<"$json")"
+            deployments="$(jq '.services[0].deployments | length' <<<"$json")"
+
+            test -n "$current"
+            test "$current" = "$primary"
+            test "$state" = "COMPLETED"
+            test "$desired" -ge 1
+            test "$running" -eq "$desired"
+            test "$pending" -eq 0
+            test "$deployments" -eq 1
+
+            local task image
+            task="$(aws ecs describe-task-definition --task-definition "$current" --query taskDefinition --output json)"
+            image="$(jq -r --arg NAME "$container" '.containerDefinitions[] | select(.name==$NAME) | .image // empty' <<<"$task")"
+            test -n "$image"
+
+            echo "WORKER_RUNTIME_SERVICE=$service"
+            echo "WORKER_RUNTIME_CURRENT_TASK=$current"
+            echo "WORKER_RUNTIME_PRIMARY_TASK=$primary"
+            echo "WORKER_RUNTIME_ROLLOUT_STATE=$state"
+            echo "WORKER_RUNTIME_COUNTS=$desired/$running/$pending"
+            echo "WORKER_RUNTIME_DEPLOYMENTS=$deployments"
+            echo "WORKER_RUNTIME_IMAGE=$image"
+            echo "WORKER_RUNTIME_AUDIT_VERIFIED=$service"
+          }
+
+          audit_service "$OUTBOX_WORKER_SERVICE" "outbox-worker"
+          audit_service "$NOTIFICATION_WORKER_SERVICE" "notification-worker"

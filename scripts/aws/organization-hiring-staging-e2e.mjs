@@ -1,0 +1,475 @@
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import { chromium, expect } from '@playwright/test'
+
+const siteUrl = process.env.SITE_URL
+const phase = process.env.E2E_PHASE
+const runId = process.env.GITHUB_RUN_ID
+const organizationName = process.env.E2E_ORGANIZATION_NAME
+const jobTitle = process.env.E2E_JOB_TITLE
+const applicationId = process.env.E2E_APPLICATION_ID
+const jobId = process.env.E2E_JOB_ID
+
+const users = {
+  applicant: {
+    email: process.env.E2E_APPLICANT_EMAIL,
+    password: process.env.E2E_APPLICANT_PASSWORD,
+    fullName: process.env.E2E_APPLICANT_NAME,
+  },
+  admin: {
+    email: process.env.E2E_ADMIN_EMAIL,
+    password: process.env.E2E_ADMIN_PASSWORD,
+    fullName: process.env.E2E_ADMIN_NAME,
+  },
+  unauthorized: {
+    email: process.env.E2E_UNAUTHORIZED_EMAIL,
+    password: process.env.E2E_UNAUTHORIZED_PASSWORD,
+    fullName: process.env.E2E_UNAUTHORIZED_NAME,
+  },
+}
+
+assert.ok(siteUrl, 'SITE_URL is required')
+assert.ok(runId, 'GITHUB_RUN_ID is required')
+assert.ok(['signup', 'onboarding', 'applicant-submit', 'admin-approve', 'owner-post', 'candidate-expired-visibility', 'owner-republish', 'candidate-apply', 'unauthorized'].includes(phase), 'Unsupported E2E_PHASE')
+for (const [key, user] of Object.entries(users)) {
+  assert.match(user.email ?? '', new RegExp(`^sea-n-shore-hiring-e2e-[0-9]+-${key}@example\\.com$`))
+  assert.ok((user.password ?? '').length >= 12)
+  assert.ok(user.fullName)
+}
+
+const browser = await chromium.launch()
+
+function runFailedJobProbe() {
+  try {
+    const region = process.env.AWS_REGION || 'ap-south-1'
+    const discovery = spawnSync('aws', [
+      'ec2', 'describe-instances',
+      '--region', region,
+      '--filters', 'Name=tag:Name,Values=sea-n-shore-bootstrap', 'Name=instance-state-name,Values=running',
+      '--query', 'Reservations[].Instances[].InstanceId',
+      '--output', 'json',
+    ], { encoding: 'utf8', env: process.env })
+
+    if (discovery.status !== 0) {
+      return `probe bootstrap discovery failed: ${(discovery.stderr || discovery.stdout || 'unknown error').trim()}`
+    }
+
+    const instanceIds = JSON.parse(discovery.stdout)
+    if (!Array.isArray(instanceIds) || instanceIds.length !== 1 || !/^i-[0-9a-f]+$/.test(instanceIds[0])) {
+      return `probe bootstrap discovery returned ${JSON.stringify(instanceIds)}`
+    }
+
+    const probe = spawnSync(process.execPath, ['scripts/aws/organization-hiring-e2e-ssm.mjs', 'probe-job'], {
+      encoding: 'utf8',
+      env: { ...process.env, INSTANCE_ID: instanceIds[0] },
+    })
+    const output = [probe.stdout, probe.stderr].filter(Boolean).join('\n').trim()
+    if (probe.status !== 0) return `probe-job failed status=${probe.status}: ${output || 'no output'}`
+    return output || 'probe-job completed without output'
+  } catch (error) {
+    return `probe-job exception: ${error instanceof Error ? error.message : String(error)}`
+  }
+}
+
+async function signUp(user) {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  const postObservations = []
+  const requestFailures = []
+  const consoleErrors = []
+  const startedAt = Date.now()
+
+  page.on('response', (response) => {
+    const request = response.request()
+    if (request.method() === 'POST' && response.url().startsWith(siteUrl)) {
+      postObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
+    }
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().startsWith(siteUrl)) requestFailures.push({ method: request.method(), url: request.url(), failure: request.failure()?.errorText ?? 'unknown' })
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
+  })
+
+  await page.goto(`${siteUrl}/auth/sign-up`, { waitUntil: 'networkidle' })
+  await page.getByLabel('Full name').fill(user.fullName)
+  await page.getByLabel('Email').fill(user.email)
+  await page.getByLabel('Password').fill(user.password)
+  await page.getByRole('button', { name: 'Create account' }).click()
+
+  const authError = page.locator('p[role="alert"]')
+  const authStatus = page.locator('p[role="status"]')
+  const outcome = await Promise.race([
+    page.waitForURL((url) => url.pathname === '/auth/sign-up' && url.searchParams.get('confirm') === '1', { timeout: 30_000 }).then(() => ({ kind: 'confirm' })),
+    authError.waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'error', text: await authError.innerText() })),
+    authStatus.waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'status', text: await authStatus.innerText() })),
+  ]).catch(() => null)
+
+  if (!outcome || outcome.kind !== 'confirm') {
+    throw new Error(`Public sign-up failed for ${user.email}: state=${outcome?.kind ?? 'timeout'} text=${outcome?.text?.trim() || 'none'} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+  }
+  await expect(page.getByRole('heading', { name: 'Confirm your email' })).toBeVisible()
+  await context.close()
+}
+
+async function signInForOnboarding(page, user) {
+  await page.goto(`${siteUrl}/auth/sign-in`, { waitUntil: 'networkidle' })
+  await page.getByLabel('Email').fill(user.email)
+  await page.getByLabel('Password').fill(user.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.waitForURL((url) => url.pathname === '/onboarding', { timeout: 20_000 })
+  await expect(page.getByRole('heading', { name: 'Set your course in the global shipping community.' })).toBeVisible()
+}
+
+async function signInCompleted(page, user) {
+  await page.goto(`${siteUrl}/auth/sign-in`, { waitUntil: 'networkidle' })
+  await page.getByLabel('Email').fill(user.email)
+  await page.getByLabel('Password').fill(user.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
+}
+
+async function completeApplicantOrganisation() {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInForOnboarding(page, users.applicant)
+  await page.getByRole('button', { name: /Organisation Represent a maritime organisation/ }).click()
+  await page.getByLabel('Search organisation identities').fill('Shipowner')
+  await page.getByRole('button', { name: 'Shipowner — Shipping & Ship Management' }).click()
+  await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Shipowner')
+  await page.getByLabel('Organisation name').fill(`E2E Applicant Maritime ${runId}`)
+  const username = `hire-org-${runId}`
+  await page.locator('input[name="slug"]').fill(username)
+  await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await page.getByLabel('Location').fill('Mumbai')
+  const completeButton = page.getByRole('button', { name: 'Complete profile' })
+  await expect(completeButton).toBeEnabled()
+  await completeButton.click()
+  await page.waitForURL((url) => url.pathname === '/hiring/organization', { timeout: 20_000 })
+  await context.close()
+}
+
+async function completeProfessional(user, slugSuffix, organisation) {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInForOnboarding(page, user)
+  await page.getByRole('button', { name: /Professional Build your individual maritime identity/ }).click()
+  await page.getByLabel('Search professional identities').fill('Master')
+  await page.getByRole('button', { name: 'Master — Sea-going · Deck' }).click()
+  await expect(page.locator('[data-primary-identity="true"]')).toHaveText('Master')
+  const username = `hire-${slugSuffix}-${runId}`
+  assert.ok(username.length <= 30, `Disposable hiring username is too long: ${username}`)
+  await page.locator('input[name="slug"]').fill(username)
+  await expect(page.getByText('Username is available.', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await page.getByLabel('Location').fill('Mumbai')
+  await page.getByLabel('Current organisation').fill(organisation)
+  const completeButton = page.getByRole('button', { name: 'Complete profile' })
+  await expect(completeButton).toBeEnabled()
+  await completeButton.click()
+  await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
+  await context.close()
+}
+
+async function submitOrganizationApplication() {
+  assert.ok(organizationName)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.applicant)
+  await page.goto(`${siteUrl}/hiring/organization`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Organization verification' })).toBeVisible()
+  await page.getByLabel('Organization name').fill(organizationName)
+  await page.getByLabel('Organization type').fill('Shipowner and Ship Manager')
+  await page.getByLabel('Website').fill('https://example.com')
+  await page.getByLabel('Official company email').fill(users.applicant.email)
+  await page.getByLabel('Office location').fill('Mumbai, India')
+  await page.getByLabel('Description').fill('Disposable maritime employer record created only for the guarded Sea N Shore staging hiring end-to-end verification.')
+  await page.getByLabel('Fleet summary').fill('Two test-managed tanker vessels used only as structured staging verification data.')
+  await page.getByLabel('Vessel types').fill('Oil Tanker, Chemical Tanker')
+  await page.getByLabel('Your role / relationship').fill('Director')
+  await page.getByLabel('Registration / reference number').fill(`E2E-${runId}`)
+  await page.getByLabel('Supporting notes').fill('Guarded staging E2E. This organization and all linked records must be deleted by workflow cleanup.')
+  await page.getByRole('button', { name: 'Submit for verification' }).click()
+  await expect(page.getByRole('heading', { name: 'Verification in progress' })).toBeVisible({ timeout: 20_000 })
+  console.log('ORGANIZATION_HIRING_E2E_APPLICATION_SUBMITTED=true')
+  await context.close()
+}
+
+async function approveOrganization() {
+  assert.match(applicationId ?? '', /^[0-9a-f-]{36}$/)
+  assert.ok(organizationName)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.admin)
+  await page.goto(`${siteUrl}/admin/organizations/${applicationId}`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: organizationName })).toBeVisible()
+  await expect(page.getByText('Not verified', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Approve organization' }).click()
+  await expect(page.getByText('Verified employer', { exact: true })).toBeVisible({ timeout: 20_000 })
+  console.log('ORGANIZATION_HIRING_E2E_ADMIN_APPROVAL_UI_VERIFIED=true')
+  await context.close()
+}
+
+async function postJobAsOwner() {
+  assert.ok(jobTitle)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.applicant)
+  await page.goto(`${siteUrl}/hiring`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Hiring', exact: true })).toBeVisible()
+  await expect(page.getByText('Verified company', { exact: true })).toBeVisible()
+  await page.goto(`${siteUrl}/hiring/jobs/new`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Post a maritime job' })).toBeVisible()
+  await page.getByLabel('Job title').fill(jobTitle)
+  await page.getByLabel('Job type').selectOption('sea')
+  await page.getByLabel('Department').fill('Deck')
+  await page.getByLabel('Rank / position').fill('Chief Officer')
+  await page.getByLabel('Location').fill('Worldwide')
+  await page.getByLabel('Summary').fill('Chief Officer required for a disposable staging tanker vacancy used to verify the complete hiring authorization flow.')
+  await page.getByLabel('Description').fill('Join an oil tanker for a guarded staging-only vacancy. This posting verifies verified-company authorization, structured maritime requirements and publication, then is deleted automatically.')
+  await page.getByLabel('Vessel types').fill('Oil Tanker, Chemical Tanker')
+  await page.getByLabel('Minimum years').fill('2')
+  await page.getByLabel('Maximum years').fill('8')
+  await page.getByLabel('Sailing regions').fill('Worldwide, Middle East')
+  await page.getByLabel('Certificates').fill('STCW, Advanced Oil Tanker')
+  await page.getByLabel('Visas').fill('US C1/D')
+  await page.getByLabel('Other requirements').fill('Valid medical and tanker sea service required for this staging-only test vacancy.')
+  await page.getByLabel('Apply until').fill('2026-09-01')
+  await page.getByLabel('Salary minimum').fill('7000')
+  await page.getByLabel('Salary maximum').fill('8500')
+  await page.getByLabel('Currency').fill('USD')
+  await page.getByLabel('Salary period').selectOption('month')
+  await page.getByLabel('Urgent joining').check()
+  await page.getByLabel('Status').selectOption('published')
+
+  const postObservations = []
+  const requestFailures = []
+  const consoleErrors = []
+  const startedAt = Date.now()
+  page.on('response', (response) => {
+    const request = response.request()
+    if (request.method() === 'POST' && response.url().startsWith(siteUrl)) {
+      postObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
+    }
+  })
+  page.on('requestfailed', (request) => {
+    if (request.url().startsWith(siteUrl)) requestFailures.push({ method: request.method(), url: request.url(), failure: request.failure()?.errorText ?? 'unknown' })
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
+  })
+
+  const jobStatus = page.locator('p[role="status"]')
+  await page.getByRole('button', { name: 'Create job' }).click()
+  const outcome = await Promise.race([
+    page.waitForURL((url) => url.pathname === '/hiring/jobs', { timeout: 20_000 }).then(() => ({ kind: 'navigated' })),
+    jobStatus.waitFor({ state: 'visible', timeout: 20_000 }).then(async () => ({ kind: 'status', text: (await jobStatus.innerText()).trim() })),
+  ]).catch(() => null)
+
+  if (outcome?.kind === 'status' && outcome.text !== 'Job saved successfully.') {
+    const probe = runFailedJobProbe()
+    throw new Error(`Job create action failed: status=${JSON.stringify(outcome.text)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)} probe=${JSON.stringify(probe)}`)
+  }
+  if (outcome?.kind === 'status') {
+    await page.waitForURL((url) => url.pathname === '/hiring/jobs', { timeout: 10_000 }).catch(() => null)
+  }
+  if (new URL(page.url()).pathname !== '/hiring/jobs') {
+    const statusText = await jobStatus.textContent().catch(() => null)
+    const probe = runFailedJobProbe()
+    throw new Error(`Job create navigation failed: outcome=${JSON.stringify(outcome)} status=${JSON.stringify(statusText?.trim() || null)} url=${page.url()} posts=${JSON.stringify(postObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)} probe=${JSON.stringify(probe)}`)
+  }
+
+  await expect(page.getByRole('heading', { name: 'Company jobs' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
+  await expect(page.getByText('published', { exact: true })).toBeVisible()
+  console.log('ORGANIZATION_HIRING_E2E_OWNER_JOB_UI_VERIFIED=true')
+  await context.close()
+}
+
+async function verifyExpiredPublishedJobVisible() {
+  assert.match(jobId ?? '', /^[0-9a-f-]{36}$/)
+  assert.ok(jobTitle)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.unauthorized)
+  await page.goto(`${siteUrl}/jobs`, { waitUntil: 'networkidle' })
+  await expect(page.locator('form[role="search"][action="/jobs"]')).toBeVisible()
+  await expect(page.getByPlaceholder('Position, rank, company or keyword')).toBeVisible()
+  console.log('ORGANIZATION_HIRING_E2E_JOBS_DISCOVERY_RENDERED=true')
+
+  await page.goto(`${siteUrl}/jobs?q=${encodeURIComponent(jobTitle)}`, { waitUntil: 'networkidle' })
+  const jobLink = page.getByRole('link', { name: jobTitle, exact: true })
+  await expect(jobLink).toBeVisible()
+  const applyButton = page.getByRole('button', { name: 'Easy Apply' })
+  await expect(applyButton).toBeVisible()
+  await applyButton.click()
+  const applyDialog = page.getByRole('dialog', { name: 'Apply for this job' })
+  await expect(applyDialog).toBeVisible()
+  await applyDialog.getByRole('button', { name: 'Submit application' }).click()
+  await expect(applyDialog.getByRole('alert')).toHaveText('This job is no longer accepting applications.', { timeout: 20_000 })
+  console.log('ORGANIZATION_HIRING_E2E_EXPIRED_PUBLISHED_VISIBLE=true')
+  await context.close()
+}
+
+async function archiveAndRepublishJob() {
+  assert.match(jobId ?? '', /^[0-9a-f-]{36}$/)
+  assert.ok(jobTitle)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.applicant)
+
+  await page.goto(`${siteUrl}/hiring/jobs/${jobId}/edit`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Edit vacancy' })).toBeVisible()
+  await expect(page.getByLabel('Apply until')).toHaveValue('2026-09-01')
+  await page.getByLabel('Status').selectOption('closed')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.locator('p[role="status"]')).toHaveText('Changes saved successfully.', { timeout: 20_000 })
+
+  await page.goto(`${siteUrl}/hiring/jobs`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
+  await expect(page.getByText('closed', { exact: true })).toBeVisible()
+
+  await page.goto(`${siteUrl}/hiring/jobs/${jobId}/edit`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Edit vacancy' })).toBeVisible()
+  await expect(page.getByLabel('Status')).toHaveValue('closed')
+  await expect(page.getByLabel('Apply until')).toHaveValue('2026-09-01')
+  await page.getByLabel('Status').selectOption('published')
+  await page.getByRole('button', { name: 'Save changes' }).click()
+  await expect(page.locator('p[role="status"]')).toHaveText('Changes saved successfully.', { timeout: 20_000 })
+
+  await page.goto(`${siteUrl}/hiring/jobs`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: jobTitle })).toBeVisible()
+  await expect(page.getByText('published', { exact: true })).toBeVisible()
+  console.log('ORGANIZATION_HIRING_E2E_ARCHIVE_REPUBLISH_UI_VERIFIED=true')
+  await context.close()
+}
+
+async function applyToPublishedJob() {
+  assert.match(jobId ?? '', /^[0-9a-f-]{36}$/)
+  assert.ok(jobTitle)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.unauthorized)
+  await page.goto(`${siteUrl}/jobs?q=${encodeURIComponent(jobTitle)}`, { waitUntil: 'networkidle' })
+  const jobLink = page.getByRole('link', { name: jobTitle, exact: true })
+  await expect(jobLink).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Easy Apply' })).toBeVisible()
+
+  const postObservations = []
+  const uploadObservations = []
+  const requestFailures = []
+  const consoleErrors = []
+  const startedAt = Date.now()
+  page.on('response', (response) => {
+    const request = response.request()
+    if (request.method() === 'POST' && response.url().startsWith(siteUrl)) {
+      postObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
+    }
+    if (request.method() === 'PUT') {
+      uploadObservations.push({ status: response.status(), url: response.url(), elapsedMs: Date.now() - startedAt })
+    }
+  })
+  page.on('requestfailed', (request) => {
+    requestFailures.push({ method: request.method(), url: request.url(), failure: request.failure()?.errorText ?? 'unknown' })
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 500))
+  })
+
+  await page.getByRole('button', { name: 'Easy Apply' }).click()
+  const applyDialog = page.getByRole('dialog', { name: 'Apply for this job' })
+  await expect(applyDialog).toBeVisible()
+
+  const cvFileName = `e2e-cv-${runId}.pdf`
+  await applyDialog.getByLabel('Attach CV (PDF)').setInputFiles({
+    name: cvFileName,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n'),
+  })
+  await expect(applyDialog.getByText(cvFileName, { exact: true })).toBeVisible()
+  await applyDialog.getByRole('button', { name: 'Submit application' }).click()
+
+  const applied = page.getByText('Applied', { exact: true }).first()
+  const alert = applyDialog.getByRole('alert')
+  const outcome = await Promise.race([
+    applied.waitFor({ state: 'visible', timeout: 30_000 }).then(() => ({ kind: 'applied' })),
+    alert.waitFor({ state: 'visible', timeout: 30_000 }).then(async () => ({ kind: 'error', text: (await alert.innerText()).trim() })),
+  ]).catch(() => null)
+
+  if (outcome?.kind !== 'applied') {
+    throw new Error(`Job card Easy Apply with CV failed: outcome=${JSON.stringify(outcome)} url=${page.url()} posts=${JSON.stringify(postObservations)} uploads=${JSON.stringify(uploadObservations)} requestFailures=${JSON.stringify(requestFailures)} consoleErrors=${JSON.stringify(consoleErrors)}`)
+  }
+  assert.ok(uploadObservations.some((entry) => entry.status >= 200 && entry.status < 300), `Expected a successful CV PUT upload, got ${JSON.stringify(uploadObservations)}`)
+
+  await jobLink.click()
+  await page.waitForURL((url) => url.pathname === `/jobs/${jobId}`, { timeout: 20_000 })
+  await expect(page.getByText('Application submitted', { exact: true }).first()).toBeVisible()
+
+  await page.goto(`${siteUrl}/jobs/applications`, { waitUntil: 'networkidle' })
+  await expect(page.getByText(jobTitle, { exact: true })).toBeVisible({ timeout: 20_000 })
+  console.log('ORGANIZATION_HIRING_E2E_JOB_APPLICATION_UI_VERIFIED=true')
+  await context.close()
+
+  const ownerContext = await browser.newContext()
+  const ownerPage = await ownerContext.newPage()
+  await signInCompleted(ownerPage, users.applicant)
+  await ownerPage.goto(`${siteUrl}/hiring/jobs/${jobId}/applicants`, { waitUntil: 'networkidle' })
+  await expect(ownerPage.getByText(users.unauthorized.fullName, { exact: true })).toBeVisible({ timeout: 20_000 })
+  await ownerPage.getByRole('link', { name: 'Review candidate' }).click()
+  await expect(ownerPage.getByText('Candidate CV', { exact: true })).toBeVisible()
+  await expect(ownerPage.getByText(cvFileName, { exact: true })).toBeVisible()
+  const cvLink = ownerPage.getByRole('link', { name: 'View CV (PDF)' })
+  await expect(cvLink).toBeVisible()
+  const cvHref = await cvLink.getAttribute('href')
+  assert.ok(cvHref, 'Recruiter CV link must have a signed href')
+  const cvResponse = await ownerContext.request.get(cvHref)
+  assert.equal(cvResponse.status(), 200, `Expected signed CV URL to return 200, got ${cvResponse.status()}`)
+  assert.match(cvResponse.headers()['content-type'] ?? '', /^application\/pdf(?:;|$)/i)
+  console.log('ORGANIZATION_HIRING_E2E_CV_UPLOAD_REVIEW_VERIFIED=true')
+  await ownerContext.close()
+}
+
+async function verifyUnauthorized() {
+  assert.match(jobId ?? '', /^[0-9a-f-]{36}$/)
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  await signInCompleted(page, users.unauthorized)
+  await page.goto(`${siteUrl}/hiring/jobs/new`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Hiring access required' })).toBeVisible()
+  await page.goto(`${siteUrl}/hiring`, { waitUntil: 'networkidle' })
+  await expect(page.getByRole('heading', { name: 'Hiring access' })).toBeVisible()
+  const crossCompanyResponse = await page.goto(`${siteUrl}/hiring/jobs/${jobId}/edit`, { waitUntil: 'networkidle' })
+  assert.equal(crossCompanyResponse?.status(), 404, 'Unauthorized cross-company edit route must return 404')
+  console.log('ORGANIZATION_HIRING_E2E_UNAUTHORIZED_UI_VERIFIED=true')
+  await context.close()
+}
+
+try {
+  if (phase === 'signup') {
+    await signUp(users.applicant)
+    await signUp(users.admin)
+    await signUp(users.unauthorized)
+    console.log('ORGANIZATION_HIRING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
+  } else if (phase === 'onboarding') {
+    await completeApplicantOrganisation()
+    await completeProfessional(users.admin, 'admin', 'Sea N Shore E2E Admin')
+    await completeProfessional(users.unauthorized, 'unauthorized', 'Sea N Shore E2E Visitor')
+    console.log('ORGANIZATION_HIRING_E2E_ONBOARDING_VERIFIED=true')
+  } else if (phase === 'applicant-submit') {
+    await submitOrganizationApplication()
+  } else if (phase === 'admin-approve') {
+    await approveOrganization()
+  } else if (phase === 'owner-post') {
+    await postJobAsOwner()
+  } else if (phase === 'candidate-expired-visibility') {
+    await verifyExpiredPublishedJobVisible()
+  } else if (phase === 'owner-republish') {
+    await archiveAndRepublishJob()
+  } else if (phase === 'candidate-apply') {
+    await applyToPublishedJob()
+  } else if (phase === 'unauthorized') {
+    await verifyUnauthorized()
+  }
+} finally {
+  await browser.close()
+}

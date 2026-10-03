@@ -1,0 +1,266 @@
+import { readFile } from 'node:fs/promises'
+import { pathToFileURL } from 'node:url'
+
+export const REALTIME_INFRA_CREATE_RESOURCES = [
+  'random_password.realtime_ticket',
+  'aws_secretsmanager_secret.realtime_ticket',
+  'aws_secretsmanager_secret_version.realtime_ticket',
+  'aws_iam_role_policy.ecs_execution_realtime_ticket_secret',
+  'aws_dynamodb_table.realtime_connections',
+  'aws_sqs_queue.realtime_dlq',
+  'aws_sqs_queue.realtime_events',
+  'aws_cloudwatch_event_rule.realtime_events',
+  'aws_cloudwatch_event_target.realtime_queue',
+  'aws_sqs_queue_policy.realtime_events',
+  'aws_iam_role.realtime_authorizer',
+  'aws_iam_role.realtime_connection',
+  'aws_iam_role.realtime_fanout',
+  'aws_iam_role_policy_attachment.realtime_authorizer_logs',
+  'aws_iam_role_policy_attachment.realtime_connection_logs',
+  'aws_iam_role_policy_attachment.realtime_fanout_logs',
+  'aws_iam_role_policy.realtime_authorizer',
+  'aws_iam_role_policy.realtime_connection',
+  'aws_iam_role_policy.realtime_fanout',
+  'aws_cloudwatch_log_group.realtime_authorizer',
+  'aws_cloudwatch_log_group.realtime_connection',
+  'aws_cloudwatch_log_group.realtime_fanout',
+  'aws_lambda_function.realtime_authorizer',
+  'aws_lambda_function.realtime_connection',
+  'aws_apigatewayv2_api.realtime',
+  'aws_lambda_permission.realtime_authorizer_apigateway',
+  'aws_apigatewayv2_authorizer.realtime_connect',
+  'aws_apigatewayv2_integration.realtime_connection',
+  'aws_apigatewayv2_route.realtime_connect',
+  'aws_apigatewayv2_route.realtime_disconnect',
+  'aws_apigatewayv2_route.realtime_default',
+  'aws_lambda_permission.realtime_connection_apigateway',
+  'aws_cloudwatch_log_group.realtime_api',
+  'aws_iam_role.realtime_api_gateway_logs',
+  'aws_iam_role_policy_attachment.realtime_api_gateway_logs',
+  'aws_api_gateway_account.realtime',
+  'aws_apigatewayv2_stage.realtime',
+  'aws_lambda_function.realtime_fanout',
+  'aws_lambda_event_source_mapping.realtime_events',
+  'aws_cloudwatch_metric_alarm.realtime_dlq_depth',
+  'aws_cloudwatch_metric_alarm.realtime_queue_age',
+]
+
+export const REALTIME_WEB_TASK_RESOURCE = 'aws_ecs_task_definition.web'
+
+const CREATE_RESOURCES = new Set(REALTIME_INFRA_CREATE_RESOURCES)
+const REPLACEMENT_ACTIONS = new Set([
+  JSON.stringify(['create', 'delete']),
+  JSON.stringify(['delete', 'create']),
+])
+
+const RECOVERY_ACTIONS = new Map([
+  ['aws_apigatewayv2_stage.realtime', JSON.stringify(['create'])],
+  [REALTIME_WEB_TASK_RESOURCE, JSON.stringify(['create'])],
+  ['aws_iam_role_policy.realtime_fanout', JSON.stringify(['create'])],
+  ['aws_lambda_event_source_mapping.realtime_events', JSON.stringify(['create'])],
+  ['aws_lambda_function.realtime_authorizer', JSON.stringify(['update'])],
+  ['aws_lambda_function.realtime_fanout', JSON.stringify(['create'])],
+  ['aws_iam_role.realtime_api_gateway_logs', JSON.stringify(['create'])],
+  ['aws_iam_role_policy_attachment.realtime_api_gateway_logs', JSON.stringify(['create'])],
+  ['aws_api_gateway_account.realtime', JSON.stringify(['create'])],
+])
+
+const TYPING_MAINTENANCE_ACTIONS = new Map([
+  ['aws_iam_role_policy.realtime_connection', JSON.stringify(['update'])],
+  ['aws_lambda_function.realtime_connection', JSON.stringify(['update'])],
+])
+
+const MESSAGE_MAINTENANCE_ACTIONS = new Map([
+  ['aws_cloudwatch_event_rule.realtime_events', JSON.stringify(['update'])],
+  ['aws_lambda_function.realtime_fanout', JSON.stringify(['update'])],
+])
+
+const SOCIAL_MAINTENANCE_ACTIONS = new Map([
+  ['aws_cloudwatch_event_rule.realtime_events', JSON.stringify(['update'])],
+  ['aws_iam_role_policy.realtime_fanout', JSON.stringify(['update'])],
+  ['aws_lambda_function.realtime_fanout', JSON.stringify(['update'])],
+])
+
+export function resolveRealtimeInfraTargets(state) {
+  const tracked = new Set(
+    (state.resources ?? [])
+      .filter((resource) => resource?.mode === 'managed' && (resource.instances ?? []).length > 0)
+      .map((resource) => `${resource.type}.${resource.name}`),
+  )
+  const realtimeComplete = REALTIME_INFRA_CREATE_RESOURCES.every((address) => tracked.has(address))
+
+  if (realtimeComplete) {
+    return [...REALTIME_INFRA_CREATE_RESOURCES]
+  }
+
+  return [...REALTIME_INFRA_CREATE_RESOURCES, REALTIME_WEB_TASK_RESOURCE]
+}
+
+function matchesExactActions(changes, expectedActions) {
+  if (changes.length !== expectedActions.size) return false
+  const seen = new Set()
+  for (const resource of changes) {
+    const expected = expectedActions.get(resource.address)
+    const actual = JSON.stringify(resource?.change?.actions ?? [])
+    if (!expected || expected !== actual || seen.has(resource.address)) return false
+    seen.add(resource.address)
+  }
+  return seen.size === expectedActions.size
+}
+
+function isExactRecovery(changes) {
+  return matchesExactActions(changes, RECOVERY_ACTIONS)
+}
+
+function isExactTypingMaintenance(changes) {
+  return matchesExactActions(changes, TYPING_MAINTENANCE_ACTIONS)
+}
+
+function isExactMessageMaintenance(changes) {
+  return matchesExactActions(changes, MESSAGE_MAINTENANCE_ACTIONS)
+}
+
+function isExactSocialMaintenance(changes) {
+  return matchesExactActions(changes, SOCIAL_MAINTENANCE_ACTIONS)
+}
+
+function isExactAuthorizerMaintenance(changes) {
+  if (changes.length !== 1) return false
+  const [resource] = changes
+  return resource.address === 'aws_lambda_function.realtime_authorizer'
+    && JSON.stringify(resource?.change?.actions ?? []) === JSON.stringify(['update'])
+}
+
+export function classifyRealtimeInfraPlan(plan, action) {
+  if (!['plan', 'apply-once'].includes(action)) {
+    throw new Error(`Unsupported realtime infrastructure action: ${action}`)
+  }
+
+  const changes = (plan.resource_changes ?? []).filter((resource) => {
+    if (resource?.mode === 'data') return false
+    return JSON.stringify(resource?.change?.actions ?? []) !== JSON.stringify(['no-op'])
+  })
+
+  if (changes.length === 0) {
+    if (action === 'apply-once') {
+      throw new Error('apply-once requires the initial realtime infrastructure plan, an exact bounded recovery plan, or an exact bounded maintenance plan')
+    }
+    return { mode: 'steady', createCount: 0, replaceCount: 0 }
+  }
+
+  if (isExactAuthorizerMaintenance(changes)) {
+    return {
+      mode: 'maintenance',
+      createCount: 0,
+      updateCount: 1,
+      replaceCount: 0,
+    }
+  }
+
+  if (isExactTypingMaintenance(changes)) {
+    return {
+      mode: 'typing-maintenance',
+      createCount: 0,
+      updateCount: 2,
+      replaceCount: 0,
+    }
+  }
+
+  if (isExactMessageMaintenance(changes)) {
+    return {
+      mode: 'message-maintenance',
+      createCount: 0,
+      updateCount: 2,
+      replaceCount: 0,
+    }
+  }
+
+  if (isExactSocialMaintenance(changes)) {
+    return {
+      mode: 'social-maintenance',
+      createCount: 0,
+      updateCount: 3,
+      replaceCount: 0,
+    }
+  }
+
+  if (isExactRecovery(changes)) {
+    return {
+      mode: 'recovery',
+      createCount: 8,
+      updateCount: 1,
+      replaceCount: 0,
+    }
+  }
+
+  let replaceCount = 0
+  const created = new Set()
+
+  for (const resource of changes) {
+    const address = resource.address
+    const actions = resource?.change?.actions ?? []
+    const serializedActions = JSON.stringify(actions)
+
+    if (CREATE_RESOURCES.has(address)) {
+      if (serializedActions !== JSON.stringify(['create'])) {
+        throw new Error(`Expected create-only realtime resource change: ${address} ${serializedActions}`)
+      }
+      created.add(address)
+      continue
+    }
+
+    if (address === REALTIME_WEB_TASK_RESOURCE) {
+      if (!REPLACEMENT_ACTIONS.has(serializedActions)) {
+        throw new Error(`Expected web task definition replacement: ${address} ${serializedActions}`)
+      }
+      replaceCount += 1
+      continue
+    }
+
+    throw new Error(`Unexpected actual change outside realtime allowlist: ${address} ${serializedActions}`)
+  }
+
+  const missingCreates = REALTIME_INFRA_CREATE_RESOURCES.filter((address) => !created.has(address))
+  if (missingCreates.length > 0) {
+    throw new Error(`Expected realtime create changes missing from plan: ${missingCreates.sort().join(', ')}`)
+  }
+  if (replaceCount !== 1) {
+    throw new Error(`Expected exactly one web task definition replacement; found ${replaceCount}`)
+  }
+
+  return {
+    mode: 'create',
+    createCount: created.size,
+    replaceCount,
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2)
+
+  if (args[0] === 'targets') {
+    const [, statePath] = args
+    if (!statePath || args.length !== 2) {
+      throw new Error('Usage: node realtime-infra-plan-classifier.mjs targets <state.json>')
+    }
+
+    const state = JSON.parse(await readFile(statePath, 'utf8'))
+    process.stdout.write(`${resolveRealtimeInfraTargets(state).join('\n')}\n`)
+    return
+  }
+
+  const [planPath, action] = args
+  if (!planPath || !action || args.length !== 2) {
+    throw new Error('Usage: node realtime-infra-plan-classifier.mjs <plan.json> <plan|apply-once>')
+  }
+
+  const plan = JSON.parse(await readFile(planPath, 'utf8'))
+  process.stdout.write(`${JSON.stringify(classifyRealtimeInfraPlan(plan, action))}\n`)
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error.message)
+    process.exit(1)
+  })
+}

@@ -1,0 +1,62 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { removeProfileMedia, uploadProfileMedia } from './profile-media-service'
+import type { ProfileMediaKind } from './profile-media-repository'
+
+export type ProfileMediaActionState = { error?: string; success?: boolean }
+
+function revalidateProfileMedia() {
+  // Keep the current /profile action state intact long enough for the client
+  // to observe success/error. ProfileMediaControls refreshes /profile after
+  // success; these invalidations keep every other media surface fresh.
+  revalidatePath('/people/[slug]', 'page')
+  revalidatePath('/home')
+  revalidatePath('/network')
+}
+
+function actionFor(kind: ProfileMediaKind) {
+  return async function uploadAction(
+    _previousState: ProfileMediaActionState,
+    formData: FormData,
+  ): Promise<ProfileMediaActionState> {
+    const user = await requireAwsUser()
+    const image = formData.get('image')
+    if (!(image instanceof File) || image.size === 0) {
+      return { error: 'Choose an image first.' }
+    }
+
+    try {
+      await uploadProfileMedia(user.id, kind, {
+        type: image.type,
+        size: image.size,
+        bytes: new Uint8Array(await image.arrayBuffer()),
+      })
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Unable to upload image.' }
+    }
+
+    revalidateProfileMedia()
+    return { success: true }
+  }
+}
+
+function removeActionFor(kind: ProfileMediaKind) {
+  return async function removeAction(formData: FormData): Promise<ProfileMediaActionState> {
+    void formData
+    const user = await requireAwsUser()
+    try {
+      await removeProfileMedia(user.id, kind)
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Unable to remove image.' }
+    }
+    revalidateProfileMedia()
+    return { success: true }
+  }
+}
+
+export const uploadAvatarAction = actionFor('avatar')
+export const uploadCoverAction = actionFor('cover')
+export const removeAvatarAction = removeActionFor('avatar')
+export const removeCoverAction = removeActionFor('cover')

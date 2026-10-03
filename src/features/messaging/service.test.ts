@@ -1,0 +1,498 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { OutboxRepository } from '@/features/events/outbox-repository'
+import type { NetworkRepository } from '@/features/network/repository'
+import type { MessagingRepository } from './repository'
+
+const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
+const TARGET_ID = '22222222-2222-4222-8222-222222222222'
+const THIRD_ID = '33333333-3333-4333-8333-333333333333'
+const CONVERSATION_ID = '44444444-4444-4444-8444-444444444444'
+const MESSAGE_ID = '55555555-5555-4555-8555-555555555555'
+const CLIENT_MESSAGE_ID = '66666666-6666-4666-8666-666666666666'
+const CONNECTION_ID = '77777777-7777-4777-8777-777777777777'
+
+function acceptedConnection() {
+  return {
+    id: CONNECTION_ID,
+    user_low_id: VIEWER_ID,
+    user_high_id: TARGET_ID,
+    requested_by: VIEWER_ID,
+    status: 'accepted' as const,
+    created_at: '2026-09-13T00:00:00.000Z',
+    updated_at: '2026-09-13T00:00:00.000Z',
+  }
+}
+
+function message(overrides: Record<string, unknown> = {}) {
+  return {
+    id: MESSAGE_ID,
+    conversation_id: CONVERSATION_ID,
+    sender_profile_id: VIEWER_ID,
+    client_message_id: CLIENT_MESSAGE_ID,
+    body: 'Good day, Captain.',
+    created_at: '2026-09-13T00:01:00.000Z',
+    edited_at: null,
+    deleted_at: null,
+    ...overrides,
+  }
+}
+
+function makeMessagingRepository(overrides: Record<string, unknown> = {}) {
+  return {
+    findDirectConversationByPair: vi.fn(async () => null),
+    insertDirectConversation: vi.fn(async () => CONVERSATION_ID),
+    isParticipant: vi.fn(async () => true),
+    findOtherParticipantId: vi.fn(async () => TARGET_ID),
+    listParticipantIds: vi.fn(async () => [VIEWER_ID, TARGET_ID]),
+    findMessageByClientId: vi.fn(async () => null),
+    insertMessage: vi.fn(async () => message()),
+    updateConversationLastMessage: vi.fn(async () => undefined),
+    findMessageInConversation: vi.fn(async () => message()),
+    findMessageByIdForUpdate: vi.fn(async () => message()),
+    editMessageBody: vi.fn(async (_messageId: string, body: string, editedAt: string) => message({
+      body,
+      edited_at: editedAt,
+    })),
+    advanceReadState: vi.fn(async () => true),
+    ...overrides,
+  }
+}
+
+function makeNetworkRepository(overrides: Record<string, unknown> = {}) {
+  return {
+    findConnectionByPair: vi.fn(async () => acceptedConnection()),
+    isPairBlocked: vi.fn(async () => false),
+    ...overrides,
+  }
+}
+
+function makeOutbox() {
+  const enqueue = vi.fn<OutboxRepository['enqueue']>()
+  enqueue.mockResolvedValue(undefined)
+  return { enqueue }
+}
+
+async function service(input: {
+  messaging?: ReturnType<typeof makeMessagingRepository>
+  network?: ReturnType<typeof makeNetworkRepository>
+  outbox?: ReturnType<typeof makeOutbox>
+  now?: () => Date
+} = {}) {
+  const messaging = input.messaging ?? makeMessagingRepository()
+  const network = input.network ?? makeNetworkRepository()
+  const outbox = input.outbox ?? makeOutbox()
+  const transactionSpy = vi.fn()
+  const { createMessagingService } = await import('./service')
+  const withTransaction = async <T>(
+    fn: (context: {
+      messaging: MessagingRepository
+      network: NetworkRepository
+      outbox: OutboxRepository
+    }) => Promise<T>,
+  ) => {
+    transactionSpy()
+    return fn({
+      messaging: messaging as unknown as MessagingRepository,
+      network: network as unknown as NetworkRepository,
+      outbox: outbox as unknown as OutboxRepository,
+    })
+  }
+  return {
+    service: createMessagingService({ withTransaction, now: input.now }),
+    messaging,
+    network,
+    outbox,
+    transactionSpy,
+  }
+}
+
+async function expectCode(promise: Promise<unknown>, code: string) {
+  await expect(promise).rejects.toMatchObject({ message: code })
+}
+
+describe('messaging authorization and durability service', () => {
+  it('rejects starting a conversation with yourself before persistence', async () => {
+    const context = await service()
+
+    await expectCode(
+      context.service.startDirectConversation(VIEWER_ID, VIEWER_ID),
+      'messaging_self_conversation',
+    )
+
+    expect(context.transactionSpy).not.toHaveBeenCalled()
+    expect(context.messaging.insertDirectConversation).not.toHaveBeenCalled()
+  })
+
+  it('requires an accepted connection and an unblocked pair before starting direct messaging', async () => {
+    const noConnection = await service({
+      network: makeNetworkRepository({ findConnectionByPair: vi.fn(async () => null) }),
+    })
+    await expectCode(
+      noConnection.service.startDirectConversation(VIEWER_ID, TARGET_ID),
+      'messaging_not_allowed',
+    )
+    expect(noConnection.messaging.insertDirectConversation).not.toHaveBeenCalled()
+
+    const pending = await service({
+      network: makeNetworkRepository({
+        findConnectionByPair: vi.fn(async () => ({ ...acceptedConnection(), status: 'pending' as const })),
+      }),
+    })
+    await expectCode(
+      pending.service.startDirectConversation(VIEWER_ID, TARGET_ID),
+      'messaging_not_allowed',
+    )
+    expect(pending.messaging.insertDirectConversation).not.toHaveBeenCalled()
+
+    const blocked = await service({
+      network: makeNetworkRepository({ isPairBlocked: vi.fn(async () => true) }),
+    })
+    await expectCode(
+      blocked.service.startDirectConversation(VIEWER_ID, TARGET_ID),
+      'messaging_not_allowed',
+    )
+    expect(blocked.messaging.insertDirectConversation).not.toHaveBeenCalled()
+  })
+
+  it('returns the existing direct conversation instead of creating a duplicate pair', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({
+        findDirectConversationByPair: vi.fn(async () => ({ id: CONVERSATION_ID })),
+      }),
+    })
+
+    await expect(
+      context.service.startDirectConversation(VIEWER_ID, TARGET_ID),
+    ).resolves.toBe(CONVERSATION_ID)
+
+    expect(context.messaging.insertDirectConversation).not.toHaveBeenCalled()
+  })
+
+  it('creates a direct conversation only after the connection and block checks pass', async () => {
+    const context = await service()
+
+    await expect(
+      context.service.startDirectConversation(VIEWER_ID, TARGET_ID),
+    ).resolves.toBe(CONVERSATION_ID)
+
+    expect(context.network.findConnectionByPair).toHaveBeenCalledWith(VIEWER_ID, TARGET_ID)
+    expect(context.network.isPairBlocked).toHaveBeenCalledWith(VIEWER_ID, TARGET_ID)
+    expect(context.messaging.insertDirectConversation).toHaveBeenCalledWith(VIEWER_ID, TARGET_ID)
+  })
+
+  it('rejects sending from a nonparticipant', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({ isParticipant: vi.fn(async () => false) }),
+    })
+
+    await expectCode(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Hello',
+      }),
+      'messaging_not_participant',
+    )
+
+    expect(context.messaging.insertMessage).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('rejects sending when the accepted relationship no longer exists', async () => {
+    const context = await service({
+      network: makeNetworkRepository({ findConnectionByPair: vi.fn(async () => null) }),
+    })
+
+    await expectCode(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Should not send',
+      }),
+      'messaging_not_allowed',
+    )
+
+    expect(context.messaging.insertMessage).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('rejects sending when the relationship is no longer accepted', async () => {
+    const context = await service({
+      network: makeNetworkRepository({
+        findConnectionByPair: vi.fn(async () => ({ ...acceptedConnection(), status: 'pending' as const })),
+      }),
+    })
+
+    await expectCode(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Should not send',
+      }),
+      'messaging_not_allowed',
+    )
+
+    expect(context.messaging.insertMessage).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('rejects sending when either participant has blocked the other', async () => {
+    const context = await service({
+      network: makeNetworkRepository({ isPairBlocked: vi.fn(async () => true) }),
+    })
+
+    await expectCode(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Should not send',
+      }),
+      'messaging_not_allowed',
+    )
+
+    expect(context.messaging.insertMessage).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('makes a retried client message idempotent without a second insert or event', async () => {
+    const existing = message()
+    const context = await service({
+      messaging: makeMessagingRepository({ findMessageByClientId: vi.fn(async () => existing) }),
+    })
+
+    await expect(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: existing.body,
+      }),
+    ).resolves.toEqual(existing)
+
+    expect(context.messaging.insertMessage).not.toHaveBeenCalled()
+    expect(context.messaging.updateConversationLastMessage).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('persists a message and last-message metadata before emitting one routing-safe message.created event', async () => {
+    const context = await service()
+
+    await expect(
+      context.service.sendMessage(VIEWER_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: '  Good day, Captain.  ',
+      }),
+    ).resolves.toEqual(message())
+
+    expect(context.messaging.insertMessage).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      senderProfileId: VIEWER_ID,
+      clientMessageId: CLIENT_MESSAGE_ID,
+      body: 'Good day, Captain.',
+    })
+    expect(context.messaging.updateConversationLastMessage).toHaveBeenCalledWith(
+      CONVERSATION_ID,
+      MESSAGE_ID,
+      '2026-09-13T00:01:00.000Z',
+    )
+    expect(context.outbox.enqueue).toHaveBeenCalledTimes(1)
+    expect(context.outbox.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      aggregateType: 'message',
+      aggregateId: MESSAGE_ID,
+      eventType: 'message.created',
+      schemaVersion: 1,
+      payload: expect.objectContaining({
+        eventType: 'message.created',
+        conversationId: CONVERSATION_ID,
+        messageId: MESSAGE_ID,
+        senderId: VIEWER_ID,
+      }),
+    }))
+
+    const event = context.outbox.enqueue.mock.calls[0]?.[0] as unknown as { payload?: Record<string, unknown> }
+    expect(event.payload).not.toHaveProperty('body')
+  })
+
+  it('edits an owned message within five minutes and emits message.updated', async () => {
+    const editedAt = '2026-09-13T00:05:59.000Z'
+    const context = await service({
+      now: () => new Date(editedAt),
+    })
+
+    await expect(context.service.editMessage(VIEWER_ID, {
+      messageId: MESSAGE_ID,
+      body: '  Updated bridge note.  ',
+    })).resolves.toEqual(message({
+      body: 'Updated bridge note.',
+      edited_at: editedAt,
+    }))
+
+    expect(context.messaging.editMessageBody).toHaveBeenCalledWith(
+      MESSAGE_ID,
+      'Updated bridge note.',
+      editedAt,
+    )
+    expect(context.outbox.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      aggregateType: 'message',
+      aggregateId: MESSAGE_ID,
+      eventType: 'message.updated',
+      payload: expect.objectContaining({
+        eventType: 'message.updated',
+        conversationId: CONVERSATION_ID,
+        messageId: MESSAGE_ID,
+        actorId: VIEWER_ID,
+      }),
+    }))
+  })
+
+  it('rejects message edits after the five-minute window and from anyone except the sender', async () => {
+    const expired = await service({
+      now: () => new Date('2026-09-13T00:06:00.001Z'),
+    })
+    await expectCode(
+      expired.service.editMessage(VIEWER_ID, {
+        messageId: MESSAGE_ID,
+        body: 'Too late',
+      }),
+      'messaging_edit_window_expired',
+    )
+    expect(expired.messaging.editMessageBody).not.toHaveBeenCalled()
+
+    const otherUser = await service({
+      now: () => new Date('2026-09-13T00:05:00.000Z'),
+    })
+    await expectCode(
+      otherUser.service.editMessage(TARGET_ID, {
+        messageId: MESSAGE_ID,
+        body: 'Not mine',
+      }),
+      'messaging_action_not_allowed',
+    )
+    expect(otherUser.messaging.editMessageBody).not.toHaveBeenCalled()
+  })
+
+  it('rejects read updates from nonparticipants and messages outside the conversation', async () => {
+    const nonparticipant = await service({
+      messaging: makeMessagingRepository({ isParticipant: vi.fn(async () => false) }),
+    })
+    await expectCode(
+      nonparticipant.service.markConversationRead(VIEWER_ID, CONVERSATION_ID, MESSAGE_ID),
+      'messaging_not_participant',
+    )
+
+    const wrongConversation = await service({
+      messaging: makeMessagingRepository({ findMessageInConversation: vi.fn(async () => null) }),
+    })
+    await expectCode(
+      wrongConversation.service.markConversationRead(VIEWER_ID, CONVERSATION_ID, MESSAGE_ID),
+      'messaging_message_not_found',
+    )
+    expect(wrongConversation.messaging.advanceReadState).not.toHaveBeenCalled()
+  })
+
+  it('emits one durable read-cursor event only after the cursor actually advances', async () => {
+    const context = await service()
+
+    await expect(
+      context.service.markConversationRead(VIEWER_ID, CONVERSATION_ID, MESSAGE_ID),
+    ).resolves.toBe(true)
+
+    expect(context.messaging.advanceReadState).toHaveBeenCalledWith(
+      VIEWER_ID,
+      CONVERSATION_ID,
+      MESSAGE_ID,
+      '2026-09-13T00:01:00.000Z',
+    )
+    expect(context.messaging.listParticipantIds).toHaveBeenCalledWith(CONVERSATION_ID)
+    expect(context.outbox.enqueue).toHaveBeenCalledTimes(1)
+    expect(context.outbox.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+      aggregateType: 'conversation',
+      aggregateId: CONVERSATION_ID,
+      eventType: 'conversation.read_cursor_advanced',
+      schemaVersion: 1,
+      occurredAt: '2026-09-13T00:01:00.000Z',
+      payload: {
+        eventType: 'conversation.read_cursor_advanced',
+        conversationId: CONVERSATION_ID,
+        readerProfileId: VIEWER_ID,
+        lastReadMessageId: MESSAGE_ID,
+        lastReadAt: '2026-09-13T00:01:00.000Z',
+        participantProfileIds: [VIEWER_ID, TARGET_ID],
+      },
+    }))
+  })
+
+  it('does not emit a read-cursor event when the durable cursor did not advance', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({ advanceReadState: vi.fn(async () => false) }),
+    })
+
+    await expect(
+      context.service.markConversationRead(VIEWER_ID, CONVERSATION_ID, MESSAGE_ID),
+    ).resolves.toBe(false)
+
+    expect(context.messaging.listParticipantIds).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('does not let an unrelated profile become a participant through send or read operations', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({
+        isParticipant: vi.fn(async (profileId: string) => profileId !== THIRD_ID),
+      }),
+    })
+
+    await expectCode(
+      context.service.sendMessage(THIRD_ID, {
+        conversationId: CONVERSATION_ID,
+        clientMessageId: CLIENT_MESSAGE_ID,
+        body: 'Unauthorized',
+      }),
+      'messaging_not_participant',
+    )
+    await expectCode(
+      context.service.markConversationRead(THIRD_ID, CONVERSATION_ID, MESSAGE_ID),
+      'messaging_not_participant',
+    )
+  })
+
+  it('deletes a conversation only for a participant, and only their own view of it', async () => {
+    const clearConversationForParticipant = vi.fn(async () => true)
+    const context = await service({
+      messaging: makeMessagingRepository({ clearConversationForParticipant }),
+    })
+
+    await expect(context.service.deleteConversationForParticipant(VIEWER_ID, CONVERSATION_ID)).resolves.toBe(true)
+    expect(context.messaging.isParticipant).toHaveBeenCalledWith(VIEWER_ID, CONVERSATION_ID)
+    expect(clearConversationForParticipant).toHaveBeenCalledWith(VIEWER_ID, CONVERSATION_ID)
+    expect(context.transactionSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses to delete a conversation for someone who is not in it', async () => {
+    const clearConversationForParticipant = vi.fn(async () => true)
+    const context = await service({
+      messaging: makeMessagingRepository({
+        isParticipant: vi.fn(async () => false),
+        clearConversationForParticipant,
+      }),
+    })
+
+    await expectCode(
+      context.service.deleteConversationForParticipant(THIRD_ID, CONVERSATION_ID),
+      'messaging_not_participant',
+    )
+    expect(clearConversationForParticipant).not.toHaveBeenCalled()
+    expect(context.outbox.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('reports a conversation that disappeared between the check and the update as unavailable', async () => {
+    const context = await service({
+      messaging: makeMessagingRepository({ clearConversationForParticipant: vi.fn(async () => false) }),
+    })
+
+    await expectCode(
+      context.service.deleteConversationForParticipant(VIEWER_ID, CONVERSATION_ID),
+      'messaging_not_participant',
+    )
+  })
+})

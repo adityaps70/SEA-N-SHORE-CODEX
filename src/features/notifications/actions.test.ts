@@ -1,45 +1,136 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
-import { markAllNotificationsRead, markNotificationRead } from './actions'
+import { revalidatePath } from 'next/cache'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { deleteNotification, markAllNotificationsRead, markNotificationRead } from './actions'
+import {
+  deleteNotificationInAurora,
+  markAllNotificationsReadInAurora,
+  markNotificationReadInAurora,
+} from './repository'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('@/features/auth/queries', () => ({
-  requireUser: vi.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111' })),
+vi.mock('@/features/auth/aws-queries', () => ({
+  requireAwsUser: vi.fn(async () => ({
+    id: '11111111-1111-4111-8111-111111111111',
+    cognitoSub: 'cognito-sub-123',
+    email: 'member@example.com',
+  })),
 }))
-vi.mock('@/lib/supabase/server', () => ({ createServerSupabaseClient: vi.fn() }))
+vi.mock('./queries', () => ({
+  getNotificationChrome: vi.fn(),
+  getNotifications: vi.fn(),
+}))
+vi.mock('./repository', () => ({
+  markNotificationReadInAurora: vi.fn(async () => true),
+  markAllNotificationsReadInAurora: vi.fn(async () => undefined),
+  deleteNotificationInAurora: vi.fn(async () => true),
+}))
 
-const mockedCreateServerSupabaseClient = vi.mocked(createServerSupabaseClient)
+const USER_ID = '11111111-1111-4111-8111-111111111111'
+const NOTIFICATION_ID = '22222222-2222-4222-8222-222222222222'
 
-describe('notification actions', () => {
+const mockedRequireAwsUser = vi.mocked(requireAwsUser)
+const mockedMarkRead = vi.mocked(markNotificationReadInAurora)
+const mockedMarkAllRead = vi.mocked(markAllNotificationsReadInAurora)
+const mockedRevalidatePath = vi.mocked(revalidatePath)
+const mockedDelete = vi.mocked(deleteNotificationInAurora)
+
+describe('Aurora notification actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockedRequireAwsUser.mockResolvedValue({
+      id: USER_ID,
+      cognitoSub: 'cognito-sub-123',
+      email: 'member@example.com',
+    })
+    mockedMarkRead.mockResolvedValue(true)
+    mockedMarkAllRead.mockResolvedValue(undefined)
+    mockedDelete.mockResolvedValue(true)
   })
 
-  it('rejects an invalid notification id before creating Supabase', async () => {
-    expect(await markNotificationRead('not-a-uuid')).toEqual({ ok: false, error: 'Invalid notification.' })
-    expect(mockedCreateServerSupabaseClient).not.toHaveBeenCalled()
+  it('rejects invalid notification ids before authentication or persistence', async () => {
+    await expect(markNotificationRead('not-a-uuid')).resolves.toEqual({
+      ok: false,
+      error: 'Invalid notification.',
+    })
+    expect(mockedRequireAwsUser).not.toHaveBeenCalled()
+    expect(mockedMarkRead).not.toHaveBeenCalled()
   })
 
-  it('marks only the signed-in recipient notification as read', async () => {
-    const recipientEq = vi.fn(async () => ({ error: null }))
-    const idEq = vi.fn(() => ({ eq: recipientEq }))
-    const update = vi.fn(() => ({ eq: idEq }))
-    mockedCreateServerSupabaseClient.mockResolvedValue({ from: vi.fn(() => ({ update })) } as never)
-
-    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-    expect(await markNotificationRead(id)).toEqual({ ok: true })
-    expect(idEq).toHaveBeenCalledWith('id', id)
-    expect(recipientEq).toHaveBeenCalledWith('recipient_id', '11111111-1111-4111-8111-111111111111')
+  it('marks one notification read using the permanent profile UUID', async () => {
+    await expect(markNotificationRead(NOTIFICATION_ID)).resolves.toEqual({ ok: true })
+    expect(mockedMarkRead).toHaveBeenCalledWith(USER_ID, NOTIFICATION_ID)
+    expect(mockedMarkRead).not.toHaveBeenCalledWith('cognito-sub-123', NOTIFICATION_ID)
   })
 
-  it('marks only unread notifications belonging to the signed-in recipient', async () => {
-    const isUnread = vi.fn(async () => ({ error: null }))
-    const recipientEq = vi.fn(() => ({ is: isUnread }))
-    const update = vi.fn(() => ({ eq: recipientEq }))
-    mockedCreateServerSupabaseClient.mockResolvedValue({ from: vi.fn(() => ({ update })) } as never)
+  it('fails closed when the notification is not owned by the authenticated recipient', async () => {
+    mockedMarkRead.mockResolvedValue(false)
 
-    expect(await markAllNotificationsRead()).toEqual({ ok: true })
-    expect(recipientEq).toHaveBeenCalledWith('recipient_id', '11111111-1111-4111-8111-111111111111')
-    expect(isUnread).toHaveBeenCalledWith('read_at', null)
+    await expect(markNotificationRead(NOTIFICATION_ID)).resolves.toEqual({
+      ok: false,
+      error: 'This notification is no longer available. Refresh the page to see your latest notifications.',
+    })
+    expect(mockedRevalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('returns a sign-in message instead of throwing when the session has expired', async () => {
+    const expired = Object.assign(new Error('Authentication required.'), { name: 'AwsAuthenticationRequiredError' })
+    mockedRequireAwsUser.mockRejectedValueOnce(expired)
+    await expect(markNotificationRead(NOTIFICATION_ID)).resolves.toEqual({
+      ok: false,
+      error: 'Your session has expired. Sign in again, then retry.',
+    })
+    mockedRequireAwsUser.mockRejectedValueOnce(expired)
+    await expect(markAllNotificationsRead()).resolves.toEqual({
+      ok: false,
+      error: 'Your session has expired. Sign in again, then retry.',
+    })
+  })
+
+  it('marks all notifications read only for the permanent recipient UUID', async () => {
+    await expect(markAllNotificationsRead()).resolves.toEqual({ ok: true })
+    expect(mockedMarkAllRead).toHaveBeenCalledWith(USER_ID)
+  })
+
+  it('preserves notification surface revalidation after successful writes', async () => {
+    await markNotificationRead(NOTIFICATION_ID)
+
+    expect(mockedRevalidatePath).toHaveBeenCalledWith('/notifications')
+    expect(mockedRevalidatePath).toHaveBeenCalledWith('/home')
+    expect(mockedRevalidatePath).toHaveBeenCalledWith('/network')
+  })
+
+  describe('deleteNotification', () => {
+    it('rejects invalid ids before authentication or persistence', async () => {
+      await expect(deleteNotification('nope')).resolves.toEqual({ ok: false, error: 'Invalid notification.' })
+      expect(mockedRequireAwsUser).not.toHaveBeenCalled()
+      expect(mockedDelete).not.toHaveBeenCalled()
+    })
+
+    it('deletes only for the signed-in recipient (permanent profile UUID) and revalidates', async () => {
+      await expect(deleteNotification(NOTIFICATION_ID)).resolves.toEqual({ ok: true })
+      expect(mockedDelete).toHaveBeenCalledTimes(1)
+      expect(mockedDelete).toHaveBeenCalledWith(USER_ID, NOTIFICATION_ID)
+      expect(mockedRevalidatePath).toHaveBeenCalledWith('/notifications')
+    })
+
+    it("fails closed for someone else's notification (nothing deleted for this recipient)", async () => {
+      mockedDelete.mockResolvedValue(false)
+      await expect(deleteNotification(NOTIFICATION_ID)).resolves.toEqual({
+        ok: false,
+        error: 'This notification is no longer available. Refresh the page to see your latest notifications.',
+      })
+      expect(mockedRevalidatePath).not.toHaveBeenCalled()
+    })
+
+    it('requires a signed-in member', async () => {
+      const expired = Object.assign(new Error('Authentication required.'), { name: 'AwsAuthenticationRequiredError' })
+      mockedRequireAwsUser.mockRejectedValueOnce(expired)
+      await expect(deleteNotification(NOTIFICATION_ID)).resolves.toEqual({
+        ok: false,
+        error: 'Your session has expired. Sign in again, then retry.',
+      })
+      expect(mockedDelete).not.toHaveBeenCalled()
+    })
   })
 })

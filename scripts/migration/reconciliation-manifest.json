@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "tables": [
+    { "source": "public.profiles", "target": "public.profiles", "keys": ["id"] },
+    { "source": "public.companies", "target": "public.companies", "keys": ["id"] },
+    { "source": "public.company_members", "target": "public.company_members", "keys": ["company_id", "user_id"] },
+    { "source": "public.maritime_profiles", "target": "public.maritime_profiles", "keys": ["user_id"] },
+    { "source": "public.profile_skills", "target": "public.profile_skills", "keys": ["user_id", "skill"] },
+    { "source": "public.posts", "target": "public.posts", "keys": ["id"] },
+    { "source": "public.post_reactions", "target": "public.post_reactions", "keys": ["post_id", "user_id"] },
+    { "source": "public.post_comments", "target": "public.post_comments", "keys": ["id"] },
+    { "source": "public.saved_posts", "target": "public.saved_posts", "keys": ["post_id", "user_id"] },
+    { "source": "public.post_media", "target": "public.post_media", "keys": ["id"] },
+    { "source": "public.post_polls", "target": "public.post_polls", "keys": ["post_id"] },
+    { "source": "public.post_poll_options", "target": "public.post_poll_options", "keys": ["id"] },
+    { "source": "public.post_poll_votes", "target": "public.post_poll_votes", "keys": ["post_id", "user_id"] },
+    { "source": "public.follows", "target": "public.follows", "keys": ["follower_id", "following_id"] },
+    { "source": "public.connections", "target": "public.connections", "keys": ["id"] },
+    { "source": "public.user_blocks", "target": "public.user_blocks", "keys": ["blocker_id", "blocked_id"] },
+    { "source": "public.notifications", "target": "public.notifications", "keys": ["id"] }
+  ],
+  "excluded": [
+    {
+      "source": "auth.users",
+      "reason": "Supabase Auth users require explicit Cognito identity mapping and are reconciled separately; they are not row-compatible with public.identity_accounts."
+    },
+    {
+      "target": "public.identity_accounts",
+      "reason": "AWS-native identity table stores Cognito provider subjects and is intentionally not schema-identical to Supabase Auth."
+    },
+    {
+      "target": "public.audit_events",
+      "reason": "AWS audit events may include migration/runtime events that have no one-to-one Supabase source row."
+    }
+  ]
+}

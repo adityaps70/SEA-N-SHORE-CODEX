@@ -1,0 +1,175 @@
+/** Community groups (round 9B): `public.community_groups` and `public.community_group_memberships`. */
+
+import { POST_CATEGORIES, POST_CATEGORY_LABELS, type PostCategory } from '@/features/feed/types'
+
+export const GROUP_ROLES = ['member', 'admin', 'owner'] as const
+export type GroupRole = (typeof GROUP_ROLES)[number]
+
+export const MEMBERSHIP_STATUSES = ['active', 'pending', 'removed'] as const
+export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number]
+
+export const GROUP_VISIBILITIES = ['public', 'private'] as const
+export type GroupVisibility = (typeof GROUP_VISIBILITIES)[number]
+
+/** Round 9C: how members get in. 'open' joins instantly; 'approval' waits for a moderator. */
+export const GROUP_JOIN_POLICIES = ['open', 'approval'] as const
+export type GroupJoinPolicy = (typeof GROUP_JOIN_POLICIES)[number]
+
+/** Role labels shown in the UI. The stored 'admin' role is presented as Moderator (round 9C). */
+export const GROUP_ROLE_LABELS: Record<GroupRole, string> = { owner: 'Owner', admin: 'Moderator', member: 'Member' }
+
+/** An organization that owns a community (Organization Pro). */
+export type GroupOwnerOrganization = {
+  id: string
+  slug: string
+  name: string
+}
+
+/** Icon names stored on `community_groups.icon`; each maps to a lucide icon in `group-icons.ts`. */
+export const GROUP_ICON_NAMES = [
+  'ShieldCheck', 'UsersRound', 'Wrench', 'BookOpenCheck', 'BadgeQuestionMark',
+  // Round 10: the category communities seeded by migration 0061.
+  'Newspaper', 'BriefcaseBusiness', 'LifeBuoy', 'Trophy', 'GraduationCap', 'Lightbulb',
+] as const
+export type GroupIconName = (typeof GROUP_ICON_NAMES)[number]
+
+/**
+ * Round 10: a community's category is one of the feed's post categories (the former phone Home
+ * chips). Migration 0061 seeds one community per category with the same name.
+ */
+export const COMMUNITY_CATEGORIES = POST_CATEGORIES
+export type CommunityCategory = PostCategory
+export const COMMUNITY_CATEGORY_LABELS: Record<CommunityCategory, string> = POST_CATEGORY_LABELS
+
+export function isCommunityCategory(value: unknown): value is CommunityCategory {
+  return typeof value === 'string' && (COMMUNITY_CATEGORIES as readonly string[]).includes(value)
+}
+
+/** How the full directory is ordered (round 10). */
+export const DIRECTORY_SORTS = ['active', 'members', 'name', 'newest'] as const
+export type DirectorySort = (typeof DIRECTORY_SORTS)[number]
+export const DIRECTORY_SORT_LABELS: Record<DirectorySort, string> = {
+  active: 'Most active',
+  members: 'Most members',
+  name: 'A to Z',
+  newest: 'Newest',
+}
+
+export const GROUP_NAME_MAX_LENGTH = 80
+export const GROUP_SLUG_MAX_LENGTH = 80
+export const GROUP_DESCRIPTION_MAX_LENGTH = 2000
+export const GROUP_RULES_MAX_LENGTH = 4000
+
+export type ViewerMembership = {
+  role: GroupRole
+  status: MembershipStatus
+}
+
+export type CommunityGroup = {
+  id: string
+  slug: string
+  name: string
+  description: string
+  rules: string
+  /** Banner image URL, or null for the gradient fallback. */
+  coverUrl: string | null
+  /** Community profile photo URL, or null for the icon/initials fallback. */
+  iconUrl: string | null
+  icon: string | null
+  visibility: GroupVisibility
+  joinPolicy: GroupJoinPolicy
+  /** Active members, including admins and the owner. */
+  memberCount: number
+  archived: boolean
+  createdBy: string | null
+  /** Set when an organization owns the community; the community shows the organization's name. */
+  ownerOrganization: GroupOwnerOrganization | null
+  /** The signed-in viewer's membership row, or null when they never joined (or left). */
+  viewerMembership: ViewerMembership | null
+  /** Round 10: the community's category, or null when none is set. */
+  category?: CommunityCategory | null
+  /** Round 10: live posts in the last 7 days ("Popular this week", new-post hints). */
+  recentPostCount?: number
+}
+
+export type GroupMember = {
+  profileId: string
+  slug: string | null
+  fullName: string
+  headline: string | null
+  avatarPath: string | null
+  avatarUrl?: string | null
+  role: GroupRole
+  status: MembershipStatus
+  requestedAt: string
+  joinedAt: string | null
+  /** Round 9C: a Sea N Shore platform administrator who joined (shown with a "Sea N Shore admin" chip). */
+  isPlatformAdmin: boolean
+}
+
+/** A row of the site-admin Communities list. */
+export type AdminCommunityGroup = {
+  id: string
+  slug: string
+  name: string
+  description: string
+  rules: string
+  icon: string | null
+  iconUrl: string | null
+  visibility: GroupVisibility
+  joinPolicy: GroupJoinPolicy
+  memberCount: number
+  pendingCount: number
+  owner: { id: string; fullName: string; slug: string | null } | null
+  ownerOrganization: GroupOwnerOrganization | null
+  archivedAt: string | null
+  createdAt: string
+  /** Round 10. */
+  category?: CommunityCategory | null
+}
+
+/** Signals used to suggest groups to a member (see `suggestions.ts`). */
+export type GroupSuggestionSignals = {
+  rank: string | null
+  vesselTypes: string[]
+  persona: string | null
+}
+
+/** What the viewer may do on a group page, decided on the server. */
+export function isGroupAdminRole(role: GroupRole | null | undefined) {
+  return role === 'admin' || role === 'owner'
+}
+
+export function viewerAdministersGroup(group: Pick<CommunityGroup, 'viewerMembership'>) {
+  return group.viewerMembership?.status === 'active' && isGroupAdminRole(group.viewerMembership.role)
+}
+
+export function viewerIsActiveMember(group: Pick<CommunityGroup, 'viewerMembership'>) {
+  return group.viewerMembership?.status === 'active'
+}
+
+/** Posts and members of a private group are visible to active members only. */
+export function viewerCanSeeGroupContent(group: Pick<CommunityGroup, 'visibility' | 'viewerMembership'>) {
+  return group.visibility === 'public' || viewerIsActiveMember(group)
+}
+
+export function groupHref(slug: string) {
+  return `/community/${slug}`
+}
+
+export const GROUP_PAGE_TABS = [
+  { id: 'about', label: 'About' },
+  { id: 'posts', label: 'Posts' },
+  { id: 'members', label: 'Members' },
+] as const
+
+export type GroupPageTab = (typeof GROUP_PAGE_TABS)[number]['id']
+
+export function parseGroupPageTab(value: string | string[] | undefined, fallback: GroupPageTab): GroupPageTab {
+  const first = Array.isArray(value) ? value[0] : value
+  return GROUP_PAGE_TABS.find((tab) => tab.id === first)?.id ?? fallback
+}
+
+export function groupTabHref(slug: string, tab: GroupPageTab) {
+  return `${groupHref(slug)}?tab=${tab}`
+}

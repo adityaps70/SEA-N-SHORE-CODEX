@@ -1,0 +1,46 @@
+name: AWS Legacy Claim Live Verify
+
+on:
+  push:
+    branches: [feat/aws-native-phase-0-1]
+    paths:
+      - .github/workflows/aws-legacy-claim-live-verify.yml
+      - src/app/auth/claim-profile/page.tsx
+      - src/app/auth/sign-in/page.tsx
+      - src/app/auth/sign-up/page.tsx
+      - src/features/auth/legacy-claim-actions.ts
+      - src/features/auth/legacy-claim.ts
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify public restored-profile claim flow
+        shell: bash
+        run: |
+          set -euo pipefail
+          CLAIM="$(curl -fsSL --retry 4 --retry-delay 2 https://seanshore.in/auth/claim-profile)"
+          SIGNIN="$(curl -fsSL --retry 4 --retry-delay 2 https://seanshore.in/auth/sign-in)"
+
+          grep -Fq 'Claim your restored profile' <<<"$CLAIM"
+          grep -Fq 'Your old password was not moved' <<<"$CLAIM"
+          grep -Fq 'Old registered email' <<<"$CLAIM"
+          grep -Fq "won&#x27;t confirm publicly whether an email is in the old database" <<<"$CLAIM"             || grep -Fq "won't confirm publicly whether an email is in the old database" <<<"$CLAIM"
+          grep -Fq '/auth/google/start?intent=sign-in' <<<"$CLAIM"
+
+          grep -Fq 'Had an account on the old Sea N Shore website?' <<<"$SIGNIN"
+          grep -Fq '/auth/claim-profile' <<<"$SIGNIN"
+
+          STATUS="$(curl -sS -o /dev/null -w '%{http_code}' https://seanshore.in/auth/claim-profile)"
+          test "$STATUS" = "200"
+
+          GOOGLE_STATUS="$(curl -sS -o /dev/null -w '%{http_code}'             'https://seanshore.in/auth/google/start?intent=sign-in')"
+          case "$GOOGLE_STATUS" in
+            301|302|303|307|308) ;;
+            *) echo "Unexpected Google OAuth start status: $GOOGLE_STATUS" >&2; exit 1 ;;
+          esac
+
+          echo "LEGACY_CLAIM_LIVE_VERIFY=PASS"

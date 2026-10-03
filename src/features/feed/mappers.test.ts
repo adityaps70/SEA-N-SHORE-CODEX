@@ -47,6 +47,16 @@ describe('mapFeedPost', () => {
     expect(mapped.author.currentCompany).toBeNull()
   })
 
+  it('maps the community group with its photo URL from icon_path (round 9C)', () => {
+    const groupId = '22222222-2222-4222-8222-222222222222'
+    const withPhoto = mapFeedPost(row({ group_id: groupId, post_group: { id: groupId, slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'private', icon_path: `communities/${groupId}/icon-abc.webp` } }), viewer)
+    expect(withPhoto.group).toEqual({ id: groupId, slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'private', iconUrl: `/api/community-media/${groupId}/icon?v=icon-abc.webp` })
+
+    const withoutPhoto = mapFeedPost(row({ group_id: groupId, post_group: { id: groupId, slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'public' } }), viewer)
+    expect(withoutPhoto.group).toEqual({ id: groupId, slug: 'marine-engineers', name: 'Marine Engineers', visibility: 'public', iconUrl: null })
+    expect(mapFeedPost(row({ post_group: null }), viewer).group).toBeNull()
+  })
+
   it('maps viewer state, counts, signed media and ordered poll options', () => {
     const signed = new Map([['111/post/image.jpg', 'https://example.test/signed-image']])
     const mapped = mapFeedPost(row(), viewer, signed)
@@ -57,6 +67,40 @@ describe('mapFeedPost', () => {
     expect(mapped.poll?.viewerOptionId).toBe('option-b')
     expect(mapped.poll?.totalVotes).toBe(5)
     expect(mapped.poll?.options.map((option) => option.id)).toEqual(['option-a', 'option-b'])
+  })
+
+  it('maps ordered rich-media collections and preserves document metadata', () => {
+    const mapped = mapFeedPost(row({
+      post_type: 'standard',
+      post_polls: null,
+      post_media: [
+        {
+          storage_path: '111/post/second.jpg',
+          mime_type: 'image/jpeg',
+          alt_text: 'Second',
+          position: 1,
+          file_name: 'second.jpg',
+          page_count: null,
+        },
+        {
+          storage_path: '111/post/first.jpg',
+          mime_type: 'image/jpeg',
+          alt_text: 'First',
+          position: 0,
+          file_name: 'first.jpg',
+          page_count: null,
+        },
+      ],
+    }), viewer, new Map([
+      ['111/post/first.jpg', 'https://example.test/first'],
+      ['111/post/second.jpg', 'https://example.test/second'],
+    ]))
+
+    expect(mapped.mediaItems).toEqual([
+      expect.objectContaining({ storagePath: '111/post/first.jpg', position: 0, fileName: 'first.jpg', signedUrl: 'https://example.test/first' }),
+      expect.objectContaining({ storagePath: '111/post/second.jpg', position: 1, fileName: 'second.jpg', signedUrl: 'https://example.test/second' }),
+    ])
+    expect(mapped.media).toEqual(mapped.mediaItems?.[0])
   })
 
   it('maps comments with real authors', () => {
@@ -79,5 +123,38 @@ describe('mapFeedPost', () => {
     }), viewer)
     expect(mapped.comments[0]?.author.rank).toBe('Second Engineer')
     expect(mapped.commentCount).toBe(1)
+  })
+
+  it('maps server-authoritative comment ownership, edit eligibility and deletion metadata', () => {
+    const comment = {
+      id: 'comment-1',
+      body: 'Useful lesson',
+      created_at: '2026-09-10T09:00:00.000Z',
+      updated_at: '2026-09-10T09:10:00.000Z',
+      deleted_at: null,
+      viewer_owns: true,
+      can_edit: true,
+      profiles: {
+        id: '22222222-2222-4222-8222-222222222222',
+        slug: 'member-b',
+        full_name: 'Member B',
+        avatar_path: null,
+        headline: null,
+        maritime_profiles: null,
+      },
+    } as unknown as NonNullable<FeedPostRow['post_comments']>[number]
+
+    const mapped = mapFeedPost(row({
+      post_type: 'standard',
+      post_polls: null,
+      post_comments: [comment],
+    }), viewer)
+
+    expect(mapped.comments[0]).toMatchObject({
+      updatedAt: '2026-09-10T09:10:00.000Z',
+      viewerOwns: true,
+      canEdit: true,
+      deleted: false,
+    })
   })
 })

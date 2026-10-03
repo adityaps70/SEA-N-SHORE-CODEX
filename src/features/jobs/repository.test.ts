@@ -1,0 +1,301 @@
+import { describe, expect, it } from 'vitest'
+import { parseJobSearchParams } from './search'
+import { createJobsRepository } from './repository'
+
+describe('jobs repository', () => {
+  it('lists every published job even when its application deadline has passed', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [] } })
+
+    await repository.listPublishedJobs(20)
+
+    expect(seen[0]?.text).toContain("j.status = 'published'")
+    expect(seen[0]?.text).not.toContain('(j.apply_until is null or j.apply_until >= current_date)')
+    expect(seen[0]?.text).toContain('order by j.created_at desc, j.id desc')
+    expect(seen[0]?.values).toEqual([20])
+  })
+
+  it('keeps published jobs discoverable while checking application eligibility separately', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        if (text.includes('select exists')) return [{ accepting: false }]
+        return []
+      },
+    })
+
+    await repository.searchJobs(parseJobSearchParams({ mode: 'for-you' }), 60, 0)
+    await repository.getPublishedJob('job-1')
+    await expect(repository.isAcceptingApplications('job-1')).resolves.toBe(false)
+
+    expect(seen[0]?.text).toContain("j.status = 'published'")
+    expect(seen[0]?.text).not.toContain('j.apply_until is null')
+    expect(seen[1]?.text).toContain("j.status = 'published'")
+    expect(seen[1]?.text).not.toContain('j.apply_until is null')
+    expect(seen[2]?.text).toContain("j.status = 'published'")
+    expect(seen[2]?.text).toContain('(j.apply_until is null or j.apply_until >= current_date)')
+  })
+
+  it('hides jobs whose owner’s plan ended from discovery, detail, saved jobs and applying', async () => {
+    const seen: string[] = []
+    const repository = createJobsRepository({ query: async (text) => { seen.push(text); return text.includes('select exists') ? [{ accepting: false }] : [] } })
+    await repository.listPublishedJobs(10)
+    await repository.searchJobs(parseJobSearchParams({ mode: 'for-you' }), 60, 0)
+    await repository.listPublishedJobsForCompany('company-1')
+    await repository.getPublishedJob('job-1')
+    await repository.isAcceptingApplications('job-1')
+    await repository.listSavedJobs('user-1')
+    expect(seen).toHaveLength(6)
+    for (const text of seen) {
+      expect(text).toContain('j.hidden_for_plan_at is null')
+      expect(text).toContain("status in ('trialing', 'active', 'past_due')")
+    }
+    // Applicants keep their application history.
+    await repository.listApplications('user-1')
+    expect(seen[6]).not.toContain('hidden_for_plan_at')
+  })
+
+  it('builds structured PostgreSQL discovery filters and maps maritime job intelligence', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          id: 'job-1', title: 'Chief Officer', company_name: 'Oceanic', company_id: 'company-1',
+          company_slug: 'oceanic', company_logo_path: 'companies/company-1/logo.webp', company_verified: true, recruiter_verified: true, location: 'Worldwide',
+          summary: 'Tanker opening', description: 'Join us', requirements: 'Tanker experience', apply_until: '2026-10-01',
+          created_at: '2026-09-10T10:00:00.000Z', published_at: '2026-09-10T10:00:00.000Z', job_domain: 'sea',
+          department: 'Deck', rank: 'Chief Officer', vessel_types: ['Oil Tanker'], experience_min_years: '4.0',
+          experience_max_years: null, joining_from: '2026-09-20', joining_until: '2026-09-30', salary_min: '7800.00',
+          salary_max: '8400.00', salary_currency: 'USD', salary_period: 'month', sailing_regions: ['Worldwide'],
+          urgent: true, easy_apply: true, certificate_requirements: ['STCW'], visa_requirements: ['US C1/D'],
+        }]
+      },
+    })
+
+    const filters = parseJobSearchParams({
+      mode: 'sea', rank: 'Chief Officer', vessel: 'Oil Tanker', experience: '5', joining: '7',
+      salaryMin: '7000', region: 'Worldwide', certificate: 'STCW', visa: 'US C1/D', verified: '1', urgent: '1',
+    })
+    const jobs = await repository.searchJobs(filters, 40, 0)
+
+    expect(seen[0]?.text).toContain('j.job_domain = $1')
+    expect(seen[0]?.values).toContain('sea')
+    expect(seen[0]?.text).toContain('j.vessel_types &&')
+    expect(seen[0]?.text).toContain('c.is_verified')
+    expect(seen[0]?.text).toContain('j.urgent = true')
+    expect(seen[0]?.text).toContain('job_certificate_requirements')
+    expect(seen[0]?.text).toContain('job_visa_requirements')
+    expect(seen[0]?.text).toContain('c.logo_path as company_logo_path')
+    expect(seen[0]?.values).toContain(40)
+    expect(jobs[0]).toMatchObject({
+      id: 'job-1', companyId: 'company-1', companySlug: 'oceanic', companyLogoPath: 'companies/company-1/logo.webp', companyVerified: true,
+      recruiterVerified: true, domain: 'sea', rank: 'Chief Officer', vesselTypes: ['Oil Tanker'],
+      experienceMinYears: 4, salaryMin: 7800, certificateRequirements: ['STCW'], visaRequirements: ['US C1/D'],
+      urgent: true, easyApply: true,
+    })
+  })
+
+  it('normalizes PostgreSQL date objects before returning public job listings', async () => {
+    const repository = createJobsRepository({
+      query: async () => [{
+        id: 'job-date-1', title: 'Second Engineer', company_name: 'Oceanic', company_id: 'company-1',
+        company_slug: 'oceanic', company_verified: true, recruiter_verified: true, location: 'Worldwide',
+        summary: 'Engine opening', description: 'Join us', requirements: null,
+        apply_until: new Date('2026-09-25T00:00:00.000Z'),
+        created_at: new Date('2026-09-10T10:00:00.000Z'),
+        published_at: new Date('2026-09-11T10:00:00.000Z'),
+        job_domain: 'sea', department: 'Engine', rank: 'Second Engineer',
+        vessel_types: ['Oil Tanker'], experience_min_years: null, experience_max_years: null,
+        joining_from: new Date('2026-09-20T00:00:00.000Z'),
+        joining_until: new Date('2026-09-30T00:00:00.000Z'),
+        salary_min: null, salary_max: null, salary_currency: null, salary_period: null,
+        sailing_regions: ['Worldwide'], urgent: false, easy_apply: true,
+        certificate_requirements: [], visa_requirements: [],
+      }],
+    })
+
+    await expect(repository.searchJobs(parseJobSearchParams({ mode: 'for-you' }), 60, 0)).resolves.toEqual([
+      expect.objectContaining({
+        applyUntil: '2026-09-25',
+        joiningFrom: '2026-09-20',
+        joiningUntil: '2026-09-30',
+        createdAt: '2026-09-10T10:00:00.000Z',
+        publishedAt: '2026-09-11T10:00:00.000Z',
+      }),
+    ])
+  })
+
+  it('loads the candidate match profile from existing maritime profile, skills, credentials and visas', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          rank: 'Chief Officer', sailing_experience_years: '7.5', vessel_types: ['Oil Tanker'], trading_areas: ['Worldwide'],
+          availability: '2026-09-18', shore_career_preference: false, skills: ['Leadership'],
+          credentials: [{ name: 'STCW', expires_at: '2028-01-01', verified: true }], visas: ['US C1/D'],
+        }]
+      },
+    })
+
+    await expect(repository.getCandidateProfile('viewer-1')).resolves.toEqual({
+      rank: 'Chief Officer', sailingExperienceYears: 7.5, vesselTypes: ['Oil Tanker'], tradingAreas: ['Worldwide'],
+      availability: '2026-09-18', shoreCareerPreference: false, skills: ['Leadership'],
+      certificates: [{ name: 'STCW', expiresAt: '2028-01-01', verified: true }], visas: ['US C1/D'],
+    })
+    expect(seen[0]?.text).toContain('public.maritime_profiles')
+    expect(seen[0]?.text).toContain('public.profile_skills')
+    expect(seen[0]?.text).toContain('public.profile_credentials')
+    expect(seen[0]?.text).toContain('public.profile_visas')
+    expect(seen[0]?.values).toEqual(['viewer-1'])
+  })
+
+  it('scopes applications to the signed-in applicant, includes immutable status events and orders newest first', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [] } })
+
+    await repository.listApplications('viewer-1', 50)
+
+    expect(seen[0]?.text).toContain('a.applicant_id = $1')
+    expect(seen[0]?.text).toContain('job_application_events')
+    expect(seen[0]?.text).toContain('order by a.applied_at desc, a.id desc')
+    expect(seen[0]?.values).toEqual(['viewer-1', 50])
+  })
+
+  it('loads applied job ids for the signed-in candidate across discovery cards', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{ job_id: 'job-1' }, { job_id: 'job-2' }]
+      },
+    })
+
+    await expect(repository.getAppliedJobIds('viewer-1', ['job-1', 'job-2'])).resolves.toEqual(['job-1', 'job-2'])
+    expect(seen[0]?.text).toContain('from public.job_applications')
+    expect(seen[0]?.text).toContain('a.applicant_id = $1')
+    expect(seen[0]?.text).toContain('a.job_id = any($2::uuid[])')
+    expect(seen[0]?.values).toEqual(['viewer-1', ['job-1', 'job-2']])
+  })
+
+  it('requires an active onboarded profile before an application can be submitted', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [{ ready: true }] } })
+
+    await expect(repository.isMemberReady('viewer-1')).resolves.toBe(true)
+    expect(seen[0]?.text).toContain("p.account_status = 'active'")
+    expect(seen[0]?.text).toContain('p.onboarding_completed_at is not null')
+    expect(seen[0]?.values).toEqual(['viewer-1'])
+  })
+
+  it('creates the application, optional CV reference, and first timeline event atomically', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [] } })
+    const cv = {
+      storagePath: 'job-applications/viewer-1/job-1/cv.pdf',
+      fileName: 'resume.pdf',
+      mimeType: 'application/pdf' as const,
+      sizeBytes: 2048,
+    }
+
+    await repository.createApplication('job-1', 'viewer-1', cv, 'Available from 1 November.')
+
+    expect(seen[0]?.text).toContain('cv_storage_path')
+    expect(seen[0]?.text).toContain('cv_file_name')
+    expect(seen[0]?.text).toContain('cover_note')
+    expect(seen[0]?.text).toContain('job_application_events')
+    expect(seen[0]?.values).toEqual([
+      'job-1',
+      'viewer-1',
+      cv.storagePath,
+      cv.fileName,
+      cv.mimeType,
+      cv.sizeBytes,
+      'Available from 1 November.',
+    ])
+  })
+
+  it('hides deleted jobs from discovery, detail, saved jobs and applying', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [] } })
+
+    await repository.listPublishedJobs(10)
+    await repository.searchJobs(parseJobSearchParams({}), 10, 0)
+    await repository.getPublishedJob('job-1')
+    await repository.isAcceptingApplications('job-1')
+    await repository.listSavedJobs('viewer-1')
+
+    for (const entry of seen) expect(entry.text).toContain('j.deleted_at is null')
+  })
+
+  it('shows the current organization name, logo and office location on job listings', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [{
+          id: 'job-1', title: 'Chief Officer', company_name: 'Oceanic Shipping', company_id: 'company-1',
+          company_slug: 'oceanic', company_logo_path: 'companies/company-1/logo.png', company_location: 'Dubai',
+          company_type: 'Ship manager', company_verified: true, recruiter_verified: false, location: 'Worldwide',
+          summary: 'Opening', description: 'Lead', requirements: null, apply_until: null,
+          created_at: new Date('2026-09-10T00:00:00.000Z'), published_at: new Date('2026-09-10T00:00:00.000Z'),
+          job_domain: 'sea', department: null, rank: null, vessel_types: [], experience_min_years: null,
+          experience_max_years: null, joining_from: null, joining_until: null, salary_min: null, salary_max: null,
+          salary_currency: null, salary_period: null, sailing_regions: [], urgent: false, easy_apply: true,
+          certificate_requirements: [], visa_requirements: [],
+        }]
+      },
+    })
+
+    const job = await repository.getPublishedJob('job-1')
+    expect(seen[0]?.text).toContain('coalesce(c.name, j.company_name) as company_name')
+    expect(seen[0]?.text).toContain('c.office_locations[1] as company_location')
+    expect(job).toMatchObject({
+      companyName: 'Oceanic Shipping',
+      companySlug: 'oceanic',
+      companyLogoPath: 'companies/company-1/logo.png',
+      companyLocation: 'Dubai',
+      companyType: 'Ship manager',
+      createdAt: '2026-09-10T00:00:00.000Z',
+    })
+  })
+
+  it('tells applicants whether the job behind each application is open, closed or removed', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({
+      query: async (text, values) => {
+        seen.push({ text, values })
+        return [
+          { id: 'a-1', status: 'applied', applied_at: new Date('2026-09-10T00:00:00.000Z'), updated_at: '2026-09-10T00:00:00.000Z', job_id: 'job-1', title: 'Master', company_name: 'Oceanic', location: null, job_state: 'removed', cover_note: null, events: [] },
+          { id: 'a-2', status: 'rejected', applied_at: '2026-09-09T00:00:00.000Z', updated_at: '2026-09-09T00:00:00.000Z', job_id: 'job-2', title: 'Bosun', company_name: 'Oceanic', location: null, job_state: 'open', cover_note: 'Hello', events: [] },
+        ]
+      },
+    })
+
+    const applications = await repository.listApplications('viewer-1')
+    expect(seen[0]?.text).toContain("when j.deleted_at is not null then 'removed'")
+    expect(applications[0]).toMatchObject({ appliedAt: '2026-09-10T00:00:00.000Z', job: { state: 'removed' } })
+    expect(applications[1]).toMatchObject({ coverNote: 'Hello', job: { state: 'open' } })
+  })
+
+  it('keeps saves, alerts and reports scoped to the signed-in member', async () => {
+    const seen: Array<{ text: string; values?: readonly unknown[] }> = []
+    const repository = createJobsRepository({ query: async (text, values) => { seen.push({ text, values }); return [] } })
+
+    await repository.saveJob('job-1', 'viewer-1')
+    await repository.unsaveJob('job-1', 'viewer-1')
+    await repository.createJobAlert('viewer-1', 'Chief Officer tanker', parseJobSearchParams({ mode: 'sea', rank: 'Chief Officer' }), 'daily')
+    await repository.reportJob('job-1', 'viewer-1', 'fake_company', 'Company identity looks suspicious')
+
+    expect(seen[0]?.text).toContain('insert into public.job_saves')
+    expect(seen[0]?.text).toContain('on conflict (job_id, user_id) do nothing')
+    expect(seen[1]?.text).toContain('delete from public.job_saves')
+    expect(seen[1]?.text).toContain('job_id = $1 and user_id = $2')
+    expect(seen[2]?.text).toContain('insert into public.job_alerts')
+    expect(seen[2]?.values?.[0]).toBe('viewer-1')
+    expect(seen[3]?.text).toContain('insert into public.job_reports')
+    expect(seen[3]?.values).toEqual(['job-1', 'viewer-1', 'fake_company', 'Company identity looks suspicious'])
+  })
+})

@@ -1,0 +1,55 @@
+import type { Metadata } from 'next'
+import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
+import { CreateRequirementsBanner } from '@/components/creator/create-requirements-banner'
+import { requireAwsUser } from '@/features/auth/aws-queries'
+import { getAccessContext } from '@/features/access/server'
+import { HiringJobForm } from '@/features/jobs/components/hiring-job-form'
+import { HiringSubnav } from '@/features/jobs/components/hiring-subnav'
+import { hiringRepository } from '@/features/jobs/hiring-repository'
+import { buildHiringPublisherOptions } from '@/features/jobs/publishers'
+import { organizationRepository } from '@/features/organizations/repository'
+
+export const metadata: Metadata = { title: 'Post a job' }
+
+export default async function NewHiringJobPage() {
+  const user = await requireAwsUser()
+  const [access, personal, companies, organizations] = await Promise.all([
+    getAccessContext(user.id),
+    hiringRepository.getPersonalPublisher(user.id),
+    hiringRepository.listAuthorizedCompanies(user.id),
+    // Only for the banner's "Or upgrade <organization>" option; the form works without it.
+    organizationRepository.listUserOrganizations(user.id).catch(() => []),
+  ])
+
+  if (!personal) {
+    return (
+      <div className="mx-auto w-full max-w-5xl pb-4 pt-0 md:px-6 md:py-8 lg:px-8">
+        <MobilePageBar backHref="/hiring/jobs" title="Post a job" />
+        <section className="rounded-[2rem] border border-mist-100 bg-white p-8 text-center shadow-[var(--shadow-card)]">
+          <h1 className="text-3xl font-bold text-navy-950">Complete your profile first</h1>
+          <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted">
+            Sea N Shore needs an active personal profile before a job can be published.
+          </p>
+        </section>
+      </div>
+    )
+  }
+
+  const publisherOptions = buildHiringPublisherOptions(access, personal, companies)
+
+  return (
+    <div className="mx-auto w-full max-w-5xl space-y-6 pb-4 pt-0 max-md:space-y-4 md:px-6 md:py-8 lg:px-8">
+      <MobilePageBar backHref="/hiring/jobs" title="Post a job" />
+      <CreateRequirementsBanner access={access} kind="job" organizations={organizations} />
+      <div className="max-md:hidden">
+        <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Sea N Shore Hiring</p>
+        <h1 className="mt-2 text-3xl font-bold text-navy-950">Post a maritime job</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+          Choose who is publishing, then build a structured vacancy for the right maritime professionals.
+        </p>
+      </div>
+      <div className="max-md:hidden"><HiringSubnav active="jobs" /></div>
+      <HiringJobForm mode="create" publisherOptions={publisherOptions} />
+    </div>
+  )
+}

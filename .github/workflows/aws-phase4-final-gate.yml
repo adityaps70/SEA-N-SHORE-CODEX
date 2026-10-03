@@ -1,0 +1,67 @@
+name: AWS Phase 4 Final Gate
+
+on:
+  push:
+    branches:
+      - feat/aws-native-phase-0-1
+    paths:
+      - .github/workflows/aws-phase4-final-gate.yml
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  cloudwatch-review:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      LOG_GROUP: /ecs/sea-n-shore-staging/web
+      LOOKBACK_SECONDS: "7200"
+
+    steps:
+      - name: Configure AWS credentials with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Review recent application errors directly in CloudWatch
+        run: |
+          set -euo pipefail
+          test -n "$AWS_REGION" || { echo "Missing staging variable AWS_REGION." >&2; exit 1; }
+          test -n "$LOG_GROUP" || { echo "Missing CloudWatch log group." >&2; exit 1; }
+
+          START_MS=$(( ( $(date +%s) - LOOKBACK_SECONDS ) * 1000 ))
+          aws logs filter-log-events \
+            --region "$AWS_REGION" \
+            --log-group-name "$LOG_GROUP" \
+            --start-time "$START_MS" \
+            --output json > /tmp/phase4-cloudwatch.json
+
+          TOTAL=$(jq '.events | length' /tmp/phase4-cloudwatch.json)
+          MATCHES=$(jq -r '.events[].message' /tmp/phase4-cloudwatch.json \
+            | grep -Eai '(^|[^[:alpha:]])(error|exception|unhandled|fatal|ECONNREFUSED|ETIMEDOUT|password authentication failed|database[^[:cntrl:]]*(failed|error)|auth[^[:cntrl:]]*(failed|error)|HTTP[[:space:]]+5[0-9][0-9])([^[:alpha:]]|$)' \
+            || true)
+          MATCH_COUNT=$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l | tr -d ' ')
+
+          echo "=== PHASE 4 CLOUDWATCH REVIEW ==="
+          echo "CLOUDWATCH_EVENTS_REVIEWED=$TOTAL"
+          echo "STRONG_RUNTIME_ERROR_MATCHES=$MATCH_COUNT"
+
+          if [ "$MATCH_COUNT" -gt 1 ]; then
+            echo "Repeating runtime error signatures detected in the last two hours." >&2
+            printf '%s\n' "$MATCHES" \
+              | sed -E 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/[redacted-email]/g' \
+              | head -n 10 >&2
+            exit 1
+          fi
+
+          if [ "$MATCH_COUNT" -eq 1 ]; then
+            echo "One non-repeating runtime error signature was observed; no repeating error pattern was detected."
+          else
+            echo "No strong runtime error signatures were observed."
+          fi

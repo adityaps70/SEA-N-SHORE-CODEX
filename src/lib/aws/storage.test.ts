@@ -1,0 +1,235 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const { send, getSignedUrl, s3ClientState } = vi.hoisted(() => ({
+  send: vi.fn<(command: unknown) => Promise<unknown>>(async () => ({})),
+  getSignedUrl: vi.fn<(
+    client: unknown,
+    command: unknown,
+    options: { expiresIn: number },
+  ) => Promise<string>>(async () => 'https://signed.example/media'),
+  s3ClientState: { config: null as Record<string, unknown> | null },
+}))
+
+vi.mock('@aws-sdk/client-s3', () => {
+  class Command {
+    input: Record<string, unknown>
+    constructor(input: Record<string, unknown>) {
+      this.input = input
+    }
+  }
+
+  return {
+    S3Client: class {
+      send = send
+      constructor(config: Record<string, unknown>) {
+        s3ClientState.config = config
+      }
+    },
+    PutObjectCommand: Command,
+    GetObjectCommand: Command,
+    DeleteObjectCommand: Command,
+    HeadObjectCommand: Command,
+  }
+})
+
+vi.mock('@aws-sdk/s3-request-presigner', () => ({ getSignedUrl }))
+
+import {
+  createMediaDownloadUrl,
+  createMediaReadUrl,
+  createMediaUploadUrl,
+  deleteMediaObject,
+  getMediaBucketName,
+  headMediaObject,
+  putMediaObject,
+  readMediaObjectPrefix,
+} from './storage'
+
+const mediaBucket = 'sea-n-shore-staging-310356785722-media'
+
+describe('AWS media storage boundary', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.AWS_MEDIA_BUCKET = mediaBucket
+  })
+
+  afterEach(() => {
+    delete process.env.AWS_MEDIA_BUCKET
+  })
+
+  it('fails predictably when the media bucket is missing', () => {
+    delete process.env.AWS_MEDIA_BUCKET
+
+    expect(() => getMediaBucketName()).toThrow('aws_media_bucket_missing')
+  })
+
+  it('uploads to the configured private media bucket with the exact key and content type', async () => {
+    await putMediaObject({
+      key: 'profile/post/image.jpg',
+      body: Buffer.from('image'),
+      contentType: 'image/jpeg',
+    })
+
+    expect(send).toHaveBeenCalledTimes(1)
+    const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
+    expect(command.input).toMatchObject({
+      Bucket: mediaBucket,
+      Key: 'profile/post/image.jpg',
+      ContentType: 'image/jpeg',
+    })
+  })
+
+  it('constructs the S3 client with checksum calculation limited to required operations', async () => {
+    await createMediaUploadUrl({
+      key: 'profile/post/video.mp4',
+      contentType: 'video/mp4',
+    })
+
+    expect(s3ClientState.config).toMatchObject({
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+    })
+  })
+
+  it('signs media reads per clock-hour window, valid for two hours, by default', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-29T10:42:17.000Z'))
+    try {
+      const url = await createMediaReadUrl('profile/post/image.jpg')
+
+      expect(url).toBe('https://signed.example/media')
+      expect(getSignedUrl).toHaveBeenCalledTimes(1)
+      expect(getSignedUrl.mock.calls[0]![2]).toEqual({
+        signingDate: new Date('2026-09-29T10:00:00.000Z'),
+        expiresIn: 7200,
+      })
+      const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+      expect(command.input).toEqual({
+        Bucket: mediaBucket,
+        Key: 'profile/post/image.jpg',
+        ResponseCacheControl: 'private, max-age=3600',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps honoring a longer read lifetime from the window start', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-29T10:42:17.000Z'))
+    try {
+      await createMediaReadUrl('profile/post/image.jpg', 86400)
+
+      expect(getSignedUrl.mock.calls[0]![2]).toEqual({
+        signingDate: new Date('2026-09-29T10:00:00.000Z'),
+        expiresIn: 86400,
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('signs reads shorter than an hour for this request only', async () => {
+    await createMediaReadUrl('profile/post/image.jpg', 600)
+
+    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 600 })
+  })
+
+  it('signs direct PUT uploads for five minutes with the exact key and content type', async () => {
+    const url = await createMediaUploadUrl({
+      key: 'profile/post/video.mp4',
+      contentType: 'video/mp4',
+    })
+
+    expect(url).toBe('https://signed.example/media')
+    expect(getSignedUrl).toHaveBeenCalledTimes(1)
+    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 300 })
+    const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+    expect(command.input).toMatchObject({
+      Bucket: mediaBucket,
+      Key: 'profile/post/video.mp4',
+      ContentType: 'video/mp4',
+    })
+  })
+
+  it('reads object metadata with HEAD without downloading object bytes', async () => {
+    send.mockResolvedValueOnce({ ContentType: 'video/webm', ContentLength: 123456 })
+
+    await expect(headMediaObject('profile/post/video.webm')).resolves.toEqual({
+      contentType: 'video/webm',
+      contentLength: 123456,
+    })
+
+    expect(send).toHaveBeenCalledTimes(1)
+    const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
+    expect(command.input).toEqual({ Bucket: mediaBucket, Key: 'profile/post/video.webm' })
+  })
+
+  it('normalizes missing HEAD metadata to null values', async () => {
+    send.mockResolvedValueOnce({})
+
+    await expect(headMediaObject('profile/post/image.webp')).resolves.toEqual({
+      contentType: null,
+      contentLength: null,
+    })
+  })
+
+  it('deletes the exact media object key', async () => {
+    await deleteMediaObject('profile/post/image.jpg')
+
+    expect(send).toHaveBeenCalledTimes(1)
+    const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
+    expect(command.input).toMatchObject({ Bucket: mediaBucket, Key: 'profile/post/image.jpg' })
+  })
+
+  it('signs short-lived private downloads that pin the response type and disposition', async () => {
+    await createMediaDownloadUrl({
+      key: 'messages/a/b/c.pdf',
+      contentType: 'application/pdf',
+      contentDisposition: 'attachment; filename="c.pdf"',
+    })
+
+    expect(getSignedUrl.mock.calls[0]![2]).toEqual({ expiresIn: 300 })
+    const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+    expect(command.input).toMatchObject({
+      Bucket: mediaBucket,
+      Key: 'messages/a/b/c.pdf',
+      ResponseContentType: 'application/pdf',
+      ResponseContentDisposition: 'attachment; filename="c.pdf"',
+      ResponseCacheControl: 'private, max-age=300',
+    })
+  })
+
+  it('signs inline downloads per clock-hour window only when asked to', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-29T23:59:59.000Z'))
+    try {
+      await createMediaDownloadUrl({
+        key: 'messages/a/b/c.jpg',
+        contentType: 'image/jpeg',
+        contentDisposition: 'inline; filename="c.jpg"',
+        cacheWindow: true,
+      })
+
+      expect(getSignedUrl.mock.calls[0]![2]).toEqual({
+        signingDate: new Date('2026-09-29T23:00:00.000Z'),
+        expiresIn: 7200,
+      })
+      const command = getSignedUrl.mock.calls[0]![1] as { input: Record<string, unknown> }
+      expect(command.input).toMatchObject({
+        Key: 'messages/a/b/c.jpg',
+        ResponseContentDisposition: 'inline; filename="c.jpg"',
+        ResponseCacheControl: 'private, max-age=3600',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reads only the requested leading bytes of an object', async () => {
+    send.mockResolvedValueOnce({ Body: { transformToByteArray: async () => new Uint8Array([1, 2, 3, 4, 5]) } })
+
+    await expect(readMediaObjectPrefix('messages/a/b/c.png', 4)).resolves.toEqual(new Uint8Array([1, 2, 3, 4]))
+    const command = send.mock.calls[0]![0] as { input: Record<string, unknown> }
+    expect(command.input).toEqual({ Bucket: mediaBucket, Key: 'messages/a/b/c.png', Range: 'bytes=0-3' })
+  })
+})

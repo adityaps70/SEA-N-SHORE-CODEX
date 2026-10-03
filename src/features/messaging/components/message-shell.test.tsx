@@ -1,0 +1,266 @@
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MessageShell } from './message-shell'
+
+const navigation = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }))
+const deleteConversation = vi.hoisted(() => vi.fn())
+const unread = vi.hoisted(() => ({ publishMessagingUnreadCount: vi.fn() }))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: navigation.refresh, push: navigation.push }),
+  usePathname: () => '/messages',
+}))
+
+vi.mock('../actions', () => ({
+  sendMessageAction: vi.fn(async () => ({ ok: false, error: 'not-used' })),
+  markConversationReadAction: vi.fn(async () => ({ ok: true, advanced: true, unreadCount: 0 })),
+  deleteConversationAction: deleteConversation,
+}))
+
+vi.mock('../unread-client', () => ({
+  publishMessagingUnreadCount: unread.publishMessagingUnreadCount,
+}))
+
+vi.mock('@/features/realtime/provider', () => ({
+  useMessagingRealtime: () => ({
+    status: 'connected',
+    subscribe: vi.fn(() => () => undefined),
+    sendTyping: vi.fn(() => true),
+  }),
+}))
+
+const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
+const OTHER_ID = '22222222-2222-4222-8222-222222222222'
+const CONVERSATION_ID = '33333333-3333-4333-8333-333333333333'
+
+const inbox = [
+  {
+    conversationId: CONVERSATION_ID,
+    otherProfileId: OTHER_ID,
+    otherName: 'Capt. Meera Nair',
+    otherHeadline: 'Master Mariner | Tanker Operations',
+    otherAvatarUrl: null,
+    lastMessageId: '44444444-4444-4444-8444-444444444444',
+    lastMessageBody: 'Joining instructions received.',
+    lastMessageSenderId: OTHER_ID,
+    lastMessageAt: '2026-09-13T02:00:00.000Z',
+    otherLastReadMessageId: null,
+    otherLastReadAt: null,
+    unread: true,
+  },
+  {
+    conversationId: '55555555-5555-4555-8555-555555555555',
+    otherProfileId: '66666666-6666-4666-8666-666666666666',
+    otherName: 'Aarav Menon',
+    otherHeadline: 'Marine Superintendent',
+    otherAvatarUrl: null,
+    lastMessageId: null,
+    lastMessageBody: null,
+    lastMessageSenderId: null,
+    lastMessageAt: null,
+    otherLastReadMessageId: null,
+    otherLastReadAt: null,
+    unread: false,
+  },
+]
+
+const activeConversation = {
+  conversationId: CONVERSATION_ID,
+  otherProfileId: OTHER_ID,
+  otherName: 'Capt. Meera Nair',
+  otherHeadline: 'Master Mariner | Tanker Operations',
+  otherAvatarUrl: null,
+  otherLastReadMessageId: null,
+  otherLastReadAt: null,
+  messages: [
+    {
+      id: '77777777-7777-4777-8777-777777777777',
+      conversationId: CONVERSATION_ID,
+      senderProfileId: VIEWER_ID,
+      clientMessageId: '88888888-8888-4888-8888-888888888888',
+      body: 'Good day, Captain.',
+      createdAt: '2026-09-13T01:55:00.000Z',
+      editedAt: null,
+      deletedAt: null,
+    },
+    {
+      id: '44444444-4444-4444-8444-444444444444',
+      conversationId: CONVERSATION_ID,
+      senderProfileId: OTHER_ID,
+      clientMessageId: '99999999-9999-4999-8999-999999999999',
+      body: 'Joining instructions received.',
+      createdAt: '2026-09-13T02:00:00.000Z',
+      editedAt: null,
+      deletedAt: null,
+    },
+  ],
+  nextCursor: null,
+}
+
+afterEach(() => cleanup())
+
+describe('MessageShell', () => {
+  it('renders a premium inbox, unread state and active professional thread', () => {
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={inbox}
+        activeConversation={activeConversation}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Messages' })).toBeInTheDocument()
+    expect(screen.getByRole('searchbox', { name: 'Search conversations' })).toBeInTheDocument()
+    // The name shows in the inbox row, the desktop thread header and the phone page bar.
+    expect(screen.getByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).toHaveTextContent('Capt. Meera Nair')
+    expect(screen.getByLabelText('Unread conversation with Capt. Meera Nair')).toBeInTheDocument()
+    expect(screen.getByText('Good day, Captain.')).toBeInTheDocument()
+    // Once in the inbox preview (phones drop its “Last:” label) and once in the thread.
+    expect(screen.getAllByText('Joining instructions received.')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).toHaveTextContent('Last: Joining instructions received.')
+    expect(screen.getByRole('textbox', { name: 'Write a message' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeInTheDocument()
+    // The number of conversations is not shown anywhere on the page.
+    expect(screen.queryByText(/\d+ conversations?\b/)).not.toBeInTheDocument()
+    expect(screen.queryByText('1 unread')).not.toBeInTheDocument()
+  })
+
+  it('filters conversations locally without hiding the active thread', async () => {
+    const user = userEvent.setup()
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={inbox}
+        activeConversation={activeConversation}
+      />,
+    )
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search conversations' }), 'superintendent')
+
+    expect(screen.queryByRole('link', { name: /Open conversation with Capt. Meera Nair/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Open conversation with Aarav Menon/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Capt. Meera Nair' })).toBeInTheDocument()
+  })
+
+  it('publishes the authoritative unread count supplied after opening a conversation', async () => {
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={inbox}
+        activeConversation={null}
+        authoritativeUnreadCount={4}
+      />,
+    )
+
+    await vi.waitFor(() => {
+      expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(4)
+    })
+  })
+
+  it('shows an intentional empty thread state instead of a blank second pane', () => {
+    render(<MessageShell viewerId={VIEWER_ID} inbox={inbox} activeConversation={null} />)
+
+    expect(screen.getByText('Select a conversation')).toBeInTheDocument()
+    expect(screen.getByText(/Choose a maritime professional from your inbox/i)).toBeInTheDocument()
+  })
+
+  it('links the other person\'s photo and name to their profile in the thread header and next to their messages', () => {
+    render(
+      <MessageShell
+        viewerId={VIEWER_ID}
+        inbox={inbox}
+        activeConversation={{ ...activeConversation, otherSlug: 'meera-nair' }}
+      />,
+    )
+
+    const heading = screen.getByRole('heading', { name: 'Capt. Meera Nair' })
+    expect(within(heading).getByRole('link', { name: 'Capt. Meera Nair' })).toHaveAttribute('href', '/people/meera-nair')
+    const profileLinks = screen.getAllByRole('link', { name: "View Capt. Meera Nair's profile" })
+    // Header photo plus the avatar beside her message.
+    expect(profileLinks).toHaveLength(2)
+    for (const link of profileLinks) expect(link).toHaveAttribute('href', '/people/meera-nair')
+  })
+
+  it('does not show a profile link when the member has no profile handle yet', () => {
+    render(<MessageShell viewerId={VIEWER_ID} inbox={inbox} activeConversation={activeConversation} />)
+
+    expect(screen.queryByRole('link', { name: /View .*profile/ })).not.toBeInTheDocument()
+  })
+
+  it('deletes the open conversation from the thread header, removes it from the list and returns to /messages', async () => {
+    const user = userEvent.setup()
+    navigation.push.mockClear()
+    deleteConversation.mockResolvedValueOnce({ ok: true, conversationId: CONVERSATION_ID, unreadCount: 0 })
+    render(<MessageShell viewerId={VIEWER_ID} inbox={inbox} activeConversation={activeConversation} />)
+
+    const header = screen.getByRole('heading', { name: 'Capt. Meera Nair' }).closest('header') as HTMLElement
+    await user.click(within(header).getByRole('button', { name: 'Conversation options for Capt. Meera Nair' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete conversation' }))
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('It will be removed for you only. Capt. Meera Nair can still see it.')
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith('/messages'))
+    expect(deleteConversation).toHaveBeenCalledWith(CONVERSATION_ID)
+    expect(screen.queryByRole('link', { name: /Open conversation with Capt. Meera Nair/ })).not.toBeInTheDocument()
+    expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0)
+  })
+
+  it('deletes another conversation from its row menu without leaving the open thread', async () => {
+    const user = userEvent.setup()
+    navigation.push.mockClear()
+    navigation.refresh.mockClear()
+    deleteConversation.mockResolvedValueOnce({
+      ok: true,
+      conversationId: '55555555-5555-4555-8555-555555555555',
+      unreadCount: 1,
+    })
+    render(<MessageShell viewerId={VIEWER_ID} inbox={inbox} activeConversation={activeConversation} />)
+
+    await user.click(screen.getByRole('button', { name: 'Conversation options for Aarav Menon' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Delete conversation' }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('link', { name: /Open conversation with Aarav Menon/ })).not.toBeInTheDocument()
+    })
+    expect(deleteConversation).toHaveBeenCalledWith('55555555-5555-4555-8555-555555555555')
+    expect(navigation.push).not.toHaveBeenCalled()
+    expect(navigation.refresh).toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'Capt. Meera Nair' })).toBeInTheDocument()
+  })
+
+  describe('phone page bars', () => {
+    it('gives the inbox a "Messaging" bar with a pencil New message button and hides the page header', () => {
+      render(<MessageShell viewerId={VIEWER_ID} inbox={inbox} activeConversation={null} />)
+
+      expect(screen.getByText('Messaging')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/home')
+      expect(screen.getByRole('button', { name: 'Write a new message' })).toHaveAttribute('aria-haspopup', 'dialog')
+      expect(screen.getByRole('heading', { name: 'Messages' }).closest('header')).toHaveClass('max-md:hidden')
+    })
+
+    it('gives an open chat a bar with back, the peer (linking to their profile) and "…" with Report and Block', async () => {
+      const user = userEvent.setup()
+      render(
+        <MessageShell
+          viewerId={VIEWER_ID}
+          inbox={inbox}
+          activeConversation={{ ...activeConversation, otherSlug: 'meera-nair' }}
+        />,
+      )
+
+      expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/messages')
+      expect(screen.getByRole('link', { name: 'Capt. Meera Nair, open profile' })).toHaveAttribute('href', '/people/meera-nair')
+      // The desktop thread header is hidden on phones; the bar replaces it.
+      expect(screen.getByRole('heading', { name: 'Capt. Meera Nair' }).closest('header')).toHaveClass('max-md:hidden')
+      expect(screen.getByTestId('message-shell-grid').className).toContain('max-md:h-[calc(100dvh-3.5rem')
+
+      const bar = screen.getByRole('link', { name: 'Back' }).parentElement as HTMLElement
+      await user.click(within(bar).getByRole('button', { name: 'Conversation options for Capt. Meera Nair' }))
+      expect(screen.getByRole('menuitem', { name: 'Report' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Block' })).toBeInTheDocument()
+      expect(screen.getByRole('menuitem', { name: 'Delete conversation' })).toBeInTheDocument()
+    })
+  })
+})

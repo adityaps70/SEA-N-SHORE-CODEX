@@ -8,6 +8,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.7"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.7"
+    }
   }
 }
 
@@ -47,17 +55,6 @@ variable "image_tag" {
 variable "site_url" {
   description = "Public Sea N Shore URL baked into and exposed to the application."
   type        = string
-}
-
-variable "supabase_url" {
-  description = "Current Supabase project URL."
-  type        = string
-}
-
-variable "supabase_publishable_key" {
-  description = "Current Supabase publishable key. This is public browser configuration, not a service-role secret."
-  type        = string
-  sensitive   = true
 }
 
 variable "certificate_arn" {
@@ -400,11 +397,40 @@ resource "aws_ecs_task_definition" "web" {
 
       environment = [
         { name = "NEXT_PUBLIC_SITE_URL", value = var.site_url },
-        { name = "NEXT_PUBLIC_SUPABASE_URL", value = var.supabase_url },
-        { name = "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", value = var.supabase_publishable_key },
+        { name = "AWS_COGNITO_REGION", value = var.aws_region },
+        { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.app.id },
+        { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.web.id },
+        { name = "AWS_COGNITO_DOMAIN", value = aws_cognito_user_pool_domain.custom.domain },
+        { name = "AWS_COGNITO_GOOGLE_ENABLED", value = tostring(var.enable_google_identity_provider) },
+        { name = "AWS_MEDIA_BUCKET", value = aws_s3_bucket.app["media"].bucket },
+        { name = "REALTIME_WEBSOCKET_URL", value = local.realtime_websocket_url },
+        { name = "AURORA_HOST", value = aws_rds_cluster.aurora.endpoint },
+        { name = "AURORA_PORT", value = tostring(aws_rds_cluster.aurora.port) },
+        { name = "AURORA_DATABASE", value = aws_rds_cluster.aurora.database_name },
+        { name = "AURORA_SECRET_ARN", value = local.aurora_master_secret_arn },
+        { name = "AURORA_SSL", value = "true" },
         { name = "NODE_ENV", value = "production" },
         { name = "PORT", value = "3000" },
         { name = "HOSTNAME", value = "0.0.0.0" }
+      ]
+
+      secrets = [
+        {
+          name      = "AURORA_USER"
+          valueFrom = "${local.aurora_master_secret_arn}:username::"
+        },
+        {
+          name      = "AURORA_PASSWORD"
+          valueFrom = "${local.aurora_master_secret_arn}:password::"
+        },
+        {
+          name      = "REALTIME_TICKET_SECRET"
+          valueFrom = aws_secretsmanager_secret.realtime_ticket.arn
+        },
+        {
+          name      = "NEWSLETTER_TOKEN_SECRET"
+          valueFrom = aws_secretsmanager_secret.newsletter_token.arn
+        }
       ]
 
       logConfiguration = {
@@ -435,6 +461,15 @@ resource "aws_ecs_task_definition" "web" {
       stopTimeout            = 30
     }
   ])
+
+  depends_on = [
+    aws_iam_role_policy.ecs_execution_aurora_secret,
+    aws_iam_role_policy.ecs_execution_realtime_ticket_secret,
+    aws_iam_role_policy.ecs_execution_newsletter_token_secret,
+    aws_iam_role_policy.ecs_task_aurora_secret,
+    aws_iam_role_policy.ecs_task_media,
+    aws_iam_role_policy.ecs_task_cognito_admin
+  ]
 
   tags = local.common_tags
 }

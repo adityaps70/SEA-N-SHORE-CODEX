@@ -65,6 +65,12 @@ variable "ecr_repository_name" {
   default     = "sea-n-shore"
 }
 
+variable "phase5b_cognito_user_pool_id" {
+  description = "Exact staging Cognito user pool ID allowed for Phase 5B discovery reads."
+  type        = string
+  default     = "ap-south-1_FKyi5lJsY"
+}
+
 variable "existing_github_oidc_provider_arn" {
   description = "Existing GitHub Actions OIDC provider ARN. Leave blank to create one."
   type        = string
@@ -252,8 +258,127 @@ resource "aws_iam_role_policy" "github_deploy" {
         Action = ["iam:PassRole"]
         Resource = [
           "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-ecs-execution",
-          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-ecs-task"
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-ecs-task",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-outbox-worker",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${local.name_prefix}-notification-worker"
         ]
+      },
+      {
+        Sid    = "ReviewStagingApplicationLogs"
+        Effect = "Allow"
+        Action = ["logs:FilterLogEvents"]
+        Resource = [
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}/web",
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}/web:*"
+        ]
+      },
+      {
+        Sid      = "Phase5bSesAccountRead"
+        Effect   = "Allow"
+        Action   = ["ses:GetAccount"]
+        Resource = "*"
+      },
+      {
+        Sid    = "Phase5bSesResourceRead"
+        Effect = "Allow"
+        Action = [
+          "ses:GetEmailIdentity",
+          "ses:GetConfigurationSet"
+        ]
+        Resource = [
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in",
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
+        ]
+      },
+      {
+        Sid      = "Phase5bSesIdentityCreate"
+        Effect   = "Allow"
+        Action   = ["ses:CreateEmailIdentity"]
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in"
+      },
+      {
+        Sid    = "Phase5bSesIdentityManage"
+        Effect = "Allow"
+        Action = [
+          "ses:PutEmailIdentityConfigurationSetAttributes",
+          "ses:PutEmailIdentityDkimSigningAttributes",
+          "ses:UpdateEmailIdentityPolicy"
+        ]
+        Resource = [
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/seanshore.in",
+          "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
+        ]
+      },
+      {
+        Sid      = "Phase5bSesConfigurationSetCreate"
+        Effect   = "Allow"
+        Action   = ["ses:CreateConfigurationSet"]
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:configuration-set/sea-n-shore-staging-transactional"
+      },
+      {
+        Sid    = "Phase5bCognitoRead"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:DescribeUserPool",
+          "cognito-idp:UpdateUserPool"
+        ]
+        Resource = "arn:aws:cognito-idp:${var.aws_region}:${data.aws_caller_identity.current.account_id}:userpool/${var.phase5b_cognito_user_pool_id}"
+      },
+      {
+        Sid    = "ReviewCognitoSignupCapacity"
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:GetProvisionedLimit",
+          "cloudwatch:GetMetricStatistics"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ManageStagingMediaCors"
+        Effect = "Allow"
+        Action = [
+          "s3:PutBucketCORS",
+          "s3:GetBucketCORS"
+        ]
+        Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-media"
+      },
+      {
+        Sid      = "LegacyDumpUploadObject"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-media/private-migrations/beaufortmarine.sql"
+      },
+      {
+        Sid      = "DiscoverBootstrapInstance"
+        Effect   = "Allow"
+        Action   = ["ec2:DescribeInstances"]
+        Resource = "*"
+      },
+      {
+        Sid      = "SsmRunShellDocument"
+        Effect   = "Allow"
+        Action   = ["ssm:SendCommand"]
+        Resource = "arn:aws:ssm:${var.aws_region}::document/AWS-RunShellScript"
+      },
+      {
+        Sid      = "SsmSendToBootstrap"
+        Effect   = "Allow"
+        Action   = ["ssm:SendCommand"]
+        Resource = "arn:aws:ec2:${var.aws_region}:${data.aws_caller_identity.current.account_id}:instance/*"
+        Condition = {
+          StringEquals = {
+            "ssm:resourceTag/Name" = "sea-n-shore-bootstrap"
+          }
+        }
+      },
+      {
+        Sid    = "SsmReadCommandResult"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetCommandInvocation",
+          "ssm:ListCommandInvocations"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -279,7 +404,7 @@ resource "aws_budgets_budget" "monthly" {
   notification {
     comparison_operator        = "GREATER_THAN"
     threshold                  = 100
-    threshold_type             = "PERCENTAGE"
+    threshold_type             = "ACTUAL"
     notification_type          = "ACTUAL"
     subscriber_email_addresses = [var.billing_email]
   }

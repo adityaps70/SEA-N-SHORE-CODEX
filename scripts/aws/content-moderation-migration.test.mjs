@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+
+const sql = fs.readFileSync('infra/aws/database/migrations/0026_content_moderation.sql', 'utf8')
+const script = fs.readFileSync('scripts/aws/content-moderation-migration.sh', 'utf8')
+const guard = fs.readFileSync('scripts/aws/content-moderation-migration-action.txt', 'utf8').trim()
+const workflow = fs.readFileSync('.github/workflows/aws-content-moderation-migration.yml', 'utf8')
+
+assert.ok(['plan', 'migrate-once'].includes(guard))
+assert.match(sql, /create table if not exists public\.content_reports/i)
+assert.match(sql, /create table if not exists public\.moderation_actions/i)
+assert.match(sql, /target_type in \('post', 'comment', 'job', 'event'\)/i)
+assert.match(sql, /status in \('open', 'reviewing', 'resolved', 'dismissed'\)/i)
+assert.match(sql, /unique \(target_type, target_id, reporter_id\)/i)
+assert.match(sql, /insert into public\.content_reports/i)
+assert.match(sql, /from public\.job_reports/i)
+assert.doesNotMatch(sql, /drop table/i)
+assert.doesNotMatch(sql, /drop column/i)
+assert.doesNotMatch(sql, /truncate/i)
+assert.doesNotMatch(sql, /delete from/i)
+
+assert.match(script, /310356785722/)
+assert.match(script, /CONTENT_MODERATION_MIGRATION_EXPECTED_SHA/)
+assert.match(script, /plan\|migrate-once/)
+assert.match(script, /0026_content_moderation\.sql/)
+assert.match(script, /expected exactly six content moderation statements/i)
+assert.match(script, /sea-n-shore-content-moderation-0026/)
+assert.match(script, /begin-transaction/)
+assert.match(script, /commit-transaction/)
+assert.match(script, /rollback-transaction/)
+assert.match(script, /CONTENT_MODERATION_MIGRATION_PLAN_ONLY_NO_APPLY/)
+assert.match(script, /CONTENT_MODERATION_MIGRATION_APPLY_VERIFIED=true/)
+assert.match(script, /CONTENT_MODERATION_MIGRATION_ALREADY_APPLIED=true/)
+assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.doesNotMatch(script, /992382634586/)
+
+assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
+assert.match(workflow, /Guard migration against a moved branch/)
+assert.match(workflow, /environment:\s*staging/)
+assert.match(workflow, /CONTENT_MODERATION_MIGRATION_EXPECTED_SHA/)
+assert.match(workflow, /bash scripts\/aws\/content-moderation-migration\.sh/)
+
+console.log('CONTENT_MODERATION_MIGRATION_CONTRACT_VERIFIED=true')

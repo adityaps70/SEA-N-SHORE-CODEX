@@ -1,5 +1,6 @@
+import { MediaImage } from '@/components/ui/media-image'
 import Link from 'next/link'
-import { ArrowUpRight, MapPin, Ship } from 'lucide-react'
+import { ArrowUpRight, Building2, MapPin, Ship } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import type { PublicProfile } from '../types'
 
@@ -23,12 +24,17 @@ const labels: Record<PublicProfile['profileType'], string> = {
 }
 
 export function ProfileDirectoryCard({ profile }: { profile: PublicProfile }) {
+  const profileInitials = (
+    <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
+      {initials(profile.fullName)}
+    </div>
+  )
   return (
     <Card className="group flex h-full flex-col border border-mist-100 p-5 transition-transform duration-200 hover:-translate-y-0.5">
       <div className="flex items-start gap-3">
-        <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[linear-gradient(145deg,var(--mist-100),white)] text-sm font-semibold text-navy-950 ring-1 ring-mist-100">
-          {initials(profile.fullName)}
-        </div>
+        {profile.avatarUrl ? (
+          <MediaImage avatar src={profile.avatarUrl} alt={`${profile.fullName} profile`} width={48} height={48} sizes="48px" className="size-12 shrink-0 rounded-2xl object-cover ring-1 ring-mist-100" fallback={profileInitials} />
+        ) : profileInitials}
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[.11em] text-ocean-700">{labels[profile.profileType]}</p>
           <h2 className="mt-1 truncate text-lg font-semibold text-navy-950">{profile.fullName}</h2>
@@ -45,7 +51,9 @@ export function ProfileDirectoryCard({ profile }: { profile: PublicProfile }) {
         ) : null}
         {profile.rank || profile.currentCompany ? (
           <p className="flex items-center gap-2">
-            <Ship aria-hidden="true" className="size-4 shrink-0" />
+            {profile.rank
+              ? <Ship aria-hidden="true" className="size-4 shrink-0" />
+              : <Building2 aria-hidden="true" className="size-4 shrink-0" />}
             <span className="truncate">{[profile.rank, profile.currentCompany].filter(Boolean).join(' · ')}</span>
           </p>
         ) : null}
@@ -66,7 +74,7 @@ export function ProfileDirectoryCard({ profile }: { profile: PublicProfile }) {
 
       <Link
         href={`/people/${profile.slug}`}
-        className="mt-5 inline-flex min-h-10 items-center justify-between rounded-xl border border-mist-100 px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:text-ocean-700"
+        className="mt-5 inline-flex min-h-10 items-center justify-between rounded-xl border border-mist-200 px-3 text-sm font-semibold text-navy-900 transition-colors hover:border-ocean-500 hover:text-ocean-700"
       >
         View professional profile
         <ArrowUpRight aria-hidden="true" className="size-4" />

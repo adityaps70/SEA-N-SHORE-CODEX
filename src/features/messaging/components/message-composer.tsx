@@ -1,0 +1,523 @@
+'use client'
+
+import { cn } from '@/lib/cn'
+import { downscaleImage } from '@/lib/images/downscale-image'
+import {
+  FileText,
+  Image as ImageIcon,
+  LoaderCircle,
+  Paperclip,
+  SendHorizontal,
+  X,
+} from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
+import { useMessagingRealtime } from '@/features/realtime/provider'
+import {
+  createMessageAttachmentUploadAction,
+  discardMessageAttachmentAction,
+  sendMessageAction,
+} from '../actions'
+import { validateMessageAttachmentMetadata } from '../media-policy'
+import type { MessagingMessageDto } from '../queries'
+import { MessageEmojiPicker } from './message-emoji-picker'
+import { uploadMessageAttachmentFile } from './upload-message-attachment'
+
+export type OptimisticMessagingMessage = MessagingMessageDto & {
+  deliveryState: 'sending' | 'failed'
+  error?: string
+}
+
+type PendingAttachment = {
+  storagePath: string
+  name: string
+  mimeType: string
+  size: number
+  kind: 'image' | 'video' | 'file'
+  progress: number
+  status: 'uploading' | 'ready' | 'failed'
+  previewUrl: string | null
+  error?: string
+}
+
+export type MessageComposerVariant = 'page' | 'dock'
+
+type MessageComposerProps = {
+  conversationId: string
+  viewerId: string
+  typingTargetProfileId?: string | null
+  replyTo?: MessagingMessageDto | null
+  onCancelReply?: () => void
+  /**
+   * 'page' (default): the full /messages composer. 'dock': the compact composer inside the
+   * 416px messaging dock — one-line placeholder, textarea that grows up to ~5 lines, size-8
+   * borderless icon buttons and no hint text.
+   */
+  variant?: MessageComposerVariant
+  onOptimisticMessage: (message: OptimisticMessagingMessage) => void
+  onMessageConfirmed: (clientMessageId: string, message: MessagingMessageDto) => void
+  onMessageFailed: (clientMessageId: string, error: string) => void
+}
+
+/** Dock textarea: 1 line minimum, ~5 lines (7.5rem at leading-5 + padding) maximum. */
+export const DOCK_TEXTAREA_MAX_HEIGHT_CLASS = 'max-h-[7.5rem]'
+
+function supportsFieldSizing() {
+  return typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('field-sizing', 'content')
+}
+
+/**
+ * JS fallback for `field-sizing: content` (jsdom and older browsers): size the textarea to its
+ * content. The `max-h-*` class still caps the visible height, so only the natural height is set.
+ */
+function fitTextareaToContent(textarea: HTMLTextAreaElement | null) {
+  if (!textarea || supportsFieldSizing()) return
+  textarea.style.height = 'auto'
+  const natural = textarea.scrollHeight
+  textarea.style.height = natural > 0 ? `${natural}px` : ''
+}
+
+function optimisticReplyPreview(replyTo: MessagingMessageDto | null | undefined) {
+  if (!replyTo) return null
+  return {
+    messageId: replyTo.id,
+    senderProfileId: replyTo.senderProfileId,
+    body: replyTo.body,
+    attachmentName: replyTo.attachment?.name ?? null,
+    deleted: Boolean(replyTo.deletedAt),
+  }
+}
+
+function attachmentAccept() {
+  return [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'video/mp4',
+    'video/webm',
+    'application/pdf',
+    'text/plain',
+    'text/csv',
+    'application/zip',
+    '.doc',
+    '.docx',
+    '.xls',
+    '.xlsx',
+    '.ppt',
+    '.pptx',
+  ].join(',')
+}
+
+export function MessageComposer({
+  conversationId,
+  viewerId,
+  typingTargetProfileId = null,
+  replyTo = null,
+  onCancelReply,
+  variant = 'page',
+  onOptimisticMessage,
+  onMessageConfirmed,
+  onMessageFailed,
+}: MessageComposerProps) {
+  const { sendTyping } = useMessagingRealtime()
+  const [body, setBody] = useState('')
+  const [sendingCount, setSendingCount] = useState(0)
+  const [attachment, setAttachment] = useState<PendingAttachment | null>(null)
+  const [composerError, setComposerError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dock = variant === 'dock'
+
+  useEffect(() => {
+    // Auto-grow fallback for the dock textarea; also shrinks it back after a send or emoji insert.
+    if (!dock) return
+    fitTextareaToContent(textareaRef.current)
+  }, [body, dock])
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastTypingSentAtRef = useRef(0)
+
+  const publishTyping = useCallback((isTyping: boolean) => {
+    if (!typingTargetProfileId) return
+    sendTyping({
+      conversationId,
+      targetProfileId: typingTargetProfileId,
+      isTyping,
+    })
+  }, [conversationId, sendTyping, typingTargetProfileId])
+
+  function noteTyping(value: string) {
+    if (!typingTargetProfileId) return
+
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+    const now = Date.now()
+    if (value.trim() && now - lastTypingSentAtRef.current >= 1200) {
+      publishTyping(true)
+      lastTypingSentAtRef.current = now
+    }
+    if (!value.trim()) {
+      publishTyping(false)
+      lastTypingSentAtRef.current = 0
+      return
+    }
+
+    typingStopTimerRef.current = setTimeout(() => {
+      publishTyping(false)
+      lastTypingSentAtRef.current = 0
+      typingStopTimerRef.current = null
+    }, 1600)
+  }
+
+  useEffect(() => () => {
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+    publishTyping(false)
+  }, [publishTyping])
+
+  async function discardAttachment(current: PendingAttachment | null = attachment) {
+    if (!current) return
+    if (current.previewUrl) URL.revokeObjectURL(current.previewUrl)
+    setAttachment(null)
+    setComposerError('')
+
+    if (current.storagePath) {
+      await discardMessageAttachmentAction({
+        conversationId,
+        storagePath: current.storagePath,
+        name: current.name,
+        mimeType: current.mimeType,
+        size: current.size,
+      }).catch(() => undefined)
+    }
+  }
+
+  async function prepareAttachment(picked: File) {
+    setComposerError('')
+    // Photos are shrunk in the browser first (max 2048px long edge, WebP); other files pass through.
+    const file = await downscaleImage(picked, 'message')
+    const validated = validateMessageAttachmentMetadata({
+      name: file.name,
+      mimeType: file.type,
+      size: file.size,
+    })
+    if (!validated.ok) {
+      setComposerError(validated.error)
+      return
+    }
+
+    if (attachment) await discardAttachment(attachment)
+
+    const previewUrl = validated.kind === 'image' || validated.kind === 'video'
+      ? URL.createObjectURL(file)
+      : null
+
+    const uploadResult = await createMessageAttachmentUploadAction({
+      conversationId,
+      name: validated.name,
+      mimeType: validated.mimeType,
+      size: file.size,
+    })
+
+    if (!uploadResult.ok) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      setComposerError(uploadResult.error)
+      return
+    }
+
+    const prepared: PendingAttachment = {
+      storagePath: uploadResult.upload.storagePath,
+      name: uploadResult.upload.name,
+      mimeType: uploadResult.upload.mimeType,
+      size: uploadResult.upload.size,
+      kind: uploadResult.upload.kind,
+      progress: 0,
+      status: 'uploading',
+      previewUrl,
+    }
+    setAttachment(prepared)
+
+    try {
+      await uploadMessageAttachmentFile({
+        uploadUrl: uploadResult.upload.uploadUrl,
+        file,
+        onProgress: (progress) => {
+          setAttachment((current) => current?.storagePath === prepared.storagePath
+            ? { ...current, progress }
+            : current)
+        },
+      })
+      setAttachment((current) => current?.storagePath === prepared.storagePath
+        ? { ...current, progress: 100, status: 'ready' }
+        : current)
+    } catch {
+      setAttachment((current) => current?.storagePath === prepared.storagePath
+        ? {
+            ...current,
+            status: 'failed',
+            error: 'Upload failed. Remove this file and try again.',
+          }
+        : current)
+      setComposerError('Upload failed. Remove this file and try again.')
+    }
+  }
+
+  function onAttachmentChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    void prepareAttachment(file)
+  }
+
+  async function submitMessage() {
+    const normalized = body.trim()
+    const readyAttachment = attachment?.status === 'ready' ? attachment : null
+    if (!normalized && !readyAttachment) return
+
+    const clientMessageId = crypto.randomUUID()
+    const optimistic: OptimisticMessagingMessage = {
+      id: clientMessageId,
+      conversationId,
+      senderProfileId: viewerId,
+      clientMessageId,
+      body: normalized,
+      createdAt: new Date().toISOString(),
+      editedAt: null,
+      deletedAt: null,
+      replyTo: optimisticReplyPreview(replyTo),
+      attachment: readyAttachment
+        ? {
+            name: readyAttachment.name,
+            mimeType: readyAttachment.mimeType,
+            size: readyAttachment.size,
+            kind: readyAttachment.kind,
+            url: readyAttachment.previewUrl ?? '',
+          }
+        : null,
+      reactions: [],
+      deliveryState: 'sending',
+    }
+
+    const attachmentInput = readyAttachment
+      ? {
+          storagePath: readyAttachment.storagePath,
+          name: readyAttachment.name,
+          mimeType: readyAttachment.mimeType,
+          size: readyAttachment.size,
+        }
+      : undefined
+
+    onOptimisticMessage(optimistic)
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current)
+    publishTyping(false)
+    lastTypingSentAtRef.current = 0
+    setBody('')
+    setAttachment(null)
+    setComposerError('')
+    onCancelReply?.()
+    setSendingCount((count) => count + 1)
+
+    try {
+      const result = await sendMessageAction({
+        conversationId,
+        clientMessageId,
+        body: normalized,
+        ...(replyTo ? { replyToMessageId: replyTo.id } : {}),
+        ...(attachmentInput ? { attachment: attachmentInput } : {}),
+      })
+      if (result.ok) {
+        onMessageConfirmed(clientMessageId, result.message)
+        if (readyAttachment?.previewUrl) URL.revokeObjectURL(readyAttachment.previewUrl)
+      } else {
+        onMessageFailed(clientMessageId, result.error)
+      }
+    } catch {
+      onMessageFailed(clientMessageId, 'Unable to send right now.')
+    } finally {
+      setSendingCount((count) => Math.max(0, count - 1))
+    }
+  }
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    void submitMessage()
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void submitMessage()
+    }
+  }
+
+  const attachmentReady = attachment?.status === 'ready'
+  const canSend = Boolean(body.trim() || attachmentReady)
+  const iconButtonClass = dock
+    ? 'grid size-8 shrink-0 cursor-pointer place-items-center rounded-full text-ocean-700 transition hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-40'
+    : 'grid size-10 shrink-0 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-ocean-700 transition hover:border-ocean-200 hover:bg-ocean-50 disabled:cursor-not-allowed disabled:opacity-40'
+  const iconClass = dock ? 'size-4.5' : 'size-5'
+
+  return (
+    <form onSubmit={onSubmit} className={cn('border-t border-mist-100 bg-white p-3 sm:p-4', dock && 'p-2.5 sm:p-2.5')}>
+      {replyTo ? (
+        <div className="mb-2 flex items-start gap-3 rounded-2xl border-l-4 border-ocean-500 bg-ocean-50 px-3 py-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-ocean-700">Replying to message</p>
+            <p className="mt-0.5 truncate text-xs text-navy-900">
+              {replyTo.body || replyTo.attachment?.name || 'Attachment'}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Cancel reply"
+            onClick={onCancelReply}
+            className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full border border-ocean-100 bg-white/70 text-muted transition hover:bg-white hover:text-navy-950"
+          >
+            <X aria-hidden="true" className="size-4" />
+          </button>
+        </div>
+      ) : null}
+
+      {attachment ? (
+        <div className="mb-2 overflow-hidden rounded-2xl border border-mist-100 bg-mist-50">
+          <div className="flex items-center gap-3 p-2.5">
+            {attachment.kind === 'image' && attachment.previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- local object URL before signed canonical URL exists
+              <img src={attachment.previewUrl} alt="" className="size-14 rounded-xl object-cover" />
+            ) : attachment.kind === 'video' && attachment.previewUrl ? (
+              <video src={attachment.previewUrl} muted className="size-14 rounded-xl object-cover" />
+            ) : (
+              <div className="grid size-14 shrink-0 place-items-center rounded-xl bg-white text-ocean-700 ring-1 ring-mist-100">
+                <FileText aria-hidden="true" className="size-6" />
+              </div>
+            )}
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-navy-950">{attachment.name}</p>
+              <p className="mt-0.5 text-xs text-muted">
+                {attachment.status === 'uploading'
+                  ? `Uploading · ${attachment.progress}%`
+                  : attachment.status === 'ready'
+                    ? 'Ready to send'
+                    : attachment.error ?? 'Upload failed'}
+              </p>
+              {attachment.status === 'uploading' ? (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-mist-100">
+                  <div
+                    className="h-full rounded-full bg-ocean-600 transition-[width]"
+                    style={{ width: `${attachment.progress}%` }}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              aria-label="Remove attachment"
+              onClick={() => void discardAttachment()}
+              className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full border border-mist-200 bg-white text-muted transition hover:border-red-100 hover:bg-red-50 hover:text-red-700"
+            >
+              <X aria-hidden="true" className="size-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        className={cn(
+          'flex items-end gap-1 rounded-2xl border border-mist-100 bg-mist-50 p-2 transition focus-within:border-teal-500',
+          // The compact emoji popover anchors to this row so it stays inside the dock panel.
+          dock && 'relative p-1.5',
+        )}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          tabIndex={-1}
+          className="sr-only"
+          accept={attachmentAccept()}
+          onChange={onAttachmentChange}
+        />
+        <button
+          type="button"
+          aria-label="Attach photo or file"
+          title="Attach photo or file"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={attachment?.status === 'uploading'}
+          className={iconButtonClass}
+        >
+          {attachment?.status === 'uploading'
+            ? <LoaderCircle aria-hidden="true" className={`${iconClass} animate-spin`} />
+            : <Paperclip aria-hidden="true" className={iconClass} />}
+        </button>
+
+        <button
+          type="button"
+          aria-label="Attach photo"
+          title="Attach photo"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={attachment?.status === 'uploading'}
+          className={cn(iconButtonClass, !dock && 'hidden sm:grid')}
+        >
+          <ImageIcon aria-hidden="true" className={iconClass} />
+        </button>
+
+        <MessageEmojiPicker
+          compact={dock}
+          onSelect={(emoji) => {
+            if (!emoji) return
+            setBody((current) => {
+              const next = `${current}${emoji}`
+              noteTyping(next)
+              return next
+            })
+          }}
+        />
+
+        <label htmlFor="message-composer" className="sr-only">Write a message</label>
+        <textarea
+          ref={textareaRef}
+          id="message-composer"
+          aria-label="Write a message"
+          value={body}
+          onChange={(event) => {
+            const value = event.target.value
+            setBody(value)
+            noteTyping(value)
+          }}
+          onKeyDown={onKeyDown}
+          rows={1}
+          maxLength={5000}
+          placeholder={dock ? 'Write a message…' : 'Message…'}
+          className={cn(
+            'max-h-36 min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm leading-5 text-navy-950 outline-none placeholder:text-muted',
+            dock && `min-h-8 min-w-0 py-1.5 [field-sizing:content] ${DOCK_TEXTAREA_MAX_HEIGHT_CLASS}`,
+          )}
+        />
+        <button
+          type="submit"
+          aria-label="Send message"
+          title={sendingCount > 0 ? 'Sending message' : 'Send message'}
+          disabled={!canSend || attachment?.status === 'uploading'}
+          className={cn(
+            'grid size-11 shrink-0 cursor-pointer place-items-center rounded-xl bg-ocean-700 text-white transition hover:bg-ocean-800 disabled:cursor-not-allowed disabled:bg-mist-100 disabled:text-muted',
+            dock && 'size-9 rounded-full',
+          )}
+        >
+          <SendHorizontal aria-hidden="true" className={dock ? 'size-4' : 'size-4.5'} />
+        </button>
+      </div>
+      {!dock || composerError ? (
+        <div className={cn('mt-1.5 flex items-center justify-between gap-3 px-1', dock && 'mt-1 justify-end')}>
+          {!dock ? <p className="text-[11px] text-muted max-md:hidden">Enter to send · Shift + Enter for a new line</p> : null}
+          {composerError ? <p role="alert" className="text-right text-[11px] font-medium text-red-700">{composerError}</p> : null}
+        </div>
+      ) : null}
+    </form>
+  )
+}

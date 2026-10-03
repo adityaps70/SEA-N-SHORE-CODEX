@@ -1,0 +1,383 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { MessagingMessageDto } from '../queries'
+
+const mocks = vi.hoisted(() => ({
+  sendMessageAction: vi.fn(),
+  createMessageAttachmentUploadAction: vi.fn(),
+  discardMessageAttachmentAction: vi.fn(),
+  uploadMessageAttachmentFile: vi.fn(),
+  sendTyping: vi.fn(() => true),
+  downscaleImage: vi.fn(async (file: File) => file),
+}))
+
+vi.mock('@/lib/images/downscale-image', () => ({
+  downscaleImage: mocks.downscaleImage,
+}))
+
+vi.mock('../actions', () => ({
+  sendMessageAction: mocks.sendMessageAction,
+  createMessageAttachmentUploadAction: mocks.createMessageAttachmentUploadAction,
+  discardMessageAttachmentAction: mocks.discardMessageAttachmentAction,
+}))
+
+vi.mock('@/features/realtime/provider', () => ({
+  useMessagingRealtime: () => ({
+    status: 'connected',
+    subscribe: vi.fn(() => () => {}),
+    sendTyping: mocks.sendTyping,
+  }),
+}))
+
+vi.mock('./upload-message-attachment', () => ({
+  uploadMessageAttachmentFile: mocks.uploadMessageAttachmentFile,
+}))
+
+import { MessageComposer } from './message-composer'
+
+const VIEWER_ID = '11111111-1111-4111-8111-111111111111'
+const OTHER_ID = '22222222-2222-4222-8222-222222222222'
+const CONVERSATION_ID = '33333333-3333-4333-8333-333333333333'
+const REPLY_ID = '44444444-4444-4444-8444-444444444444'
+
+function canonical(overrides: Partial<MessagingMessageDto> = {}): MessagingMessageDto {
+  return {
+    id: '55555555-5555-4555-8555-555555555555',
+    conversationId: CONVERSATION_ID,
+    senderProfileId: VIEWER_ID,
+    clientMessageId: '66666666-6666-4666-8666-666666666666',
+    body: '',
+    createdAt: '2026-09-20T10:00:00.000Z',
+    editedAt: null,
+    deletedAt: null,
+    replyTo: null,
+    attachment: null,
+    reactions: [],
+    ...overrides,
+  }
+}
+
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+  vi.clearAllMocks()
+  window.localStorage.clear()
+})
+
+describe('MessageComposer rich messaging', () => {
+  it('publishes typing while composing and clears it after inactivity', async () => {
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        typingTargetProfileId={OTHER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    vi.useFakeTimers()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Write a message' }), {
+      target: { value: 'Hi' },
+    })
+    expect(mocks.sendTyping).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      targetProfileId: OTHER_ID,
+      isTyping: true,
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1800)
+    })
+    expect(mocks.sendTyping).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      targetProfileId: OTHER_ID,
+      isTyping: false,
+    })
+  })
+
+  it('inserts an emoji into the composer and can send an emoji-only message', async () => {
+    const user = userEvent.setup()
+    const onOptimisticMessage = vi.fn()
+    mocks.sendMessageAction.mockImplementationOnce(async (input) => ({
+      ok: true,
+      message: canonical({ clientMessageId: input.clientMessageId, body: '🫡' }),
+    }))
+
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        onOptimisticMessage={onOptimisticMessage}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+    await user.click(screen.getByRole('button', { name: 'Insert 🫡' }))
+    expect(screen.getByRole('textbox', { name: 'Write a message' })).toHaveValue('🫡')
+
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    expect(mocks.sendMessageAction).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: CONVERSATION_ID,
+      body: '🫡',
+    }))
+  })
+
+  it('keeps the emoji picker open for multi-emoji composition and exposes a much larger categorized catalog', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+    await user.click(screen.getByRole('button', { name: 'Insert 😀' }))
+    expect(screen.getByRole('menu', { name: 'Choose emoji' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Insert 😂' }))
+    expect(screen.getByRole('textbox', { name: 'Write a message' })).toHaveValue('😀😂')
+    expect(screen.getByRole('menu', { name: 'Choose emoji' })).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Show travel emojis' }))
+    expect(screen.getByRole('button', { name: 'Insert 🗺️' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Insert 🗺️' }))
+    expect(screen.getByRole('textbox', { name: 'Write a message' })).toHaveValue('😀😂🗺️')
+
+    await user.click(screen.getByRole('button', { name: 'Done choosing emojis' }))
+    expect(screen.queryByRole('menu', { name: 'Choose emoji' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Add emoji' }))
+    expect(screen.getByRole('button', { name: 'Show recent emojis' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Show recent emojis' }))
+    expect(screen.getByRole('button', { name: 'Insert 🗺️' })).toBeInTheDocument()
+  })
+
+  it('shrinks a picked photo in the browser before requesting the upload and sending the bytes', async () => {
+    const user = userEvent.setup()
+    const original = new File([new Uint8Array(9 * 1024 * 1024)], 'IMG_0001.jpg', { type: 'image/jpeg' })
+    const shrunk = new File([new Uint8Array(2048)], 'IMG_0001.webp', { type: 'image/webp' })
+    mocks.downscaleImage.mockResolvedValueOnce(shrunk)
+    const storagePath = `messages/${VIEWER_ID}/${CONVERSATION_ID}/77777777-7777-4777-8777-777777777777.webp`
+    mocks.createMessageAttachmentUploadAction.mockResolvedValueOnce({
+      ok: true,
+      upload: { storagePath, name: 'IMG_0001.webp', mimeType: 'image/webp', size: 2048, kind: 'image', uploadUrl: 'https://upload.example.test/signed' },
+    })
+    mocks.uploadMessageAttachmentFile.mockResolvedValueOnce(undefined)
+
+    const { container } = render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    await user.upload(container.querySelector('input[type="file"]') as HTMLInputElement, original)
+
+    await waitFor(() => expect(screen.getByText('Ready to send')).toBeInTheDocument())
+    expect(mocks.downscaleImage).toHaveBeenCalledWith(original, 'message')
+    expect(mocks.createMessageAttachmentUploadAction).toHaveBeenCalledWith({
+      conversationId: CONVERSATION_ID,
+      name: 'IMG_0001.webp',
+      mimeType: 'image/webp',
+      size: 2048,
+    })
+    expect(mocks.uploadMessageAttachmentFile).toHaveBeenCalledWith(expect.objectContaining({ file: shrunk }))
+  })
+
+  it('uploads a photo, shows a preview state, and sends it even without text', async () => {
+    const user = userEvent.setup()
+    const storagePath = `messages/${VIEWER_ID}/${CONVERSATION_ID}/77777777-7777-4777-8777-777777777777.jpg`
+    mocks.createMessageAttachmentUploadAction.mockResolvedValueOnce({
+      ok: true,
+      upload: {
+        storagePath,
+        name: 'bridge.jpg',
+        mimeType: 'image/jpeg',
+        size: 1024,
+        kind: 'image',
+        uploadUrl: 'https://upload.example.test/signed',
+      },
+    })
+    mocks.uploadMessageAttachmentFile.mockImplementationOnce(async ({ onProgress }) => {
+      onProgress(50)
+      onProgress(100)
+    })
+    mocks.sendMessageAction.mockImplementationOnce(async (input) => ({
+      ok: true,
+      message: canonical({
+        clientMessageId: input.clientMessageId,
+        attachment: {
+          name: 'bridge.jpg',
+          mimeType: 'image/jpeg',
+          size: 1024,
+          kind: 'image',
+          url: 'https://read.example.test/bridge.jpg',
+        },
+      }),
+    }))
+
+    const { container } = render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File([new Uint8Array(1024)], 'bridge.jpg', { type: 'image/jpeg' })
+    await user.upload(fileInput, file)
+
+    await waitFor(() => expect(screen.getByText('bridge.jpg')).toBeInTheDocument())
+    expect(screen.getByText('Ready to send')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+    expect(mocks.sendMessageAction).toHaveBeenCalledWith(expect.objectContaining({
+      body: '',
+      attachment: {
+        storagePath,
+        name: 'bridge.jpg',
+        mimeType: 'image/jpeg',
+        size: 1024,
+      },
+    }))
+  })
+
+  it('sends a reply reference and allows cancelling the reply before sending', async () => {
+    const user = userEvent.setup()
+    const onCancelReply = vi.fn()
+    const replyTo = canonical({
+      id: REPLY_ID,
+      senderProfileId: OTHER_ID,
+      body: 'Please send the bridge photo.',
+    })
+    mocks.sendMessageAction.mockImplementationOnce(async (input) => ({
+      ok: true,
+      message: canonical({
+        clientMessageId: input.clientMessageId,
+        body: 'Sending now.',
+        replyTo: {
+          messageId: REPLY_ID,
+          senderProfileId: OTHER_ID,
+          body: 'Please send the bridge photo.',
+          attachmentName: null,
+          deleted: false,
+        },
+      }),
+    }))
+
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        replyTo={replyTo}
+        onCancelReply={onCancelReply}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Replying to message')).toBeInTheDocument()
+    expect(screen.getByText('Please send the bridge photo.')).toBeInTheDocument()
+    await user.type(screen.getByRole('textbox', { name: 'Write a message' }), 'Sending now.')
+    await user.click(screen.getByRole('button', { name: 'Send message' }))
+
+    expect(mocks.sendMessageAction).toHaveBeenCalledWith(expect.objectContaining({
+      replyToMessageId: REPLY_ID,
+    }))
+    expect(onCancelReply).toHaveBeenCalled()
+  })
+
+  it('keeps the page variant unchanged: "Message…" placeholder, size-10 buttons and the keyboard hint', () => {
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    const textbox = screen.getByRole('textbox', { name: 'Write a message' })
+    expect(textbox).toHaveAttribute('placeholder', 'Message…')
+    expect(textbox).toHaveClass('max-h-36', 'min-h-11')
+    expect(textbox).not.toHaveClass('[field-sizing:content]')
+    expect(textbox.style.height).toBe('')
+    expect(screen.getByRole('button', { name: 'Attach photo or file' })).toHaveClass('size-10', 'border')
+    expect(screen.getByRole('button', { name: 'Add emoji' })).toHaveClass('size-10')
+    expect(screen.getByRole('button', { name: 'Send message' })).toHaveClass('size-11')
+    expect(screen.getByText('Enter to send · Shift + Enter for a new line')).toBeInTheDocument()
+  })
+
+  it('auto-grows the dock variant textarea with its content, capped by the max-height class', async () => {
+    const user = userEvent.setup()
+    mocks.sendMessageAction.mockImplementationOnce(async (input) => ({
+      ok: true,
+      message: canonical({ clientMessageId: input.clientMessageId, body: 'one' }),
+    }))
+
+    render(
+      <MessageComposer
+        conversationId={CONVERSATION_ID}
+        viewerId={VIEWER_ID}
+        variant="dock"
+        onOptimisticMessage={vi.fn()}
+        onMessageConfirmed={vi.fn()}
+        onMessageFailed={vi.fn()}
+      />,
+    )
+
+    const textbox = screen.getByRole('textbox', { name: 'Write a message' }) as HTMLTextAreaElement
+    expect(textbox).toHaveAttribute('placeholder', 'Write a message…')
+    expect(textbox).toHaveAttribute('rows', '1')
+    expect(textbox).toHaveClass('[field-sizing:content]', 'max-h-[7.5rem]', 'flex-1', 'min-w-0')
+    expect(screen.queryByText('Enter to send · Shift + Enter for a new line')).not.toBeInTheDocument()
+
+    // jsdom has no layout: emulate the natural content height (20px line-height + 12px padding).
+    const lineHeight = 20
+    Object.defineProperty(textbox, 'scrollHeight', {
+      configurable: true,
+      get: () => 12 + lineHeight * Math.max(1, textbox.value.split('\n').length),
+    })
+
+    fireEvent.change(textbox, { target: { value: 'one' } })
+    expect(textbox.style.height).toBe('32px')
+
+    fireEvent.change(textbox, { target: { value: 'one\ntwo\nthree' } })
+    expect(textbox.style.height).toBe('72px')
+
+    fireEvent.change(textbox, { target: { value: 'one\ntwo\nthree\nfour\nfive\nsix' } })
+    // The inline height follows the content; the max-h-[7.5rem] (120px, ~5 lines) class caps what is shown.
+    expect(textbox.style.height).toBe('132px')
+    expect(textbox).toHaveClass('max-h-[7.5rem]')
+
+    // Shift+Enter keeps composing (no send), Enter sends and the textarea shrinks back to one line.
+    await user.type(textbox, '{Shift>}{Enter}{/Shift}')
+    expect(mocks.sendMessageAction).not.toHaveBeenCalled()
+    expect(textbox.value.split('\n')).toHaveLength(7)
+
+    fireEvent.change(textbox, { target: { value: 'one' } })
+    await user.type(textbox, '{Enter}')
+    expect(mocks.sendMessageAction).toHaveBeenCalledWith(expect.objectContaining({ body: 'one' }))
+    expect(textbox).toHaveValue('')
+    expect(textbox.style.height).toBe('32px')
+  })
+})

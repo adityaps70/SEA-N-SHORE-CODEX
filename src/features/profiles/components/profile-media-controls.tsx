@@ -1,0 +1,165 @@
+'use client'
+
+import { useRouter } from 'next/navigation'
+import { Camera, Trash2 } from 'lucide-react'
+import { startTransition, useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
+import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
+import { downscaleImage, isDownscalableImage } from '@/lib/images/downscale-image'
+import {
+  removeAvatarAction,
+  removeCoverAction,
+  uploadAvatarAction,
+  uploadCoverAction,
+  type ProfileMediaActionState,
+} from '../profile-media-actions'
+
+const initialState: ProfileMediaActionState = {}
+
+/** Profile photos are round; covers are the 4:1 banner (1584 × 396) the app recommends. */
+const CROP: Record<'avatar' | 'cover', { shape: 'circle' | 'rect'; aspect: number; title: string }> = {
+  avatar: { shape: 'circle', aspect: 1, title: 'Adjust your profile photo' },
+  cover: { shape: 'rect', aspect: 4, title: 'Adjust your cover photo' },
+}
+const subscribeToHydration = () => () => {}
+const getHydratedSnapshot = () => true
+const getServerHydratedSnapshot = () => false
+
+export function ProfileMediaControls({
+  kind,
+  hasImage,
+}: {
+  kind: 'avatar' | 'cover'
+  hasImage: boolean
+}) {
+  const router = useRouter()
+  const uploadAction = kind === 'avatar' ? uploadAvatarAction : uploadCoverAction
+  const removeAction = kind === 'avatar' ? removeAvatarAction : removeCoverAction
+  const [state, formAction, uploading] = useActionState(uploadAction, initialState)
+  const [removeError, setRemoveError] = useState('')
+  const [removed, setRemoved] = useState(false)
+  const [removing, startRemoving] = useTransition()
+  const [cropping, setCropping] = useState<File | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const label = kind === 'avatar' ? 'profile photo' : 'cover photo'
+  const hydrated = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerHydratedSnapshot)
+
+  const imagePresent = removed ? false : state.success ? true : hasImage
+
+  useEffect(() => {
+    if (!state.success) return
+    if (inputRef.current) inputRef.current.value = ''
+    router.refresh()
+  }, [router, state])
+
+  /**
+   * The picked photo is shrunk in the browser first (avatar: 800px long edge, cover: 1920px,
+   * WebP), then submitted to the upload action as the form's `image` field.
+   */
+  async function submitImage(picked: File) {
+    const image = await downscaleImage(picked, kind)
+    const formData = new FormData()
+    formData.set('image', image, image.name)
+    startTransition(() => formAction(formData))
+  }
+
+  /** A photo the browser can re-encode is framed in the crop dialog first; a GIF is uploaded as it is. */
+  function pickImage(picked: File) {
+    if (isDownscalableImage(picked)) {
+      setCropping(picked)
+      return
+    }
+    void submitImage(picked)
+  }
+
+  function cancelCrop() {
+    setCropping(null)
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
+  function saveCrop(cropped: File) {
+    setCropping(null)
+    void submitImage(cropped)
+  }
+
+  function removeImage() {
+    if (removing) return
+    setRemoveError('')
+    startRemoving(async () => {
+      const result = await removeAction(new FormData())
+      if (!result.success) {
+        setRemoveError(result.error ?? `Unable to remove ${label}.`)
+        return
+      }
+      setRemoved(true)
+      router.refresh()
+    })
+  }
+
+  const error = state.error ?? removeError
+  const busy = uploading || removing
+
+  return (
+    <div className="relative flex items-center gap-2">
+      <form action={formAction}>
+        <input
+          ref={inputRef}
+          type="file"
+          name="image"
+          accept="image/jpeg,image/png,image/webp"
+          className="sr-only"
+          onChange={(event) => {
+            setRemoveError('')
+            const picked = event.currentTarget.files?.[0]
+            if (picked) {
+              setRemoved(false)
+              pickImage(picked)
+            }
+          }}
+        />
+        <button
+          type="button"
+          disabled={busy || !hydrated}
+          onClick={() => inputRef.current?.click()}
+          aria-label={`${imagePresent ? 'Change' : 'Add'} ${label}`}
+          className={kind === 'avatar'
+            ? 'inline-flex size-10 items-center justify-center rounded-full border-2 border-white bg-navy-950 text-white shadow-md hover:bg-ocean-700 disabled:opacity-60'
+            : 'inline-flex min-h-10 items-center gap-2 rounded-xl border border-white/70 bg-white/95 px-3 text-sm font-semibold text-navy-950 shadow-sm hover:bg-white disabled:opacity-60'}
+        >
+          <Camera aria-hidden="true" className="size-4" />
+          {kind === 'cover' ? (uploading ? 'Uploading…' : hasImage ? 'Change cover' : 'Add cover') : null}
+        </button>
+      </form>
+
+      {imagePresent ? (
+        <button
+          type="button"
+          disabled={busy || !hydrated}
+          onClick={removeImage}
+          aria-label={`Remove ${label}`}
+          className={kind === 'avatar'
+            ? 'inline-flex size-8 items-center justify-center rounded-full border-2 border-white bg-white text-navy-950 shadow-md hover:text-red-700 disabled:opacity-60'
+            : 'inline-flex size-10 items-center justify-center rounded-xl border border-white/70 bg-white/95 text-navy-950 shadow-sm hover:text-red-700 disabled:opacity-60'}
+        >
+          <Trash2 aria-hidden="true" className="size-4" />
+        </button>
+      ) : null}
+
+      {error ? (
+        <span role="alert" className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 shadow-sm">
+          {error}
+        </span>
+      ) : null}
+
+      {cropping ? (
+        <ImageCropDialog
+          file={cropping}
+          shape={CROP[kind].shape}
+          aspect={CROP[kind].aspect}
+          title={CROP[kind].title}
+          onCancel={cancelCrop}
+          onSave={saveCrop}
+        />
+      ) : null}
+    </div>
+  )
+}
