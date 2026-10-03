@@ -108,6 +108,7 @@ jobs:
               if (
                 response.url().includes('/auth/google/')
                 || response.url().includes('amazoncognito.com')
+                || response.url().includes('auth.seanshore.in')
                 || response.url().includes('accounts.google.com')
               ) {
                 responses.push(`${response.status()} ${response.url()}`)
@@ -140,6 +141,7 @@ jobs:
             if (
               !finalUrl.includes('accounts.google.com')
               && !finalUrl.includes('amazoncognito.com')
+              && !finalUrl.includes('auth.seanshore.in')
             ) {
               console.error(`Google OAuth did not reach Google/Cognito from ${authPage}.`)
               process.exitCode = 1

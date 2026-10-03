@@ -300,14 +300,16 @@ fi
 # Roll the Google availability flag into the running web task without changing
 # the deployed image, secrets, roles, networking or any other container setting.
 terraform -chdir="$APP_DIR" state pull > "$WORK_DIR/state-after.json"
-COGNITO_DOMAIN_PREFIX="$(jq -r '
+# The branded custom domain (cognito_custom_domain.tf) is the hosted domain the app uses.
+DESIRED_COGNITO_DOMAIN="$(jq -r '
   [.resources[]
-   | select(.mode=="managed" and .type=="aws_cognito_user_pool_domain" and .name=="app")
+   | select(.mode=="managed" and .type=="aws_cognito_user_pool_domain" and .name=="custom")
    | .instances[0].attributes.domain][0] // empty
 ' "$WORK_DIR/state-after.json")"
-[[ -n "$COGNITO_DOMAIN_PREFIX" ]]
-DESIRED_COGNITO_DOMAIN="${COGNITO_DOMAIN_PREFIX}.auth.${AWS_REGION}.amazoncognito.com"
-[[ "$DESIRED_COGNITO_DOMAIN" == "sea-n-shore-staging-${EXPECTED_ACCOUNT}.auth.${AWS_REGION}.amazoncognito.com" ]]
+[[ "$DESIRED_COGNITO_DOMAIN" == "auth.seanshore.in" ]]
+aws cognito-idp describe-user-pool-domain --region "$AWS_REGION" --domain "$DESIRED_COGNITO_DOMAIN" > "$WORK_DIR/custom-domain.json"
+jq -e --arg pool "$USER_POOL_ID" '.DomainDescription.UserPoolId == $pool and .DomainDescription.Status == "ACTIVE"' "$WORK_DIR/custom-domain.json" >/dev/null
+echo "COGNITO_CUSTOM_DOMAIN_ACTIVE=true"
 CLUSTER_NAME="$(jq -r '
   [.resources[]
    | select(.mode=="managed" and .type=="aws_ecs_cluster" and .name=="app")
@@ -484,7 +486,7 @@ if [[ "$DESIRED_GOOGLE_FLAG" == "true" ]]; then
     "${PUBLIC_SITE_URL%/}/auth/google/start?intent=sign-in")"
   [[ "$GOOGLE_START_STATUS" =~ ^30[1278]$ ]]
   GOOGLE_START_LOCATION="$(awk 'BEGIN{IGNORECASE=1} /^location:/ {sub(/^[^:]+:[[:space:]]*/,""); gsub("\r",""); print}' "$GOOGLE_START_HEADERS" | tail -n 1)"
-  [[ "$GOOGLE_START_LOCATION" == https://sea-n-shore-staging-310356785722.auth.ap-south-1.amazoncognito.com/oauth2/authorize* ]]
+  [[ "$GOOGLE_START_LOCATION" == "https://$DESIRED_COGNITO_DOMAIN/oauth2/authorize"* ]]
   [[ "$GOOGLE_START_LOCATION" == *"identity_provider=Google"* ]]
 fi
 echo "GOOGLE_RUNTIME_VERIFIED=true"
