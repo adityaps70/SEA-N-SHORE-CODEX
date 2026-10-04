@@ -7,9 +7,11 @@ variable "allowed_phone_calling_codes" {
 }
 
 variable "sms_monthly_spend_limit_usd" {
-  description = "Account-level SNS SMS monthly spend limit in USD."
+  # The account's SNS SMS spending quota is still the AWS default (USD 1): SNS rejects a limit above
+  # the quota. After AWS approves the owner's quota increase to USD 20, set this to 20 and apply.
+  description = "Account-level SNS SMS monthly spend limit in USD (must not exceed the account's SMS quota)."
   type        = number
-  default     = 20
+  default     = 1
 }
 
 # Counters for phone OTP limits (per number, per IP, global), expired by DynamoDB TTL. Shared by

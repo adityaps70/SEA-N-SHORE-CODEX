@@ -79,6 +79,8 @@ describe('application row "…" sheet (phones)', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Withdraw application' }))
     fireEvent.click(screen.getByRole('button', { name: 'Withdraw application' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('This application can no longer be withdrawn.')
+    // The refusal can render before the withdraw transition settles; Keep is disabled until it does.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Keep application' })).toBeEnabled())
     fireEvent.click(screen.getByRole('button', { name: 'Keep application' }))
     // Closing the sheet re-opens the menu in a transition; wait for it instead of asserting synchronously.
     expect(await screen.findByRole('menu', { name: 'Actions for Second Engineer' })).toBeInTheDocument()
