@@ -89,14 +89,14 @@ test('the stale one-shot Aurora retention runner is retired and the Cognito admi
   assert.doesNotMatch(cognitoAdmin, /item\['name'\] == 'NEXT_PUBLIC_SITE_URL'/)
 })
 
-// Round 14: plans that hang are interrupted and retried once, and only operation names reach the disk.
+// Round 14: plans that hang are interrupted and retried once; Terraform runs with a small memory footprint.
 function runBoundedPlan(stubBody) {
   const dir = mkdtempSync(join(tmpdir(), 'tf-bounded-'))
   try {
     writeFileSync(join(dir, 'terraform'), `#!/usr/bin/env bash\n${stubBody}\n`)
     chmodSync(join(dir, 'terraform'), 0o755)
-    const helper = read('scripts/aws/bootstrap-terraform-lock.sh').split('TERRAFORM_PLAN_TIMEOUT_SECONDS="')[0].length
-    const source = read('scripts/aws/bootstrap-terraform-lock.sh').slice(helper)
+    const lock = read('scripts/aws/bootstrap-terraform-lock.sh')
+    const source = lock.slice(lock.indexOf('TERRAFORM_PLAN_TIMEOUT_SECONDS="'))
     const script = `set -euo pipefail\n${source}\nset +e\nterraform_plan_bounded "${dir}/plan.log" -chdir=x plan -out=y\necho "STATUS=$?"\ncat "${dir}/plan.log"\n`
     return execFileSync('bash', ['-c', script], {
       env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, TERRAFORM_PLAN_TIMEOUT_SECONDS: '1' },
@@ -108,25 +108,31 @@ function runBoundedPlan(stubBody) {
   }
 }
 
-test('Terraform plans on the host are bounded: interrupted, retried once, and never log bodies', () => {
+test('Terraform on the host is bounded: low memory footprint, plans interrupted and retried once', () => {
   const lock = read('scripts/aws/bootstrap-terraform-lock.sh')
+  assert.match(lock, /export GOMEMLIMIT="\$\{GOMEMLIMIT:-320MiB\}"/)
+  assert.match(lock, /export TF_CLI_ARGS_plan="\$\{TF_CLI_ARGS_plan:--parallelism=4\}"/)
+  assert.match(lock, /export TF_CLI_ARGS_apply="\$\{TF_CLI_ARGS_apply:--parallelism=4\}"/)
   assert.match(lock, /timeout --signal=INT --kill-after=120 "\$TERRAFORM_PLAN_TIMEOUT_SECONDS" terraform "\$@"/)
-  assert.match(lock, /TF_LOG_PATH=>\(grep --line-buffered -oE /)
+  assert.doesNotMatch(lock, /TF_LOG/)
   for (const runner of ['multi-login-auth-infra', 'edge-recovery']) {
     const script = read(`scripts/aws/${runner}.sh`)
     assert.doesNotMatch(script, /^terraform -chdir="\$APP_DIR" plan /m, `${runner} has an unbounded plan`)
     assert.match(script, /terraform_plan_bounded "\$[A-Z_]+\/[a-z-]+\.log" -chdir="\$APP_DIR" plan /)
   }
 
-  const finished = runBoundedPlan('echo "[DEBUG] provider.terraform-provider-aws: HTTP Request Sent: rpc.method=DescribeUserPool secret=hunter2" >> "$TF_LOG_PATH"; echo "Plan: 0 to add"')
+  const finished = runBoundedPlan('echo "Plan: 0 to add"')
   assert.match(finished, /STATUS=0/)
   assert.match(finished, /Plan: 0 to add/)
   assert.doesNotMatch(finished, /TIMED_OUT/)
 
-  const hung = runBoundedPlan('echo "[DEBUG] provider.terraform-provider-aws: HTTP Request Sent: rpc.method=DescribeUserPool secret=hunter2" >> "$TF_LOG_PATH"; sleep 30')
+  const failed = runBoundedPlan('echo "Error: bad config" >&2; exit 1')
+  assert.match(failed, /STATUS=1/)
+  assert.doesNotMatch(failed, /TIMED_OUT/)
+
+  const hung = runBoundedPlan('sleep 30')
   assert.match(hung, /TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=1/)
   assert.match(hung, /TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=2/)
-  assert.match(hung, /TERRAFORM_PLAN_AWS_CALLS=1 rpc\.method=DescribeUserPool/)
+  assert.match(hung, /TERRAFORM_PLAN_TIMED_OUT_MEM_AVAILABLE_MB=\d+/)
   assert.match(hung, /STATUS=124/)
-  assert.doesNotMatch(hung, /hunter2/)
 })
