@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Round 14 Phase 1 guarded infrastructure: phone OTP limits (DynamoDB counters, Lambda limits and
-# country list, topic-proof SNS policy), SMS spend cap + alarm, the public client's write attributes
-# without phone_number, the ALB liveness health check, and alarms routed to the owner (SMS, OTP cap,
-# Aurora, queues). Targeted plan; only the listed creates and in-place updates are accepted.
+# country list, topic-proof SNS policy), SMS spend cap + alarm, the ALB liveness health check, and
+# alarms routed to the owner (SMS, OTP cap, Aurora, queues). Targeted plan; only the listed creates
+# and in-place updates are accepted. The public user pool client is not targeted: Cognito rejected
+# a phone-less write_attributes list, so any planned client change is refused.
 # The action file holds "plan" or "apply-once".
 set -euo pipefail
 umask 077
@@ -85,7 +86,6 @@ TARGETS=(
   aws_iam_role_policy.ecs_task_otp_limits
   aws_iam_role_policy.cognito_auth_challenge_sms
   aws_lambda_function.cognito_create_auth_challenge
-  aws_cognito_user_pool_client.web
   aws_lb_target_group.app
   aws_sns_sms_preferences.account
   aws_cloudwatch_metric_alarm.sms_spend_high
@@ -114,7 +114,6 @@ allowed = {
   'aws_iam_role_policy.ecs_task_otp_limits': {('create',)},
   'aws_iam_role_policy.cognito_auth_challenge_sms': {('update',)},
   'aws_lambda_function.cognito_create_auth_challenge': {('update',)},
-  'aws_cognito_user_pool_client.web': {('update',)},
   'aws_lb_target_group.app': {('update',)},
   'aws_sns_sms_preferences.account': {('create',)},
   'aws_cloudwatch_metric_alarm.sms_spend_high': {('create',)},
@@ -140,14 +139,6 @@ def changed_keys(r):
     return sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
 for r in changes:
     print(f"SECURITY_HARDENING_CHANGE={r['address']}|{','.join(r['change']['actions'])}")
-    if r['address'] == 'aws_cognito_user_pool_client.web':
-        keys = changed_keys(r)
-        if set(keys) - {'write_attributes'}:
-            raise SystemExit('user pool client change outside write_attributes refused: ' + ','.join(keys))
-        after = r['change']['after'].get('write_attributes') or []
-        if 'phone_number' in after or 'phone_number_verified' in after or not {'email', 'email_verified', 'name'} <= set(after):
-            raise SystemExit('write_attributes must keep email/email_verified/name and drop phone_number')
-        print('CLIENT_WRITE_ATTRIBUTES=' + ','.join(sorted(after)))
     if r['address'] == 'aws_lb_target_group.app':
         keys = changed_keys(r)
         if set(keys) - {'health_check'}:
@@ -194,11 +185,6 @@ echo "OTP_LIMITS_TABLE_VERIFIED=true"
 aws lambda get-function-configuration --region "$AWS_REGION" --function-name sea-n-shore-staging-cognito-create-auth-challenge --output json \
   | jq -e '.Environment.Variables.OTP_LIMITS_TABLE == "sea-n-shore-staging-otp-limits" and .Environment.Variables.ALLOWED_PHONE_CALLING_CODES == "91" and .State == "Active"' >/dev/null
 echo "OTP_LAMBDA_VERIFIED=true"
-USER_POOL_ID="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_cognito_user_pool" and .name=="app") | .instances[0].attributes.id][0] // empty' "$WORK_DIR/state.json")"
-CLIENT_ID="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_cognito_user_pool_client" and .name=="web") | .instances[0].attributes.id][0] // empty' "$WORK_DIR/state.json")"
-aws cognito-idp describe-user-pool-client --region "$AWS_REGION" --user-pool-id "$USER_POOL_ID" --client-id "$CLIENT_ID" --output json \
-  | jq -e '(.UserPoolClient.WriteAttributes | index("phone_number")) == null and (.UserPoolClient.WriteAttributes | index("email")) != null' >/dev/null
-echo "CLIENT_PHONE_WRITE_REMOVED=true"
 aws elbv2 describe-target-groups --region "$AWS_REGION" --names sea-n-shore-staging-web --output json \
   | jq -e '.TargetGroups[0].HealthCheckPath == "/api/health/live"' >/dev/null
 # Both targets must stay healthy on the new check.
