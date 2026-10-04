@@ -67,16 +67,28 @@ json.dump({
 }, open(output_path, 'w'))
 PY
 
-# The origin certificate must still be validatable (a request left unvalidated for 72 hours
-# times out and would need replacing, which this stage does not do).
+# The origin certificate request was made long ago and never validated. A request left
+# unvalidated for 72 hours times out for good, so a timed-out (or failed) one is replaced: with
+# create_before_destroy the new request is created, validated through Route 53 below, and only
+# then is the dead, unused one deleted.
 CERT_ARN="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_acm_certificate" and .name=="origin_tls") | .instances[0].attributes.arn][0] // empty' "$WORK_DIR/state.json")"
 [[ "$CERT_ARN" == arn:aws:acm:$AWS_REGION:$EXPECTED_ACCOUNT:certificate/* ]]
-CERT_STATUS="$(aws acm describe-certificate --region "$AWS_REGION" --certificate-arn "$CERT_ARN" --query Certificate.Status --output text)"
+aws acm describe-certificate --region "$AWS_REGION" --certificate-arn "$CERT_ARN" --output json > "$WORK_DIR/certificate.json"
+CERT_STATUS="$(jq -r '.Certificate.Status' "$WORK_DIR/certificate.json")"
 echo "ORIGIN_CERTIFICATE_STATUS_BEFORE=$CERT_STATUS"
-[[ "$CERT_STATUS" == PENDING_VALIDATION || "$CERT_STATUS" == ISSUED ]] || {
-  echo "The origin certificate is $CERT_STATUS; it must be replaced before this stage can run." >&2
-  exit 1
-}
+REPLACE_CERTIFICATE=false
+case "$CERT_STATUS" in
+  PENDING_VALIDATION|ISSUED) ;;
+  VALIDATION_TIMED_OUT|FAILED)
+    jq -e '(.Certificate.InUseBy // []) | length == 0' "$WORK_DIR/certificate.json" >/dev/null || {
+      echo "The $CERT_STATUS origin certificate is still in use; refusing to replace it." >&2
+      exit 1
+    }
+    REPLACE_CERTIFICATE=true
+    ;;
+  *) echo "The origin certificate is $CERT_STATUS; refusing to continue." >&2; exit 1 ;;
+esac
+echo "ORIGIN_CERTIFICATE_REPLACE=$REPLACE_CERTIFICATE"
 
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" \
@@ -98,12 +110,15 @@ TARGETS=(
 )
 PLAN_ARGS=()
 for target in "${TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
+if [[ "$REPLACE_CERTIFICATE" == true ]]; then
+  PLAN_ARGS+=("-target=aws_acm_certificate.origin_tls" "-replace=aws_acm_certificate.origin_tls")
+fi
 
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   "${PLAN_ARGS[@]}" -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/lockdown.tfplan" > "$WORK_DIR/plan.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/lockdown.tfplan" > "$WORK_DIR/plan.json"
 
-python3 - "$WORK_DIR/plan.json" <<'PY'
+python3 - "$WORK_DIR/plan.json" "$REPLACE_CERTIFICATE" <<'PY'
 import json, sys
 allowed = {
   'aws_route53_record.origin_tls_validation["origin-staging.seaandshore.in"]': {('create',)},
@@ -117,6 +132,9 @@ allowed = {
   'aws_security_group.alb_cloudfront': {('create',)},
   'aws_lb.app': {('update',)},
 }
+if sys.argv[2] == 'true':
+    # Only the dead certificate request, replaced create-before-destroy.
+    allowed['aws_acm_certificate.origin_tls'] = {('create', 'delete')}
 plan = json.load(open(sys.argv[1]))
 changes = [r for r in plan.get('resource_changes', []) if r.get('mode') != 'data' and r['change']['actions'] != ['no-op']]
 for r in changes:
@@ -169,6 +187,8 @@ terraform -chdir="$APP_DIR" show -json "$WORK_DIR/after.tfplan" > "$WORK_DIR/pla
 }
 rm -f "$WORK_DIR/plan.json" "$WORK_DIR/plan-after.json"
 
+terraform -chdir="$APP_DIR" state pull > "$WORK_DIR/state-after.json"
+CERT_ARN="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_acm_certificate" and .name=="origin_tls") | .instances[0].attributes.arn][0] // empty' "$WORK_DIR/state-after.json")"
 [[ "$(aws acm describe-certificate --region "$AWS_REGION" --certificate-arn "$CERT_ARN" --query Certificate.Status --output text)" == ISSUED ]]
 echo "ORIGIN_CERTIFICATE_ISSUED=true"
 ZONE_ID="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_route53_zone" and .name=="seaandshore") | .instances[0].attributes.zone_id][0] // empty' "$WORK_DIR/state.json")"
