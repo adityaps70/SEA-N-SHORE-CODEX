@@ -114,8 +114,12 @@ for r in changes:
     print(f"PHASE3_RELIABILITY_KEYS={r['address']}|{','.join(keys)}")
     if r['address'] == 'aws_rds_cluster.aurora':
         scaling = (after.get('serverlessv2_scaling_configuration') or [{}])[0]
-        if scaling.get('min_capacity') != 0.5 or scaling.get('seconds_until_auto_pause') not in (None, 0):
+        # seconds_until_auto_pause is Optional+Computed: leaving it out of the config keeps the stored
+        # timer, and the API rejects anything below 300. Aurora only auto-pauses at min_capacity 0, so
+        # the timer is ignored once the floor is 0.5. The post-apply check still reads the live cluster.
+        if scaling.get('min_capacity') != 0.5:
             raise SystemExit('Aurora must end at a 0.5 ACU floor without auto-pause')
+        print(f"AURORA_PLANNED_MIN_ACU={scaling['min_capacity']} AURORA_PLANNED_PAUSE_TIMER_IGNORED={scaling.get('seconds_until_auto_pause')}")
         if after.get('deletion_protection') is not True:
             raise SystemExit('Aurora deletion protection must stay on')
 PY
@@ -142,7 +146,7 @@ terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   "${PLAN_ARGS[@]}" -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.json"
 [[ "$(jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])] | length' "$WORK_DIR/plan-after.json")" == "0" ]] || {
-  echo "Phase 2 hardening resources still drift after apply." >&2
+  echo "Phase 3 reliability resources still drift after apply." >&2
   exit 1
 }
 
