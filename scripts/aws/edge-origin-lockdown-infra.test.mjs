@@ -98,6 +98,10 @@ test('stage B: CloudFront uses the HTTPS origin with the secret header, and no l
 
 test('stage C: the ALB answers only CloudFront, on 443', async () => {
   assert.match(main, /variable "allowed_ingress_cidrs" \{[\s\S]*?default\s*=\s*\[\]/)
+  // An explicit empty list: zero dynamic blocks would leave the old inline rules in place.
+  const albGroup = main.slice(main.indexOf('resource "aws_security_group" "alb" {'), main.indexOf('resource "aws_security_group" "ecs" {'))
+  assert.match(albGroup, /\n\s*ingress = \[\]\n/)
+  assert.doesNotMatch(albGroup, /dynamic "ingress"|cidr_blocks = var\.allowed_ingress_cidrs/)
   assert.doesNotMatch(main, /from_port\s*=\s*80/)
   assert.doesNotMatch(main, /resource "aws_lb_listener" "http_forward"/)
   assert.match(main, /depends_on = \[\s*\n\s*aws_lb_listener\.origin_https,/)
