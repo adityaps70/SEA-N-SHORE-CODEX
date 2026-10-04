@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -96,6 +97,7 @@ export function QuizLessonActivity({
   initiallyCompleted,
   nextLessonHref = null,
 }: QuizLessonActivityProps) {
+  const router = useRouter()
   const [selected, setSelected] = useState<Record<string, string>>({})
   const [result, setResult] = useState<LearnerQuizAttemptResult | null>(null)
   const [attemptHistory, setAttemptHistory] = useState<LearnerQuizAttemptSummary[]>(quiz.attemptHistory ?? [])
@@ -146,6 +148,7 @@ export function QuizLessonActivity({
         }, ...current]
       })
       setResult(submission)
+      router.refresh()
     } catch {
       setError('We could not submit this quiz. Please try again.')
     } finally {

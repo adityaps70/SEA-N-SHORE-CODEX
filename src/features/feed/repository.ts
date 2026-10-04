@@ -96,18 +96,7 @@ type ReactionDetailsLookup = {
   limit: number
 }
 
-/**
- * Round 14 (3.7): a list's sort timestamp as text with microsecond precision, for keyset cursors.
- * node-postgres turns timestamptz into a JavaScript Date (milliseconds only), which would round the
- * cursor and could skip or repeat rows; the text form compares exactly when sent back as a parameter.
- */
-export function cursorTimestampSql(expression: string) {
-  return `to_char((${expression}) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
-}
-
-/** Feed post rows; `cursorAtSql` is the timestamp the list is ordered by (default: the post's creation). */
-function feedRowSelect(cursorAtSql = 'p.created_at') {
-  return `
+const FEED_ROW_SELECT = `
   select
     p.id,
     p.category::text as category,
@@ -118,7 +107,6 @@ function feedRowSelect(cursorAtSql = 'p.created_at') {
     p.group_id,
     p.created_at,
     p.updated_at,
-    ${cursorTimestampSql(cursorAtSql)} as cursor_at,
     case when post_group.id is null then null else json_build_object(
       'id', post_group.id,
       'slug', post_group.slug,
@@ -247,10 +235,7 @@ function feedRowSelect(cursorAtSql = 'p.created_at') {
   left join public.maritime_profiles maritime on maritime.user_id = author.id
   left join public.companies post_company on post_company.id = p.company_id
   left join public.community_groups post_group on post_group.id = p.group_id
-`
-}
-
-const FEED_ROW_SELECT = feedRowSelect()
+` as const
 
 /**
  * Group posts: public groups are readable by every signed-in member, private groups only by
@@ -443,28 +428,16 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     viewerProfileId: string
     authorProfileId: string
     limit?: number
-    /** Round 14 (3.7): keyset position, the (created_at, id) of the last post already shown. */
-    cursor?: FeedCursor
     /** Leave out posts published as an organization; they belong on the organization page. */
     personalOnly?: boolean
   }): Promise<FeedPostRow[]> {
     const values: unknown[] = [lookup.viewerProfileId, lookup.authorProfileId]
-    let cursorSql = ''
-    if (lookup.cursor) {
-      values.push(lookup.cursor.createdAt, lookup.cursor.id)
-      const createdAtParameter = values.length - 1
-      const idParameter = values.length
-      cursorSql = `\n         and (p.created_at < $${createdAtParameter}::timestamptz or (p.created_at = $${createdAtParameter}::timestamptz and p.id < $${idParameter}::uuid))`
-    }
-    let limitSql = ''
-    if (lookup.limit !== undefined) {
-      values.push(lookup.limit)
-      limitSql = ` limit $${values.length}`
-    }
+    const limitSql = lookup.limit === undefined ? '' : ' limit $3'
+    if (lookup.limit !== undefined) values.push(lookup.limit)
     return await queryRows(
       `${FEED_ROW_SELECT}
        where p.author_id = $2
-         and p.deleted_at is null${lookup.personalOnly ? '\n         and p.company_id is null' : ''}${cursorSql}
+         and p.deleted_at is null${lookup.personalOnly ? '\n         and p.company_id is null' : ''}
          and ${visibilitySql()}
        order by p.created_at desc, p.id desc${limitSql}`,
       values,
@@ -523,33 +496,19 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return true
   }
 
-  /**
-   * Posts the viewer commented on, latest viewer comment first. `cursor_at` is that comment's time,
-   * so the keyset cursor (Round 14, 3.7) is (last_commented_at, post id).
-   */
-  async function listCommentedRows(lookup: { viewerProfileId: string; limit?: number; cursor?: FeedCursor }): Promise<FeedPostRow[]> {
+  async function listCommentedRows(lookup: { viewerProfileId: string; limit?: number }): Promise<FeedPostRow[]> {
     const values: unknown[] = [lookup.viewerProfileId]
-    let cursorSql = ''
-    if (lookup.cursor) {
-      values.push(lookup.cursor.createdAt, lookup.cursor.id)
-      const commentedAtParameter = values.length - 1
-      const idParameter = values.length
-      cursorSql = `\n         and (viewer_activity.last_commented_at < $${commentedAtParameter}::timestamptz or (viewer_activity.last_commented_at = $${commentedAtParameter}::timestamptz and p.id < $${idParameter}::uuid))`
-    }
-    let limitSql = ''
-    if (lookup.limit !== undefined) {
-      values.push(lookup.limit)
-      limitSql = ` limit $${values.length}`
-    }
+    const limitSql = lookup.limit === undefined ? '' : ' limit $2'
+    if (lookup.limit !== undefined) values.push(lookup.limit)
     return await queryRows(
-      `${feedRowSelect('viewer_activity.last_commented_at')}
+      `${FEED_ROW_SELECT}
        join (
          select c.post_id, max(c.created_at) as last_commented_at
          from public.post_comments c
          where c.author_id = $1 and c.deleted_at is null
          group by c.post_id
        ) viewer_activity on viewer_activity.post_id = p.id
-       where p.deleted_at is null and ${visibilitySql()}${cursorSql}
+       where p.deleted_at is null and ${visibilitySql()}
        order by viewer_activity.last_commented_at desc, p.id desc${limitSql}`,
       values,
     ) as FeedRow[]

@@ -127,6 +127,7 @@ export function HiringJobLifecycleActions({
         return
       }
       setSuccess(SUCCESS_MESSAGE[action])
+      router.refresh()
     })
   }
 

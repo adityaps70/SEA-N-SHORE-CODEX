@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { Ban, Check, Clock3, Ellipsis, Flag, UserMinus, UserPlus, UserRound, UserRoundCheck, UserRoundPlus, X } from 'lucide-react'
 import Link from 'next/link'
 import { useRef, useState, useTransition } from 'react'
@@ -49,6 +50,7 @@ export function PersonCardActions({
   initialRelationship: RelationshipState
   layout?: 'card' | 'row'
 }) {
+  const router = useRouter()
   const canonicalKey = relationshipKey(initialRelationship)
   const [lastCanonicalKey, setLastCanonicalKey] = useState(canonicalKey)
   const [relationship, setRelationship] = useState(initialRelationship)
@@ -78,8 +80,8 @@ export function PersonCardActions({
         setError(result.error)
         return
       }
-      // The action revalidated, so the re-rendered relationship is already on its way.
       setAwaitingRefresh(true)
+      router.refresh()
     })
   }
 
@@ -97,7 +99,11 @@ export function PersonCardActions({
     setError('')
     startTransition(async () => {
       const result = await blockProfile(profileId)
-      if (!result.ok) setError(result.error)
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
+      router.refresh()
     })
   }
 

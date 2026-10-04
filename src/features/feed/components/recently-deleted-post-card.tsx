@@ -1,6 +1,7 @@
 'use client'
 
 import { RotateCcw, Trash2 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { restoreDeletedPost } from '../actions'
 import { POST_CATEGORY_LABELS, type RecentlyDeletedPost } from '../types'
@@ -13,6 +14,7 @@ function dateLabel(value: string) {
 }
 
 export function RecentlyDeletedPostCard({ post }: { post: RecentlyDeletedPost }) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState('')
   const [isError, setIsError] = useState(false)
@@ -29,6 +31,7 @@ export function RecentlyDeletedPostCard({ post }: { post: RecentlyDeletedPost })
         return
       }
       setMessage('Post restored.')
+      router.refresh()
     })
   }
 

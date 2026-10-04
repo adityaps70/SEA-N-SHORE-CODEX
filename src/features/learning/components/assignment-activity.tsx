@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { CheckCircle2, Clock3, Loader2, RotateCcw, Send, XCircle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { getLearningAssignmentState, submitLearningAssignment } from '../learner-assignment-actions'
 import type { LearnerAssignmentState } from '../learner-assignment-repository'
 
@@ -26,6 +27,7 @@ export function AssignmentActivity({
   attemptsUsed,
   initiallyCompleted,
 }: Props) {
+  const router = useRouter()
   const [response, setResponse] = useState('')
   const [state, setState] = useState<LearnerAssignmentState | null>(null)
   const [loadingState, setLoadingState] = useState(true)
@@ -71,6 +73,7 @@ export function AssignmentActivity({
       }
       setResponse('')
       await refreshState()
+      router.refresh()
     })
   }
 

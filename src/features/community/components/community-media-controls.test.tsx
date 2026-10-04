@@ -107,8 +107,7 @@ describe('CommunityMediaControls', () => {
     expect(submitted.type).toBe('image/webp')
     expect(submitted.size).toBe(512)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
     // After a successful upload the remove option appears.
     expect(screen.getByRole('button', { name: `Remove ${label}` })).toBeInTheDocument()
   })
@@ -132,8 +131,7 @@ describe('CommunityMediaControls', () => {
 
     await waitFor(() => expect(mocks.removeCommunityCoverAction).toHaveBeenCalledTimes(1))
     expect((mocks.removeCommunityCoverAction.mock.calls[0]?.[0] as FormData).get('groupId')).toBe(groupId)
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
     expect(screen.queryByRole('button', { name: 'Remove community banner' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add community banner' })).toBeInTheDocument()
   })

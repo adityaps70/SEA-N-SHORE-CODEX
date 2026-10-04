@@ -40,8 +40,8 @@ vi.mock('@/features/learning/enrollment-repository', () => ({
 }))
 
 vi.mock('@/features/feed/queries', () => ({
-  getMyActivityPosts: vi.fn().mockResolvedValue({ entries: [], nextCursor: null }),
-  getMyCommentActivity: vi.fn().mockResolvedValue({ entries: [], nextCursor: null }),
+  getMyActivityPosts: vi.fn().mockResolvedValue([]),
+  getMyCommentActivity: vi.fn().mockResolvedValue([]),
   getMyRecentlyDeletedPosts: vi.fn().mockResolvedValue([]),
 }))
 
@@ -78,7 +78,7 @@ afterEach(() => cleanup())
 
 describe('My Activities and jobs integration contract', () => {
   it('stacks each signed-in primary navigation icon above its label', () => {
-    render(<AppHeader unreadCount={0} />)
+    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
 
     const primary = screen.getByRole('navigation', { name: 'Primary' })
     const links = within(primary).getAllByRole('link')

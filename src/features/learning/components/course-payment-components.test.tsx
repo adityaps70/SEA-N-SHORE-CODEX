@@ -140,8 +140,7 @@ describe('CourseRefundButton', () => {
     resolve({ ok: true, message: "Refunded ₹4,000. The learner's access has ended." })
     expect(await screen.findByText("Refunded ₹4,000. The learner's access has ended.")).toBeInTheDocument()
     expect(mocks.refundCoursePaymentAction).toHaveBeenCalledTimes(1)
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('keeps the confirmation open with the reason when the refund fails', async () => {

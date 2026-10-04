@@ -28,6 +28,7 @@ function formatDate(value: string) {
 
 /** Confirmation used by both the phone sheet and the desktop Withdraw button. */
 function useWithdraw(applicationId: string) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState('')
   const [done, setDone] = useState(false)
@@ -42,6 +43,7 @@ function useWithdraw(applicationId: string) {
       }
       setDone(true)
       onDone?.()
+      router.refresh()
     })
   }
 

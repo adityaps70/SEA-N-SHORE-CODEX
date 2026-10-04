@@ -174,8 +174,7 @@ describe('MessageThread durable Sent/Seen and active-conversation read behavior'
     ))
     expect(actions.markConversationReadAction).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(0))
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(navigation.refresh).not.toHaveBeenCalled()
+    await waitFor(() => expect(navigation.refresh).toHaveBeenCalledTimes(1))
   })
 
   it('publishes the exact remaining unread message count returned by the read action', async () => {
@@ -201,8 +200,7 @@ describe('MessageThread durable Sent/Seen and active-conversation read behavior'
     )
 
     await waitFor(() => expect(unread.publishMessagingUnreadCount).toHaveBeenCalledWith(6))
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(navigation.refresh).not.toHaveBeenCalled()
+    await waitFor(() => expect(navigation.refresh).toHaveBeenCalledTimes(1))
   })
 
   it('does not depend on document.hasFocus when the conversation is visible on mobile browsers', async () => {

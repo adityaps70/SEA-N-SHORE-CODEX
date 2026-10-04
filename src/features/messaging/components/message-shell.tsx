@@ -348,8 +348,8 @@ export function MessageShell({
       current.includes(result.conversationId) ? current : [...current, result.conversationId]
     ))
     if (result.unreadCount != null) publishMessagingUnreadCount(result.unreadCount)
-    // deleteConversationAction revalidated /messages and re-rendered this page in its response.
     if (result.conversationId === activeConversationId) router.push('/messages')
+    router.refresh()
   }, [activeConversationId, router])
 
   useEffect(() => {
@@ -427,9 +427,9 @@ export function MessageShell({
     }
   }, [subscribe, viewerId])
 
-  // blockProfile revalidates, so the inbox we return to is already fresh.
   const handleBlocked = useCallback(() => {
     router.push('/messages')
+    router.refresh()
   }, [router])
 
   return (

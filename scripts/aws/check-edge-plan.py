@@ -9,16 +9,6 @@ from pathlib import Path
 
 CACHE_POLICY_ID = '4135ea2d-6df8-44a3-9df3-4b5a84be39ad'
 ORIGIN_POLICY_ID = 'b689b0a8-53d0-40ab-baf2-68738e2966ac'
-# Round 14 (3.1): static assets and optimized images may be cached at the edge; HTML never is.
-CACHING_OPTIMIZED_POLICY_ID = '658327ea-f89d-4fab-a63d-7e88639e58f6'
-NEXT_IMAGE_POLICY_ADDRESS = 'aws_cloudfront_cache_policy.next_image'
-EXPECTED_ORDERED_BEHAVIORS = [
-    ('/_next/static/*', 'optimized'),
-    ('/_next/image*', 'next_image'),
-    ('/brand/*', 'optimized'),
-    ('/landing/*', 'optimized'),
-    ('/favicon.ico', 'optimized'),
-]
 FORWARDED_HOST = 'd3prih0q6jofyr.cloudfront.net'
 # Round 14 (1.4): CloudFront reaches the ALB only over HTTPS on the origin hostname, sending the
 # shared X-Origin-Verify secret (the ALB answers 403 without it). The secret is passed in by file
@@ -318,8 +308,6 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
             if actions not in [['update'], ['no-op']]: errors.append('WAF must be update/no-op')
         elif address == FUNCTION_ADDRESS:
             if actions not in [['create'], ['update'], ['no-op']]: errors.append('Redirect function must be create/update/no-op')
-        elif address == NEXT_IMAGE_POLICY_ADDRESS:
-            if actions not in [['create'], ['update'], ['no-op']]: errors.append('Image cache policy must be create/update/no-op')
         elif actions != ['no-op']:
             errors.append('Forbidden infrastructure change: ' + address)
 
@@ -345,11 +333,7 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
     cf_change = changes.get('aws_cloudfront_distribution.app', {}).get('change', {})
     cf = cf_change.get('after', {})
     unknown = cf_change.get('after_unknown', {})
-    image_policy_change = changes.get(NEXT_IMAGE_POLICY_ADDRESS, {}).get('change', {})
-    image_policy_created = image_policy_change.get('actions') == ['create']
-    if image_policy_change.get('actions') in [['create'], ['update']]:
-        _validate_next_image_policy(image_policy_change.get('after') or {}, errors)
-    for field in ['aliases','enabled','web_acl_id','viewer_certificate','custom_error_response']:
+    for field in ['aliases','enabled','web_acl_id','viewer_certificate','ordered_cache_behavior','custom_error_response']:
         if has_unknown(unknown.get(field)): errors.append('Unknown safety field: ' + field)
     for block, fields in {'origin':['domain_name','origin_path','origin_id','custom_header','custom_origin_config'], 'default_cache_behavior':['target_origin_id','viewer_protocol_policy','cache_policy_id','origin_request_policy_id','allowed_methods','function_association','lambda_function_association']}.items():
         values = unknown.get(block, [])
@@ -403,66 +387,8 @@ def validate(plan, origin, certificate_arn='', template_path=None, origin_verify
             arn = associations[0].get('function_arn')
             if arn != FUNCTION_ARN and not (arn in [None, ''] and function_created):
                 errors.append('Redirect association must reference the repository CloudFront function')
-    if cf.get('custom_error_response'): errors.append('Unexpected cache/error override')
-    _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors)
+    if cf.get('ordered_cache_behavior') or cf.get('custom_error_response'): errors.append('Unexpected cache/error override')
     return errors
-
-
-def _validate_next_image_policy(after, errors):
-    params = (after.get('parameters_in_cache_key_and_forwarded_to_origin') or [{}])[0]
-    cookies = (params.get('cookies_config') or [{}])[0]
-    headers = (params.get('headers_config') or [{}])[0]
-    queries = (params.get('query_strings_config') or [{}])[0]
-    header_items = ((headers.get('headers') or [{}])[0] or {}).get('items') or []
-    query_items = ((queries.get('query_strings') or [{}])[0] or {}).get('items') or []
-    if (
-        cookies.get('cookie_behavior') != 'none'
-        or headers.get('header_behavior') != 'whitelist' or sorted(header_items) != ['Accept']
-        or queries.get('query_string_behavior') != 'whitelist' or sorted(query_items) != ['q', 'url', 'w']
-        or after.get('max_ttl') != 31536000 or after.get('min_ttl') != 0
-    ):
-        errors.append('Image cache policy must key only on url, w, q and Accept, never cookies')
-
-
-def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_created, function_created, errors):
-    behaviors = cf.get('ordered_cache_behavior') or []
-    if not behaviors:
-        return
-    if [b.get('path_pattern') for b in behaviors] != [path for path, _ in EXPECTED_ORDERED_BEHAVIORS]:
-        errors.append('Ordered cache behaviors must be exactly the static asset and image paths')
-        return
-    unknown_behaviors = unknown.get('ordered_cache_behavior') or []
-    if unknown_behaviors is True:
-        errors.append('Unknown block: ordered_cache_behavior')
-        return
-    image_policy_id = (image_policy_change.get('after') or {}).get('id')
-    for index, (behavior, (path, policy)) in enumerate(zip(behaviors, EXPECTED_ORDERED_BEHAVIORS)):
-        u = unknown_behaviors[index] if index < len(unknown_behaviors) and isinstance(unknown_behaviors[index], dict) else {}
-        for f, value in u.items():
-            if not has_unknown(value):
-                continue
-            if f == 'cache_policy_id' and policy == 'next_image' and image_policy_created:
-                continue
-            if f == 'function_association' and function_created and _only_function_arn_unknown(value):
-                continue
-            errors.append('Unknown safety field in ordered behavior ' + path)
-        expected_policy = CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else image_policy_id
-        if behavior.get('cache_policy_id') != expected_policy and not (policy == 'next_image' and image_policy_created and behavior.get('cache_policy_id') in [None, '']):
-            errors.append('Cache policy mismatch for ' + path)
-        if (
-            behavior.get('target_origin_id') != 'sea-n-shore-staging-alb'
-            or behavior.get('viewer_protocol_policy') != 'redirect-to-https'
-            or sorted(behavior.get('allowed_methods') or []) != ['GET', 'HEAD']
-            or sorted(behavior.get('cached_methods') or []) != ['GET', 'HEAD']
-            or behavior.get('compress') is not True
-            or behavior.get('origin_request_policy_id') not in [None, '']
-            or behavior.get('lambda_function_association')
-        ):
-            errors.append('Ordered behavior must be GET/HEAD, HTTPS, compressed, without origin request policy: ' + path)
-        associations = behavior.get('function_association') or []
-        arn = associations[0].get('function_arn') if len(associations) == 1 else None
-        if len(associations) != 1 or associations[0].get('event_type') != 'viewer-request' or (arn != FUNCTION_ARN and not (arn in [None, ''] and function_created)):
-            errors.append('Ordered behavior must keep the canonical-host redirect: ' + path)
 
 
 if __name__ == '__main__':

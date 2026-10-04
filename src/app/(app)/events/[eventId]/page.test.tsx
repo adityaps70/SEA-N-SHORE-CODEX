@@ -183,8 +183,7 @@ describe('/events/[eventId] "…" sheet', () => {
 
     fireEvent.click(menu.getByRole('menuitem', { name: 'Withdraw attendance' }))
     await waitFor(() => expect(mocks.withdrawEventAttendanceAction).toHaveBeenCalledWith('e1'))
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
   })
 
   it('does not offer to withdraw a paid seat or an event the viewer is not attending', async () => {

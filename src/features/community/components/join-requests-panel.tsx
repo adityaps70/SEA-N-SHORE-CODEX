@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { MediaImage } from '@/components/ui/media-image'
 import { approveAllPending, approveJoinRequest, declineJoinRequest } from '../actions'
@@ -16,6 +17,7 @@ function initials(name: string) {
  * approves anything by itself (round 9C).
  */
 export function JoinRequestsPanel({ groupId, requests }: { groupId: string; requests: GroupMember[] }) {
+  const router = useRouter()
   const [items, setItems] = useState(requests)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
@@ -33,6 +35,7 @@ export function JoinRequestsPanel({ groupId, requests }: { groupId: string; requ
         return
       }
       setItems([])
+      router.refresh()
     })
   }
 
@@ -47,6 +50,7 @@ export function JoinRequestsPanel({ groupId, requests }: { groupId: string; requ
         return
       }
       setItems((current) => current.filter((item) => item.profileId !== profileId))
+      router.refresh()
     })
   }
 

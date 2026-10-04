@@ -6,7 +6,6 @@ import { withTransaction } from '@/lib/db/client'
 import { requirePlatformAdministratorUser } from '@/features/admin/access'
 import { parsePriceToMinor } from '@/features/payments/currency'
 import { formatBillingDate } from './billing-view'
-import { revalidatePlanPrices } from './plan-price-cache'
 import { addDays, BILLING_INTERVALS, INTERVAL_LABELS, PLAN_LABELS, formatRupees } from './plans'
 import { trialService } from './trial-service'
 import { TrialNotRunningError } from './trials'
@@ -51,8 +50,6 @@ export async function updatePlanPriceAction(input: { plan: string; interval: str
       adminId: admin.id,
     }))
     for (const path of ADMIN_PATHS) revalidatePath(path)
-    // The public landing and /pricing pages read prices from a shared cache (Round 14, 3.8).
-    revalidatePlanPrices()
     return {
       ok: true,
       message: `${PLAN_LABELS[price.planCode]} ${INTERVAL_LABELS[price.interval].adjective.toLowerCase()} is now ${formatRupees(price.amountMinor)} for new subscribers. Existing subscribers keep their current price.`,

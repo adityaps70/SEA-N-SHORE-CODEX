@@ -9,7 +9,7 @@ import { postPermissions } from './post-permissions'
 import { prioritizeRecentFeedRows } from './ranking'
 import { feedRepository, type FeedRepository } from './repository'
 import { feedRequestSchema } from './schemas'
-import type { CursorPage, FeedComment, FeedCursor, FeedPage, FeedPost, FeedRequest, HiddenPost, PostingOrganization } from './types'
+import type { FeedComment, FeedCursor, FeedPage, FeedPost, FeedRequest, HiddenPost, PostingOrganization } from './types'
 
 type RequireUser = () => Promise<AwsVerifiedUser>
 type LoadAccessContext = (profileId: string) => Promise<AccessContext>
@@ -19,36 +19,13 @@ type ListAdministeredGroupIds = (viewerId: string) => Promise<string[]>
 
 export type CommentActivity = { post: FeedPost; viewerComments: FeedComment[] }
 
-/** Round 14 (3.7): My Activities lists (posts, comments) load 20 at a time. */
-export const ACTIVITY_PAGE_SIZE = 20
-
-export type ActivityPostsPage = CursorPage<FeedPost>
-export type CommentActivityPage = CursorPage<CommentActivity>
-
 export function buildFeedCursorFilter(cursor: FeedCursor) {
   return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
 }
 
-type CursorRow = Pick<FeedPostRow, 'created_at' | 'id'> & Pick<Partial<FeedPostRow>, 'cursor_at'>
-
-/**
- * A row's keyset position: the list's sort timestamp (exact text from the repository's `cursor_at`,
- * falling back to `created_at`) and the post id as the tie-break.
- */
-export function feedRowCursor(row: CursorRow): FeedCursor {
-  return { createdAt: row.cursor_at ?? row.created_at, id: row.id }
-}
-
-export function feedNextCursor(pageRows: readonly CursorRow[], hasMore: boolean): FeedCursor | null {
+export function feedNextCursor(pageRows: readonly Pick<FeedPostRow, 'created_at' | 'id'>[], hasMore: boolean): FeedCursor | null {
   const tail = pageRows.at(-1)
-  return hasMore && tail ? feedRowCursor(tail) : null
-}
-
-/** Fetch one more row than the page size: its presence says whether there is a next page. */
-function splitPage<Row extends CursorRow>(rows: readonly Row[], pageSize: number) {
-  const hasMore = rows.length > pageSize
-  const pageRows = rows.slice(0, pageSize)
-  return { pageRows, nextCursor: feedNextCursor(pageRows, hasMore) }
+  return hasMore && tail ? { createdAt: tail.created_at, id: tail.id } : null
 }
 
 export function feedRowAuthorId(row: Pick<FeedPostRow, 'profiles'>) {
@@ -230,18 +207,10 @@ export function createFeedQueries(input: {
     return hydratePublicPosts(rows, authorProfileId)
   }
 
-  /** The signed-in member's own posts, newest first, 20 per page (keyset cursor: created_at, id). */
-  async function getMyActivityPosts(cursor?: FeedCursor): Promise<ActivityPostsPage> {
+  async function getMyActivityPosts(): Promise<FeedPost[]> {
     const user = await input.requireUser()
-    const rows = await input.repository.listAuthorRows({
-      viewerProfileId: user.id,
-      authorProfileId: user.id,
-      ...(cursor ? { cursor } : {}),
-      limit: ACTIVITY_PAGE_SIZE + 1,
-    })
-    const { pageRows, nextCursor } = splitPage(rows, ACTIVITY_PAGE_SIZE)
-    const posts = await hydratePosts(pageRows, user.id)
-    return { entries: posts.map((post, index) => ({ cursor: feedRowCursor(pageRows[index]!), item: post })), nextCursor }
+    const rows = await input.repository.listAuthorRows({ viewerProfileId: user.id, authorProfileId: user.id })
+    return hydratePosts(rows, user.id)
   }
 
   async function getMyRecentlyDeletedPosts() {
@@ -261,26 +230,11 @@ export function createFeedQueries(input: {
     })
   }
 
-  /**
-   * Posts the signed-in member commented on, latest comment first, 20 per page
-   * (keyset cursor: the member's latest comment time on the post, post id).
-   */
-  async function getMyCommentActivity(cursor?: FeedCursor): Promise<CommentActivityPage> {
+  async function getMyCommentActivity(): Promise<CommentActivity[]> {
     const user = await input.requireUser()
-    const rows = await input.repository.listCommentedRows({
-      viewerProfileId: user.id,
-      ...(cursor ? { cursor } : {}),
-      limit: ACTIVITY_PAGE_SIZE + 1,
-    })
-    const { pageRows, nextCursor } = splitPage(rows, ACTIVITY_PAGE_SIZE)
-    const posts = await hydratePosts(pageRows, user.id)
-    return {
-      entries: posts.map((post, index) => ({
-        cursor: feedRowCursor(pageRows[index]!),
-        item: { post, viewerComments: post.comments.filter((comment) => comment.author.id === user.id) },
-      })),
-      nextCursor,
-    }
+    const rows = await input.repository.listCommentedRows({ viewerProfileId: user.id })
+    const posts = await hydratePosts(rows, user.id)
+    return posts.map((post) => ({ post, viewerComments: post.comments.filter((comment) => comment.author.id === user.id) }))
   }
 
   async function getPostById(id: string): Promise<FeedPost | null> {

@@ -2,6 +2,7 @@
 
 import { CalendarPlus, Check, Download, Flag, Link2, MoreHorizontal, ReceiptText, Share2, UserMinus } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { BottomSheet, SheetRow } from '@/components/ui/mobile-sheet'
@@ -49,6 +50,7 @@ export function EventActionsMenu({
   /** Hosts of paid events. */
   paidRegistrationsHref?: string | null
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [reporting, setReporting] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -96,6 +98,7 @@ export function EventActionsMenu({
         return
       }
       setStatus('You are no longer attending.')
+      router.refresh()
     })
   }
 

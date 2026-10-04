@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { followProfile, unfollowProfile } from '../actions'
 
 export function FollowToggleButton({
@@ -12,6 +13,7 @@ export function FollowToggleButton({
   following: boolean
   followerView?: boolean
 }) {
+  const router = useRouter()
   const [isFollowing, setIsFollowing] = useState(following)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState('')
@@ -26,7 +28,9 @@ export function FollowToggleButton({
       if (!result.ok) {
         setIsFollowing(previous)
         setError(result.error)
+        return
       }
+      router.refresh()
     })
   }
 

@@ -153,6 +153,7 @@ export function HiringJobForm(props: HiringJobFormProps) {
         router.push(`/hiring/jobs?notice=${intent === 'publish' ? 'published' : 'draft'}`)
       } else {
         setMessage(intent === 'publish' ? 'Changes saved and the job is live.' : 'Changes saved.')
+        router.refresh()
       }
     })
   }

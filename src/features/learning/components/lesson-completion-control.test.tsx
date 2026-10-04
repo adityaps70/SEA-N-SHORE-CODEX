@@ -76,10 +76,9 @@ describe('LessonCompletionControl', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Mark complete' }))
 
-    expect(await screen.findByText('Completed')).toBeInTheDocument()
-    // Round 14 (3.9): completeLearningLesson revalidates the lesson page, which re-renders the player.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce())
     expect(mocks.push).not.toHaveBeenCalled()
+    expect(await screen.findByText('Completed')).toBeInTheDocument()
   })
 
   it('renders persisted completed state without offering a duplicate completion action', () => {

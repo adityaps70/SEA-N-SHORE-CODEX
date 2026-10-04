@@ -7,9 +7,6 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: 
 vi.mock('../actions', () => ({
   markNotificationRead: vi.fn(async () => ({ ok: true })),
   markAllNotificationsRead: vi.fn(async () => ({ ok: true })),
-  // These tests pass the list in; a reopened panel keeps showing it while a reload is pending.
-  loadNotificationChrome: vi.fn(() => new Promise(() => undefined)),
-  loadUnreadNotificationCount: vi.fn(() => new Promise(() => undefined)),
 }))
 
 const notification: NetworkNotification = {

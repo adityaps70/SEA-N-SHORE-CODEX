@@ -9,12 +9,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/billing/subscription-repository', () => ({ subscriptionRepository: { listActivePrices: mocks.listActivePrices } }))
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.getVerifiedUser }))
-// Round 14 (3.8): prices go through Next's data cache, which only exists inside a Next server.
-// Pass straight through so every render reads the mocked repository (cache: plan-price-cache.test.ts).
-vi.mock('next/cache', () => ({
-  unstable_cache: <T extends (...args: never[]) => unknown>(fn: T) => fn,
-  revalidateTag: vi.fn(),
-}))
 
 import PricingPage from './page'
 

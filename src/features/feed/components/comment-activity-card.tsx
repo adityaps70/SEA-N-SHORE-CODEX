@@ -2,12 +2,8 @@ import { MessageSquareText } from 'lucide-react'
 import type { CommentActivity } from '../queries'
 import { PostCard } from './post-card'
 
-/**
- * UTC, as the server (UTC) has always rendered it: the card now also renders inside the client
- * "Load more" list (Round 14, 3.7), and a browser time zone would make hydration disagree.
- */
 function formatCommentTime(value: string) {
-  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(value))
+  return new Intl.DateTimeFormat('en', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(value))
 }
 
 export function CommentActivityCard({ activity }: { activity: CommentActivity }) {

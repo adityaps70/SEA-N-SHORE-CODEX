@@ -47,8 +47,7 @@ describe('AccountPhonePanel', () => {
     await waitFor(() => expect(mocks.confirmPhoneLinkCode).toHaveBeenCalledTimes(1))
     expect((mocks.confirmPhoneLinkCode.mock.calls[0]![1] as FormData).get('code')).toBe('123456')
     expect(await screen.findByText('Your mobile number is verified.')).toBeInTheDocument()
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('shows why a number cannot be used, such as another account owning it', async () => {

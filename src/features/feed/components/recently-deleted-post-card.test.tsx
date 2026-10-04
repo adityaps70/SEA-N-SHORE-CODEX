@@ -46,8 +46,7 @@ describe('RecentlyDeletedPostCard', () => {
     await user.click(screen.getByRole('button', { name: 'Restore post' }))
 
     await waitFor(() => expect(mocks.restoreDeletedPost).toHaveBeenCalledWith(post.id))
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalledTimes(1)
     expect(screen.getByRole('status')).toHaveTextContent('Post restored.')
   })
 

@@ -69,8 +69,7 @@ describe('application row "…" sheet (phones)', () => {
     fireEvent.click(within(sheet).getByRole('button', { name: 'Withdraw application' }))
     await waitFor(() => expect(mocks.withdrawJobApplication).toHaveBeenCalledWith(applicationId))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('keeps the application when Keep application is chosen, and shows a refusal', async () => {

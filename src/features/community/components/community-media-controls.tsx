@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { Camera, Trash2 } from 'lucide-react'
 import { startTransition, useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
@@ -51,6 +52,7 @@ export function CommunityMediaControls({
 const BUTTON_CLASS = 'inline-flex size-10 items-center justify-center rounded-full border-2 border-white shadow-md disabled:opacity-60 md:size-9'
 
 function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: string; kind: CommunityMediaKind; hasImage: boolean }) {
+  const router = useRouter()
   const uploadAction = kind === 'icon' ? uploadCommunityIconAction : uploadCommunityCoverAction
   const removeAction = kind === 'icon' ? removeCommunityIconAction : removeCommunityCoverAction
   const [state, formAction, uploading] = useActionState(uploadAction, initialState)
@@ -64,11 +66,11 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
 
   const imagePresent = removed ? false : state.success ? true : hasImage
 
-  // The upload action revalidates /community/[slug], which already re-renders this page.
   useEffect(() => {
     if (!state.success) return
     if (inputRef.current) inputRef.current.value = ''
-  }, [state])
+    router.refresh()
+  }, [router, state])
 
   /** Shrunk in the browser first (photo: 800px long edge, banner: 1920px, WebP), then posted as `image`. */
   async function submitImage(picked: File) {
@@ -110,6 +112,7 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
         return
       }
       setRemoved(true)
+      router.refresh()
     })
   }
 

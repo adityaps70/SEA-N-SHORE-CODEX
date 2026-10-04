@@ -59,8 +59,7 @@ describe('OrganizationRequestsPanel', () => {
     await waitFor(() => expect(mocks.decide).toHaveBeenCalledWith({ requestId: 'request-1', decision: 'approved', grantedRole: 'member', note: null }))
     expect(await screen.findByRole('status')).toHaveTextContent('Asha Singh was approved as Member / employee.')
     expect(screen.getByText(/No requests are waiting/)).toBeInTheDocument()
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('declines with an optional note after a confirmation step', async () => {

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { escalateOrganizationAccessRequest, withdrawOrganizationAccessRequest } from '../access-request-actions'
 import { accessRoleLabel, relativeDays } from '../access-request-labels'
 import { escalationEligibility } from '../access-request-policy'
@@ -62,6 +63,7 @@ export function requesterStatus(request: CompanyAccessRequestSummary, nowIso: st
 }
 
 function RequestRow({ request, nowIso }: { request: CompanyAccessRequestSummary; nowIso: string }) {
+  const router = useRouter()
   const [mode, setMode] = useState<'idle' | 'withdraw' | 'escalate'>('idle')
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -90,6 +92,7 @@ function RequestRow({ request, nowIso }: { request: CompanyAccessRequestSummary;
         setDone(success)
         setMode('idle')
         setNote('')
+        router.refresh()
       } catch {
         setError('We could not save this change. Check your connection and try again.')
       }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { AlertCircle, CheckCircle2, Loader2, Send } from 'lucide-react'
 import { submitCourseForReview } from '../course-actions'
 import { useCourseEditSession } from './course-edit-session'
@@ -14,6 +15,7 @@ type Props = {
 type Phase = 'idle' | 'saving' | 'submitting'
 
 export function CourseSubmitControl({ courseId, resubmission = false }: Props) {
+  const router = useRouter()
   const session = useCourseEditSession()
   const [phase, setPhase] = useState<Phase>('idle')
   const [message, setMessage] = useState<{ tone: 'success' | 'error'; copy: string } | null>(null)
@@ -52,8 +54,8 @@ export function CourseSubmitControl({ courseId, resubmission = false }: Props) {
         ? 'Resubmitted for review with your latest changes. The reviewer will see what changed since their last review.'
         : 'Submitted for review with your latest changes. Editing is locked while Sea N Shore reviews the course.',
     })
-    // Stay on the page so the result is visible: submitting revalidated the editor, so it
-    // re-renders in its "In review" state.
+    // Stay on the page so the result is visible; it re-renders in its "In review" state.
+    router.refresh()
   }
 
   return (

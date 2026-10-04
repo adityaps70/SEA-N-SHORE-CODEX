@@ -53,8 +53,7 @@ describe('AssignmentGradingControl', () => {
       'Strong evidence and clear reasoning.',
       'pass',
     )
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalledOnce()
   })
 
   it('requires actionable feedback before requesting revision', async () => {
@@ -88,8 +87,7 @@ describe('AssignmentGradingControl', () => {
       'Add stronger inspection evidence.',
       'needs_revision',
     )
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalledOnce()
   })
 
   it('blocks a Pass decision below the configured pass threshold before calling the server', async () => {

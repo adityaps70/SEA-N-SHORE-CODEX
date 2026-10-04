@@ -283,11 +283,7 @@ describe('Aurora messaging repository', () => {
 
     const [sql, values] = callsOf(query)[0] ?? []
     const text = String(sql).toLowerCase()
-    // Round 14 (3.9): one row per conversation of the viewer, counted once when any unread message exists.
-    expect(text).toContain('select count(*)::int as count')
-    expect(text).toContain('from public.conversation_participants mine')
-    expect(text).toContain('exists (')
-    expect(text).toContain('unread_message.conversation_id = mine.conversation_id')
+    expect(text).toContain('count(distinct unread_message.conversation_id)')
     expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
     expect(text).toContain('unread_message.deleted_at is null')
     expect(text).toContain('read_cursor')

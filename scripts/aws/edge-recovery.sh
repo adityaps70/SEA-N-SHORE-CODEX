@@ -94,7 +94,7 @@ PY
 echo 'EDGE_PROVIDER_LOCK_VERIFIED=true'
 PLAN_EXIT=0
 terraform_plan_bounded "$RECOVERY_DIR/plan.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect -target=aws_cloudfront_cache_policy.next_image \
+  -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect \
   -var-file="$RECOVERY_DIR/variables.json" -out="$RECOVERY_DIR/edge.tfplan" \
   2> "$RECOVERY_DIR/plan.err" || PLAN_EXIT=$?
 if [[ "$PLAN_EXIT" != 0 ]]; then cat "$RECOVERY_DIR/plan.err" >&2; exit "$PLAN_EXIT"; fi
@@ -102,10 +102,6 @@ terraform -chdir="$APP_DIR" show -json "$RECOVERY_DIR/edge.tfplan" > "$RECOVERY_
 jq '{actions: [.resource_changes[] | {address, actions: .change.actions}], policies: [.planned_values.root_module.resources[]? | select(.mode == "data") | {address, values: {id: .values.id, name: .values.name}}], distribution: [.resource_changes[] | select(.address == "aws_cloudfront_distribution.app") | {after: (.change.after | {aliases, enabled, web_acl_id, origin: [(.origin // [])[] | .custom_header = [(.custom_header // [])[] | {name, value: (if .name == "X-Origin-Verify" then "[redacted]" else .value end)}]], default_cache_behavior, viewer_certificate}), unknown: .change.after_unknown}], redirect_function: [.resource_changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") | {actions: .change.actions, after: (.change.after | {name, runtime, publish, comment}), unknown: .change.after_unknown}]}' "$RECOVERY_DIR/plan.json"
 aws cloudfront get-cache-policy --id 4135ea2d-6df8-44a3-9df3-4b5a84be39ad --output json > "$RECOVERY_DIR/cache-policy.json"
 jq -e '.CachePolicy.CachePolicyConfig | .MinTTL == 0 and .DefaultTTL == 0 and .MaxTTL == 0' "$RECOVERY_DIR/cache-policy.json" >/dev/null
-# Round 14 (3.1): hashed /_next/static assets and public brand images use the managed CachingOptimized
-# policy, which never keys on cookies (signed-in HTML stays on CachingDisabled).
-aws cloudfront get-cache-policy --id 658327ea-f89d-4fab-a63d-7e88639e58f6 --output json > "$RECOVERY_DIR/optimized-policy.json"
-jq -e '.CachePolicy.CachePolicyConfig | .Name == "Managed-CachingOptimized" and .ParametersInCacheKeyAndForwardedToOrigin.CookiesConfig.CookieBehavior == "none" and .ParametersInCacheKeyAndForwardedToOrigin.QueryStringsConfig.QueryStringBehavior == "none"' "$RECOVERY_DIR/optimized-policy.json" >/dev/null
 python3 scripts/aws/check-edge-plan.py "$RECOVERY_DIR/plan.json" "$ORIGIN" "$CERT_ARN"
 jq '[.resource_changes[] | {address, actions: .change.actions}]' "$RECOVERY_DIR/plan.json"
 echo "PLAN_SHA256=$(sha256sum "$RECOVERY_DIR/edge.tfplan" | cut -d' ' -f1)"
@@ -117,8 +113,7 @@ fi
 # Apply only the exact saved plan just checked. Dependencies pulled in by -target (the seanshore.in
 # certificate) must be no-ops; for an existing edge, only bounded in-place CloudFront/WAF updates
 # plus the repository redirect function (create/update) are allowed, and at least one must change.
-# Round 14 (3.1): the image cache policy the distribution references may be created or updated too.
-EDGE_ADDRESSES='["aws_cloudfront_cache_policy.next_image", "aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
+EDGE_ADDRESSES='["aws_cloudfront_distribution.app", "aws_cloudfront_function.canonical_host_redirect", "aws_wafv2_web_acl.edge"]'
 jq -e --argjson edge "$EDGE_ADDRESSES" '
   [.resource_changes[] | select(.mode == "managed") | select((.address | IN($edge[])) | not) | select(.change.actions != ["no-op"])] | length == 0
 ' "$RECOVERY_DIR/plan.json" >/dev/null || {
@@ -128,9 +123,8 @@ jq -e --argjson edge "$EDGE_ADDRESSES" '
 if [[ -n "$STATE_CF_ID" ]]; then
   jq -e --argjson edge "$EDGE_ADDRESSES" '
     [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 4
+    | ($changes | length) == 3
       and ([ $changes[].address ] | sort) == ($edge | sort)
-      and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.next_image") ][0].actions as $cp | ($cp == ["no-op"] or $cp == ["update"] or $cp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions as $cf | ($cf == ["no-op"] or $cf == ["update"]))
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["update"] or $fn == ["create"]))
@@ -144,9 +138,8 @@ if [[ -n "$STATE_CF_ID" ]]; then
 else
   jq -e --argjson edge "$EDGE_ADDRESSES" '
     [.resource_changes[] | select(.mode == "managed") | select(.address | IN($edge[])) | {address, actions: .change.actions}] as $changes
-    | ($changes | length) == 4
+    | ($changes | length) == 3
       and ([ $changes[].address ] | sort) == ($edge | sort)
-      and ([ $changes[] | select(.address == "aws_cloudfront_cache_policy.next_image") ][0].actions as $cp | ($cp == ["no-op"] or $cp == ["create"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_distribution.app") ][0].actions == ["create"])
       and ([ $changes[] | select(.address == "aws_wafv2_web_acl.edge") ][0].actions as $waf | ($waf == ["no-op"] or $waf == ["update"]))
       and ([ $changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") ][0].actions as $fn | ($fn == ["no-op"] or $fn == ["create"]))
@@ -179,17 +172,6 @@ jq -e '.Distribution | .Status == "Deployed" and .DistributionConfig.Enabled == 
 jq -e '.Distribution.DistributionConfig | .Aliases.Quantity == 2 and ((.Aliases.Items | sort) == ["seanshore.in", "www.seanshore.in"])' "$RECOVERY_DIR/live.json" >/dev/null
 jq -e --arg cert "$CERT_ARN" '.Distribution.DistributionConfig.ViewerCertificate | .ACMCertificateArn == $cert and .SSLSupportMethod == "sni-only" and .MinimumProtocolVersion == "TLSv1.2_2021" and (.CloudFrontDefaultCertificate // false) == false' "$RECOVERY_DIR/live.json" >/dev/null
 jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.Distribution.DistributionConfig.DefaultCacheBehavior | .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].EventType == "viewer-request" and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0' "$RECOVERY_DIR/live.json" >/dev/null
-IMAGE_POLICY_ID="$(jq -r '.resources[] | select(.mode == "managed" and .type == "aws_cloudfront_cache_policy" and .name == "next_image") | .instances[0].attributes.id' "$RECOVERY_DIR/state-after.json")"
-[[ -n "$IMAGE_POLICY_ID" && "$IMAGE_POLICY_ID" != null ]]
-jq -e --arg fn "$EXPECTED_FUNCTION_ARN" --arg optimized 658327ea-f89d-4fab-a63d-7e88639e58f6 --arg image "$IMAGE_POLICY_ID" '
-  .Distribution.DistributionConfig as $config
-  | $config.DefaultCacheBehavior.CachePolicyId == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-    and ([$config.CacheBehaviors.Items[]? | [.PathPattern, .CachePolicyId]] == [["/_next/static/*", $optimized], ["/_next/image*", $image], ["/brand/*", $optimized], ["/landing/*", $optimized], ["/favicon.ico", $optimized]])
-    and all($config.CacheBehaviors.Items[]?; .ViewerProtocolPolicy == "redirect-to-https" and .AllowedMethods.Quantity == 2 and ((.OriginRequestPolicyId // "") == "") and .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0)
-' "$RECOVERY_DIR/live.json" >/dev/null
-aws cloudfront get-cache-policy --id "$IMAGE_POLICY_ID" --output json > "$RECOVERY_DIR/live-image-policy.json"
-jq -e '.CachePolicy.CachePolicyConfig.ParametersInCacheKeyAndForwardedToOrigin | .CookiesConfig.CookieBehavior == "none" and (.HeadersConfig.Headers.Items == ["Accept"]) and ((.QueryStringsConfig.QueryStrings.Items | sort) == ["q", "url", "w"])' "$RECOVERY_DIR/live-image-policy.json" >/dev/null
-echo 'EDGE_STATIC_ASSET_CACHING_VERIFIED=true'
 aws cloudfront describe-function --name sea-n-shore-staging-canonical-host-redirect --stage LIVE --output json > "$RECOVERY_DIR/live-function.json"
 jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.FunctionSummary | .FunctionMetadata.FunctionARN == $fn and .FunctionConfig.Runtime == "cloudfront-js-2.0"' "$RECOVERY_DIR/live-function.json" >/dev/null
 echo 'CANONICAL_HOST_REDIRECT_FUNCTION_LIVE=true'
