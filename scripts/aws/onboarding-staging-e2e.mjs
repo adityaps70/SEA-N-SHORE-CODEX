@@ -286,8 +286,9 @@ async function expectUsernameAvailable(page, username) {
 async function expectPublicProfileUrl(page, username, fullName) {
   const response = await page.goto(siteUrl + '/people/' + username, { waitUntil: 'domcontentloaded' })
   assert.equal(response?.status(), 200, 'Expected /people/' + username + ' to resolve successfully')
-  await expect(page.getByText(fullName, { exact: true }).first()).toBeVisible()
-  await expect(page.getByText('@' + username, { exact: true }).first()).toBeVisible()
+  // The profile's h1 (the same name also sits in the mobile page bar, hidden at desktop width).
+  await expect(page.getByRole('heading', { level: 1, name: fullName, exact: true })).toBeVisible()
+  await expect(page.getByRole('main').getByText('@' + username, { exact: true }).first()).toBeVisible()
 }
 
 async function verifyExistingLegacyProfileUrl(page) {
