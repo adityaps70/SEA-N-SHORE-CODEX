@@ -19,6 +19,9 @@ test('the runner is guarded, additive and refuses anything outside stage A', () 
   assert.match(script, /unexpected edge origin lockdown change refused/)
   assert.match(script, /ALB change outside security_groups refused/)
   assert.match(script, /ALB must keep its existing security group/)
+  // An unknown (not-yet-created) group id is only accepted with a post-apply proof of both groups.
+  assert.match(script, /ALB_SECURITY_GROUPS_AFTER=unknown-until-apply/)
+  assert.match(script, /SecurityGroups \| sort == \(\[\$base, \$cf\] \| sort\)/)
   assert.match(script, /origin listener default must be a 403 fixed response/)
   assert.match(script, /'aws_lb\.app': \{\('update',\)\}/)
   // Nothing in stage A may touch CloudFront, the ALB's existing group, listeners on 80, or data.
