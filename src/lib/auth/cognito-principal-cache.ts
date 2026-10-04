@@ -15,7 +15,8 @@ type CacheEntry = {
   lastUsedAt: number
 }
 
-const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000
+// Round 14 (2.14): 60 s, so a disabled or signed-out user stops being served within a minute.
+const DEFAULT_CACHE_TTL_MS = 60 * 1000
 const FALLBACK_CACHE_TTL_MS = 60 * 1000
 const TOKEN_EXPIRY_SKEW_MS = 5 * 1000
 const DEFAULT_MAX_ENTRIES = 256

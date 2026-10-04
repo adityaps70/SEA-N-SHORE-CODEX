@@ -180,7 +180,14 @@ export function parseScormPackage(input: Uint8Array | Buffer): ParsedScormPackag
     const dataEnd = dataStart + compressedSize
     if (dataEnd > buffer.length) throw new Error('scorm_zip_invalid')
     const compressed = buffer.subarray(dataStart, dataEnd)
-    const body = method === 0 ? Buffer.from(compressed) : inflateRawSync(compressed)
+    // Round 14 (2.3): inflate at most the declared size (+1 to detect a lie) so a crafted entry
+    // cannot expand far beyond its header in memory.
+    let body: Buffer
+    try {
+      body = method === 0 ? Buffer.from(compressed) : inflateRawSync(compressed, { maxOutputLength: uncompressedSize + 1 })
+    } catch {
+      throw new Error('scorm_zip_size_mismatch')
+    }
     if (body.length !== uncompressedSize) throw new Error('scorm_zip_size_mismatch')
     files.push({ path: safePath, body, mimeType: contentTypeFor(safePath) })
   }

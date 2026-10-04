@@ -133,14 +133,17 @@ allowed = {
   'aws_lb.app': {('update',)},
 }
 if sys.argv[2] == 'true':
-    # Only the dead certificate request, replaced create-before-destroy.
-    allowed['aws_acm_certificate.origin_tls'] = {('create', 'delete')}
+    # Only the dead certificate request, replaced create-before-destroy. When an earlier attempt
+    # left it deposed, Terraform plans a plain create plus a delete of the deposed object.
+    allowed['aws_acm_certificate.origin_tls'] = {('create', 'delete'), ('create',), ('delete',)}
 plan = json.load(open(sys.argv[1]))
 changes = [r for r in plan.get('resource_changes', []) if r.get('mode') != 'data' and r['change']['actions'] != ['no-op']]
 for r in changes:
     actions = tuple(r['change']['actions'])
     if r['address'] not in allowed or actions not in allowed[r['address']]:
         raise SystemExit(f"unexpected edge origin lockdown change refused: {r['address']} {list(actions)}")
+    if r['address'] == 'aws_acm_certificate.origin_tls' and actions == ('delete',) and not r.get('deposed'):
+        raise SystemExit('only the deposed origin certificate may be deleted on its own')
 print('EDGE_ORIGIN_LOCKDOWN_PLAN_CHANGES=' + str(len(changes)))
 for r in changes:
     print(f"EDGE_ORIGIN_LOCKDOWN_CHANGE={r['address']}|{','.join(r['change']['actions'])}")

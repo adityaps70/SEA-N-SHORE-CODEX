@@ -519,6 +519,19 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     return rows[0] ?? null
   }
 
+  /** Round 14 (2.2): whether a post by this author is visible to the viewer (same rules as the feed). */
+  async function isPostVisibleTo(viewerProfileId: string, postId: string, authorProfileId: string): Promise<boolean> {
+    const rows = await queryRows(
+      `select 1
+       from public.posts p
+       join public.profiles author on author.id = p.author_id
+       where p.id = $2 and p.author_id = $3 and p.deleted_at is null and ${visibilitySql()}
+       limit 1`,
+      [viewerProfileId, postId, authorProfileId],
+    )
+    return rows.length > 0
+  }
+
   async function listRepostSourceRows(viewerProfileId: string, postIds: string[]): Promise<FeedPostRow[]> {
     if (!postIds.length) return []
     return await queryRows(
@@ -1368,6 +1381,7 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
     restoreOwnDeletedPost,
     listCommentedRows,
     getPostRow,
+    isPostVisibleTo,
     listRepostSourceRows,
     getViewerState,
     listReactionDetails,

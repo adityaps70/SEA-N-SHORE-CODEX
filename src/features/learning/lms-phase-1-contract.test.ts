@@ -44,8 +44,13 @@ describe('native LMS phase 1 contract', () => {
     expect(materialPlayer).toContain("case 'external_embed'")
     expect(materialPlayer).toContain("case 'scorm'")
     expect(scormPlayer).toContain('SCORM')
-    expect(scormPlayer).toContain('API_1484_11')
-    expect(scormPlayer).toContain('window.API')
+    // Round 14 (2.3): the sandboxed package gets window.API / API_1484_11 from the injected bridge,
+    // which mirrors values to the player over postMessage.
+    const scormBridge = read('src/features/learning/scorm-bridge.ts')
+    expect(scormBridge).toContain('window.API_1484_11={Initialize')
+    expect(scormBridge).toContain('window.API={LMSInitialize')
+    expect(scormPlayer).toContain('SCORM_BRIDGE_SOURCE')
+    expect(scormPlayer).not.toContain('allow-same-origin')
   })
 
   it('adds first-class material controls to Mentor Studio', () => {

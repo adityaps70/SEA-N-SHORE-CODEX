@@ -34,6 +34,22 @@ describe('Cognito verified-principal cache', () => {
     expect(getUser).toHaveBeenCalledWith(token)
   })
 
+  it('re-verifies with Cognito after 60 seconds by default (Round 14, 2.14)', async () => {
+    let now = Date.parse('2026-09-21T13:00:00.000Z')
+    const getUser = vi.fn(async () => principal)
+    const { createCognitoPrincipalResolver } = await import('./cognito-principal-cache')
+    const resolve = createCognitoPrincipalResolver({ getUser, now: () => now })
+    const token = jwtWithExp(Math.floor((now + 60 * 60 * 1000) / 1000))
+
+    await resolve(token)
+    now += 59_000
+    await resolve(token)
+    expect(getUser).toHaveBeenCalledTimes(1)
+    now += 2_000
+    await resolve(token)
+    expect(getUser).toHaveBeenCalledTimes(2)
+  })
+
   it('coalesces concurrent verification of the same access token', async () => {
     let release!: () => void
     const gate = new Promise<void>((resolve) => { release = resolve })

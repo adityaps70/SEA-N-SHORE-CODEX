@@ -27,7 +27,12 @@ const optionalUrl = z.preprocess(
     const normalized = value.trim()
     return normalized || null
   },
-  z.string().url('Enter a complete website address, for example https://company.com.').max(320, 'Keep the website address to 320 characters or fewer.').nullable(),
+  z.string()
+    .url('Enter a complete website address, for example https://company.com.')
+    .max(320, 'Keep the website address to 320 characters or fewer.')
+    // Round 14 (2.14): only http(s) links (a javascript: or data: URL would run when clicked).
+    .refine((value) => /^https?:\/\//i.test(value), 'Enter a complete website address, for example https://company.com.')
+    .nullable(),
 )
 
 function uniqueList(value: unknown) {
