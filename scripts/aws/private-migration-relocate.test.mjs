@@ -20,7 +20,11 @@ test('the runner only ever deletes versions of the one dump key, and only after 
   assert.doesNotMatch(script, /aws s3 rm|delete-objects|--recursive/)
   const copyVerified = script.indexOf('echo "DUMP_COPY_VERIFIED_BYTES=$DESTINATION_SIZE"')
   assert.ok(copyVerified > 0 && copyVerified < script.indexOf('aws s3api delete-object'), 'the copy is verified before any delete')
-  assert.ok(script.indexOf('PRIVATE_MIGRATION_RELOCATE_PLAN_ONLY_NO_APPLY') < script.indexOf('aws s3 cp'), 'plan never moves or deletes')
+  assert.ok(script.indexOf('PRIVATE_MIGRATION_RELOCATE_PLAN_ONLY_NO_APPLY') < script.indexOf('aws s3api copy-object'), 'plan never moves or deletes')
+  // The current version can be a delete marker: copy the newest stored version by ID, at the known size.
+  assert.match(script, /select\(\.Kind == "version"\)\] \| sort_by\(\.LastModified\) \| last/)
+  assert.match(script, /--copy-source "\$MEDIA_BUCKET\/\$DUMP_KEY\?versionId=\$SOURCE_VERSION_ID"/)
+  assert.match(script, /\[\[ "\$SOURCE_SIZE" == "\$EXPECTED_DUMP_BYTES" \]\]/)
   assert.match(script, /refusing to purge/)
   assert.match(script, /r\['change'\]\['actions'\] != \['create'\]/)
   assert.match(script, /may only add Deny statements/)

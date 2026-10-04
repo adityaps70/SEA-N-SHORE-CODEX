@@ -19,6 +19,8 @@ MEDIA_BUCKET="sea-n-shore-staging-310356785722-media"
 MIGRATION_BUCKET="sea-n-shore-staging-310356785722-migration"
 PRIVATE_BUCKET="sea-n-shore-staging-310356785722-private"
 DUMP_KEY="private-migrations/beaufortmarine.sql"
+# The size legacy-user-import.sh expects for this dump.
+EXPECTED_DUMP_BYTES="13693941"
 PUBLIC_SITE_URL="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
 [[ "$PUBLIC_SITE_URL" =~ ^https://[a-z0-9.-]+$ ]]
 export PUBLIC_SITE_URL
@@ -114,13 +116,14 @@ PY
 # Every version and delete marker of exactly the dump key in the media bucket (never a wider prefix).
 dump_versions() {
   aws s3api list-object-versions --region "$AWS_REGION" --bucket "$MEDIA_BUCKET" --prefix "$DUMP_KEY" --output json \
-    | jq -c --arg key "$DUMP_KEY" '[(.Versions // [])[], (.DeleteMarkers // [])[] | select(.Key == $key) | {VersionId, IsLatest, Size}]'
+    | jq -c --arg key "$DUMP_KEY" '[((.Versions // [])[] | select(.Key == $key) | {VersionId, IsLatest, Size, LastModified, Kind: "version"}), ((.DeleteMarkers // [])[] | select(.Key == $key) | {VersionId, IsLatest, LastModified, Kind: "delete_marker"})]'
 }
 destination_size() {
   aws s3api head-object --region "$AWS_REGION" --bucket "$MIGRATION_BUCKET" --key "$DUMP_KEY" --query ContentLength --output text 2>/dev/null || echo missing
 }
 MEDIA_DUMP_VERSIONS="$(dump_versions)"
 echo "MEDIA_DUMP_VERSION_COUNT=$(jq 'length' <<<"$MEDIA_DUMP_VERSIONS")"
+echo "MEDIA_DUMP_STORED_VERSIONS=$(jq '[.[] | select(.Kind == "version")] | length' <<<"$MEDIA_DUMP_VERSIONS") MEDIA_DUMP_DELETE_MARKERS=$(jq '[.[] | select(.Kind == "delete_marker")] | length' <<<"$MEDIA_DUMP_VERSIONS") MEDIA_DUMP_LATEST=$(jq -r '[.[] | select(.IsLatest)][0].Kind // "none"' <<<"$MEDIA_DUMP_VERSIONS")"
 echo "MIGRATION_BUCKET_DUMP_SIZE=$(destination_size)"
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
 echo "PRIVATE_MIGRATION_RELOCATE_ACTION=$ACTION"
@@ -141,9 +144,16 @@ echo "STATE_BACKUP_VERSION=$STATE_BACKUP_VERSION"
 
 # 1. Copy the latest dump into the migration bucket and prove the copy, before anything is deleted.
 if [[ "$(destination_size)" == missing ]]; then
-  SOURCE_SIZE="$(aws s3api head-object --region "$AWS_REGION" --bucket "$MEDIA_BUCKET" --key "$DUMP_KEY" --query ContentLength --output text)"
-  aws s3 cp --region "$AWS_REGION" --only-show-errors --sse AES256 "s3://$MEDIA_BUCKET/$DUMP_KEY" "s3://$MIGRATION_BUCKET/$DUMP_KEY"
+  # The current version may be a delete marker, so copy the newest stored version by its ID.
+  SOURCE_VERSION="$(jq -c '[.[] | select(.Kind == "version")] | sort_by(.LastModified) | last // empty' <<<"$(dump_versions)")"
+  [[ -n "$SOURCE_VERSION" ]] || { echo "No stored version of the dump exists in the media bucket; refusing." >&2; exit 1; }
+  SOURCE_VERSION_ID="$(jq -r '.VersionId' <<<"$SOURCE_VERSION")"
+  SOURCE_SIZE="$(jq -r '.Size' <<<"$SOURCE_VERSION")"
+  [[ "$SOURCE_SIZE" == "$EXPECTED_DUMP_BYTES" ]] || { echo "The newest stored dump is $SOURCE_SIZE bytes, expected $EXPECTED_DUMP_BYTES; refusing." >&2; exit 1; }
+  aws s3api copy-object --region "$AWS_REGION" --bucket "$MIGRATION_BUCKET" --key "$DUMP_KEY" \
+    --copy-source "$MEDIA_BUCKET/$DUMP_KEY?versionId=$SOURCE_VERSION_ID" --server-side-encryption AES256 >/dev/null
   [[ "$(destination_size)" == "$SOURCE_SIZE" ]] || { echo "The copied dump does not match the source size; refusing to purge." >&2; exit 1; }
+  echo "DUMP_COPIED_FROM_VERSION=$SOURCE_VERSION_ID"
 fi
 DESTINATION_SIZE="$(destination_size)"
 [[ "$DESTINATION_SIZE" =~ ^[0-9]+$ && "$DESTINATION_SIZE" -gt 0 ]] || { echo "The migration bucket copy is missing; refusing to purge." >&2; exit 1; }

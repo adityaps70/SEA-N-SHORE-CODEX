@@ -86,6 +86,10 @@ async function uploadAvatar(page, user) {
     mimeType: 'image/png',
     buffer: avatarPng,
   })
+  // Picking a photo opens the crop dialog (9d7be1dd); Save crops in the browser, then the upload posts.
+  const cropDialog = page.getByRole('dialog')
+  await expect(cropDialog).toBeVisible({ timeout: 20_000 })
+  await cropDialog.getByRole('button', { name: 'Save', exact: true }).click()
 
   const uploadResponse = await uploadResponsePromise
   assert.ok(uploadResponse.ok(), 'Profile avatar upload request returned HTTP ' + uploadResponse.status())
