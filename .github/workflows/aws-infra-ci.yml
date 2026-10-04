@@ -75,6 +75,8 @@ jobs:
         run: node --test scripts/aws/edge-origin-lockdown-infra.test.mjs
       - name: Verify phase 2 hardening release contract
         run: node --test scripts/aws/phase2-hardening-infra.test.mjs
+      - name: Verify phase 3 reliability release contract
+        run: node --test scripts/aws/phase3-reliability-infra.test.mjs
       - name: Verify Cognito custom domain release contract
         run: node --test scripts/aws/cognito-custom-domain-infra.test.mjs
       - name: Verify Cognito Google/native repair contract
@@ -177,6 +179,8 @@ jobs:
         run: node --test scripts/aws/community-categories-migration.test.mjs
       - name: Verify structured roles migration contract
         run: node --test scripts/aws/structured-roles-migration.test.mjs
+      - name: Verify performance indexes migration contract
+        run: node --test scripts/aws/performance-indexes-migration.test.mjs
       - name: Verify newsletter signing secret release contract
         run: node --test scripts/aws/newsletter-signing-secret-release.test.mjs
       - name: Verify guarded staging data cleanup contract

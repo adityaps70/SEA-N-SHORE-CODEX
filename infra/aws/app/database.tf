@@ -17,19 +17,22 @@ resource "aws_rds_cluster" "aurora" {
   db_subnet_group_name        = aws_db_subnet_group.aurora.name
   vpc_security_group_ids      = [aws_security_group.aurora.id]
 
-  backup_retention_period      = 7
+  # Round 14 (3.5): two weeks of point-in-time recovery, and a final snapshot if the cluster is
+  # ever deleted.
+  backup_retention_period      = 14
   preferred_backup_window      = "18:00-19:00"
   preferred_maintenance_window = "sun:19:30-sun:20:30"
   copy_tags_to_snapshot        = true
   deletion_protection          = true
-  skip_final_snapshot          = true
+  skip_final_snapshot          = false
+  final_snapshot_identifier    = "${local.name_prefix}-aurora-final"
 
   enabled_cloudwatch_logs_exports = ["postgresql"]
 
   serverlessv2_scaling_configuration {
     min_capacity             = var.aurora_min_acu
     max_capacity             = var.aurora_max_acu
-    seconds_until_auto_pause = var.aurora_auto_pause_seconds
+    seconds_until_auto_pause = var.aurora_min_acu == 0 ? var.aurora_auto_pause_seconds : null
   }
 
   depends_on = [aws_cloudwatch_log_group.aurora_postgresql]
@@ -43,5 +46,10 @@ resource "aws_rds_cluster_instance" "aurora_writer" {
   engine              = aws_rds_cluster.aurora.engine
   engine_version      = aws_rds_cluster.aurora.engine_version
   publicly_accessible = false
-  tags                = local.common_tags
+
+  # Round 14 (3.5): Performance Insights on the free 7-day retention.
+  performance_insights_enabled          = true
+  performance_insights_retention_period = 7
+
+  tags = local.common_tags
 }

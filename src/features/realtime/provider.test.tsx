@@ -197,7 +197,36 @@ describe('MessagingRealtimeProvider', () => {
       scope: 'feed',
     })))
 
-    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(1))
+    // Round 14 (3.2): refreshes are coalesced into one per 2-second window.
+    await waitFor(() => expect(router.refresh).toHaveBeenCalledTimes(1), { timeout: 3_000 })
+  })
+
+  it('keeps one connection across navigation (Round 14, 3.2)', async () => {
+    const providerPath = './provider'
+    const { MessagingRealtimeProvider } = await import(providerPath) as typeof import('./provider')
+    const view = render(
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
+        <div>Home content</div>
+      </MessagingRealtimeProvider>,
+    )
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1))
+    act(() => FakeWebSocket.instances[0]?.open())
+
+    navigation.pathname = '/jobs'
+    view.rerender(
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
+        <div>Jobs content</div>
+      </MessagingRealtimeProvider>,
+    )
+    navigation.pathname = '/network'
+    view.rerender(
+      <MessagingRealtimeProvider viewerProfileId="22222222-2222-4222-8222-222222222222">
+        <div>Network content</div>
+      </MessagingRealtimeProvider>,
+    )
+
+    expect(FakeWebSocket.instances).toHaveLength(1)
+    expect(FakeWebSocket.instances[0]?.close).not.toHaveBeenCalled()
   })
 
   it('updates the global unread badge and shows an in-app new-message alert even outside Messages', async () => {

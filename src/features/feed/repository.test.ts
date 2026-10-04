@@ -396,7 +396,8 @@ describe('feed repository', () => {
     expect(sql).toMatch(/c\.deleted_at is null\s+or\s+\(c\.parent_comment_id is null\s+and\s+exists/i)
     expect(sql).toMatch(/reply\.parent_comment_id = c\.id/i)
     expect(sql).toMatch(/reply\.deleted_at is null/i)
-    expect(sql).toMatch(/case when c\.deleted_at is null then json_build_object/i)
+    // Reactions stay hidden on tombstones (Round 14, 3.4: counted in one pass with count(*) filter).
+    expect(sql).toMatch(/case when c\.deleted_at is null then \(\s*select json_build_object\([\s\S]*?count\(\*\) filter[\s\S]*?else json_build_object\('like', 0/i)
     expect(sql).toMatch(/case when c\.deleted_at is null then coalesce/i)
   })
 
