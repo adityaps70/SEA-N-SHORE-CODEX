@@ -7,6 +7,7 @@ import {
   type MaterialReleaseMode,
 } from './lms-material-policy'
 import { coursePublisherNameSql, learnerCourseAccessSql } from './course-publication'
+import { createScormContentToken } from './scorm-content-link'
 
 type LearnerCourseQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -122,6 +123,8 @@ export type LearnerLesson = {
     status: 'processing' | 'ready' | 'error'
     version: '1.2' | '2004' | null
     launchPath: string | null
+    /** Signed path segment the sandboxed package loads its files through (Round 14, 2.3). */
+    contentToken?: string | null
   }
 }
 
@@ -223,7 +226,7 @@ function redactLockedMaterial(material: LearnerLesson) {
   material.assetPath = null
   material.externalUrl = null
   material.assignment = null
-  material.scorm = material.scorm ? { ...material.scorm, launchPath: null } : null
+  material.scorm = material.scorm ? { ...material.scorm, launchPath: null, contentToken: null } : null
   return material
 }
 
@@ -417,6 +420,7 @@ export function createLearnerCourseRepository(input: {
               status: scormStatus,
               version: scormVersion,
               launchPath: row.scorm_launch_path,
+              contentToken: scormStatus === 'ready' ? createScormContentToken(learnerId, String(row.lesson_id)) : null,
             },
       })
     }

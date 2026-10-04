@@ -191,6 +191,7 @@ function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref }: Props) {
           slug={slug}
           lessonId={lesson.id}
           launchPath={lesson.scorm.launchPath}
+          contentToken={lesson.scorm.contentToken ?? null}
           version={lesson.scorm.version}
           maxAttempts={lesson.maxAttempts}
           attemptsUsed={lesson.attemptsUsed}

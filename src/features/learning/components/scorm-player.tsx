@@ -3,30 +3,46 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, Expand, Loader2, Monitor, PlayCircle, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { SCORM_BRIDGE_SOURCE, SCORM_HOST_SOURCE } from '../scorm-bridge'
 import { commitLearningScormAttempt, startLearningScormAttempt } from '../scorm-actions'
 
-type ScormApi = Record<string, (...args: string[]) => string>
-type ScormWindow = Window & { API?: ScormApi; API_1484_11?: ScormApi }
+type BridgeMessage = { source?: unknown; type?: unknown; key?: unknown; value?: unknown; values?: unknown }
 
 type Props = {
   slug: string
   lessonId: string
   launchPath: string
+  /** Signed path segment for the sandboxed package's own requests (Round 14, 2.3). */
+  contentToken?: string | null
   version: '1.2' | '2004'
   maxAttempts: number | null
   attemptsUsed: number
   initiallyCompleted: boolean
 }
 
-function contentUrl(lessonId: string, launchPath: string) {
+function contentUrl(lessonId: string, launchPath: string, contentToken: string | null) {
   const encoded = launchPath.split('/').map((segment) => encodeURIComponent(segment)).join('/')
-  return `/api/learning/scorm/${lessonId}/content/${encoded}`
+  const prefix = contentToken ? `${encodeURIComponent(contentToken)}/` : ''
+  return `/api/learning/scorm/${lessonId}/content/${prefix}${encoded}`
+}
+
+/** True when a message comes from the SCORM frame or a frame nested inside it. */
+function isFromFrame(source: MessageEventSource | null, frame: HTMLIFrameElement | null) {
+  const frameWindow = frame?.contentWindow
+  let current = source as Window | null
+  for (let depth = 0; current && frameWindow && depth < 8; depth += 1) {
+    if (current === frameWindow) return true
+    if (current.parent === current) return false
+    current = current.parent
+  }
+  return false
 }
 
 export function ScormPlayer({
   slug,
   lessonId,
   launchPath,
+  contentToken = null,
   version,
   maxAttempts,
   attemptsUsed,
@@ -45,7 +61,7 @@ export function ScormPlayer({
 
   const attemptsRemaining = maxAttempts === null ? null : Math.max(0, maxAttempts - attemptsUsed)
   const canStart = maxAttempts === null || attemptsUsed < maxAttempts || initiallyCompleted
-  const frameUrl = useMemo(() => contentUrl(lessonId, launchPath), [launchPath, lessonId])
+  const frameUrl = useMemo(() => contentUrl(lessonId, launchPath, contentToken), [contentToken, launchPath, lessonId])
 
   const commit = useCallback(() => {
     if (!attemptId) return 'true'
@@ -68,43 +84,32 @@ export function ScormPlayer({
 
   useEffect(() => {
     if (!started) return
-    const target = window as ScormWindow
-    const getValue = (key: string) => valuesRef.current[key] ?? ''
-    const setValue = (key: string, value: string) => {
-      valuesRef.current[key] = value
-      lastErrorRef.current = '0'
-      return 'true'
+    // The package runs sandboxed in its own origin (Round 14, 2.3). The bridge injected into its
+    // pages keeps the synchronous SCORM 1.2 window.API / SCORM 2004 window.API_1484_11 inside the
+    // frame and mirrors every value here, where commits are saved exactly as before.
+    function onMessage(event: MessageEvent) {
+      const data = event.data as BridgeMessage | null
+      if (!data || data.source !== SCORM_BRIDGE_SOURCE || !isFromFrame(event.source, frameRef.current)) return
+      if (data.type === 'hello') {
+        ;(event.source as Window).postMessage({ source: SCORM_HOST_SOURCE, type: 'init', values: { ...valuesRef.current } }, '*')
+        return
+      }
+      if (data.type === 'set' && typeof data.key === 'string' && typeof data.value === 'string') {
+        valuesRef.current[data.key] = data.value
+        lastErrorRef.current = '0'
+        return
+      }
+      if (data.type === 'commit' || data.type === 'finish') {
+        if (data.values && typeof data.values === 'object') {
+          for (const [key, value] of Object.entries(data.values as Record<string, unknown>)) {
+            if (typeof value === 'string') valuesRef.current[key] = value
+          }
+        }
+        commit()
+      }
     }
-    const finish = () => commit()
-
-    // SCORM 1.2 discovers window.API; SCORM 2004 discovers window.API_1484_11.
-    const API: ScormApi = {
-      LMSInitialize: () => 'true',
-      LMSFinish: finish,
-      LMSGetValue: getValue,
-      LMSSetValue: setValue,
-      LMSCommit: commit,
-      LMSGetLastError: () => lastErrorRef.current,
-      LMSGetErrorString: () => '',
-      LMSGetDiagnostic: () => '',
-    }
-    const API_1484_11: ScormApi = {
-      Initialize: () => 'true',
-      Terminate: finish,
-      GetValue: getValue,
-      SetValue: setValue,
-      Commit: commit,
-      GetLastError: () => lastErrorRef.current,
-      GetErrorString: () => '',
-      GetDiagnostic: () => '',
-    }
-
-    target.API = API
-    target.API_1484_11 = API_1484_11
-    return () => {
-      if (target.API === API) delete target.API
-      if (target.API_1484_11 === API_1484_11) delete target.API_1484_11
-    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
   }, [commit, started])
 
   async function startAttempt() {
@@ -128,7 +133,7 @@ export function ScormPlayer({
     }
   }
 
-  // Full screen keeps the SCORM runtime (window.API) attached, unlike opening the package in a new tab.
+  // Full screen keeps the SCORM runtime bridge attached, unlike opening the package in a new tab.
   function openFullScreen() {
     const frame = frameRef.current
     if (frame?.requestFullscreen) void frame.requestFullscreen().catch(() => undefined)
@@ -198,7 +203,7 @@ export function ScormPlayer({
         title="SCORM learning material"
         src={frameUrl}
         className="min-h-[640px] w-full rounded-2xl border border-mist-200 bg-white max-md:min-h-[70dvh]"
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
+        sandbox="allow-scripts allow-forms allow-popups allow-downloads"
         allow="fullscreen"
       />
       {error ? <p role="alert" className="text-sm font-semibold text-rose-700">{error}</p> : null}

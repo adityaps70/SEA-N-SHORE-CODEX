@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto'
+import { trustedClientIp } from '@/lib/http/client-ip'
 
 /** Lower-case and trim; the database stores one canonical form per address. */
 export function normalizeNewsletterEmail(value: string) {
@@ -15,10 +16,12 @@ export function hashClientIp(ip: string | null | undefined, secret: string | nul
   return createHmac('sha256', secret).update(`newsletter-ip:${value}`).digest('hex').slice(0, 32)
 }
 
-/** First address in X-Forwarded-For (CloudFront/ALB), else X-Real-IP. */
+/**
+ * The viewer address CloudFront recorded (Round 14, 2.14). The first X-Forwarded-For entry and
+ * X-Real-IP are whatever the client sent, so they are not used.
+ */
 export function clientIpFromHeaders(headers: Pick<Headers, 'get'>) {
-  const forwarded = headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  return forwarded || headers.get('x-real-ip')?.trim() || null
+  return trustedClientIp(headers)
 }
 
 const BROWSERS: Array<[RegExp, string]> = [

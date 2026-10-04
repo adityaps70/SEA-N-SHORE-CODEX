@@ -4,8 +4,14 @@ import type { AdminCommunityGroup } from '@/features/community/types'
 
 const mocks = vi.hoisted(() => ({
   listAdminGroups: vi.fn(),
+  requirePlatformAdministratorUser: vi.fn(),
+  notFound: vi.fn(() => {
+    throw new Error('NEXT_NOT_FOUND')
+  }),
 }))
 
+vi.mock('next/navigation', () => ({ notFound: mocks.notFound }))
+vi.mock('@/features/admin/access', () => ({ requirePlatformAdministratorUser: mocks.requirePlatformAdministratorUser, canAccessPlatformAdmin: vi.fn(async () => true) }))
 vi.mock('@/features/community/repository', () => ({ communityRepository: { listAdminGroups: mocks.listAdminGroups } }))
 vi.mock('@/features/community/admin-actions', () => ({
   createGroupAsAdmin: vi.fn(),
@@ -30,6 +36,7 @@ afterEach(() => cleanup())
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.requirePlatformAdministratorUser.mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', cognitoSub: 'sub-admin', email: 'admin@example.com' })
   mocks.listAdminGroups.mockResolvedValue([
     group(),
     group({ id: '44444444-4444-4444-8444-444444444444', slug: 'old-hands', name: 'Old Hands', visibility: 'private', memberCount: 2, pendingCount: 1, owner: null, archivedAt: '2026-09-20T00:00:00.000Z' }),
@@ -37,6 +44,12 @@ beforeEach(() => {
 })
 
 describe('/admin/communities', () => {
+  it('checks platform admin access itself and lists nothing for anyone else (Round 14, 2.10)', async () => {
+    mocks.requirePlatformAdministratorUser.mockRejectedValue(new Error('admin_forbidden'))
+    await expect(AdminCommunitiesPage({ searchParams: Promise.resolve({}) })).rejects.toThrow('NEXT_NOT_FOUND')
+    expect(mocks.listAdminGroups).not.toHaveBeenCalled()
+  })
+
   it('lists every group with visibility, members, owner, state and created date, plus edit and archive actions', async () => {
     render(await AdminCommunitiesPage({ searchParams: Promise.resolve({}) }))
 

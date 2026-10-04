@@ -1,7 +1,11 @@
 import { getVerifiedUser } from '@/features/auth/queries'
-import { getMediaObject } from '@/lib/aws/storage'
+import { POST_DOCUMENT_MAX_BYTES } from '@/features/feed/media-policy'
+import { feedRepository } from '@/features/feed/repository'
+import { createMediaDownloadUrl, getMediaObject } from '@/lib/aws/storage'
 
-const MAX_FEED_MEDIA_BYTES = 200 * 1024 * 1024
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
   jpg: 'image/jpeg',
@@ -12,7 +16,11 @@ const CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
   pdf: 'application/pdf',
 }
 
-function canonicalFeedMediaKey(parts: string[]): string | null {
+const NOT_FOUND_HEADERS = { 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' }
+
+type FeedMediaKey = { key: string; profileId: string; postId: string; contentType: string }
+
+function canonicalFeedMediaKey(parts: string[]): FeedMediaKey | null {
   if (parts.length !== 3) return null
   const [profileId, postId, filename] = parts
   if (!profileId || !postId || !filename) return null
@@ -24,42 +32,65 @@ function canonicalFeedMediaKey(parts: string[]): string | null {
   const [, objectId, extensionRaw] = match
   if (!objectId || !UUID_PATTERN.test(objectId)) return null
   const extension = extensionRaw?.toLowerCase() ?? ''
-  if (!CONTENT_TYPE_BY_EXTENSION[extension]) return null
+  const contentType = CONTENT_TYPE_BY_EXTENSION[extension]
+  if (!contentType) return null
 
-  return `${profileId}/${postId}/${objectId}.${extension}`
+  return { key: `${profileId}/${postId}/${objectId}.${extension}`, profileId, postId, contentType }
 }
 
+/**
+ * Post photos, videos and documents. Round 14 (2.2): the viewer must be able to see the post (the
+ * feed's own visibility rules: blocks, private groups, deleted posts). Photos and videos redirect
+ * to an hour-stable signed S3 URL instead of passing through the web task (which held up to
+ * 200 MB in memory per request); S3 answers Range requests, so videos seek on iOS, and the
+ * redirect may be kept privately for 30 minutes. PDFs (at most 25 MB) are still served from this
+ * origin: the document carousel reads them with pdf.js, and a cross-origin read would need
+ * bucket CORS for GET.
+ */
 export async function GET(
   _request: Request,
   context: { params: Promise<{ path: string[] }> },
 ): Promise<Response> {
   const user = await getVerifiedUser()
-  if (!user) return new Response(null, { status: 401 })
+  if (!user) return new Response(null, { status: 401, headers: NOT_FOUND_HEADERS })
 
   const { path } = await context.params
-  const key = canonicalFeedMediaKey(path)
-  if (!key) return new Response(null, { status: 404 })
+  const media = canonicalFeedMediaKey(path)
+  if (!media) return new Response(null, { status: 404, headers: NOT_FOUND_HEADERS })
 
   try {
-    const object = await getMediaObject({
-      key,
-      maxBytes: MAX_FEED_MEDIA_BYTES,
+    if (!await feedRepository.isPostVisibleTo(user.id, media.postId, media.profileId)) {
+      return new Response(null, { status: 404, headers: NOT_FOUND_HEADERS })
+    }
+    if (media.contentType === 'application/pdf') {
+      const object = await getMediaObject({ key: media.key, maxBytes: POST_DOCUMENT_MAX_BYTES })
+      return new Response(Uint8Array.from(object.body).buffer, {
+        status: 200,
+        headers: {
+          'cache-control': 'private, max-age=3600',
+          'content-length': String(object.contentLength),
+          'content-type': 'application/pdf',
+          'content-disposition': 'inline',
+          'x-content-type-options': 'nosniff',
+        },
+      })
+    }
+    const location = await createMediaDownloadUrl({
+      key: media.key,
+      contentType: media.contentType,
+      contentDisposition: 'inline',
+      cacheWindow: true,
     })
-    const extension = key.slice(key.lastIndexOf('.') + 1)
-    const contentType = object.contentType || CONTENT_TYPE_BY_EXTENSION[extension] || 'application/octet-stream'
-    const body = Uint8Array.from(object.body).buffer
-
-    return new Response(body, {
-      status: 200,
+    return new Response(null, {
+      status: 302,
       headers: {
-        'cache-control': 'private, max-age=3600',
-        'content-length': String(object.contentLength),
-        'content-type': contentType,
-        ...(contentType === 'application/pdf' ? { 'content-disposition': 'inline' } : {}),
+        location,
+        'cache-control': 'private, max-age=1800',
+        'referrer-policy': 'no-referrer',
         'x-content-type-options': 'nosniff',
       },
     })
   } catch {
-    return new Response(null, { status: 404 })
+    return new Response(null, { status: 404, headers: NOT_FOUND_HEADERS })
   }
 }
