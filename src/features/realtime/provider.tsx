@@ -44,6 +44,9 @@ type NewMessageAlert = {
 
 const MessagingRealtimeContext = createContext<MessagingRealtimeContextValue | null>(null)
 
+/** Feed and network refreshes from realtime signals are coalesced into one per window. */
+export const REALTIME_REFRESH_DEBOUNCE_MS = 2_000
+
 async function requestRealtimeTicket() {
   const response = await fetch('/api/realtime/ticket', {
     method: 'POST',
@@ -120,22 +123,30 @@ export function MessagingRealtimeProvider({
     isTyping: boolean
   }) => connectionRef.current?.sendTyping(input) ?? false, [])
 
+  // Round 14 (3.2): the connection lives for the whole signed-in session. The current path is read
+  // through a ref, so navigating no longer closes and reopens the socket (and re-requests a ticket).
+  const pathnameRef = useRef(pathname)
+  useEffect(() => {
+    pathnameRef.current = pathname
+  }, [pathname])
+
   useEffect(() => {
     let active = true
     let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
+    // Feed/network invalidations are batched: at most one server-component refresh per 2 seconds.
     const scheduleRefresh = () => {
       if (refreshTimer) return
       refreshTimer = setTimeout(() => {
         refreshTimer = null
         router.refresh()
-      }, 50)
+      }, REALTIME_REFRESH_DEBOUNCE_MS)
     }
 
     const showNewMessageAlert = (item: MessagingInboxItem) => {
       if (!active) return
       const conversationPath = `/messages/${item.conversationId}`
-      if (pathname === conversationPath) return
+      if (pathnameRef.current === conversationPath) return
 
       setNewMessageAlert({
         conversationId: item.conversationId,
@@ -150,7 +161,7 @@ export function MessagingRealtimeProvider({
     }
 
     const reconcileGlobalMessagingState = async (conversationId: string) => {
-      if (pathname.startsWith('/messages')) return
+      if (pathnameRef.current.startsWith('/messages')) return
 
       if (messagingRefreshRunningRef.current) {
         pendingConversationRef.current = conversationId
@@ -179,7 +190,7 @@ export function MessagingRealtimeProvider({
     }
 
     const reconcileUnreadOnConnected = async () => {
-      if (pathname.startsWith('/messages')) return
+      if (pathnameRef.current.startsWith('/messages')) return
       const unreadRevisionAtStart = getMessagingUnreadCountSnapshot().revision
       try {
         const state = await loadGlobalMessagingState()
@@ -238,7 +249,7 @@ export function MessagingRealtimeProvider({
         alertTimerRef.current = null
       }
     }
-  }, [pathname, router, viewerProfileId])
+  }, [router, viewerProfileId])
 
   const value = useMemo(() => ({ status, subscribe, sendTyping }), [sendTyping, status, subscribe])
 

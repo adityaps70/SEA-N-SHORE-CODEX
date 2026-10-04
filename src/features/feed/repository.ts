@@ -169,11 +169,16 @@ const FEED_ROW_SELECT = `
         where option_row.post_id = p.id
       ), '[]'::json)
     ) else null end as post_polls,
-    json_build_object(
-      'like', (select count(*)::int from public.post_reactions reaction where reaction.post_id = p.id and reaction.reaction_type = 'like'),
-      'support', (select count(*)::int from public.post_reactions reaction where reaction.post_id = p.id and reaction.reaction_type = 'support'),
-      'respect', (select count(*)::int from public.post_reactions reaction where reaction.post_id = p.id and reaction.reaction_type = 'respect'),
-      'on_point', (select count(*)::int from public.post_reactions reaction where reaction.post_id = p.id and reaction.reaction_type = 'on_point')
+    -- Round 14 (3.4): one pass over the post's reactions instead of four.
+    (
+      select json_build_object(
+        'like', (count(*) filter (where reaction.reaction_type = 'like'))::int,
+        'support', (count(*) filter (where reaction.reaction_type = 'support'))::int,
+        'respect', (count(*) filter (where reaction.reaction_type = 'respect'))::int,
+        'on_point', (count(*) filter (where reaction.reaction_type = 'on_point'))::int
+      )
+      from public.post_reactions reaction
+      where reaction.post_id = p.id
     ) as post_reactions,
     coalesce((
       select json_agg(json_build_object(
@@ -655,11 +660,15 @@ export function createFeedRepository(input: { query?: FeedQuery } = {}) {
            'role_other_text', author.role_other_text,
            'maritime_profiles', case when maritime.user_id is null then null else json_build_object('rank', maritime.rank, 'current_company', maritime.current_company) end
          ) as profiles,
-         case when c.deleted_at is null then json_build_object(
-           'like', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'like'),
-           'support', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'support'),
-           'respect', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'respect'),
-           'on_point', (select count(*)::int from public.comment_reactions cr where cr.comment_id = c.id and cr.reaction_type = 'on_point')
+         case when c.deleted_at is null then (
+           select json_build_object(
+             'like', (count(*) filter (where cr.reaction_type = 'like'))::int,
+             'support', (count(*) filter (where cr.reaction_type = 'support'))::int,
+             'respect', (count(*) filter (where cr.reaction_type = 'respect'))::int,
+             'on_point', (count(*) filter (where cr.reaction_type = 'on_point'))::int
+           )
+           from public.comment_reactions cr
+           where cr.comment_id = c.id
          ) else json_build_object('like', 0, 'support', 0, 'respect', 0, 'on_point', 0) end as reaction_summary,
          ${viewerSql} as viewer_reaction,
          ${ownershipSql},

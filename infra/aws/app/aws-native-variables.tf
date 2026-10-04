@@ -9,9 +9,11 @@ variable "aurora_engine_version" {
 }
 
 variable "aurora_min_acu" {
+  # Round 14 (3.5, owner-approved): 0.5 ACU floor with no auto-pause, so the first request after
+  # an idle spell no longer waits ~15 s for the database to resume. Zero re-enables auto-pause.
   description = "Minimum Aurora Serverless v2 ACUs for staging. Zero enables supported auto-pause."
   type        = number
-  default     = 0
+  default     = 0.5
 }
 
 variable "aurora_max_acu" {
