@@ -46,6 +46,11 @@ function groupComments(comments: FeedCommentRow[]) {
   return grouped
 }
 
+/**
+ * Runs the Home pipeline (profile, network, discovery, feed, hydration, media) for one fixed
+ * canary profile: the first active, onboarded Cognito profile by id. It used to loop over every
+ * active profile, which cost thousands of queries per call (Round 14, 1.5).
+ */
 export async function checkHomeRuntimeHealth(): Promise<HomeRuntimeHealth> {
   let profiles: ProfileIdRow[]
   try {
@@ -56,7 +61,8 @@ export async function checkHomeRuntimeHealth(): Promise<HomeRuntimeHealth> {
        where ia.provider = $1
          and p.account_status = 'active'
          and p.onboarding_completed_at is not null
-       order by ia.profile_id asc`,
+       order by ia.profile_id asc
+       limit 1`,
       ['cognito'],
     )
   } catch {
