@@ -1,5 +1,5 @@
 // Round 14 Phase 1: guarded release path and Terraform contract for SMS abuse limits, the
-// public client's write attributes, the liveness health check and owner-facing alarms.
+// liveness health check and owner-facing alarms.
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
@@ -20,15 +20,13 @@ test('security hardening runner is guarded and refuses anything outside its inte
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
   assert.match(script, /SECURITY_HARDENING_INFRA_EXPECTED_SHA/)
   assert.match(script, /unexpected security hardening change refused/)
-  assert.match(script, /user pool client change outside write_attributes refused/)
-  assert.match(script, /write_attributes must keep email\/email_verified\/name and drop phone_number/)
   assert.match(script, /target group change outside health_check refused/)
   assert.match(script, /change outside alarm\/ok actions refused/)
   assert.match(script, /'aws_dynamodb_table\.otp_limits': \{\('create',\)\}/)
   assert.match(script, /'aws_lb_target_group\.app': \{\('update',\)\}/)
-  assert.doesNotMatch(script, /'aws_cognito_user_pool\.app'|'aws_ecs_service|'aws_lb\.app'|'aws_cloudfront/)
+  // The public client is neither targeted nor accepted: Cognito rejected the phone-less list.
+  assert.doesNotMatch(script, /aws_cognito_user_pool_client\.web|'aws_cognito_user_pool\.app'|'aws_ecs_service|'aws_lb\.app'|'aws_cloudfront/)
   assert.match(script, /TARGET_GROUP_LIVENESS_VERIFIED=true/)
-  assert.match(script, /CLIENT_PHONE_WRITE_REMOVED=true/)
   assert.match(script, /OTP_LAMBDA_VERIFIED=true/)
   assert.match(script, /SECURITY_HARDENING_APPLY_VERIFIED=true/)
   assert.match(script, /export TMPDIR="\$TF_TMPDIR"/)
