@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Round 14 (1.4) stage A, guarded: an HTTPS origin listener for origin-staging.seaandshore.in that
+# Round 14 (1.4), guarded. Stage A: an HTTPS origin listener for origin-staging.seaandshore.in that
 # forwards only requests with the secret X-Origin-Verify header (403 otherwise), the origin
 # certificate's DNS validation, the origin DNS name, the shared secret, and a security group that
-# admits CloudFront's origin-facing range on 443. Everything is additive: CloudFront keeps using the
-# HTTP origin until stage B. Targeted plan; only these creates and the ALB's security-group update
-# are accepted. The action file holds "plan" or "apply-once". The secret is never printed.
+# admits CloudFront's origin-facing range on 443. Stage C (after CloudFront moved to it in stage B):
+# the ALB's own group loses its 0.0.0.0/0 rules and the port 80 listener is removed. Targeted plan;
+# only these creates, the ALB's security-group update, that ingress removal and that listener
+# deletion are accepted. The action file holds "plan" or "apply-once". The secret is never printed.
 set -euo pipefail
 umask 077
 export PATH="$HOME/bin:$PATH"
@@ -107,9 +108,14 @@ TARGETS=(
   aws_lb_listener_rule.origin_https_verified
   aws_security_group.alb_cloudfront
   aws_lb.app
+  aws_security_group.alb
+  aws_lb_listener.http_forward
 )
 PLAN_ARGS=()
 for target in "${TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
+# The post-apply drift plan uses the same targets but never -replace (that would ask to replace the
+# new certificate again).
+AFTER_ARGS=("${PLAN_ARGS[@]}" "-target=aws_acm_certificate.origin_tls")
 if [[ "$REPLACE_CERTIFICATE" == true ]]; then
   PLAN_ARGS+=("-target=aws_acm_certificate.origin_tls" "-replace=aws_acm_certificate.origin_tls")
 fi
@@ -131,6 +137,9 @@ allowed = {
   'aws_lb_listener_rule.origin_https_verified': {('create',)},
   'aws_security_group.alb_cloudfront': {('create',)},
   'aws_lb.app': {('update',)},
+  # Stage C: close the ALB to everything but CloudFront.
+  'aws_security_group.alb': {('update',)},
+  'aws_lb_listener.http_forward[0]': {('delete',)},
 }
 if sys.argv[2] == 'true':
     # Only the dead certificate request, replaced create-before-destroy. When an earlier attempt
@@ -159,6 +168,13 @@ for r in changes:
             print('ALB_SECURITY_GROUPS_AFTER=unknown-until-apply')
         elif not set(before.get('security_groups') or []) <= set(after.get('security_groups') or []):
             raise SystemExit('ALB must keep its existing security group while the CloudFront group is added')
+    if r['address'] == 'aws_security_group.alb':
+        before, after = r['change']['before'] or {}, r['change']['after'] or {}
+        keys = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
+        if set(keys) - {'ingress'}:
+            raise SystemExit('ALB group change outside ingress refused: ' + ','.join(keys))
+        if any('0.0.0.0/0' in (rule.get('cidr_blocks') or []) or rule.get('from_port') == 80 for rule in after.get('ingress') or []):
+            raise SystemExit('ALB group must end with no port 80 and no 0.0.0.0/0 ingress')
     if r['address'] == 'aws_lb_listener.origin_https':
         after = r['change']['after']
         if after.get('port') != 443 or after.get('protocol') != 'HTTPS':
@@ -167,6 +183,19 @@ for r in changes:
         if action.get('type') != 'fixed-response' or (action.get('fixed_response') or [{}])[0].get('status_code') != '403':
             raise SystemExit('origin listener default must be a 403 fixed response')
 PY
+
+# Stage C closes port 80 and the open rules, so it is refused unless CloudFront already reaches
+# the ALB over HTTPS on the origin hostname (stage B) and that configuration is fully deployed.
+if jq -e '[.resource_changes[] | select(.address == "aws_security_group.alb" or .address == "aws_lb_listener.http_forward[0]") | select(.change.actions != ["no-op"])] | length > 0' "$WORK_DIR/plan.json" >/dev/null; then
+  CF_ID="$(jq -r '[.resources[] | select(.mode=="managed" and .type=="aws_cloudfront_distribution" and .name=="app") | .instances[0].attributes.id][0] // empty' "$WORK_DIR/state.json")"
+  [[ -n "$CF_ID" ]]
+  aws cloudfront get-distribution --id "$CF_ID" --output json \
+    | jq -e --arg origin "$ORIGIN_HOST" '.Distribution.Status == "Deployed" and (.Distribution.DistributionConfig.Origins.Items | length == 1) and .Distribution.DistributionConfig.Origins.Items[0].DomainName == $origin and .Distribution.DistributionConfig.Origins.Items[0].CustomOriginConfig.OriginProtocolPolicy == "https-only"' >/dev/null || {
+    echo "Stage C refused: CloudFront does not yet reach the ALB over HTTPS on $ORIGIN_HOST (apply stage B first)." >&2
+    exit 1
+  }
+  echo "STAGE_C_CLOUDFRONT_ALREADY_HTTPS=true"
+fi
 
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
 echo "EDGE_ORIGIN_LOCKDOWN_ACTION=$ACTION"
@@ -187,7 +216,7 @@ echo "STATE_BACKUP_VERSION=$STATE_BACKUP_VERSION"
 terraform -chdir="$APP_DIR" apply -input=false -no-color "$WORK_DIR/lockdown.tfplan" > "$WORK_DIR/apply.log"
 
 terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
-  "${PLAN_ARGS[@]}" -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.log"
+  "${AFTER_ARGS[@]}" -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.json"
 [[ "$(jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])] | length' "$WORK_DIR/plan-after.json")" == "0" ]] || {
   echo "Edge origin lockdown resources still drift after apply." >&2
@@ -209,22 +238,34 @@ echo "ORIGIN_DNS_RECORD_VERIFIED=true"
 ALB_DNS="$(aws elbv2 describe-load-balancers --region "$AWS_REGION" --names sea-n-shore-staging-alb --query 'LoadBalancers[0].DNSName' --output text)"
 ALB_IP="$(getent ahostsv4 "$ALB_DNS" | awk 'NR==1 {print $1}')"
 [[ "$ALB_IP" =~ ^[0-9.]+$ ]]
-aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id sea-n-shore-staging/origin-verify \
-  --query SecretString --output text | awk '{printf "X-Origin-Verify: %s\n", $0}' > "$WORK_DIR/origin-header"
-probe() { curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --resolve "$ORIGIN_HOST:443:$ALB_IP" "$@" "https://$ORIGIN_HOST/api/health/live" || true; }
-UNSIGNED=""
-SIGNED=""
-for attempt in $(seq 1 18); do
-  UNSIGNED="$(probe)"
-  SIGNED="$(probe -H @"$WORK_DIR/origin-header")"
-  [[ "$UNSIGNED" == 403 && "$SIGNED" == 200 ]] && break
-  sleep 10
-done
-rm -f "$WORK_DIR/origin-header"
-echo "ORIGIN_HTTPS_WITHOUT_HEADER=$UNSIGNED"
-echo "ORIGIN_HTTPS_WITH_HEADER=$SIGNED"
-[[ "$UNSIGNED" == 403 && "$SIGNED" == 200 ]]
-echo "ORIGIN_HTTPS_LISTENER_VERIFIED=true"
+ALB_GROUP_ID="$(aws ec2 describe-security-groups --region "$AWS_REGION" --filters Name=group-name,Values=sea-n-shore-staging-alb --query 'SecurityGroups[0].GroupId' --output text)"
+if aws ec2 describe-security-groups --region "$AWS_REGION" --group-ids "$ALB_GROUP_ID" --output json \
+  | jq -e '[.SecurityGroups[0].IpPermissions[] | select(.FromPort == 443) | .IpRanges[].CidrIp] | index("0.0.0.0/0") != null' >/dev/null; then
+  # Stage A/B: the ALB still answers anyone on 443, so prove the header gate itself.
+  aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id sea-n-shore-staging/origin-verify \
+    --query SecretString --output text | awk '{printf "X-Origin-Verify: %s\n", $0}' > "$WORK_DIR/origin-header"
+  probe() { curl -sS -o /dev/null -w '%{http_code}' --max-time 20 --resolve "$ORIGIN_HOST:443:$ALB_IP" "$@" "https://$ORIGIN_HOST/api/health/live" || true; }
+  UNSIGNED=""
+  SIGNED=""
+  for attempt in $(seq 1 18); do
+    UNSIGNED="$(probe)"
+    SIGNED="$(probe -H @"$WORK_DIR/origin-header")"
+    [[ "$UNSIGNED" == 403 && "$SIGNED" == 200 ]] && break
+    sleep 10
+  done
+  rm -f "$WORK_DIR/origin-header"
+  echo "ORIGIN_HTTPS_WITHOUT_HEADER=$UNSIGNED"
+  echo "ORIGIN_HTTPS_WITH_HEADER=$SIGNED"
+  [[ "$UNSIGNED" == 403 && "$SIGNED" == 200 ]]
+  echo "ORIGIN_HTTPS_LISTENER_VERIFIED=true"
+else
+  # Stage C: only CloudFront's range may connect; direct HTTP and HTTPS from here must fail.
+  aws elbv2 describe-listeners --region "$AWS_REGION" --load-balancer-arn "$(aws elbv2 describe-load-balancers --region "$AWS_REGION" --names sea-n-shore-staging-alb --query 'LoadBalancers[0].LoadBalancerArn' --output text)" --output json \
+    | jq -e '[.Listeners[].Port] == [443]' >/dev/null
+  if curl -sS -o /dev/null --max-time 10 "http://$ALB_IP/" 2>/dev/null; then echo "ALB still answers HTTP directly." >&2; exit 1; fi
+  if curl -sS -o /dev/null --max-time 10 --resolve "$ORIGIN_HOST:443:$ALB_IP" "https://$ORIGIN_HOST/api/health/live" 2>/dev/null; then echo "ALB still answers HTTPS directly." >&2; exit 1; fi
+  echo "ALB_DIRECT_ACCESS_CLOSED=true"
+fi
 
 ALB_BASE_GROUP="$(aws ec2 describe-security-groups --region "$AWS_REGION" --filters Name=group-name,Values=sea-n-shore-staging-alb --query 'SecurityGroups[0].GroupId' --output text)"
 ALB_CF_GROUP="$(aws ec2 describe-security-groups --region "$AWS_REGION" --filters Name=group-name,Values=sea-n-shore-staging-alb-cloudfront --query 'SecurityGroups[0].GroupId' --output text)"
