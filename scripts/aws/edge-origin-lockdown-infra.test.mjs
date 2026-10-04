@@ -1,0 +1,52 @@
+// Round 14 (1.4) stage A: guarded release path and Terraform contract for the CloudFront-only ALB
+// origin (HTTPS listener with a secret header, origin DNS and certificate, CloudFront-only group).
+import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import test from 'node:test'
+
+const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
+const script = await read('./edge-origin-lockdown-infra.sh')
+const action = (await read('./edge-origin-lockdown-infra-action.txt')).trim()
+const workflow = await read('../../.github/workflows/aws-edge-origin-lockdown-infra.yml')
+const ci = await read('../../.github/workflows/aws-infra-ci.yml')
+const lockdown = await read('../../infra/aws/app/edge-origin-lockdown.tf')
+const main = await read('../../infra/aws/app/main.tf')
+
+test('the runner is guarded, additive and refuses anything outside stage A', () => {
+  assert.ok(['plan', 'apply-once'].includes(action))
+  assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
+  assert.match(script, /EDGE_ORIGIN_LOCKDOWN_EXPECTED_SHA/)
+  assert.match(script, /unexpected edge origin lockdown change refused/)
+  assert.match(script, /ALB change outside security_groups refused/)
+  assert.match(script, /ALB must keep its existing security group/)
+  assert.match(script, /origin listener default must be a 403 fixed response/)
+  assert.match(script, /'aws_lb\.app': \{\('update',\)\}/)
+  // Nothing in stage A may touch CloudFront, the ALB's existing group, listeners on 80, or data.
+  const allowList = script.slice(script.indexOf('allowed = {'), script.indexOf('}\nplan = json.load'))
+  assert.match(allowList, /'aws_lb_listener\.origin_https'/)
+  assert.doesNotMatch(allowList, /'aws_cloudfront|'aws_security_group\.alb'|'aws_lb_listener\.http|'aws_rds|'aws_s3|'aws_cognito/)
+  assert.match(script, /PENDING_VALIDATION \|\| "\$CERT_STATUS" == ISSUED/)
+  assert.match(script, /ORIGIN_HTTPS_WITHOUT_HEADER/)
+  assert.match(script, /\[\[ "\$UNSIGNED" == 403 && "\$SIGNED" == 200 \]\]/)
+  assert.match(script, /PUBLIC_SITE_LIVE_VERIFIED=true/)
+  assert.match(script, /EDGE_ORIGIN_LOCKDOWN_APPLY_VERIFIED=true/)
+  assert.match(script, /export TMPDIR="\$TF_TMPDIR"/)
+  assert.doesNotMatch(script, /-auto-approve/)
+  // The secret is only ever written to a private temp file, never echoed.
+  assert.doesNotMatch(script, /echo[^\n]*origin_verify|echo[^\n]*SecretString/)
+  assert.match(workflow, /name: AWS Edge Origin Lockdown Infrastructure/)
+  assert.match(workflow, /export EDGE_ORIGIN_LOCKDOWN_EXPECTED_SHA=\{sha\}/)
+  assert.match(workflow, /Guard infrastructure operation against a moved branch/)
+  assert.match(workflow, /apply-once is allowed only from an exact branch push/)
+  assert.match(ci, /node --test scripts\/aws\/edge-origin-lockdown-infra\.test\.mjs/)
+})
+
+test('the ALB origin forwards only with the secret header and is reachable from CloudFront', () => {
+  assert.match(lockdown, /resource "aws_lb_listener" "origin_https"[\s\S]*?port\s*=\s*443[\s\S]*?status_code\s*=\s*"403"/)
+  assert.match(lockdown, /certificate_arn\s*=\s*aws_acm_certificate_validation\.origin_tls\.certificate_arn/)
+  assert.match(lockdown, /http_header_name = "X-Origin-Verify"\s*\n\s*values\s*=\s*\[random_password\.origin_verify\.result\]/)
+  assert.match(lockdown, /resource "random_password" "origin_verify" \{\s*\n\s*length\s*=\s*48\s*\n\s*special = false/)
+  assert.match(lockdown, /com\.amazonaws\.global\.cloudfront\.origin-facing/)
+  assert.match(lockdown, /zone_id\s*=\s*aws_route53_zone\.seaandshore\.zone_id/)
+  assert.match(main, /security_groups = \[aws_security_group\.alb\.id, aws_security_group\.alb_cloudfront\.id\]/)
+})

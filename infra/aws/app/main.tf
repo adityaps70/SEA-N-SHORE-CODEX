@@ -229,8 +229,9 @@ resource "aws_lb" "app" {
   name               = substr("${local.name_prefix}-alb", 0, 32)
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb.id]
-  subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+  # Round 14 (1.4): alb_cloudfront admits CloudFront's origin-facing range on 443.
+  security_groups = [aws_security_group.alb.id, aws_security_group.alb_cloudfront.id]
+  subnets         = [aws_subnet.public_a.id, aws_subnet.public_b.id]
 
   enable_deletion_protection = false
   idle_timeout               = 60
