@@ -64,3 +64,13 @@ test('outbox worker also runs the hourly, idempotent billing sweep for plan subs
   assert.match(publisher, /BILLING_SWEEP_MS = 60 \* 60 \* 1000/)
   assert.match(publisher, /billing_sweep_error/)
 })
+
+test('outbox worker backs off to 5-10 s when idle and logs a batch only when it claimed work', () => {
+  assert.match(publisher, /import \{ outboxIdleDelayMs \} from '\.\.\/\.\.\/src\/features\/events\/outbox-backoff'/)
+  assert.match(publisher, /if \(result\.claimed > 0\) console\.info\('\[social_outbox_batch\]', result\)/)
+  assert.equal(publisher.match(/\[social_outbox_batch\]/g).length, 1)
+  assert.match(publisher, /consecutiveIdleBatches = result\.claimed === 0 \? consecutiveIdleBatches \+ 1 : 0/)
+  assert.match(publisher, /if \(consecutiveIdleBatches > 0\) await sleep\(outboxIdleDelayMs\(consecutiveIdleBatches\)\)/)
+  assert.doesNotMatch(publisher, /sleep\(1000\)/)
+  assert.match(publisher, /console\.error\('\[social_outbox_error\]'/)
+})

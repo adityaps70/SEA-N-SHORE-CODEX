@@ -197,6 +197,8 @@ jobs:
         run: node --test scripts/aws/auth-email-limits-migration.test.mjs
       - name: Verify people search text migration contract
         run: node --test scripts/aws/people-search-text-migration.test.mjs
+      - name: Verify event outbox lease migration contract
+        run: node --test scripts/aws/event-outbox-lease-migration.test.mjs
       - name: Verify newsletter signing secret release contract
         run: node --test scripts/aws/newsletter-signing-secret-release.test.mjs
       - name: Verify guarded staging data cleanup contract
