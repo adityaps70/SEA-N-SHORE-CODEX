@@ -147,11 +147,6 @@ resource "aws_wafv2_web_acl" "edge" {
   tags = local.common_tags
 }
 
-# Read the existing ALB without pulling app-resource changes into an edge recovery plan.
-data "aws_lb" "edge_origin" {
-  name = "sea-n-shore-staging-alb"
-}
-
 data "aws_cloudfront_cache_policy" "caching_disabled" {
   name = "Managed-CachingDisabled"
 }
@@ -199,8 +194,10 @@ resource "aws_cloudfront_distribution" "app" {
   web_acl_id      = aws_wafv2_web_acl.edge.arn
   aliases         = [local.canonical_site_host, "www.${local.canonical_site_host}"]
 
+  # Round 14 (1.4): HTTPS to the ALB's dedicated origin hostname with the shared X-Origin-Verify
+  # secret; the ALB answers 403 to anything without it.
   origin {
-    domain_name = data.aws_lb.edge_origin.dns_name
+    domain_name = var.origin_tls_hostname
     origin_id   = "sea-n-shore-staging-alb"
 
     custom_header {
@@ -208,10 +205,15 @@ resource "aws_cloudfront_distribution" "app" {
       value = "d3prih0q6jofyr.cloudfront.net"
     }
 
+    custom_header {
+      name  = "X-Origin-Verify"
+      value = random_password.origin_verify.result
+    }
+
     custom_origin_config {
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only"
+      origin_protocol_policy = "https-only"
       origin_ssl_protocols   = ["TLSv1.2"]
     }
   }
