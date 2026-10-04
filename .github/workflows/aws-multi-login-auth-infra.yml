@@ -9,15 +9,12 @@ on:
       - infra/aws/app/cognito-email-sender.tf
       - infra/aws/app/lambda/cognito-pre-sign-up-link.mjs
       - infra/aws/app/lambda/cognito-resend-email-sender.mjs
-      - infra/aws/app/main.tf
-      - infra/aws/app/aws-native-variables.tf
       - infra/aws/app/lambda/cognito-define-auth-challenge.mjs
       - infra/aws/app/lambda/cognito-create-auth-challenge.mjs
       - infra/aws/app/lambda/cognito-verify-auth-challenge.mjs
       - scripts/aws/multi-login-auth-infra.sh
       - scripts/aws/multi-login-auth-infra-action.txt
       - scripts/aws/multi-login-auth-infra.test.mjs
-      - scripts/aws/public-site-url.txt
       - .github/workflows/aws-multi-login-auth-infra.yml
   workflow_dispatch:
 
@@ -124,7 +121,7 @@ jobs:
           script = f"""set -euo pipefail
           umask 077
           WORK_DIR=$(mktemp -d /var/tmp/sea-n-shore-multi-login-auth.XXXXXXXX)
-          trap 'rm -rf -- "$WORK_DIR"' EXIT
+          trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
           git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$WORK_DIR/repo"
           cd "$WORK_DIR/repo"
           git checkout --quiet --detach {sha}

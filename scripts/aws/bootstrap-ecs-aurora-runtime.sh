@@ -35,7 +35,7 @@ case "$AURORA_SECRET_ARN" in
 esac
 
 TMP_DIR="$(mktemp -d)"
-trap 'rm -rf "$TMP_DIR"' EXIT
+trap 'rm -rf "$TMP_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 jq -n --arg secret "$AURORA_SECRET_ARN" '{
   Version: "2012-10-17",

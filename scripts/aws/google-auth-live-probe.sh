@@ -5,7 +5,7 @@ PUBLIC_SITE_URL="${PUBLIC_SITE_URL:-https://seanshore.in}"
 EXPECTED_COGNITO_ORIGIN="https://auth.seanshore.in"
 EXPECTED_GOOGLE_ORIGIN="https://accounts.google.com"
 WORK_DIR="$(mktemp -d)"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 for page in sign-in sign-up; do
   BODY="$WORK_DIR/$page.html"

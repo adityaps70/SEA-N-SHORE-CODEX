@@ -83,7 +83,7 @@ echo "AURORA_BUSINESS_PARITY_INVENTORY_COMPLETE=true"
 # PII-safe identity evidence. Raw values exist only in restrictive temporary files
 # and are never emitted to GitHub Actions logs.
 TMP_IDENTITY_DIR="$(mktemp -d)"
-trap 'rm -rf -- "$TMP_IDENTITY_DIR"' EXIT
+trap 'rm -rf -- "$TMP_IDENTITY_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 aws cognito-idp list-users --region "$AWS_REGION" --user-pool-id "$COGNITO_POOL_ID" --output json > "$TMP_IDENTITY_DIR/cognito.json"
 IDENTITY_SQL="SELECT profile_id::text, provider_subject, coalesce(email, '') FROM public.identity_accounts WHERE provider = 'cognito' ORDER BY profile_id"
 aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$IDENTITY_SQL" --output json > "$TMP_IDENTITY_DIR/accounts.json"

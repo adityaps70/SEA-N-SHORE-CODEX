@@ -26,13 +26,14 @@ git diff --quiet HEAD -- \
   scripts/aws/seanshore-domain-bootstrap.test.mjs \
   .github/workflows/aws-seanshore-domain-bootstrap.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported seanshore domain bootstrap action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.seanshore-domain-bootstrap.XXXXXXXX")"
 TF_TMPDIR="$(mktemp -d /var/tmp/sns-tf.XXXXXX)"
-trap 'rm -rf -- "$WORK_DIR"; rm -rf -- "$TF_TMPDIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"; rm -rf -- "$TF_TMPDIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object \
   --bucket "$STATE_BUCKET" \

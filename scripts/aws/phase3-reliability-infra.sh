@@ -35,6 +35,7 @@ git diff --quiet HEAD -- \
   scripts/aws/public-site-url.txt \
   .github/workflows/aws-phase3-reliability-infra.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported phase 3 reliability action." >&2; exit 1 ;; esac
@@ -42,7 +43,7 @@ case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported phase 3 reliability a
 WORK_DIR="$(mktemp -d "$PWD/.phase3-reliability.XXXXXXXX")"
 TF_TMPDIR="$(mktemp -d /var/tmp/sns-tf.XXXXXX)"
 export TMPDIR="$TF_TMPDIR"
-trap 'rm -rf -- "$WORK_DIR" "$TF_TMPDIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR" "$TF_TMPDIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_REGION" \
   "$WORK_DIR/state.json" > "$WORK_DIR/object.json"

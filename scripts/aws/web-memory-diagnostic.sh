@@ -23,7 +23,7 @@ HOURS="${WEB_MEMORY_DIAGNOSTIC_HOURS:-72}"
 [[ "$HOURS" =~ ^[0-9]+$ && "$HOURS" -ge 6 && "$HOURS" -le 336 ]]
 
 WORK_DIR="$(mktemp -d /tmp/sea-n-shore-web-memory.XXXXXXXX)"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 echo "== Live service =="
 aws ecs describe-services --region "$AWS_REGION" --cluster "$CLUSTER" --services "$SERVICE" --output json > "$WORK_DIR/service.json"

@@ -32,7 +32,7 @@ case "$ACTION" in
 esac
 
 WORK_DIR="$(mktemp -d /var/tmp/sea-n-shore-cognito-link-repair.XXXXXXXX)"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object \
   --bucket "$STATE_BUCKET" \

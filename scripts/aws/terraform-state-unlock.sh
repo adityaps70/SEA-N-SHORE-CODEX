@@ -37,7 +37,7 @@ ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 
 WORK_DIR="$(mktemp -d "$PWD/.terraform-state-unlock.XXXXXXXX")"
 TF_TMPDIR="$(mktemp -d /var/tmp/sns-tf.XXXXXX)"
-trap 'rm -rf -- "$WORK_DIR"; rm -rf -- "$TF_TMPDIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"; rm -rf -- "$TF_TMPDIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 export TMPDIR="$TF_TMPDIR"
 
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_REGION" "$WORK_DIR/state.json" > "$WORK_DIR/object.json"

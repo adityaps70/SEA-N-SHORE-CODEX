@@ -13,6 +13,10 @@ RESOURCE="aws_iam_role_policy.ecs_task_cognito_admin"
 ROLE_NAME="sea-n-shore-staging-ecs-task"
 POLICY_NAME="sea-n-shore-staging-cognito-admin-runtime"
 ACTION_FILE="scripts/aws/ecs-task-cognito-admin-policy-action.txt"
+# The site URL comes from the repository, like every other runner (not from the live task definition).
+PUBLIC_SITE_URL="$(tr -d '[:space:]' < scripts/aws/public-site-url.txt)"
+[[ "$PUBLIC_SITE_URL" =~ ^https://[a-z0-9.-]+$ ]]
+export PUBLIC_SITE_URL
 
 [[ "${ECS_TASK_COGNITO_ADMIN_POLICY_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "ECS_TASK_COGNITO_ADMIN_POLICY_EXPECTED_SHA must be an exact commit SHA." >&2
@@ -20,14 +24,15 @@ ACTION_FILE="scripts/aws/ecs-task-cognito-admin-policy-action.txt"
 }
 [[ "$(git rev-parse HEAD)" == "$ECS_TASK_COGNITO_ADMIN_POLICY_EXPECTED_SHA" ]]
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
-git diff --quiet HEAD --   infra/aws/app/auth.tf   scripts/aws/ecs-task-cognito-admin-policy.sh   scripts/aws/ecs-task-cognito-admin-policy-action.txt   scripts/aws/ecs-task-cognito-admin-policy-release.test.mjs   .github/workflows/aws-ecs-task-cognito-admin-policy.yml
+git diff --quiet HEAD --   infra/aws/app/auth.tf   scripts/aws/public-site-url.txt   scripts/aws/ecs-task-cognito-admin-policy.sh   scripts/aws/ecs-task-cognito-admin-policy-action.txt   scripts/aws/ecs-task-cognito-admin-policy-release.test.mjs   .github/workflows/aws-ecs-task-cognito-admin-policy.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported ECS task Cognito admin policy action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.ecs-task-cognito-admin-policy.XXXXXXXX")"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object   --bucket "$STATE_BUCKET"   --key "$STATE_KEY"   --region "$AWS_REGION"   "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null
@@ -90,7 +95,7 @@ else
 fi
 
 python3 - "$WORK_DIR/state.json" "$WORK_DIR/variables.json" <<'PY'
-import json, sys
+import json, os, sys
 with open(sys.argv[1]) as f:
     state = json.load(f)
 resources = state['resources']
@@ -108,7 +113,7 @@ def attrs(kind, name=None):
 web_task = attrs('aws_ecs_task_definition', 'web')
 containers = json.loads(web_task['container_definitions'])
 web = next(container for container in containers if container['name'] == 'web')
-site_url = next(item['value'] for item in web['environment'] if item['name'] == 'NEXT_PUBLIC_SITE_URL')
+site_url = os.environ['PUBLIC_SITE_URL']
 image = web['image']
 assert ':' in image.rsplit('/', 1)[-1], f'Expected tag-qualified web image, got {image}'
 values = {
