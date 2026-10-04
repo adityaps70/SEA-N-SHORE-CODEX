@@ -237,9 +237,16 @@ resource "aws_iam_role_policy" "realtime_connection" {
         Action = [
           "dynamodb:PutItem",
           "dynamodb:GetItem",
-          "dynamodb:DeleteItem"
+          "dynamodb:DeleteItem",
+          "dynamodb:UpdateItem"
         ]
         Resource = aws_dynamodb_table.realtime_connections.arn
+      },
+      {
+        Sid      = "VerifyTypingTokens"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.realtime_ticket.arn
       },
       {
         Sid      = "LookupTypingRecipients"
@@ -364,6 +371,7 @@ resource "aws_lambda_function" "realtime_connection" {
     variables = {
       REALTIME_CONNECTIONS_TABLE = aws_dynamodb_table.realtime_connections.name
       REALTIME_PROFILE_INDEX     = local.realtime_profile_index
+      REALTIME_TICKET_SECRET_ARN = aws_secretsmanager_secret.realtime_ticket.arn
     }
   }
 

@@ -49,6 +49,8 @@ test('a merge only triggers the runners whose own files changed', () => {
     'aws-newsletter-signing-secret': ['infra/aws/app/main.tf'],
     'aws-edge-state-audit': ['infra/aws/app/**'],
     'aws-independence-readiness': ['infra/aws/app/database.tf', 'infra/aws/app/storage.tf'],
+    // The one-shot realtime cutover runner; in-place realtime changes go through realtime-typing-infra.
+    'aws-realtime-infra': ['infra/aws/app/realtime.tf', 'infra/aws/app/lambda/realtime-connection.mjs', 'infra/aws/app/lambda/realtime-authorizer.mjs', 'infra/aws/app/lambda/realtime-fanout.mjs'],
   }
   for (const [workflow, paths] of Object.entries(shared)) {
     const on = triggerPaths(`.github/workflows/${workflow}.yml`)

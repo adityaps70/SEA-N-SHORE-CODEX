@@ -22,6 +22,7 @@ import {
   createMessagingRealtimeConnection,
   type MessagingRealtimeConnection,
   type MessagingRealtimeConnectionStatus,
+  type TypingTokenGrant,
 } from './connection'
 
 type RealtimeListener = (signal: MessagingRealtimeSignal) => void
@@ -72,6 +73,20 @@ async function requestRealtimeTicket() {
     ticket: payload.ticket,
     webSocketUrl: payload.webSocketUrl,
   }
+}
+
+/** Round 14 (2.9): the server checks membership before it signs a typing token for a conversation. */
+async function requestTypingToken(conversationId: string): Promise<TypingTokenGrant | null> {
+  const response = await fetch('/api/realtime/typing-token', {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversationId }),
+  })
+  if (!response.ok) return null
+  const payload = await response.json() as Partial<TypingTokenGrant>
+  if (typeof payload.token !== 'string' || typeof payload.targetProfileId !== 'string' || typeof payload.expiresAt !== 'number') return null
+  return { token: payload.token, targetProfileId: payload.targetProfileId, expiresAt: payload.expiresAt }
 }
 
 async function loadGlobalMessagingState() {
@@ -204,6 +219,7 @@ export function MessagingRealtimeProvider({
 
     const connection = createMessagingRealtimeConnection({
       requestTicket: requestRealtimeTicket,
+      requestTypingToken,
       createSocket: (url) => new WebSocket(url),
       onConnected: () => {
         void reconcileUnreadOnConnected()

@@ -14,9 +14,13 @@ import {
 } from './repository'
 import { createFeedSocialWriterForClient, type FeedSocialWriter } from './social-writer'
 import { roleDisplayLabel } from '@/features/roles/taxonomy'
+import { createSocialActionQuotasForClient, type SocialActionQuotas } from '@/features/social/quotas'
 import type { PostCategory, PostReactionType, ReactionDetailsPage, ReactionTargetType } from './types'
 
-type FeedTransaction = <T>(fn: (repository: FeedRepository, social?: FeedSocialWriter) => Promise<T>) => Promise<T>
+/** `quotas` (Round 14, 2.8) counts the member's posts, comments and reactions in the same transaction. */
+type FeedTransaction = <T>(
+  fn: (repository: FeedRepository, social?: FeedSocialWriter, quotas?: SocialActionQuotas) => Promise<T>,
+) => Promise<T>
 
 type StandardPostInput = {
   id?: string
@@ -316,10 +320,12 @@ export function createFeedService(input: {
   }
 
   async function createStandardPost(actorId: string, post: StandardPostInput) {
-    return input.withTransaction(async (repository, social) => {
+    return input.withTransaction(async (repository, social, quotas) => {
       await assertMemberReady(repository, actorId)
       if (post.companyId) await assertCanPostAsOrganization(actorId, post.companyId)
       if (post.groupId) await assertCanPostInGroup(repository, actorId, post.groupId)
+      // Organization and group posts count against the member who publishes them.
+      await quotas?.consume({ profileId: actorId, action: 'post' })
       const id = post.id ?? createId()
       const body = post.body.trim()
       await repository.insertStandardPost({
@@ -372,11 +378,12 @@ export function createFeedService(input: {
   }
 
   async function createPollPost(actorId: string, post: PollPostInput) {
-    return input.withTransaction(async (repository, social) => {
+    return input.withTransaction(async (repository, social, quotas) => {
       await assertMemberReady(repository, actorId)
       if (post.companyId) await assertCanPostAsOrganization(actorId, post.companyId)
       if (post.groupId) await assertCanPostInGroup(repository, actorId, post.groupId)
       const options = normalizePollOptions(post.pollOptions)
+      await quotas?.consume({ profileId: actorId, action: 'post' })
       const id = createId()
       const body = post.body.trim()
       await repository.insertPollPost({
@@ -399,9 +406,10 @@ export function createFeedService(input: {
   }
 
   async function repostPost(actorId: string, sourcePostId: string, repost: RepostInput = {}) {
-    return input.withTransaction(async (repository, social) => {
+    return input.withTransaction(async (repository, social, quotas) => {
       const source = await assertInteractablePost(repository, actorId, sourcePostId)
       if (source.postType === 'repost') serviceError('feed_repost_source_unavailable')
+      await quotas?.consume({ profileId: actorId, action: 'post' })
       const id = createId()
       const commentary = repost.body?.trim() ?? ''
       await repository.insertRepost(commentary
@@ -526,8 +534,10 @@ export function createFeedService(input: {
   }
 
   async function setPostReaction(actorId: string, postId: string, reaction: PostReactionType | null) {
-    return input.withTransaction(async (repository, social) => {
+    return input.withTransaction(async (repository, social, quotas) => {
       const post = await assertInteractablePost(repository, actorId, postId)
+      // Every set or change counts; removing a reaction is never limited.
+      if (reaction) await quotas?.consume({ profileId: actorId, action: 'reaction' })
       await repository.setPostReaction(actorId, postId, reaction)
       await enqueueFeedInvalidation(social, 'feed.post_reaction_changed', actorId, postId)
       if (!social || post.authorId === actorId) return true
@@ -558,8 +568,9 @@ export function createFeedService(input: {
   }
 
   async function setLiked(actorId: string, postId: string, liked: boolean) {
-    return input.withTransaction(async (repository, social) => {
+    return input.withTransaction(async (repository, social, quotas) => {
       await assertInteractablePost(repository, actorId, postId)
+      if (liked) await quotas?.consume({ profileId: actorId, action: 'reaction' })
       await repository.setLiked(actorId, postId, liked)
       await enqueueFeedInvalidation(social, 'feed.post_reaction_changed', actorId, postId)
       return true
@@ -582,7 +593,7 @@ export function createFeedService(input: {
     mentionProfileIds: string[] = [],
     organizationMentionIds: string[] = [],
   ) {
-    return input.withTransaction(async (repository, social) => {
+    return input.withTransaction(async (repository, social, quotas) => {
       const post = await assertInteractablePost(repository, actorId, postId)
       let normalizedParentId: string | null = null
       let replyRecipientId: string | null = null
@@ -603,6 +614,7 @@ export function createFeedService(input: {
           directReplyRecipientId = parent.authorId
         }
       }
+      await quotas?.consume({ profileId: actorId, action: 'comment' })
       const commentId = replyToCommentId
         ? await repository.addComment(actorId, postId, body.trim(), normalizedParentId, replyToCommentId)
         : await repository.addComment(actorId, postId, body.trim(), normalizedParentId)
@@ -713,9 +725,10 @@ export function createFeedService(input: {
   }
 
   async function setCommentReaction(actorId: string, commentId: string, reaction: PostReactionType | null) {
-    return input.withTransaction(async (repository, social) => {
+    return input.withTransaction(async (repository, social, quotas) => {
       const comment = await repository.getCommentForInteraction(actorId, commentId)
       if (!comment) serviceError('feed_interaction_unavailable')
+      if (reaction) await quotas?.consume({ profileId: actorId, action: 'reaction' })
       await repository.setCommentReaction(actorId, commentId, reaction)
       if (!social || comment.authorId === actorId) return true
       const dedupeKey = `comment-reaction:${commentId}:${actorId}`
@@ -788,6 +801,7 @@ const productionService = createFeedService({
   withTransaction: (fn) => databaseTransaction((client) => fn(
     createFeedRepositoryForClient(client),
     createFeedSocialWriterForClient(client),
+    createSocialActionQuotasForClient(client),
   )),
 })
 
