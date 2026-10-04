@@ -5,7 +5,7 @@ import {
   type UserType,
 } from '@aws-sdk/client-cognito-identity-provider'
 import { query as databaseQuery } from '@/lib/db/client'
-import { isPhoneLoginEmail } from './phone-auth-admin'
+import { isPhoneLoginEmail } from './phone-login-email'
 
 /**
  * Round 14 (2.7): removes sign-ups that never finished, once a day.

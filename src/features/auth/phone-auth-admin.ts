@@ -8,6 +8,7 @@ import {
   ListUsersCommand,
 } from '@aws-sdk/client-cognito-identity-provider'
 import { getCognitoEnvironment } from '@/lib/env'
+import { isPhoneLoginEmail } from './phone-login-email'
 
 type CognitoAdminClient = Pick<CognitoIdentityProviderClient, 'send'>
 
@@ -20,13 +21,7 @@ function defaultSyntheticEmailForPhone(phoneNumber: string) {
   return `phone-${digest}@auth.seaandshore.in`
 }
 
-/**
- * Mobile sign-ins are separate Cognito users whose email is a made-up address
- * (phone-<hash>@auth.seaandshore.in). They exist only to sign in with that number.
- */
-export function isPhoneLoginEmail(email: string | null | undefined) {
-  return typeof email === 'string' && /^phone-[0-9a-f]{32}@auth\.seaandshore\.in$/i.test(email.trim())
-}
+export { isPhoneLoginEmail }
 
 export type PhoneLoginUser = {
   username: string
