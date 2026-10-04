@@ -1,0 +1,13 @@
+# Round 14 (3.12): workflow actions are pinned to full commit SHAs; Dependabot proposes updates
+# (new SHA plus the version comment) once a week, grouped into one pull request.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"

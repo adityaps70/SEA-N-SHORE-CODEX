@@ -78,7 +78,7 @@ test('post media video migration execution is branch-scoped and safe by default'
   assert.match(workflow, /scripts\/aws\/post-media-video-migration-action\.txt/)
   assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
   assert.match(workflow, /Exact-head AWS Infrastructure CI is not green/)
-  assert.match(workflow, /aws-actions\/configure-aws-credentials@v4/)
+  assert.match(workflow, /aws-actions\/configure-aws-credentials@[0-9a-f]{40} # v4\./)
   assert.match(workflow, /sea-n-shore-bootstrap/)
   assert.match(workflow, /\[\[ "\$COUNT" -eq 1 \]\]/)
   assert.match(workflow, /AWS-RunShellScript/)
