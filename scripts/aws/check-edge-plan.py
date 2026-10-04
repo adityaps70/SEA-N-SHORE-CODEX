@@ -2,13 +2,28 @@
 """Allow only bounded staging CloudFront, canonical-host redirect function and profile-upload WAF changes."""
 import copy
 import json
+import os
+import re
 import sys
 from pathlib import Path
 
 CACHE_POLICY_ID = '4135ea2d-6df8-44a3-9df3-4b5a84be39ad'
 ORIGIN_POLICY_ID = 'b689b0a8-53d0-40ab-baf2-68738e2966ac'
 FORWARDED_HOST = 'd3prih0q6jofyr.cloudfront.net'
-EXPECTED_CUSTOM_HEADERS = [{'name': 'X-Forwarded-Host', 'value': FORWARDED_HOST}]
+# Round 14 (1.4): CloudFront reaches the ALB only over HTTPS on the origin hostname, sending the
+# shared X-Origin-Verify secret (the ALB answers 403 without it). The secret is passed in by file
+# and never appears in an error message.
+ORIGIN_HOST = 'origin-staging.seaandshore.in'
+ORIGIN_VERIFY_HEADER = 'X-Origin-Verify'
+ORIGIN_VERIFY_PATTERN = re.compile(r'[A-Za-z0-9]{48}')
+
+
+def _sorted_headers(headers):
+    return sorted(headers or [], key=lambda header: str(header.get('name', '')))
+
+
+def expected_custom_headers(origin_verify):
+    return _sorted_headers([{'name': 'X-Forwarded-Host', 'value': FORWARDED_HOST}, {'name': ORIGIN_VERIFY_HEADER, 'value': origin_verify}])
 
 CANONICAL_HOST = 'seanshore.in'
 EXPECTED_ALIASES = [CANONICAL_HOST, 'www.' + CANONICAL_HOST]
@@ -275,8 +290,13 @@ def _only_function_arn_unknown(value):
     return set(value[0]) <= {'function_arn'} and value[0].get('function_arn') is True
 
 
-def validate(plan, origin, certificate_arn='', template_path=None):
+def validate(plan, origin, certificate_arn='', template_path=None, origin_verify=None):
     errors = []
+    if not isinstance(origin_verify, str) or not ORIGIN_VERIFY_PATTERN.fullmatch(origin_verify):
+        errors.append('Origin verify secret (48 letters/digits) required')
+        origin_verify = None
+    if origin != ORIGIN_HOST:
+        errors.append('Origin must be the dedicated HTTPS origin hostname')
     changes = {r['address']: r for r in plan.get('resource_changes', [])}
     for address, resource in changes.items():
         actions = resource.get('change', {}).get('actions', [])
@@ -346,10 +366,11 @@ def validate(plan, origin, certificate_arn='', template_path=None):
         errors.append('Unexpected origin')
     if len(origins) == 1:
         o = origins[0]
-        if o.get('custom_header') != EXPECTED_CUSTOM_HEADERS: errors.append('Exact trusted X-Forwarded-Host origin header required')
+        if origin_verify is None or _sorted_headers(o.get('custom_header')) != expected_custom_headers(origin_verify):
+            errors.append('Exact X-Origin-Verify and trusted X-Forwarded-Host origin headers required')
         if o.get('origin_path') not in [None,''] or o.get('origin_id') != 'sea-n-shore-staging-alb': errors.append('Origin path/id mismatch')
         custom = o.get('custom_origin_config', [])
-        if len(custom) != 1 or any(custom[0].get(k) != v for k,v in {'http_port':80,'https_port':443,'origin_protocol_policy':'http-only','origin_ssl_protocols':['TLSv1.2']}.items()): errors.append('Origin protocol/ports mismatch')
+        if len(custom) != 1 or any(custom[0].get(k) != v for k,v in {'http_port':80,'https_port':443,'origin_protocol_policy':'https-only','origin_ssl_protocols':['TLSv1.2']}.items()): errors.append('Origin protocol/ports mismatch (https-only required)')
     behavior = cf.get('default_cache_behavior', [])
     if len(behavior) != 1:
         errors.append('Default behavior missing')
@@ -372,7 +393,9 @@ def validate(plan, origin, certificate_arn='', template_path=None):
 
 if __name__ == '__main__':
     with open(sys.argv[1]) as f: plan = json.load(f)
-    errors = validate(plan, sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '')
+    verify_file = os.environ.get('EDGE_ORIGIN_VERIFY_FILE', '')
+    origin_verify = open(verify_file).read().strip() if verify_file else None
+    errors = validate(plan, sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else '', origin_verify=origin_verify)
     if errors:
         print('\n'.join(errors), file=sys.stderr)
         sys.exit(1)

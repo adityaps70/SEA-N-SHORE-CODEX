@@ -33,8 +33,14 @@ jq -e --arg app "$STATE_CF_ID" --arg legacy "$LEGACY_CF_ID" '([.DistributionList
 echo "LIVE_CLOUDFRONT_APP_DISTRIBUTION=$STATE_CF_ID"
 echo "LIVE_CLOUDFRONT_LEGACY_REDIRECT_DISTRIBUTION=$LEGACY_CF_ID"
 echo 'LIVE_CLOUDFRONT_DISTRIBUTIONS_VERIFIED=true'
-ORIGIN="$(aws elbv2 describe-load-balancers --names sea-n-shore-staging-alb --region ap-south-1 --query 'LoadBalancers[0].DNSName' --output text)"
-[[ "$ORIGIN" == sea-n-shore-staging-alb-*.ap-south-1.elb.amazonaws.com ]]
+# Round 14 (1.4): CloudFront reaches the ALB over HTTPS on its dedicated origin hostname with the
+# shared X-Origin-Verify secret. The secret goes to a private file for the plan check and the
+# post-apply comparison; it is never printed (the repository and its Actions logs are public).
+ORIGIN="origin-staging.seaandshore.in"
+aws secretsmanager get-secret-value --region ap-south-1 --secret-id sea-n-shore-staging/origin-verify \
+  --query SecretString --output text > "$RECOVERY_DIR/origin-verify"
+grep -Eq '^[A-Za-z0-9]{48}$' "$RECOVERY_DIR/origin-verify" || { echo 'Origin verify secret is missing or malformed.' >&2; exit 1; }
+export EDGE_ORIGIN_VERIFY_FILE="$RECOVERY_DIR/origin-verify"
 # The custom domain rides on the tracked seanshore.in certificate, which must already be ISSUED.
 CERT_ARN="$(jq -r '[.resources[] | select(.mode == "managed" and .type == "aws_acm_certificate" and .name == "seanshore_edge") | .instances[0].attributes.arn][0] // empty' "$RECOVERY_DIR/state.json")"
 [[ "$CERT_ARN" == arn:aws:acm:us-east-1:310356785722:certificate/* ]]
@@ -94,7 +100,7 @@ PLAN_EXIT=$?
 set -e
 if [[ "$PLAN_EXIT" != 0 ]]; then cat "$RECOVERY_DIR/plan.err" >&2; exit "$PLAN_EXIT"; fi
 terraform -chdir="$APP_DIR" show -json "$RECOVERY_DIR/edge.tfplan" > "$RECOVERY_DIR/plan.json"
-jq '{actions: [.resource_changes[] | {address, actions: .change.actions}], policies: [.planned_values.root_module.resources[]? | select(.mode == "data") | {address, values: {id: .values.id, name: .values.name}}], distribution: [.resource_changes[] | select(.address == "aws_cloudfront_distribution.app") | {after: (.change.after | {aliases, enabled, web_acl_id, origin, default_cache_behavior, viewer_certificate}), unknown: .change.after_unknown}], redirect_function: [.resource_changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") | {actions: .change.actions, after: (.change.after | {name, runtime, publish, comment}), unknown: .change.after_unknown}]}' "$RECOVERY_DIR/plan.json"
+jq '{actions: [.resource_changes[] | {address, actions: .change.actions}], policies: [.planned_values.root_module.resources[]? | select(.mode == "data") | {address, values: {id: .values.id, name: .values.name}}], distribution: [.resource_changes[] | select(.address == "aws_cloudfront_distribution.app") | {after: (.change.after | {aliases, enabled, web_acl_id, origin: [(.origin // [])[] | .custom_header = [(.custom_header // [])[] | {name, value: (if .name == "X-Origin-Verify" then "[redacted]" else .value end)}]], default_cache_behavior, viewer_certificate}), unknown: .change.after_unknown}], redirect_function: [.resource_changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") | {actions: .change.actions, after: (.change.after | {name, runtime, publish, comment}), unknown: .change.after_unknown}]}' "$RECOVERY_DIR/plan.json"
 aws cloudfront get-cache-policy --id 4135ea2d-6df8-44a3-9df3-4b5a84be39ad --output json > "$RECOVERY_DIR/cache-policy.json"
 jq -e '.CachePolicy.CachePolicyConfig | .MinTTL == 0 and .DefaultTTL == 0 and .MaxTTL == 0' "$RECOVERY_DIR/cache-policy.json" >/dev/null
 python3 scripts/aws/check-edge-plan.py "$RECOVERY_DIR/plan.json" "$ORIGIN" "$CERT_ARN"
@@ -172,7 +178,16 @@ jq -e --arg fn "$EXPECTED_FUNCTION_ARN" '.FunctionSummary | .FunctionMetadata.Fu
 echo 'CANONICAL_HOST_REDIRECT_FUNCTION_LIVE=true'
 DOMAIN="$(jq -r '.Distribution.DomainName' "$RECOVERY_DIR/live.json")"
 [[ "$DOMAIN" == "d3prih0q6jofyr.cloudfront.net" ]]
-jq -e --arg domain "$DOMAIN" '.Distribution.DistributionConfig.Origins | .Quantity == 1 and .Items[0].CustomHeaders.Quantity == 1 and .Items[0].CustomHeaders.Items[0].HeaderName == "X-Forwarded-Host" and .Items[0].CustomHeaders.Items[0].HeaderValue == $domain' "$RECOVERY_DIR/live.json" >/dev/null
+jq -e --arg domain "$DOMAIN" --arg origin "$ORIGIN" --rawfile verify "$RECOVERY_DIR/origin-verify" '
+  .Distribution.DistributionConfig.Origins
+  | .Quantity == 1
+    and .Items[0].DomainName == $origin
+    and .Items[0].CustomOriginConfig.OriginProtocolPolicy == "https-only"
+    and .Items[0].CustomHeaders.Quantity == 2
+    and ([.Items[0].CustomHeaders.Items[] | select(.HeaderName == "X-Forwarded-Host") | .HeaderValue] == [$domain])
+    and ([.Items[0].CustomHeaders.Items[] | select(.HeaderName == "X-Origin-Verify") | .HeaderValue] == [($verify | rtrimstr("\n"))])
+' "$RECOVERY_DIR/live.json" >/dev/null
+echo 'EDGE_HTTPS_ORIGIN_WITH_VERIFY_HEADER=true'
 
 aws wafv2 get-web-acl \
   --scope CLOUDFRONT \
@@ -269,10 +284,10 @@ WWW_LOCATION="$(curl --silent --show-error --max-time 45 --resolve "www.seanshor
 echo 'CUSTOM_DOMAIN_EDGE_VERIFIED; WWW_REDIRECT_VERIFIED'
 
 aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" --region ap-south-1 > "$RECOVERY_DIR/ecs-after.json"
-jq -e --slurpfile before "$RECOVERY_DIR/ecs-before.json" '.services[0] | .taskDefinition == $before[0].services[0].taskDefinition and .desiredCount == 1 and .runningCount == 1 and .pendingCount == 0 and all(.deployments[]; .rolloutState == "COMPLETED" and .failedTasks == 0)' "$RECOVERY_DIR/ecs-after.json" >/dev/null
+jq -e --slurpfile before "$RECOVERY_DIR/ecs-before.json" '.services[0] | .taskDefinition == $before[0].services[0].taskDefinition and .desiredCount == $before[0].services[0].desiredCount and .runningCount == .desiredCount and .pendingCount == 0 and all(.deployments[]; .rolloutState == "COMPLETED" and .failedTasks == 0)' "$RECOVERY_DIR/ecs-after.json" >/dev/null
 echo "CLOUDFRONT_ID=$CF_ID"
 echo "CLOUDFRONT_HTTPS_URL=https://$DOMAIN"
 echo "STATE_SERIAL_AFTER=$(jq -r '.serial' "$RECOVERY_DIR/state-after.json")"
-echo 'EDGE_FORWARDED_HOST_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; SEANSHORE_ALIASES_AND_CERTIFICATE_VERIFIED; ECS_UNCHANGED_AND_HEALTHY'
+echo 'EDGE_FORWARDED_HOST_VERIFIED; EDGE_HTTPS_ORIGIN_VERIFIED; PROFILE_UPLOAD_WAF_OVERRIDE_VERIFIED; PROFILE_MEDIA_XSS_EXCEPTION_VERIFIED; HTTPS_HEALTH_PASSED; HTTP_REDIRECT_PASSED; WAF_ATTACHED; SEANSHORE_ALIASES_AND_CERTIFICATE_VERIFIED; ECS_UNCHANGED_AND_HEALTHY'
 PRESERVE_RECOVERY=false
 rm -f .edge-recovery-preserve

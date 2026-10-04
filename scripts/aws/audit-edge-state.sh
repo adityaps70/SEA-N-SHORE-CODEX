@@ -224,7 +224,8 @@ while IFS= read -r certificate_arn; do
 done < <(jq -r '.CertificateSummaryList[].CertificateArn' "$EVIDENCE_DIR/certificates.json")
 echo "ACM_CERTIFICATE_COUNT=$(jq '.CertificateSummaryList | length' "$EVIDENCE_DIR/certificates.json")"
 aws route53 list-hosted-zones --output json | jq '[.HostedZones[] | {Id,Name,Config}]'
-aws cloudfront get-distribution --id EF1K45UVP11XZ --output json | jq '.Distribution | {Id,Status,Origins:.DistributionConfig.Origins,Aliases:.DistributionConfig.Aliases}'
+# Header names only: CloudFront's X-Origin-Verify value is the ALB origin secret (Round 14, 1.4).
+aws cloudfront get-distribution --id EF1K45UVP11XZ --output json | jq '.Distribution | {Id,Status,Origins:[.DistributionConfig.Origins.Items[]? | {Id,DomainName,CustomOriginConfig,CustomHeaderNames:[.CustomHeaders.Items[]?.HeaderName]}],Aliases:.DistributionConfig.Aliases}'
 # Only resource identities/protocol fields from state; never dump raw state or secrets.
 jq '[.resources[] | select(.mode == "managed" and (.type | test("^aws_(lb_listener|acm_certificate|route53_record)$"))) | {type,name,instances:[.instances[] | {id:.attributes.id,port:.attributes.port,protocol:.attributes.protocol,certificate_arn:.attributes.certificate_arn}]}]' "$STATE_JSON"
 echo "ORIGIN HTTPS READINESS INVENTORY COMPLETE"

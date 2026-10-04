@@ -60,3 +60,27 @@ test('the ALB origin forwards only with the secret header and is reachable from 
   assert.match(lockdown, /zone_id\s*=\s*aws_route53_zone\.seaandshore\.zone_id/)
   assert.match(main, /security_groups = \[aws_security_group\.alb\.id, aws_security_group\.alb_cloudfront\.id\]/)
 })
+
+test('stage B: CloudFront uses the HTTPS origin with the secret header, and no log can print it', async () => {
+  const edge = await read('../../infra/aws/app/edge.tf')
+  const recovery = await read('./edge-recovery.sh')
+  const audit = await read('./audit-edge-state.sh')
+  const checker = await read('./check-edge-plan.py')
+  assert.match(edge, /domain_name = var\.origin_tls_hostname/)
+  assert.match(edge, /name\s*=\s*"X-Origin-Verify"\s*\n\s*value = random_password\.origin_verify\.result/)
+  assert.match(edge, /origin_protocol_policy = "https-only"/)
+  assert.doesNotMatch(edge, /http-only|data "aws_lb" "edge_origin"/)
+  assert.match(checker, /'origin_protocol_policy':'https-only'/)
+  assert.match(checker, /EDGE_ORIGIN_VERIFY_FILE/)
+  // The edge runner reads the secret into a private file, passes it by file, and redacts it from
+  // the plan summary it prints; the post-apply check compares it without printing it.
+  assert.match(recovery, /ORIGIN="origin-staging\.seaandshore\.in"/)
+  assert.match(recovery, /export EDGE_ORIGIN_VERIFY_FILE="\$RECOVERY_DIR\/origin-verify"/)
+  assert.match(recovery, /if \.name == "X-Origin-Verify" then "\[redacted\]" else \.value end/)
+  assert.match(recovery, /--rawfile verify "\$RECOVERY_DIR\/origin-verify"/)
+  assert.doesNotMatch(recovery, /cat "\$RECOVERY_DIR\/origin-verify"|echo[^\n]*origin-verify/)
+  assert.match(recovery, /\.desiredCount == \$before\[0\]\.services\[0\]\.desiredCount and \.runningCount == \.desiredCount/)
+  assert.doesNotMatch(recovery, /\.desiredCount == 1 and/)
+  assert.match(audit, /CustomHeaderNames:\[\.CustomHeaders\.Items\[\]\?\.HeaderName\]/)
+  assert.doesNotMatch(audit, /Origins:\.DistributionConfig\.Origins/)
+})
