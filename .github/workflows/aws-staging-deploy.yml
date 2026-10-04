@@ -143,6 +143,9 @@ jobs:
       AURORA_PORT: "5432"
       AURORA_DATABASE: sea_n_shore
       AURORA_SECRET_ARN: arn:aws:secretsmanager:ap-south-1:310356785722:secret:rds!cluster-7bd593b0-cb50-4dbb-9e93-6e7bbb6d3fc1-mL7X5H
+      # Round 14 (2.12): the least-privilege app role's own rotated secret. Set together with
+      # scripts/aws/aurora-app-credentials.txt = app at cutover; "master" keeps the master secret.
+      AURORA_APP_SECRET_ARN: ""
       DEPLOY_TO_ECS: ${{ needs.gate.outputs.deploy_to_ecs }}
 
     steps:
@@ -267,14 +270,32 @@ jobs:
           echo "- Origins: \`$SERVER_ACTION_ALLOWED_ORIGINS\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Method/header: \`PUT / Content-Type\`" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Resolve database credentials
+        if: env.DEPLOY_TO_ECS == 'true'
+        run: |
+          set -euo pipefail
+          MODE="$(tr -d '[:space:]' < scripts/aws/aurora-app-credentials.txt)"
+          case "$MODE" in
+            master) DB_CREDENTIALS_SECRET_ARN="$AURORA_SECRET_ARN" ;;
+            app)
+              [[ "$AURORA_APP_SECRET_ARN" =~ ^arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore-staging/aurora-app-[A-Za-z0-9]{6}$ ]] \
+                || { echo "aurora-app-credentials.txt says app but AURORA_APP_SECRET_ARN is not the app secret." >&2; exit 1; }
+              DB_CREDENTIALS_SECRET_ARN="$AURORA_APP_SECRET_ARN"
+              ;;
+            *) echo "Unsupported database credentials mode: $MODE" >&2; exit 1 ;;
+          esac
+          echo "DB_CREDENTIALS_MODE=$MODE" >> "$GITHUB_ENV"
+          echo "DB_CREDENTIALS_SECRET_ARN=$DB_CREDENTIALS_SECRET_ARN" >> "$GITHUB_ENV"
+          echo "DATABASE_CREDENTIALS_MODE=$MODE"
+
       - name: Create new ECS task definition revision
         if: env.DEPLOY_TO_ECS == 'true'
         env:
           IMAGE_URI: ${{ steps.image.outputs.uri }}
         run: |
           set -euo pipefail
-          AURORA_USER_SECRET="${AURORA_SECRET_ARN}:username::"
-          AURORA_PASSWORD_SECRET="${AURORA_SECRET_ARN}:password::"
+          AURORA_USER_SECRET="${DB_CREDENTIALS_SECRET_ARN}:username::"
+          AURORA_PASSWORD_SECRET="${DB_CREDENTIALS_SECRET_ARN}:password::"
 
           aws ecs describe-task-definition \
             --task-definition "$ECS_TASK_DEFINITION" \
@@ -295,6 +316,7 @@ jobs:
             --arg AURORA_DATABASE "$AURORA_DATABASE" \
             --arg AURORA_USER_SECRET "$AURORA_USER_SECRET" \
             --arg AURORA_PASSWORD_SECRET "$AURORA_PASSWORD_SECRET" \
+            --arg DB_CREDENTIALS_SECRET_ARN "$DB_CREDENTIALS_SECRET_ARN" \
             '
             del(
               .taskDefinitionArn,
@@ -326,6 +348,7 @@ jobs:
                             and .name != "AURORA_PORT"
                             and .name != "AURORA_DATABASE"
                             and .name != "AURORA_SSL"
+                            and .name != "AURORA_SECRET_ARN"
                           )))
                       + [
                           {"name":"NEXT_PUBLIC_SITE_URL","value":$SITE},
@@ -336,7 +359,8 @@ jobs:
                           {"name":"AURORA_HOST","value":$AURORA_HOST},
                           {"name":"AURORA_PORT","value":$AURORA_PORT},
                           {"name":"AURORA_DATABASE","value":$AURORA_DATABASE},
-                          {"name":"AURORA_SSL","value":"true"}
+                          {"name":"AURORA_SSL","value":"true"},
+                          {"name":"AURORA_SECRET_ARN","value":$DB_CREDENTIALS_SECRET_ARN}
                         ]
                     )
                   | .secrets = (
@@ -391,10 +415,16 @@ jobs:
         run: |
           set -euo pipefail
 
+          # Round 14 (2.7): the outbox worker's daily abandoned sign-up sweep needs the user pool id,
+          # taken from the web task definition this deploy just copied.
+          COGNITO_USER_POOL_ID="$(jq -r --arg NAME "$ECS_CONTAINER_NAME" '.containerDefinitions[] | select(.name == $NAME) | .environment[]? | select(.name == "AWS_COGNITO_USER_POOL_ID") | .value' task-definition-current.json)"
+          [[ "$COGNITO_USER_POOL_ID" =~ ^ap-south-1_[A-Za-z0-9]+$ ]] || { echo "Web task definition has no Cognito user pool id." >&2; exit 1; }
+
           promote_worker() {
             local family="$1"
             local container_name="$2"
             local output_name="$3"
+            local extra_environment="$4"
             local current_file="/tmp/${container_name}-current.json"
             local next_file="/tmp/${container_name}-next.json"
 
@@ -403,9 +433,18 @@ jobs:
               --query taskDefinition \
               --output json > "$current_file"
 
+            # Round 14 (2.12): the workers use the same database credentials as the web task; with the
+            # app role they also get AURORA_SECRET_ARN so they reload the secret after a rotation.
+            if [[ "$DB_CREDENTIALS_MODE" == app ]]; then
+              extra_environment="$(jq -c --arg ARN "$DB_CREDENTIALS_SECRET_ARN" '. + [{"name":"AURORA_SECRET_ARN","value":$ARN}]' <<<"$extra_environment")"
+            fi
+
             jq \
               --arg IMAGE "$WORKER_EXPECTED_IMAGE_URI" \
               --arg NAME "$container_name" \
+              --arg AURORA_USER_SECRET "${DB_CREDENTIALS_SECRET_ARN}:username::" \
+              --arg AURORA_PASSWORD_SECRET "${DB_CREDENTIALS_SECRET_ARN}:password::" \
+              --argjson EXTRA_ENVIRONMENT "$extra_environment" \
               '
               del(
                 .taskDefinitionArn,
@@ -417,7 +456,20 @@ jobs:
                 .registeredBy
               )
               | .containerDefinitions |= map(
-                  if .name == $NAME then .image = $IMAGE else . end
+                  if .name == $NAME then
+                    .image = $IMAGE
+                    | .environment = (
+                        ((.environment // []) | map(select(.name as $n | ($EXTRA_ENVIRONMENT | map(.name) | index($n)) == null and $n != "AURORA_SECRET_ARN")))
+                        + $EXTRA_ENVIRONMENT
+                      )
+                    | .secrets = (
+                        ((.secrets // []) | map(select(.name != "AURORA_USER" and .name != "AURORA_PASSWORD")))
+                        + [
+                            {"name":"AURORA_USER","valueFrom":$AURORA_USER_SECRET},
+                            {"name":"AURORA_PASSWORD","valueFrom":$AURORA_PASSWORD_SECRET}
+                          ]
+                      )
+                  else . end
                 )
               ' "$current_file" > "$next_file"
 
@@ -431,8 +483,9 @@ jobs:
             echo "$output_name=$task_arn" >> "$GITHUB_ENV"
           }
 
-          promote_worker "$OUTBOX_WORKER_TASK_DEFINITION" "outbox-worker" "OUTBOX_WORKER_TASK_ARN"
-          promote_worker "$NOTIFICATION_WORKER_TASK_DEFINITION" "notification-worker" "NOTIFICATION_WORKER_TASK_ARN"
+          promote_worker "$OUTBOX_WORKER_TASK_DEFINITION" "outbox-worker" "OUTBOX_WORKER_TASK_ARN" \
+            "$(jq -cn --arg POOL "$COGNITO_USER_POOL_ID" '[{"name":"AWS_COGNITO_USER_POOL_ID","value":$POOL}]')"
+          promote_worker "$NOTIFICATION_WORKER_TASK_DEFINITION" "notification-worker" "NOTIFICATION_WORKER_TASK_ARN" '[]'
 
       - name: Deploy event workers and wait for stability
         if: env.DEPLOY_TO_ECS == 'true'

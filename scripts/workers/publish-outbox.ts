@@ -4,6 +4,7 @@ import { deletedPostRetention } from '../../src/features/feed/deleted-post-reten
 import { createNewsletterWorker } from '../../src/features/newsletter/worker'
 import { createLegacyInviteWorker } from '../../src/features/legacy-invites/sending'
 import { subscriptionService } from '../../src/features/billing/subscription-service'
+import { createUnconfirmedUserCleanup } from '../../src/features/auth/unconfirmed-user-cleanup'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -24,6 +25,10 @@ const legacyInviteWorker = createLegacyInviteWorker()
 // charges in merchant charge mode. Hourly; the job is idempotent.
 const BILLING_SWEEP_MS = 60 * 60 * 1000
 let nextBillingSweepAt = 0
+// Round 14 (2.7): abandoned sign-ups older than 24 h, once a day (needs the Cognito pool id).
+const UNCONFIRMED_USER_SWEEP_MS = 24 * 60 * 60 * 1000
+let nextUnconfirmedUserSweepAt = 0
+const unconfirmedUserCleanup = process.env.AWS_COGNITO_USER_POOL_ID ? createUnconfirmedUserCleanup() : null
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -98,6 +103,19 @@ async function runBillingSweepIfDue() {
   }
 }
 
+async function runUnconfirmedUserSweepIfDue() {
+  const now = Date.now()
+  if (!unconfirmedUserCleanup || now < nextUnconfirmedUserSweepAt) return
+  nextUnconfirmedUserSweepAt = now + UNCONFIRMED_USER_SWEEP_MS
+
+  try {
+    const result = await unconfirmedUserCleanup.run()
+    console.info('[unconfirmed_user_sweep]', result)
+  } catch (error) {
+    console.error('[unconfirmed_user_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   while (!stopping) {
     try {
@@ -107,6 +125,7 @@ async function main() {
       await runNewsletterSweepIfDue()
       await runLegacyInviteSweepIfDue()
       await runBillingSweepIfDue()
+      await runUnconfirmedUserSweepIfDue()
       if (result.claimed === 0) await sleep(1000)
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

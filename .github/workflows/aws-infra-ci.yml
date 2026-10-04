@@ -83,6 +83,10 @@ jobs:
         run: node --test scripts/aws/realtime-typing-infra.test.mjs
       - name: Verify private migration relocate release contract
         run: node --test scripts/aws/private-migration-relocate.test.mjs
+      - name: Verify account security release contract
+        run: node --test scripts/aws/account-security-infra.test.mjs
+      - name: Verify app database role migration contract
+        run: node --test scripts/aws/app-database-role-migration.test.mjs
       - name: Verify Cognito custom domain release contract
         run: node --test scripts/aws/cognito-custom-domain-infra.test.mjs
       - name: Verify Cognito Google/native repair contract
@@ -270,6 +274,8 @@ jobs:
         run: node --test scripts/aws/realtime-authorizer-origins.test.mjs
       - name: Verify realtime typing token check in the connection Lambda
         run: node --test scripts/aws/realtime-typing-lambda.test.mjs
+      - name: Verify the app database secret rotation Lambda
+        run: node --test scripts/aws/aurora-app-secret-rotation.test.mjs
       - name: Verify live Google auth probe contract
         run: node --test scripts/aws/google-auth-live-probe.test.mjs
 
