@@ -50,7 +50,15 @@ const nextConfig: NextConfig = {
     maximumDiskCacheSize: 2 * 1024 * 1024 * 1024,
   },
   async headers() {
-    return [{ source: '/(.*)', headers: securityHeaders }]
+    // Round 14 (3.1): public brand and landing images are not content-hashed, so the browser and
+    // CloudFront keep them for a day and refresh them in the background for a week after that.
+    const publicAssetCache = [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }]
+    return [
+      { source: '/(.*)', headers: securityHeaders },
+      { source: '/brand/:path*', headers: publicAssetCache },
+      { source: '/landing/:path*', headers: publicAssetCache },
+      { source: '/favicon.ico', headers: publicAssetCache },
+    ]
   },
 }
 

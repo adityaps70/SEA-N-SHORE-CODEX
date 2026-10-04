@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { Check, Clock3, Loader2, LogOut, Plus } from 'lucide-react'
 import { cn } from '@/lib/cn'
@@ -33,7 +32,6 @@ export function GroupMembershipButton({
   className?: string
 }) {
   const needsApproval = (joinPolicy ?? (visibility === 'private' ? 'approval' : 'open')) === 'approval'
-  const router = useRouter()
   const [status, setStatus] = useState<MembershipStatus | null>(initialStatus)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
@@ -53,7 +51,6 @@ export function GroupMembershipButton({
         return
       }
       setStatus(result.status)
-      router.refresh()
     })
   }
 
@@ -70,7 +67,6 @@ export function GroupMembershipButton({
         return
       }
       setStatus(null)
-      router.refresh()
     })
   }
 

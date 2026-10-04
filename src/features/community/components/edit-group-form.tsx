@@ -39,8 +39,8 @@ export function EditGroupForm({ group, doneHref }: { group: CommunityGroup; done
         return
       }
       setSaved(true)
+      // updateGroup revalidated /community/[slug], so the page we return to is already fresh.
       router.push(doneHref)
-      router.refresh()
     })
   }
 

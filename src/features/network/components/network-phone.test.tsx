@@ -57,7 +57,8 @@ describe('phone network surfaces', () => {
     await user.click(screen.getByRole('button', { name: 'Accept invitation from Capt. Meera Nair' }))
     await waitFor(() => expect(mocks.acceptConnectionRequest).toHaveBeenCalledWith(connectionId))
     expect(await screen.findByRole('status')).toHaveTextContent('Connected')
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('declines an invitation from the round ✕ button', async () => {

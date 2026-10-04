@@ -17,7 +17,10 @@ export const metadata: Metadata = {
   title: 'Pricing',
   description: `${BUSINESS.brandName} plans and prices in Indian rupees: free membership, Creator Pro and Organization Pro.`,
 }
-// Prices come from the database (plan_prices) on every request.
+// Rendered per request (Round 14, 3.8 kept this dynamic on purpose): the buy buttons follow the
+// visitor's session and the per-request Report-Only CSP nonce (src/proxy.ts) is only stamped on
+// dynamically rendered pages. Prices come from a shared five-minute cache of plan_prices
+// (features/billing/plan-price-cache.ts) that an admin price change expires at once.
 export const dynamic = 'force-dynamic'
 
 async function isSignedIn() {

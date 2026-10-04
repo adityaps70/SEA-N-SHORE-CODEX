@@ -155,6 +155,13 @@ export function createNotificationQueries(input: {
     return hydrate(user.id, rows)
   }
 
+  /** Round 14 (3.9): the header badge only needs this one count (notifications_recipient_read_created_idx). */
+  async function getUnreadNotificationCount(): Promise<number> {
+    const user = await input.requireUser()
+    return input.repository.countUnread(user.id)
+  }
+
+  /** The bell panel's recent list and count, loaded when the panel opens. */
   async function getNotificationChrome(): Promise<NotificationChrome> {
     const user = await input.requireUser()
     const [rows, unreadCount] = await Promise.all([
@@ -164,7 +171,7 @@ export function createNotificationQueries(input: {
     return { recent: await hydrate(user.id, rows), unreadCount }
   }
 
-  return { getNotifications, getNotificationChrome }
+  return { getNotifications, getNotificationChrome, getUnreadNotificationCount }
 }
 
 const productionQueries = createNotificationQueries({
@@ -175,3 +182,4 @@ const productionQueries = createNotificationQueries({
 
 export const getNotifications = productionQueries.getNotifications
 export const getNotificationChrome = productionQueries.getNotificationChrome
+export const getUnreadNotificationCount = productionQueries.getUnreadNotificationCount

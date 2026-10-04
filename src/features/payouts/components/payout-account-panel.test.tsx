@@ -38,7 +38,8 @@ describe('PayoutAccountPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save payout details' }))
     expect(await screen.findByRole('status')).toHaveTextContent('Payout details saved.')
     expect(mocks.save).toHaveBeenCalledWith(key, { method: 'bank', holderName: 'Arjun Rao', accountNumber: '00011020001772', confirmAccountNumber: '00011020001772', ifsc: 'hdfc0000001', vpa: '' })
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('switches to UPI and shows field errors from the server', async () => {

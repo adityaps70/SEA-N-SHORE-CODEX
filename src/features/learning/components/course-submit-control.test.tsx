@@ -75,7 +75,8 @@ describe('CourseSubmitControl', () => {
 
     await waitFor(() => expect(mocks.submitCourseForReview).toHaveBeenCalledWith(courseId, null))
     expect(await screen.findByText(/submitted for review with your latest changes/i)).toBeInTheDocument()
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
     expect(mocks.push).not.toHaveBeenCalled()
   })
 

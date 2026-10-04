@@ -19,7 +19,7 @@ describe('messaging navigation', () => {
   it('adds Messages to the desktop primary navigation with the exact unread count', () => {
     render(
       <AppHeader
-        recentNotifications={[]}
+       
         unreadCount={0}
         messagingUnreadCount={27}
       />,
@@ -32,7 +32,7 @@ describe('messaging navigation', () => {
   it('updates the desktop Messages badge immediately from exact unread-count events', () => {
     render(
       <AppHeader
-        recentNotifications={[]}
+       
         unreadCount={0}
         messagingUnreadCount={3}
       />,

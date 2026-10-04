@@ -1,5 +1,6 @@
 import { createEventBridgePublisher } from '../../src/lib/aws/eventbridge'
 import { createOutboxPublisher } from '../../src/features/events/outbox-publisher'
+import { outboxIdleDelayMs } from '../../src/features/events/outbox-backoff'
 import { deletedPostRetention } from '../../src/features/feed/deleted-post-retention'
 import { createNewsletterWorker } from '../../src/features/newsletter/worker'
 import { createLegacyInviteWorker } from '../../src/features/legacy-invites/sending'
@@ -117,16 +118,20 @@ async function runUnconfirmedUserSweepIfDue() {
 }
 
 async function main() {
+  // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
+  // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
+  let consecutiveIdleBatches = 0
   while (!stopping) {
     try {
       const result = await publisher.publishBatch(10)
-      console.info('[social_outbox_batch]', result)
+      if (result.claimed > 0) console.info('[social_outbox_batch]', result)
+      consecutiveIdleBatches = result.claimed === 0 ? consecutiveIdleBatches + 1 : 0
       await runRetentionSweepIfDue()
       await runNewsletterSweepIfDue()
       await runLegacyInviteSweepIfDue()
       await runBillingSweepIfDue()
       await runUnconfirmedUserSweepIfDue()
-      if (result.claimed === 0) await sleep(1000)
+      if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {
       console.error('[social_outbox_error]', error instanceof Error ? error.message : 'unknown_error')

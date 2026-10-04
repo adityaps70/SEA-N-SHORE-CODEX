@@ -232,7 +232,8 @@ describe('header card (round 11)', () => {
     expect(data.get('currentCompany')).toBe('')
     expect(data.get('persona')).toBe('maritime_enthusiast')
     await waitFor(() => expect(screen.queryByRole('form', { name: 'Edit basic information' })).not.toBeInTheDocument())
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Edit basic information' })).toHaveFocus()
   })
 
@@ -442,7 +443,8 @@ describe('Organizations card', () => {
     await waitFor(() => expect(mocks.updateProfileCurrentOrganization).toHaveBeenCalledTimes(1))
     expect(lastFormData(mocks.updateProfileCurrentOrganization).get('currentOrganization')).toBe('66666666-6666-4666-8666-666666666666')
     await waitFor(() => expect(screen.queryByRole('radio', { name: /Blue Anchor Marine/ })).not.toBeInTheDocument())
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('marks a linked current organization that the member belongs to', () => {

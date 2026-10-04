@@ -199,7 +199,6 @@ export function OrganizationApplicationForm(props: OrganizationApplicationFormPr
           : props.mode === 'claim'
             ? 'Claim sent. Sea N Shore will review it and you will see the result on your Organizations page.'
             : 'Changes sent. Sea N Shore will review the updated details.')
-        router.refresh()
       } catch {
         setIsError(true)
         setFieldErrors({})
