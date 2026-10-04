@@ -301,7 +301,9 @@ def _only_function_arn_unknown(value):
 
 
 def _only_grpc_enabled_unknown(value):
-    """Accept only an unknown gRPC enabled flag (provider-computed) and nothing else in the block."""
+    """Accept a provider-computed gRPC block: wholly unknown, or only its enabled flag unknown."""
+    if value is True:
+        return True
     if not isinstance(value, list) or len(value) > 1:
         return False
     return all(isinstance(item, dict) and set(item) <= {'enabled'} for item in value)
@@ -462,7 +464,8 @@ def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_c
                 continue
             if f == 'grpc_config' and _only_grpc_enabled_unknown(value) and not _grpc_enabled(behavior):
                 continue
-            errors.append('Unknown safety field in ordered behavior ' + path + ': ' + f)
+            # The unknown markers are booleans only, so printing them exposes no values.
+            errors.append('Unknown safety field in ordered behavior ' + path + ': ' + f + '=' + json.dumps(value))
         expected_policy = CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else image_policy_id
         if behavior.get('cache_policy_id') != expected_policy and not (policy == 'next_image' and image_policy_created and behavior.get('cache_policy_id') in [None, '']):
             errors.append('Cache policy mismatch for ' + path)
