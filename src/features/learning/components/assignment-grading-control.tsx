@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react'
 import { CheckCircle2, Loader2, RotateCcw } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { gradeAssignmentAttempt } from '../assignment-grading-actions'
 
 type GradeDecision = 'pass' | 'needs_revision'
@@ -12,7 +11,6 @@ export function AssignmentGradingControl({ attemptId, maxPoints, passingPercenta
   maxPoints: number
   passingPercentage: number
 }) {
-  const router = useRouter()
   const [score, setScore] = useState('')
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -48,11 +46,7 @@ export function AssignmentGradingControl({ attemptId, maxPoints, passingPercenta
         trimmedFeedback || null,
         decision,
       )
-      if (!result.ok) {
-        setError(result.error)
-        return
-      }
-      router.refresh()
+      if (!result.ok) setError(result.error)
     })
   }
 

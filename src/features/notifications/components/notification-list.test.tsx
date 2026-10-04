@@ -207,8 +207,9 @@ describe('NotificationList on phones', () => {
 
     expect(screen.queryByRole('button', { name: /commented on your post/ })).not.toBeInTheDocument()
     await waitFor(() => expect(mocks.deleteNotification).toHaveBeenCalledWith(notification.id))
-    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
+    // Round 14 (3.9): deleteNotification revalidates /notifications, so no extra route refresh.
     expect(screen.getByRole('button', { name: /mentioned you/ })).toBeInTheDocument()
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('restores the row and explains when the delete fails', async () => {

@@ -74,13 +74,11 @@ export function ScormPlayer({
         return
       }
       lastErrorRef.current = '0'
-      if (result.completed) {
-        setCompleted(true)
-        router.refresh()
-      }
+      // A completing commit revalidates the lesson page, which re-renders it.
+      if (result.completed) setCompleted(true)
     })()
     return 'true'
-  }, [attemptId, router, slug])
+  }, [attemptId, slug])
 
   useEffect(() => {
     if (!started) return

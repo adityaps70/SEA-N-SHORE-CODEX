@@ -13,7 +13,7 @@ afterEach(() => cleanup())
 
 describe('primary navigation layout', () => {
   it('shows seven desktop destinations with Community in place of the old More menu', () => {
-    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+    render(<AppHeader unreadCount={0} />)
 
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' })
     const links = primaryNav.querySelectorAll('a')
@@ -27,7 +27,7 @@ describe('primary navigation layout', () => {
   })
 
   it('keeps My Activities and Saved posts out of the account menu (they live in Settings and on Home)', () => {
-    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+    render(<AppHeader unreadCount={0} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
 
@@ -37,7 +37,7 @@ describe('primary navigation layout', () => {
   })
 
   it('turns Create into a menu of the five things a member can publish', () => {
-    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+    render(<AppHeader unreadCount={0} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Create' }))
 
@@ -59,7 +59,7 @@ describe('primary navigation layout', () => {
   })
 
   it('pins the desktop header to the top of the viewport and centres the navigation', () => {
-    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+    render(<AppHeader unreadCount={0} />)
 
     expect(screen.getByRole('banner')).toHaveClass('fixed', 'top-0', 'z-50')
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' })
@@ -68,7 +68,7 @@ describe('primary navigation layout', () => {
   })
 
   it('gives tablets (md to lg), which have no search field, a search icon link instead', () => {
-    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+    render(<AppHeader unreadCount={0} />)
 
     const icon = screen.getByRole('link', { name: 'Search' })
     expect(icon).toHaveAttribute('href', '/search')
@@ -77,7 +77,7 @@ describe('primary navigation layout', () => {
   })
 
   it('keeps the desktop search narrow enough to never clip the navigation', () => {
-    render(<AppHeader recentNotifications={[]} unreadCount={0} />)
+    render(<AppHeader unreadCount={0} />)
 
     expect(screen.getByRole('searchbox', { name: 'Search Sea N Shore' })).toHaveClass('min-h-10', 'w-44', 'xl:w-56', '2xl:w-[22rem]')
   })

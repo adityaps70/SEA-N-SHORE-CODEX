@@ -17,11 +17,12 @@ import {
   isOwnedPostMediaStoragePath,
   validatePostMediaMetadata,
 } from './media-policy'
-import { getFeedPage, getPostById } from './queries'
+import { getFeedPage, getMyActivityPosts, getMyCommentActivity, getPostById } from './queries'
 import {
   commentInputSchema,
   createPostInputSchema,
   deleteCommentInputSchema,
+  feedCursorSchema,
   feedRequestSchema,
   pollVoteSchema,
   reactionDetailsSchema,
@@ -51,7 +52,7 @@ import {
   updateCommentWithAurora,
   updatePostWithAurora,
 } from './service'
-import { POST_CATEGORIES, type FeedComment, type FeedPost, type FeedRequest, type PostCategory, type PostReactionType } from './types'
+import { POST_CATEGORIES, type FeedComment, type FeedCursor, type FeedPost, type FeedRequest, type PostCategory, type PostReactionType } from './types'
 
 export type FeedActionResult = { ok: true } | { ok: false; error: string }
 export type RepostActionResult = { ok: true; postId: string } | { ok: false; error: string }
@@ -415,6 +416,22 @@ export async function loadFeedPage(input: FeedRequest) {
   if (!parsed.success) return { ok: false as const, error: 'The next feed page request was invalid.' }
   try { return { ok: true as const, page: await getFeedPage(parsed.data) } }
   catch { return { ok: false as const, error: 'We could not load more posts.' } }
+}
+
+/** Round 14 (3.7): the next 20 of the member's own posts on My Activities › Posts. */
+export async function loadMyActivityPostsPage(input: { cursor: FeedCursor }) {
+  const cursor = feedCursorSchema.safeParse(input?.cursor)
+  if (!cursor.success) return { ok: false as const, error: 'The next page request was invalid.' }
+  try { return { ok: true as const, page: await getMyActivityPosts(cursor.data) } }
+  catch { return { ok: false as const, error: 'We could not load more posts.' } }
+}
+
+/** Round 14 (3.7): the next 20 posts the member commented on, for My Activities › Comments. */
+export async function loadMyCommentActivityPage(input: { cursor: FeedCursor }) {
+  const cursor = feedCursorSchema.safeParse(input?.cursor)
+  if (!cursor.success) return { ok: false as const, error: 'The next page request was invalid.' }
+  try { return { ok: true as const, page: await getMyCommentActivity(cursor.data) } }
+  catch { return { ok: false as const, error: 'We could not load more comments.' } }
 }
 
 export async function loadReactionDetails(input: unknown) {

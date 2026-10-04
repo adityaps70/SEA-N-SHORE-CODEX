@@ -107,6 +107,7 @@ describe('DG profile upload', () => {
     await user.click(screen.getByRole('button', { name: 'Remove DG profile' }))
     await waitFor(() => expect(screen.getByText('Your DG profile has been removed.')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Add DG profile PDF' })).toBeInTheDocument()
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 })

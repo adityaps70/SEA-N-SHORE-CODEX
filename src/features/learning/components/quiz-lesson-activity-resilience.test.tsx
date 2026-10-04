@@ -114,7 +114,8 @@ describe('QuizLessonActivity resilience', () => {
     const secondKey = mocks.submitLearningQuiz.mock.calls[1]?.[3]
     expect(firstKey).toMatch(uuidPattern)
     expect(secondKey).toBe(firstKey)
-    expect(mocks.refresh).toHaveBeenCalledOnce()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('starts a fresh submission UUID only after a persisted failed attempt and explicit learner retry', async () => {

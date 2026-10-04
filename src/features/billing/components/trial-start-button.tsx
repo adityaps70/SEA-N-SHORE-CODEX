@@ -1,7 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { startPlanTrialAction } from '../actions'
 import type { PlanCheckoutTarget } from '../checkout-messages'
 
@@ -9,8 +8,6 @@ const primaryButton = 'inline-flex min-h-12 w-full cursor-pointer items-center j
 
 /** "Start free trial": switches the plan on at once, with no payment details. */
 export function TrialStartButton({ target, planLabel, months }: { target: PlanCheckoutTarget; planLabel: string; months: number }) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
 
@@ -21,7 +18,6 @@ export function TrialStartButton({ target, planLabel, months }: { target: PlanCh
       const outcome = await startPlanTrialAction({ target })
       if (outcome.ok) {
         setResult({ tone: 'ok', text: outcome.message })
-        startTransition(() => router.refresh())
       } else {
         setResult({ tone: 'error', text: outcome.error })
       }

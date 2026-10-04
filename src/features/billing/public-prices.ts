@@ -1,4 +1,4 @@
-import { subscriptionRepository } from './subscription-repository'
+import { listCachedActivePrices } from './plan-price-cache'
 import type { PlanPrice } from './subscription-types'
 
 export type PublicPlanPrices = { prices: PlanPrice[]; available: boolean }
@@ -7,11 +7,12 @@ export type PublicPlanPrices = { prices: PlanPrice[]; available: boolean }
 export const PUBLIC_PRICES_TIMEOUT_MS = 4000
 
 /**
- * Active plan prices for the public /pricing page. Never throws: when the prices cannot
- * be read in time, returns `available: false` so the page shows its fallback text.
+ * Active plan prices for the public landing and /pricing pages, from the shared five-minute
+ * cache (plan-price-cache.ts). Never throws: when the prices cannot be read in time, returns
+ * `available: false` so the page shows its fallback text.
  */
 export async function loadPublicPlanPrices({
-  listActivePrices = () => subscriptionRepository.listActivePrices(),
+  listActivePrices = listCachedActivePrices,
   timeoutMs = PUBLIC_PRICES_TIMEOUT_MS,
 }: {
   listActivePrices?: () => Promise<PlanPrice[]>

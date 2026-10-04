@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useCallback, useId, useRef, useState, useTransition } from 'react'
 import { Crown, MoreHorizontal, ShieldCheck, ShieldOff, UserMinus } from 'lucide-react'
 import { ActionMenu, ActionMenuItem, ActionMenuSeparator } from '@/components/ui/action-menu'
@@ -25,7 +24,6 @@ export function MemberActionsMenu({
   /** Only the group owner may hand the group over. */
   canTransferOwnership?: boolean
 }) {
-  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
@@ -40,9 +38,7 @@ export function MemberActionsMenu({
       const result = await work().catch(() => null)
       if (!result || !result.ok) {
         setError(result?.error ?? 'We could not update this member. Check your connection and try again.')
-        return
       }
-      router.refresh()
     })
   }
 

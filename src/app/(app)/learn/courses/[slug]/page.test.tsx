@@ -154,7 +154,8 @@ describe('/learn/courses/[slug]', () => {
     fireEvent.click(within(bar).getByRole('button', { name: 'Enroll free' }))
     await waitFor(() => expect(within(bar).getByRole('link', { name: /Continue learning/ })).toHaveAttribute('href', `/learn/courses/${freeCourse.slug}/learn`))
     expect(mocks.enrollInFreeCourse).toHaveBeenCalledWith(freeCourse.id)
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): enrollInFreeCourse revalidates, so the action response re-renders the page.
+    expect(mocks.refresh).not.toHaveBeenCalled()
 
     // Phone-only extras stay off desktop: the promo card and the trainer-credentials blurb are hidden on phones only.
     expect(screen.getByText('Quality standard').closest('section')).toHaveClass('max-md:hidden')
