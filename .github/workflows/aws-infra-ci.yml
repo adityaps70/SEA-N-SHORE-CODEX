@@ -232,6 +232,8 @@ jobs:
         run: npm run typecheck
       - name: Test
         run: npm test
+      - name: Verify worker imports load without the web environment
+        run: node --test scripts/workers/worker-imports.test.mjs
 
   terraform:
     name: Terraform validate
