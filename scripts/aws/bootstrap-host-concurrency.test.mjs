@@ -1,7 +1,10 @@
 // Round 14: one Terraform runner at a time on the bootstrap host (queued with flock, never cancelled),
 // tight path filters, signal-safe work-dir cleanup, and the runner fixes that came out of the congestion.
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 const read = (path) => readFileSync(path, 'utf8')
@@ -24,6 +27,7 @@ test('every Terraform runner (and disk maintenance) queues on one bootstrap host
   assert.match(lock, /exec 9>>"\$TERRAFORM_HOST_LOCK_FILE"/)
   assert.match(lock, /flock -w "\$TERRAFORM_HOST_LOCK_WAIT_SECONDS" 9 \|\|/)
   assert.doesNotMatch(lock, /flock -n|flock -u/)
+  assert.match(lock, /TMPDIR="\$\(mktemp -d \/var\/tmp\/sns-tf\.XXXXXX\)"\n  export TMPDIR/)
 
   for (const name of [...terraformRunners, 'bootstrap-disk-maintenance']) {
     const script = read(`scripts/aws/${name}.sh`)
@@ -83,4 +87,46 @@ test('the stale one-shot Aurora retention runner is retired and the Cognito admi
   assert.match(cognitoAdmin, /PUBLIC_SITE_URL="\$\(tr -d '\[:space:\]' < scripts\/aws\/public-site-url\.txt\)"/)
   assert.match(cognitoAdmin, /site_url = os\.environ\['PUBLIC_SITE_URL'\]/)
   assert.doesNotMatch(cognitoAdmin, /item\['name'\] == 'NEXT_PUBLIC_SITE_URL'/)
+})
+
+// Round 14: plans that hang are interrupted and retried once, and only operation names reach the disk.
+function runBoundedPlan(stubBody) {
+  const dir = mkdtempSync(join(tmpdir(), 'tf-bounded-'))
+  try {
+    writeFileSync(join(dir, 'terraform'), `#!/usr/bin/env bash\n${stubBody}\n`)
+    chmodSync(join(dir, 'terraform'), 0o755)
+    const helper = read('scripts/aws/bootstrap-terraform-lock.sh').split('TERRAFORM_PLAN_TIMEOUT_SECONDS="')[0].length
+    const source = read('scripts/aws/bootstrap-terraform-lock.sh').slice(helper)
+    const script = `set -euo pipefail\n${source}\nset +e\nterraform_plan_bounded "${dir}/plan.log" -chdir=x plan -out=y\necho "STATUS=$?"\ncat "${dir}/plan.log"\n`
+    return execFileSync('bash', ['-c', script], {
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, TERRAFORM_PLAN_TIMEOUT_SECONDS: '1' },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+test('Terraform plans on the host are bounded: interrupted, retried once, and never log bodies', () => {
+  const lock = read('scripts/aws/bootstrap-terraform-lock.sh')
+  assert.match(lock, /timeout --signal=INT --kill-after=120 "\$TERRAFORM_PLAN_TIMEOUT_SECONDS" terraform "\$@"/)
+  assert.match(lock, /TF_LOG_PATH=>\(grep --line-buffered -oE /)
+  for (const runner of ['multi-login-auth-infra', 'edge-recovery']) {
+    const script = read(`scripts/aws/${runner}.sh`)
+    assert.doesNotMatch(script, /^terraform -chdir="\$APP_DIR" plan /m, `${runner} has an unbounded plan`)
+    assert.match(script, /terraform_plan_bounded "\$[A-Z_]+\/[a-z-]+\.log" -chdir="\$APP_DIR" plan /)
+  }
+
+  const finished = runBoundedPlan('echo "[DEBUG] provider.terraform-provider-aws: HTTP Request Sent: rpc.method=DescribeUserPool secret=hunter2" >> "$TF_LOG_PATH"; echo "Plan: 0 to add"')
+  assert.match(finished, /STATUS=0/)
+  assert.match(finished, /Plan: 0 to add/)
+  assert.doesNotMatch(finished, /TIMED_OUT/)
+
+  const hung = runBoundedPlan('echo "[DEBUG] provider.terraform-provider-aws: HTTP Request Sent: rpc.method=DescribeUserPool secret=hunter2" >> "$TF_LOG_PATH"; sleep 30')
+  assert.match(hung, /TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=1/)
+  assert.match(hung, /TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=2/)
+  assert.match(hung, /TERRAFORM_PLAN_AWS_CALLS=1 rpc\.method=DescribeUserPool/)
+  assert.match(hung, /STATUS=124/)
+  assert.doesNotMatch(hung, /hunter2/)
 })

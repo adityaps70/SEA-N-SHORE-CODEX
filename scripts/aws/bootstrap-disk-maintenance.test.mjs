@@ -16,6 +16,12 @@ test('bootstrap disk maintenance is bounded to stale Sea N Shore temp directorie
   assert.match(script, /-name 'sea-n-shore-\*'/)
   assert.match(script, /-name 'sns-tf\.\*'/)
   assert.match(script, /-mmin \+"\$MIN_AGE_MINUTES"/)
+  // Round 14: /tmp is RAM-backed on the host; report memory and remove this user's stale Terraform leftovers there.
+  assert.match(script, /find \/tmp -mindepth 1 -maxdepth 1 -user "\$\(id -u\)"/)
+  assert.match(script, /-name 'terraform\*' -o -name 'plugin\*' -o -name 'tmp\.\*'/)
+  assert.match(script, /\/var\/tmp\/sea-n-shore-\*\|\/var\/tmp\/sns-tf\.\*\|\/tmp\/terraform\*\|\/tmp\/plugin\*\|\/tmp\/tmp\.\*\) ;;/)
+  assert.match(script, /BOOTSTRAP_MEM_AVAILABLE_MB=/)
+  assert.match(script, /BOOTSTRAP_TMP_USED_MB=/)
   assert.match(script, /pgrep -u "\$\(id -u\)" -x terraform/)
   assert.match(script, /rm -rf -- "\$path"/)
   assert.match(script, /TERRAFORM_STATE_UNCHANGED=true/)

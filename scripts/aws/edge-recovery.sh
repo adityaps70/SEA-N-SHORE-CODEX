@@ -92,13 +92,11 @@ for source, version in expected.items():
         raise SystemExit(f'Unexpected provider version for {source}: {found.group(1) if found else None}; expected {version}')
 PY
 echo 'EDGE_PROVIDER_LOCK_VERIFIED=true'
-set +e
-terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
+PLAN_EXIT=0
+terraform_plan_bounded "$RECOVERY_DIR/plan.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   -target=aws_cloudfront_distribution.app -target=aws_wafv2_web_acl.edge -target=aws_cloudfront_function.canonical_host_redirect \
   -var-file="$RECOVERY_DIR/variables.json" -out="$RECOVERY_DIR/edge.tfplan" \
-  > "$RECOVERY_DIR/plan.log" 2> "$RECOVERY_DIR/plan.err"
-PLAN_EXIT=$?
-set -e
+  2> "$RECOVERY_DIR/plan.err" || PLAN_EXIT=$?
 if [[ "$PLAN_EXIT" != 0 ]]; then cat "$RECOVERY_DIR/plan.err" >&2; exit "$PLAN_EXIT"; fi
 terraform -chdir="$APP_DIR" show -json "$RECOVERY_DIR/edge.tfplan" > "$RECOVERY_DIR/plan.json"
 jq '{actions: [.resource_changes[] | {address, actions: .change.actions}], policies: [.planned_values.root_module.resources[]? | select(.mode == "data") | {address, values: {id: .values.id, name: .values.name}}], distribution: [.resource_changes[] | select(.address == "aws_cloudfront_distribution.app") | {after: (.change.after | {aliases, enabled, web_acl_id, origin: [(.origin // [])[] | .custom_header = [(.custom_header // [])[] | {name, value: (if .name == "X-Origin-Verify" then "[redacted]" else .value end)}]], default_cache_behavior, viewer_certificate}), unknown: .change.after_unknown}], redirect_function: [.resource_changes[] | select(.address == "aws_cloudfront_function.canonical_host_redirect") | {actions: .change.actions, after: (.change.after | {name, runtime, publish, comment}), unknown: .change.after_unknown}]}' "$RECOVERY_DIR/plan.json"
