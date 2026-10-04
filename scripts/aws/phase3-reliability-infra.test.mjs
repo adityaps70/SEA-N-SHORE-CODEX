@@ -1,7 +1,10 @@
 // Round 14 Phase 3 (3.5, 3.11): guarded release path and Terraform contract for the Aurora floor,
 // backups, final snapshot, Performance Insights and web log retention.
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
@@ -29,6 +32,67 @@ test('the runner accepts only in-place updates of exactly the intended attribute
   assert.match(workflow, /name: AWS Phase 3 Reliability Infrastructure/)
   assert.match(workflow, /export PHASE3_RELIABILITY_EXPECTED_SHA=\{sha\}/)
   assert.match(ci, /node --test scripts\/aws\/phase3-reliability-infra\.test\.mjs/)
+})
+
+// Runs the runner's own plan classifier against a synthetic plan.
+const classifierStart = script.indexOf(`python3 - "$WORK_DIR/plan.json" <<'PY'\n`)
+const classifier = script.slice(script.indexOf('\n', classifierStart) + 1, script.indexOf('\nPY\n', classifierStart))
+
+const auroraChange = (scaling, overrides = {}, beforeOverrides = {}) => ({
+  address: 'aws_rds_cluster.aurora',
+  mode: 'managed',
+  change: {
+    actions: ['update'],
+    before: { backup_retention_period: 7, deletion_protection: true, serverlessv2_scaling_configuration: [{ min_capacity: 0, max_capacity: 4, seconds_until_auto_pause: 900 }], ...beforeOverrides },
+    after: { backup_retention_period: 14, deletion_protection: true, serverlessv2_scaling_configuration: scaling, ...overrides },
+    after_unknown: {},
+  },
+})
+const logGroupChange = {
+  address: 'aws_cloudwatch_log_group.app',
+  mode: 'managed',
+  change: { actions: ['update'], before: { retention_in_days: 14 }, after: { retention_in_days: 90 }, after_unknown: {} },
+}
+
+async function classify(resourceChanges) {
+  const dir = await mkdtemp(join(tmpdir(), 'phase3-plan-'))
+  try {
+    const planPath = join(dir, 'plan.json')
+    await writeFile(planPath, JSON.stringify({ resource_changes: resourceChanges }))
+    return spawnSync('python3', ['-', planPath], { input: classifier, encoding: 'utf8' })
+  } finally {
+    await rm(dir, { recursive: true, force: true })
+  }
+}
+
+test('the plan check accepts the 0.5 ACU floor even though the stored pause timer stays in the plan', async () => {
+  assert.ok(classifier.includes('allowed = {'))
+  const result = await classify([auroraChange([{ min_capacity: 0.5, max_capacity: 4, seconds_until_auto_pause: 900 }]), logGroupChange])
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /PHASE3_RELIABILITY_PLAN_CHANGES=2/)
+  assert.match(result.stdout, /AURORA_PLANNED_MIN_ACU=0\.5 AURORA_PLANNED_PAUSE_TIMER_IGNORED=900/)
+})
+
+test('the plan check still refuses a floor of 0, a missing floor, deletion protection off or a replace', async () => {
+  const refusals = [
+    [[auroraChange([{ min_capacity: 0, max_capacity: 4, seconds_until_auto_pause: 900 }])], /0\.5 ACU floor/],
+    [[auroraChange([{ min_capacity: 0, max_capacity: 4 }])], /0\.5 ACU floor/],
+    [[auroraChange([{ max_capacity: 4, seconds_until_auto_pause: 900 }])], /0\.5 ACU floor/],
+    [[auroraChange([])], /0\.5 ACU floor/],
+    [[auroraChange(null)], /0\.5 ACU floor/],
+    [[auroraChange([{ min_capacity: 0.5, max_capacity: 4 }], { deletion_protection: false }, { deletion_protection: false })], /deletion protection must stay on/],
+    [[{ ...logGroupChange, change: { ...logGroupChange.change, actions: ['delete', 'create'] } }], /unexpected phase 3 reliability change refused/],
+  ]
+  for (const [changes, message] of refusals) {
+    const result = await classify(changes)
+    assert.notEqual(result.status, 0, JSON.stringify(changes))
+    assert.match(result.stderr, message)
+  }
+})
+
+test('the post-apply check still requires the live 0.5 ACU floor', () => {
+  assert.match(script, /\.ServerlessV2ScalingConfiguration\.MinCapacity == 0\.5 and/)
+  assert.match(script, /\.BackupRetentionPeriod == 14 and \.DeletionProtection == true/)
 })
 
 test('Aurora keeps a 0.5 ACU floor, 14-day backups, a final snapshot and Performance Insights', () => {
