@@ -64,9 +64,9 @@ variable "certificate_arn" {
 }
 
 variable "allowed_ingress_cidrs" {
-  # Round 14 (1.4): empty. CloudFront reaches the ALB through alb_cloudfront (its origin-facing
-  # prefix list on 443); list CIDRs here only as a break-glass for direct HTTPS access.
-  description = "Extra CIDRs allowed to reach the ALB on 443 (break-glass; CloudFront needs none)."
+  # Round 14 (1.4): no longer used. The ALB's own group has no ingress; CloudFront reaches it through
+  # alb_cloudfront (the origin-facing prefix list on 443). Kept so existing variable files still load.
+  description = "Unused since Round 14 (1.4); the ALB accepts only CloudFront."
   type        = list(string)
   default     = []
 }
@@ -178,16 +178,9 @@ resource "aws_security_group" "alb" {
   description = "Public ingress to the Sea N Shore ALB"
   vpc_id      = aws_vpc.app.id
 
-  dynamic "ingress" {
-    for_each = length(var.allowed_ingress_cidrs) > 0 ? [1] : []
-    content {
-      description = "HTTPS (break-glass)"
-      from_port   = 443
-      to_port     = 443
-      protocol    = "tcp"
-      cidr_blocks = var.allowed_ingress_cidrs
-    }
-  }
+  # Round 14 (1.4): no direct ingress at all; CloudFront reaches the ALB through alb_cloudfront.
+  # An explicit empty list removes the old inline rules (zero dynamic blocks would leave them).
+  ingress = []
 
   egress {
     from_port   = 0
