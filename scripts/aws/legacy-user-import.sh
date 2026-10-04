@@ -7,7 +7,9 @@ EXPECTED_ACCOUNT="310356785722"
 AWS_REGION="${AWS_REGION:-ap-south-1}"
 CLUSTER="sea-n-shore-staging"
 SERVICE="sea-n-shore-staging-web"
-BUCKET="sea-n-shore-staging-310356785722-media"
+# Round 14 (2.13): the dump moved out of the media bucket. A re-run would also need the import
+# task to be granted read access to the migration bucket.
+BUCKET="sea-n-shore-staging-310356785722-migration"
 KEY="private-migrations/beaufortmarine.sql"
 EXPECTED_BYTES="13693941"
 EXPECTED_SHA256="f2a2b6b537b5ec1a373ec656409828d889a294aa3a0c7f5895165c1103430efd"

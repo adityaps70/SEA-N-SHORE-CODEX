@@ -49,6 +49,13 @@ export const KNOWN_ERROR_MESSAGES: Record<string, string> = {
   scorm_zip_too_large: 'That package is too large. Upload a smaller SCORM zip.',
   profile_media_type_unsupported: 'That image type is not supported. Use a JPG, PNG or WebP image.',
 
+  // Social action quotas (Round 14, 2.8)
+  network_connection_request_limit: "You've sent a lot of connection requests today. Please try again tomorrow.",
+  network_connection_request_cooldown: 'You can send this member a new request 7 days after your last one.',
+  feed_post_rate_limited: "You're posting very quickly. Please wait a little and try again.",
+  feed_comment_rate_limited: "You're commenting very quickly. Please wait a little and try again.",
+  feed_reaction_rate_limited: "You're reacting very quickly. Please wait a little and try again.",
+
   // Newsletter
   newsletter_rate_limited: 'Too many sign-up attempts from this connection. Please wait a few minutes and try again.',
   newsletter_sending_disabled: 'Newsletter sending is turned off until Amazon SES production access is configured.',

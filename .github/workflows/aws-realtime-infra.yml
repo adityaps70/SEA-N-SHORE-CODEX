@@ -6,10 +6,6 @@ on:
     branches:
       - feat/aws-native-phase-0-1
     paths:
-      - infra/aws/app/realtime.tf
-      - infra/aws/app/lambda/realtime-authorizer.mjs
-      - infra/aws/app/lambda/realtime-connection.mjs
-      - infra/aws/app/lambda/realtime-fanout.mjs
       - scripts/aws/realtime-infra.sh
       - scripts/aws/realtime-infra-action.txt
       - scripts/aws/realtime-infra-plan-classifier.mjs
