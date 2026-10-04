@@ -176,10 +176,10 @@ TARGETS=(
 PLAN_ARGS=()
 for target in "${TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
 
-terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
+terraform_plan_bounded "$WORK_DIR/plan.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   "${PLAN_ARGS[@]}" \
   -var-file="$WORK_DIR/variables.json" \
-  -out="$WORK_DIR/auth.tfplan" > "$WORK_DIR/plan.log"
+  -out="$WORK_DIR/auth.tfplan"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/auth.tfplan" > "$WORK_DIR/plan.json"
 
 cat > "$WORK_DIR/classify-plan.py" <<'PY'
@@ -328,10 +328,10 @@ SENDER_TARGETS=(
 )
 SENDER_ARGS=()
 for target in "${SENDER_TARGETS[@]}"; do SENDER_ARGS+=("-target=$target"); done
-terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
+terraform_plan_bounded "$WORK_DIR/plan-sender.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   "${SENDER_ARGS[@]}" \
   -var-file="$WORK_DIR/variables.json" \
-  -out="$WORK_DIR/sender.tfplan" > "$WORK_DIR/plan-sender.log"
+  -out="$WORK_DIR/sender.tfplan"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/sender.tfplan" > "$WORK_DIR/plan-sender.json"
 python3 "$WORK_DIR/classify-plan.py" "$WORK_DIR/plan-sender.json" > "$WORK_DIR/plan-sender-classified.txt"
 if grep -q 'MULTI_LOGIN_AUTH_INFRA_CHANGE=aws_cognito_user_pool' "$WORK_DIR/plan-sender-classified.txt"; then
@@ -358,18 +358,18 @@ jq -e '(.FunctionError // null) == null and .StatusCode == 200' "$WORK_DIR/sende
 echo "COGNITO_RESEND_SENDER_SMOKE_VERIFIED=true"
 
 # Phase 2: re-plan the full auth scope (the earlier plan is stale after phase 1) and apply it.
-terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
+terraform_plan_bounded "$WORK_DIR/plan-final.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   "${PLAN_ARGS[@]}" \
   -var-file="$WORK_DIR/variables.json" \
-  -out="$WORK_DIR/auth-final.tfplan" > "$WORK_DIR/plan-final.log"
+  -out="$WORK_DIR/auth-final.tfplan"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/auth-final.tfplan" > "$WORK_DIR/plan-final.json"
 python3 "$WORK_DIR/classify-plan.py" "$WORK_DIR/plan-final.json"
 terraform -chdir="$APP_DIR" apply -input=false -no-color "$WORK_DIR/auth-final.tfplan" > "$WORK_DIR/apply.log"
 
-terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
+terraform_plan_bounded "$WORK_DIR/plan-after.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   "${PLAN_ARGS[@]}" \
   -var-file="$WORK_DIR/variables.json" \
-  -out="$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.log"
+  -out="$WORK_DIR/after.tfplan"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/after.tfplan" > "$WORK_DIR/plan-after.json"
 AFTER_CHANGES="$(jq '[.resource_changes[]? | select(.mode != "data") | select(.change.actions != ["no-op"])] | length' "$WORK_DIR/plan-after.json")"
 [[ "$AFTER_CHANGES" == "0" ]] || {
