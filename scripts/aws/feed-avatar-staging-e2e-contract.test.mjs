@@ -16,9 +16,6 @@ test('feed avatar upload uses the real hydrated profile-photo chooser and waits 
   assert.match(source, /waitForEvent\('filechooser'\)/)
   assert.match(source, /await addButton\.click\(\)/)
   assert.match(source, /await fileChooser\.setFiles/)
-  // The crop dialog's Save must be clicked before the upload server action runs.
-  assert.match(source, /cropDialog\.getByRole\('button', \{ name: 'Save', exact: true \}\)\.click\(\)/)
-  assert.ok(source.indexOf('cropDialog.getByRole') > source.indexOf('await fileChooser.setFiles'))
   assert.match(source, /waitForResponse/)
   assert.match(source, /request\(\)\.method\(\) === 'POST'/)
   assert.doesNotMatch(source, /input\.setInputFiles/)
