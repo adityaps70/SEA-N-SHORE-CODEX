@@ -83,9 +83,26 @@ export function createPhoneAuthAdmin(input: {
     }
   }
 
+  /**
+   * The mobile sign-in user for this number. Only phone-login users (synthetic email) count: an
+   * email or Google account that merely carries the same phone attribute must never be signed in
+   * to with an SMS code, nor make the number ambiguous (Round 14, 1.2).
+   */
   async function findUserByPhone(phoneNumber: string): Promise<{ username: string; verified: boolean } | null> {
-    const user = await findPhoneLoginUser(phoneNumber)
-    return user ? { username: user.username, verified: user.verified } : null
+    const response = await client.send(new ListUsersCommand({
+      UserPoolId: userPoolId,
+      Filter: `phone_number = "${phoneNumber.replace(/["\\]/g, '')}"`,
+      Limit: 60,
+    }))
+    const matches = (response.Users ?? []).filter((user) =>
+      Boolean(user.Username)
+      && attributeValue(user.Attributes, 'phone_number') === phoneNumber
+      && isPhoneLoginEmail(attributeValue(user.Attributes, 'email')),
+    )
+    if (matches.length > 1) throw new Error('phone_identity_ambiguous')
+    const user = matches[0]
+    if (!user?.Username) return null
+    return { username: user.Username, verified: attributeValue(user.Attributes, 'phone_number_verified') === 'true' }
   }
 
   return {

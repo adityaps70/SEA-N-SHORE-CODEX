@@ -79,12 +79,21 @@ function safeMessageFor(code: string) {
 
 export class CognitoApiError extends Error {
   readonly code: string
+  /** For a refusal from our own auth Lambdas, its reason code (e.g. "otp_cooldown"), else null. */
+  readonly reason: string | null
 
-  constructor(code: string, message = safeMessageFor(code)) {
+  constructor(code: string, message = safeMessageFor(code), reason: string | null = null) {
     super(message)
     this.name = 'CognitoApiError'
     this.code = code
+    this.reason = reason
   }
+}
+
+/** Only our own reason codes are kept from a Lambda refusal, never free text. */
+function lambdaRefusalReason(code: string, message: unknown) {
+  if (code !== 'UserLambdaValidationException' || typeof message !== 'string') return null
+  return /\b(otp_[a-z_]{2,40})\b/.exec(message)?.[1] ?? null
 }
 
 function mapAuthenticationTokens(response: CognitoAuthenticationResponse): CognitoAuthenticationResult {
@@ -172,9 +181,9 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
     }
 
     if (!response.ok) {
-      const error = payload as { __type?: unknown; code?: unknown }
+      const error = payload as { __type?: unknown; code?: unknown; message?: unknown }
       const code = normalizeErrorCode(error.__type ?? error.code)
-      throw new CognitoApiError(code)
+      throw new CognitoApiError(code, undefined, lambdaRefusalReason(code, error.message))
     }
 
     return payload as T
