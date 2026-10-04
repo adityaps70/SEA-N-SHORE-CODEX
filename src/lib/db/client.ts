@@ -42,11 +42,11 @@ function poolConfig(environment: DatabaseEnvironment): PoolConfig {
     user: environment.user,
     password: environment.password,
     ssl: environment.ssl,
-    // Round 14 (3.3): 12 connections per task, and fail fast (5 s) instead of queueing for 30 s;
-    // Aurora keeps a 0.5 ACU floor with no auto-pause, so there is no resume to wait for.
+    // Round 14 (3.3): 12 connections per task. The connect timeout stays at 30 s while Aurora can still
+    // auto-pause (a cold resume takes longer than 5 s); it drops to 5 s once the 0.5 ACU floor is live.
     max: 12,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    connectionTimeoutMillis: 30_000,
     allowExitOnIdle: true,
   }
 }

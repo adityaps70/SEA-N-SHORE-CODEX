@@ -142,3 +142,15 @@ test('manual deploys ship only the live branch and a deployed SHA is never deplo
   assert.match(workflow, /if \[\[ "\$\{LIVE_IMAGE##\*:\}" == "\$\{GITHUB_SHA\}-"\* \]\]; then/)
   assert.ok(workflow.indexOf('Refuse a commit that is already deployed') < workflow.indexOf('Build and push immutable application image'))
 })
+
+test('staging deploy turns ECS Exec off on the web service and verifies it', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const step = workflow.slice(workflow.indexOf('- name: Deploy ECS service and wait for stability'), workflow.indexOf('- name: Promote event worker task definitions'))
+
+  assert.match(step, /--service "\$ECS_SERVICE"[\s\S]*--no-enable-execute-command/)
+  assert.doesNotMatch(workflow, /--enable-execute-command/)
+  assert.match(step, /--query 'services\[0\]\.enableExecuteCommand' --output json/)
+  assert.match(step, /\[\[ "\$EXEC_ENABLED" == "false" \]\]/)
+  assert.match(step, /ECS_EXEC_DISABLED_VERIFIED=true/)
+  assert.match(readFileSync('infra/aws/app/main.tf', 'utf8'), /enable_execute_command = false/)
+})

@@ -147,7 +147,9 @@ const users = personaSpecs.map((spec) => {
 
 assert.ok(siteUrl, 'SITE_URL is required')
 assert.match(runId ?? '', /^\d+$/, 'GITHUB_RUN_ID is required')
-assert.ok(['signup', 'journeys'].includes(phase), 'E2E_PHASE must be signup or journeys')
+assert.ok(['signup', 'journeys', 'seajob'].includes(phase), 'E2E_PHASE must be signup, journeys or seajob')
+const tempSeaJobId = process.env.E2E_TEMP_SEA_JOB_ID
+if (phase === 'seajob') assert.match(tempSeaJobId ?? '', /^[0-9a-f-]{36}$/, 'E2E_TEMP_SEA_JOB_ID is required for the sea job phase')
 for (const user of users) {
   const emailPattern = new RegExp('^sea-n-shore-e2e-[0-9]+-' + user.key + '@example\\.com$')
   assert.match(user.email ?? '', emailPattern)
@@ -276,6 +278,15 @@ async function signIn(page, user) {
   await page.waitForURL((url) => url.pathname === '/onboarding', { timeout: 20_000 })
   // The intro heading is hidden on phones (Round 8 mobile layout); the identity step is on every viewport.
   await expect(page.getByRole('group', { name: 'Which best describes you?' })).toBeVisible()
+}
+
+/** Signs in a persona that finished onboarding earlier in this run; it lands on Home. */
+async function signInOnboarded(page, user) {
+  await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'networkidle' })
+  await page.getByLabel('Email', { exact: true }).fill(user.email)
+  await page.getByLabel('Password', { exact: true }).fill(user.password)
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click()
+  await page.waitForURL((url) => url.pathname === '/home', { timeout: 20_000 })
 }
 
 async function expectUsernameAvailable(page, username) {
@@ -422,25 +433,15 @@ async function verifySeaJobGate(page) {
   assert.doesNotMatch(body, /(Partial|Good|Strong) match · \d+%|\d+% match/, 'A Maritime Enthusiast must not see a match % on sea jobs')
   console.log('ONBOARDING_E2E_ENTHUSIAST_NO_SEA_MATCH_VERIFIED=true')
 
-  const hrefs = await page.locator('a[href^="/jobs/"]').evaluateAll((anchors) => anchors
-    .map((anchor) => anchor.getAttribute('href'))
-    .filter((href) => typeof href === 'string' && /^\/jobs\/[0-9a-f-]{36}$/.test(href)))
-  const jobHrefs = [...new Set(hrefs)]
-  assert.ok(jobHrefs.length, 'Expected at least one live sea job to check the apply gate')
+  // The temporary sea job this run created (minimum match 70) must be listed, and must refuse.
+  const jobHref = '/jobs/' + tempSeaJobId
+  const hrefs = await page.locator('a[href^="/jobs/"]').evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute('href')))
+  assert.ok(hrefs.includes(jobHref), 'Expected the temporary sea job in the sea jobs list')
 
-  let refused = false
-  for (const href of jobHrefs) {
-    await page.goto(siteUrl + href, { waitUntil: 'networkidle' })
-    await expect(page.getByText('Sea-going role. Your profile type is Maritime Enthusiast.', { exact: true }).first()).toBeVisible()
-    const gate = page.getByText('This role is for seafarers. Update your profile type if this is wrong.', { exact: true }).first()
-    if (await gate.count()) {
-      await expect(gate).toBeVisible()
-      await expect(page.getByRole('button', { name: /^(Easy Apply|Apply now)$/ })).toHaveCount(0)
-      refused = true
-      break
-    }
-  }
-  assert.ok(refused, 'Expected a sea job with a minimum match to refuse a Maritime Enthusiast')
+  await page.goto(siteUrl + jobHref, { waitUntil: 'networkidle' })
+  await expect(page.getByText('Sea-going role. Your profile type is Maritime Enthusiast.', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('This role is for seafarers. Update your profile type if this is wrong.', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /^(Easy Apply|Apply now)$/ })).toHaveCount(0)
   console.log('ONBOARDING_E2E_ENTHUSIAST_SEA_JOB_REFUSED_VERIFIED=true')
 }
 
@@ -504,7 +505,7 @@ async function completePersona(user, takenUsername) {
     await verifyExistingLegacyProfileUrl(page)
     await verifyUsernameEditLifecycle(page, user, username, takenUsername)
   }
-  if (user.verifySeaJobGate) await verifySeaJobGate(page)
+  // The sea job gate runs in its own phase, once the temporary sea job exists (see the workflow).
 
   console.log(personaMarkers[user.key])
   await context.close()
@@ -522,6 +523,14 @@ try {
       }
     }
     console.log('ONBOARDING_E2E_PUBLIC_SIGNUP_VERIFIED=true')
+  } else if (phase === 'seajob') {
+    const enthusiast = users.find((user) => user.verifySeaJobGate)
+    assert.ok(enthusiast)
+    const context = await browser.newContext(enthusiast.mobile ? { viewport: { width: 390, height: 844 } } : {})
+    const page = await context.newPage()
+    await signInOnboarded(page, enthusiast)
+    await verifySeaJobGate(page)
+    await context.close()
   } else {
     const other = users.find((user) => user.key === 'other')
     assert.ok(other)

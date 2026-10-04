@@ -370,11 +370,18 @@ jobs:
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_ARN" \
+            --no-enable-execute-command \
             --force-new-deployment > /dev/null
 
           aws ecs wait services-stable \
             --cluster "$ECS_CLUSTER" \
             --services "$ECS_SERVICE"
+
+          # Round 14 (2.14): ECS Exec stays off on the web service; the deploy owns this setting.
+          EXEC_ENABLED=$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" \
+            --query 'services[0].enableExecuteCommand' --output json)
+          [[ "$EXEC_ENABLED" == "false" ]] || { echo "ECS Exec is still enabled on $ECS_SERVICE." >&2; exit 1; }
+          echo "ECS_EXEC_DISABLED_VERIFIED=true"
 
       - name: Promote event worker task definitions
         if: env.DEPLOY_TO_ECS == 'true'
