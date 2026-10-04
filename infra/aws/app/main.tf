@@ -301,9 +301,8 @@ resource "aws_lb_listener" "https" {
 }
 
 resource "aws_cloudwatch_log_group" "app" {
-  name = "/ecs/${local.name_prefix}/web"
-  # Round 14 (3.11): 90 days of web logs for incident and abuse investigation.
-  retention_in_days = 90
+  name              = "/ecs/${local.name_prefix}/web"
+  retention_in_days = 14
   tags              = local.common_tags
 }
 
