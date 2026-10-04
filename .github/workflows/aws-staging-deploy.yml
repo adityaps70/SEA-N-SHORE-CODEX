@@ -49,6 +49,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Round 14 (1.3): a manual deploy may only ship the live branch, like a push deploy.
+            [[ "$GITHUB_REF" == "refs/heads/feat/aws-native-phase-0-1" ]] || { echo "Manual deploys are allowed only from feat/aws-native-phase-0-1." >&2; exit 1; }
             echo "STAGING_DEPLOY_ACTION=workflow-dispatch" >> "$GITHUB_ENV"
             echo "run_build=true" >> "$GITHUB_OUTPUT"
             if [[ "$MANUAL_DEPLOY" == "true" ]]; then
@@ -169,6 +171,20 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Refuse a commit that is already deployed
+        if: env.DEPLOY_TO_ECS == 'true'
+        run: |
+          set -euo pipefail
+          # Round 14 (1.8): the live web task's image tag (<sha>-<run id>) records which commit is
+          # deployed, so a re-run or a second flip can never deploy the same SHA twice.
+          LIVE_TASK="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
+          LIVE_IMAGE="$(aws ecs describe-task-definition --task-definition "$LIVE_TASK" --query "taskDefinition.containerDefinitions[?name=='$ECS_CONTAINER_NAME'].image | [0]" --output text)"
+          echo "Live web image tag: ${LIVE_IMAGE##*:}"
+          if [[ "${LIVE_IMAGE##*:}" == "${GITHUB_SHA}-"* ]]; then
+            echo "Commit $GITHUB_SHA is already deployed (${LIVE_IMAGE##*:}); refusing to deploy it again." >&2
+            exit 1
+          fi
 
       - name: Login to Amazon ECR
         id: ecr
