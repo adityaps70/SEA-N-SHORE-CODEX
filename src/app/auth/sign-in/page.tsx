@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AuthForm } from "@/features/auth/components/auth-form";
 import { AuthMethodLinks } from "@/features/auth/components/auth-method-links";
 import { AuthShell } from "@/features/auth/components/auth-shell";
@@ -20,7 +21,11 @@ export default async function SignInPage({
   const { oauthError, error, email } = await searchParams;
   const claimEmail = (await cookies()).get(LEGACY_CLAIM_EMAIL_COOKIE)?.value;
   const queryEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-  const initialEmail = queryEmail || claimEmail;
+  if (queryEmail) {
+    redirect(`/auth/claim-profile?email=${encodeURIComponent(queryEmail)}`);
+  }
+
+  const initialEmail = claimEmail;
 
   return (
     <AuthShell>
