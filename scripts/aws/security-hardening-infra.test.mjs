@@ -45,7 +45,8 @@ test('phone OTP limits, SMS spend cap and topic-proof SNS policy are in Terrafor
   assert.match(hardening, /Action\s+= \["dynamodb:UpdateItem"\]\s*\n\s*Resource = aws_dynamodb_table\.otp_limits\.arn/)
   assert.match(hardening, /resource "aws_sns_sms_preferences" "account"/)
   assert.match(hardening, /default_sms_type\s*=\s*"Transactional"/)
-  assert.match(hardening, /variable "sms_monthly_spend_limit_usd"[\s\S]*?default\s*=\s*20/)
+  // USD 1 until AWS raises the account's SMS quota (SNS rejects a limit above the quota).
+  assert.match(hardening, /variable "sms_monthly_spend_limit_usd"[\s\S]*?default\s*=\s*1\n/)
   assert.match(hardening, /variable "allowed_phone_calling_codes"[\s\S]*?default\s*=\s*"91"/)
   assert.match(hardening, /SMSMonthToDateSpentUSD/)
   assert.match(hardening, /otp_global_cap_reached/)
