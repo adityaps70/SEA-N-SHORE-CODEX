@@ -77,6 +77,8 @@ jobs:
         run: node --test scripts/aws/phase2-hardening-infra.test.mjs
       - name: Verify phase 3 reliability release contract
         run: node --test scripts/aws/phase3-reliability-infra.test.mjs
+      - name: Verify bootstrap host concurrency contract
+        run: node --test scripts/aws/bootstrap-host-concurrency.test.mjs
       - name: Verify Cognito custom domain release contract
         run: node --test scripts/aws/cognito-custom-domain-infra.test.mjs
       - name: Verify Cognito Google/native repair contract

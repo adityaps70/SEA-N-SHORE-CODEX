@@ -23,12 +23,13 @@ ACTION_FILE="scripts/aws/ecs-task-cashfree-secret-policy-action.txt"
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
 git diff --quiet HEAD --   infra/aws/app/payments.tf   scripts/aws/ecs-task-cashfree-secret-policy.sh   scripts/aws/ecs-task-cashfree-secret-policy-action.txt   scripts/aws/ecs-task-cashfree-secret-policy-release.test.mjs   .github/workflows/aws-ecs-task-cashfree-secret-policy.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported ECS task Cashfree secret policy action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.ecs-task-cashfree-secret-policy.XXXXXXXX")"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object   --bucket "$STATE_BUCKET"   --key "$STATE_KEY"   --region "$AWS_REGION"   "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null

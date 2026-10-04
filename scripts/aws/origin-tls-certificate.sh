@@ -15,13 +15,14 @@ STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
 git diff --quiet HEAD -- scripts/aws infra/aws/app
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < scripts/aws/origin-tls-certificate-action.txt)"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported origin certificate action." >&2; exit 1 ;; esac
 
 APP_DIR="$PWD/infra/aws/app"
 WORK_DIR="$(mktemp -d "$PWD/.origin-cert.XXXXXXXX")"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_REGION" "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null

@@ -38,7 +38,7 @@ umask 077
 EVIDENCE_DIR="$(mktemp -d)"
 STATE_JSON="$EVIDENCE_DIR/state.json"
 EDGE_JSON="$EVIDENCE_DIR/edge.json"
-trap 'rm -rf -- "$EVIDENCE_DIR"' EXIT
+trap 'rm -rf -- "$EVIDENCE_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 [[ "$ACCOUNT_ID" == "$EXPECTED_ACCOUNT_ID" ]] || {

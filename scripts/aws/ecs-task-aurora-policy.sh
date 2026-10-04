@@ -28,12 +28,13 @@ git diff --quiet HEAD -- \
   scripts/aws/ecs-task-aurora-policy-release.test.mjs \
   .github/workflows/aws-ecs-task-aurora-policy.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported ECS task Aurora policy action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.ecs-task-aurora-policy.XXXXXXXX")"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object \
   --bucket "$STATE_BUCKET" \

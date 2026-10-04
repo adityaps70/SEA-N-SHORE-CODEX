@@ -23,12 +23,13 @@ CLUSTER_ID="sea-n-shore-staging-aurora"
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
 git diff --quiet HEAD -- infra/aws/app/ecs-database-runtime.tf scripts/aws/social-shared-iam-state.sh scripts/aws/social-shared-iam-state-action.txt
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < scripts/aws/social-shared-iam-state-action.txt)"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported shared IAM state action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.social-shared-iam-state.XXXXXXXX")"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_REGION" "$WORK_DIR/state.json" > "$WORK_DIR/object.json"
 jq -e '.lineage == "197a6fae-9997-636e-e52b-c3ac6da85d90"' "$WORK_DIR/state.json" >/dev/null
 STATE_COUNT="$(jq '[.resources[] | select(.mode=="managed" and .type=="aws_iam_role_policy" and .name=="ecs_execution_aurora_secret")] | length' "$WORK_DIR/state.json")"

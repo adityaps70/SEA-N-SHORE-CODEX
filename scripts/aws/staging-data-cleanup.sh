@@ -329,7 +329,7 @@ JOB_SQL="$(uuid_list "${STALE_JOB_IDS[@]}")"
 
 # Capture Cognito identifiers before identity mappings are removed. Values are never printed.
 IDENTITY_FILE="$(mktemp)"
-trap 'rm -f "$IDENTITY_FILE"' EXIT
+trap 'rm -f "$IDENTITY_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 sql "select coalesce(email,''), provider_subject
      from public.identity_accounts
      where provider='cognito' and profile_id in ($PROFILE_SQL)
@@ -366,7 +366,7 @@ rollback() {
     aws rds-data rollback-transaction --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --transaction-id "$TX_ID" >/dev/null 2>&1 || true
   fi
 }
-trap 'rollback; rm -f "$IDENTITY_FILE"' EXIT
+trap 'rollback; rm -f "$IDENTITY_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 tx() {
   aws rds-data execute-statement \

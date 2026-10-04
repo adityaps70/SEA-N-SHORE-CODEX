@@ -476,7 +476,7 @@ resource "aws_ecs_service" "web" {
   launch_type      = "FARGATE"
   platform_version = "LATEST"
 
-  # Round 14 (2.14): ECS Exec is off. The staging deploy sets --no-enable-execute-command and verifies
+  # Round 14 (2.14): ECS Exec is off. The staging deploy sets --disable-execute-command and verifies
   # it; this matches so no Terraform run turns it back on.
   enable_execute_command = false
 

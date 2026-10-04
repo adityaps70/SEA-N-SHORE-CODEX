@@ -12,7 +12,7 @@ case "$MODE" in create|cleanup) ;; *) echo "Usage: onboarding-e2e-sea-job-ssm.sh
 
 PARAMS_FILE="$(mktemp)"
 RESULT_FILE="$(mktemp)"
-trap 'rm -f -- "$PARAMS_FILE" "$RESULT_FILE"' EXIT
+trap 'rm -f -- "$PARAMS_FILE" "$RESULT_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 python3 - "$MODE" "$TRIGGER_SHA" "$GITHUB_RUN_ID" "$E2E_RECRUITER_EMAIL" > "$PARAMS_FILE" <<'PYTHON'
 import json, shlex, sys
@@ -20,7 +20,7 @@ mode, sha, run_id, email = sys.argv[1:]
 script = f"""set -euo pipefail
 umask 077
 WORK_DIR=$(mktemp -d /var/tmp/sea-n-shore-e2e-sea-job.XXXXXXXX)
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$WORK_DIR/repo"
 cd "$WORK_DIR/repo"
 git checkout --quiet --detach {sha}

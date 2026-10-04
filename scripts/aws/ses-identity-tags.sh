@@ -48,7 +48,7 @@ ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported SES identity tags action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.ses-identity-tags.XXXXXXXX")"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 canonical_identity_shape() {
   local identity_path="$1"

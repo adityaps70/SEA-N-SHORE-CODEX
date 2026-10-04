@@ -24,7 +24,7 @@ git diff --quiet HEAD -- scripts/aws/audit-ses-terraform-state.sh infra/aws/app/
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
 WORK_DIR="$(mktemp -d /tmp/sea-n-shore-ses-state-audit.XXXXXXXX)"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object \
   --bucket "$STATE_BUCKET" \

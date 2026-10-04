@@ -56,7 +56,7 @@ export LEGACY_PROFILE_CLAIMS_MIGRATION_ACTION="migrate-once"
 bash scripts/aws/legacy-profile-claims-migration.sh
 
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 aws ecs describe-task-definition --region "$AWS_REGION" --task-definition "$TASKDEF" --query taskDefinition --output json > "$WORK/current.json"
 jq --arg BUCKET "$BUCKET" --arg KEY "$KEY" --arg HASH "$EXPECTED_SHA256" --arg BYTES "$EXPECTED_BYTES" '
   del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)

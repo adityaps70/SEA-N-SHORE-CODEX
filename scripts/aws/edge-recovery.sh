@@ -8,13 +8,14 @@ export AWS_PAGER=""
 [[ "$(git remote get-url origin)" == "https://github.com/adityaps70/SEA-N-SHORE-CODEX.git" ]]
 git diff --quiet HEAD -- scripts/aws infra/aws/app
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "310356785722" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 ACTION="$(tr -d '[:space:]' < scripts/aws/edge-recovery-action.txt)"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported edge action." >&2; exit 1 ;; esac
 APP_DIR="$PWD/infra/aws/app"
 RECOVERY_DIR="$(mktemp -d "$PWD/.edge-recovery-data.XXXXXXXX")"
 PRESERVE_RECOVERY=false
 TF_TMPDIR="$(mktemp -d /var/tmp/sns-tf.XXXXXX)"
-trap 'if [[ "$PRESERVE_RECOVERY" == true ]]; then echo "PRIVATE_RECOVERY_DIRECTORY=$RECOVERY_DIR" >&2; else rm -rf -- "$RECOVERY_DIR"; fi; rm -rf -- "$TF_TMPDIR"' EXIT
+trap 'if [[ "$PRESERVE_RECOVERY" == true ]]; then echo "PRIVATE_RECOVERY_DIRECTORY=$RECOVERY_DIR" >&2; else rm -rf -- "$RECOVERY_DIR"; fi; rm -rf -- "$TF_TMPDIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 STATE_BUCKET=sea-n-shore-310356785722-ap-south-1-tfstate
 STATE_KEY=sea-n-shore/staging/terraform.tfstate
 aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region ap-south-1 "$RECOVERY_DIR/state.json" > "$RECOVERY_DIR/object.json"

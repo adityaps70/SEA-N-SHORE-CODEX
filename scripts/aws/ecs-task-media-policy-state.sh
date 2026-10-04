@@ -29,12 +29,13 @@ git diff --quiet HEAD -- \
   scripts/aws/ecs-task-media-policy-state-release.test.mjs \
   .github/workflows/aws-ecs-task-media-policy-state.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
+source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported ECS task media policy state action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.ecs-task-media-policy-state.XXXXXXXX")"
-trap 'rm -rf -- "$WORK_DIR"' EXIT
+trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
 aws s3api get-object \
   --bucket "$STATE_BUCKET" \
