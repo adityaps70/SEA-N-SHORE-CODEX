@@ -230,8 +230,19 @@ resource "aws_lb" "app" {
   security_groups = [aws_security_group.alb.id, aws_security_group.alb_cloudfront.id]
   subnets         = [aws_subnet.public_a.id, aws_subnet.public_b.id]
 
-  enable_deletion_protection = false
+  # Round 14 (2.14): no accidental deletion, malformed header names dropped, access logs kept.
+  enable_deletion_protection = true
+  drop_invalid_header_fields = true
   idle_timeout               = 60
+
+  access_logs {
+    bucket  = aws_s3_bucket.alb_logs.id
+    prefix  = "alb"
+    enabled = true
+  }
+
+  # The ALB writes a test object when logging is enabled, so the bucket policy must exist first.
+  depends_on = [aws_s3_bucket_policy.alb_logs]
 
   tags = local.common_tags
 }
@@ -471,7 +482,8 @@ resource "aws_ecs_service" "web" {
   launch_type      = "FARGATE"
   platform_version = "LATEST"
 
-  enable_execute_command = true
+  # Round 14 (2.14): no interactive shell into production tasks.
+  enable_execute_command = false
 
   health_check_grace_period_seconds  = 90
   deployment_minimum_healthy_percent = 100
