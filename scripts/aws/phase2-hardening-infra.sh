@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Round 14 Phase 2 guarded infrastructure (2.1, 2.14): media bucket lifecycle (noncurrent versions
 # after 30 days, abandoned multipart uploads after 1 day), an ALB access-log bucket (90 days), ALB
-# deletion protection + invalid-header dropping + access logs, and no ECS Exec on the web service.
-# Targeted plan; only these creates and exact in-place updates are accepted. The action file holds
-# "plan" or "apply-once".
+# deletion protection + invalid-header dropping + access logs. (ECS Exec stays on: planning the web
+# service also plans its task definition, which the deploy workflow manages.) Targeted plan; only
+# these creates and exact in-place updates are accepted. The action file holds "plan" or
+# "apply-once".
 set -euo pipefail
 umask 077
 export PATH="$HOME/bin:$PATH"
@@ -81,7 +82,6 @@ TARGETS=(
   aws_s3_bucket_lifecycle_configuration.alb_logs
   aws_s3_bucket_policy.alb_logs
   aws_lb.app
-  aws_ecs_service.web
 )
 PLAN_ARGS=()
 for target in "${TARGETS[@]}"; do PLAN_ARGS+=("-target=$target"); done
@@ -100,11 +100,9 @@ allowed = {
   'aws_s3_bucket_lifecycle_configuration.alb_logs': {('create',)},
   'aws_s3_bucket_policy.alb_logs': {('create',)},
   'aws_lb.app': {('update',)},
-  'aws_ecs_service.web': {('update',)},
 }
 update_keys = {
   'aws_lb.app': {'enable_deletion_protection', 'drop_invalid_header_fields', 'access_logs'},
-  'aws_ecs_service.web': {'enable_execute_command'},
 }
 plan = json.load(open(sys.argv[1]))
 changes = [r for r in plan.get('resource_changes', []) if r.get('mode') != 'data' and r['change']['actions'] != ['no-op']]
@@ -125,8 +123,6 @@ for r in changes:
         after = r['change']['after']
         if after.get('enable_deletion_protection') is not True or after.get('drop_invalid_header_fields') is not True:
             raise SystemExit('ALB must end with deletion protection and invalid-header dropping on')
-    if r['address'] == 'aws_ecs_service.web' and r['change']['after'].get('enable_execute_command') is not False:
-        raise SystemExit('web service must end with ECS Exec off')
 PY
 
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
@@ -165,8 +161,8 @@ echo "ALB_ATTRIBUTES_VERIFIED=true"
 aws s3api head-object --bucket "$LOG_BUCKET" --key "alb/AWSLogs/$EXPECTED_ACCOUNT/ELBAccessLogTestFile" >/dev/null
 echo "ALB_ACCESS_LOG_DELIVERY_VERIFIED=true"
 aws ecs describe-services --region "$AWS_REGION" --cluster sea-n-shore-staging --services sea-n-shore-staging-web --output json \
-  | jq -e '.services[0] | .enableExecuteCommand == false and .runningCount == .desiredCount and .desiredCount >= 2' >/dev/null
-echo "ECS_EXEC_DISABLED_AND_SERVICE_STEADY=true"
+  | jq -e '.services[0] | .runningCount == .desiredCount and .desiredCount >= 2' >/dev/null
+echo "ECS_SERVICE_STEADY=true"
 [[ "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${PUBLIC_SITE_URL%/}/api/health/live")" == 200 ]]
 echo "PUBLIC_SITE_LIVE_VERIFIED=true"
 echo "PHASE2_HARDENING_APPLY_VERIFIED=true"
