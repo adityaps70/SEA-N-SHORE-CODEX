@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
-import { createPhoneAuthActions } from './phone-auth-actions'
+import { CognitoApiError } from '@/lib/auth/cognito-api'
+import { PHONE_OTP_MESSAGES, createPhoneAuthActions, parseAllowedCallingCodes } from './phone-auth-actions'
 
 function fakeCookies(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial))
@@ -231,5 +232,63 @@ describe('phone OTP auth actions', () => {
     expect(cookies.values.get(COGNITO_COOKIE_NAMES.phoneChallenge)).toBe('next-session')
     expect(admin.markPhoneVerified).not.toHaveBeenCalled()
     expect(cookies.values.has(COGNITO_COOKIE_NAMES.access)).toBe(false)
+  })
+})
+
+describe('phone OTP abuse limits in the app (Round 14, 1.1)', () => {
+  function setup(overrides: Partial<Parameters<typeof createPhoneAuthActions>[0]> = {}) {
+    const cookies = fakeCookies()
+    const api = {
+      startCustomAuth: vi.fn(async () => ({ kind: 'challenge' as const, session: 's', username: 'u' })),
+      respondToCustomChallenge: vi.fn(),
+    }
+    const admin = {
+      findUserByPhone: vi.fn(async () => ({ username: 'u', verified: true })),
+      createPhoneUser: vi.fn(),
+      markPhoneVerified: vi.fn(),
+    }
+    const actions = createPhoneAuthActions({
+      api: api as never,
+      admin,
+      cookieStore: cookies.store,
+      siteUrl: 'https://staging.example.com',
+      ...overrides,
+    })
+    return { api, admin, actions }
+  }
+
+  it('refuses numbers outside the allowed calling codes before touching Cognito', async () => {
+    const t = setup({ allowedCallingCodes: ['91'] })
+    await expect(t.actions.requestOtp({}, form({ intent: 'sign-in', phoneNumber: '+447700900123' })))
+      .resolves.toEqual({ error: PHONE_OTP_MESSAGES.countryNotAllowed })
+    expect(t.admin.findUserByPhone).not.toHaveBeenCalled()
+    expect(t.api.startCustomAuth).not.toHaveBeenCalled()
+  })
+
+  it('caps codes per network (IP) per day', async () => {
+    const consume = vi.fn(async () => false)
+    const t = setup({ clientIp: '203.0.113.7', ipLimiter: { consume } })
+    await expect(t.actions.requestOtp({}, form({ intent: 'sign-in', phoneNumber: '+919876543210' })))
+      .resolves.toEqual({ error: PHONE_OTP_MESSAGES.tooManyFromNetwork })
+    expect(consume).toHaveBeenCalledWith('203.0.113.7')
+    expect(t.api.startCustomAuth).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['otp_cooldown', PHONE_OTP_MESSAGES.cooldown],
+    ['otp_rate_limited', PHONE_OTP_MESSAGES.tooMany],
+    ['otp_country_not_allowed', PHONE_OTP_MESSAGES.countryNotAllowed],
+    ['otp_limiter_unavailable', PHONE_OTP_MESSAGES.busy],
+  ])('explains a %s refusal from the Cognito create-challenge Lambda', async (reason, message) => {
+    const t = setup()
+    t.api.startCustomAuth.mockRejectedValueOnce(new CognitoApiError('UserLambdaValidationException', undefined, reason))
+    await expect(t.actions.requestOtp({}, form({ intent: 'sign-in', phoneNumber: '+919876543210' })))
+      .resolves.toEqual({ error: message })
+  })
+
+  it('reads allowed calling codes from configuration, defaulting to India', () => {
+    expect(parseAllowedCallingCodes(undefined)).toEqual(['91'])
+    expect(parseAllowedCallingCodes('+91,971')).toEqual(['91', '971'])
+    expect(parseAllowedCallingCodes('nonsense')).toEqual(['91'])
   })
 })

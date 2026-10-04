@@ -253,9 +253,10 @@ resource "aws_lb_target_group" "app" {
     unhealthy_threshold = 3
     interval            = 30
     timeout             = 10
-    path                = "/auth/sign-in"
-    protocol            = "HTTP"
-    matcher             = "200-399"
+    # Round 14 (1.5): a cheap liveness route instead of rendering the sign-in page.
+    path     = "/api/health/live"
+    protocol = "HTTP"
+    matcher  = "200"
   }
 
   tags = local.common_tags
@@ -445,7 +446,7 @@ resource "aws_ecs_task_definition" "web" {
       healthCheck = {
         command = [
           "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:3000/auth/sign-in').then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))\""
+          "node -e \"fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))\""
         ]
         interval    = 30
         timeout     = 10

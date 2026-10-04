@@ -133,3 +133,12 @@ test('staging deploy never shrinks the web task below 2048 MiB / 512 CPU (Round 
   assert.match(workflow, /\| \.memory = \(if \(\(\.memory \/\/ "0"\) \| tonumber\) < 2048 then "2048" else \.memory end\)/)
   assert.match(workflow, /\| \.cpu = \(if \(\(\.cpu \/\/ "0"\) \| tonumber\) < 512 then "512" else \.cpu end\)/)
 })
+
+test('manual deploys ship only the live branch and a deployed SHA is never deployed twice (Round 14)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const dispatch = workflow.slice(workflow.indexOf('if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then'))
+  assert.match(dispatch.slice(0, 400), /\[\[ "\$GITHUB_REF" == "refs\/heads\/feat\/aws-native-phase-0-1" \]\] \|\| \{ echo "Manual deploys are allowed only from feat\/aws-native-phase-0-1\."/)
+  assert.match(workflow, /- name: Refuse a commit that is already deployed/)
+  assert.match(workflow, /if \[\[ "\$\{LIVE_IMAGE##\*:\}" == "\$\{GITHUB_SHA\}-"\* \]\]; then/)
+  assert.ok(workflow.indexOf('Refuse a commit that is already deployed') < workflow.indexOf('Build and push immutable application image'))
+})

@@ -27,6 +27,7 @@ git diff --quiet HEAD -- \
   infra/aws/app/auth.tf \
   infra/aws/app/cognito-email-sender.tf \
   infra/aws/app/resend.tf \
+  infra/aws/app/security-hardening.tf \
   infra/aws/app/main.tf \
   infra/aws/app/aws-native-variables.tf \
   infra/aws/app/lambda/cognito-define-auth-challenge.mjs \
@@ -192,6 +193,8 @@ allowed = {
   'aws_cloudwatch_log_group.cognito_resend_email_sender',
   'aws_lambda_function.cognito_resend_email_sender',
   'aws_lambda_permission.cognito_resend_email_sender',
+  'aws_dynamodb_table.otp_limits',
+  'aws_iam_role_policy.cognito_auth_challenge_otp_limits',
   'aws_iam_role.cognito_auth_challenge',
   'aws_iam_role_policy_attachment.cognito_auth_challenge_logs',
   'aws_iam_role_policy.cognito_auth_challenge_sms',

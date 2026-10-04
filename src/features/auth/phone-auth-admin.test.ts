@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createPhoneAuthAdmin, isPhoneLoginEmail } from './phone-auth-admin'
 
+// Rewritten in Round 14 (1.2): mobile sign-in only matches phone-login users (synthetic email),
+// so the fixtures below carry one; an email/Google account with the same number never matches.
+const PHONE_LOGIN_EMAIL = { Name: 'email', Value: 'phone-0123456789abcdef0123456789abcdef@auth.seaandshore.in' }
+
 describe('phone auth Cognito administration', () => {
   it('finds exactly one verified Cognito user for a phone number', async () => {
     const client = {
@@ -9,7 +13,7 @@ describe('phone auth Cognito administration', () => {
         expect(command.input).toMatchObject({
           UserPoolId: 'ap-south-1_pool',
           Filter: 'phone_number = "+919876543210"',
-          Limit: 2,
+          Limit: 60,
         })
         return {
           Users: [{
@@ -17,6 +21,7 @@ describe('phone auth Cognito administration', () => {
             Attributes: [
               { Name: 'phone_number', Value: '+919876543210' },
               { Name: 'phone_number_verified', Value: 'true' },
+              PHONE_LOGIN_EMAIL,
             ],
           }],
         }
@@ -48,6 +53,7 @@ describe('phone auth Cognito administration', () => {
             Attributes: [
               { Name: 'phone_number', Value: '+919876543210' },
               { Name: 'phone_number_verified', Value: 'true' },
+              PHONE_LOGIN_EMAIL,
             ],
           },
           {
@@ -55,6 +61,7 @@ describe('phone auth Cognito administration', () => {
             Attributes: [
               { Name: 'phone_number', Value: '+919876543210' },
               { Name: 'phone_number_verified', Value: 'true' },
+              PHONE_LOGIN_EMAIL,
             ],
           },
         ],
@@ -80,6 +87,7 @@ describe('phone auth Cognito administration', () => {
           Attributes: [
             { Name: 'phone_number', Value: '+919876543210' },
             { Name: 'phone_number_verified', Value: 'false' },
+            PHONE_LOGIN_EMAIL,
           ],
         }],
       })),
@@ -94,6 +102,41 @@ describe('phone auth Cognito administration', () => {
       username: 'pending-user',
       verified: false,
     })
+  })
+
+  it('never matches an email or Google account that carries the same phone number', async () => {
+    const client = {
+      send: vi.fn(async () => ({
+        Users: [
+          {
+            Username: 'attacker-email-account',
+            Attributes: [
+              { Name: 'phone_number', Value: '+919876543210' },
+              { Name: 'phone_number_verified', Value: 'true' },
+              { Name: 'email', Value: 'someone@example.com' },
+            ],
+          },
+          {
+            Username: 'real-phone-user',
+            Attributes: [
+              { Name: 'phone_number', Value: '+919876543210' },
+              { Name: 'phone_number_verified', Value: 'true' },
+              PHONE_LOGIN_EMAIL,
+            ],
+          },
+        ],
+      })),
+    }
+    const admin = createPhoneAuthAdmin({ client: client as never, userPoolId: 'ap-south-1_pool', region: 'ap-south-1' })
+    // Not ambiguous (no lockout), and never the email account.
+    await expect(admin.findUserByPhone('+919876543210')).resolves.toEqual({ username: 'real-phone-user', verified: true })
+
+    client.send.mockResolvedValueOnce({ Users: [{ Username: 'google-user', Attributes: [
+      { Name: 'phone_number', Value: '+919876543210' },
+      { Name: 'phone_number_verified', Value: 'true' },
+      { Name: 'email', Value: 'member@gmail.com' },
+    ] }] })
+    await expect(admin.findUserByPhone('+919876543210')).resolves.toBeNull()
   })
 
   it('creates a confirmed Cognito user without sending a password message', async () => {
@@ -173,7 +216,7 @@ describe('phone auth Cognito administration', () => {
           Username: 'uuid-user',
           Attributes: [
             { Name: 'sub', Value: 'sub-1' },
-            { Name: 'email', Value: 'phone-0123456789abcdef0123456789abcdef@auth.seaandshore.in' },
+            PHONE_LOGIN_EMAIL,
             { Name: 'phone_number', Value: '+919876543210' },
             { Name: 'phone_number_verified', Value: 'false' },
           ],

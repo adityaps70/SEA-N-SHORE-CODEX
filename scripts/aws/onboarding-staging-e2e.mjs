@@ -307,18 +307,24 @@ async function verifyExistingLegacyProfileUrl(page) {
   console.log('ONBOARDING_E2E_LEGACY_PROFILE_URL_VERIFIED=true')
 }
 
+// An invalid, reserved or taken username also offers the generated one ("If you continue, we'll
+// use @…"), so these hints are matched from their start rather than exactly.
+function hintStartingWith(page, text) {
+  return page.getByText(new RegExp('^' + text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+}
+
 async function verifyUsernameBeforeCompletion(page, takenUsername, initialUsername) {
   const usernameField = usernameInput(page)
 
   await usernameField.fill('Bad Slug!!')
-  await expect(page.getByText('Use letters, numbers, dots, underscores, or hyphens; start and end with a letter or number.', { exact: true })).toBeVisible()
+  await expect(hintStartingWith(page, 'Use letters, numbers, dots, underscores, or hyphens; start and end with a letter or number.')).toBeVisible()
 
   await usernameField.fill('admin')
-  await expect(page.getByText('That username is reserved.', { exact: true })).toBeVisible()
+  await expect(hintStartingWith(page, 'That username is reserved.')).toBeVisible()
   console.log('ONBOARDING_E2E_USERNAME_RESERVED_VERIFIED=true')
 
   await usernameField.fill(takenUsername)
-  await expect(page.getByText('That username is already taken.', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await expect(hintStartingWith(page, 'That username is already taken.')).toBeVisible({ timeout: 10_000 })
 
   await usernameField.fill('E2E-Seafarer-' + runId)
   await expect(usernameField).toHaveValue(initialUsername)

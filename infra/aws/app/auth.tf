@@ -77,6 +77,15 @@ resource "aws_cognito_user_pool_client" "web" {
   generate_secret               = false
   prevent_user_existence_errors = "ENABLED"
 
+  # Round 14 (1.2): the public client may write every standard attribute it could before
+  # (sign-up and the Google mapping need email, email_verified and name) except the phone number
+  # and its verified flag, so nobody can attach someone else's number to an account.
+  write_attributes = [
+    "address", "birthdate", "email", "email_verified", "family_name", "gender", "given_name",
+    "locale", "middle_name", "name", "nickname", "picture", "preferred_username", "profile",
+    "updated_at", "website", "zoneinfo",
+  ]
+
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_USER_SRP_AUTH",
@@ -243,12 +252,22 @@ resource "aws_iam_role_policy" "cognito_auth_challenge_sms" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid      = "SendPhoneOtp"
-      Effect   = "Allow"
-      Action   = ["sns:Publish"]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        # Direct-to-phone SMS has no resource ARN, so this must stay "*" ...
+        Sid      = "SendPhoneOtp"
+        Effect   = "Allow"
+        Action   = ["sns:Publish"]
+        Resource = "*"
+      },
+      {
+        # ... but it can never publish to a topic (Round 14, 1.1).
+        Sid      = "NeverPublishToTopics"
+        Effect   = "Deny"
+        Action   = ["sns:Publish"]
+        Resource = "arn:aws:sns:*:*:*"
+      }
+    ]
   })
 }
 
@@ -304,10 +323,19 @@ resource "aws_lambda_function" "cognito_create_auth_challenge" {
   timeout          = 10
   memory_size      = 128
 
+  # Round 14 (1.1): SMS abuse limits are enforced here, so direct Cognito calls are limited too.
+  environment {
+    variables = {
+      OTP_LIMITS_TABLE            = aws_dynamodb_table.otp_limits.name
+      ALLOWED_PHONE_CALLING_CODES = var.allowed_phone_calling_codes
+    }
+  }
+
   depends_on = [
     aws_cloudwatch_log_group.cognito_create_auth_challenge,
     aws_iam_role_policy_attachment.cognito_auth_challenge_logs,
-    aws_iam_role_policy.cognito_auth_challenge_sms
+    aws_iam_role_policy.cognito_auth_challenge_sms,
+    aws_iam_role_policy.cognito_auth_challenge_otp_limits
   ]
 
   tags = local.common_tags

@@ -49,6 +49,8 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            # Round 14 (1.3): a manual deploy may only ship the live branch, like a push deploy.
+            [[ "$GITHUB_REF" == "refs/heads/feat/aws-native-phase-0-1" ]] || { echo "Manual deploys are allowed only from feat/aws-native-phase-0-1." >&2; exit 1; }
             echo "STAGING_DEPLOY_ACTION=workflow-dispatch" >> "$GITHUB_ENV"
             echo "run_build=true" >> "$GITHUB_OUTPUT"
             if [[ "$MANUAL_DEPLOY" == "true" ]]; then
@@ -131,7 +133,11 @@ jobs:
       NOTIFICATION_WORKER_TASK_DEFINITION: sea-n-shore-staging-notification-worker
       # NEXT_PUBLIC_SITE_URL is resolved from scripts/aws/public-site-url.txt (one repository variable).
       SERVER_ACTION_ALLOWED_ORIGINS: https://seanshore.in,https://d3prih0q6jofyr.cloudfront.net
-      AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "true"
+      # Round 14 (1.6): the site is HTTPS end to end for browsers; no insecure auth cookies.
+      AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "false"
+      # Round 14 (1.1): phone OTP limits table (shared with the Cognito challenge Lambda) and allowed countries.
+      OTP_LIMITS_TABLE: sea-n-shore-staging-otp-limits
+      ALLOWED_PHONE_CALLING_CODES: "91"
       AWS_MEDIA_BUCKET: sea-n-shore-staging-310356785722-media
       AURORA_HOST: sea-n-shore-staging-aurora.cluster-cvaiukw021g5.ap-south-1.rds.amazonaws.com
       AURORA_PORT: "5432"
@@ -165,6 +171,20 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Refuse a commit that is already deployed
+        if: env.DEPLOY_TO_ECS == 'true'
+        run: |
+          set -euo pipefail
+          # Round 14 (1.8): the live web task's image tag (<sha>-<run id>) records which commit is
+          # deployed, so a re-run or a second flip can never deploy the same SHA twice.
+          LIVE_TASK="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE" --query 'services[0].taskDefinition' --output text)"
+          LIVE_IMAGE="$(aws ecs describe-task-definition --task-definition "$LIVE_TASK" --query "taskDefinition.containerDefinitions[?name=='$ECS_CONTAINER_NAME'].image | [0]" --output text)"
+          echo "Live web image tag: ${LIVE_IMAGE##*:}"
+          if [[ "${LIVE_IMAGE##*:}" == "${GITHUB_SHA}-"* ]]; then
+            echo "Commit $GITHUB_SHA is already deployed (${LIVE_IMAGE##*:}); refusing to deploy it again." >&2
+            exit 1
+          fi
 
       - name: Login to Amazon ECR
         id: ecr
@@ -266,6 +286,9 @@ jobs:
             --arg NAME "$ECS_CONTAINER_NAME" \
             --arg SITE "$NEXT_PUBLIC_SITE_URL" \
             --arg ALLOW_INSECURE_HTTP_COOKIES "$AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES" \
+            --arg OTP_LIMITS_TABLE "$OTP_LIMITS_TABLE" \
+            --arg ALLOWED_PHONE_CALLING_CODES "$ALLOWED_PHONE_CALLING_CODES" \
+            --arg LIVENESS_CHECK "node -e \"fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))\"" \
             --arg AWS_MEDIA_BUCKET "$AWS_MEDIA_BUCKET" \
             --arg AURORA_HOST "$AURORA_HOST" \
             --arg AURORA_PORT "$AURORA_PORT" \
@@ -288,12 +311,16 @@ jobs:
             | .containerDefinitions |= map(
                 if .name == $NAME then
                   .image = $IMAGE
+                  # Round 14 (1.5): cheap liveness route instead of rendering /auth/sign-in.
+                  | .healthCheck.command = ["CMD-SHELL", $LIVENESS_CHECK]
                   | .environment = (
                       ((.environment // [])
                         | map(select(
                             .name != "NEXT_PUBLIC_SITE_URL"
                             and ((.name | startswith("NEXT_PUBLIC_" + "SUPABASE_")) | not)
                             and .name != "AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES"
+                            and .name != "OTP_LIMITS_TABLE"
+                            and .name != "ALLOWED_PHONE_CALLING_CODES"
                             and .name != "AWS_MEDIA_BUCKET"
                             and .name != "AURORA_HOST"
                             and .name != "AURORA_PORT"
@@ -302,7 +329,9 @@ jobs:
                           )))
                       + [
                           {"name":"NEXT_PUBLIC_SITE_URL","value":$SITE},
-                          {"name":"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES","value":"true"},
+                          {"name":"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES","value":$ALLOW_INSECURE_HTTP_COOKIES},
+                          {"name":"OTP_LIMITS_TABLE","value":$OTP_LIMITS_TABLE},
+                          {"name":"ALLOWED_PHONE_CALLING_CODES","value":$ALLOWED_PHONE_CALLING_CODES},
                           {"name":"AWS_MEDIA_BUCKET","value":$AWS_MEDIA_BUCKET},
                           {"name":"AURORA_HOST","value":$AURORA_HOST},
                           {"name":"AURORA_PORT","value":$AURORA_PORT},

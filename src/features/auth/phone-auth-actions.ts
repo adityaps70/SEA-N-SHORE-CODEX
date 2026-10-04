@@ -43,6 +43,31 @@ const otpSchema = z.string().trim().regex(/^\d{6}$/)
 const GENERIC_SEND_ERROR =
   'We could not send a verification code. Check the number or create an account.'
 
+export const PHONE_OTP_MESSAGES = {
+  countryNotAllowed: 'Mobile sign-in is available for Indian (+91) numbers for now. Please continue with email or Google.',
+  cooldown: 'Please wait a minute before asking for another code.',
+  tooMany: 'Too many codes were requested. Please wait an hour and try again, or continue with email or Google.',
+  tooManyFromNetwork: 'Too many codes were requested from this network today. Please try again tomorrow, or continue with email or Google.',
+  busy: 'Our text message service is busy right now. Please wait a few minutes and try again.',
+} as const
+
+/** Calling codes (digits after "+") allowed for mobile sign-in, e.g. ["91"]. */
+export function parseAllowedCallingCodes(raw: string | null | undefined): string[] {
+  const codes = String(raw ?? '91').split(',').map((code) => code.trim().replace(/^\+/, '')).filter((code) => /^\d{1,3}$/.test(code))
+  return codes.length ? codes : ['91']
+}
+
+function refusalMessage(error: unknown): string | null {
+  if (!(error instanceof CognitoApiError)) return null
+  switch (error.reason) {
+    case 'otp_cooldown': return PHONE_OTP_MESSAGES.cooldown
+    case 'otp_rate_limited': return PHONE_OTP_MESSAGES.tooMany
+    case 'otp_country_not_allowed': return PHONE_OTP_MESSAGES.countryNotAllowed
+    case 'otp_limiter_unavailable': return PHONE_OTP_MESSAGES.busy
+    default: return null
+  }
+}
+
 function isRetryableCognitoError(error: unknown) {
   return error instanceof CognitoApiError
     && (
@@ -59,7 +84,11 @@ export function createPhoneAuthActions(input: {
   cookieStore: CookieStore
   siteUrl: string
   allowInsecureHttpCookies?: boolean
+  allowedCallingCodes?: string[]
+  clientIp?: string | null
+  ipLimiter?: { consume(ip: string | null): Promise<boolean> }
 }) {
+  const allowedCallingCodes = input.allowedCallingCodes ?? ['91']
   const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl, {
     allowInsecureHttp: input.allowInsecureHttpCookies === true,
   })
@@ -92,14 +121,21 @@ export function createPhoneAuthActions(input: {
         }
       }
 
+      if (!allowedCallingCodes.some((code) => parsed.data.phoneNumber.startsWith('+' + code))) {
+        return { error: PHONE_OTP_MESSAGES.countryNotAllowed }
+      }
+      if (input.ipLimiter && !await input.ipLimiter.consume(input.clientIp ?? null)) {
+        return { error: PHONE_OTP_MESSAGES.tooManyFromNetwork }
+      }
+
       try {
         const existing = await input.admin.findUserByPhone(parsed.data.phoneNumber)
         if (parsed.data.intent === 'sign-in') {
           if (!existing?.verified) return { error: GENERIC_SEND_ERROR }
-          return beginChallenge(existing.username)
+          return await beginChallenge(existing.username)
         }
 
-        if (existing) return beginChallenge(existing.username)
+        if (existing) return await beginChallenge(existing.username)
 
         const fullName = parsed.data.fullName?.trim()
         if (!fullName || fullName.length < 2) {
@@ -110,8 +146,10 @@ export function createPhoneAuthActions(input: {
           phoneNumber: parsed.data.phoneNumber,
           fullName,
         })
-        return beginChallenge(created.username)
+        return await beginChallenge(created.username)
       } catch (error) {
+        const refused = refusalMessage(error)
+        if (refused) return { error: refused }
         if (isRetryableCognitoError(error)) return { error: GENERIC_SEND_ERROR }
         return { error: 'We could not send a verification code. Please try again.' }
       }

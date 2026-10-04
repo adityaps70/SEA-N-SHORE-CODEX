@@ -334,6 +334,10 @@ resource "aws_cloudwatch_metric_alarm" "notification_dlq_depth" {
     QueueName = aws_sqs_queue.notification_dlq.name
   }
 
+  # Round 14 (1.7): alarms reach the owner through the alerts topic.
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
   tags = local.common_tags
 }
 
@@ -351,6 +355,10 @@ resource "aws_cloudwatch_metric_alarm" "notification_queue_age" {
   dimensions = {
     QueueName = aws_sqs_queue.notification_events.name
   }
+
+  # Round 14 (1.7): alarms reach the owner through the alerts topic.
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
 
   tags = local.common_tags
 }

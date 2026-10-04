@@ -1,20 +1,24 @@
 'use server'
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { redirect as nextRedirect } from 'next/navigation'
 import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { createCognitoLogoutUrl } from '@/lib/auth/cognito-oauth'
 import { AFTER_SIGN_OUT_COOKIE, AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS } from '@/lib/auth/after-sign-out'
 import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
+import { trustedClientIp } from '@/lib/http/client-ip'
 import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 import { createCognitoAuthActions } from './cognito-actions'
-import { createPhoneAuthActions, type PhoneAuthActionState } from './phone-auth-actions'
+import { createOtpIpLimiter } from './otp-ip-limiter'
+import { createPhoneAuthActions, parseAllowedCallingCodes, type PhoneAuthActionState } from './phone-auth-actions'
 import { createPhoneAuthAdmin } from './phone-auth-admin'
 import { createPhoneAuthActionHandlers } from './phone-action-handlers'
 
 export type { AuthActionState } from './action-handlers'
 
 type CognitoActions = ReturnType<typeof createCognitoAuthActions>
+
+const otpIpLimiter = createOtpIpLimiter()
 
 async function getProductionActions(): Promise<CognitoActions> {
   const cookieStore = await cookies()
@@ -64,6 +68,9 @@ async function getProductionPhoneActions() {
     cookieStore: cookieStore as unknown as Parameters<typeof createPhoneAuthActions>[0]['cookieStore'],
     siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
     allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    allowedCallingCodes: parseAllowedCallingCodes(process.env.ALLOWED_PHONE_CALLING_CODES),
+    clientIp: trustedClientIp(await headers()),
+    ipLimiter: otpIpLimiter,
   })
 }
 
@@ -115,7 +122,8 @@ export async function signOutToSignUp(): Promise<void> {
   cookieStore.set(AFTER_SIGN_OUT_COOKIE, '/auth/sign-up', {
     httpOnly: true,
     sameSite: 'lax',
-    secure: !getCognitoEnvironment().AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    // Secure whenever the site is HTTPS (production), like the Cognito session cookies.
+    secure: new URL(publicEnvironment.NEXT_PUBLIC_SITE_URL).protocol === 'https:',
     path: '/',
     maxAge: AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS,
   })
