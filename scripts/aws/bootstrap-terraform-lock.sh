@@ -24,31 +24,35 @@ if [[ "${TMPDIR:-/tmp}" == /tmp || "${TMPDIR:-/tmp}" == /tmp/* ]]; then
   export TMPDIR
 fi
 
-# Round 14: a few plans on this host never returned; SSM killed them after 30 minutes and left the
-# S3 state lock behind. Plans are read-only, so terraform_plan_bounded gives each one
-# TERRAFORM_PLAN_TIMEOUT_SECONDS, then interrupts it (Terraform releases its own state lock on
-# SIGINT) and retries once. Terraform's debug log goes through a filter that keeps only AWS API
-# operation names and log sources, so request and response bodies never reach the disk; on a
-# timeout those names show what the plan was waiting on.
+# Round 14: the bootstrap host is a t3.micro (913 MB, no swap, /tmp in RAM). The AWS provider needs
+# several hundred MB for a plan, so with anything else resident Terraform could run out of memory
+# and grind for half an hour until SSM killed it, leaving the S3 state lock behind. Keep its
+# footprint down: a soft Go heap limit (Terraform and its providers honour GOMEMLIMIT) and fewer
+# concurrent operations.
+export GOMEMLIMIT="${GOMEMLIMIT:-320MiB}"
+export TF_CLI_ARGS_plan="${TF_CLI_ARGS_plan:--parallelism=4}"
+export TF_CLI_ARGS_apply="${TF_CLI_ARGS_apply:--parallelism=4}"
+echo "BOOTSTRAP_MEM_AVAILABLE_MB=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
+
+# Plans are read-only, so terraform_plan_bounded gives each one TERRAFORM_PLAN_TIMEOUT_SECONDS,
+# then interrupts it (Terraform releases its own state lock on SIGINT) and retries once. A plan
+# that ignores the interrupt is killed two minutes later; its lock then stays behind for the
+# state-unlock runner, so that case is not retried.
 # Usage: terraform_plan_bounded <stdout-file> <the usual Terraform arguments>
 TERRAFORM_PLAN_TIMEOUT_SECONDS="${TERRAFORM_PLAN_TIMEOUT_SECONDS:-600}"
 terraform_plan_bounded() {
-  local log="$1" ops attempt status
+  local log="$1" attempt status
   shift
   for attempt in 1 2; do
-    ops="$(mktemp)"
     status=0
-    TF_LOG=DEBUG TF_LOG_PATH=>(grep --line-buffered -oE 'rpc\.method=[A-Za-z0-9]+|\[(DEBUG|INFO|WARN|ERROR)\] [A-Za-z.-]+' > "$ops") \
-      timeout --signal=INT --kill-after=120 "$TERRAFORM_PLAN_TIMEOUT_SECONDS" terraform "$@" > "$log" || status=$?
-    if [[ "$status" != 124 ]]; then
-      rm -f -- "$ops"
-      return "$status"
-    fi
-    sleep 1
+    timeout --signal=INT --kill-after=120 "$TERRAFORM_PLAN_TIMEOUT_SECONDS" terraform "$@" > "$log" || status=$?
+    [[ "$status" == 124 || "$status" == 137 ]] || return "$status"
     echo "TERRAFORM_PLAN_TIMED_OUT_ATTEMPT=$attempt"
-    grep -E '^rpc\.method=' "$ops" | sort | uniq -c | sort -rn | head -n 5 | sed 's/^ */TERRAFORM_PLAN_AWS_CALLS=/' || true
-    tail -n 8 "$ops" | sed 's/^/TERRAFORM_PLAN_LAST_LOG=/' || true
-    rm -f -- "$ops"
+    echo "TERRAFORM_PLAN_TIMED_OUT_MEM_AVAILABLE_MB=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
+    if [[ "$status" == 137 ]]; then
+      echo "Terraform plan ignored the interrupt and was killed; release its state lock with the state-unlock runner." >&2
+      return 137
+    fi
   done
   echo "Terraform plan did not finish within ${TERRAFORM_PLAN_TIMEOUT_SECONDS}s, twice; refusing to continue." >&2
   return 124
