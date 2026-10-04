@@ -39,7 +39,8 @@ describe('HiringStatusMobileBar (applicant review, phones)', () => {
 
     await waitFor(() => expect(mocks.updateHiringApplicationStatus).toHaveBeenCalledWith(applicationId, 'shortlisted', 'Interview on Monday'))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
     expect(screen.getByRole('status')).toHaveTextContent('Moved to Shortlisted')
   })
 

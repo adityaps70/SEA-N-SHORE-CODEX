@@ -131,6 +131,27 @@ describe('AWS notification queries', () => {
     expect(repository.countUnread).toHaveBeenCalledWith(USER_ID)
   })
 
+  it('gives the header badge a single unread count without loading or hydrating any notification (Round 14, 3.9)', async () => {
+    const repository = {
+      listRecent: vi.fn(async () => []),
+      countUnread: vi.fn(async () => 7),
+      listPostPreviews: vi.fn(async () => []),
+    }
+    const getProfiles = vi.fn(async () => [])
+    const { createNotificationQueries } = await import('./queries')
+    const queries = createNotificationQueries({
+      requireUser: vi.fn(async () => ({ id: USER_ID })),
+      repository: repository as never,
+      getProfiles: getProfiles as never,
+    })
+
+    await expect(queries.getUnreadNotificationCount()).resolves.toBe(7)
+    expect(repository.countUnread).toHaveBeenCalledWith(USER_ID)
+    expect(repository.listRecent).not.toHaveBeenCalled()
+    expect(repository.listPostPreviews).not.toHaveBeenCalled()
+    expect(getProfiles).not.toHaveBeenCalled()
+  })
+
   it('adds the actor photo and one batched post preview per page, signing only photo and video media', async () => {
     const OTHER_POST_ID = '77777777-7777-4777-8777-777777777777'
     const DOC_POST_ID = '88888888-8888-4888-8888-888888888888'

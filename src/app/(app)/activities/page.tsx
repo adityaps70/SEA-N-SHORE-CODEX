@@ -11,10 +11,9 @@ import { requireAwsUser } from '@/features/auth/aws-queries'
 import { Card } from '@/components/ui/card'
 import { EventCard } from '@/features/events/components/event-card'
 import { calendarEventRepository } from '@/features/events/calendar-repository'
-import { CommentActivityCard } from '@/features/feed/components/comment-activity-card'
+import { ActivityPostList, CommentActivityList } from '@/features/feed/components/activity-lists'
 import { FeedProfileCard } from '@/features/feed/components/feed-profile-card'
 import { HiddenPostCard } from '@/features/feed/components/hidden-post-card'
-import { PostCard } from '@/features/feed/components/post-card'
 import { RecentlyDeletedPostCard } from '@/features/feed/components/recently-deleted-post-card'
 import { getMyActivityPosts, getMyCommentActivity, getMyHiddenPosts, getMyRecentlyDeletedPosts } from '@/features/feed/queries'
 import { JobApplicationList } from '@/features/jobs/components/job-application-list'
@@ -90,8 +89,8 @@ export default async function ActivitiesPage({
     getOwnProfile(),
     getPeopleYouMayKnow(4),
     getPublishedJobs(),
-    tab === 'posts' ? getMyActivityPosts() : Promise.resolve([]),
-    tab === 'comments' ? getMyCommentActivity() : Promise.resolve([]),
+    tab === 'posts' ? getMyActivityPosts() : Promise.resolve(null),
+    tab === 'comments' ? getMyCommentActivity() : Promise.resolve(null),
     tab === 'jobs' ? getMyJobApplications() : Promise.resolve([]),
     tab === 'deleted' ? getMyRecentlyDeletedPosts() : Promise.resolve([]),
     tab === 'hidden' ? getMyHiddenPosts() : Promise.resolve([]),
@@ -135,13 +134,13 @@ export default async function ActivitiesPage({
         <section aria-labelledby="activity-panel-heading" className="mt-4 max-md:mt-3">
           <h2 id="activity-panel-heading" className="sr-only">{activeTab.heading}</h2>
           {tab === 'posts' ? (
-            posts.length ? <div className="space-y-4">{posts.map((post) => <PostCard key={post.id} post={post} />)}</div> : (
+            posts?.entries.length ? <ActivityPostList initialPage={posts} /> : (
               <EmptyState icon={PenSquare} title="You have not published a post yet." action={{ href: '/home', label: 'Go to home feed' }}>
                 Share an update, question, lesson or professional insight with the maritime community.
               </EmptyState>
             )
           ) : tab === 'comments' ? (
-            comments.length ? <div className="space-y-4">{comments.map((item) => <CommentActivityCard key={item.post.id} activity={item} />)}</div> : (
+            comments?.entries.length ? <CommentActivityList initialPage={comments} /> : (
               <EmptyState icon={MessageSquareText} title="You have not commented on a post yet." action={{ href: '/home', label: 'Go to home feed' }}>
                 Join a discussion on the home feed and the post will appear here with your comment highlighted.
               </EmptyState>

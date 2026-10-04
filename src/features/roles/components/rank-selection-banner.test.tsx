@@ -32,7 +32,8 @@ describe('RankSelectionBanner (round 12)', () => {
     const data = mocks.updateProfileRoleSection.mock.calls[0]![1] as FormData
     expect(data.get('roleKey')).toBe('second_officer')
     await waitFor(() => expect(screen.queryByTestId('rank-selection-banner')).not.toBeInTheDocument())
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('stays dismissed once dismissed', () => {

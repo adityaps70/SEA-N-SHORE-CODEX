@@ -1,8 +1,7 @@
 'use client'
 
 import { Building2, Landmark, LockKeyhole, Smartphone, UserRound } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { removePayoutAccountAction, savePayoutAccountAction } from '../actions'
 import type { PayoutAccountFieldErrors, PayoutMethod } from '../payout-rules'
@@ -43,8 +42,6 @@ function FieldError({ id, message }: { id: string; message?: string }) {
  * which passes it to Cashfree; the page never shows it again.
  */
 export function PayoutAccountPanel({ sellerKey, sellerName, kind, account, lockedReason = null }: Props) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
   const [mode, setMode] = useState<'view' | 'edit' | 'remove'>('view')
   const [method, setMethod] = useState<PayoutMethod>(account?.method ?? 'bank')
   const [pending, setPending] = useState(false)
@@ -100,7 +97,6 @@ export function PayoutAccountPanel({ sellerKey, sellerName, kind, account, locke
     if (result.ok) {
       setMode('view')
       setNotice(result.message)
-      startTransition(() => router.refresh())
       return
     }
     setError(result.error)
@@ -121,7 +117,6 @@ export function PayoutAccountPanel({ sellerKey, sellerName, kind, account, locke
     if (result.ok) {
       setMode('view')
       setNotice(result.message)
-      startTransition(() => router.refresh())
       return
     }
     setError(result.error)

@@ -479,7 +479,7 @@ export function PostComposer({
     if (nextState.ok) {
       resetComposer({ discardMedia: false, clearDraft: true })
       setOpen(false)
-      router.refresh()
+      // createPost revalidates, which re-renders the current page in the same response.
       onPosted?.()
     }
     return nextState

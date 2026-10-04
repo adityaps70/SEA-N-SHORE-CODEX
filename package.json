@@ -15,8 +15,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "worker:outbox": "node --import tsx scripts/workers/publish-outbox.ts",
-    "worker:notifications": "node --import tsx scripts/workers/consume-notifications.ts",
+    "build:workers": "node scripts/build-workers.mjs",
+    "worker:outbox": "node dist/workers/publish-outbox.mjs",
+    "worker:outbox:dev": "node --import tsx scripts/workers/publish-outbox.ts",
+    "worker:notifications": "node dist/workers/consume-notifications.mjs",
+    "worker:notifications:dev": "node --import tsx scripts/workers/consume-notifications.ts",
     "check": "npm run lint && npm run typecheck && npm run test && npm run build",
     "prebuild": "node scripts/copy-pdf-worker.mjs"
   },
@@ -61,7 +64,8 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "6.4.3",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "esbuild": "^0.25.12"
   },
   "overrides": {
     "@aws-sdk/credential-provider-login": "3.972.77",

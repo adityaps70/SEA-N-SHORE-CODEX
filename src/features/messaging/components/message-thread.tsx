@@ -274,8 +274,8 @@ export function MessageThread({
     void markConversationReadAction(conversationId, requestedId)
       .then((result) => {
         if (result.ok) {
+          // markConversationReadAction revalidates /messages, which re-renders the inbox.
           publishMessagingUnreadCount(result.unreadCount)
-          router.refresh()
           return
         }
         if (lastRequestedReadIdRef.current === requestedId) {
@@ -287,7 +287,7 @@ export function MessageThread({
           lastRequestedReadIdRef.current = null
         }
       })
-  }, [conversationId, latestReceived, router])
+  }, [conversationId, latestReceived])
 
   const latestMessageKey = messages.length
     ? `${messages.at(-1)?.id ?? ''}:${messages.length}`
@@ -368,7 +368,6 @@ export function MessageThread({
         return
       }
       cancelEdit()
-      router.refresh()
     } catch {
       setInteractionError('We could not edit this message.')
     } finally {
@@ -382,11 +381,7 @@ export function MessageThread({
     setInteractionError('')
     try {
       const result = await setMessageReactionAction(messageId, emoji)
-      if (!result.ok) {
-        setInteractionError(result.error)
-        return
-      }
-      router.refresh()
+      if (!result.ok) setInteractionError(result.error)
     } catch {
       setInteractionError('We could not update your reaction.')
     } finally {
@@ -400,11 +395,7 @@ export function MessageThread({
     setInteractionError('')
     try {
       const result = await deleteMessageAction(messageId)
-      if (!result.ok) {
-        setInteractionError(result.error)
-        return
-      }
-      router.refresh()
+      if (!result.ok) setInteractionError(result.error)
     } catch {
       setInteractionError('We could not unsend this message.')
     } finally {
@@ -550,8 +541,8 @@ export function MessageThread({
               onConversationDeleted(result)
               return
             }
+            // deleteConversationAction revalidated /messages, so the inbox we open is fresh.
             router.push('/messages')
-            router.refresh()
           }}
         />
       </header>

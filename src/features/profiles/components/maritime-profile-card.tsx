@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
 import { Compass, Gauge, Ship, ShipWheel, Waves, type LucideIcon } from 'lucide-react'
 import { updateProfileProfessionalSection, type ProfileInlineActionState } from '../profile-inline-actions'
@@ -80,7 +79,6 @@ function MaritimeProfileEditor({
 }
 
 export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
-  const router = useRouter()
   const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-maritime', 'Maritime Experience')
   const editable = Boolean(editHref)
   const editing = editable && editorEditing
@@ -121,10 +119,7 @@ export function MaritimeProfileCard({ profile, editHref }: { profile: PublicProf
           profile={profile}
           onClose={closeEditor}
           onDirty={markEditorDirty}
-          onSaved={() => {
-            closeEditor()
-            router.refresh()
-          }}
+          onSaved={closeEditor}
         />
       ) : details.length ? (
         <ProfileFieldList className="mt-5">
