@@ -1,1 +1,1 @@
-migrate-once
+plan
