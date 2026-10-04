@@ -70,15 +70,12 @@ async function uploadAvatar(page, user) {
   const control = form.locator('xpath=..')
   const alert = control.getByRole('alert').first()
 
-  const fileChooserPromise = page.waitForEvent('filechooser', { timeout: 20_000 })
+  const fileChooserPromise = page.waitForEvent('filechooser')
   await addButton.click()
   const fileChooser = await fileChooserPromise
 
   const uploadResponsePromise = page.waitForResponse(
-    (response) => {
-      if (response.request().method() !== 'POST') return false
-      return new URL(response.url()).pathname === '/profile'
-    },
+    (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/profile',
     { timeout: 30_000 },
   )
   await fileChooser.setFiles({
@@ -86,6 +83,10 @@ async function uploadAvatar(page, user) {
     mimeType: 'image/png',
     buffer: avatarPng,
   })
+  // Picking a photo opens the crop dialog (9d7be1dd); Save crops in the browser, then the upload posts.
+  const cropDialog = page.getByRole('dialog')
+  await expect(cropDialog).toBeVisible({ timeout: 20_000 })
+  await cropDialog.getByRole('button', { name: 'Save', exact: true }).click()
 
   const uploadResponse = await uploadResponsePromise
   assert.ok(uploadResponse.ok(), 'Profile avatar upload request returned HTTP ' + uploadResponse.status())

@@ -89,6 +89,8 @@ jobs:
         run: node --test scripts/aws/cognito-google-native-link-repair.test.mjs
       - name: Verify onboarding e2e guard contract
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
+      - name: Verify feed avatar staging E2E contract
+        run: node --test scripts/aws/feed-avatar-staging-e2e-contract.test.mjs
       - name: Verify membership launch sequence contract
         run: node --test scripts/aws/membership-launch-sequence.test.mjs
       - name: Verify membership launch child workflow contract
