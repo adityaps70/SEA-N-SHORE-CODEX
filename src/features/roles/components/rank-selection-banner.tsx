@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { useActionState, useState, useSyncExternalStore } from 'react'
 import { Compass, X } from 'lucide-react'
 import type { Persona } from '@/features/profiles/persona'
@@ -30,7 +29,6 @@ const initialState: ProfileInlineActionState = {}
  * recognised. The picker opens in place; saving clears it, and it can be dismissed.
  */
 export function RankSelectionBanner({ persona, initial }: { persona: Persona; initial: ProfileRoleInitialValues }) {
-  const router = useRouter()
   // Hidden while rendering on the server, so a dismissed banner never flashes.
   const dismissedEarlier = useSyncExternalStore(subscribe, readDismissed, () => true)
   const [dismissed, setDismissed] = useState(false)
@@ -38,10 +36,7 @@ export function RankSelectionBanner({ persona, initial }: { persona: Persona; in
 
   async function submit(previousState: ProfileInlineActionState, formData: FormData) {
     const nextState = await updateProfileRoleSection(previousState, formData)
-    if (nextState.success) {
-      setOpen(false)
-      router.refresh()
-    }
+    if (nextState.success) setOpen(false)
     return nextState
   }
   const [state, formAction, pending] = useActionState(submit, initialState)

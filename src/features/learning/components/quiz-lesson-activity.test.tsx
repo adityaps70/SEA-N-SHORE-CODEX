@@ -118,7 +118,8 @@ describe('QuizLessonActivity', () => {
     expect(screen.getByText('100%')).toBeInTheDocument()
     expect(screen.getByText('Attempt 1')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Continue to next lesson' })).toHaveAttribute('href', nextLessonHref)
-    expect(mocks.refresh).toHaveBeenCalledOnce()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('shows failed scoring feedback, reveals correct answers only after submission, and supports a clean retry', async () => {

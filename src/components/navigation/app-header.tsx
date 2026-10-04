@@ -14,7 +14,6 @@ import Link from 'next/link'
 import { Wordmark } from '@/components/brand/wordmark'
 import { MessagingUnreadBadge } from '@/features/messaging/components/messaging-unread-badge'
 import { NotificationBell } from '@/features/notifications/components/notification-bell'
-import type { NetworkNotification } from '@/features/notifications/types'
 import { AccountMenuSignOut, accountMenuItems, type HeaderOrganization } from './account-menu'
 import { ActiveNavLink } from './active-nav-link'
 import { HeaderMenu, type HeaderMenuItem } from './header-menu'
@@ -50,7 +49,6 @@ const navClass = 'relative inline-flex min-h-14 min-w-[3.25rem] flex-col items-c
 const activeNavClass = 'border-ocean-600 bg-ocean-50 text-ocean-700'
 
 export function AppHeader({
-  recentNotifications,
   unreadCount,
   messagingUnreadCount = 0,
   canAccessAdmin = false,
@@ -58,7 +56,6 @@ export function AppHeader({
   organizations = [],
   organizationCount = organizations.length,
 }: {
-  recentNotifications: NetworkNotification[]
   unreadCount: number
   messagingUnreadCount?: number
   canAccessAdmin?: boolean
@@ -127,7 +124,7 @@ export function AppHeader({
               </>
             )}
           />
-          <NotificationBell recent={recentNotifications} unreadCount={unreadCount} />
+          <NotificationBell unreadCount={unreadCount} />
           <HeaderMenu
             label="Account menu"
             items={accountItems}

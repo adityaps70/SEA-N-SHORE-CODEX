@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   AlertCircle,
   ArrowDown,
@@ -651,7 +650,6 @@ function QuizEditor({
 }
 
 export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false }: Props) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [message, setMessage] = useState<Message>(null)
   const [newSectionTitle, setNewSectionTitle] = useState('')
@@ -711,7 +709,6 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
       }
       afterSuccess?.()
       if (successCopy) setMessage({ tone: 'success', copy: successCopy })
-      router.refresh()
     })
   }
 
@@ -730,7 +727,6 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
     }
     setNewSectionTitle('')
     setMessage({ tone: 'success', copy: 'Section added.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -744,7 +740,6 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
     }
     setEditingSectionId(null)
     setMessage({ tone: 'success', copy: 'Section title saved.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -758,7 +753,6 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
     }
     setQuizEditingMaterialId(null)
     setMessage({ tone: 'success', copy: 'Quiz saved.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -796,12 +790,10 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
       if (!processed.ok) {
         const copy = `Material saved, but SCORM processing failed: ${processed.error}`
         setMessage({ tone: 'error', copy })
-        router.refresh()
         return { ok: false, error: copy }
       }
     }
     setMessage({ tone: 'success', copy: 'Material created.' })
-    router.refresh()
     return { ok: true }
   }
 
@@ -824,12 +816,10 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
       if (!processed.ok) {
         const copy = `Material saved, but SCORM processing failed: ${processed.error}`
         setMessage({ tone: 'error', copy })
-        router.refresh()
         return { ok: false, error: copy }
       }
     }
     setMessage({ tone: 'success', copy: 'Material changes saved.' })
-    router.refresh()
     return { ok: true }
   }
 

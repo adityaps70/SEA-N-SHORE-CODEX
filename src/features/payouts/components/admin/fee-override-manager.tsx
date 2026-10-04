@@ -1,8 +1,7 @@
 'use client'
 
 import { Building2, Search, UserRound, X } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { iconButtonClass, primaryButtonClass, secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { removeFeeOverrideAction, searchSellersAction, setFeeOverrideAction } from '../../admin-actions'
 import type { SellerSearchResult } from '../../payout-queries'
@@ -26,8 +25,6 @@ function KindIcon({ kind }: { kind: 'profile' | 'organization' }) {
 }
 
 function RemoveOverrideButton({ override }: { override: FeeOverrideView }) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
   const [confirming, setConfirming] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +59,6 @@ function RemoveOverrideButton({ override }: { override: FeeOverrideView }) {
     setPending(false)
     if (result.ok) {
       setConfirming(false)
-      startTransition(() => router.refresh())
       return
     }
     setError(result.error)
@@ -94,8 +90,6 @@ function RemoveOverrideButton({ override }: { override: FeeOverrideView }) {
 
 /** Admin: find a person or organization and give them their own platform fee. */
 export function FeeOverrideManager({ overrides, defaultPercentLabel }: { overrides: FeeOverrideView[]; defaultPercentLabel: string }) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
   const [term, setTerm] = useState('')
   const [results, setResults] = useState<SellerSearchResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -182,7 +176,6 @@ export function FeeOverrideManager({ overrides, defaultPercentLabel }: { overrid
     if (outcome.ok) {
       setMessage({ ok: true, text: outcome.message })
       setSelected(null)
-      startTransition(() => router.refresh())
     } else {
       setMessage({ ok: false, text: outcome.error })
       setFieldErrors(outcome.fieldErrors ?? {})

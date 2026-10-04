@@ -267,6 +267,18 @@ export type FeedPage = {
   nextCursor: FeedCursor | null
 }
 
+/**
+ * Round 14 (3.7): one item of a keyset-paginated list together with its own sort position, so a
+ * refreshed first page can be merged with the pages the member already loaded.
+ */
+export type CursorPageEntry<T> = { cursor: FeedCursor; item: T }
+
+/** A keyset page: newest first, `nextCursor` is null on the last page. */
+export type CursorPage<T> = {
+  entries: CursorPageEntry<T>[]
+  nextCursor: FeedCursor | null
+}
+
 export type FeedRequest = {
   category?: PostCategory
   /** Only posts published as this organization. */

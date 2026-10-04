@@ -1,7 +1,6 @@
 'use client'
 
 import { useId, useRef, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { ExternalLink, FileText, ShieldCheck, Upload } from 'lucide-react'
 import {
   confirmDgProfileUpload,
@@ -36,15 +35,17 @@ export function DgProfileOnFileBadge() {
 export function DgProfileUpload({
   profileId,
   initialDocument,
-  variant,
   onDocumentChange,
 }: {
   profileId: string
   initialDocument: ProfileDocumentSummary | null
+  /**
+   * Where the control is shown. It no longer changes behaviour: saving and removing revalidate
+   * /profile, which re-renders the current page either way (Round 14, 3.9).
+   */
   variant: 'onboarding' | 'profile'
   onDocumentChange?: (document: ProfileDocumentSummary | null) => void
 }) {
-  const router = useRouter()
   const inputId = useId()
   const statusId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -56,9 +57,9 @@ export function DgProfileUpload({
   const [pending, startTransition] = useTransition()
   const busy = pending || activity !== null
 
+  // confirmDgProfileUpload / removeDgProfileUpload revalidate /profile, which re-renders the page.
   function finish(nextNotice: string) {
     setNotice(nextNotice)
-    if (variant === 'profile') router.refresh()
   }
 
   function chooseFile() {

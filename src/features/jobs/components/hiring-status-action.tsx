@@ -1,7 +1,6 @@
 'use client'
 
 import { useId, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { HIRING_APPLICATION_STATUS_LABELS, type OwnerSettableApplicationStatus } from '../application-status'
 import { updateHiringApplicationStatus } from '../hiring-actions'
 import type { JobApplicationStatus } from '../types'
@@ -17,7 +16,6 @@ const actions: Array<{ label: string; status: OwnerSettableApplicationStatus; to
 
 /** Status-change logic shared by the desktop status card and the phone sticky bar. */
 export function useHiringStatusChange(applicationId: string) {
-  const router = useRouter()
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -38,7 +36,6 @@ export function useHiringStatusChange(applicationId: string) {
       setNote('')
       setSuccess(`Moved to ${HIRING_APPLICATION_STATUS_LABELS[status]}. The applicant can see this on their application timeline.`)
       onDone?.()
-      router.refresh()
     })
   }
 

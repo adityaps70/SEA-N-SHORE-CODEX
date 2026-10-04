@@ -105,9 +105,7 @@ export function NotificationList({ notifications }: { notifications: NetworkNoti
       if (!result.ok) {
         setItems(previous)
         setError(result.error)
-        return
       }
-      router.refresh()
     })
   }
 

@@ -1,7 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { useEffect, useId, useRef, useState, useTransition } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { adminCancelSubscriptionAction, adminEndTrialAction, adminExtendTrialAction, updatePlanPriceAction } from '../admin-actions'
 
 const secondaryButton = 'inline-flex min-h-10 cursor-pointer items-center justify-center rounded-lg border border-mist-200 bg-white px-3 text-sm font-semibold text-navy-900 transition hover:border-ocean-300 hover:bg-ocean-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-700 disabled:cursor-not-allowed disabled:opacity-60'
@@ -24,8 +23,6 @@ function useFocusReturn(open: boolean) {
 
 /** Change the price new subscribers pay. Saves a new price row; existing subscribers keep theirs. */
 export function PlanPriceEditor({ plan, interval, label, currentRupees }: { plan: string; interval: string; label: string; currentRupees: string }) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
   const [amount, setAmount] = useState(currentRupees)
   const [pending, setPending] = useState(false)
@@ -47,7 +44,6 @@ export function PlanPriceEditor({ plan, interval, label, currentRupees }: { plan
       if (result.ok) {
         setMessage({ tone: 'ok', text: result.message })
         close()
-        startTransition(() => router.refresh())
       } else {
         setMessage({ tone: 'error', text: result.error })
       }
@@ -92,8 +88,6 @@ export function PlanPriceEditor({ plan, interval, label, currentRupees }: { plan
 
 /** Cancel a subscription from the admin list: stop auto-renew, or end access now. */
 export function AdminCancelSubscription({ accessId, subjectName, planLabel, accessUntil }: { accessId: string; subjectName: string; planLabel: string; accessUntil: string | null }) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState<'period_end' | 'now' | null>(null)
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
@@ -114,7 +108,6 @@ export function AdminCancelSubscription({ accessId, subjectName, planLabel, acce
       if (result.ok) {
         setMessage({ tone: 'ok', text: result.message })
         setOpen(false)
-        startTransition(() => router.refresh())
       } else {
         setMessage({ tone: 'error', text: result.error })
       }
@@ -153,8 +146,6 @@ export function AdminCancelSubscription({ accessId, subjectName, planLabel, acce
 
 /** Extend a running free trial by a number of days, or end it now. */
 export function AdminTrialControls({ trialId, subjectName, planLabel, endsOn }: { trialId: string; subjectName: string; planLabel: string; endsOn: string | null }) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
   const [mode, setMode] = useState<'closed' | 'extend' | 'end'>('closed')
   const [days, setDays] = useState('14')
   const [pending, setPending] = useState(false)
@@ -176,7 +167,6 @@ export function AdminTrialControls({ trialId, subjectName, planLabel, endsOn }: 
       if (result.ok) {
         setMessage({ tone: 'ok', text: result.message })
         setMode('closed')
-        startTransition(() => router.refresh())
       } else {
         setMessage({ tone: 'error', text: result.error })
       }

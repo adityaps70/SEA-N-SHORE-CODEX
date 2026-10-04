@@ -37,11 +37,8 @@ export function LessonCompletionControl({
       }
 
       setCompleted(true)
-      if (!result.enrollmentCompleted && nextLessonHref) {
-        router.push(nextLessonHref)
-      } else {
-        router.refresh()
-      }
+      // Completing revalidated the lesson page; only moving on needs a navigation.
+      if (!result.enrollmentCompleted && nextLessonHref) router.push(nextLessonHref)
     } catch {
       setError('We could not update your lesson progress. Please try again.')
     } finally {

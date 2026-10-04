@@ -112,7 +112,8 @@ describe('FeeSettingsForm', () => {
     fireEvent.change(screen.getByLabelText('Default platform fee'), { target: { value: '12' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save fee settings' }))
     expect(await screen.findByRole('status')).toHaveTextContent('12% platform fee')
-    expect(mocks.refresh).toHaveBeenCalled()
+    // Round 14 (3.9): the action revalidates, which already re-renders the route.
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 })
 

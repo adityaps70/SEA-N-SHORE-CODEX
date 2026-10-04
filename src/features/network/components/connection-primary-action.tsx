@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react'
 import { UserPlus } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { StartConversationButton } from '@/features/messaging/components/start-conversation-button'
 import {
   acceptConnectionRequest,
@@ -22,7 +21,6 @@ export function ConnectionPrimaryAction({
   /** `pill`: one compact ocean outline pill (Connect, Pending, Accept or Message) for list rows. */
   variant?: 'block' | 'pill'
 }) {
-  const router = useRouter()
   const [relationship, setRelationship] = useState(initialRelationship)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState('')
@@ -36,9 +34,7 @@ export function ConnectionPrimaryAction({
       if (!result.ok) {
         setRelationship(previous)
         setError(result.error)
-        return
       }
-      router.refresh()
     })
   }
 
@@ -53,9 +49,7 @@ export function ConnectionPrimaryAction({
       if (!result.ok) {
         setRelationship(previous)
         setError(result.error)
-        return
       }
-      router.refresh()
     })
   }
 

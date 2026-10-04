@@ -64,7 +64,6 @@ export function SendPayoutPanel({ sellerKey, sellerName, earningIds, totalMinor,
     setResult(outcome)
     if (outcome.ok) {
       setConfirming(false)
-      startTransition(() => router.refresh())
     }
   }
 

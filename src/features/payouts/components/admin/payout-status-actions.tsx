@@ -1,8 +1,7 @@
 'use client'
 
 import { RefreshCw } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useEffect, useId, useRef, useState, useTransition } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { secondaryButtonClass } from '@/components/ui/interactive-styles'
 import { cancelPayoutAction, refreshPayoutStatusAction, retryPayoutAction, type PayoutActionResult } from '../../admin-actions'
 
@@ -21,8 +20,6 @@ type Command = 'refresh' | 'retry' | 'cancel'
  * Cashfree never confirmed: Send again (same transfer id) or Cancel (in-page confirmation).
  */
 export function PayoutStatusActions({ payoutId, status, amountLabel, compact = false }: Props) {
-  const router = useRouter()
-  const [, startTransition] = useTransition()
   const [pending, setPending] = useState<Command | null>(null)
   const [confirmCancel, setConfirmCancel] = useState(false)
   const [result, setResult] = useState<PayoutActionResult | null>(null)
@@ -57,7 +54,6 @@ export function PayoutStatusActions({ payoutId, status, amountLabel, compact = f
     setResult(outcome)
     if (outcome.ok) {
       setConfirmCancel(false)
-      startTransition(() => router.refresh())
     }
   }
 
