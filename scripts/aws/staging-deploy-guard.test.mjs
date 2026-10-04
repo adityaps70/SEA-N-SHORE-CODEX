@@ -147,7 +147,7 @@ test('staging deploy turns ECS Exec off on the web service and verifies it', () 
   const workflow = readFileSync(workflowPath, 'utf8')
   const step = workflow.slice(workflow.indexOf('- name: Deploy ECS service and wait for stability'), workflow.indexOf('- name: Promote event worker task definitions'))
 
-  assert.match(step, /--service "\$ECS_SERVICE"[\s\S]*--no-enable-execute-command/)
+  assert.match(step, /--service "\$ECS_SERVICE"[\s\S]*--disable-execute-command/)
   assert.doesNotMatch(workflow, /--enable-execute-command/)
   assert.match(step, /--query 'services\[0\]\.enableExecuteCommand' --output json/)
   assert.match(step, /\[\[ "\$EXEC_ENABLED" == "false" \]\]/)

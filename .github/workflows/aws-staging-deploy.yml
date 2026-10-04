@@ -370,7 +370,7 @@ jobs:
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --task-definition "$NEW_TASK_ARN" \
-            --no-enable-execute-command \
+            --disable-execute-command \
             --force-new-deployment > /dev/null
 
           aws ecs wait services-stable \
