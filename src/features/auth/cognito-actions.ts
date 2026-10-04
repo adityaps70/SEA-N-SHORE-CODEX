@@ -4,6 +4,9 @@ import {
   COGNITO_COOKIE_NAMES,
   createCognitoCookieManager,
 } from '@/lib/auth/cognito-cookies'
+import { isDisposableEmail } from '@/lib/auth/disposable-email'
+import { AUTH_EMAIL_RATE_LIMITED_MESSAGE, DISPOSABLE_EMAIL_MESSAGE } from '@/lib/errors/user-messages'
+import type { AuthEmailAction, AuthEmailLimiter } from './email-limits'
 import { resetPasswordSchema, signInSchema, signUpSchema } from './schemas'
 
 export type CognitoAuthActionState = {
@@ -102,10 +105,26 @@ export function createCognitoAuthActions(input: {
   siteUrl: string
   allowInsecureHttpCookies?: boolean
   onCognitoIssue?: (context: { operation: string; reason: string }) => void
+  /** Round 14 (2.6): per-email and per-IP limits for sign-up, code resend and password reset. */
+  emailLimiter?: AuthEmailLimiter
+  /** The trusted client IP of this request (see trustedClientIp), used only for the limiter. */
+  clientIp?: string | null
 }) {
   const cookies = createCognitoCookieManager(input.cookieStore, input.siteUrl, {
     allowInsecureHttp: input.allowInsecureHttpCookies === true,
   })
+
+  /**
+   * Null when the attempt may go on to Cognito, else the error to show: the generic rate-limit
+   * message (which says nothing about whether an account exists), or the flow's own retry message
+   * when the limiter itself failed closed.
+   */
+  async function emailLimitError(action: AuthEmailAction, email: string, unavailableMessage: string) {
+    if (!input.emailLimiter) return null
+    const decision = await input.emailLimiter.consume({ action, email, ip: input.clientIp ?? null })
+    if (decision.allowed) return null
+    return decision.reason === 'rate_limited' ? AUTH_EMAIL_RATE_LIMITED_MESSAGE : unavailableMessage
+  }
 
   function reportCognitoIssue(operation: string, error: CognitoApiError) {
     const context = {
@@ -193,6 +212,9 @@ export function createCognitoAuthActions(input: {
       if (!parsed.success) {
         return { error: parsed.error.issues[0]?.message ?? 'Check your details.' }
       }
+      if (isDisposableEmail(parsed.data.email)) return { error: DISPOSABLE_EMAIL_MESSAGE }
+      const limited = await emailLimitError('sign_up', parsed.data.email, 'We could not create your account. Please try again.')
+      if (limited) return { error: limited }
 
       try {
         await input.api.signUp({
@@ -232,6 +254,12 @@ export function createCognitoAuthActions(input: {
     ): Promise<CognitoAuthActionState> {
       const parsed = emailSchema.safeParse(formData.get('email'))
       if (!parsed.success) return { error: 'Enter a valid email address.' }
+      const limited = await emailLimitError(
+        'resend_code',
+        parsed.data,
+        'We could not resend the confirmation code. Please check the email address or try again.',
+      )
+      if (limited) return { error: limited }
 
       try {
         await input.api.resendConfirmationCode(parsed.data)
@@ -271,6 +299,8 @@ export function createCognitoAuthActions(input: {
     ): Promise<CognitoAuthActionState> {
       const parsed = resetPasswordSchema.safeParse(Object.fromEntries(formData))
       if (!parsed.success) return { error: 'Enter a valid email address.' }
+      const limited = await emailLimitError('password_reset', parsed.data.email, 'We could not request a reset code. Please try again.')
+      if (limited) return { error: limited }
 
       try {
         await input.api.forgotPassword(parsed.data.email)

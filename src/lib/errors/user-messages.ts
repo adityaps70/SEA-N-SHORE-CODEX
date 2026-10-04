@@ -9,6 +9,10 @@
 
 export const SESSION_EXPIRED_MESSAGE = 'Your session has expired. Sign in again, then retry.'
 export const GENERIC_RETRY_MESSAGE = 'Something went wrong on our side and nothing was changed. Please try again in a moment.'
+/** Round 14 (2.6): sign-up, confirmation-code resend or password reset tried too often. Reveals nothing about the account. */
+export const AUTH_EMAIL_RATE_LIMITED_MESSAGE = 'Too many attempts. Please wait a while and try again.'
+/** Round 14 (2.7): sign-up with a disposable / temporary email address. */
+export const DISPOSABLE_EMAIL_MESSAGE = 'Please use a permanent email address.'
 
 /** Exact codes with a specific message. Keep sentences short: what happened, then what to do. */
 export const KNOWN_ERROR_MESSAGES: Record<string, string> = {
@@ -55,6 +59,10 @@ export const KNOWN_ERROR_MESSAGES: Record<string, string> = {
   feed_post_rate_limited: "You're posting very quickly. Please wait a little and try again.",
   feed_comment_rate_limited: "You're commenting very quickly. Please wait a little and try again.",
   feed_reaction_rate_limited: "You're reacting very quickly. Please wait a little and try again.",
+
+  // Auth email flows (Round 14, 2.6 and 2.7)
+  auth_email_rate_limited: AUTH_EMAIL_RATE_LIMITED_MESSAGE,
+  disposable_email_blocked: DISPOSABLE_EMAIL_MESSAGE,
 
   // Newsletter
   newsletter_rate_limited: 'Too many sign-up attempts from this connection. Please wait a few minutes and try again.',

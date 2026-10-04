@@ -34,6 +34,10 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.match(script, /cognito-pre-sign-up-link\.mjs/)
   assert.match(script, /aws_lambda_function\.cognito_pre_sign_up_link/)
   assert.match(script, /aws_lambda_permission\.cognito_pre_sign_up_link/)
+  // Round 14 (2.7): the disposable-email block ships as an in-place code update of this Lambda
+  // (new source_code_hash), which the plan classifier must accept as an allowed ['update'].
+  assert.match(script, /'aws_lambda_function\.cognito_pre_sign_up_link',/)
+  assert.match(script, /if actions not in \(\['create'\], \['update'\]\):/)
   assert.match(script, /PreSignUp/)
   assert.match(script, /aws ecs describe-task-definition/)
   assert.match(script, /aws ecs update-service/)

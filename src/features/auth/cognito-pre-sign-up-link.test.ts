@@ -107,3 +107,60 @@ describe('Cognito pre-sign-up Google account linker', () => {
     expect(send).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('Cognito pre-sign-up disposable email block (Round 14, 2.7)', () => {
+  async function load() {
+    return import('../../../infra/aws/app/lambda/cognito-pre-sign-up-link.mjs')
+  }
+
+  function signUpEvent(email: string, overrides: Record<string, unknown> = {}) {
+    return {
+      triggerSource: 'PreSignUp_SignUp',
+      userPoolId: 'ap-south-1_example',
+      userName: '11111111-1111-4111-8111-111111111111',
+      request: { userAttributes: { email } },
+      response: {},
+      ...overrides,
+    }
+  }
+
+  it.each(['someone@mailinator.com', 'Someone@Inbox.GuerrillaMail.com', 'crew@yopmail.fr'])(
+    'refuses a self-service sign-up with %s',
+    async (email) => {
+      const send = vi.fn()
+      const { createHandler } = await load()
+      await expect(createHandler({ client: { send } })(signUpEvent(email))).rejects.toThrow(
+        'disposable_email_blocked: Please use a permanent email address.',
+      )
+      expect(send).not.toHaveBeenCalled()
+    },
+  )
+
+  it('also checks a username that is itself a disposable address', async () => {
+    const { createHandler } = await load()
+    const input = signUpEvent('member@example.com', { userName: 'member@mailinator.com' })
+    await expect(createHandler({ client: { send: vi.fn() } })(input)).rejects.toThrow('disposable_email_blocked')
+  })
+
+  it('lets an ordinary self-service sign-up through unchanged', async () => {
+    const { createHandler } = await load()
+    const input = signUpEvent('member@example.com')
+    await expect(createHandler({ client: { send: vi.fn() } })(input)).resolves.toBe(input)
+  })
+
+  it('never blocks AdminCreateUser (phone-only members) or Google sign-ups', async () => {
+    const send = vi.fn().mockResolvedValue({ Users: [] })
+    const { createHandler } = await load()
+    const handler = createHandler({ client: { send } })
+    const admin = signUpEvent('someone@mailinator.com', { triggerSource: 'PreSignUp_AdminCreateUser' })
+    await expect(handler(admin)).resolves.toBe(admin)
+    const phone = signUpEvent('phone-0123456789abcdef@auth.seaandshore.in', { triggerSource: 'PreSignUp_AdminCreateUser' })
+    await expect(handler(phone)).resolves.toBe(phone)
+    const google = signUpEvent('someone@mailinator.com', {
+      triggerSource: 'PreSignUp_ExternalProvider',
+      userName: 'Google_1234567890',
+      request: { userAttributes: { email: 'someone@mailinator.com', email_verified: 'true' } },
+    })
+    await expect(handler(google)).resolves.toBe(google)
+  })
+})

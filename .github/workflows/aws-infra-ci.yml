@@ -193,6 +193,8 @@ jobs:
         run: node --test scripts/aws/performance-indexes-migration.test.mjs
       - name: Verify social action quotas migration contract
         run: node --test scripts/aws/social-action-quotas-migration.test.mjs
+      - name: Verify auth email limits migration contract
+        run: node --test scripts/aws/auth-email-limits-migration.test.mjs
       - name: Verify newsletter signing secret release contract
         run: node --test scripts/aws/newsletter-signing-secret-release.test.mjs
       - name: Verify guarded staging data cleanup contract
@@ -276,6 +278,8 @@ jobs:
         run: node --test scripts/aws/realtime-typing-lambda.test.mjs
       - name: Verify the app database secret rotation Lambda
         run: node --test scripts/aws/aurora-app-secret-rotation.test.mjs
+      - name: Verify disposable email block in the pre-sign-up Lambda
+        run: node --test scripts/aws/cognito-pre-sign-up-disposable.test.mjs
       - name: Verify live Google auth probe contract
         run: node --test scripts/aws/google-auth-live-probe.test.mjs
 

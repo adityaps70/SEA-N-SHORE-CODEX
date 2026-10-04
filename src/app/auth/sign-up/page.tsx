@@ -9,6 +9,7 @@ import { confirmSignUp, resendConfirmationCode, signUp } from "@/features/auth/a
 import { getCognitoEnvironment } from "@/lib/env";
 import { OAuthErrorNotice } from "@/components/feedback/oauth-error-notice";
 import { LEGACY_CLAIM_EMAIL_COOKIE } from "@/features/auth/legacy-claim";
+import { AUTH_EMAIL_RATE_LIMITED_MESSAGE } from "@/lib/errors/user-messages";
 
 export const metadata: Metadata = { title: 'Create your account' }
 
@@ -34,9 +35,11 @@ export default async function SignUpPage({
               A new confirmation code has been sent.
             </p>
           )}
-          {params.resendError === "1" && (
+          {(params.resendError === "1" || params.resendError === "limited") && (
             <p role="alert" className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-              We could not resend the confirmation code. Please try again shortly.
+              {params.resendError === "limited"
+                ? AUTH_EMAIL_RATE_LIMITED_MESSAGE
+                : "We could not resend the confirmation code. Please try again shortly."}
             </p>
           )}
           <AuthForm mode="confirm-sign-up" action={confirmSignUp} initialEmail={params.email} />
