@@ -64,9 +64,11 @@ variable "certificate_arn" {
 }
 
 variable "allowed_ingress_cidrs" {
-  description = "CIDRs allowed to reach the public ALB."
+  # Round 14 (1.4): empty. CloudFront reaches the ALB through alb_cloudfront (its origin-facing
+  # prefix list on 443); list CIDRs here only as a break-glass for direct HTTPS access.
+  description = "Extra CIDRs allowed to reach the ALB on 443 (break-glass; CloudFront needs none)."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = []
 }
 
 variable "task_cpu" {
@@ -176,20 +178,15 @@ resource "aws_security_group" "alb" {
   description = "Public ingress to the Sea N Shore ALB"
   vpc_id      = aws_vpc.app.id
 
-  ingress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_ingress_cidrs
-  }
-
-  ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = var.allowed_ingress_cidrs
+  dynamic "ingress" {
+    for_each = length(var.allowed_ingress_cidrs) > 0 ? [1] : []
+    content {
+      description = "HTTPS (break-glass)"
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      cidr_blocks = var.allowed_ingress_cidrs
+    }
   }
 
   egress {
@@ -263,18 +260,8 @@ resource "aws_lb_target_group" "app" {
   tags = local.common_tags
 }
 
-resource "aws_lb_listener" "http_forward" {
-  count = var.certificate_arn == "" ? 1 : 0
-
-  load_balancer_arn = aws_lb.app.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.app.arn
-  }
-}
+# Round 14 (1.4): the plain-HTTP forward listener on port 80 is gone; CloudFront reaches the ALB
+# only through aws_lb_listener.origin_https.
 
 resource "aws_lb_listener" "http_redirect" {
   count = var.certificate_arn != "" ? 1 : 0
@@ -508,7 +495,7 @@ resource "aws_ecs_service" "web" {
   }
 
   depends_on = [
-    aws_lb_listener.http_forward,
+    aws_lb_listener.origin_https,
     aws_lb_listener.http_redirect,
     aws_lb_listener.https
   ]

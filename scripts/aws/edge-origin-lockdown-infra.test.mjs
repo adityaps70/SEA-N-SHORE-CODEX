@@ -12,7 +12,7 @@ const ci = await read('../../.github/workflows/aws-infra-ci.yml')
 const lockdown = await read('../../infra/aws/app/edge-origin-lockdown.tf')
 const main = await read('../../infra/aws/app/main.tf')
 
-test('the runner is guarded, additive and refuses anything outside stage A', () => {
+test('the runner is guarded and refuses anything outside stages A and C', () => {
   assert.ok(['plan', 'apply-once'].includes(action))
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
   assert.match(script, /EDGE_ORIGIN_LOCKDOWN_EXPECTED_SHA/)
@@ -27,13 +27,24 @@ test('the runner is guarded, additive and refuses anything outside stage A', () 
   // Nothing in stage A may touch CloudFront, the ALB's existing group, listeners on 80, or data.
   const allowList = script.slice(script.indexOf('allowed = {'), script.indexOf('}\nplan = json.load'))
   assert.match(allowList, /'aws_lb_listener\.origin_https'/)
-  assert.doesNotMatch(allowList, /'aws_cloudfront|'aws_security_group\.alb'|'aws_lb_listener\.http|'aws_rds|'aws_s3|'aws_cognito/)
+  assert.doesNotMatch(allowList, /'aws_cloudfront|'aws_rds|'aws_s3|'aws_cognito/)
+  // Stage C: only the open-ingress removal and the port 80 listener deletion, exactly.
+  assert.match(allowList, /'aws_security_group\.alb': \{\('update',\)\}/)
+  assert.match(allowList, /'aws_lb_listener\.http_forward\[0\]': \{\('delete',\)\}/)
+  assert.match(script, /ALB group change outside ingress refused/)
+  assert.match(script, /ALB group must end with no port 80 and no 0\.0\.0\.0\/0 ingress/)
+  assert.match(script, /ALB_DIRECT_ACCESS_CLOSED=true/)
+  // Never close port 80 while CloudFront still uses it.
+  assert.match(script, /Stage C refused: CloudFront does not yet reach the ALB over HTTPS/)
+  assert.match(script, /OriginProtocolPolicy == "https-only"/)
   // A timed-out (or failed), unused certificate request is replaced create-before-destroy; any
   // other state refuses.
   assert.match(script, /PENDING_VALIDATION\|ISSUED\) ;;/)
   assert.match(script, /VALIDATION_TIMED_OUT\|FAILED\)/)
   assert.match(script, /still in use; refusing to replace it/)
   assert.match(script, /-replace=aws_acm_certificate\.origin_tls/)
+  // The post-apply drift plan never re-requests the replacement.
+  assert.match(script, /"\$\{AFTER_ARGS\[@\]\}" -var-file="\$WORK_DIR\/variables\.json" -out="\$WORK_DIR\/after\.tfplan"/)
   assert.match(script, /allowed\['aws_acm_certificate\.origin_tls'\] = \{\('create', 'delete'\), \('create',\), \('delete',\)\}/)
   assert.match(script, /only the deposed origin certificate may be deleted on its own/)
   assert.match(script, /ORIGIN_HTTPS_WITHOUT_HEADER/)
@@ -83,4 +94,11 @@ test('stage B: CloudFront uses the HTTPS origin with the secret header, and no l
   assert.doesNotMatch(recovery, /\.desiredCount == 1 and/)
   assert.match(audit, /CustomHeaderNames:\[\.CustomHeaders\.Items\[\]\?\.HeaderName\]/)
   assert.doesNotMatch(audit, /Origins:\.DistributionConfig\.Origins/)
+})
+
+test('stage C: the ALB answers only CloudFront, on 443', async () => {
+  assert.match(main, /variable "allowed_ingress_cidrs" \{[\s\S]*?default\s*=\s*\[\]/)
+  assert.doesNotMatch(main, /from_port\s*=\s*80/)
+  assert.doesNotMatch(main, /resource "aws_lb_listener" "http_forward"/)
+  assert.match(main, /depends_on = \[\s*\n\s*aws_lb_listener\.origin_https,/)
 })
