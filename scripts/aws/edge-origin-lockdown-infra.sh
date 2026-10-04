@@ -152,7 +152,12 @@ for r in changes:
         keys = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k) and k not in ('tags', 'tags_all'))
         if set(keys) - {'security_groups'}:
             raise SystemExit('ALB change outside security_groups refused: ' + ','.join(keys))
-        if not set(before.get('security_groups') or []) <= set(after.get('security_groups') or []):
+        unknown = r['change'].get('after_unknown') or {}
+        if after.get('security_groups') is None and unknown.get('security_groups') is True:
+            # The new CloudFront group's id is only known at apply time; the post-apply check proves
+            # both the existing group and the CloudFront group are attached.
+            print('ALB_SECURITY_GROUPS_AFTER=unknown-until-apply')
+        elif not set(before.get('security_groups') or []) <= set(after.get('security_groups') or []):
             raise SystemExit('ALB must keep its existing security group while the CloudFront group is added')
     if r['address'] == 'aws_lb_listener.origin_https':
         after = r['change']['after']
@@ -221,8 +226,11 @@ echo "ORIGIN_HTTPS_WITH_HEADER=$SIGNED"
 [[ "$UNSIGNED" == 403 && "$SIGNED" == 200 ]]
 echo "ORIGIN_HTTPS_LISTENER_VERIFIED=true"
 
+ALB_BASE_GROUP="$(aws ec2 describe-security-groups --region "$AWS_REGION" --filters Name=group-name,Values=sea-n-shore-staging-alb --query 'SecurityGroups[0].GroupId' --output text)"
+ALB_CF_GROUP="$(aws ec2 describe-security-groups --region "$AWS_REGION" --filters Name=group-name,Values=sea-n-shore-staging-alb-cloudfront --query 'SecurityGroups[0].GroupId' --output text)"
+[[ "$ALB_BASE_GROUP" == sg-* && "$ALB_CF_GROUP" == sg-* ]]
 aws elbv2 describe-load-balancers --region "$AWS_REGION" --names sea-n-shore-staging-alb --output json \
-  | jq -e '.LoadBalancers[0].SecurityGroups | length == 2' >/dev/null
+  | jq -e --arg base "$ALB_BASE_GROUP" --arg cf "$ALB_CF_GROUP" '.LoadBalancers[0].SecurityGroups | sort == ([$base, $cf] | sort)' >/dev/null
 echo "ALB_CLOUDFRONT_GROUP_ATTACHED=true"
 
 # The public site is unchanged (CloudFront still uses the HTTP origin until stage B).
