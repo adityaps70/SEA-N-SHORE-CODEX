@@ -77,7 +77,8 @@ describe('POST /api/account/delete', () => {
       password: 'CorrectPassword123',
       cognitoSub: 'sub-1',
     })
-    expect(mocks.cookieDelete).toHaveBeenCalledTimes(9)
+    // Every Cognito cookie, including the Round 14 (2.11) authenticator-code challenge pair.
+    expect(mocks.cookieDelete).toHaveBeenCalledTimes(11)
   })
 
   it('rejects deletion unless the user types DELETE exactly', async () => {

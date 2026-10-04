@@ -10,6 +10,7 @@ import { trustedClientIp } from '@/lib/http/client-ip'
 import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 import { createCognitoAuthActions } from './cognito-actions'
 import { createProductionAuthEmailLimiter } from './email-limits-runtime'
+import { createMfaSignInActions, createMfaSignInHandler } from './mfa-sign-in'
 import { createOtpIpLimiter } from './otp-ip-limiter'
 import { createPhoneAuthActions, parseAllowedCallingCodes, type PhoneAuthActionState } from './phone-auth-actions'
 import { createPhoneAuthAdmin } from './phone-auth-admin'
@@ -52,6 +53,23 @@ const handlers = createAuthActionHandlers({
       siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
     })
   },
+})
+
+const mfaSignInHandler = createMfaSignInHandler({
+  getActions: async () => {
+    const cookieStore = await cookies()
+    const environment = getCognitoEnvironment()
+    return createMfaSignInActions({
+      api: createCognitoApi({
+        region: environment.AWS_COGNITO_REGION,
+        clientId: environment.AWS_COGNITO_CLIENT_ID,
+      }),
+      cookieStore: cookieStore as unknown as Parameters<typeof createMfaSignInActions>[0]['cookieStore'],
+      siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+      allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    })
+  },
+  redirect: nextRedirect,
 })
 
 async function getProductionPhoneActions() {
@@ -141,4 +159,9 @@ export async function confirmPhoneOtp(
   formData: FormData,
 ): Promise<PhoneAuthActionState> {
   return phoneHandlers.confirmOtp(state, formData)
+}
+
+/** Round 14 (2.11): the authenticator-code step after a correct password. */
+export async function confirmSignInMfa(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return mfaSignInHandler(state, formData)
 }

@@ -109,3 +109,84 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.match(workflow, /- infra\/aws\/app\/cognito-email-sender\.tf/)
   assert.match(workflow, /- infra\/aws\/app\/lambda\/cognito-resend-email-sender\.mjs/)
 })
+
+// Round 14 (2.11): MFA OPTIONAL with authenticator apps only; no SMS MFA, no Plus / threat protection.
+test('multi-login auth runner accepts only optional authenticator-app MFA and verifies it after apply', async () => {
+  const { execFileSync } = await import('node:child_process')
+  const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  const script = await readFile(new URL('./multi-login-auth-infra.sh', import.meta.url), 'utf8')
+  const auth = await readFile(new URL('../../infra/aws/app/auth.tf', import.meta.url), 'utf8')
+
+  // Terraform: OPTIONAL + software tokens, and nothing paid or SMS-based on the pool.
+  const pool = auth.slice(auth.indexOf('resource "aws_cognito_user_pool" "app"'), auth.indexOf('resource "aws_cognito_user_pool_domain" "app"'))
+  assert.match(pool, /^\s*mfa_configuration\s*=\s*"OPTIONAL"$/m)
+  assert.match(pool, /software_token_mfa_configuration\s*\{\s*enabled\s*=\s*true\s*\}/)
+  assert.doesNotMatch(pool, /mfa_configuration\s*=\s*"(OFF|ON)"/)
+  assert.doesNotMatch(pool, /^\s*(sms_configuration|email_mfa_configuration|user_pool_add_ons|user_pool_tier|advanced_security_mode)\b/m)
+  // The web client's sign-in flows are unchanged.
+  assert.match(auth, /"ALLOW_USER_PASSWORD_AUTH",\s*"ALLOW_USER_SRP_AUTH",\s*"ALLOW_CUSTOM_AUTH",\s*"ALLOW_REFRESH_TOKEN_AUTH",/)
+
+  // Post-apply verification reads the live pool, read-only.
+  assert.match(script, /aws cognito-idp get-user-pool-mfa-config --region "\$AWS_REGION" --user-pool-id "\$USER_POOL_ID"/)
+  assert.match(script, /\.MfaConfiguration == "OPTIONAL"\n\s*and \.SoftwareTokenMfaConfiguration\.Enabled == true/)
+  assert.match(script, /\.UserPool\.MfaConfiguration == "OPTIONAL"/)
+  assert.match(script, /\(\.UserPool\.UserPoolAddOns\.AdvancedSecurityMode \/\/ "OFF"\) == "OFF"/)
+  assert.match(script, /\(\.UserPool\.UserPoolTier \/\/ "ESSENTIALS"\) != "PLUS"/)
+  assert.match(script, /COGNITO_TOTP_MFA_OPTIONAL_VERIFIED=true/)
+  const verifiedAt = script.indexOf('COGNITO_TOTP_MFA_OPTIONAL_VERIFIED=true')
+  assert.ok(verifiedAt > script.indexOf('apply -input=false -no-color "$WORK_DIR/auth-final.tfplan"'))
+  assert.ok(verifiedAt < script.indexOf('MULTI_LOGIN_AUTH_INFRA_APPLY_VERIFIED=true'))
+
+  // Run the plan classifier itself against representative plans.
+  const start = script.indexOf(`cat > "$WORK_DIR/classify-plan.py" <<'PY'\n`)
+  assert.ok(start > 0)
+  const bodyStart = script.indexOf('\n', start) + 1
+  const classifier = script.slice(bodyStart, script.indexOf('\nPY\n', bodyStart))
+  const dir = mkdtempSync(join(tmpdir(), 'mfa-classifier-'))
+  try {
+    const classifierPath = join(dir, 'classify.py')
+    writeFileSync(classifierPath, classifier)
+    const poolChange = (after, actions = ['update'], before = { mfa_configuration: 'OFF', software_token_mfa_configuration: [], lambda_config: [{}] }) => ({
+      resource_changes: [{ address: 'aws_cognito_user_pool.app', mode: 'managed', change: { actions, before, after } }],
+    })
+    const optional = { mfa_configuration: 'OPTIONAL', software_token_mfa_configuration: [{ enabled: true }], sms_configuration: [], user_pool_tier: 'ESSENTIALS', user_pool_add_ons: [], lambda_config: [{}] }
+    const run = (plan) => {
+      const planPath = join(dir, `plan-${Math.random().toString(36).slice(2)}.json`)
+      writeFileSync(planPath, JSON.stringify(plan))
+      try {
+        return { ok: true, output: execFileSync('python3', [classifierPath, planPath], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }
+      } catch (error) {
+        return { ok: false, output: `${error.stdout ?? ''}${error.stderr ?? ''}` }
+      }
+    }
+
+    const accepted = run(poolChange(optional))
+    assert.equal(accepted.ok, true, accepted.output)
+    assert.match(accepted.output, /MULTI_LOGIN_AUTH_INFRA_CHANGE=aws_cognito_user_pool\.app\|update/)
+    assert.match(accepted.output, /COGNITO_MFA_CONFIG_BEFORE=\{[^\n]*"mfa_configuration": "OFF"/)
+    assert.match(accepted.output, /COGNITO_MFA_CONFIG_AFTER=\{[^\n]*"mfa_configuration": "OPTIONAL"[^\n]*"software_token_mfa_enabled": true/)
+
+    for (const [label, after, pattern] of [
+      ['MFA left off', { ...optional, mfa_configuration: 'OFF' }, /must be OPTIONAL/],
+      ['MFA required for everyone', { ...optional, mfa_configuration: 'ON' }, /must be OPTIONAL/],
+      ['no authenticator apps', { ...optional, software_token_mfa_configuration: [{ enabled: false }] }, /must be OPTIONAL/],
+      ['SMS MFA', { ...optional, sms_configuration: [{ external_id: 'x', sns_caller_arn: 'arn:aws:iam::1:role/sms' }] }, /SMS MFA/],
+      ['Plus tier', { ...optional, user_pool_tier: 'PLUS' }, /Plus/],
+      ['threat protection', { ...optional, user_pool_add_ons: [{ advanced_security_mode: 'ENFORCED' }] }, /threat protection/],
+      ['audit-only threat protection', { ...optional, user_pool_add_ons: [{ advanced_security_mode: 'AUDIT' }] }, /threat protection/],
+    ]) {
+      const refused = run(poolChange(after))
+      assert.equal(refused.ok, false, `${label} must be refused`)
+      assert.match(refused.output, pattern, label)
+    }
+
+    const replaced = run(poolChange(optional, ['delete', 'create']))
+    assert.equal(replaced.ok, false)
+    assert.match(replaced.output, /destructive\/replacement auth infrastructure change refused/)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

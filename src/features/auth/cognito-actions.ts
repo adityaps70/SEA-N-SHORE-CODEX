@@ -12,7 +12,7 @@ import { resetPasswordSchema, signInSchema, signUpSchema } from './schemas'
 export type CognitoAuthActionState = {
   error?: string
   message?: string
-  next?: 'new-password' | 'confirm-sign-up' | 'confirm-reset'
+  next?: 'new-password' | 'confirm-sign-up' | 'confirm-reset' | 'mfa'
 }
 
 type CookieStore = {
@@ -31,6 +31,7 @@ type AuthenticationResult = {
 type SignInResult =
   | { kind: 'authenticated'; authentication: AuthenticationResult }
   | { kind: 'new-password-required'; session: string; username: string }
+  | { kind: 'software-token-mfa'; session: string; username: string }
 
 type CognitoActionsApi = {
   signIn(input: { username: string; password: string }): Promise<SignInResult>
@@ -158,6 +159,16 @@ export function createCognitoAuthActions(input: {
             username: result.username,
           })
           return { next: 'new-password' }
+        }
+
+        // Round 14 (2.11): the password was right; the authenticator code comes next. The Cognito
+        // session stays in an HTTP-only cookie, never in the URL or the page.
+        if (result.kind === 'software-token-mfa') {
+          cookies.setMfaChallenge({
+            session: result.session,
+            username: result.username,
+          })
+          return { next: 'mfa' }
         }
 
         cookies.setAuthentication(result.authentication)

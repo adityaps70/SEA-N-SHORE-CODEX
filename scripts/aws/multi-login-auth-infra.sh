@@ -245,6 +245,28 @@ for r in changes:
             }
         print('COGNITO_LAMBDA_CONFIG_BEFORE=' + json.dumps(lambda_config('before'), sort_keys=True))
         print('COGNITO_LAMBDA_CONFIG_AFTER=' + json.dumps(lambda_config('after'), sort_keys=True))
+        # Round 14 (2.11): MFA may only become OPTIONAL with authenticator apps (TOTP). SMS MFA and
+        # the paid Plus tier / threat protection (advanced security) are refused.
+        def mfa_config(side):
+            values = r.get('change', {}).get(side) or {}
+            software = (values.get('software_token_mfa_configuration') or [{}])
+            add_ons = (values.get('user_pool_add_ons') or [{}])
+            return {
+                'mfa_configuration': values.get('mfa_configuration'),
+                'software_token_mfa_enabled': bool((software[0] if software else {}).get('enabled')),
+                'sms_configuration': 'set' if values.get('sms_configuration') else 'unset',
+                'user_pool_tier': values.get('user_pool_tier'),
+                'advanced_security_mode': (add_ons[0] if add_ons else {}).get('advanced_security_mode'),
+            }
+        mfa_after = mfa_config('after')
+        print('COGNITO_MFA_CONFIG_BEFORE=' + json.dumps(mfa_config('before'), sort_keys=True))
+        print('COGNITO_MFA_CONFIG_AFTER=' + json.dumps(mfa_after, sort_keys=True))
+        if mfa_after['mfa_configuration'] != 'OPTIONAL' or not mfa_after['software_token_mfa_enabled']:
+            raise SystemExit('Cognito MFA must be OPTIONAL with authenticator apps (software tokens) enabled; refusing.')
+        if mfa_after['sms_configuration'] != 'unset':
+            raise SystemExit('SMS MFA configuration is not part of this release; refusing.')
+        if mfa_after['user_pool_tier'] == 'PLUS' or mfa_after['advanced_security_mode'] not in (None, '', 'OFF'):
+            raise SystemExit('Cognito Plus / threat protection (advanced security) is not allowed; refusing.')
     if r['address'] == 'aws_cognito_identity_provider.google[0]':
         before = (r.get('change', {}).get('before') or {})
         after = (r.get('change', {}).get('after') or {})
@@ -394,6 +416,26 @@ aws kms describe-key --region "$AWS_REGION" --key-id "$COGNITO_EMAIL_KEY_ARN" > 
 jq -e '.KeyMetadata.Enabled == true and .KeyMetadata.KeyState == "Enabled"' "$WORK_DIR/email-key.json" >/dev/null
 [[ "$(aws kms get-key-rotation-status --region "$AWS_REGION" --key-id "$COGNITO_EMAIL_KEY_ARN" --query KeyRotationEnabled --output text)" == "True" ]]
 echo "COGNITO_RESEND_EMAIL_SENDER_VERIFIED=true"
+
+# Round 14 (2.11): optional authenticator-app MFA is live, with no SMS MFA and no paid add-ons.
+jq -e '
+  .UserPool.MfaConfiguration == "OPTIONAL"
+  and ((.UserPool.UserPoolAddOns.AdvancedSecurityMode // "OFF") == "OFF")
+  and ((.UserPool.UserPoolTier // "ESSENTIALS") != "PLUS")
+' "$WORK_DIR/user-pool.json" >/dev/null || {
+  echo "The user pool is not on optional authenticator-app MFA without paid add-ons." >&2
+  exit 1
+}
+aws cognito-idp get-user-pool-mfa-config --region "$AWS_REGION" --user-pool-id "$USER_POOL_ID" > "$WORK_DIR/user-pool-mfa.json"
+jq -e '
+  .MfaConfiguration == "OPTIONAL"
+  and .SoftwareTokenMfaConfiguration.Enabled == true
+  and ((.SmsMfaConfiguration.SmsConfiguration.SnsCallerArn // null) == null)
+' "$WORK_DIR/user-pool-mfa.json" >/dev/null || {
+  echo "Authenticator-app (TOTP) MFA is not enabled as optional on the user pool." >&2
+  exit 1
+}
+echo "COGNITO_TOTP_MFA_OPTIONAL_VERIFIED=true"
 
 CLIENT_ID="$(jq -r '
   [.resources[]

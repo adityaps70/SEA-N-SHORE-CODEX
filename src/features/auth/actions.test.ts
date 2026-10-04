@@ -149,3 +149,19 @@ describe('resend confirmation code routing (Round 14, 2.6)', () => {
     expect(redirect).toHaveBeenCalledWith('/auth/sign-up?confirm=1&email=captain%40example.com&resendError=1')
   })
 })
+
+describe('authenticator-code step routing (Round 14, 2.11)', () => {
+  it('sends a correct password with an authenticator app on to the code step, not to post-sign-in', async () => {
+    const redirect = vi.fn()
+    const handlers = createAuthActionHandlers({
+      getActions: async () => ({ signIn: vi.fn(async (): Promise<AuthActionState> => ({ next: 'mfa' })) } as never),
+      redirect,
+    })
+
+    await expect(
+      handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' })),
+    ).resolves.toEqual({ next: 'mfa' })
+    expect(redirect).toHaveBeenCalledTimes(1)
+    expect(redirect).toHaveBeenCalledWith('/auth/mfa')
+  })
+})

@@ -9,6 +9,7 @@ import {
   Crown,
   Download,
   EyeOff,
+  KeyRound,
   LayoutGrid,
   Lock,
   Mail,
@@ -48,6 +49,7 @@ export function settingsGroups(input: { planLabel: string | null }): SettingsGro
       title: 'Sign in & security',
       rows: [
         { href: '/auth/forgot-password', label: 'Password & Google sign-in', icon: Lock },
+        { href: '/settings/security', label: 'Two-step verification', icon: KeyRound },
       ],
       note: 'Sensitive account actions ask you to confirm it’s you again.',
     },

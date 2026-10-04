@@ -8,6 +8,8 @@ export const COGNITO_COOKIE_NAMES = {
   oauthState: 'sns_cognito_oauth_state',
   oauthVerifier: 'sns_cognito_oauth_verifier',
   oauthIntent: 'sns_cognito_oauth_intent',
+  mfaChallenge: 'sns_cognito_mfa_challenge',
+  mfaChallengeUser: 'sns_cognito_mfa_challenge_user',
 } as const
 
 type CookieOptions = {
@@ -89,6 +91,22 @@ export function createCognitoCookieManager(
       store.set(COGNITO_COOKIE_NAMES.challengeUser, input.username, challengeOptions)
     },
 
+    /** Round 14 (2.11): the Cognito session between the password and the authenticator code (HTTP-only, 10 min). */
+    setMfaChallenge(input: { session: string; username: string }) {
+      const challengeOptions = {
+        ...baseOptions,
+        maxAge: CHALLENGE_MAX_AGE_SECONDS,
+      }
+
+      store.set(COGNITO_COOKIE_NAMES.mfaChallenge, input.session, challengeOptions)
+      store.set(COGNITO_COOKIE_NAMES.mfaChallengeUser, input.username, challengeOptions)
+    },
+
+    clearMfaChallenge() {
+      store.delete(COGNITO_COOKIE_NAMES.mfaChallenge)
+      store.delete(COGNITO_COOKIE_NAMES.mfaChallengeUser)
+    },
+
     setPhoneChallenge(input: { session: string; username: string }) {
       const challengeOptions = {
         ...baseOptions,
@@ -131,6 +149,8 @@ export function createCognitoCookieManager(
       store.delete(COGNITO_COOKIE_NAMES.oauthState)
       store.delete(COGNITO_COOKIE_NAMES.oauthVerifier)
       store.delete(COGNITO_COOKIE_NAMES.oauthIntent)
+      store.delete(COGNITO_COOKIE_NAMES.mfaChallenge)
+      store.delete(COGNITO_COOKIE_NAMES.mfaChallengeUser)
     },
   }
 }

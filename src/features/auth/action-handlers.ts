@@ -34,6 +34,10 @@ export function createAuthActionHandlers(input: {
         input.redirect('/auth/update-password?mode=new-password')
         return result
       }
+      if (result.next === 'mfa') {
+        input.redirect('/auth/mfa')
+        return result
+      }
       if (result.message === 'Signed in.') input.redirect(POST_SIGN_IN_PATH)
       return result
     },
