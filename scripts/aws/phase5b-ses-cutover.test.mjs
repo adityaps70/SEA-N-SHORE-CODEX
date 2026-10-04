@@ -95,7 +95,7 @@ test('Phase 5B GitHub runner is branch-scoped, staging OIDC, action-file driven,
   assert.match(workflow, /branches:\s*\[feat\/aws-native-phase-0-1\]/)
   assert.match(workflow, /scripts\/aws\/phase5b-action\.txt/)
   assert.match(workflow, /environment:\s*staging/)
-  assert.match(workflow, /aws-actions\/configure-aws-credentials@v4/)
+  assert.match(workflow, /aws-actions\/configure-aws-credentials@[0-9a-f]{40} # v4\./)
   assert.match(workflow, /AWS_ROLE_TO_ASSUME/)
   assert.match(workflow, /head_sha=/)
   assert.match(workflow, /AWS Infrastructure CI/)

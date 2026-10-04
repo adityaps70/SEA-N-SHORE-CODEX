@@ -21,8 +21,8 @@ on:
         type: string
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
+  actions: read
 
 concurrency:
   group: sea-n-shore-membership-launch-sequence
@@ -36,7 +36,7 @@ jobs:
       approved_sha: ${{ steps.validate.outputs.approved_sha }}
     steps:
       - name: Checkout exact dispatch ref
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Validate immutable launch SHA
         id: validate
@@ -69,12 +69,16 @@ jobs:
   execute:
     needs: preflight
     if: inputs.mode == 'execute'
+    # Only the one-shot execute and rearm jobs commit guard files and dispatch the child workflows.
+    permissions:
+      contents: write
+      actions: write
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 120
     steps:
       - name: Checkout approved launch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ needs.preflight.outputs.approved_sha }}
 
@@ -100,10 +104,14 @@ jobs:
       - preflight
       - execute
     if: always() && inputs.mode == 'execute'
+    # Only the one-shot execute and rearm jobs commit guard files and dispatch the child workflows.
+    permissions:
+      contents: write
+      actions: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout launch helper
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Rearm every execution guard to plan
         env:

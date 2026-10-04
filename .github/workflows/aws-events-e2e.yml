@@ -27,7 +27,7 @@ jobs:
     outputs:
       run_e2e: ${{ steps.guard.outputs.run_e2e }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: guard
         shell: bash
         run: |
@@ -50,7 +50,7 @@ jobs:
       COGNITO_POOL_NAME: sea-n-shore-staging-users
     steps:
       - name: Checkout exact branch head
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Resolve public site URL
         shell: bash
@@ -85,7 +85,7 @@ jobs:
           [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$GITHUB_SHA" ]] || { echo 'Branch moved; refusing stale Events E2E.' >&2; exit 1; }
 
       - name: Configure AWS credentials with GitHub OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
           aws-region: ap-south-1
@@ -124,7 +124,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Use Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: Install dependencies

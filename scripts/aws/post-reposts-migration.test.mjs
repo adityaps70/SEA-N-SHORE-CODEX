@@ -19,7 +19,7 @@ test('post repost migration is guarded, exact-head and one-shot', () => {
   assert.match(workflow, /environment:\s*staging/)
   assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
   assert.match(workflow, /Exact-head AWS Infrastructure CI is not green/)
-  assert.match(workflow, /aws-actions\/configure-aws-credentials@v4/)
+  assert.match(workflow, /aws-actions\/configure-aws-credentials@[0-9a-f]{40} # v4\./)
   assert.match(workflow, /POST_REPOSTS_MIGRATION_EXPECTED_SHA/)
   assert.match(workflow, /bash scripts\/aws\/post-reposts-migration\.sh/)
 
