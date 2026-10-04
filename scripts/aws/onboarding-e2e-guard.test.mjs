@@ -363,3 +363,45 @@ test('confirmation shell variables do not leak into the Python f-string', () => 
   assert.match(confirmBlock, /Unexpected Cognito UserStatus for disposable user \$EMAIL: \$USER_STATUS/)
 })
 
+
+test('the sea job gate runs against a temporary sea job that is always removed (Round 14)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const browserScript = readFileSync(browserScriptPath, 'utf8')
+  const seaJob = readFileSync('scripts/aws/onboarding-e2e-sea-job.sh', 'utf8')
+  const seaJobSsm = readFileSync('scripts/aws/onboarding-e2e-sea-job-ssm.sh', 'utf8')
+
+  assert.match(workflow, /- scripts\/aws\/onboarding-e2e-sea-job\.sh/)
+  assert.match(workflow, /- scripts\/aws\/onboarding-e2e-sea-job-ssm\.sh/)
+  const create = workflow.indexOf('- name: Create the temporary sea job through staging bootstrap')
+  const verify = workflow.indexOf('- name: Verify a Maritime Enthusiast is refused on the temporary sea job')
+  const cleanup = workflow.indexOf('- name: Close and delete the temporary sea job')
+  assert.ok(workflow.indexOf('id: journeys') < create && create < verify && verify < cleanup)
+  assert.match(workflow.slice(verify, cleanup), /E2E_PHASE: seajob/)
+  const cleanupStep = workflow.slice(cleanup, workflow.indexOf('- name:', cleanup + 10))
+  assert.match(cleanupStep, /if: always\(\)/)
+  assert.match(cleanupStep, /onboarding-e2e-sea-job-ssm\.sh cleanup/)
+  assert.match(cleanupStep, /ONBOARDING_E2E_TEMP_SEA_JOB_CLEANUP_VERIFIED=true/)
+
+  assert.match(browserScript, /\['signup', 'journeys', 'seajob'\]/)
+  assert.match(browserScript, /E2E_TEMP_SEA_JOB_ID is required for the sea job phase/)
+  assert.match(browserScript, /Expected the temporary sea job in the sea jobs list/)
+  assert.match(browserScript, /This role is for seafarers\. Update your profile type if this is wrong\./)
+  assert.match(browserScript, /\{ name: \/\^\(Easy Apply\|Apply now\)\$\/ \}\)\)\.toHaveCount\(0\)/)
+
+  // Only this run's job: its exact title and this run's E2E recruiter; never a pattern across runs.
+  assert.match(seaJob, /\^sea-n-shore-e2e-\$\{E2E_RUN_ID\}-recruiter@example\\\.com\$/)
+  assert.match(seaJob, /JOB_TITLE="E2E temporary sea job \$\{E2E_RUN_ID\}"/)
+  assert.match(seaJob, /ia\.email = '\$\{E2E_RECRUITER_EMAIL\}' AND j\.title = '\$\{JOB_TITLE\}'/)
+  assert.doesNotMatch(seaJob, /title ~|email ~/)
+  assert.match(seaJob, /refusing to create another/)
+  assert.match(seaJob, /Expected at most one temporary sea job for this run/)
+  const deletes = seaJob.match(/DELETE FROM [^"]+/g) ?? []
+  assert.deepEqual(deletes, [
+    'DELETE FROM public.job_applications WHERE job_id = (${RUN_JOB_SQL})',
+    'DELETE FROM public.jobs WHERE id = (${RUN_JOB_SQL})',
+  ])
+  assert.match(seaJob, /status = 'closed'::public\.job_listing_status/)
+  assert.match(seaJob, /ONBOARDING_E2E_TEMP_SEA_JOB_CLEANUP_VERIFIED=true/)
+  assert.match(seaJobSsm, /git checkout --quiet --detach \{sha\}/)
+  assert.match(seaJobSsm, /bash scripts\/aws\/onboarding-e2e-sea-job\.sh \{mode\}/)
+})

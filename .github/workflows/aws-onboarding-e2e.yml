@@ -9,6 +9,8 @@ on:
       - scripts/aws/onboarding-e2e-guard.test.mjs
       - scripts/aws/onboarding-staging-e2e.mjs
       - scripts/aws/onboarding-e2e-persistence-audit.sh
+      - scripts/aws/onboarding-e2e-sea-job.sh
+      - scripts/aws/onboarding-e2e-sea-job-ssm.sh
       - scripts/aws/feed-avatar-staging-e2e.mjs
       - .github/workflows/aws-onboarding-e2e.yml
   workflow_dispatch:
@@ -396,6 +398,41 @@ jobs:
           E2E_PHASE: journeys
         shell: bash
         run: node scripts/aws/onboarding-staging-e2e.mjs
+
+      # Round 14: staging has no live sea jobs yet, so the last step uses a temporary one owned by
+      # this run's E2E recruiter, and removes it (and any applications) whatever the outcome.
+      - name: Create the temporary sea job through staging bootstrap
+        id: seajob_create
+        if: steps.action.outputs.run_e2e == 'true' && steps.journeys.outcome == 'success'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/aws/onboarding-e2e-sea-job-ssm.sh create | tee /tmp/onboarding-e2e-sea-job-create.out
+          JOB_ID=$(sed -n 's/^ONBOARDING_E2E_TEMP_SEA_JOB_ID=\([0-9a-f-]\{36\}\)$/\1/p' /tmp/onboarding-e2e-sea-job-create.out)
+          [[ -n "$JOB_ID" ]]
+          echo "E2E_TEMP_SEA_JOB_ID=$JOB_ID" >> "$GITHUB_ENV"
+
+      - name: Verify a Maritime Enthusiast is refused on the temporary sea job
+        id: seajob
+        if: steps.seajob_create.outcome == 'success'
+        env:
+          E2E_PHASE: seajob
+        shell: bash
+        run: node scripts/aws/onboarding-staging-e2e.mjs
+
+      - name: Close and delete the temporary sea job
+        if: always() && steps.action.outputs.run_e2e == 'true' && steps.instance.outputs.instance_id != '' && steps.journeys.outcome == 'success'
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/aws/onboarding-e2e-sea-job-ssm.sh cleanup | tee /tmp/onboarding-e2e-sea-job-cleanup.out
+          grep -q '^ONBOARDING_E2E_TEMP_SEA_JOB_CLEANUP_VERIFIED=true$' /tmp/onboarding-e2e-sea-job-cleanup.out
 
       - name: Verify authenticated Home feed avatar hydration
         id: feed_avatar
