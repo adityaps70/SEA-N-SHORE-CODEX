@@ -54,11 +54,10 @@ test('phone OTP limits, SMS spend cap and topic-proof SNS policy are in Terrafor
   assert.match(auth, /Sid\s*=\s*"NeverPublishToTopics"\s*\n\s*Effect\s*=\s*"Deny"/)
 })
 
-test('the public client cannot write phone attributes but keeps what sign-up and Google need', () => {
-  const block = auth.slice(auth.indexOf('write_attributes = ['), auth.indexOf(']', auth.indexOf('write_attributes = [')))
-  for (const attribute of ['"email"', '"email_verified"', '"name"']) assert.ok(block.includes(attribute), attribute)
-  assert.ok(!block.includes('"phone_number"'))
-  assert.ok(!block.includes('"phone_number_verified"'))
+test('the public client keeps its attributes until a Cognito-accepted list is known', () => {
+  // Cognito rejected the phone-less write_attributes list during the Phase 1 apply.
+  assert.doesNotMatch(auth, /write_attributes\s*=/)
+  assert.match(auth, /Invalid write attributes specified/)
 })
 
 test('ALB and container check the cheap liveness route', () => {

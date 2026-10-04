@@ -77,14 +77,9 @@ resource "aws_cognito_user_pool_client" "web" {
   generate_secret               = false
   prevent_user_existence_errors = "ENABLED"
 
-  # Round 14 (1.2): the public client may write every standard attribute it could before
-  # (sign-up and the Google mapping need email, email_verified and name) except the phone number
-  # and its verified flag, so nobody can attach someone else's number to an account.
-  write_attributes = [
-    "address", "birthdate", "email", "email_verified", "family_name", "gender", "given_name",
-    "locale", "middle_name", "name", "nickname", "picture", "preferred_username", "profile",
-    "updated_at", "website", "zoneinfo",
-  ]
+  # Round 14 (1.2): a write_attributes list without phone_number was rejected by Cognito
+  # ("Invalid write attributes specified"), so the client's attributes stay as they were. Mobile
+  # sign-in only matches phone-login users in the app, which closes the takeover path.
 
   explicit_auth_flows = [
     "ALLOW_USER_PASSWORD_AUTH",
