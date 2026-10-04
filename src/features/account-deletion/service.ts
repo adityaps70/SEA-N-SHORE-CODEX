@@ -59,6 +59,12 @@ export function createAccountDeletionService(input: {
   repository?: AccountDeletionRepository
   deleteMediaObject?: DeleteMediaObject
   effects?: AccountDeletionEffects
+  /**
+   * Round 14 (2.11): the signed-in session's access token. A member with an authenticator app
+   * gets an MFA challenge instead of tokens once the password is verified; the account is then
+   * removed with the session that already passed MFA at sign-in.
+   */
+  getSessionAccessToken?: () => Promise<string | null>
 }) {
   const repository = input.repository ?? accountDeletionRepository
   const deleteMedia = input.deleteMediaObject ?? runtimeDeleteMediaObject
@@ -192,6 +198,17 @@ export function createAccountDeletionService(input: {
           throw new AccountDeletionError('account_deletion_reauthentication_failed')
         }
         throw new AccountDeletionError('account_deletion_reauthentication_unavailable')
+      }
+
+      if (reauthenticated.kind === 'software-token-mfa') {
+        // Cognito only asks for the authenticator code after the password checked out.
+        const sessionAccessToken = await input.getSessionAccessToken?.().catch(() => null)
+        if (!sessionAccessToken) throw new AccountDeletionError('account_deletion_reauthentication_unavailable')
+        return deleteVerifiedAccount({
+          profileId: inputValue.profileId,
+          cognitoSub: inputValue.cognitoSub,
+          deleteIdentity: () => input.api.deleteUser(sessionAccessToken),
+        })
       }
 
       if (reauthenticated.kind !== 'authenticated') {

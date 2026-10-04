@@ -8,6 +8,7 @@ export type CognitoAuthenticationResult = {
 export type CognitoSignInResult =
   | { kind: 'authenticated'; authentication: CognitoAuthenticationResult }
   | { kind: 'new-password-required'; session: string; username: string }
+  | { kind: 'software-token-mfa'; session: string; username: string }
 
 export type CognitoCustomAuthResult =
   | { kind: 'authenticated'; authentication: CognitoAuthenticationResult }
@@ -22,6 +23,17 @@ export type CognitoPrincipal = {
   phoneNumberVerified?: boolean
   name: string | null
 }
+
+/** Round 14 (2.11): a member's own authenticator-app (TOTP) settings, read with their access token. */
+export type CognitoUserMfaSettings = {
+  username: string | null
+  email: string | null
+  /** True when an authenticator app is verified and turned on for sign-in. */
+  softwareTokenEnabled: boolean
+  preferredMfa: string | null
+}
+
+export type CognitoSoftwareTokenVerification = { status: 'SUCCESS' | 'ERROR' }
 
 export type CognitoSignUpResult = {
   userSub: string
@@ -50,6 +62,16 @@ type CognitoAuthenticationResponse = {
 type CognitoGetUserResponse = {
   Username?: string
   UserAttributes?: Array<{ Name?: string; Value?: string }>
+  UserMFASettingList?: string[]
+  PreferredMfaSetting?: string
+}
+
+type CognitoAssociateSoftwareTokenResponse = {
+  SecretCode?: string
+}
+
+type CognitoVerifySoftwareTokenResponse = {
+  Status?: string
 }
 
 type CognitoSignUpResponse = {
@@ -66,6 +88,8 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   ExpiredCodeException: 'The confirmation code has expired.',
   LimitExceededException: 'Cognito request limit exceeded. Please try again later.',
   TooManyRequestsException: 'Too many Cognito requests. Please try again later.',
+  EnableSoftwareTokenMFAException: 'The authenticator code is invalid.',
+  SoftwareTokenMFANotFoundException: 'No authenticator app is set up for this user.',
 }
 
 function normalizeErrorCode(value: unknown) {
@@ -110,7 +134,7 @@ function mapAuthenticationTokens(response: CognitoAuthenticationResponse): Cogni
   }
 }
 
-function mapSignInResult(response: CognitoAuthenticationResponse): CognitoSignInResult {
+function mapSignInResult(response: CognitoAuthenticationResponse, fallbackUsername: string): CognitoSignInResult {
   if (response.AuthenticationResult) {
     return {
       kind: 'authenticated',
@@ -126,6 +150,15 @@ function mapSignInResult(response: CognitoAuthenticationResponse): CognitoSignIn
         session: response.Session,
         username,
       }
+    }
+  }
+
+  // Round 14 (2.11): members who turned on an authenticator app answer a TOTP code next.
+  if (response.ChallengeName === 'SOFTWARE_TOKEN_MFA' && response.Session) {
+    return {
+      kind: 'software-token-mfa',
+      session: response.Session,
+      username: response.ChallengeParameters?.USER_ID_FOR_SRP || fallbackUsername,
     }
   }
 
@@ -200,7 +233,7 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
         },
       })
 
-      return mapSignInResult(response)
+      return mapSignInResult(response, input.username)
     },
 
     async startCustomAuth(username: string): Promise<CognitoCustomAuthResult> {
@@ -251,6 +284,24 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
       return mapAuthenticationTokens(response)
     },
 
+    async respondToSoftwareTokenMfa(input: {
+      username: string
+      session: string
+      code: string
+    }): Promise<CognitoAuthenticationResult> {
+      const response = await request<CognitoAuthenticationResponse>('RespondToAuthChallenge', {
+        ChallengeName: 'SOFTWARE_TOKEN_MFA',
+        ClientId: config.clientId,
+        Session: input.session,
+        ChallengeResponses: {
+          USERNAME: input.username,
+          SOFTWARE_TOKEN_MFA_CODE: input.code,
+        },
+      })
+
+      return mapAuthenticationTokens(response)
+    },
+
     async refresh(refreshToken: string): Promise<CognitoAuthenticationResult> {
       const response = await request<CognitoAuthenticationResponse>('InitiateAuth', {
         AuthFlow: 'REFRESH_TOKEN_AUTH',
@@ -282,6 +333,54 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
         phoneNumberVerified: attributes.get('phone_number_verified') === 'true',
         name: attributes.get('name') ?? null,
       }
+    },
+
+    /** Uncached GetUser: the member's authenticator-app status right now (never logged). */
+    async getUserMfaSettings(accessToken: string): Promise<CognitoUserMfaSettings> {
+      const response = await request<CognitoGetUserResponse>('GetUser', {
+        AccessToken: accessToken,
+      })
+      const email = (response.UserAttributes ?? []).find((attribute) => attribute.Name === 'email')?.Value ?? null
+
+      return {
+        username: response.Username ?? null,
+        email,
+        softwareTokenEnabled: (response.UserMFASettingList ?? []).includes('SOFTWARE_TOKEN_MFA'),
+        preferredMfa: response.PreferredMfaSetting ?? null,
+      }
+    },
+
+    /** Starts authenticator-app setup. The secret is shown to the member once and never stored or logged. */
+    async associateSoftwareToken(accessToken: string): Promise<{ secretCode: string }> {
+      const response = await request<CognitoAssociateSoftwareTokenResponse>('AssociateSoftwareToken', {
+        AccessToken: accessToken,
+      })
+      if (!response.SecretCode) throw new CognitoApiError('UnexpectedResponse')
+      return { secretCode: response.SecretCode }
+    },
+
+    async verifySoftwareToken(input: {
+      accessToken: string
+      code: string
+      friendlyDeviceName?: string
+    }): Promise<CognitoSoftwareTokenVerification> {
+      const response = await request<CognitoVerifySoftwareTokenResponse>('VerifySoftwareToken', {
+        AccessToken: input.accessToken,
+        UserCode: input.code,
+        ...(input.friendlyDeviceName ? { FriendlyDeviceName: input.friendlyDeviceName } : {}),
+      })
+      return { status: response.Status === 'SUCCESS' ? 'SUCCESS' : 'ERROR' }
+    },
+
+    /** Turns authenticator-app MFA on (and preferred) or off for the signed-in member. */
+    async setSoftwareTokenMfaPreference(input: { accessToken: string; enabled: boolean }): Promise<void> {
+      await request('SetUserMFAPreference', {
+        AccessToken: input.accessToken,
+        SoftwareTokenMfaSettings: {
+          Enabled: input.enabled,
+          PreferredMfa: input.enabled,
+        },
+      })
     },
 
     async signUp(input: {

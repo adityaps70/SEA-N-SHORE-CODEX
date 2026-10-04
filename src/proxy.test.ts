@@ -43,3 +43,24 @@ describe('proxy Content Security Policy (Round 14, 2.4)', () => {
     expect(mocks.updateCognitoRouteSession).not.toHaveBeenCalled()
   })
 })
+
+describe('proxy admin return path (Round 14, 2.11)', () => {
+  it('tells the admin MFA gate which admin page was requested, for page loads and RSC navigations', async () => {
+    for (const headers of [{ 'sec-fetch-dest': 'document' }, { rsc: '1' }] as Array<Record<string, string>>) {
+      await proxy(new NextRequest('https://seanshore.in/admin/users?q=ana&_rsc=x1', { headers }))
+      const forwarded = mocks.updateCognitoRouteSession.mock.calls.at(-1)?.[0] as NextRequest
+      expect(forwarded.headers.get('x-sns-admin-return-path')).toBe('/admin/users?q=ana')
+      expect(forwarded.nextUrl.pathname).toBe('/admin/users')
+    }
+  })
+
+  it('replaces a client-sent value on admin page loads and leaves admin POSTs untouched', async () => {
+    await proxy(new NextRequest('https://seanshore.in/admin', { headers: { rsc: '1', 'x-sns-admin-return-path': '/admin/evil' } }))
+    const forwarded = mocks.updateCognitoRouteSession.mock.calls.at(-1)?.[0] as NextRequest
+    expect(forwarded.headers.get('x-sns-admin-return-path')).toBe('/admin')
+
+    const post = new NextRequest('https://seanshore.in/admin/users', { method: 'POST', body: 'x' })
+    await proxy(post)
+    expect(mocks.updateCognitoRouteSession).toHaveBeenLastCalledWith(post)
+  })
+})

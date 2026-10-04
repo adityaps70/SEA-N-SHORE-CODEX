@@ -159,3 +159,49 @@ describe('account deletion service', () => {
     expect(log).toHaveBeenCalledWith('account_deletion_refunds_incomplete', { attempted: 2, failures: 1 })
   })
 })
+
+describe('account deletion with an authenticator app (Round 14, 2.11)', () => {
+  function mfaSetup(sessionAccessToken: string | null) {
+    const api = {
+      signIn: vi.fn(async () => ({ kind: 'software-token-mfa' as const, session: 'mfa-session', username: 'user-1' })),
+      deleteUser: vi.fn(async () => undefined),
+    }
+    const repository = {
+      deleteAccountWithIdentity: vi.fn(async (_profileId: string, deleteIdentity: () => Promise<void>) => {
+        await deleteIdentity()
+        return { mediaPaths: [] as string[] }
+      }),
+      finalizeAccountDeletion: vi.fn(async () => ({ mediaPaths: [] as string[] })),
+    }
+    const service = createAccountDeletionService({
+      api,
+      repository,
+      deleteMediaObject: vi.fn(),
+      getSessionAccessToken: async () => sessionAccessToken,
+    })
+    return { api, repository, service }
+  }
+
+  it('accepts the verified password and removes the identity with the signed-in session', async () => {
+    const { api, repository, service } = mfaSetup('session-token')
+
+    await expect(service.deleteAccount({ profileId, email: 'captain@example.com', password: 'CorrectPassword123' }))
+      .resolves.toEqual({ ok: true })
+    expect(api.deleteUser).toHaveBeenCalledWith('session-token')
+    expect(repository.deleteAccountWithIdentity).toHaveBeenCalledTimes(1)
+  })
+
+  it('deletes nothing without a session token, and a wrong password is still refused', async () => {
+    const missing = mfaSetup(null)
+    await expect(missing.service.deleteAccount({ profileId, email: 'captain@example.com', password: 'CorrectPassword123' }))
+      .rejects.toMatchObject({ code: 'account_deletion_reauthentication_unavailable' })
+    expect(missing.api.deleteUser).not.toHaveBeenCalled()
+    expect(missing.repository.deleteAccountWithIdentity).not.toHaveBeenCalled()
+
+    const wrong = mfaSetup('session-token')
+    wrong.api.signIn.mockRejectedValueOnce(new CognitoApiError('NotAuthorizedException'))
+    await expect(wrong.service.deleteAccount({ profileId, email: 'captain@example.com', password: 'WrongPassword123' }))
+      .rejects.toMatchObject({ code: 'account_deletion_reauthentication_failed' })
+    expect(wrong.api.deleteUser).not.toHaveBeenCalled()
+  })
+})

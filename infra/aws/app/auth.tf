@@ -2,8 +2,15 @@ resource "aws_cognito_user_pool" "app" {
   name                     = "${local.name_prefix}-users"
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
-  mfa_configuration        = "OFF"
-  deletion_protection      = "ACTIVE"
+  # Round 14 (2.11): optional authenticator-app (TOTP) MFA; the app requires it for platform
+  # administrators. Software tokens only: no SMS MFA (so no sms_configuration), and no paid
+  # Plus tier, threat protection or advanced security.
+  mfa_configuration   = "OPTIONAL"
+  deletion_protection = "ACTIVE"
+
+  software_token_mfa_configuration {
+    enabled = true
+  }
 
   lambda_config {
     define_auth_challenge          = aws_lambda_function.cognito_define_auth_challenge.arn

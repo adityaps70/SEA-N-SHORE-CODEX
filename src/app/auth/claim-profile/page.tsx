@@ -11,13 +11,15 @@ export const metadata: Metadata = { title: 'Claim your old profile' }
 export default async function ClaimProfilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string | string[]; invite?: string | string[] }>
+  searchParams: Promise<{ error?: string | string[]; invite?: string | string[]; email?: string | string[] }>
 }) {
   const params = await searchParams
   const googleEnabled = getCognitoEnvironment().AWS_COGNITO_GOOGLE_ENABLED
   const emailError = params.error === 'email'
   const inviteToken = Array.isArray(params.invite) ? params.invite[0] : params.invite
   const invitedEmail = inviteToken ? await legacyInviteRepository.emailForClaimToken(inviteToken) : null
+  const queryEmail = Array.isArray(params.email) ? params.email[0] : params.email
+  const prefilledEmail = queryEmail?.trim().toLowerCase() || invitedEmail || ''
 
   return (
     <AuthShell>
@@ -67,7 +69,7 @@ export default async function ClaimProfilePage({
             inputMode="email"
             autoCapitalize="none"
             spellCheck={false}
-            defaultValue={invitedEmail ?? ''}
+            defaultValue={prefilledEmail}
             className="min-h-12 rounded-xl border border-mist-200 bg-white px-4 text-base font-normal outline-none transition focus:border-ocean-500 focus:ring-2 focus:ring-ocean-100"
             aria-describedby="legacy-email-help"
           />

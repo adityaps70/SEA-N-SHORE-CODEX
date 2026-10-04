@@ -9,6 +9,8 @@ import { getCognitoEnvironment, publicEnvironment } from '@/lib/env'
 import { trustedClientIp } from '@/lib/http/client-ip'
 import { createAuthActionHandlers, type AuthActionState } from './action-handlers'
 import { createCognitoAuthActions } from './cognito-actions'
+import { createProductionAuthEmailLimiter } from './email-limits-runtime'
+import { createMfaSignInActions, createMfaSignInHandler } from './mfa-sign-in'
 import { createOtpIpLimiter } from './otp-ip-limiter'
 import { createPhoneAuthActions, parseAllowedCallingCodes, type PhoneAuthActionState } from './phone-auth-actions'
 import { createPhoneAuthAdmin } from './phone-auth-admin'
@@ -19,6 +21,7 @@ export type { AuthActionState } from './action-handlers'
 type CognitoActions = ReturnType<typeof createCognitoAuthActions>
 
 const otpIpLimiter = createOtpIpLimiter()
+const authEmailLimiter = createProductionAuthEmailLimiter()
 
 async function getProductionActions(): Promise<CognitoActions> {
   const cookieStore = await cookies()
@@ -33,6 +36,8 @@ async function getProductionActions(): Promise<CognitoActions> {
     cookieStore: cookieStore as unknown as Parameters<typeof createCognitoAuthActions>[0]['cookieStore'],
     siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
     allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    emailLimiter: authEmailLimiter,
+    clientIp: trustedClientIp(await headers()),
   })
 }
 
@@ -48,6 +53,23 @@ const handlers = createAuthActionHandlers({
       siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
     })
   },
+})
+
+const mfaSignInHandler = createMfaSignInHandler({
+  getActions: async () => {
+    const cookieStore = await cookies()
+    const environment = getCognitoEnvironment()
+    return createMfaSignInActions({
+      api: createCognitoApi({
+        region: environment.AWS_COGNITO_REGION,
+        clientId: environment.AWS_COGNITO_CLIENT_ID,
+      }),
+      cookieStore: cookieStore as unknown as Parameters<typeof createMfaSignInActions>[0]['cookieStore'],
+      siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
+      allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
+    })
+  },
+  redirect: nextRedirect,
 })
 
 async function getProductionPhoneActions() {
@@ -92,13 +114,7 @@ export async function confirmSignUp(state: AuthActionState, formData: FormData):
 }
 
 export async function resendConfirmationCode(formData: FormData): Promise<void> {
-  const actions = await getProductionActions()
-  const email = String(formData.get('email') ?? '').trim().toLowerCase()
-  const result = await actions.resendConfirmationCode({}, formData)
-  const params = new URLSearchParams({ confirm: '1', email })
-  if (result.message === 'Confirmation code sent.') params.set('resent', '1')
-  else params.set('resendError', '1')
-  nextRedirect(`/auth/sign-up?${params.toString()}`)
+  return handlers.resendConfirmationCode(formData)
 }
 
 export async function requestPasswordReset(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -143,4 +159,9 @@ export async function confirmPhoneOtp(
   formData: FormData,
 ): Promise<PhoneAuthActionState> {
   return phoneHandlers.confirmOtp(state, formData)
+}
+
+/** Round 14 (2.11): the authenticator-code step after a correct password. */
+export async function confirmSignInMfa(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  return mfaSignInHandler(state, formData)
 }

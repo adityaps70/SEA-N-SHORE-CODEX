@@ -407,3 +407,158 @@ describe('createCognitoApi', () => {
     expect(message).not.toContain(session)
   })
 })
+describe('Cognito authenticator-app MFA (Round 14, 2.11)', () => {
+  function recordingTransport(responses: Record<string, unknown>) {
+    const calls: Array<{ operation: string; body: Record<string, unknown> }> = []
+    const transport = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const operation = (new Headers(init?.headers).get('x-amz-target') ?? '').replace('AWSCognitoIdentityProviderService.', '')
+      calls.push({ operation, body: requestBody(init) })
+      const response = responses[operation]
+      if (response instanceof Response) return response
+      return jsonResponse(response ?? {})
+    })
+    return { calls, transport }
+  }
+
+  it('maps SOFTWARE_TOKEN_MFA after a correct password to a code step that keeps the opaque session', async () => {
+    const { transport } = recordingTransport({
+      InitiateAuth: {
+        ChallengeName: 'SOFTWARE_TOKEN_MFA',
+        Session: 'opaque-mfa-session',
+        ChallengeParameters: { USER_ID_FOR_SRP: 'internal-user-1' },
+      },
+    })
+
+    await expect(createCognitoApi(config, transport).signIn({
+      username: 'captain@example.com',
+      password: 'ExamplePassword123',
+    })).resolves.toEqual({
+      kind: 'software-token-mfa',
+      session: 'opaque-mfa-session',
+      username: 'internal-user-1',
+    })
+  })
+
+  it('falls back to the typed sign-in email when Cognito sends no challenge username', async () => {
+    const { transport } = recordingTransport({
+      InitiateAuth: { ChallengeName: 'SOFTWARE_TOKEN_MFA', Session: 'opaque-mfa-session', ChallengeParameters: {} },
+    })
+
+    await expect(createCognitoApi(config, transport).signIn({
+      username: 'captain@example.com',
+      password: 'ExamplePassword123',
+    })).resolves.toMatchObject({ kind: 'software-token-mfa', username: 'captain@example.com' })
+  })
+
+  it('still refuses challenges it does not handle, and an MFA challenge without a session', async () => {
+    for (const response of [
+      { ChallengeName: 'SMS_MFA', Session: 's1', ChallengeParameters: {} },
+      { ChallengeName: 'SELECT_MFA_TYPE', Session: 's1', ChallengeParameters: {} },
+      { ChallengeName: 'MFA_SETUP', Session: 's1', ChallengeParameters: {} },
+      { ChallengeName: 'SOFTWARE_TOKEN_MFA', ChallengeParameters: {} },
+    ]) {
+      const { transport } = recordingTransport({ InitiateAuth: response })
+      await expect(createCognitoApi(config, transport).signIn({
+        username: 'captain@example.com',
+        password: 'ExamplePassword123',
+      })).rejects.toMatchObject({ code: 'UnexpectedResponse' })
+    }
+  })
+
+  it('answers SOFTWARE_TOKEN_MFA with the session and code and returns only the tokens', async () => {
+    const { calls, transport } = recordingTransport({
+      RespondToAuthChallenge: {
+        AuthenticationResult: { AccessToken: 'access-2', RefreshToken: 'refresh-2', ExpiresIn: 3600 },
+        ResponseMetadata: { RequestId: 'internal' },
+      },
+    })
+
+    await expect(createCognitoApi(config, transport).respondToSoftwareTokenMfa({
+      username: 'internal-user-1',
+      session: 'opaque-mfa-session',
+      code: '123456',
+    })).resolves.toEqual({ accessToken: 'access-2', refreshToken: 'refresh-2', expiresIn: 3600 })
+    expect(calls).toEqual([{
+      operation: 'RespondToAuthChallenge',
+      body: {
+        ChallengeName: 'SOFTWARE_TOKEN_MFA',
+        ClientId: config.clientId,
+        Session: 'opaque-mfa-session',
+        ChallengeResponses: { USERNAME: 'internal-user-1', SOFTWARE_TOKEN_MFA_CODE: '123456' },
+      },
+    }])
+  })
+
+  it('surfaces a wrong code as CodeMismatchException without echoing the code', async () => {
+    const { transport } = recordingTransport({
+      RespondToAuthChallenge: jsonResponse({ __type: 'CodeMismatchException', message: 'Invalid code received for user' }, 400),
+    })
+
+    const error = await createCognitoApi(config, transport).respondToSoftwareTokenMfa({
+      username: 'u', session: 's', code: '654321',
+    }).catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(CognitoApiError)
+    expect(error).toMatchObject({ code: 'CodeMismatchException' })
+    expect(String((error as Error).message)).not.toContain('654321')
+  })
+
+  it('reads authenticator status from GetUser with the access token', async () => {
+    const { calls, transport } = recordingTransport({
+      GetUser: {
+        Username: 'internal-user-1',
+        UserAttributes: [{ Name: 'email', Value: 'captain@example.com' }],
+        UserMFASettingList: ['SOFTWARE_TOKEN_MFA'],
+        PreferredMfaSetting: 'SOFTWARE_TOKEN_MFA',
+      },
+    })
+    const api = createCognitoApi(config, transport)
+
+    await expect(api.getUserMfaSettings('access-token')).resolves.toEqual({
+      username: 'internal-user-1',
+      email: 'captain@example.com',
+      softwareTokenEnabled: true,
+      preferredMfa: 'SOFTWARE_TOKEN_MFA',
+    })
+    expect(calls[0]).toEqual({ operation: 'GetUser', body: { AccessToken: 'access-token' } })
+  })
+
+  it('reports authenticator MFA off when Cognito lists no software token', async () => {
+    const { transport } = recordingTransport({ GetUser: { Username: 'u', UserAttributes: [] } })
+    await expect(createCognitoApi(config, transport).getUserMfaSettings('access-token')).resolves.toEqual({
+      username: 'u',
+      email: null,
+      softwareTokenEnabled: false,
+      preferredMfa: null,
+    })
+  })
+
+  it('associates, verifies and sets the authenticator preference with the member access token', async () => {
+    const { calls, transport } = recordingTransport({
+      AssociateSoftwareToken: { SecretCode: 'JBSWY3DPEHPK3PXP' },
+      VerifySoftwareToken: { Status: 'SUCCESS' },
+      SetUserMFAPreference: {},
+    })
+    const api = createCognitoApi(config, transport)
+
+    await expect(api.associateSoftwareToken('access-token')).resolves.toEqual({ secretCode: 'JBSWY3DPEHPK3PXP' })
+    await expect(api.verifySoftwareToken({ accessToken: 'access-token', code: '123456', friendlyDeviceName: 'Authenticator app' }))
+      .resolves.toEqual({ status: 'SUCCESS' })
+    await api.setSoftwareTokenMfaPreference({ accessToken: 'access-token', enabled: true })
+    await api.setSoftwareTokenMfaPreference({ accessToken: 'access-token', enabled: false })
+
+    expect(calls).toEqual([
+      { operation: 'AssociateSoftwareToken', body: { AccessToken: 'access-token' } },
+      { operation: 'VerifySoftwareToken', body: { AccessToken: 'access-token', UserCode: '123456', FriendlyDeviceName: 'Authenticator app' } },
+      { operation: 'SetUserMFAPreference', body: { AccessToken: 'access-token', SoftwareTokenMfaSettings: { Enabled: true, PreferredMfa: true } } },
+      { operation: 'SetUserMFAPreference', body: { AccessToken: 'access-token', SoftwareTokenMfaSettings: { Enabled: false, PreferredMfa: false } } },
+    ])
+  })
+
+  it('treats a missing secret or a non-SUCCESS verification as failure', async () => {
+    const { transport } = recordingTransport({ AssociateSoftwareToken: {}, VerifySoftwareToken: { Status: 'ERROR' } })
+    const api = createCognitoApi(config, transport)
+
+    await expect(api.associateSoftwareToken('access-token')).rejects.toMatchObject({ code: 'UnexpectedResponse' })
+    await expect(api.verifySoftwareToken({ accessToken: 'access-token', code: '123456' })).resolves.toEqual({ status: 'ERROR' })
+  })
+})

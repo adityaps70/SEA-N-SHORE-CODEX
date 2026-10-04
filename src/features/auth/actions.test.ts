@@ -119,3 +119,49 @@ describe('production Cognito auth action routing', () => {
     expect(redirect).toHaveBeenCalledWith('/')
   })
 })
+
+describe('resend confirmation code routing (Round 14, 2.6)', () => {
+  function handlersFor(result: AuthActionState) {
+    const redirect = vi.fn()
+    const resendConfirmationCode = vi.fn(async () => result)
+    const handlers = createAuthActionHandlers({
+      getActions: async () => ({ resendConfirmationCode } as never),
+      redirect,
+    })
+    return { handlers, redirect, resendConfirmationCode }
+  }
+
+  it('returns to the confirmation step with ?resent=1 after a resend', async () => {
+    const { handlers, redirect } = handlersFor({ message: 'Confirmation code sent.' })
+    await handlers.resendConfirmationCode(form({ email: ' Captain@Example.com ' }))
+    expect(redirect).toHaveBeenCalledWith('/auth/sign-up?confirm=1&email=captain%40example.com&resent=1')
+  })
+
+  it('uses ?resendError=limited when the attempt was rate limited', async () => {
+    const { handlers, redirect } = handlersFor({ error: 'Too many attempts. Please wait a while and try again.' })
+    await handlers.resendConfirmationCode(form({ email: 'captain@example.com' }))
+    expect(redirect).toHaveBeenCalledWith('/auth/sign-up?confirm=1&email=captain%40example.com&resendError=limited')
+  })
+
+  it('keeps ?resendError=1 for every other failure', async () => {
+    const { handlers, redirect } = handlersFor({ error: 'Too many confirmation requests. Please try again later.' })
+    await handlers.resendConfirmationCode(form({ email: 'captain@example.com' }))
+    expect(redirect).toHaveBeenCalledWith('/auth/sign-up?confirm=1&email=captain%40example.com&resendError=1')
+  })
+})
+
+describe('authenticator-code step routing (Round 14, 2.11)', () => {
+  it('sends a correct password with an authenticator app on to the code step, not to post-sign-in', async () => {
+    const redirect = vi.fn()
+    const handlers = createAuthActionHandlers({
+      getActions: async () => ({ signIn: vi.fn(async (): Promise<AuthActionState> => ({ next: 'mfa' })) } as never),
+      redirect,
+    })
+
+    await expect(
+      handlers.signIn({}, form({ email: 'captain@example.com', password: 'very-secure-password' })),
+    ).resolves.toEqual({ next: 'mfa' })
+    expect(redirect).toHaveBeenCalledTimes(1)
+    expect(redirect).toHaveBeenCalledWith('/auth/mfa')
+  })
+})

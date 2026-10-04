@@ -11,7 +11,7 @@ type AuthAction = (
   state: AuthActionState,
   formData: FormData,
 ) => Promise<AuthActionState>;
-type AuthMode = "sign-in" | "sign-up" | "forgot-password" | "update-password" | "confirm-sign-up";
+type AuthMode = "sign-in" | "sign-up" | "forgot-password" | "update-password" | "confirm-sign-up" | "verify-mfa";
 type PasswordFlow = "new-password" | "confirm-reset";
 
 type AuthFormProps = {
@@ -35,13 +35,15 @@ const labels: Record<AuthMode, { title: string; submit: string }> = {
   "forgot-password": { title: "Reset your password", submit: "Send reset code" },
   "update-password": { title: "Choose a new password", submit: "Update password" },
   "confirm-sign-up": { title: "Confirm your email", submit: "Confirm account" },
+  "verify-mfa": { title: "Enter your authenticator code", submit: "Verify and sign in" },
 };
 
 export function AuthForm({ mode, action, flow, initialEmail, lead }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const [confirmationError, setConfirmationError] = useState<string>();
   const showName = mode === "sign-up";
-  const showEmail = mode !== "update-password" || flow === "confirm-reset";
+  const showMfaCode = mode === "verify-mfa";
+  const showEmail = !showMfaCode && (mode !== "update-password" || flow === "confirm-reset");
   const showCode = mode === "confirm-sign-up" || (mode === "update-password" && flow === "confirm-reset");
   const showPassword = mode === "sign-in" || mode === "sign-up" || mode === "update-password";
   const showPasswordConfirmation = mode === "update-password";
@@ -80,6 +82,19 @@ export function AuthForm({ mode, action, flow, initialEmail, lead }: AuthFormPro
           />
         )}
         {showCode && <Field label="Confirmation code" name="code" inputMode="numeric" autoComplete="one-time-code" required />}
+        {showMfaCode && (
+          <Field
+            label="Authenticator code"
+            name="code"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            maxLength={6}
+            autoFocus
+            hint="The 6-digit code from your authenticator app."
+            required
+          />
+        )}
         {showPassword && (
           <PasswordField
             label="Password"

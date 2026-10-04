@@ -259,3 +259,35 @@ describe('Cognito auth actions', () => {
     expect(cookies.values.size).toBe(0)
   })
 })
+describe('Cognito sign-in with an authenticator app (Round 14, 2.11)', () => {
+  it('keeps the MFA session in HTTP-only challenge cookies and signs nobody in yet', async () => {
+    const api = fakeApi()
+    api.signIn.mockResolvedValueOnce({
+      kind: 'software-token-mfa',
+      session: 'mfa-session',
+      username: 'internal-user-1',
+    })
+    const { actions, cookies } = setup(api)
+
+    const result = await actions.signIn({}, form({ email: 'captain@example.com', password: 'LongEnoughPass1' }))
+
+    expect(result).toEqual({ next: 'mfa' })
+    expect(JSON.stringify(result)).not.toContain('mfa-session')
+    expect(cookies.values.get(COGNITO_COOKIE_NAMES.mfaChallenge)).toBe('mfa-session')
+    expect(cookies.values.get(COGNITO_COOKIE_NAMES.mfaChallengeUser)).toBe('internal-user-1')
+    expect(cookies.values.has(COGNITO_COOKIE_NAMES.access)).toBe(false)
+    expect(cookies.values.has(COGNITO_COOKIE_NAMES.refresh)).toBe(false)
+    // The new-password challenge cookies are not reused for MFA.
+    expect(cookies.values.has(COGNITO_COOKIE_NAMES.challenge)).toBe(false)
+  })
+
+  it('clears a pending MFA challenge on sign-out', async () => {
+    const cookies = fakeCookies({
+      [COGNITO_COOKIE_NAMES.mfaChallenge]: 'mfa-session',
+      [COGNITO_COOKIE_NAMES.mfaChallengeUser]: 'internal-user-1',
+    })
+    const { actions } = setup(fakeApi(), cookies)
+    await actions.signOut()
+    expect(cookies.values.size).toBe(0)
+  })
+})

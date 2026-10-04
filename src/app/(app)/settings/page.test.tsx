@@ -68,7 +68,8 @@ describe('SettingsPage', () => {
     expect(billing).toHaveAttribute('href', '/settings/billing')
     expect(billing).toHaveClass('border-mist-200', 'hover:border-ocean-300')
     expect(billing.querySelector('svg.lucide-chevron-right')).not.toBeNull()
-    expect(section.querySelectorAll('a svg.lucide-chevron-right')).toHaveLength(10)
+    expect(section.querySelectorAll('a svg.lucide-chevron-right')).toHaveLength(11)
+    expect(within(section).getByRole('link', { name: /Two-step verification/ })).toHaveAttribute('href', '/settings/security')
     expect(within(section).getByRole('link', { name: /Earnings/ })).toHaveAttribute('href', '/settings/earnings')
     expect(within(section).getByRole('link', { name: /Payout details/ })).toHaveAttribute('href', '/settings/payouts')
     expect(within(section).getByRole('link', { name: /Blocked members/ })).toHaveAttribute('href', '/settings/blocked')
@@ -100,6 +101,7 @@ describe('SettingsPage', () => {
       ['Creator access', '/creator'],
       ['Organizations', '/organizations'],
       ['Password & Google sign-in', '/auth/forgot-password'],
+      ['Two-step verification', '/settings/security'],
       ['My Activities', '/activities'],
       ['Hidden posts', '/activities?tab=hidden'],
       ['Blocked members', '/settings/blocked'],

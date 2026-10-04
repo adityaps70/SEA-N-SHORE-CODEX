@@ -1,4 +1,6 @@
+import { cookies } from 'next/headers'
 import { createCognitoApi } from '@/lib/auth/cognito-api'
+import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { query } from '@/lib/db/client'
 import { getCognitoEnvironment } from '@/lib/env'
 import { createPhoneAuthAdmin } from '@/features/auth/phone-auth-admin'
@@ -38,7 +40,11 @@ export function createRuntimeAccountDeletionService() {
     region: environment.AWS_COGNITO_REGION,
     clientId: environment.AWS_COGNITO_CLIENT_ID,
   })
-  return createAccountDeletionService({ api, effects: runtimeAccountDeletionEffects() })
+  return createAccountDeletionService({
+    api,
+    effects: runtimeAccountDeletionEffects(),
+    getSessionAccessToken: async () => (await cookies()).get(COGNITO_COOKIE_NAMES.access)?.value ?? null,
+  })
 }
 
 export const runtimeAccountDeletionService = {

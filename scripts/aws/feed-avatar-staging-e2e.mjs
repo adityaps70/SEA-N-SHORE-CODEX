@@ -107,7 +107,9 @@ async function uploadAvatar(page, user) {
   }
 
   await expect(changeButton).toBeVisible({ timeout: 20_000 })
-  const avatar = page.getByRole('img', { name: user.fullName + "'s profile photo" }).first()
+  // The Home profile card labels the photo "<name> profile photo"; post avatars use "<name>'s profile photo".
+  const avatarName = new RegExp('^' + user.fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?:'s)? profile photo$")
+  const avatar = page.getByRole('img', { name: avatarName }).first()
   await expect(avatar).toBeVisible({ timeout: 20_000 })
   const state = await avatar.evaluate((img) => ({
     src: img.currentSrc || img.src,
