@@ -15,6 +15,15 @@ flock -w "$TERRAFORM_HOST_LOCK_WAIT_SECONDS" 9 || {
 }
 echo "BOOTSTRAP_TERRAFORM_HOST_LOCK_WAITED_SECONDS=$((SECONDS - TERRAFORM_HOST_LOCK_WAIT_STARTED))"
 
+# Terraform stages provider downloads and plugin sockets in TMPDIR. The host's /tmp is a small
+# RAM-backed tmpfs: what runs killed by SSM leave there eats memory until the next Terraform run
+# swaps and stalls. Every runner therefore works in a short directory on the main volume (disk
+# maintenance removes stale ones); a runner that already made its own keeps it.
+if [[ "${TMPDIR:-/tmp}" == /tmp || "${TMPDIR:-/tmp}" == /tmp/* ]]; then
+  TMPDIR="$(mktemp -d /var/tmp/sns-tf.XXXXXX)"
+  export TMPDIR
+fi
+
 # Round 14: a few plans on this host never returned; SSM killed them after 30 minutes and left the
 # S3 state lock behind. Plans are read-only, so terraform_plan_bounded gives each one
 # TERRAFORM_PLAN_TIMEOUT_SECONDS, then interrupts it (Terraform releases its own state lock on

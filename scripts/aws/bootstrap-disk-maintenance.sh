@@ -37,6 +37,15 @@ FREE_MB_BEFORE="$(df -Pm / | awk 'NR==2 {print $4}')"
 echo "STATE_SERIAL_BEFORE=$STATE_SERIAL_BEFORE"
 echo "BOOTSTRAP_FREE_MB_BEFORE=$FREE_MB_BEFORE"
 echo "BOOTSTRAP_DISK_MAINTENANCE_ACTION=$ACTION"
+# Round 14: /tmp is a RAM-backed tmpfs on this host, so its use competes with Terraform for memory.
+echo "BOOTSTRAP_TMP_FILESYSTEM=$(findmnt -no FSTYPE /tmp 2>/dev/null || echo unknown)"
+echo "BOOTSTRAP_TMP_USED_MB=$(df -Pm /tmp | awk 'NR==2 {print $3}')"
+echo "BOOTSTRAP_MEM_AVAILABLE_MB=$(awk '/^MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo)"
+echo "BOOTSTRAP_MEM_TOTAL_MB=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo)"
+echo "BOOTSTRAP_SWAP_USED_MB=$(awk '/^SwapTotal:/ {t = $2} /^SwapFree:/ {f = $2} END {print int((t - f) / 1024)}' /proc/meminfo)"
+echo "BOOTSTRAP_LOAD_AVERAGE=$(cut -d' ' -f1-3 /proc/loadavg)"
+IMDS_TOKEN="$(curl -sS -m 3 -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' 2>/dev/null || true)"
+echo "BOOTSTRAP_INSTANCE_TYPE=$(curl -sS -m 3 -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/instance-type 2>/dev/null || echo unknown)"
 
 mapfile -d '' CANDIDATES < <(
   find /var/tmp -mindepth 1 -maxdepth 1 -type d -user "$(id -u)" \
@@ -44,9 +53,17 @@ mapfile -d '' CANDIDATES < <(
     -mmin +"$MIN_AGE_MINUTES" -print0 2>/dev/null
 )
 
+# Stale Terraform leftovers (provider staging, plugin sockets, mktemp files) this user left in /tmp.
+mapfile -d '' TMP_CANDIDATES < <(
+  find /tmp -mindepth 1 -maxdepth 1 -user "$(id -u)" \
+    \( -name 'terraform*' -o -name 'plugin*' -o -name 'tmp.*' \) \
+    -mmin +"$MIN_AGE_MINUTES" -print0 2>/dev/null
+)
+CANDIDATES+=("${TMP_CANDIDATES[@]}")
+
 for path in "${CANDIDATES[@]}"; do
   case "$path" in
-    /var/tmp/sea-n-shore-*|/var/tmp/sns-tf.*) ;;
+    /var/tmp/sea-n-shore-*|/var/tmp/sns-tf.*|/tmp/terraform*|/tmp/plugin*|/tmp/tmp.*) ;;
     *) echo "Refusing unexpected cleanup path: $path" >&2; exit 1 ;;
   esac
 done
@@ -63,6 +80,7 @@ echo "BOOTSTRAP_CLEANUP_CANDIDATE_BYTES=$CANDIDATE_BYTES"
 echo "BOOTSTRAP_VAR_TMP_TOP_USAGE_BEGIN"
 du -x -m -d 1 /var/tmp 2>/dev/null | sort -nr | head -n 20 || true
 echo "BOOTSTRAP_VAR_TMP_TOP_USAGE_END"
+echo "BOOTSTRAP_TMP_CLEANUP_CANDIDATE_COUNT=${#TMP_CANDIDATES[@]}"
 
 if [[ "$ACTION" == "plan" ]]; then
   echo "BOOTSTRAP_DISK_MAINTENANCE_PLAN_ONLY_NO_DELETE"

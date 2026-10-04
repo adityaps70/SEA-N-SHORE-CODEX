@@ -27,6 +27,7 @@ test('every Terraform runner (and disk maintenance) queues on one bootstrap host
   assert.match(lock, /exec 9>>"\$TERRAFORM_HOST_LOCK_FILE"/)
   assert.match(lock, /flock -w "\$TERRAFORM_HOST_LOCK_WAIT_SECONDS" 9 \|\|/)
   assert.doesNotMatch(lock, /flock -n|flock -u/)
+  assert.match(lock, /TMPDIR="\$\(mktemp -d \/var\/tmp\/sns-tf\.XXXXXX\)"\n  export TMPDIR/)
 
   for (const name of [...terraformRunners, 'bootstrap-disk-maintenance']) {
     const script = read(`scripts/aws/${name}.sh`)
