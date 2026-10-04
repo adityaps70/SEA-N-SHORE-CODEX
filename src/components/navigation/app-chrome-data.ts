@@ -3,7 +3,7 @@ import type { AwsVerifiedUser } from '@/features/auth/aws-queries'
 import { calculateProfileCompletion } from '@/features/feed/profile-completion'
 import { getUnreadMessageCount } from '@/features/messaging/queries'
 import { networkRepository } from '@/features/network/repository'
-import { getUnreadNotificationCount } from '@/features/notifications/queries'
+import { getNotificationChrome } from '@/features/notifications/queries'
 import { organizationLinkRepository } from '@/features/profiles/organization-link-repository'
 import { getProfilePortfolio } from '@/features/profiles/profile-portfolio-repository'
 import { getOwnProfile } from '@/features/profiles/queries'
@@ -27,9 +27,8 @@ function trimmed(value: string | null | undefined) {
 
 /** Everything the signed-in header, phone top bar, side drawer and bottom tabs need, loaded in parallel. */
 export async function getAppChromeData(user: AwsVerifiedUser) {
-  const [notificationUnreadCount, messagingUnreadCount, canAccessAdmin, profile, memberships, pendingConnectionRequestCount, portfolio] = await Promise.all([
-    // Round 14 (3.9): only the badge count; the bell loads its list when it is opened.
-    getUnreadNotificationCount(),
+  const [notificationChrome, messagingUnreadCount, canAccessAdmin, profile, memberships, pendingConnectionRequestCount, portfolio] = await Promise.all([
+    getNotificationChrome(),
     getUnreadMessageCount(),
     canAccessPlatformAdmin(user.id),
     getOwnProfile().catch(() => null),
@@ -62,7 +61,7 @@ export async function getAppChromeData(user: AwsVerifiedUser) {
     canManage: organization.role !== 'member',
   }))
   return {
-    notificationUnreadCount,
+    notificationChrome,
     messagingUnreadCount,
     canAccessAdmin,
     viewer,
@@ -77,7 +76,8 @@ export type AppChromeData = Awaited<ReturnType<typeof getAppChromeData>>
 /** Props for the desktop header, shared by the (app) and (public) layouts so they never drift. */
 export function appHeaderProps(chrome: AppChromeData) {
   return {
-    unreadCount: chrome.notificationUnreadCount,
+    recentNotifications: chrome.notificationChrome.recent,
+    unreadCount: chrome.notificationChrome.unreadCount,
     messagingUnreadCount: chrome.messagingUnreadCount,
     canAccessAdmin: chrome.canAccessAdmin,
     viewer: chrome.viewer,
@@ -100,7 +100,7 @@ export function mobileAppHeaderProps(chrome: AppChromeData) {
 /** Props for the phone bottom tabs. */
 export function mobileNavProps(chrome: AppChromeData) {
   return {
-    notificationUnreadCount: chrome.notificationUnreadCount,
+    notificationUnreadCount: chrome.notificationChrome.unreadCount,
     pendingConnectionRequestCount: chrome.pendingConnectionRequestCount,
   }
 }

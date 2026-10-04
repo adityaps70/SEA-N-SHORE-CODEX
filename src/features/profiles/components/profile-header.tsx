@@ -184,9 +184,9 @@ export function ProfileHeader({
 
   function saved() {
     closeEditor()
-    // Drop ?registered= once the organization is saved, so it is not offered again. (The save
-    // action revalidates /profile, so the page is already fresh; Round 14, 3.9.)
+    // Drop ?registered= once the organization is saved, so it is not offered again.
     if (registeredOrganization) router.replace('/profile', { scroll: false })
+    else router.refresh()
   }
 
   const identityLabel = profile.persona ? PERSONA_LABELS[profile.persona] : profile.primaryIdentity ?? profileTypeLabels[profile.profileType]

@@ -73,20 +73,15 @@ describe('messaging durable read cursor ordering', () => {
 
     const [sql] = firstCall(query)
     const text = sql.toLowerCase()
-    // Round 14 (3.9): counted per participant row with an EXISTS probe instead of
-    // count(distinct …) over every message of every conversation.
-    expect(text).toContain('select count(*)::int as count')
+    expect(text).toContain('select count(distinct unread_message.conversation_id)::int as count')
     expect(text).toContain('from public.messages unread_message')
-    expect(text).toContain('from public.conversation_participants mine')
+    expect(text).toContain('join public.conversation_participants mine')
     expect(text).toContain('unread_message.sender_profile_id <> mine.profile_id')
     expect(text).toContain('unread_message.deleted_at is null')
     expect(text).toContain('left join public.messages read_cursor')
     expect(text).toContain('unread_message.created_at = read_cursor.created_at')
     expect(text).toContain('unread_message.id > read_cursor.id')
     expect(text).not.toContain('unread_message.created_at = mine.last_read_at')
-    expect(text).toContain('exists (')
-    // The probe starts at the read cursor (or the "deleted for me" point), not at the first message.
-    expect(text).toContain("unread_message.created_at >= coalesce(greatest(read_cursor.created_at, mine.cleared_before), '-infinity'::timestamptz)")
-    expect(text).not.toContain('count(distinct')
+    expect(text).not.toContain('exists (')
   })
 })

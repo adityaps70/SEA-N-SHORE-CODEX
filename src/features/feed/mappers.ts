@@ -138,8 +138,6 @@ export type FeedPostRow = {
   viewer_follows_organization?: boolean | null
   created_at: string
   updated_at: string
-  /** Round 14 (3.7): the list's sort timestamp as exact text (microseconds, UTC) for keyset cursors. */
-  cursor_at?: string | null
   profiles: AuthorRow | AuthorRow[] | null
   post_media: MediaRow | MediaRow[] | null
   post_polls: PollRow | PollRow[] | null

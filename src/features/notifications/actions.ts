@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { userFacingError } from '@/lib/errors/user-messages'
-import { getNotificationChrome, getNotifications, getUnreadNotificationCount } from './queries'
+import { getNotificationChrome, getNotifications } from './queries'
 import {
   deleteNotificationInAurora,
   markAllNotificationsReadInAurora,
@@ -15,7 +15,6 @@ import type { NetworkNotification, NotificationChrome } from './types'
 export type NotificationActionResult = { ok: true } | { ok: false; error: string }
 export type NotificationChromeResult = { ok: true; chrome: NotificationChrome } | { ok: false; error: string }
 export type NotificationsResult = { ok: true; notifications: NetworkNotification[] } | { ok: false; error: string }
-export type UnreadNotificationCountResult = { ok: true; unreadCount: number } | { ok: false; error: string }
 
 const notificationIdSchema = z.string().uuid()
 
@@ -28,15 +27,6 @@ function revalidateNotificationSurfaces() {
 export async function loadNotificationChrome(): Promise<NotificationChromeResult> {
   try {
     return { ok: true, chrome: await getNotificationChrome() }
-  } catch {
-    return { ok: false, error: 'We could not refresh your notifications. They will update again shortly.' }
-  }
-}
-
-/** Round 14 (3.9): the closed bell polls only its badge count. */
-export async function loadUnreadNotificationCount(): Promise<UnreadNotificationCountResult> {
-  try {
-    return { ok: true, unreadCount: await getUnreadNotificationCount() }
   } catch {
     return { ok: false, error: 'We could not refresh your notifications. They will update again shortly.' }
   }

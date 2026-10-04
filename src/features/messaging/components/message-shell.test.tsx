@@ -226,8 +226,7 @@ describe('MessageShell', () => {
     })
     expect(deleteConversation).toHaveBeenCalledWith('55555555-5555-4555-8555-555555555555')
     expect(navigation.push).not.toHaveBeenCalled()
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(navigation.refresh).not.toHaveBeenCalled()
+    expect(navigation.refresh).toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: 'Capt. Meera Nair' })).toBeInTheDocument()
   })
 

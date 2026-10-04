@@ -21,7 +21,7 @@ const organizations: HeaderOrganization[] = [
 ]
 
 function openAccountMenu(props: Partial<Parameters<typeof AppHeader>[0]> = {}) {
-  render(<AppHeader unreadCount={0} viewer={{ name: 'Prakhar Pathak' }} {...props} />)
+  render(<AppHeader recentNotifications={[]} unreadCount={0} viewer={{ name: 'Prakhar Pathak' }} {...props} />)
   fireEvent.click(screen.getByRole('button', { name: 'Account menu' }))
   return screen.getByRole('menu', { name: 'Account menu' })
 }
@@ -51,7 +51,7 @@ describe('Organizations in the navigation', () => {
   })
 
   it('moves through organization rows, including Manage, with the arrow keys', () => {
-    render(<AppHeader unreadCount={0} viewer={{ name: 'Prakhar Pathak' }} organizations={organizations} />)
+    render(<AppHeader recentNotifications={[]} unreadCount={0} viewer={{ name: 'Prakhar Pathak' }} organizations={organizations} />)
     fireEvent.keyDown(screen.getByRole('button', { name: 'Account menu' }), { key: 'ArrowDown' })
     const labels = screen.getAllByRole('menuitem').map((item) => item.getAttribute('aria-label') ?? item.textContent)
     expect(labels.slice(0, 5)).toEqual([

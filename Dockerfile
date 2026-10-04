@@ -2,10 +2,9 @@
 
 FROM node:22-bookworm-slim AS dependencies
 WORKDIR /app
-# Round 14 (3.10): install exactly what package-lock.json pins.
-COPY package.json package-lock.json ./
+COPY package.json ./
 RUN npm install -g npm@11.6.0 \
-    && npm ci --no-audit --no-fund
+    && npm install
 
 FROM node:22-bookworm-slim AS builder
 WORKDIR /app
@@ -19,10 +18,7 @@ ENV NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL}
 ENV SERVER_ACTION_ALLOWED_ORIGINS=${SERVER_ACTION_ALLOWED_ORIGINS}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm run build \
-    && npm run build:workers \
-    && test -f dist/workers/publish-outbox.mjs \
-    && test -f dist/workers/consume-notifications.mjs
+RUN npm run build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app

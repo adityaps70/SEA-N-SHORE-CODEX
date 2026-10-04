@@ -105,9 +105,14 @@ function ProfileGoalsBoxEditor({
   onClose: () => void
   onDirty: () => void
 }) {
+  const router = useRouter()
+
   async function submit(previousState: ProfileInlineActionState, formData: FormData) {
     const nextState = await updateProfileGoalsSection(previousState, formData)
-    if (nextState.success) onClose()
+    if (nextState.success) {
+      onClose()
+      router.refresh()
+    }
     return nextState
   }
 

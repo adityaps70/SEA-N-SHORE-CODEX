@@ -1,7 +1,8 @@
 'use client'
 
 import { RotateCcw } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useId, useRef, useState, useTransition } from 'react'
 import { refundCoursePaymentAction, type RefundCoursePaymentResult } from '../course-payment-actions'
 
 type Props = {
@@ -17,10 +18,12 @@ type Props = {
 
 /** Course team / admin refund of one purchase, with an inline confirmation step. Double-click safe. */
 export function CourseRefundButton({ orderId, amountLabel, learnerName, courseTitle, hasAccess, retry = false }: Props) {
+  const router = useRouter()
   const [confirming, setConfirming] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const [, startTransition] = useTransition()
   const pendingRef = useRef(false)
   const openRef = useRef<HTMLButtonElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
@@ -53,6 +56,7 @@ export function CourseRefundButton({ orderId, amountLabel, learnerName, courseTi
     if (result.ok) {
       setConfirming(false)
       setDone(result.message)
+      startTransition(() => router.refresh())
       return
     }
     setError(result.error)

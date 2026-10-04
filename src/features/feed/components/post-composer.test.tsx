@@ -366,7 +366,6 @@ describe('PostComposer rich media', () => {
     await waitFor(() => expect(mocks.createPost).toHaveBeenCalled())
     await waitFor(() => expect(mocks.revokeObjectURL).toHaveBeenCalledTimes(2))
     expect(mocks.discardPendingPostMedia).not.toHaveBeenCalled()
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 })

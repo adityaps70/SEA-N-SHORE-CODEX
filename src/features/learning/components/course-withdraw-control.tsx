@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { AlertCircle, Loader2, Undo2 } from 'lucide-react'
 import { withdrawCourseFromReview } from '../course-actions'
 
 /** Takes an in-review course back to draft so it can be edited. Asks inline before acting. */
 export function CourseWithdrawControl({ courseId }: { courseId: string }) {
+  const router = useRouter()
   const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
@@ -19,6 +21,7 @@ export function CourseWithdrawControl({ courseId }: { courseId: string }) {
         return
       }
       setConfirming(false)
+      router.refresh()
     })
   }
 

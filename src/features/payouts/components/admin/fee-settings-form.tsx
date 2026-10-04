@@ -1,6 +1,7 @@
 'use client'
 
-import { useId, useState, type FormEvent } from 'react'
+import { useRouter } from 'next/navigation'
+import { useId, useState, useTransition, type FormEvent } from 'react'
 import { primaryButtonClass } from '@/components/ui/interactive-styles'
 import { updateFeeSettingsAction } from '../../admin-actions'
 
@@ -10,6 +11,8 @@ type Props = { defaultPercent: string; holdDays: number; minPayout: string }
 
 /** Admin: platform default fee, hold period and minimum payout. */
 export function FeeSettingsForm({ defaultPercent, holdDays, minPayout }: Props) {
+  const router = useRouter()
+  const [, startTransition] = useTransition()
   const [pending, setPending] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
@@ -35,6 +38,7 @@ export function FeeSettingsForm({ defaultPercent, holdDays, minPayout }: Props) 
     setPending(false)
     if (outcome.ok) {
       setResult({ ok: true, message: outcome.message })
+      startTransition(() => router.refresh())
     } else {
       setResult({ ok: false, message: outcome.error })
       setFieldErrors(outcome.fieldErrors ?? {})

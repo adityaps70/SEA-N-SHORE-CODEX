@@ -198,8 +198,7 @@ describe('CancelAutoRenewButton', () => {
     expect(await screen.findByRole('button', { name: 'Turning off…' })).toBeDisabled()
     await act(async () => { resolve({ ok: true, message: 'Auto-renew is off. Creator Pro stays active until 1 Nov 2026, and nothing more will be charged.' }) })
     expect(screen.getByRole('status')).toHaveTextContent('Auto-renew is off.')
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('keeps the panel open with the error when cancelling fails', async () => {

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { enrollInFreeCourse } from '../enrollment-actions'
@@ -26,6 +27,7 @@ export function CourseActionBar({
   course: { id: string; slug: string; title: string }
   mode: CourseActionBarMode
 }) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [enrolled, setEnrolled] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,6 +42,7 @@ export function CourseActionBar({
         return
       }
       setEnrolled(true)
+      router.refresh()
     })
   }
 

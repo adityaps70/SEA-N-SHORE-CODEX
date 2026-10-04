@@ -68,8 +68,7 @@ describe('GroupMembersList (round 9C)', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Transfer ownership' }))
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Make Ravi Kumar the owner of this group?'))
     await waitFor(() => expect(mocks.transferOwnership).toHaveBeenCalledWith({ groupId, profileId: 'mod-1' }))
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    await waitFor(() => expect(mocks.refresh).toHaveBeenCalled())
   })
 
   it('keeps the menu action off when the confirmation is declined and shows server errors', async () => {

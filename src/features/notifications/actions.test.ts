@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { revalidatePath } from 'next/cache'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { deleteNotification, loadNotificationChrome, loadUnreadNotificationCount, markAllNotificationsRead, markNotificationRead } from './actions'
-import { getNotificationChrome, getUnreadNotificationCount } from './queries'
+import { deleteNotification, markAllNotificationsRead, markNotificationRead } from './actions'
 import {
   deleteNotificationInAurora,
   markAllNotificationsReadInAurora,
@@ -20,7 +19,6 @@ vi.mock('@/features/auth/aws-queries', () => ({
 vi.mock('./queries', () => ({
   getNotificationChrome: vi.fn(),
   getNotifications: vi.fn(),
-  getUnreadNotificationCount: vi.fn(),
 }))
 vi.mock('./repository', () => ({
   markNotificationReadInAurora: vi.fn(async () => true),
@@ -134,31 +132,5 @@ describe('Aurora notification actions', () => {
       })
       expect(mockedDelete).not.toHaveBeenCalled()
     })
-  })
-})
-
-describe('notification bell loading actions (Round 14, 3.9)', () => {
-  beforeEach(() => vi.clearAllMocks())
-
-  it('returns only the unread count for the closed bell', async () => {
-    vi.mocked(getUnreadNotificationCount).mockResolvedValueOnce(5)
-    await expect(loadUnreadNotificationCount()).resolves.toEqual({ ok: true, unreadCount: 5 })
-    expect(getNotificationChrome).not.toHaveBeenCalled()
-    expect(mockedRevalidatePath).not.toHaveBeenCalled()
-  })
-
-  it('keeps the last badge when the count cannot be read', async () => {
-    vi.mocked(getUnreadNotificationCount).mockRejectedValueOnce(new Error('timeout'))
-    await expect(loadUnreadNotificationCount()).resolves.toEqual({
-      ok: false,
-      error: 'We could not refresh your notifications. They will update again shortly.',
-    })
-  })
-
-  it('loads the recent list and count when the panel opens', async () => {
-    const chrome = { recent: [], unreadCount: 2 }
-    vi.mocked(getNotificationChrome).mockResolvedValueOnce(chrome)
-    await expect(loadNotificationChrome()).resolves.toEqual({ ok: true, chrome })
-    expect(mockedRevalidatePath).not.toHaveBeenCalled()
   })
 })

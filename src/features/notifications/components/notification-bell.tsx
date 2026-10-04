@@ -3,8 +3,8 @@
 import Link from 'next/link'
 import { Bell, CheckCheck } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState, useTransition } from 'react'
-import { loadNotificationChrome, loadUnreadNotificationCount, markAllNotificationsRead, markNotificationRead } from '../actions'
+import { useCallback, useEffect, useState, useTransition } from 'react'
+import { loadNotificationChrome, markAllNotificationsRead, markNotificationRead } from '../actions'
 import { useDismissibleLayer } from '@/hooks/use-dismissible-layer'
 import type { NetworkNotification } from '../types'
 import { NotificationActorAvatar, NotificationPostThumb } from './notification-visuals'
@@ -17,66 +17,22 @@ function notificationDate(timestamp: string) {
   }).format(new Date(timestamp))
 }
 
-/**
- * Round 14 (3.9): the header only renders the unread badge (a single count query). The recent list
- * is loaded when the panel opens, and again on each later open, so pages no longer pay for eight
- * hydrated notifications (actors, post previews, signed media URLs) on every render.
- */
 export function NotificationBell({
-  unreadCount,
   recent,
+  unreadCount,
 }: {
+  recent: NetworkNotification[]
   unreadCount: number
-  /** An already-loaded list (tests, previews). Without it the list loads when the panel opens. */
-  recent?: NetworkNotification[]
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [notifications, setNotifications] = useState<NetworkNotification[] | null>(recent ?? null)
-  const [listStale, setListStale] = useState(recent === undefined)
-  const [loadingList, setLoadingList] = useState(false)
+  const [notifications, setNotifications] = useState(recent)
   const [localUnreadCount, setLocalUnreadCount] = useState(unreadCount)
   const [error, setError] = useState('')
   const [pending, startTransition] = useTransition()
   const closePopover = useCallback(() => setOpen(false), [])
   const rootRef = useDismissibleLayer<HTMLDivElement>(open, closePopover)
-  const [wasOpen, setWasOpen] = useState(open)
-  const openRef = useRef(open)
-  const listRequestRef = useRef(0)
 
-  // Closing the panel (button, outside click, Escape, opening a notification) makes the next open
-  // load a fresh list.
-  if (wasOpen !== open) {
-    setWasOpen(open)
-    if (!open) setListStale(true)
-  }
-
-  useEffect(() => { openRef.current = open }, [open])
-
-  const loadList = useCallback(async () => {
-    listRequestRef.current += 1
-    const request = listRequestRef.current
-    setLoadingList(true)
-    try {
-      const result = await loadNotificationChrome()
-      if (request !== listRequestRef.current) return
-      if (!result.ok) {
-        setError(result.error)
-        return
-      }
-      setError('')
-      setNotifications(result.chrome.recent)
-      setLocalUnreadCount(result.chrome.unreadCount)
-      setListStale(false)
-    } catch {
-      if (request === listRequestRef.current) setError('We could not load your notifications. Please try again.')
-    } finally {
-      if (request === listRequestRef.current) setLoadingList(false)
-    }
-  }, [])
-
-  // Every 30 seconds: the open panel reloads its list; a closed bell only refreshes the badge count
-  // (and the list reloads on the next open).
   useEffect(() => {
     let active = true
     let checking = false
@@ -85,16 +41,10 @@ export function NotificationBell({
       if (checking) return
       checking = true
       try {
-        if (openRef.current) {
-          await loadList()
-          return
-        }
-        const result = await loadUnreadNotificationCount()
+        const result = await loadNotificationChrome()
         if (!active || !result.ok) return
-        setLocalUnreadCount(result.unreadCount)
-        setListStale(true)
-      } catch {
-        // The badge keeps its last known count; the next tick tries again.
+        setNotifications(result.chrome.recent)
+        setLocalUnreadCount(result.chrome.unreadCount)
       } finally {
         checking = false
       }
@@ -105,14 +55,7 @@ export function NotificationBell({
       active = false
       window.clearInterval(interval)
     }
-  }, [loadList])
-
-  /** Opening the panel loads the list when it has not been loaded yet or may be out of date. */
-  function togglePanel() {
-    const next = !open
-    setOpen(next)
-    if (next && listStale) void loadList()
-  }
+  }, [])
 
   function openNotification(notification: NetworkNotification) {
     if (pending) return
@@ -130,7 +73,7 @@ export function NotificationBell({
         return
       }
       const readAt = new Date().toISOString()
-      setNotifications((current) => current?.map((item) => item.id === notification.id ? { ...item, readAt } : item) ?? null)
+      setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item))
       setLocalUnreadCount((current) => Math.max(0, current - 1))
       setOpen(false)
       router.push(notification.destination)
@@ -142,7 +85,7 @@ export function NotificationBell({
     setOpen(false)
     if (notification.readAt) return
     const readAt = new Date().toISOString()
-    setNotifications((current) => current?.map((item) => item.id === notification.id ? { ...item, readAt } : item) ?? null)
+    setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, readAt } : item))
     setLocalUnreadCount((current) => Math.max(0, current - 1))
     void markNotificationRead(notification.id).catch(() => undefined)
   }
@@ -157,7 +100,7 @@ export function NotificationBell({
         return
       }
       const readAt = new Date().toISOString()
-      setNotifications((current) => current?.map((notification) => notification.readAt ? notification : { ...notification, readAt }) ?? null)
+      setNotifications((current) => current.map((notification) => notification.readAt ? notification : { ...notification, readAt }))
       setLocalUnreadCount(0)
     })
   }
@@ -168,7 +111,7 @@ export function NotificationBell({
         type="button"
         aria-label="Notifications"
         aria-expanded={open}
-        onClick={togglePanel}
+        onClick={() => setOpen((value) => !value)}
         className="relative grid min-h-10 min-w-10 place-items-center rounded-lg text-navy-900 hover:bg-mist-50"
       >
         <Bell aria-hidden="true" className="size-5" />
@@ -194,11 +137,7 @@ export function NotificationBell({
             ) : null}
           </div>
 
-          {notifications === null ? (
-            <div className="px-5 py-8 text-center">
-              {loadingList ? <p role="status" className="text-sm text-muted">Loading notifications…</p> : null}
-            </div>
-          ) : notifications.length ? (
+          {notifications.length ? (
             <div className="max-h-96 overflow-y-auto py-1">
               {notifications.map((notification) => {
                 const unread = !notification.readAt

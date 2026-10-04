@@ -173,8 +173,7 @@ describe('MentorCurriculumEditor native materials', () => {
     render(<MentorCurriculumEditor courseId={courseId} curriculum={curriculum} />)
     fireEvent.change(screen.getByLabelText('Course navigation mode'), { target: { value: 'sequential' } })
     await waitFor(() => expect(mocks.updateNavigation).toHaveBeenCalledWith(courseId, 'sequential'))
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('adds sections through the existing section workflow', async () => {

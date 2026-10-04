@@ -1,7 +1,8 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { CheckCircle2 } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, useTransition } from 'react'
 import { cancelAutoRenewAction } from '../actions'
 import type { PlanCheckoutTarget } from '../checkout-messages'
 
@@ -15,6 +16,8 @@ export function CancelAutoRenewButton({ target, planLabel, accessUntil }: {
   /** Last day of the paid period, e.g. "12 Oct 2026". */
   accessUntil: string | null
 }) {
+  const router = useRouter()
+  const [, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +51,7 @@ export function CancelAutoRenewButton({ target, planLabel, accessUntil }: {
       if (result.ok) {
         setDone(result.message)
         setOpen(false)
+        startTransition(() => router.refresh())
       } else {
         setError(result.error)
       }

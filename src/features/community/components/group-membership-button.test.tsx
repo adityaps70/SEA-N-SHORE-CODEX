@@ -26,8 +26,7 @@ describe('GroupMembershipButton', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Join Marine Engineers' }))
     await waitFor(() => expect(screen.getByLabelText('Joined Marine Engineers')).toBeInTheDocument())
     expect(mocks.joinGroup).toHaveBeenCalledWith(groupId)
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('requests to join a private group, shows Pending and withdraws the request on a second click', async () => {

@@ -37,8 +37,7 @@ describe('JoinRequestsPanel (round 9C)', () => {
     expect(window.confirm).toHaveBeenCalledWith('Approve all 2 waiting requests?')
     await waitFor(() => expect(mocks.approveAllPending).toHaveBeenCalledWith(groupId))
     await waitFor(() => expect(screen.getByText('No join requests waiting.')).toBeInTheDocument())
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(mocks.refresh).not.toHaveBeenCalled()
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('does nothing when the confirmation is declined, and shows the server error otherwise', async () => {

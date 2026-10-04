@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition, type FormEvent } from 'react'
+import { useRouter } from 'next/navigation'
 import { CheckCircle2, Smartphone } from 'lucide-react'
 import {
   cancelPhoneLink,
@@ -40,6 +41,7 @@ const secondaryButton = 'inline-flex min-h-11 items-center justify-center rounde
 type Step = 'view' | 'request' | 'confirm'
 
 export function AccountPhonePanel({ summary }: { summary: AccountPhoneSummary | null }) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const phones = summary?.phones ?? []
   const [step, setStep] = useState<Step>(summary?.pendingPhoneNumber ? 'confirm' : 'view')
@@ -61,6 +63,7 @@ export function AccountPhonePanel({ summary }: { summary: AccountPhoneSummary | 
       } else if (result.status === 'verified' || result.status === 'removed') {
         setPendingNumber(null)
         setStep('view')
+        router.refresh()
       } else if (result.status === 'error' && result.step === 'request' && step === 'confirm') {
         setPendingNumber(null)
         setStep('request')

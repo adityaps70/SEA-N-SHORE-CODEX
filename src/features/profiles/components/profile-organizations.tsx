@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useActionState } from 'react'
 import { ExternalLink } from 'lucide-react'
 import { accessRoleLabel } from '@/features/organizations/access-request-labels'
@@ -72,10 +73,14 @@ function ProfileOrganizationsEditor({
   onSaved: () => void
   onDirty: () => void
 }) {
+  const router = useRouter()
 
   async function submit(previousState: ProfileInlineActionState, formData: FormData) {
     const nextState = await updateProfileCurrentOrganization(previousState, formData)
-    if (nextState.success) onSaved()
+    if (nextState.success) {
+      onSaved()
+      router.refresh()
+    }
     return nextState
   }
 

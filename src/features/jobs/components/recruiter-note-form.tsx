@@ -1,6 +1,7 @@
 'use client'
 
 import { useId, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { saveHiringRecruiterNote } from '../hiring-actions'
 
 export function RecruiterNoteForm({
@@ -11,6 +12,7 @@ export function RecruiterNoteForm({
   /** Personal-recruiter jobs have no team, so the note is private to the poster. */
   audience?: 'organization' | 'personal'
 }) {
+  const router = useRouter()
   const noteId = useId()
   const [saved, setSaved] = useState(false)
   const [note, setNote] = useState('')
@@ -34,6 +36,7 @@ export function RecruiterNoteForm({
       }
       setNote('')
       setSaved(true)
+      router.refresh()
     })
   }
 

@@ -51,14 +51,8 @@ vi.mock('@/features/feed/components/hidden-post-card', () => ({
 vi.mock('@/features/feed/components/feed-profile-card', () => ({ FeedProfileCard: () => <div>Profile card</div> }))
 vi.mock('@/features/network/components/people-you-may-know', () => ({ PeopleYouMayKnow: () => <div>People</div> }))
 vi.mock('@/features/jobs/components/job-application-list', () => ({ JobApplicationList: () => <div>Applications</div> }))
-vi.mock('@/features/feed/components/activity-lists', () => ({
-  ActivityPostList: ({ initialPage }: { initialPage: { entries: Array<{ item: { id: string } }>; nextCursor: unknown } }) => (
-    <div data-testid="activity-posts" data-has-more={String(Boolean(initialPage.nextCursor))}>{initialPage.entries.map((entry) => entry.item.id).join(',')}</div>
-  ),
-  CommentActivityList: ({ initialPage }: { initialPage: { entries: Array<{ item: { post: { id: string } } }> } }) => (
-    <div data-testid="activity-comments">{initialPage.entries.map((entry) => entry.item.post.id).join(',')}</div>
-  ),
-}))
+vi.mock('@/features/feed/components/post-card', () => ({ PostCard: () => <div>Post</div> }))
+vi.mock('@/features/feed/components/comment-activity-card', () => ({ CommentActivityCard: () => <div>Comment</div> }))
 vi.mock('@/features/feed/components/recently-deleted-post-card', () => ({
   RecentlyDeletedPostCard: ({ post }: { post: { id: string; body: string } }) => <div data-testid="deleted-post">{post.id}:{post.body}</div>,
 }))
@@ -94,8 +88,8 @@ beforeEach(() => {
   mocks.getPeopleYouMayKnow.mockResolvedValue([])
   mocks.getPublishedJobs.mockResolvedValue([])
   mocks.getMyJobApplications.mockResolvedValue([])
-  mocks.getMyActivityPosts.mockResolvedValue({ entries: [], nextCursor: null })
-  mocks.getMyCommentActivity.mockResolvedValue({ entries: [], nextCursor: null })
+  mocks.getMyActivityPosts.mockResolvedValue([])
+  mocks.getMyCommentActivity.mockResolvedValue([])
   mocks.getMyRecentlyDeletedPosts.mockResolvedValue([deletedPost])
   mocks.getMyHiddenPosts.mockResolvedValue([])
 })
@@ -189,31 +183,5 @@ describe('/activities hidden posts', () => {
     mocks.getMyHiddenPosts.mockClear()
     render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'posts' }) }))
     expect(mocks.getMyHiddenPosts).not.toHaveBeenCalled()
-  })
-})
-
-describe('/activities posts and comments pages (Round 14, 3.7)', () => {
-  const cursor = { createdAt: '2026-09-05T07:00:00.123456Z', id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }
-
-  it('loads the first page of the member posts and hands it to the Load more list', async () => {
-    mocks.getMyActivityPosts.mockResolvedValueOnce({ entries: [{ cursor, item: { id: 'post-1' } }], nextCursor: cursor })
-
-    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'posts' }) }))
-
-    expect(mocks.getMyActivityPosts).toHaveBeenCalledWith()
-    expect(screen.getByTestId('activity-posts')).toHaveTextContent('post-1')
-    expect(screen.getByTestId('activity-posts')).toHaveAttribute('data-has-more', 'true')
-    expect(mocks.getMyCommentActivity).not.toHaveBeenCalled()
-  })
-
-  it('loads the first page of comment activity on the comments tab and keeps the empty state', async () => {
-    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'comments' }) }))
-    expect(screen.getByText('You have not commented on a post yet.')).toBeInTheDocument()
-
-    cleanup()
-    mocks.getMyCommentActivity.mockResolvedValueOnce({ entries: [{ cursor, item: { post: { id: 'post-2' } } }], nextCursor: null })
-    render(await ActivitiesPage({ searchParams: Promise.resolve({ tab: 'comments' }) }))
-    expect(screen.getByTestId('activity-comments')).toHaveTextContent('post-2')
-    expect(mocks.getMyActivityPosts).not.toHaveBeenCalled()
   })
 })

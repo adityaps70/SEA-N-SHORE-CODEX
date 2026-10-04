@@ -235,8 +235,7 @@ describe('MessageThread rich interactions', () => {
       MESSAGE_ID,
       'Updated message',
     ))
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(navigation.refresh).not.toHaveBeenCalled()
+    expect(navigation.refresh).toHaveBeenCalled()
 
     rendered.unmount()
     vi.spyOn(Date, 'now').mockReturnValue(new Date('2026-09-21T05:06:00.001Z').getTime())
@@ -336,7 +335,6 @@ describe('MessageThread rich interactions', () => {
     await user.click(screen.getByRole('button', { name: `More actions for message ${MESSAGE_ID}` }))
     await user.click(screen.getByRole('button', { name: 'Unsend message' }))
     await waitFor(() => expect(actions.deleteMessageAction).toHaveBeenCalledWith(MESSAGE_ID))
-    // Round 14 (3.9): the action revalidates, which already re-renders the route.
-    expect(navigation.refresh).not.toHaveBeenCalled()
+    expect(navigation.refresh).toHaveBeenCalled()
   })
 })

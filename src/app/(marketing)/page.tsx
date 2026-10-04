@@ -26,11 +26,7 @@ export const metadata: Metadata = {
   },
 }
 
-// Rendered per request (Round 14, 3.8 kept this dynamic on purpose): the header, hero and final
-// call to action follow the visitor's session, the Google button follows the runtime
-// AWS_COGNITO_GOOGLE_ENABLED setting, and the per-request Report-Only CSP nonce (src/proxy.ts) is
-// only stamped on dynamically rendered pages. Plan prices come from a shared five-minute cache
-// (features/billing/plan-price-cache.ts), not the database on every request.
+// Prices come from the database and the header depends on the visitor's session.
 export const dynamic = 'force-dynamic'
 
 async function resolveViewer() {

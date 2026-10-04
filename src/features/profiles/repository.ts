@@ -236,53 +236,6 @@ function requireAtMostOne(rows: readonly ProfileRow[]) {
   return rows[0] ?? null
 }
 
-/**
- * Round 14 (3.6): every token must appear in the stored, lower-cased profiles.search_text
- * (migration 0067, kept current by triggers on profiles, maritime_profiles and profile_skills).
- * One LIKE per token, not LIKE ALL, so the GIN trigram index can serve each of them.
- */
-function storedSearchTextSql(tokenCount: number) {
-  return Array.from({ length: tokenCount }, (_, index) => `and p.search_text like ($2::text[])[${index + 1}]`)
-    .join('\n         ')
-}
-
-/** The text people search matched before migration 0067; public.profile_search_text() builds the same. */
-const LEGACY_SEARCH_TEXT_SQL = `
-         and lower(concat_ws(' ',
-           p.full_name,
-           p.slug,
-           p.location,
-           p.headline,
-           p.summary,
-           p.primary_identity,
-           p.primary_identity_family,
-           p.persona,
-           array_to_string(p.profile_intents, ' '),
-           p.community_relationship,
-           p.institution_name,
-           p.specialization,
-           p.role_other_text,
-           p.occupation_text,
-           array_to_string(p.secondary_identities, ' '),
-           mp.rank,
-           mp.current_company,
-           mp.current_vessel,
-           array_to_string(mp.vessel_types, ' '),
-           array_to_string(mp.trading_areas, ' '),
-           coalesce((
-             select string_agg(ps_search.skill, ' ' order by ps_search.skill)
-             from public.profile_skills ps_search
-             where ps_search.user_id = p.id
-           ), '')
-         )) like all($2::text[])
-       `
-
-function isMissingSearchTextColumn(error: unknown) {
-  return typeof error === 'object' && error !== null
-    && (error as { code?: unknown }).code === '42703'
-    && /search_text/.test(String((error as { message?: unknown }).message ?? ''))
-}
-
 function searchTokens(value?: string) {
   return (value ?? '')
     .trim()
@@ -406,28 +359,55 @@ export function createProfileRepository(input: { query?: ProfileQuery } = {}) {
     const limit = Math.min(Math.max(Math.trunc(lookup.limit), 1), 60)
     const tokens = searchTokens(lookup.searchQuery)
     const hasSearch = tokens.length > 0
+    const searchSql = hasSearch
+      ? `
+         and lower(concat_ws(' ',
+           p.full_name,
+           p.slug,
+           p.location,
+           p.headline,
+           p.summary,
+           p.primary_identity,
+           p.primary_identity_family,
+           p.persona,
+           array_to_string(p.profile_intents, ' '),
+           p.community_relationship,
+           p.institution_name,
+           p.specialization,
+           p.role_other_text,
+           p.occupation_text,
+           array_to_string(p.secondary_identities, ' '),
+           mp.rank,
+           mp.current_company,
+           mp.current_vessel,
+           array_to_string(mp.vessel_types, ' '),
+           array_to_string(mp.trading_areas, ' '),
+           coalesce((
+             select string_agg(ps_search.skill, ' ' order by ps_search.skill)
+             from public.profile_skills ps_search
+             where ps_search.user_id = p.id
+           ), '')
+         )) like all($2::text[])
+       `
+      : ''
     const limitParameter = hasSearch ? 3 : 2
     const values: readonly unknown[] = hasSearch
       ? [lookup.viewerProfileId, tokens.map((token) => `%${token}%`), limit]
       : [lookup.viewerProfileId, limit]
-    const discoverySql = (searchSql: string) => `${PROFILE_SELECT}
+
+    const rows = await queryRows(
+      `${PROFILE_SELECT}
        where p.id <> $1
          and p.account_status = 'active'
          and p.onboarding_completed_at is not null
          ${blockVisibilitySql(1)}
          ${searchSql}
        order by p.updated_at desc, p.id asc
-       limit $${limitParameter}`
+       limit $${limitParameter}`,
+      values,
+    )
 
-    if (!hasSearch) return mapPublicRows(await queryRows(discoverySql(''), values))
-
-    try {
-      return mapPublicRows(await queryRows(discoverySql(storedSearchTextSql(tokens.length)), values))
-    } catch (error) {
-      // Until migration 0067 adds profiles.search_text, search the same text built per query.
-      if (!isMissingSearchTextColumn(error)) throw error
-      return mapPublicRows(await queryRows(discoverySql(LEGACY_SEARCH_TEXT_SQL), values))
-    }
+    return mapPublicRows(rows)
   }
 
   return {

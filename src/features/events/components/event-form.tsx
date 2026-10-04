@@ -429,6 +429,7 @@ export function EventForm(props: Props) {
         return
       }
       setMessage(input.status === 'published' ? 'Event saved and published.' : 'Draft saved.')
+      router.refresh()
     })
   }
 
@@ -442,8 +443,8 @@ export function EventForm(props: Props) {
         setMessage(result.error)
         return
       }
-      // cancelEventAction revalidated /events/[id], so the event page we open is already fresh.
       router.push(`/events/${props.eventId}`)
+      router.refresh()
     })
   }
 

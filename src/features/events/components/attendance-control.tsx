@@ -2,6 +2,7 @@
 
 import { CheckCircle2 } from 'lucide-react'
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { attendEventAction, withdrawEventAttendanceAction } from '../calendar-actions'
 
 export function AttendanceControl({
@@ -24,6 +25,7 @@ export function AttendanceControl({
   /** `bar`: just the Register pill for the phone sticky bar (attendees see their status on the page). */
   variant?: 'panel' | 'bar'
 }) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -33,7 +35,11 @@ export function AttendanceControl({
       const result = attending
         ? await withdrawEventAttendanceAction(eventId)
         : await attendEventAction(eventId)
-      if (!result.ok) setError(result.error)
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
+      router.refresh()
     })
   }
 

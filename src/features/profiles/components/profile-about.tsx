@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useActionState, useState } from 'react'
 import { updateProfileAboutSection, type ProfileInlineActionState } from '../profile-inline-actions'
 import type { PublicProfile } from '../types'
@@ -52,6 +53,7 @@ function ProfileAboutEditor({
 }
 
 export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; editHref?: string }) {
+  const router = useRouter()
   const { editing: editorEditing, open: openEditor, close: closeEditor, markDirty: markEditorDirty, triggerRef: editorTriggerRef } = useProfileCardEditor('profile-about', 'About')
   const [expanded, setExpanded] = useState(false)
   const editable = Boolean(editHref)
@@ -72,7 +74,10 @@ export function ProfileAbout({ profile, editHref }: { profile: PublicProfile; ed
           profile={profile}
           onClose={closeEditor}
           onDirty={markEditorDirty}
-          onSaved={closeEditor}
+          onSaved={() => {
+            closeEditor()
+            router.refresh()
+          }}
         />
       ) : (
         <>

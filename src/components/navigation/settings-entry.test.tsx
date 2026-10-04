@@ -16,7 +16,7 @@ afterEach(() => cleanup())
 
 describe('Settings navigation', () => {
   it('offers Settings, Profile and Sign out from the desktop account menu for every signed-in user', () => {
-    render(<AppHeader unreadCount={0} messagingUnreadCount={0} viewer={{ name: 'Aditya Pratap Singh' }} />)
+    render(<AppHeader recentNotifications={[]} unreadCount={0} messagingUnreadCount={0} viewer={{ name: 'Aditya Pratap Singh' }} />)
 
     const trigger = screen.getByRole('button', { name: 'Account menu' })
     expect(trigger).toHaveTextContent('AS')
