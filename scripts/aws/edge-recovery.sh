@@ -185,7 +185,7 @@ jq -e --arg fn "$EXPECTED_FUNCTION_ARN" --arg optimized 658327ea-f89d-4fab-a63d-
   .Distribution.DistributionConfig as $config
   | $config.DefaultCacheBehavior.CachePolicyId == "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
     and ([$config.CacheBehaviors.Items[]? | [.PathPattern, .CachePolicyId]] == [["/_next/static/*", $optimized], ["/_next/image*", $image], ["/brand/*", $optimized], ["/landing/*", $optimized], ["/favicon.ico", $optimized]])
-    and all($config.CacheBehaviors.Items[]?; .ViewerProtocolPolicy == "redirect-to-https" and .AllowedMethods.Quantity == 2 and ((.OriginRequestPolicyId // "") == "") and .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0)
+    and all($config.CacheBehaviors.Items[]?; ((.GrpcConfig.Enabled // false) == false) and .ViewerProtocolPolicy == "redirect-to-https" and .AllowedMethods.Quantity == 2 and ((.OriginRequestPolicyId // "") == "") and .FunctionAssociations.Quantity == 1 and .FunctionAssociations.Items[0].FunctionARN == $fn and (.LambdaFunctionAssociations.Quantity // 0) == 0)
 ' "$RECOVERY_DIR/live.json" >/dev/null
 aws cloudfront get-cache-policy --id "$IMAGE_POLICY_ID" --output json > "$RECOVERY_DIR/live-image-policy.json"
 jq -e '.CachePolicy.CachePolicyConfig.ParametersInCacheKeyAndForwardedToOrigin | .CookiesConfig.CookieBehavior == "none" and (.HeadersConfig.Headers.Items == ["Accept"]) and ((.QueryStringsConfig.QueryStrings.Items | sort) == ["q", "url", "w"])' "$RECOVERY_DIR/live-image-policy.json" >/dev/null

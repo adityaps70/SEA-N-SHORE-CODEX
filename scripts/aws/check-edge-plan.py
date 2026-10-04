@@ -300,6 +300,17 @@ def _only_function_arn_unknown(value):
     return set(value[0]) <= {'function_arn'} and value[0].get('function_arn') is True
 
 
+def _only_grpc_enabled_unknown(value):
+    """Accept only an unknown gRPC enabled flag (provider-computed) and nothing else in the block."""
+    if not isinstance(value, list) or len(value) > 1:
+        return False
+    return all(isinstance(item, dict) and set(item) <= {'enabled'} for item in value)
+
+
+def _grpc_enabled(behavior):
+    return any(isinstance(item, dict) and item.get('enabled') is True for item in (behavior.get('grpc_config') or []))
+
+
 def validate(plan, origin, certificate_arn='', template_path=None, origin_verify=None):
     errors = []
     if not isinstance(origin_verify, str) or not ORIGIN_VERIFY_PATTERN.fullmatch(origin_verify):
@@ -445,7 +456,13 @@ def _validate_ordered_behaviors(cf, unknown, image_policy_change, image_policy_c
                 continue
             if f == 'function_association' and function_created and _only_function_arn_unknown(value):
                 continue
-            errors.append('Unknown safety field in ordered behavior ' + path)
+            # Computed by the AWS provider for a new behavior: the TTL fields (the cache policy decides
+            # the real TTLs) and gRPC's enabled flag (off unless set; the apply verifies it live).
+            if f in ('default_ttl', 'max_ttl'):
+                continue
+            if f == 'grpc_config' and _only_grpc_enabled_unknown(value) and not _grpc_enabled(behavior):
+                continue
+            errors.append('Unknown safety field in ordered behavior ' + path + ': ' + f)
         expected_policy = CACHING_OPTIMIZED_POLICY_ID if policy == 'optimized' else image_policy_id
         if behavior.get('cache_policy_id') != expected_policy and not (policy == 'next_image' and image_policy_created and behavior.get('cache_policy_id') in [None, '']):
             errors.append('Cache policy mismatch for ' + path)

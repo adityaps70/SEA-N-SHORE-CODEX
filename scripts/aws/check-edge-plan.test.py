@@ -366,7 +366,16 @@ class EdgeCachingTests(unittest.TestCase):
         no_redirect = self.expected(); no_redirect[0]['function_association'] = []
         self.assertIn('Ordered behavior must keep the canonical-host redirect: /_next/static/*', self.errors(self.plan(no_redirect)))
         unknown_origin = [{} for _ in self.expected()]; unknown_origin[0] = {'target_origin_id': True}
-        self.assertIn('Unknown safety field in ordered behavior /_next/static/*', self.errors(self.plan(self.expected(), unknown=unknown_origin)))
+        self.assertIn('Unknown safety field in ordered behavior /_next/static/*: target_origin_id', self.errors(self.plan(self.expected(), unknown=unknown_origin)))
+
+    def test_accepts_provider_computed_ttl_and_grpc_fields_only(self):
+        # A real plan (edge run 37243020983) marks the new behaviors' TTLs and gRPC flag unknown.
+        computed = [{'default_ttl': True, 'max_ttl': True, 'grpc_config': [{'enabled': True}]} for _ in self.expected()]
+        self.assertEqual(self.errors(self.plan(self.expected(), unknown=computed)), [])
+        grpc_on = self.expected(); grpc_on[0]['grpc_config'] = [{'enabled': True}]
+        self.assertIn('Unknown safety field in ordered behavior /_next/static/*: grpc_config', self.errors(self.plan(grpc_on, unknown=computed)))
+        min_ttl = [dict(item, min_ttl=True) for item in computed]
+        self.assertIn('Unknown safety field in ordered behavior /_next/static/*: min_ttl', self.errors(self.plan(self.expected(), unknown=min_ttl)))
 
     def test_image_policy_never_keys_on_cookies(self):
         for after in [image_policy_after(cookie_behavior='all'), image_policy_after(headers=('Accept','Cookie')), image_policy_after(queries=('url','w','q','token'))]:
