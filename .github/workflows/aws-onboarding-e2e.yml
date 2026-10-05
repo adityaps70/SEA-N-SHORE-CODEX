@@ -11,6 +11,9 @@ on:
       - scripts/aws/onboarding-e2e-persistence-audit.sh
       - scripts/aws/onboarding-e2e-sea-job.sh
       - scripts/aws/onboarding-e2e-sea-job-ssm.sh
+      - scripts/aws/onboarding-e2e-feed-proof.sh
+      - scripts/aws/onboarding-e2e-feed-proof-ssm.sh
+      - scripts/aws/onboarding-e2e-stale-feed-proof-runs.txt
       - scripts/aws/feed-avatar-staging-e2e.mjs
       - .github/workflows/aws-onboarding-e2e.yml
   workflow_dispatch:
@@ -439,6 +442,17 @@ jobs:
         if: steps.action.outputs.run_e2e == 'true'
         shell: bash
         run: node scripts/aws/feed-avatar-staging-e2e.mjs
+
+      - name: Remove this run's feed proof posts
+        if: always() && steps.action.outputs.run_e2e == 'true' && steps.instance.outputs.instance_id != ''
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/aws/onboarding-e2e-feed-proof-ssm.sh | tee /tmp/onboarding-e2e-feed-proof.out
+          grep -q '^ONBOARDING_E2E_FEED_PROOF_CLEANUP_VERIFIED=true$' /tmp/onboarding-e2e-feed-proof.out
 
       - name: Upload Home feed avatar proof
         if: always() && steps.action.outputs.run_e2e == 'true'
