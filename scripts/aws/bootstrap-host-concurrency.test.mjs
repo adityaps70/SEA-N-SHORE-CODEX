@@ -18,7 +18,7 @@ const terraformRunners = [
   'multi-login-auth-infra', 'newsletter-signing-secret', 'origin-tls-certificate', 'phase2-hardening-infra',
   'phase3-reliability-infra', 'realtime-infra', 'seaandshore-domain', 'seanshore-domain-bootstrap',
   'security-hardening-infra', 'ses-identity-state', 'social-events-infra', 'social-shared-iam-state', 'web-resilience-infra',
-  'sms-retirement-infra',
+  'sms-retirement-infra', 'bootstrap-budget-retirement',
 ]
 
 test('every Terraform runner (and disk maintenance) queues on one bootstrap host lock', () => {
