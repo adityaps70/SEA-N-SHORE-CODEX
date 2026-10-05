@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MediaImage } from './media-image'
 
 afterEach(cleanup)
@@ -111,6 +111,72 @@ describe('MediaImage', () => {
 
     expect(screen.queryByRole('img')).not.toBeInTheDocument()
     expect(screen.getAllByText('MA')).toHaveLength(1)
+  })
+})
+
+describe('MediaImage photo that finished before hydration with naturalWidth 0 (Round 15)', () => {
+  const proto = HTMLImageElement.prototype
+  const original = {
+    complete: Object.getOwnPropertyDescriptor(proto, 'complete'),
+    naturalWidth: Object.getOwnPropertyDescriptor(proto, 'naturalWidth'),
+    decode: Object.getOwnPropertyDescriptor(proto, 'decode'),
+  }
+
+  function finishedWithZeroWidth(decode: (() => Promise<void>) | undefined) {
+    Object.defineProperty(proto, 'complete', { configurable: true, get: () => true })
+    Object.defineProperty(proto, 'naturalWidth', { configurable: true, get: () => 0 })
+    if (decode) Object.defineProperty(proto, 'decode', { configurable: true, writable: true, value: decode })
+    else delete (proto as unknown as Record<string, unknown>).decode
+  }
+
+  afterEach(() => {
+    for (const [name, descriptor] of Object.entries(original)) {
+      if (descriptor) Object.defineProperty(proto, name, descriptor)
+      else delete (proto as unknown as Record<string, unknown>)[name]
+    }
+  })
+
+  function renderAvatar() {
+    return render(
+      <MediaImage src={BUCKET_URL} alt="Member A profile photo" width={44} height={44} sizes="44px" fallback={<span>MA</span>} />,
+    )
+  }
+
+  it('keeps a valid tiny photo whose decode() resolves (density-corrected width 0 from a srcset)', async () => {
+    const decode = vi.fn(async () => undefined)
+    finishedWithZeroWidth(decode)
+    renderAvatar()
+    // next/image may also call decode() on load; the photo stays either way.
+    await waitFor(() => expect(decode).toHaveBeenCalled())
+    await Promise.resolve()
+    expect(screen.getByRole('img', { name: 'Member A profile photo' })).toBeInTheDocument()
+    expect(screen.queryByText('MA')).not.toBeInTheDocument()
+  })
+
+  it('falls back to the initials when decode() rejects', async () => {
+    const decode = vi.fn(async () => { throw new DOMException('The source image cannot be decoded.', 'EncodingError') })
+    finishedWithZeroWidth(decode)
+    renderAvatar()
+    await waitFor(() => expect(screen.queryByRole('img')).not.toBeInTheDocument())
+    expect(screen.getByText('MA')).toBeInTheDocument()
+    expect(decode).toHaveBeenCalled()
+  })
+
+  it('falls back at once where decode() is unavailable, as before', () => {
+    finishedWithZeroWidth(undefined)
+    renderAvatar()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText('MA')).toBeInTheDocument()
+  })
+
+  it('still falls back on a later error event after decode() resolved', async () => {
+    const decode = vi.fn(async () => undefined)
+    finishedWithZeroWidth(decode)
+    renderAvatar()
+    await waitFor(() => expect(decode).toHaveBeenCalled())
+    fireEvent.error(screen.getByRole('img', { name: 'Member A profile photo' }))
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByText('MA')).toBeInTheDocument()
   })
 })
 

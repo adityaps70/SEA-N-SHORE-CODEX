@@ -50,14 +50,23 @@ export function MediaImage({ src, alt, fallback = null, className, fill, avatar 
   // next/image re-assign `img.src` after mount, which rewrites the attribute to an absolute URL.
   const watchErrors = useCallback((img: HTMLImageElement | null) => {
     if (!img) return
-    const fail = () => setFailedSrc(src)
-    // Already failed before this listener existed (for example before hydration).
-    if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
-      fail()
-      return
+    let active = true
+    const fail = () => {
+      if (active) setFailedSrc(src)
     }
     img.addEventListener('error', fail)
-    return () => img.removeEventListener('error', fail)
+    // Finished before this listener existed (for example before hydration) but reports no width:
+    // usually a failed load, but a valid tiny image picked from a srcset (a 1x1 at 96w for a 44px
+    // slot) reports a density-corrected naturalWidth of 0 too. decode() tells them apart: only a
+    // photo that cannot be decoded falls back to the initials.
+    if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
+      if (typeof img.decode === 'function') img.decode().then(() => undefined, fail)
+      else fail()
+    }
+    return () => {
+      active = false
+      img.removeEventListener('error', fail)
+    }
   }, [src])
 
   if (failedSrc === src) return <>{fallback}</>
