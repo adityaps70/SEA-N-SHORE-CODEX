@@ -142,27 +142,15 @@ describe('DeleteAccountPanel', () => {
     expect(finalButton).toBeEnabled()
   })
 
-  it('lets a mobile-only member confirm with a texted code instead of a password', async () => {
+  it('offers no code step when this sign-in cannot confirm itself (legacy mobile-only accounts)', async () => {
     const user = userEvent.setup()
-    const fetchMock = vi.mocked(fetch)
-    fetchMock
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, message: 'We sent a 6-digit code to +91 98765 43210.' }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, redirectTo: '/account-deleted' }), { status: 200 }))
-    render(<DeleteAccountPanel reauth={{ method: 'phone_code', phoneNumber: '+919876543210' }} />)
+    render(<DeleteAccountPanel reauth={{ method: 'unavailable' }} />)
     await user.click(screen.getByRole('button', { name: 'Delete my account' }))
-
+    expect(screen.getByText(/Contact info@beaufortmarine.in/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Current password')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Text me a code' }))
-    expect(await screen.findByText('We sent a 6-digit code to +91 98765 43210.')).toBeInTheDocument()
-    expect(fetchMock.mock.calls[0]![0]).toBe('/api/account/delete/code')
-
-    const finalButton = screen.getByRole('button', { name: 'Permanently delete account' })
-    await user.type(screen.getByLabelText('Code texted to +91 98765 43210'), '123456')
-    expect(finalButton).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /code/i })).not.toBeInTheDocument()
     await user.type(screen.getByLabelText('Type DELETE to confirm'), 'DELETE')
-    await user.click(finalButton)
-    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/account-deleted'))
-    expect(JSON.parse(String((fetchMock.mock.calls[1]![1] as RequestInit).body))).toEqual({ code: '123456', confirmation: 'DELETE' })
+    expect(screen.getByRole('button', { name: 'Permanently delete account' })).toBeDisabled()
   })
 
   it('asks a Google member to sign in again unless they signed in within 10 minutes', async () => {

@@ -58,7 +58,6 @@ const read = (path: string) => readFileSync(join(root, path), 'utf8')
 const REMOVED: Array<[component: string, actions: string[]]> = [
   ['src/features/admin/components/admin-entitlement-control-panel.tsx', ['src/features/admin/membership-actions.ts']],
   ['src/features/admin/components/company-access-review-actions.tsx', ['src/features/admin/actions.ts']],
-  ['src/features/auth/components/account-phone-panel.tsx', ['src/features/auth/phone-link-actions.ts']],
   ['src/features/billing/components/admin-billing-controls.tsx', ['src/features/billing/admin-actions.ts']],
   ['src/features/billing/components/cancel-auto-renew.tsx', ['src/features/billing/actions.ts']],
   ['src/features/billing/components/trial-start-button.tsx', ['src/features/billing/actions.ts']],

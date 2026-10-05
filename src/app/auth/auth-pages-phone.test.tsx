@@ -31,8 +31,6 @@ vi.mock('@/features/auth/actions', () => ({
   resendConfirmationCode: vi.fn(async () => undefined),
   requestPasswordReset: vi.fn(async () => ({})),
   updatePassword: vi.fn(async () => ({})),
-  requestPhoneOtp: vi.fn(async () => ({})),
-  confirmPhoneOtp: vi.fn(async () => ({})),
 }))
 
 import SignInPage from './sign-in/page'

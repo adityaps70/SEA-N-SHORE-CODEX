@@ -3,7 +3,7 @@ import { createCognitoApi } from '@/lib/auth/cognito-api'
 import { COGNITO_COOKIE_NAMES } from '@/lib/auth/cognito-cookies'
 import { query } from '@/lib/db/client'
 import { getCognitoEnvironment } from '@/lib/env'
-import { createPhoneAuthAdmin } from '@/features/auth/phone-auth-admin'
+import { createCognitoUserAdmin } from '@/features/auth/cognito-user-admin'
 import { stopAutoRenewForClosingAccount } from '@/features/billing/account-closure'
 import { eventPaymentService } from '@/features/payments/event-payment-runtime'
 import { accountDeletionRepository } from './repository'
@@ -25,7 +25,7 @@ export function runtimeAccountDeletionEffects(): AccountDeletionEffects {
       )
     },
     deleteOtherSignIn: async (username) => {
-      await createPhoneAuthAdmin({
+      await createCognitoUserAdmin({
         userPoolId: environment.AWS_COGNITO_USER_POOL_ID,
         region: environment.AWS_COGNITO_REGION,
       }).deleteUser(username)
@@ -57,7 +57,7 @@ export const runtimeAccountDeletionService = {
     return createRuntimeAccountDeletionService().deleteAccount(input)
   },
 
-  /** Deletion after a passwordless check (mobile code or recent Google sign-in). */
+  /** Deletion after a passwordless check (a recent Google sign-in). */
   async deleteVerifiedAccount(input: {
     profileId: string
     cognitoSub?: string | null

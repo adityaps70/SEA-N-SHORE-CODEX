@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { expect, test } from 'vitest'
+import { expect, test } from '../dual-runner.mjs'
 
 const workflowPath = '.github/workflows/aws-realtime-e2e.yml'
 const browserPath = 'scripts/aws/realtime-staging-e2e.mjs'

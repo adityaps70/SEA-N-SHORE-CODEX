@@ -7,6 +7,13 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
 }))
 
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
+vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: adminMfa.isPlatformAdministrator } }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('./repository', () => ({
@@ -17,6 +24,7 @@ vi.mock('./repository', () => ({
 }))
 
 import { reviewCreatorVerificationApplication, submitCreatorVerification } from './actions'
+import { ADMIN_MFA_REQUIRED_MESSAGE } from '@/features/admin/mfa-gate'
 
 const verificationId = '22222222-2222-4222-8222-222222222222'
 
@@ -85,6 +93,12 @@ describe('creator verification actions', () => {
       expect(result.error?.toLowerCase()).toContain(message)
       expect(result.values?.professionalRole).toBe('Crewing Manager')
     }
+  })
+
+  it('refuses a platform administrator whose session has not answered an authenticator app', async () => {
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false })
+    await expect(reviewCreatorVerificationApplication(verificationId, 'approved', null)).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    expect(mocks.reviewApplication).not.toHaveBeenCalled()
   })
 
   it('requires a rejection note before authenticating an administrator review', async () => {

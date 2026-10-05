@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from './mfa-gate'
 import { CAPABILITIES } from '@/features/access/policy'
 import { adminMembershipRepository } from './membership-repository'
 
@@ -53,6 +54,7 @@ export async function grantAdminEntitlement(input: {
 
   try {
     const admin = await requireAwsUser()
+    if (await adminActionMfaMissing(admin.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
     const result = await adminMembershipRepository.grantEntitlement(admin.id, parsed.data)
 
     revalidatePath('/admin')
@@ -83,6 +85,7 @@ export async function revokeAdminEntitlement(
 
   try {
     const admin = await requireAwsUser()
+    if (await adminActionMfaMissing(admin.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
     await adminMembershipRepository.revokeEntitlement(admin.id, parsed.data.grantId, parsed.data.reason)
 
     revalidatePath('/admin')

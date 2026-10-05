@@ -15,10 +15,15 @@ describe('Cognito protected route proxy', () => {
     const marketing = await handler(request('/'))
     const signIn = await handler(request('/auth/sign-in'))
     const publicProfile = await handler(request('/people/captain-rhea'))
+    // Health checks authenticate with their own token, never a session redirect.
+    const live = await handler(request('/api/health/live'))
+    const deepHome = await handler(request('/api/health/home'))
 
     expect(marketing.status).toBe(200)
     expect(signIn.status).toBe(200)
     expect(publicProfile.status).toBe(200)
+    expect(live.status).toBe(200)
+    expect(deepHome.status).toBe(200)
     expect(getVerifiedPrincipal).not.toHaveBeenCalled()
     expect(refreshSession).not.toHaveBeenCalled()
   })

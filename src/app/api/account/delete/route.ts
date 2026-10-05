@@ -1,11 +1,6 @@
 import { cookies } from 'next/headers'
 import { z } from 'zod'
-import {
-  deleteIdentityByUsername,
-  deleteIdentityWithAccessToken,
-  getDeletionReauth,
-  runtimeDeletionCodeService,
-} from '@/features/account-deletion/reauth-runtime'
+import { deleteIdentityByUsername, getDeletionReauth } from '@/features/account-deletion/reauth-runtime'
 import { RECENT_SIGN_IN_MINUTES } from '@/features/account-deletion/reauth'
 import { runtimeAccountDeletionService } from '@/features/account-deletion/runtime-service'
 import { AccountDeletionError } from '@/features/account-deletion/service'
@@ -23,8 +18,6 @@ const requestSchema = z.object({
   }),
   /** Email sign-in. */
   password: z.string().max(256).optional(),
-  /** Mobile-only sign-in: the one-time code texted for this deletion. */
-  code: z.string().max(12).optional(),
 })
 
 function json(payload: { ok: boolean; error?: string; redirectTo?: string }, status: number) {
@@ -101,14 +94,6 @@ export async function POST(request: Request) {
         email: user.email,
         password: parsed.data.password,
         cognitoSub: user.cognitoSub,
-      })
-    } else if (reauth.method === 'phone_code') {
-      const verified = await (await runtimeDeletionCodeService()).verifyCode({ id: user.id, cognitoSub: user.cognitoSub }, parsed.data.code)
-      if (!verified.ok) return json({ ok: false, error: verified.error }, 401)
-      await runtimeAccountDeletionService.deleteVerifiedAccount({
-        profileId: user.id,
-        cognitoSub: user.cognitoSub,
-        deleteIdentity: () => deleteIdentityWithAccessToken(verified.accessToken),
       })
     } else if (reauth.method === 'recent_sign_in') {
       if (!reauth.fresh) {

@@ -1,23 +1,34 @@
-import { timingSafeEqual } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { checkHomeRuntimeHealth } from '@/lib/db/home-health'
 
 export const dynamic = 'force-dynamic'
 
+const TOKEN_HEADER = 'x-health-check-token'
+
 /**
- * Once HEALTH_CHECK_TOKEN is configured on the web task, only callers that send it in
- * x-health-check-token (the verify workflows) get the deep check; everyone else gets 404.
+ * The deep Home check reads the database, so it is only for callers that send the web task's
+ * HEALTH_CHECK_TOKEN in x-health-check-token (the verify workflows). Fails closed: with no token
+ * configured nobody is authorized. Constant-time compare; the token is never logged or echoed.
+ * Liveness stays public on /api/health/live.
  */
 function authorized(request: Request) {
   const expected = process.env.HEALTH_CHECK_TOKEN?.trim() ?? ''
-  if (expected.length < 32) return true
-  const given = Buffer.from(request.headers.get('x-health-check-token') ?? '')
-  const wanted = Buffer.from(expected)
-  return given.length === wanted.length && timingSafeEqual(given, wanted)
+  if (!expected) return false
+  const given = createHash('sha256').update(request.headers.get(TOKEN_HEADER) ?? '').digest()
+  const wanted = createHash('sha256').update(expected).digest()
+  return timingSafeEqual(given, wanted)
+}
+
+function unauthorized() {
+  return NextResponse.json(
+    { status: 'unauthorized' },
+    { status: 401, headers: { 'Cache-Control': 'private, no-store' } },
+  )
 }
 
 export async function GET(request: Request) {
-  if (!authorized(request)) return new NextResponse(null, { status: 404 })
+  if (!authorized(request)) return unauthorized()
   try {
     const health = await checkHomeRuntimeHealth()
     const ok = health.profile

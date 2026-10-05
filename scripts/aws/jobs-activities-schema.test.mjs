@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from '../dual-runner.mjs'
 
 const migrationPath = 'infra/aws/database/migrations/0007_jobs_activities.sql'
 

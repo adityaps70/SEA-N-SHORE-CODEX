@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from './mfa-gate'
 import { adminRepository, type AdminCompanyAccessDecision, type AdminOrganizationDecision } from './repository'
 import { MODERATION_TARGET_TYPES, type ModerationAction } from '@/features/moderation/types'
 import { accessRequestErrorMessage } from '@/features/organizations/access-request-messages'
@@ -94,6 +95,7 @@ export async function reviewCompanyAccessRequest(
   }
 
   const user = await requireAwsUser()
+  if (await adminActionMfaMissing(user.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
   try {
     await adminRepository.reviewCompanyAccessRequest(
       user.id,
@@ -130,6 +132,7 @@ export async function reviewOrganizationApplication(
   }
 
   const user = await requireAwsUser()
+  if (await adminActionMfaMissing(user.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
 
   try {
     await adminRepository.reviewOrganizationApplication(
@@ -172,6 +175,7 @@ export async function moderateContent(input: {
   }
 
   const user = await requireAwsUser()
+  if (await adminActionMfaMissing(user.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
   try {
     await adminRepository.moderateContent(user.id, {
       targetType: parsed.data.targetType,
