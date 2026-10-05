@@ -115,9 +115,21 @@ jobs:
             exit 1
           }
 
-  deploy:
+  # Round 16: a deploy to ECS waits for the owner's approval in 'staging-apply'.
+  apply-approval:
     needs: gate
-    if: needs.gate.outputs.run_build == 'true'
+    if: needs.gate.outputs.deploy_to_ecs == 'true'
+    runs-on: ubuntu-latest
+    environment: staging-apply
+    steps:
+      - name: Approved for a run that changes AWS
+        run: echo "Approved in staging-apply."
+
+  deploy:
+    needs:
+      - gate
+      - apply-approval
+    if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.apply-approval.result == 'success' || (needs.apply-approval.result == 'skipped' && needs.gate.outputs.deploy_to_ecs != 'true')) && needs.gate.outputs.run_build == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
     env:

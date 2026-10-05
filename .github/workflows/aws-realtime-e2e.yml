@@ -101,9 +101,21 @@ jobs:
             *) echo "Unsupported REALTIME_E2E_ACTION=$ACTION" >&2; exit 1 ;;
           esac
 
-  realtime-e2e:
+  # Round 16: runs that change AWS wait for the owner's approval in 'staging-apply'.
+  apply-approval:
     needs: guard
-    if: needs.guard.outputs.run_e2e == 'true'
+    if: needs.guard.outputs.run_e2e == 'true' || needs.guard.outputs.run_probe == 'true' || needs.guard.outputs.run_cleanup == 'true' || needs.guard.outputs.run_diagnostic == 'true'
+    runs-on: ubuntu-latest
+    environment: staging-apply
+    steps:
+      - name: Approved for a run that changes AWS
+        run: echo "Approved in staging-apply."
+
+  realtime-e2e:
+    needs:
+      - guard
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-approval.result == 'success' && needs.guard.outputs.run_e2e == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45
@@ -253,8 +265,10 @@ jobs:
         run: node scripts/aws/realtime-e2e-ssm.mjs cleanup
 
   realtime-connect-probe:
-    needs: guard
-    if: needs.guard.outputs.run_probe == 'true'
+    needs:
+      - guard
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-approval.result == 'success' && needs.guard.outputs.run_probe == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 30
@@ -373,8 +387,10 @@ jobs:
         run: node scripts/aws/realtime-e2e-ssm.mjs cleanup
 
   realtime-cleanup:
-    needs: guard
-    if: needs.guard.outputs.run_cleanup == 'true'
+    needs:
+      - guard
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-approval.result == 'success' && needs.guard.outputs.run_cleanup == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 20
@@ -460,8 +476,10 @@ jobs:
         run: node scripts/aws/realtime-e2e-ssm.mjs cleanup
 
   realtime-connect-diagnostic:
-    needs: guard
-    if: needs.guard.outputs.run_diagnostic == 'true'
+    needs:
+      - guard
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-approval.result == 'success' && needs.guard.outputs.run_diagnostic == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 20
