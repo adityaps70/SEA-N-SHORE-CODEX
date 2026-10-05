@@ -54,12 +54,31 @@ async function newSignedInPage(user) {
   const context = await browser.newContext()
   contexts.push(context)
   const page = await context.newPage()
+  // Record image requests that fail, so a photo that falls back to initials says why. Only the
+  // status and the storage path are kept: the signed part of a media link is never printed.
+  page.on('response', (response) => {
+    if (response.request().resourceType() !== 'image' || response.status() < 400) return
+    failedImageResponses.push(response.status() + ' ' + describeImageUrl(response.url()))
+  })
   await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'domcontentloaded' })
   await page.getByLabel('Email', { exact: true }).fill(user.email)
   await page.getByLabel('Password', { exact: true }).fill(user.password)
   await page.getByRole('button', { name: 'Sign in', exact: true }).click()
   await page.waitForURL((url) => !url.pathname.startsWith('/auth/'), { timeout: 20_000 })
   return { context, page }
+}
+
+const failedImageResponses = []
+
+function describeImageUrl(raw) {
+  try {
+    const url = new URL(raw)
+    const inner = url.pathname === '/_next/image' ? new URL(url.searchParams.get('url') ?? '', url.origin) : url
+    const via = url.pathname === '/_next/image' ? '/_next/image(w=' + url.searchParams.get('w') + ') -> ' : ''
+    return via + inner.pathname.replace(/\/[A-Za-z0-9_-]{20,}$/, '/<signature>')
+  } catch {
+    return 'unparseable image URL'
+  }
 }
 
 // Post avatars are labelled "<name>'s profile photo", the Home profile card "<name> profile photo".
@@ -263,6 +282,7 @@ try {
   await browser.close()
 }
 
+for (const failure of failedImageResponses) console.error('FEED_AVATAR_FAILED_IMAGE_RESPONSE=' + failure)
 if (primaryError && cleanupErrors.length) console.error('Feed avatar E2E cleanup also failed: ' + cleanupErrors.join(' | '))
 if (primaryError) throw primaryError
 if (cleanupErrors.length) throw new Error('Feed avatar E2E cleanup failed: ' + cleanupErrors.join(' | '))
