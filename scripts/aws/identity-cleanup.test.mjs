@@ -6,7 +6,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
 test('identity cleanup deletes only unmapped E2E test users and the one stale focus row', () => {
   assert.equal(existsSync(new URL('../../.github/workflows/aws-identity-cleanup.yml', import.meta.url)), true)
-  assert.ok(['plan', 'run-once'].includes(read('./identity-cleanup-action.txt').trim()))
+  assert.ok(['plan', 'run-once', 'accounts-once'].includes(read('./identity-cleanup-action.txt').trim()))
   const script = read('./identity-cleanup.sh')
   assert.match(script, /IDENTITY_CLEANUP_EXPECTED_SHA/)
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)
@@ -25,10 +25,20 @@ test('identity cleanup deletes only unmapped E2E test users and the one stale fo
   assert.match(script, /IDENTITY_CLEANUP_PLAN_ONLY_NO_CHANGES/)
   assert.match(script, /IDENTITY_CLEANUP_VERIFIED=true/)
   // No bulk deletes, no profile deletes, no other Cognito writes.
-  assert.doesNotMatch(script, /delete from public\.profiles/i)
+  // Profiles are only deleted one at a time, by id, with the E2E-only and non-admin checks in the statement.
+  assert.equal((script.match(/delete from public\.profiles/gi) || []).length, 1)
+  assert.match(script, /delete from public\.profiles p\n\s+where p\.id = cast\(:id as uuid\)/)
   assert.doesNotMatch(script, /admin-(disable|enable|update|link|create)/)
   // The focus member's address is never printed.
   assert.doesNotMatch(script, /IDENTITY_CLEANUP_FOCUS_ROW=.*'email'/)
+  // accounts-once: whole E2E accounts, only when every sign-in is an E2E address and never an administrator.
+  assert.match(script, /ANY_E2E_EMAIL = re\.compile\(r'\^sea-n-shore-\(\?:\(realtime\|events\|hiring\|learning-review\)-\)\?e2e-\[0-9\]\+-\[a-z\]\+@example\\\.com\$'\)/)
+  assert.match(script, /all_e2e = all\(ANY_E2E_EMAIL\.match\(r\['email'\]\) for r in prow\)/)
+  assert.match(script, /if all_e2e and not prow\[0\]\['is_admin'\]:/)
+  assert.match(script, /and not exists \(select 1 from public\.user_roles r where r\.user_id = p\.id and r\.role::text = 'administrator'\)/)
+  assert.match(script, /lower\(coalesce\(ia\.email, ''\)\) !~ '\^sea-n-shore-/)
+  assert.match(script, /MAX_E2E_ACCOUNTS = 600/)
+  assert.match(script, /IDENTITY_CLEANUP_E2E_ACCOUNTS_VERIFIED=true/)
   const workflow = read('../../.github/workflows/aws-identity-cleanup.yml')
   assert.match(workflow, /environment: staging-apply/)
   assert.match(workflow, /Guard cleanup against a moved branch/)

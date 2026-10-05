@@ -42,7 +42,8 @@ jobs:
           set -euo pipefail
           ACTION="$(tr -d '[:space:]' < scripts/aws/onboarding-e2e-stale-cleanup-action.txt)"
           case "$ACTION" in
-            plan|discover) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
+            # Round 16 follow-up: read-only and test-data runs (E2E, audits, test-account cleanup) never wait.
+            plan|discover|cleanup-once) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
             *) echo "approval=true" >> "$GITHUB_OUTPUT" ;;
           esac
           echo "Guard action: $ACTION"
