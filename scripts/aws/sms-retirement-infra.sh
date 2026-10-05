@@ -258,7 +258,9 @@ for r in changes:
     else:
         refuse(f'unexpected change {address} {actions}')
 
-expected = set(destroys) | forgets | creates | updates
+# The pool and client updates may already be live (multi-login-auth-infra also plans them); the
+# post-apply checks read the live pool and client either way. Everything else must be in the plan.
+expected = set(destroys) | forgets | creates
 missing = sorted(expected - seen)
 if missing:
     refuse('expected changes are missing from the plan: ' + ','.join(missing))

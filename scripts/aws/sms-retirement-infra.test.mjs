@@ -179,6 +179,11 @@ test('the classifier accepts exactly the SMS retirement and health token changes
   assert.match(accepted.output, /COGNITO_CLIENT_EXPLICIT_AUTH_FLOWS_PLANNED_AFTER=ALLOW_REFRESH_TOKEN_AUTH,ALLOW_USER_PASSWORD_AUTH,ALLOW_USER_SRP_AUTH/)
   assert.match(accepted.output, /COGNITO_LAMBDA_TRIGGERS_PLANNED_AFTER=custom_email_sender,kms_key_id,pre_sign_up/)
   assert.match(accepted.output, /SMS_RETIREMENT_KEYS=aws_cognito_user_pool\.app\|lambda_config/)
+
+  // The pool and client may already have been updated by the multi-login auth runner.
+  const alreadyUpdated = await classify(validPlan().filter((r) => !r.address.startsWith('aws_cognito_')))
+  assert.equal(alreadyUpdated.ok, true, alreadyUpdated.output)
+  assert.match(alreadyUpdated.output, /SMS_RETIREMENT_PLAN_CHANGES=23/)
 })
 
 test('the classifier refuses anything outside the allowlist', async () => {
