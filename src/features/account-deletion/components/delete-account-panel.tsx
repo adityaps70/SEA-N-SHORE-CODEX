@@ -5,7 +5,6 @@ import { AlertTriangle, Building2, CheckCircle2, LockKeyhole, Trash2, X } from '
 import { useRouter } from 'next/navigation'
 import type { AccountDeletionPlan } from '@/features/account-deletion/plan'
 import type { DeletionReauthView } from '@/features/account-deletion/reauth'
-import { displayPhoneNumber } from '@/features/auth/phone-link-shared'
 
 type DeleteResponse = {
   ok: boolean
@@ -84,43 +83,21 @@ export function DeleteAccountPanel({
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
-  const [code, setCode] = useState('')
-  const [codeSent, setCodeSent] = useState<string | null>(null)
-  const [sending, setSending] = useState(false)
   const [confirmation, setConfirmation] = useState('')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const proofReady = reauth.method === 'password'
     ? password.length > 0
-    : reauth.method === 'phone_code'
-      ? /^\d{6}$/.test(code.trim())
-      : reauth.method === 'recent_sign_in' && reauth.fresh
+    : reauth.method === 'recent_sign_in' && reauth.fresh
   const canDelete = proofReady && confirmation === 'DELETE' && !pending
 
   function close() {
     if (pending) return
     setOpen(false)
     setPassword('')
-    setCode('')
     setConfirmation('')
     setError(null)
-  }
-
-  async function sendCode() {
-    if (sending) return
-    setSending(true)
-    setError(null)
-    try {
-      const response = await fetch('/api/account/delete/code', { method: 'POST', credentials: 'same-origin' })
-      const result = await response.json() as { ok: boolean; message?: string; error?: string }
-      if (!response.ok || !result.ok) setError(result.error ?? 'We couldn’t send a code just now. Please try again.')
-      else setCodeSent(result.message ?? 'We sent you a 6-digit code.')
-    } catch {
-      setError('We could not reach Sea N Shore. Check your connection and try again.')
-    } finally {
-      setSending(false)
-    }
   }
 
   async function submit() {
@@ -134,11 +111,7 @@ export function DeleteAccountPanel({
         credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
-          reauth.method === 'password'
-            ? { password, confirmation }
-            : reauth.method === 'phone_code'
-              ? { code: code.trim(), confirmation }
-              : { confirmation },
+          reauth.method === 'password' ? { password, confirmation } : { confirmation },
         ),
       })
       const result = await response.json() as DeleteResponse
@@ -239,10 +212,6 @@ export function DeleteAccountPanel({
               <p className="mt-1 text-xs leading-5 text-muted">
                 Enter your current password and type DELETE exactly. We verify your password with the sign-in provider before any account data is removed.
               </p>
-            ) : reauth.method === 'phone_code' ? (
-              <p className="mt-1 text-xs leading-5 text-muted">
-                You sign in with your mobile number, so we text a one-time code to confirm it’s you. Enter it and type DELETE exactly.
-              </p>
             ) : reauth.method === 'recent_sign_in' ? (
               <p className="mt-1 text-xs leading-5 text-muted">
                 {reauth.fresh
@@ -267,32 +236,6 @@ export function DeleteAccountPanel({
                     className={inputClass}
                   />
                 </label>
-              ) : null}
-              {reauth.method === 'phone_code' ? (
-                <div className="grid gap-2">
-                  <label className="text-sm font-semibold text-navy-950">
-                    Code texted to {displayPhoneNumber(reauth.phoneNumber)}
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      value={code}
-                      onChange={(event) => setCode(event.target.value)}
-                      placeholder="123456"
-                      className={`${inputClass} tracking-[0.2em]`}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => void sendCode()}
-                    disabled={sending}
-                    className="min-h-11 rounded-xl border border-mist-200 bg-white px-4 text-sm font-semibold text-navy-950 hover:bg-mist-50 disabled:opacity-50"
-                  >
-                    {sending ? 'Sending code…' : codeSent ? 'Send a new code' : 'Text me a code'}
-                  </button>
-                  {codeSent ? <p role="status" className="text-xs font-medium text-ocean-700">{codeSent}</p> : null}
-                </div>
               ) : null}
               {reauth.method === 'recent_sign_in' && !reauth.fresh ? (
                 <a

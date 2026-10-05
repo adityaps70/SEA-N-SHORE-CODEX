@@ -11,16 +11,11 @@ import { createAuthActionHandlers, type AuthActionState } from './action-handler
 import { createCognitoAuthActions } from './cognito-actions'
 import { createProductionAuthEmailLimiter } from './email-limits-runtime'
 import { createMfaSignInActions, createMfaSignInHandler } from './mfa-sign-in'
-import { createOtpIpLimiter } from './otp-ip-limiter'
-import { createPhoneAuthActions, parseAllowedCallingCodes, type PhoneAuthActionState } from './phone-auth-actions'
-import { createPhoneAuthAdmin } from './phone-auth-admin'
-import { createPhoneAuthActionHandlers } from './phone-action-handlers'
 
 export type { AuthActionState } from './action-handlers'
 
 type CognitoActions = ReturnType<typeof createCognitoAuthActions>
 
-const otpIpLimiter = createOtpIpLimiter()
 const authEmailLimiter = createProductionAuthEmailLimiter()
 
 async function getProductionActions(): Promise<CognitoActions> {
@@ -72,35 +67,6 @@ const mfaSignInHandler = createMfaSignInHandler({
   redirect: nextRedirect,
 })
 
-async function getProductionPhoneActions() {
-  const cookieStore = await cookies()
-  const environment = getCognitoEnvironment()
-  const api = createCognitoApi({
-    region: environment.AWS_COGNITO_REGION,
-    clientId: environment.AWS_COGNITO_CLIENT_ID,
-  })
-  const admin = createPhoneAuthAdmin({
-    userPoolId: environment.AWS_COGNITO_USER_POOL_ID,
-    region: environment.AWS_COGNITO_REGION,
-  })
-
-  return createPhoneAuthActions({
-    api,
-    admin,
-    cookieStore: cookieStore as unknown as Parameters<typeof createPhoneAuthActions>[0]['cookieStore'],
-    siteUrl: publicEnvironment.NEXT_PUBLIC_SITE_URL,
-    allowInsecureHttpCookies: environment.AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES,
-    allowedCallingCodes: parseAllowedCallingCodes(process.env.ALLOWED_PHONE_CALLING_CODES),
-    clientIp: trustedClientIp(await headers()),
-    ipLimiter: otpIpLimiter,
-  })
-}
-
-const phoneHandlers = createPhoneAuthActionHandlers({
-  getActions: getProductionPhoneActions,
-  redirect: nextRedirect,
-})
-
 export async function signIn(state: AuthActionState, formData: FormData): Promise<AuthActionState> {
   return handlers.signIn(state, formData)
 }
@@ -144,21 +110,6 @@ export async function signOutToSignUp(): Promise<void> {
     maxAge: AFTER_SIGN_OUT_COOKIE_MAX_AGE_SECONDS,
   })
   return handlers.signOut()
-}
-
-
-export async function requestPhoneOtp(
-  state: PhoneAuthActionState,
-  formData: FormData,
-): Promise<PhoneAuthActionState> {
-  return phoneHandlers.requestOtp(state, formData)
-}
-
-export async function confirmPhoneOtp(
-  state: PhoneAuthActionState,
-  formData: FormData,
-): Promise<PhoneAuthActionState> {
-  return phoneHandlers.confirmOtp(state, formData)
 }
 
 /** Round 14 (2.11): the authenticator-code step after a correct password. */
