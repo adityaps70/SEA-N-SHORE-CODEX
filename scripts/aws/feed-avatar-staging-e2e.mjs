@@ -111,13 +111,19 @@ async function uploadAvatar(page, user) {
   const avatarName = new RegExp('^' + user.fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?:'s)? profile photo$")
   const avatar = page.getByRole('img', { name: avatarName }).first()
   await expect(avatar).toBeVisible({ timeout: 20_000 })
+  // The first request for a new photo waits for the image optimizer; give it time to decode.
+  await expect.poll(() => avatar.evaluate((img) => img.complete && img.naturalWidth > 0), { timeout: 20_000 }).toBe(true).catch(() => {})
   const state = await avatar.evaluate((img) => ({
     src: img.currentSrc || img.src,
     complete: img.complete,
     naturalWidth: img.naturalWidth,
     naturalHeight: img.naturalHeight,
   }))
-  assert.ok(state.complete && state.naturalWidth > 0 && state.naturalHeight > 0, 'Uploaded profile avatar must decode')
+  if (!(state.complete && state.naturalWidth > 0 && state.naturalHeight > 0)) {
+    const response = await page.context().request.get(new URL(state.src, siteUrl).toString()).catch(() => null)
+    const path = new URL(state.src, siteUrl).pathname
+    throw new Error('Uploaded profile avatar must decode (' + path + ' returned HTTP ' + (response ? response.status() : 'no response') + ')')
+  }
   assert.ok(state.src.includes('/profiles/') || state.src.includes('profiles%2F') || state.src.includes('profiles/'), 'Uploaded profile avatar should resolve from profile media storage')
 }
 
