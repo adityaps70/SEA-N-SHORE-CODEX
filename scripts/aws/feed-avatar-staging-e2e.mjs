@@ -146,6 +146,9 @@ async function createPost(page, text) {
 
 async function verifyImage(context, image, label) {
   await expect(image).toBeVisible({ timeout: 20_000 })
+  // Avatars below the fold load lazily, and a new photo's first request waits for the optimizer.
+  await image.scrollIntoViewIfNeeded()
+  await expect.poll(() => image.evaluate((img) => img.complete && img.naturalWidth > 0), { timeout: 20_000 }).toBe(true).catch(() => {})
   const state = await image.evaluate((img) => ({
     src: img.currentSrc || img.src,
     complete: img.complete,
@@ -198,7 +201,8 @@ async function verifyFallbackInitials(page) {
   const header = article.locator('header').first()
   const image = header.getByRole('img', { name: profilePhotoName(users.fallback.fullName) })
   await expect(image).toHaveCount(0)
-  const avatarSlot = header.locator(':scope > div').first()
+  // The avatar slot is the link to the author's profile; with no photo it shows the initials.
+  const avatarSlot = header.getByRole('link', { name: 'View ' + users.fallback.fullName + "'s profile" }).first()
   await expect(avatarSlot).toHaveText(initials(users.fallback.fullName))
   console.log('FEED_AVATAR_FALLBACK_INITIALS_VERIFIED=true')
 }
@@ -210,8 +214,8 @@ async function deleteOwnPost(page, text, repostedBy) {
   if (repostedBy) article = article.filter({ hasText: repostedBy }).filter({ hasText: 'reposted' })
   article = article.first()
   if ((await article.count()) === 0) return
-  // Delete sits in the post's "Post actions" menu and asks for confirmation in a dialog.
-  await article.getByRole('button', { name: 'Post actions' }).click()
+  // Delete sits in the post's "Post options" (…) menu and asks for confirmation in a dialog.
+  await article.getByRole('button', { name: 'Post options' }).click()
   await page.getByRole('menuitem', { name: 'Delete post' }).click()
   await page.getByRole('alertdialog', { name: 'Delete this post?' }).getByRole('button', { name: 'Delete post' }).click()
   await expect(article).toBeHidden({ timeout: 20_000 })
