@@ -33,6 +33,18 @@ function isUserNotFound(error: unknown) {
   return error instanceof Error && error.name === 'UserNotFoundException'
 }
 
+/**
+ * A sign-in whose Cognito user no longer exists cannot be used, so there is nothing to disable,
+ * enable or delete (production has identity rows left from Cognito users replaced since).
+ */
+async function ignoreMissingUser(action: Promise<void>) {
+  try {
+    await action
+  } catch (error) {
+    if (!isUserNotFound(error)) throw error
+  }
+}
+
 function assertControllableTarget(adminId: string, target: AdminUserSummary | null) {
   if (!target) throw new Error('admin_user_not_found')
   if (target.id === adminId) throw new Error('admin_user_self_action_forbidden')
@@ -73,8 +85,8 @@ export function createAdminUserControlService(input: {
       const usernames = await signInUsernames(adminId, target)
       const outcomes = await Promise.all(usernames.map(async (username) => {
         const results = await Promise.allSettled([
-          input.identityAdmin.disableUser(username),
-          input.identityAdmin.globalSignOut(username),
+          ignoreMissingUser(input.identityAdmin.disableUser(username)),
+          ignoreMissingUser(input.identityAdmin.globalSignOut(username)),
         ])
         return results.every((result) => result.status === 'fulfilled')
       }))
@@ -93,7 +105,7 @@ export function createAdminUserControlService(input: {
       // Every sign-in is enabled before database access returns; if any fails the account stays
       // suspended (enabling again is harmless), so the member is never half restored.
       const usernames = await signInUsernames(adminId, target)
-      const results = await Promise.allSettled(usernames.map((username) => input.identityAdmin.enableUser(username)))
+      const results = await Promise.allSettled(usernames.map((username) => ignoreMissingUser(input.identityAdmin.enableUser(username))))
       const failed = results.filter((result) => result.status === 'rejected').length
       if (failed) {
         console.error('[admin_user_cognito_restore_incomplete]', { targetId, failed, total: usernames.length })
@@ -132,9 +144,9 @@ export function createAdminUserControlService(input: {
             let failed = 0
             for (const username of usernames) {
               try {
-                await input.identityAdmin.deleteUser(username)
-              } catch (error) {
-                if (!isUserNotFound(error)) failed += 1
+                await ignoreMissingUser(input.identityAdmin.deleteUser(username))
+              } catch {
+                failed += 1
               }
             }
             if (failed) {

@@ -80,6 +80,20 @@ describe('admin user control service', () => {
     expect(identityAdmin.globalSignOut.mock.calls.map(([username]) => username)).toEqual(usernames)
   })
 
+  it('treats a sign-in whose Cognito user is already gone as nothing to suspend or restore', async () => {
+    const { service, repository, identityAdmin, user } = setup()
+    const gone = Object.assign(new Error('User does not exist.'), { name: 'UserNotFoundException' })
+    const missing = async (username: string) => { if (username === 'f3a1c2d4-0000-4000-8000-000000000001') throw gone }
+    identityAdmin.disableUser.mockImplementation(missing)
+    identityAdmin.globalSignOut.mockImplementation(missing)
+    identityAdmin.enableUser.mockImplementation(missing)
+
+    await expect(service.suspendAccount(adminId, targetId, 'Repeated unsafe recruitment messages.')).resolves.toEqual({ ok: true })
+    repository.getAdminUser.mockResolvedValueOnce({ ...user, status: 'suspended' })
+    await expect(service.restoreAccount(adminId, targetId, 'Appeal accepted.')).resolves.toEqual({ ok: true })
+    expect(repository.setUserAccountStatus).toHaveBeenLastCalledWith(adminId, targetId, 'active', 'Appeal accepted.')
+  })
+
   it('reports a suspension that could not reach every sign-in, after the database gate is closed', async () => {
     const { service, repository, identityAdmin } = setup()
     identityAdmin.disableUser.mockImplementation(async (username: string) => {
