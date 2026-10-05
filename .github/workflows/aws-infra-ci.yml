@@ -66,6 +66,8 @@ jobs:
         run: node --test scripts/aws/remote-verify-log-window.test.mjs
       - name: Verify staging deploy guard contract
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
+      - name: Verify health check token header contract
+        run: node --test scripts/aws/health-check-token.test.mjs
       - name: Verify multi-login auth infrastructure release contract
         run: node --test scripts/aws/multi-login-auth-infra.test.mjs
       - name: Verify web memory diagnostic stays read-only
@@ -74,6 +76,10 @@ jobs:
         run: node --test scripts/aws/web-resilience-infra.test.mjs
       - name: Verify security hardening infrastructure release contract
         run: node --test scripts/aws/security-hardening-infra.test.mjs
+      - name: Verify SMS retirement infrastructure release contract
+        run: node --test scripts/aws/sms-retirement-infra.test.mjs
+      - name: Verify bootstrap budget retirement release contract
+        run: node --test scripts/aws/bootstrap-budget-retirement.test.mjs
       - name: Verify edge origin lockdown release contract
         run: node --test scripts/aws/edge-origin-lockdown-infra.test.mjs
       - name: Verify phase 2 hardening release contract
@@ -94,6 +100,8 @@ jobs:
         run: node --test scripts/aws/cognito-custom-domain-infra.test.mjs
       - name: Verify Cognito Google/native repair contract
         run: node --test scripts/aws/cognito-google-native-link-repair.test.mjs
+      - name: Verify admin identity audit contract
+        run: node --test scripts/aws/admin-identity-audit.test.mjs
       - name: Verify onboarding e2e guard contract
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
       - name: Verify membership launch sequence contract

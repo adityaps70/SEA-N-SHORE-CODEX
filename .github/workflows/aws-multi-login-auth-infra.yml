@@ -9,9 +9,6 @@ on:
       - infra/aws/app/cognito-email-sender.tf
       - infra/aws/app/lambda/cognito-pre-sign-up-link.mjs
       - infra/aws/app/lambda/cognito-resend-email-sender.mjs
-      - infra/aws/app/lambda/cognito-define-auth-challenge.mjs
-      - infra/aws/app/lambda/cognito-create-auth-challenge.mjs
-      - infra/aws/app/lambda/cognito-verify-auth-challenge.mjs
       - scripts/aws/multi-login-auth-infra.sh
       - scripts/aws/multi-login-auth-infra-action.txt
       - scripts/aws/multi-login-auth-infra.test.mjs
