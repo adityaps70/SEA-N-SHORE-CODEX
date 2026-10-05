@@ -43,9 +43,9 @@ jobs:
         run: |
           set -euo pipefail
           ACTION="$(tr -d '[:space:]' < scripts/aws/bootstrap-disk-maintenance-action.txt)"
-          case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported maintenance action: $ACTION" >&2; exit 1 ;; esac
-          if [[ "$ACTION" == "apply-once" && "$GITHUB_EVENT_NAME" != "push" ]]; then
-            echo "apply-once is allowed only from an exact branch push." >&2
+          case "$ACTION" in plan|apply-once|swap-once) ;; *) echo "Unsupported maintenance action: $ACTION" >&2; exit 1 ;; esac
+          if [[ "$ACTION" != "plan" && "$GITHUB_EVENT_NAME" != "push" ]]; then
+            echo "$ACTION is allowed only from an exact branch push." >&2
             exit 1
           fi
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"
@@ -149,6 +149,9 @@ jobs:
           grep -q 'BOOTSTRAP_DISK_MAINTENANCE_ACTION=' <<<"$STDOUT_CONTENT"
           if [[ "$ACTION" == "plan" ]]; then
             grep -q 'BOOTSTRAP_DISK_MAINTENANCE_PLAN_ONLY_NO_DELETE' <<<"$STDOUT_CONTENT"
+          elif [[ "$ACTION" == "swap-once" ]]; then
+            grep -q 'BOOTSTRAP_SWAP_VERIFIED=true' <<<"$STDOUT_CONTENT"
+            grep -q 'TERRAFORM_STATE_UNCHANGED=true' <<<"$STDOUT_CONTENT"
           else
             grep -q 'BOOTSTRAP_DISK_MAINTENANCE_VERIFIED=true' <<<"$STDOUT_CONTENT"
             grep -q 'TERRAFORM_STATE_UNCHANGED=true' <<<"$STDOUT_CONTENT"
