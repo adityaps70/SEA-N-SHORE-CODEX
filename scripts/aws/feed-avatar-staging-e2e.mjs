@@ -174,7 +174,7 @@ async function createPost(page, text) {
   return article
 }
 
-async function verifyImage(context, image, label) {
+async function verifyImage(context, image, label, card) {
   // Avatars below the fold load lazily, a new photo's first request waits for the optimizer, and
   // the feed may re-render the card meanwhile: re-find the image and retry until it has decoded.
   let state = null
@@ -189,11 +189,9 @@ async function verifyImage(context, image, label) {
     expect(state.complete && state.naturalWidth > 0).toBe(true)
   }).toPass({ timeout: 30_000 }).catch(async (error) => {
     // Say what the card shows instead (the signed query of a media link is dropped).
-    const card = image.locator('xpath=ancestor::article[1]')
-    const header = image.page().locator('article').filter({ has: image.page().locator('header') }).locator('header')
-    const html = await card.locator('header').first().evaluate((element) => element.outerHTML, undefined, { timeout: 2_000 })
-      .catch(() => header.first().evaluate((element) => element.outerHTML, undefined, { timeout: 2_000 }))
-      .catch(() => 'header not found')
+    const html = card
+      ? await card.locator('header').first().evaluate((element) => element.outerHTML, undefined, { timeout: 2_000 }).catch(() => 'card header not found')
+      : 'no card given'
     await image.page().screenshot({ path: '/tmp/sea-n-shore-feed-avatar-e2e.png', fullPage: false }).catch(() => {})
     const redacted = String(html)
       .replace(/%3F[^&"\s,]*/gi, '%3F<query>')
@@ -231,8 +229,8 @@ async function repostAndVerify(page, context) {
   const sourceRegion = repost.getByRole('region', { name: 'Original post by ' + users.author.fullName })
   const sourceAvatar = sourceRegion.getByRole('img', { name: profilePhotoName(users.author.fullName) }).first()
 
-  const repostSrc = await verifyImage(context, repostAvatar, 'Reposting user avatar')
-  const sourceSrc = await verifyImage(context, sourceAvatar, 'Original post author avatar')
+  const repostSrc = await verifyImage(context, repostAvatar, 'Reposting user avatar', repost)
+  const sourceSrc = await verifyImage(context, sourceAvatar, 'Original post author avatar', sourceRegion)
 
   await repost.screenshot({ path: '/tmp/sea-n-shore-feed-avatar-e2e.png' })
 
