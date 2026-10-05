@@ -66,9 +66,21 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/aws/membership-launch-sequence.mjs preflight "${{ inputs.expected_sha }}"
 
-  execute:
+  # Round 16: the one-shot launch waits for the owner's approval in 'staging-apply'.
+  apply-approval:
     needs: preflight
     if: inputs.mode == 'execute'
+    runs-on: ubuntu-latest
+    environment: staging-apply
+    steps:
+      - name: Approved for a run that changes AWS
+        run: echo "Approved in staging-apply."
+
+  execute:
+    needs:
+      - preflight
+      - apply-approval
+    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.apply-approval.result == 'success' && inputs.mode == 'execute' }}
     # Only the one-shot execute and rearm jobs commit guard files and dispatch the child workflows.
     permissions:
       contents: write

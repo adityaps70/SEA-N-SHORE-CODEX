@@ -20,7 +20,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  apply-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      approval: ${{ steps.apply_guard.outputs.approval }}
+    steps:
+      - name: Checkout the guard file
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          sparse-checkout: scripts/aws/performance-indexes-migration-action.txt
+          sparse-checkout-cone-mode: false
+
+      # Round 16: runs that change AWS wait for the owner's approval in 'staging-apply';
+      # plans (and other read-only guard values) never wait.
+      - name: Decide whether this run changes AWS
+        id: apply_guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTION="$(tr -d '[:space:]' < scripts/aws/performance-indexes-migration-action.txt)"
+          case "$ACTION" in
+            plan|discover) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "approval=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+          echo "Guard action: $ACTION"
+
+  apply-approval:
+    needs: apply-gate
+    if: needs.apply-gate.outputs.approval == 'true'
+    runs-on: ubuntu-latest
+    environment: staging-apply
+    steps:
+      - name: Approved for a run that changes AWS
+        run: echo "Approved in staging-apply."
+
   migrate:
+    needs:
+      - apply-gate
+      - apply-approval
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && (needs.apply-approval.result == 'success' || needs.apply-approval.result == 'skipped') }}
     runs-on: ubuntu-latest
     environment: staging
     env:
