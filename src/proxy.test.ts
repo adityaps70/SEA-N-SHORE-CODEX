@@ -28,6 +28,7 @@ describe('proxy Content Security Policy (Round 14, 2.4)', () => {
     for (const request of [
       new NextRequest('https://seanshore.in/home', { method: 'POST', body: 'x', headers: { 'sec-fetch-dest': 'document' } }),
       new NextRequest('https://seanshore.in/api/health/live', { headers: { 'sec-fetch-dest': 'document' } }),
+      new NextRequest('https://seanshore.in/api/health/home', { headers: { 'x-health-check-token': 'token-value' } }),
       new NextRequest('https://seanshore.in/home', { headers: { rsc: '1' } }),
     ]) {
       const response = await proxy(request)
