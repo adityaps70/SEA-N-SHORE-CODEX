@@ -62,6 +62,11 @@ async function newSignedInPage(user) {
   return { context, page }
 }
 
+// Post avatars are labelled "<name>'s profile photo", the Home profile card "<name> profile photo".
+function profilePhotoName(fullName) {
+  return new RegExp('^' + fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?:'s)? profile photo$")
+}
+
 async function uploadAvatar(page, user) {
   await page.goto(siteUrl + '/profile', { waitUntil: 'domcontentloaded' })
   const addButton = page.getByRole('button', { name: 'Add profile photo' })
@@ -107,9 +112,7 @@ async function uploadAvatar(page, user) {
   }
 
   await expect(changeButton).toBeVisible({ timeout: 20_000 })
-  // The Home profile card labels the photo "<name> profile photo"; post avatars use "<name>'s profile photo".
-  const avatarName = new RegExp('^' + user.fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + "(?:'s)? profile photo$")
-  const avatar = page.getByRole('img', { name: avatarName }).first()
+  const avatar = page.getByRole('img', { name: profilePhotoName(user.fullName) }).first()
   await expect(avatar).toBeVisible({ timeout: 20_000 })
   // The first request for a new photo waits for the image optimizer; give it time to decode.
   await expect.poll(() => avatar.evaluate((img) => img.complete && img.naturalWidth > 0), { timeout: 20_000 }).toBe(true).catch(() => {})
@@ -163,7 +166,8 @@ async function repostAndVerify(page, context) {
   await expect(sourceArticle).toBeVisible({ timeout: 20_000 })
   // The action reads "Repost" on posts that can be reposted ("Share" only when reposting is not allowed).
   await sourceArticle.getByRole('button', { name: /^(Repost|Share)$/ }).click()
-  await sourceArticle.getByRole('menuitem', { name: 'Repost to feed' }).click()
+  // The share menu is portaled to the page body (it never gets clipped by the card).
+  await page.getByRole('menuitem', { name: 'Repost to feed' }).click()
   await page.waitForTimeout(800)
   await page.reload({ waitUntil: 'domcontentloaded' })
 
@@ -174,9 +178,9 @@ async function repostAndVerify(page, context) {
     .first()
   await expect(repost).toBeVisible({ timeout: 20_000 })
 
-  const repostAvatar = repost.locator('header').getByRole('img', { name: users.reposter.fullName + "'s profile photo" }).first()
+  const repostAvatar = repost.locator('header').getByRole('img', { name: profilePhotoName(users.reposter.fullName) }).first()
   const sourceRegion = repost.getByRole('region', { name: 'Original post by ' + users.author.fullName })
-  const sourceAvatar = sourceRegion.getByRole('img', { name: users.author.fullName + "'s profile photo" }).first()
+  const sourceAvatar = sourceRegion.getByRole('img', { name: profilePhotoName(users.author.fullName) }).first()
 
   const repostSrc = await verifyImage(context, repostAvatar, 'Reposting user avatar')
   const sourceSrc = await verifyImage(context, sourceAvatar, 'Original post author avatar')
@@ -192,16 +196,19 @@ async function repostAndVerify(page, context) {
 async function verifyFallbackInitials(page) {
   const article = await createPost(page, fallbackPostText)
   const header = article.locator('header').first()
-  const image = header.getByRole('img', { name: users.fallback.fullName + "'s profile photo" })
+  const image = header.getByRole('img', { name: profilePhotoName(users.fallback.fullName) })
   await expect(image).toHaveCount(0)
   const avatarSlot = header.locator(':scope > div').first()
   await expect(avatarSlot).toHaveText(initials(users.fallback.fullName))
   console.log('FEED_AVATAR_FALLBACK_INITIALS_VERIFIED=true')
 }
 
-async function deleteOwnPost(page, text) {
+async function deleteOwnPost(page, text, repostedBy) {
   await page.goto(siteUrl + '/home', { waitUntil: 'domcontentloaded' })
-  const article = page.locator('article').filter({ hasText: text }).first()
+  // The reposter deletes only their own repost card, never the author's post.
+  let article = page.locator('article').filter({ hasText: text })
+  if (repostedBy) article = article.filter({ hasText: repostedBy }).filter({ hasText: 'reposted' })
+  article = article.first()
   if ((await article.count()) === 0) return
   // Delete sits in the post's "Post actions" menu and asks for confirmation in a dialog.
   await article.getByRole('button', { name: 'Post actions' }).click()
@@ -243,7 +250,7 @@ try {
 } catch (error) {
   primaryError = error
 } finally {
-  if (reposterPage) await deleteOwnPost(reposterPage, postText).catch((error) => cleanupErrors.push('repost:' + error.message))
+  if (reposterPage) await deleteOwnPost(reposterPage, postText, users.reposter.fullName).catch((error) => cleanupErrors.push('repost:' + error.message))
   if (authorPage) await deleteOwnPost(authorPage, postText).catch((error) => cleanupErrors.push('source:' + error.message))
   if (fallbackPage) await deleteOwnPost(fallbackPage, fallbackPostText).catch((error) => cleanupErrors.push('fallback:' + error.message))
   if (reposterPage) await removeAvatar(reposterPage).catch((error) => cleanupErrors.push('reposter-avatar:' + error.message))
