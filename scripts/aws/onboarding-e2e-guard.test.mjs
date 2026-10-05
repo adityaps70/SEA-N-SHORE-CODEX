@@ -434,3 +434,23 @@ test('the feed proof posts of a run are always removed, by exact body and exact 
   assert.match(proofSsm, /git checkout --quiet --detach \{sha\}/)
   assert.match(proofSsm, /bash scripts\/aws\/onboarding-e2e-feed-proof\.sh/)
 })
+
+
+test('every run removes its own eight disposable users at the end, by exact address', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const script = readFileSync(new URL('./onboarding-e2e-run-cleanup.sh', import.meta.url), 'utf8')
+  assert.match(workflow, /- name: Remove this run's disposable users through staging bootstrap\n\s+if: always\(\) && steps\.action\.outputs\.run_e2e == 'true' && steps\.instance\.outputs\.instance_id != '' && env\.E2E_SEAFARER_EMAIL != ''/)
+  assert.match(workflow, /if email != f'sea-n-shore-e2e-\{run_id\}-\{key\}@example\.com':/)
+  assert.match(workflow, /bash scripts\/aws\/onboarding-e2e-run-cleanup\.sh/)
+  assert.match(workflow, /grep -q '\^ONBOARDING_E2E_RUN_USERS_REMOVED=true\$'/)
+  assert.match(workflow, /- scripts\/aws\/onboarding-e2e-run-cleanup\.sh/)
+  // The cleanup runs after the persistence audit has read the profiles.
+  assert.ok(workflow.indexOf('- name: Wait and surface persistence evidence') < workflow.indexOf("- name: Remove this run's disposable users through staging bootstrap"))
+  assert.match(script, /\[\[ "\$email" == "sea-n-shore-e2e-\$\{ONBOARDING_E2E_RUN_ID\}-\$\{key\}@example\.com" \]\]/)
+  assert.match(script, /--filter "email = \\"\$email\\""/)
+  assert.match(script, /admin-delete-user/)
+  assert.match(script, /ONBOARDING_E2E_RUN_USERS_REMOVED=true/)
+  // Never a pattern delete.
+  assert.doesNotMatch(script, /email ~ /)
+  assert.doesNotMatch(script, /LIKE/i)
+})

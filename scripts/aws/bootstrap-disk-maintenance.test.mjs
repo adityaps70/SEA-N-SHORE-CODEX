@@ -8,7 +8,7 @@ test('bootstrap disk maintenance is bounded to stale Sea N Shore temp directorie
   const script = await read('./bootstrap-disk-maintenance.sh')
   const action = (await read('./bootstrap-disk-maintenance-action.txt')).trim()
 
-  assert.ok(['plan', 'apply-once', 'swap-once'].includes(action))
+  assert.ok(['plan', 'apply-once', 'swap-once', 'grow-root-once'].includes(action))
   assert.match(script, /BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA/)
   assert.match(script, /MIN_AGE_MINUTES=30/)
   assert.match(script, /MIN_FREE_MB=1536/)
@@ -39,5 +39,13 @@ test('bootstrap disk maintenance is bounded to stale Sea N Shore temp directorie
   assert.match(script, /vm\.swappiness = 10/)
   assert.match(script, /BOOTSTRAP_SWAP_VERIFIED=true/)
   assert.doesNotMatch(script, /sudo -n (rm|swapoff)/)
+  // grow-root-once: only the host's own root volume, only up to 20 GB gp3, never a shrink.
+  assert.match(script, /ROOT_TARGET_GB=20/)
+  assert.match(script, /--size "\$ROOT_TARGET_GB" --volume-type gp3 --dry-run/)
+  assert.match(script, /refusing to shrink/)
+  assert.match(script, /sudo -n growpart "\$ROOT_DISK" "\$ROOT_PART_NUM"/)
+  assert.match(script, /xfs\) sudo -n xfs_growfs -d \//)
+  assert.match(script, /BOOTSTRAP_ROOT_GROWN_VERIFIED=true/)
+  assert.doesNotMatch(script, /(delete-volume|detach-volume|create-volume|stop-instances|terminate-instances)/)
   assert.doesNotMatch(script, /terraform\s+(-chdir=.*\s+)?(apply|destroy|state rm|force-unlock)/)
 })
