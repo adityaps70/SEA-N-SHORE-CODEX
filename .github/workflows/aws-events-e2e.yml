@@ -39,21 +39,9 @@ jobs:
             *) echo "Unsupported EVENTS_E2E_ACTION=$ACTION" >&2; exit 1 ;;
           esac
 
-  # Round 16: runs that change AWS wait for the owner's approval in 'staging-apply'.
-  apply-approval:
+  events-e2e:
     needs: guard
     if: needs.guard.outputs.run_e2e == 'true'
-    runs-on: ubuntu-latest
-    environment: staging-apply
-    steps:
-      - name: Approved for a run that changes AWS
-        run: echo "Approved in staging-apply."
-
-  events-e2e:
-    needs:
-      - guard
-      - apply-approval
-    if: ${{ !cancelled() && needs.apply-approval.result == 'success' && needs.guard.outputs.run_e2e == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45
