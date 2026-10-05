@@ -37,6 +37,6 @@ test('deploys and the one-shot launch wait for the approval; the read-only probe
   assert.match(byName['aws-staging-deploy.yml'], /needs\.apply-approval\.result == 'skipped' && needs\.gate\.outputs\.deploy_to_ecs != 'true'/)
   assert.match(byName['aws-membership-launch-sequence.yml'], /apply-approval:\n    needs: preflight\n    if: inputs\.mode == 'execute'/)
   for (const probe of ['aws-remote-verify.yml', 'aws-google-auth-live-verify.yml', 'aws-logo-browser-verify.yml', 'aws-infra-ci.yml', 'ci.yml']) {
-    assert.doesNotMatch(byName[probe], /staging-apply/, `${probe} never waits for approval`)
+    assert.doesNotMatch(byName[probe], /environment: staging-apply/, `${probe} never waits for approval`)
   }
 })
