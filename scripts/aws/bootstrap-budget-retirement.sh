@@ -189,12 +189,17 @@ for r in changes:
         print('GITHUB_DEPLOY_HEALTH_TOKEN_PLANNED_RESOURCE=' + resources[0])
     else:
         refuse(f'unexpected change {address} {actions}')
+if not changes:
+    # After the apply nothing is left to change; a partial plan is still refused below.
+    print('BOOTSTRAP_BUDGET_RETIREMENT_ALREADY_APPLIED=true')
+    print('BOOTSTRAP_BUDGET_RETIREMENT_PLAN_CHANGES=0')
+    raise SystemExit(0)
 missing = sorted({BUDGET, POLICY} - seen)
 if missing:
     refuse('expected changes are missing from the plan: ' + ','.join(missing))
 print('BOOTSTRAP_BUDGET_RETIREMENT_PLAN_CHANGES=' + str(len(changes)))
 PY
-python3 "$WORK_DIR/classify-plan.py" "$WORK_DIR/plan.json"
+python3 "$WORK_DIR/classify-plan.py" "$WORK_DIR/plan.json" | tee "$WORK_DIR/classify.out"
 
 echo "BOOTSTRAP_BUDGET_RETIREMENT_ACTION=$ACTION"
 echo "BOOTSTRAP_BUDGET_RETIREMENT_PLAN_VERIFIED=true"
@@ -203,6 +208,10 @@ echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/bootstrap.tfplan" | cut -d' ' -f1)"
 if [[ "$ACTION" == "plan" ]]; then
   echo "BOOTSTRAP_BUDGET_RETIREMENT_PLAN_ONLY_NO_APPLY"
   exit 0
+fi
+if grep -qx 'BOOTSTRAP_BUDGET_RETIREMENT_ALREADY_APPLIED=true' "$WORK_DIR/classify.out"; then
+  echo "The budget retirement is already applied; nothing to apply." >&2
+  exit 1
 fi
 
 [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_BUDGET_RETIREMENT_EXPECTED_SHA" ]]

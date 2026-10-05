@@ -210,3 +210,11 @@ test('the classifier refuses anything outside the allowlist', async () => {
     assert.match(result.output, pattern, label)
   }
 })
+
+test('after the apply an empty SMS retirement plan reads as already applied, and apply-once refuses it', async () => {
+  const result = await classify([])
+  assert.equal(result.ok, true, result.output)
+  assert.match(result.output, /SMS_RETIREMENT_ALREADY_APPLIED=true/)
+  const script = await readFile(new URL('./sms-retirement-infra.sh', import.meta.url), 'utf8')
+  assert.match(script, /SMS retirement is already applied; nothing to apply\./)
+})
