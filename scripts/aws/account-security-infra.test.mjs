@@ -43,8 +43,9 @@ test('Terraform: DMARC p=quarantine without a public personal address, sweep per
 })
 
 test('the deploy switches web and workers between master and app credentials, and feeds the sweep the pool id', () => {
-  assert.equal(read('scripts/aws/aurora-app-credentials.txt').trim(), 'master')
-  assert.match(deploy, /AURORA_APP_SECRET_ARN: ""/)
+  // Round 14 (2.12): cut over to the least-privilege app role once 0066 and its secret were live.
+  assert.ok(['master', 'app'].includes(read('scripts/aws/aurora-app-credentials.txt').trim()))
+  assert.match(deploy, /AURORA_APP_SECRET_ARN: arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore-staging\/aurora-app-[A-Za-z0-9]{6}\n/)
   assert.match(deploy, /MODE="\$\(tr -d '\[:space:\]' < scripts\/aws\/aurora-app-credentials\.txt\)"/)
   assert.match(deploy, /secret:sea-n-shore-staging\/aurora-app-\[A-Za-z0-9\]\{6\}\$/)
   assert.match(deploy, /AURORA_USER_SECRET="\$\{DB_CREDENTIALS_SECRET_ARN\}:username::"/)
