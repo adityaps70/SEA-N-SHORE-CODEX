@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from '../dual-runner.mjs'
 
 const runner = await readFile(resolve(process.cwd(), 'scripts/aws/realtime-infra.sh'), 'utf8')
 const terraform = await readFile(resolve(process.cwd(), 'infra/aws/app/realtime.tf'), 'utf8')

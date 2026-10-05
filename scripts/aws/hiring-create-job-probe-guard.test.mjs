@@ -29,21 +29,27 @@ test('hiring create-job probe is exact-head, staging-only and one-shot guarded',
   assert.doesNotMatch(wrapper, /ecs.*run-task/s)
 })
 
-test('hiring create-job probe exercises each repository SQL stage and always rolls back', () => {
+// Rewritten in Round 15: e56de2c1 replaced the stage-by-stage insert probe with a parse-only
+// probe (PREPARE the exact createJob INSERT, never EXECUTE it), so the old stage names
+// (authorized_company, insert_job, certificate/visa requirements) no longer exist. The safety
+// properties are unchanged and still required: a transaction, no writes, mandatory rollback,
+// rollback verified afterwards, and a SQLSTATE report.
+test('hiring create-job probe only parses the createJob INSERT and always rolls back', () => {
   const probe = readFileSync(remotePath, 'utf8')
 
   assert.match(probe, /BEGIN/)
-  assert.match(probe, /authorized_company/)
-  assert.match(probe, /insert_job/)
-  assert.match(probe, /insert_certificate_requirement/)
-  assert.match(probe, /insert_visa_requirement/)
+  assert.match(probe, /aws rds-data begin-transaction/)
+  assert.match(probe, /PREPARE hiring_create_job_parameter_probe AS\s+insert into public\.jobs \(/)
+  assert.doesNotMatch(probe, /EXECUTE\s+hiring_create_job_parameter_probe/i)
+  assert.doesNotMatch(probe, /insert into public\.job_certificate_requirements|insert into public\.job_visa_requirements/)
   assert.match(probe, /RETURNED_SQLSTATE/)
   assert.match(probe, /ROLLBACK/)
+  assert.match(probe, /trap rollback_probe EXIT/)
+  assert.match(probe, /aws rds-data rollback-transaction/)
   assert.doesNotMatch(probe, /commit-transaction/)
-  assert.match(probe, /HIRING_CREATE_JOB_PROBE_FAILED_STAGE=/)
-  assert.match(probe, /HIRING_CREATE_JOB_PROBE_ERROR_CODE=/)
+  assert.match(probe, /HIRING_CREATE_JOB_PROBE_PARAMETER_SQLSTATE=/)
+  assert.match(probe, /HIRING_CREATE_JOB_PROBE_ERROR_MESSAGE=/)
   assert.match(probe, /HIRING_CREATE_JOB_PROBE_ROLLBACK_VERIFIED=true/)
-  assert.match(probe, /public\.jobs/)
-  assert.match(probe, /public\.job_certificate_requirements/)
-  assert.match(probe, /public\.job_visa_requirements/)
+  assert.match(probe, /select count\(\*\)::text from public\.jobs where title='E2E Hiring Probe \$\{MARKER\}'/)
+  assert.match(probe, /\[\[ "\$MARKER" =~ \^\[0-9\]\+\$ \]\]/)
 })
