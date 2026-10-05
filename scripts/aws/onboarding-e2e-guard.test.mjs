@@ -405,3 +405,32 @@ test('the sea job gate runs against a temporary sea job that is always removed (
   assert.match(seaJobSsm, /git checkout --quiet --detach \{sha\}/)
   assert.match(seaJobSsm, /bash scripts\/aws\/onboarding-e2e-sea-job\.sh \{mode\}/)
 })
+
+test('the feed proof posts of a run are always removed, by exact body and exact author (Round 14)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const proof = readFileSync('scripts/aws/onboarding-e2e-feed-proof.sh', 'utf8')
+  const proofSsm = readFileSync('scripts/aws/onboarding-e2e-feed-proof-ssm.sh', 'utf8')
+  const stale = readFileSync('scripts/aws/onboarding-e2e-stale-feed-proof-runs.txt', 'utf8')
+  for (const path of ['onboarding-e2e-feed-proof.sh', 'onboarding-e2e-feed-proof-ssm.sh', 'onboarding-e2e-stale-feed-proof-runs.txt']) {
+    assert.match(workflow, new RegExp('- scripts/aws/' + path.replace(/[.]/g, '\\.')))
+  }
+  const avatar = workflow.indexOf('- name: Verify authenticated Home feed avatar hydration')
+  const cleanup = workflow.indexOf("- name: Remove this run's feed proof posts")
+  assert.ok(avatar > 0 && cleanup > avatar)
+  const step = workflow.slice(cleanup, workflow.indexOf('- name:', cleanup + 10))
+  assert.match(step, /if: always\(\)/)
+  assert.match(step, /onboarding-e2e-feed-proof-ssm\.sh/)
+  assert.match(step, /ONBOARDING_E2E_FEED_PROOF_CLEANUP_VERIFIED=true/)
+
+  // Exact authors and bodies per run; no patterns; a hard cap; proof that nothing is left.
+  assert.match(proof, /'sea-n-shore-e2e-\$\{run\}-seafarer@example\.com','sea-n-shore-e2e-\$\{run\}-shore@example\.com','sea-n-shore-e2e-\$\{run\}-enthusiast@example\.com'/)
+  assert.match(proof, /'Feed avatar hydration staging proof \$\{run\}','Feed avatar fallback staging proof \$\{run\}'/)
+  assert.match(proof, /ia\.email IN \(\$\{AUTHORS\}\) AND p\.body IN \(\$\{BODIES\}\)/)
+  assert.doesNotMatch(proof, / ~ | LIKE |ILIKE/)
+  assert.deepEqual(proof.match(/DELETE FROM [^"]+/g), ['DELETE FROM public.posts WHERE id IN (${PROOF_SQL})'])
+  assert.match(proof, /-le 2 \]\]/)
+  assert.match(proof, /Stale feed proof run ids must be numeric/)
+  assert.ok(stale.split('\n').filter((line) => line && !line.startsWith('#')).every((line) => /^\d+$/.test(line)))
+  assert.match(proofSsm, /git checkout --quiet --detach \{sha\}/)
+  assert.match(proofSsm, /bash scripts\/aws\/onboarding-e2e-feed-proof\.sh/)
+})

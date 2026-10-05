@@ -161,7 +161,8 @@ async function repostAndVerify(page, context) {
   await page.goto(siteUrl + '/home', { waitUntil: 'domcontentloaded' })
   const sourceArticle = page.locator('article').filter({ hasText: postText }).first()
   await expect(sourceArticle).toBeVisible({ timeout: 20_000 })
-  await sourceArticle.getByRole('button', { name: 'Share' }).click()
+  // The action reads "Repost" on posts that can be reposted ("Share" only when reposting is not allowed).
+  await sourceArticle.getByRole('button', { name: /^(Repost|Share)$/ }).click()
   await sourceArticle.getByRole('menuitem', { name: 'Repost to feed' }).click()
   await page.waitForTimeout(800)
   await page.reload({ waitUntil: 'domcontentloaded' })
@@ -202,9 +203,11 @@ async function deleteOwnPost(page, text) {
   await page.goto(siteUrl + '/home', { waitUntil: 'domcontentloaded' })
   const article = page.locator('article').filter({ hasText: text }).first()
   if ((await article.count()) === 0) return
-  page.once('dialog', (dialog) => dialog.accept())
-  await article.getByRole('button', { name: 'Delete post' }).click()
-  await expect(article).toBeHidden({ timeout: 20_000 }).catch(() => {})
+  // Delete sits in the post's "Post actions" menu and asks for confirmation in a dialog.
+  await article.getByRole('button', { name: 'Post actions' }).click()
+  await page.getByRole('menuitem', { name: 'Delete post' }).click()
+  await page.getByRole('alertdialog', { name: 'Delete this post?' }).getByRole('button', { name: 'Delete post' }).click()
+  await expect(article).toBeHidden({ timeout: 20_000 })
 }
 
 async function removeAvatar(page) {
@@ -249,5 +252,6 @@ try {
   await browser.close()
 }
 
+if (primaryError && cleanupErrors.length) console.error('Feed avatar E2E cleanup also failed: ' + cleanupErrors.join(' | '))
 if (primaryError) throw primaryError
 if (cleanupErrors.length) throw new Error('Feed avatar E2E cleanup failed: ' + cleanupErrors.join(' | '))
