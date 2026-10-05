@@ -61,8 +61,13 @@ async function newSignedInPage(user) {
     failedImageResponses.push('failed(' + (request.failure()?.errorText ?? 'unknown') + ') ' + describeImageUrl(request.url()))
   })
   page.on('response', (response) => {
-    if (response.request().resourceType() !== 'image' || response.status() < 400) return
-    failedImageResponses.push(response.status() + ' ' + describeImageUrl(response.url()))
+    if (response.request().resourceType() !== 'image') return
+    const entry = response.status() + ' ' + (response.headers()['content-type'] ?? '-') + ' ' + (response.headers()['content-length'] ?? '?') + 'B ' + describeImageUrl(response.url())
+    if (response.status() >= 400) failedImageResponses.push(entry)
+    else if (response.url().includes('/_next/image') || response.url().includes('/api/media/image/')) recentImageResponses.push(entry)
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text().replace(/%3F[^&"\s,]*/gi, '%3F<query>').replace(/\?[^"\s,]*/g, '?<query>').slice(0, 200))
   })
   await page.goto(siteUrl + '/auth/sign-in', { waitUntil: 'domcontentloaded' })
   await page.getByLabel('Email', { exact: true }).fill(user.email)
@@ -73,6 +78,8 @@ async function newSignedInPage(user) {
 }
 
 const failedImageResponses = []
+const recentImageResponses = []
+const consoleErrors = []
 
 function describeImageUrl(raw) {
   try {
@@ -182,12 +189,16 @@ async function verifyImage(context, image, label) {
     expect(state.complete && state.naturalWidth > 0).toBe(true)
   }).toPass({ timeout: 30_000 }).catch(async (error) => {
     // Say what the card shows instead (the signed query of a media link is dropped).
-    const slot = image.locator('xpath=ancestor::a[1]')
-    const html = await slot.evaluate((element) => element.outerHTML, undefined, { timeout: 2_000 }).catch(() => 'image no longer in the card')
+    const card = image.locator('xpath=ancestor::article[1]')
+    const header = image.page().locator('article').filter({ has: image.page().locator('header') }).locator('header')
+    const html = await card.locator('header').first().evaluate((element) => element.outerHTML, undefined, { timeout: 2_000 })
+      .catch(() => header.first().evaluate((element) => element.outerHTML, undefined, { timeout: 2_000 }))
+      .catch(() => 'header not found')
+    await image.page().screenshot({ path: '/tmp/sea-n-shore-feed-avatar-e2e.png', fullPage: false }).catch(() => {})
     const redacted = String(html)
       .replace(/%3F[^&"\s,]*/gi, '%3F<query>')
       .replace(/(\/api\/media\/image\/[^"?\s,]*)\?[^"\s,]*/g, '$1?<query>')
-    console.error('FEED_AVATAR_SLOT_HTML=' + redacted.slice(0, 600))
+    console.error('FEED_AVATAR_SLOT_HTML=' + redacted.slice(0, 1500))
     throw error
   })
   assert.ok(state.complete, label + ' did not finish loading')
@@ -299,6 +310,8 @@ try {
 }
 
 for (const failure of failedImageResponses) console.error('FEED_AVATAR_FAILED_IMAGE_RESPONSE=' + failure)
+for (const entry of recentImageResponses.slice(-12)) console.error('FEED_AVATAR_IMAGE_RESPONSE=' + entry)
+for (const entry of consoleErrors.slice(-8)) console.error('FEED_AVATAR_CONSOLE_ERROR=' + entry)
 if (primaryError && cleanupErrors.length) console.error('Feed avatar E2E cleanup also failed: ' + cleanupErrors.join(' | '))
 if (primaryError) throw primaryError
 if (cleanupErrors.length) throw new Error('Feed avatar E2E cleanup failed: ' + cleanupErrors.join(' | '))
