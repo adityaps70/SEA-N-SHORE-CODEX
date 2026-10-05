@@ -1,121 +1,15 @@
-# Round 14, Phase 1: SMS abuse limits, SMS spend cap and alarms that reach the owner.
+# Round 14, Phase 1: alarms that reach the owner.
 
-variable "allowed_phone_calling_codes" {
-  description = "Comma-separated calling codes (digits after +) allowed for mobile sign-in codes."
-  type        = string
-  default     = "91"
-}
+# Round 15: phone/SMS sign-in is retired. The OTP limits table, its IAM policies, the SMS spend and
+# OTP global-cap alarms are destroyed by scripts/aws/sms-retirement-infra.sh. The account-level SMS
+# preferences are only dropped from Terraform state: the USD 1 monthly SMS spend limit stays on the
+# account as a backstop, and nothing in the stack can send SMS any more.
+removed {
+  from = aws_sns_sms_preferences.account
 
-variable "sms_monthly_spend_limit_usd" {
-  # The account's SNS SMS spending quota is still the AWS default (USD 1): SNS rejects a limit above
-  # the quota. After AWS approves the owner's quota increase to USD 20, set this to 20 and apply.
-  description = "Account-level SNS SMS monthly spend limit in USD (must not exceed the account's SMS quota)."
-  type        = number
-  default     = 1
-}
-
-# Counters for phone OTP limits (per number, per IP, global), expired by DynamoDB TTL. Shared by
-# the Cognito create-challenge Lambda and the web task.
-resource "aws_dynamodb_table" "otp_limits" {
-  name         = "${local.name_prefix}-otp-limits"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "pk"
-
-  attribute {
-    name = "pk"
-    type = "S"
+  lifecycle {
+    destroy = false
   }
-
-  ttl {
-    attribute_name = "expiresAt"
-    enabled        = true
-  }
-
-  server_side_encryption {
-    enabled = true
-  }
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy" "cognito_auth_challenge_otp_limits" {
-  name = "${local.name_prefix}-cognito-auth-challenge-otp-limits"
-  role = aws_iam_role.cognito_auth_challenge.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "CountOtpLimits"
-      Effect   = "Allow"
-      Action   = ["dynamodb:UpdateItem"]
-      Resource = aws_dynamodb_table.otp_limits.arn
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "ecs_task_otp_limits" {
-  name = "${local.name_prefix}-otp-limits-runtime"
-  role = aws_iam_role.ecs_task.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "CountOtpPerIp"
-      Effect   = "Allow"
-      Action   = ["dynamodb:UpdateItem"]
-      Resource = aws_dynamodb_table.otp_limits.arn
-    }]
-  })
-}
-
-resource "aws_sns_sms_preferences" "account" {
-  monthly_spend_limit = var.sms_monthly_spend_limit_usd
-  default_sms_type    = "Transactional"
-}
-
-resource "aws_cloudwatch_metric_alarm" "sms_spend_high" {
-  alarm_name          = "${local.name_prefix}-sms-spend-high"
-  alarm_description   = "SNS SMS month-to-date spend passed 75% of the monthly limit."
-  namespace           = "AWS/SNS"
-  metric_name         = "SMSMonthToDateSpentUSD"
-  statistic           = "Maximum"
-  period              = 300
-  evaluation_periods  = 1
-  threshold           = var.sms_monthly_spend_limit_usd * 0.75
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
-  tags                = local.common_tags
-}
-
-resource "aws_cloudwatch_log_metric_filter" "otp_global_cap" {
-  name           = "${local.name_prefix}-otp-global-cap"
-  log_group_name = aws_cloudwatch_log_group.cognito_create_auth_challenge.name
-  pattern        = "\"otp_global_cap_reached\""
-
-  metric_transformation {
-    name          = "OtpGlobalCapReached"
-    namespace     = "SeaNShore/Auth"
-    value         = "1"
-    default_value = "0"
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "otp_global_cap" {
-  alarm_name          = "${local.name_prefix}-otp-global-cap-reached"
-  alarm_description   = "Phone sign-in codes hit the global hourly cap (possible SMS pumping)."
-  namespace           = "SeaNShore/Auth"
-  metric_name         = "OtpGlobalCapReached"
-  statistic           = "Sum"
-  period              = 300
-  evaluation_periods  = 1
-  threshold           = 1
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.alerts.arn]
-  ok_actions          = [aws_sns_topic.alerts.arn]
-  tags                = local.common_tags
 }
 
 resource "aws_cloudwatch_metric_alarm" "aurora_cpu_high" {

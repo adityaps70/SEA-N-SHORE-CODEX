@@ -1,5 +1,6 @@
-// Round 14 Phase 1: guarded release path and Terraform contract for SMS abuse limits, the
-// liveness health check and owner-facing alarms.
+// Round 14 Phase 1: guarded release path and Terraform contract for the liveness health check and
+// owner-facing alarms. Round 15 retired phone/SMS sign-in, so the SMS abuse limits (OTP table, SMS
+// spend cap, SMS/OTP alarms) moved out of this runner and are removed by sms-retirement-infra.
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
@@ -22,12 +23,12 @@ test('security hardening runner is guarded and refuses anything outside its inte
   assert.match(script, /unexpected security hardening change refused/)
   assert.match(script, /target group change outside health_check refused/)
   assert.match(script, /change outside alarm\/ok actions refused/)
-  assert.match(script, /'aws_dynamodb_table\.otp_limits': \{\('create',\)\}/)
+  // Round 15: nothing SMS/OTP-related is created or updated by this runner any more.
+  assert.doesNotMatch(script, /otp_limits|sns_sms_preferences|sms_spend_high|otp_global_cap|cognito_auth_challenge|cognito_create_auth_challenge/)
   assert.match(script, /'aws_lb_target_group\.app': \{\('update',\)\}/)
   // The public client is neither targeted nor accepted: Cognito rejected the phone-less list.
   assert.doesNotMatch(script, /aws_cognito_user_pool_client\.web|'aws_cognito_user_pool\.app'|'aws_ecs_service|'aws_lb\.app'|'aws_cloudfront/)
   assert.match(script, /TARGET_GROUP_LIVENESS_VERIFIED=true/)
-  assert.match(script, /OTP_LAMBDA_VERIFIED=true/)
   assert.match(script, /SECURITY_HARDENING_APPLY_VERIFIED=true/)
   assert.match(script, /export TMPDIR="\$TF_TMPDIR"/)
   assert.doesNotMatch(script, /-auto-approve/)
@@ -36,20 +37,23 @@ test('security hardening runner is guarded and refuses anything outside its inte
   assert.match(workflow, /Guard infrastructure operation against a moved branch/)
 })
 
-test('phone OTP limits, SMS spend cap and topic-proof SNS policy are in Terraform', () => {
-  assert.match(hardening, /resource "aws_dynamodb_table" "otp_limits"/)
-  assert.match(hardening, /attribute_name = "expiresAt"/)
-  assert.match(hardening, /billing_mode = "PAY_PER_REQUEST"/)
-  assert.match(hardening, /Action\s+= \["dynamodb:UpdateItem"\]\s*\n\s*Resource = aws_dynamodb_table\.otp_limits\.arn/)
-  assert.match(hardening, /resource "aws_sns_sms_preferences" "account"/)
-  assert.match(hardening, /default_sms_type\s*=\s*"Transactional"/)
-  // USD 1 until AWS raises the account's SMS quota (SNS rejects a limit above the quota).
-  assert.match(hardening, /variable "sms_monthly_spend_limit_usd"[\s\S]*?default\s*=\s*1\n/)
-  assert.match(hardening, /variable "allowed_phone_calling_codes"[\s\S]*?default\s*=\s*"91"/)
-  assert.match(hardening, /SMSMonthToDateSpentUSD/)
-  assert.match(hardening, /otp_global_cap_reached/)
-  assert.match(auth, /OTP_LIMITS_TABLE\s*=\s*aws_dynamodb_table\.otp_limits\.name/)
-  assert.match(auth, /Sid\s*=\s*"NeverPublishToTopics"\s*\n\s*Effect\s*=\s*"Deny"/)
+test('Round 15: the phone OTP limits, SMS spend cap and SMS publishing are gone from Terraform', () => {
+  for (const removed of [
+    'resource "aws_dynamodb_table" "otp_limits"',
+    'resource "aws_iam_role_policy" "cognito_auth_challenge_otp_limits"',
+    'resource "aws_iam_role_policy" "ecs_task_otp_limits"',
+    'resource "aws_sns_sms_preferences" "account"',
+    '"aws_cloudwatch_metric_alarm" "sms_spend_high"',
+    '"aws_cloudwatch_metric_alarm" "otp_global_cap"',
+    'resource "aws_cloudwatch_log_metric_filter" "otp_global_cap"',
+    'variable "sms_monthly_spend_limit_usd"',
+    'variable "allowed_phone_calling_codes"',
+  ]) {
+    assert.ok(!hardening.includes(removed), removed)
+  }
+  // The account SMS preferences are forgotten, never destroyed: the USD 1 spend limit stays.
+  assert.match(hardening, /removed \{\n  from = aws_sns_sms_preferences\.account\n\n  lifecycle \{\n    destroy = false\n  \}\n\}/)
+  assert.doesNotMatch(auth, /sns:Publish|OTP_LIMITS_TABLE|otp_limits|ALLOWED_PHONE_CALLING_CODES/)
 })
 
 test('the public client keeps its attributes until a Cognito-accepted list is known', () => {
@@ -64,7 +68,7 @@ test('ALB and container check the cheap liveness route', () => {
 })
 
 test('every alarm notifies the owner through the alerts topic', () => {
-  for (const [file, names] of [[realtime, ['realtime_dlq_depth', 'realtime_queue_age']], [social, ['notification_dlq_depth', 'notification_queue_age']], [hardening, ['sms_spend_high', 'otp_global_cap', 'aurora_cpu_high', 'aurora_capacity_at_max', 'aurora_connections_high']]]) {
+  for (const [file, names] of [[realtime, ['realtime_dlq_depth', 'realtime_queue_age']], [social, ['notification_dlq_depth', 'notification_queue_age']], [hardening, ['aurora_cpu_high', 'aurora_capacity_at_max', 'aurora_connections_high']]]) {
     for (const name of names) {
       const start = file.indexOf(`"aws_cloudwatch_metric_alarm" "${name}"`)
       assert.ok(start >= 0, name)
@@ -73,7 +77,6 @@ test('every alarm notifies the owner through the alerts topic', () => {
   }
 })
 
-test('the multi-login auth plan accepts the challenge Lambda\'s new dependencies', () => {
-  assert.match(multiLogin, /'aws_dynamodb_table\.otp_limits',/)
-  assert.match(multiLogin, /'aws_iam_role_policy\.cognito_auth_challenge_otp_limits',/)
+test('Round 15: the multi-login auth plan no longer targets or accepts the retired OTP resources', () => {
+  assert.doesNotMatch(multiLogin, /otp_limits|cognito_auth_challenge/)
 })

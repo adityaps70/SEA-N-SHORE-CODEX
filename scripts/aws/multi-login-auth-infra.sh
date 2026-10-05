@@ -30,9 +30,6 @@ git diff --quiet HEAD -- \
   infra/aws/app/security-hardening.tf \
   infra/aws/app/main.tf \
   infra/aws/app/aws-native-variables.tf \
-  infra/aws/app/lambda/cognito-define-auth-challenge.mjs \
-  infra/aws/app/lambda/cognito-create-auth-challenge.mjs \
-  infra/aws/app/lambda/cognito-verify-auth-challenge.mjs \
   infra/aws/app/lambda/cognito-pre-sign-up-link.mjs \
   infra/aws/app/lambda/cognito-resend-email-sender.mjs \
   scripts/aws/multi-login-auth-infra.sh \
@@ -140,6 +137,8 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="region=$AWS_REGION" \
   -backend-config=use_lockfile=true > "$WORK_DIR/init.log"
 
+# Round 15: phone/SMS sign-in (the custom auth challenge Lambdas, their role and the OTP limits)
+# is retired and removed by scripts/aws/sms-retirement-infra.sh; this runner no longer targets it.
 TARGETS=(
   aws_secretsmanager_secret.google_oauth
   aws_kms_key.cognito_email_sender
@@ -150,23 +149,11 @@ TARGETS=(
   aws_cloudwatch_log_group.cognito_resend_email_sender
   aws_lambda_function.cognito_resend_email_sender
   aws_lambda_permission.cognito_resend_email_sender
-  aws_iam_role.cognito_auth_challenge
-  aws_iam_role_policy_attachment.cognito_auth_challenge_logs
-  aws_iam_role_policy.cognito_auth_challenge_sms
   aws_iam_role.cognito_pre_sign_up_link
   aws_iam_role_policy_attachment.cognito_pre_sign_up_link_logs
   aws_iam_role_policy.cognito_pre_sign_up_link
-  aws_cloudwatch_log_group.cognito_define_auth_challenge
-  aws_cloudwatch_log_group.cognito_create_auth_challenge
-  aws_cloudwatch_log_group.cognito_verify_auth_challenge
   aws_cloudwatch_log_group.cognito_pre_sign_up_link
-  aws_lambda_function.cognito_define_auth_challenge
-  aws_lambda_function.cognito_create_auth_challenge
-  aws_lambda_function.cognito_verify_auth_challenge
   aws_lambda_function.cognito_pre_sign_up_link
-  aws_lambda_permission.cognito_define_auth_challenge
-  aws_lambda_permission.cognito_create_auth_challenge
-  aws_lambda_permission.cognito_verify_auth_challenge
   aws_lambda_permission.cognito_pre_sign_up_link
   aws_cognito_user_pool.app
   aws_cognito_identity_provider.google
@@ -194,25 +181,11 @@ allowed = {
   'aws_cloudwatch_log_group.cognito_resend_email_sender',
   'aws_lambda_function.cognito_resend_email_sender',
   'aws_lambda_permission.cognito_resend_email_sender',
-  'aws_dynamodb_table.otp_limits',
-  'aws_iam_role_policy.cognito_auth_challenge_otp_limits',
-  'aws_iam_role.cognito_auth_challenge',
-  'aws_iam_role_policy_attachment.cognito_auth_challenge_logs',
-  'aws_iam_role_policy.cognito_auth_challenge_sms',
   'aws_iam_role.cognito_pre_sign_up_link',
   'aws_iam_role_policy_attachment.cognito_pre_sign_up_link_logs',
   'aws_iam_role_policy.cognito_pre_sign_up_link',
-  'aws_cloudwatch_log_group.cognito_define_auth_challenge',
-  'aws_cloudwatch_log_group.cognito_create_auth_challenge',
-  'aws_cloudwatch_log_group.cognito_verify_auth_challenge',
   'aws_cloudwatch_log_group.cognito_pre_sign_up_link',
-  'aws_lambda_function.cognito_define_auth_challenge',
-  'aws_lambda_function.cognito_create_auth_challenge',
-  'aws_lambda_function.cognito_verify_auth_challenge',
   'aws_lambda_function.cognito_pre_sign_up_link',
-  'aws_lambda_permission.cognito_define_auth_challenge',
-  'aws_lambda_permission.cognito_create_auth_challenge',
-  'aws_lambda_permission.cognito_verify_auth_challenge',
   'aws_lambda_permission.cognito_pre_sign_up_link',
   'aws_cognito_user_pool.app',
   'aws_cognito_identity_provider.google[0]',
@@ -379,9 +352,6 @@ AFTER_CHANGES="$(jq '[.resource_changes[]? | select(.mode != "data") | select(.c
 }
 
 for fn in \
-  sea-n-shore-staging-cognito-define-auth-challenge \
-  sea-n-shore-staging-cognito-create-auth-challenge \
-  sea-n-shore-staging-cognito-verify-auth-challenge \
   sea-n-shore-staging-cognito-pre-sign-up-link; do
   aws lambda get-function --region "$AWS_REGION" --function-name "$fn" > "$WORK_DIR/$fn.json"
   jq -e '.Configuration.State == "Active" and .Configuration.Runtime == "nodejs22.x"' "$WORK_DIR/$fn.json" >/dev/null
@@ -394,10 +364,11 @@ USER_POOL_ID="$(jq -r '
 ' "$WORK_DIR/state.json")"
 [[ "$USER_POOL_ID" == ap-south-1_* ]]
 aws cognito-idp describe-user-pool --region "$AWS_REGION" --user-pool-id "$USER_POOL_ID" > "$WORK_DIR/user-pool.json"
+# Round 15: no custom auth (phone/SMS) triggers on the pool; the pre-sign-up link stays.
 jq -e '
-  (.UserPool.LambdaConfig.DefineAuthChallenge | type == "string")
-  and (.UserPool.LambdaConfig.CreateAuthChallenge | type == "string")
-  and (.UserPool.LambdaConfig.VerifyAuthChallengeResponse | type == "string")
+  (.UserPool.LambdaConfig.DefineAuthChallenge // null) == null
+  and (.UserPool.LambdaConfig.CreateAuthChallenge // null) == null
+  and (.UserPool.LambdaConfig.VerifyAuthChallengeResponse // null) == null
   and (.UserPool.LambdaConfig.PreSignUp | type == "string")
 ' "$WORK_DIR/user-pool.json" >/dev/null
 
@@ -445,7 +416,7 @@ CLIENT_ID="$(jq -r '
 [[ -n "$CLIENT_ID" ]]
 aws cognito-idp describe-user-pool-client --region "$AWS_REGION" --user-pool-id "$USER_POOL_ID" --client-id "$CLIENT_ID" > "$WORK_DIR/client.json"
 jq -e '
-  (.UserPoolClient.ExplicitAuthFlows | index("ALLOW_CUSTOM_AUTH")) != null
+  (.UserPoolClient.ExplicitAuthFlows | index("ALLOW_CUSTOM_AUTH")) == null
   and (.UserPoolClient.AllowedOAuthFlows | index("code")) != null
   and (.UserPoolClient.AllowedOAuthScopes | index("openid")) != null
   and (.UserPoolClient.AllowedOAuthScopes | index("email")) != null
@@ -688,5 +659,5 @@ jq -e --arg site "$PUBLIC_SITE_URL" '
 echo "COGNITO_CLIENT_CALLBACK_URLS=$(jq -c '.UserPoolClient.CallbackURLs' "$WORK_DIR/client.json")"
 echo "COGNITO_CLIENT_LOGOUT_URLS=$(jq -c '.UserPoolClient.LogoutURLs' "$WORK_DIR/client.json")"
 echo "COGNITO_CLIENT_SITE_URLS_VERIFIED=true"
-echo "PHONE_OTP_COGNITO_INFRA_VERIFIED=true"
+echo "CUSTOM_AUTH_RETIRED_VERIFIED=true"
 echo "MULTI_LOGIN_AUTH_INFRA_APPLY_VERIFIED=true"
