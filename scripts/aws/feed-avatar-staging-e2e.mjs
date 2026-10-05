@@ -53,6 +53,14 @@ function initials(name) {
 async function newSignedInPage(user) {
   const context = await browser.newContext()
   contexts.push(context)
+  // Note which photos the browser could not show (an <img> error makes a photo fall back to initials).
+  await context.addInitScript(() => {
+    window.__feedImageErrors = []
+    document.addEventListener('error', (event) => {
+      const target = event.target
+      if (target && target.tagName === 'IMG') window.__feedImageErrors.push({ alt: target.alt, src: target.currentSrc || target.src })
+    }, true)
+  })
   const page = await context.newPage()
   // Record image requests that fail, so a photo that falls back to initials says why. Only the
   // status and the storage path are kept: the signed part of a media link is never printed.
@@ -174,7 +182,7 @@ async function createPost(page, text) {
   return article
 }
 
-async function verifyImage(context, image, label, card) {
+async function verifyImage(context, image, label, card, fullName) {
   // Avatars below the fold load lazily, a new photo's first request waits for the optimizer, and
   // the feed may re-render the card meanwhile: re-find the image and retry until it has decoded.
   let state = null
@@ -197,6 +205,15 @@ async function verifyImage(context, image, label, card) {
       .replace(/%3F[^&"\s,]*/gi, '%3F<query>')
       .replace(/(\/api\/media\/image\/[^"?\s,]*)\?[^"\s,]*/g, '$1?<query>')
     console.error('FEED_AVATAR_SLOT_HTML=' + redacted.slice(0, 1500))
+    const imageErrors = await image.page().evaluate(() => window.__feedImageErrors ?? []).catch(() => [])
+    for (const entry of imageErrors.slice(-8)) console.error('FEED_AVATAR_IMG_ERROR=' + entry.alt + ' <- ' + describeImageUrl(entry.src))
+    // Did the server send the photo at all? Count it in the server-rendered Home feed.
+    if (fullName) {
+      const homeHtml = await context.request.get(siteUrl + '/home').then((response) => response.text()).catch(() => '')
+      const escapedName = fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const photos = homeHtml.match(new RegExp('alt="' + escapedName + "(?:&#x27;|')s profile photo\"", 'g')) ?? []
+      console.error('FEED_AVATAR_SERVER_PHOTO_COUNT=' + photos.length + ' name_in_html=' + homeHtml.includes(fullName))
+    }
     throw error
   })
   assert.ok(state.complete, label + ' did not finish loading')
@@ -229,8 +246,8 @@ async function repostAndVerify(page, context) {
   const sourceRegion = repost.getByRole('region', { name: 'Original post by ' + users.author.fullName })
   const sourceAvatar = sourceRegion.getByRole('img', { name: profilePhotoName(users.author.fullName) }).first()
 
-  const repostSrc = await verifyImage(context, repostAvatar, 'Reposting user avatar', repost)
-  const sourceSrc = await verifyImage(context, sourceAvatar, 'Original post author avatar', sourceRegion)
+  const repostSrc = await verifyImage(context, repostAvatar, 'Reposting user avatar', repost, users.reposter.fullName)
+  const sourceSrc = await verifyImage(context, sourceAvatar, 'Original post author avatar', sourceRegion, users.author.fullName)
 
   await repost.screenshot({ path: '/tmp/sea-n-shore-feed-avatar-e2e.png' })
 
