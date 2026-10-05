@@ -261,12 +261,17 @@ for r in changes:
 # The pool and client updates may already be live (multi-login-auth-infra also plans them); the
 # post-apply checks read the live pool and client either way. Everything else must be in the plan.
 expected = set(destroys) | forgets | creates
+if not changes:
+    # After the apply nothing is left to change; a partial plan is still refused below.
+    print('SMS_RETIREMENT_ALREADY_APPLIED=true')
+    print('SMS_RETIREMENT_PLAN_CHANGES=0')
+    raise SystemExit(0)
 missing = sorted(expected - seen)
 if missing:
     refuse('expected changes are missing from the plan: ' + ','.join(missing))
 print('SMS_RETIREMENT_PLAN_CHANGES=' + str(len(changes)))
 PY
-python3 "$WORK_DIR/classify-plan.py" "$WORK_DIR/plan.json"
+python3 "$WORK_DIR/classify-plan.py" "$WORK_DIR/plan.json" | tee "$WORK_DIR/classify.out"
 
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
 echo "SMS_RETIREMENT_ACTION=$ACTION"
@@ -276,6 +281,10 @@ echo "PLAN_SHA256=$(sha256sum "$WORK_DIR/sms-retirement.tfplan" | cut -d' ' -f1)
 if [[ "$ACTION" == "plan" ]]; then
   echo "SMS_RETIREMENT_PLAN_ONLY_NO_APPLY"
   exit 0
+fi
+if grep -qx 'SMS_RETIREMENT_ALREADY_APPLIED=true' "$WORK_DIR/classify.out"; then
+  echo "SMS retirement is already applied; nothing to apply." >&2
+  exit 1
 fi
 
 [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SMS_RETIREMENT_INFRA_EXPECTED_SHA" ]]

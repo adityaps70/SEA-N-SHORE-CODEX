@@ -124,3 +124,11 @@ test('the classifier accepts only the budget destroy and the health token policy
     assert.match(result.output, pattern, label)
   }
 })
+
+test('after the apply an empty budget retirement plan reads as already applied, and apply-once refuses it', async () => {
+  const result = await classify([])
+  assert.equal(result.ok, true, result.output)
+  assert.match(result.output, /BOOTSTRAP_BUDGET_RETIREMENT_ALREADY_APPLIED=true/)
+  const script = await readFile(new URL('./bootstrap-budget-retirement.sh', import.meta.url), 'utf8')
+  assert.match(script, /The budget retirement is already applied; nothing to apply\./)
+})
