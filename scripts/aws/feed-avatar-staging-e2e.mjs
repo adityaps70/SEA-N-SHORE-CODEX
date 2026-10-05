@@ -56,6 +56,10 @@ async function newSignedInPage(user) {
   const page = await context.newPage()
   // Record image requests that fail, so a photo that falls back to initials says why. Only the
   // status and the storage path are kept: the signed part of a media link is never printed.
+  page.on('requestfailed', (request) => {
+    if (request.resourceType() !== 'image') return
+    failedImageResponses.push('failed(' + (request.failure()?.errorText ?? 'unknown') + ') ' + describeImageUrl(request.url()))
+  })
   page.on('response', (response) => {
     if (response.request().resourceType() !== 'image' || response.status() < 400) return
     failedImageResponses.push(response.status() + ' ' + describeImageUrl(response.url()))
@@ -164,16 +168,28 @@ async function createPost(page, text) {
 }
 
 async function verifyImage(context, image, label) {
-  await expect(image).toBeVisible({ timeout: 20_000 })
-  // Avatars below the fold load lazily, and a new photo's first request waits for the optimizer.
-  await image.scrollIntoViewIfNeeded()
-  await expect.poll(() => image.evaluate((img) => img.complete && img.naturalWidth > 0), { timeout: 20_000 }).toBe(true).catch(() => {})
-  const state = await image.evaluate((img) => ({
-    src: img.currentSrc || img.src,
-    complete: img.complete,
-    naturalWidth: img.naturalWidth,
-    naturalHeight: img.naturalHeight,
-  }))
+  // Avatars below the fold load lazily, a new photo's first request waits for the optimizer, and
+  // the feed may re-render the card meanwhile: re-find the image and retry until it has decoded.
+  let state = null
+  await expect(async () => {
+    await image.scrollIntoViewIfNeeded({ timeout: 5_000 })
+    state = await image.evaluate((img) => ({
+      src: img.currentSrc || img.src,
+      complete: img.complete,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+    }), undefined, { timeout: 5_000 })
+    expect(state.complete && state.naturalWidth > 0).toBe(true)
+  }).toPass({ timeout: 30_000 }).catch(async (error) => {
+    // Say what the card shows instead (the signed query of a media link is dropped).
+    const slot = image.locator('xpath=ancestor::a[1]')
+    const html = await slot.evaluate((element) => element.outerHTML, undefined, { timeout: 2_000 }).catch(() => 'image no longer in the card')
+    const redacted = String(html)
+      .replace(/%3F[^&"\s,]*/gi, '%3F<query>')
+      .replace(/(\/api\/media\/image\/[^"?\s,]*)\?[^"\s,]*/g, '$1?<query>')
+    console.error('FEED_AVATAR_SLOT_HTML=' + redacted.slice(0, 600))
+    throw error
+  })
   assert.ok(state.complete, label + ' did not finish loading')
   assert.ok(state.naturalWidth > 0 && state.naturalHeight > 0, label + ' did not decode')
   assert.ok(!state.src.includes('/api/feed-media/'), label + ' incorrectly used /api/feed-media/')
