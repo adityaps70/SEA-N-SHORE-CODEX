@@ -36,6 +36,8 @@ const deletedRecord: AdminUserSummary = {
   isAdministrator: false,
   createdAt: '2026-07-01T10:00:00.000Z',
   updatedAt: '2026-09-23T10:00:00.000Z',
+  loginMethods: 0,
+  loginKinds: [],
 }
 
 afterEach(() => {
@@ -66,6 +68,28 @@ describe('/admin/users', () => {
     const sizes = screen.getByRole('navigation', { name: 'Users per page' })
     expect(within(sizes).getByRole('link', { name: '100' })).toHaveAttribute('href', '/admin/users?q=meera&status=active&size=100')
     expect(screen.getByLabelText('Go to page')).toHaveAttribute('max', '50')
+  })
+
+  it('lists a member with several sign-ins once and says how many sign-in methods they have', async () => {
+    const member: AdminUserSummary = {
+      ...deletedRecord,
+      id: 'u-multi',
+      fullName: 'Aditya pratap singh',
+      slug: 'aditya',
+      email: 'member@example.net',
+      status: 'active',
+      loginMethods: 3,
+      loginKinds: ['email', 'google'],
+    }
+    mocks.searchUsers.mockResolvedValue([member])
+    mocks.countUsers.mockResolvedValue(1)
+
+    render(await AdminUsersPage({ searchParams: Promise.resolve({ q: 'member@example' }) }))
+
+    // Desktop table row and phone card: one person, each shown once.
+    expect(screen.getAllByText('Aditya pratap singh')).toHaveLength(2)
+    expect(screen.getAllByText('3 sign-in methods: Email, Google')).toHaveLength(2)
+    expect(screen.getByText(/1 user found/)).toBeInTheDocument()
   })
 
   it('falls back to 50 per page for an unknown ?size=', async () => {

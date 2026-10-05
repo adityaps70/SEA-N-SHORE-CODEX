@@ -42,13 +42,13 @@ export function checkoutPhoneForInput(e164: string | null) {
 export async function getCheckoutPhone(profileId: string): Promise<string | null> {
   const rows = await query<QueryResultRow & { phone: string | null }>(`
     select phone from (
-      select c.phone, 0 as rank from public.payment_customer_contacts c where c.profile_id = $1::uuid
+      select c.phone, 0 as rank, null::timestamptz as created_at from public.payment_customer_contacts c where c.profile_id = $1::uuid
       union all
-      select ia.phone_number as phone, case when ia.phone_number_verified then 1 else 2 end as rank
+      select ia.phone_number as phone, case when ia.phone_number_verified then 1 else 2 end as rank, ia.created_at
       from public.identity_accounts ia
       where ia.profile_id = $1::uuid and ia.phone_number is not null
     ) candidates
-    order by rank
+    order by rank, created_at asc nulls first, phone
     limit 1
   `, [profileId])
   return rows[0]?.phone ?? null

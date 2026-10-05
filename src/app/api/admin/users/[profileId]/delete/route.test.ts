@@ -15,6 +15,7 @@ vi.mock('@/features/admin/runtime-user-control-service', () => ({
 }))
 
 import { POST } from './route'
+import { AdminSignInControlError } from '@/features/admin/sign-in-control-error'
 
 const adminId = '11111111-1111-4111-8111-111111111111'
 const profileId = '55555555-5555-4555-8555-555555555555'
@@ -50,6 +51,21 @@ describe('POST admin permanent user deletion', () => {
       profileId,
       'Fraudulent account confirmed after moderation review.',
     )
+  })
+
+  it('says the account was not deleted when a sign-in method could not be removed', async () => {
+    mocks.permanentlyDeleteAccount.mockRejectedValueOnce(new AdminSignInControlError('admin_user_cognito_delete_incomplete', 2, 3))
+
+    const response = await POST(request({
+      confirmation: 'DELETE',
+      reason: 'Fraudulent account confirmed after moderation review.',
+    }), { params: Promise.resolve({ profileId }) })
+
+    expect(response.status).toBe(502)
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: 'The account was not deleted: 2 of 3 sign-in methods couldn’t be removed. Try again.',
+    })
   })
 
   it('rejects a weak confirmation without touching the account', async () => {
