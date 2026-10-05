@@ -60,6 +60,19 @@ async function newSignedInPage(user) {
       const target = event.target
       if (target && target.tagName === 'IMG') window.__feedImageErrors.push({ alt: target.alt, src: target.currentSrc || target.src })
     }, true)
+    // And which profile photos were taken off the page, in what state.
+    window.__feedRemovedPhotos = []
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.removedNodes) {
+          const images = node.nodeType === 1 ? (node.tagName === 'IMG' ? [node] : [...node.querySelectorAll('img')]) : []
+          for (const img of images) {
+            if (!/profile photo$/.test(img.alt)) continue
+            window.__feedRemovedPhotos.push({ alt: img.alt, complete: img.complete, naturalWidth: img.naturalWidth, src: img.currentSrc || img.src })
+          }
+        }
+      }
+    }).observe(document, { childList: true, subtree: true })
   })
   const page = await context.newPage()
   // Record image requests that fail, so a photo that falls back to initials says why. Only the
@@ -207,12 +220,16 @@ async function verifyImage(context, image, label, card, fullName) {
     console.error('FEED_AVATAR_SLOT_HTML=' + redacted.slice(0, 1500))
     const imageErrors = await image.page().evaluate(() => window.__feedImageErrors ?? []).catch(() => [])
     for (const entry of imageErrors.slice(-8)) console.error('FEED_AVATAR_IMG_ERROR=' + entry.alt + ' <- ' + describeImageUrl(entry.src))
-    // Did the server send the photo at all? Count it in the server-rendered Home feed.
-    if (fullName) {
+    const removed = await image.page().evaluate(() => window.__feedRemovedPhotos ?? []).catch(() => [])
+    for (const entry of removed.slice(-8)) console.error('FEED_AVATAR_REMOVED_PHOTO=' + entry.alt + ' complete=' + entry.complete + ' naturalWidth=' + entry.naturalWidth + ' <- ' + describeImageUrl(entry.src))
+    // Did the server send the photo in this card? Read the card's header in the server-rendered Home feed.
+    const labelledBy = card ? await card.getAttribute('aria-labelledby', { timeout: 2_000 }).catch(() => null) : null
+    if (labelledBy) {
       const homeHtml = await context.request.get(siteUrl + '/home').then((response) => response.text()).catch(() => '')
-      const escapedName = fullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const photos = homeHtml.match(new RegExp('alt="' + escapedName + "(?:&#x27;|')s profile photo\"", 'g')) ?? []
-      console.error('FEED_AVATAR_SERVER_PHOTO_COUNT=' + photos.length + ' name_in_html=' + homeHtml.includes(fullName))
+      const start = homeHtml.indexOf('aria-labelledby="' + labelledBy + '"')
+      const header = start >= 0 ? homeHtml.slice(start, homeHtml.indexOf('</header>', start)) : ''
+      console.error('FEED_AVATAR_SERVER_CARD_FOUND=' + (start >= 0) + ' server_header_has_img=' + header.includes('<img'))
+      if (fullName) console.error('FEED_AVATAR_SERVER_HEADER_HAS_PHOTO=' + header.includes(fullName + '&#x27;s profile photo'))
     }
     throw error
   })
