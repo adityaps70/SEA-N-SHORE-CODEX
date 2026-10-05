@@ -10,6 +10,9 @@ STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 ACTION_FILE="scripts/aws/bootstrap-disk-maintenance-action.txt"
 MIN_AGE_MINUTES=30
 MIN_FREE_MB=1536
+# Round 15 (F2): the t3.micro has 913 MB and no swap; Terraform plans hung on memory in Round 14.
+SWAP_FILE="/swapfile"
+SWAP_MB=2048
 
 [[ "${BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA must be an exact commit SHA." >&2
@@ -26,7 +29,7 @@ git diff --quiet HEAD -- \
 source scripts/aws/bootstrap-terraform-lock.sh
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
-case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported bootstrap disk maintenance action: $ACTION" >&2; exit 1 ;; esac
+case "$ACTION" in plan|apply-once|swap-once) ;; *) echo "Unsupported bootstrap disk maintenance action: $ACTION" >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d /var/tmp/sea-n-shore-bootstrap-disk-maintenance.XXXXXXXX)"
 trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
@@ -81,6 +84,52 @@ echo "BOOTSTRAP_VAR_TMP_TOP_USAGE_BEGIN"
 du -x -m -d 1 /var/tmp 2>/dev/null | sort -nr | head -n 20 || true
 echo "BOOTSTRAP_VAR_TMP_TOP_USAGE_END"
 echo "BOOTSTRAP_TMP_CLEANUP_CANDIDATE_COUNT=${#TMP_CANDIDATES[@]}"
+
+swap_active() {
+  swapon --show=NAME --noheadings 2>/dev/null | grep -qx "$SWAP_FILE"
+}
+echo "BOOTSTRAP_SWAP_TOTAL_MB=$(awk '/^SwapTotal:/ {print int($2 / 1024)}' /proc/meminfo)"
+echo "BOOTSTRAP_SWAP_FILE_ACTIVE=$(swap_active && echo true || echo false)"
+echo "BOOTSTRAP_SUDO_AVAILABLE=$(sudo -n true 2>/dev/null && echo true || echo false)"
+
+if [[ "$ACTION" == "swap-once" ]]; then
+  # Adds a swap file only; deletes nothing and never touches Terraform state.
+  if pgrep -u "$(id -u)" -x terraform >/dev/null 2>&1; then
+    echo "A terraform process is still running as this user; refusing to add swap now." >&2
+    exit 1
+  fi
+  [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA" ]]
+  sudo -n true 2>/dev/null || { echo "ssm-user has no passwordless sudo; cannot add swap." >&2; exit 1; }
+  if swap_active; then
+    echo "BOOTSTRAP_SWAP_ALREADY_PRESENT=true"
+  else
+    [[ ! -e "$SWAP_FILE" ]] || { echo "$SWAP_FILE exists but is not active swap; refusing to overwrite it." >&2; exit 1; }
+    [[ "$FREE_MB_BEFORE" -ge $((SWAP_MB + MIN_FREE_MB)) ]] || {
+      echo "Not enough free disk for a ${SWAP_MB}MB swap file (free ${FREE_MB_BEFORE}MB)." >&2
+      exit 1
+    }
+    sudo -n dd if=/dev/zero of="$SWAP_FILE" bs=1M count="$SWAP_MB" status=none
+    sudo -n chmod 600 "$SWAP_FILE"
+    sudo -n mkswap "$SWAP_FILE" >/dev/null
+    sudo -n swapon "$SWAP_FILE"
+  fi
+  grep -qE '^/swapfile[[:space:]]' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo -n tee -a /etc/fstab >/dev/null
+  # Prefer RAM; swap only absorbs Terraform's peaks.
+  echo 'vm.swappiness = 10' | sudo -n tee /etc/sysctl.d/99-sea-n-shore-swap.conf >/dev/null
+  sudo -n sysctl -q -w vm.swappiness=10
+  swap_active
+  SWAP_TOTAL_MB="$(awk '/^SwapTotal:/ {print int($2 / 1024)}' /proc/meminfo)"
+  [[ "$SWAP_TOTAL_MB" -ge $((SWAP_MB - 64)) ]]
+  grep -qE '^/swapfile[[:space:]]+none[[:space:]]+swap' /etc/fstab
+  aws s3api get-object --bucket "$STATE_BUCKET" --key "$STATE_KEY" --region "$AWS_REGION" "$WORK_DIR/state-after.json" >/dev/null
+  [[ "$(jq -r '.serial' "$WORK_DIR/state-after.json")" == "$STATE_SERIAL_BEFORE" ]]
+  echo "TERRAFORM_STATE_UNCHANGED=true"
+  echo "BOOTSTRAP_SWAP_TOTAL_MB_AFTER=$SWAP_TOTAL_MB"
+  echo "BOOTSTRAP_SWAPPINESS=$(cat /proc/sys/vm/swappiness)"
+  echo "BOOTSTRAP_FREE_MB_AFTER=$(df -Pm / | awk 'NR==2 {print $4}')"
+  echo "BOOTSTRAP_SWAP_VERIFIED=true"
+  exit 0
+fi
 
 if [[ "$ACTION" == "plan" ]]; then
   echo "BOOTSTRAP_DISK_MAINTENANCE_PLAN_ONLY_NO_DELETE"
