@@ -74,6 +74,8 @@ jobs:
         run: node --test scripts/aws/web-resilience-infra.test.mjs
       - name: Verify security hardening infrastructure release contract
         run: node --test scripts/aws/security-hardening-infra.test.mjs
+      - name: Verify SMS retirement infrastructure release contract
+        run: node --test scripts/aws/sms-retirement-infra.test.mjs
       - name: Verify edge origin lockdown release contract
         run: node --test scripts/aws/edge-origin-lockdown-infra.test.mjs
       - name: Verify phase 2 hardening release contract
