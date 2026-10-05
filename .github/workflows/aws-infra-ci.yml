@@ -66,6 +66,8 @@ jobs:
         run: node --test scripts/aws/remote-verify-log-window.test.mjs
       - name: Verify staging deploy guard contract
         run: node --test scripts/aws/staging-deploy-guard.test.mjs
+      - name: Verify health check token header contract
+        run: node --test scripts/aws/health-check-token.test.mjs
       - name: Verify multi-login auth infrastructure release contract
         run: node --test scripts/aws/multi-login-auth-infra.test.mjs
       - name: Verify web memory diagnostic stays read-only
