@@ -145,7 +145,7 @@ jobs:
       AURORA_SECRET_ARN: arn:aws:secretsmanager:ap-south-1:310356785722:secret:rds!cluster-7bd593b0-cb50-4dbb-9e93-6e7bbb6d3fc1-mL7X5H
       # Round 14 (2.12): the least-privilege app role's own rotated secret. Set together with
       # scripts/aws/aurora-app-credentials.txt = app at cutover; "master" keeps the master secret.
-      AURORA_APP_SECRET_ARN: ""
+      AURORA_APP_SECRET_ARN: arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore-staging/aurora-app-1fXL2g
       DEPLOY_TO_ECS: ${{ needs.gate.outputs.deploy_to_ecs }}
 
     steps:
