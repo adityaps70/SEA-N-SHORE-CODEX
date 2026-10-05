@@ -7,16 +7,24 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
 }))
 
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('./repository', () => ({
   adminRepository: {
+    isPlatformAdministrator: adminMfa.isPlatformAdministrator,
     reviewOrganizationApplication: mocks.reviewOrganizationApplication,
     reviewCompanyAccessRequest: mocks.reviewCompanyAccessRequest,
   },
 }))
 
 import { reviewCompanyAccessRequest, reviewOrganizationApplication } from './actions'
+import { ADMIN_MFA_REQUIRED_MESSAGE } from './mfa-gate'
 
 const applicationId = '22222222-2222-4222-8222-222222222222'
 
@@ -26,6 +34,36 @@ describe('platform admin organization review actions', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1', cognitoSub: 'sub-1', email: 'admin@example.com' })
     mocks.reviewOrganizationApplication.mockResolvedValue(true)
     mocks.reviewCompanyAccessRequest.mockResolvedValue(true)
+  })
+
+  it('refuses a platform administrator whose session has not answered an authenticator app', async () => {
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false }).mockResolvedValueOnce(null)
+    await expect(reviewOrganizationApplication(applicationId, 'approved', 'Verified records.')).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    await expect(reviewCompanyAccessRequest('66666666-6666-4666-8666-666666666666', 'approved', null, 'member')).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    expect(adminMfa.isPlatformAdministrator).toHaveBeenCalledWith('admin-1')
+    expect(mocks.reviewOrganizationApplication).not.toHaveBeenCalled()
+    expect(mocks.reviewCompanyAccessRequest).not.toHaveBeenCalled()
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when the administrator role or MFA status cannot be read', async () => {
+    adminMfa.isPlatformAdministrator.mockRejectedValueOnce(new Error('database down'))
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce(null)
+    await expect(reviewOrganizationApplication(applicationId, 'approved', 'Verified records.')).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    adminMfa.getCurrentMfaStatus.mockRejectedValueOnce(new Error('TransportError'))
+    await expect(reviewOrganizationApplication(applicationId, 'approved', 'Verified records.')).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    expect(mocks.reviewOrganizationApplication).not.toHaveBeenCalled()
+  })
+
+  it('leaves members who are not administrators to the repository check and its message', async () => {
+    adminMfa.isPlatformAdministrator.mockResolvedValueOnce(false)
+    mocks.reviewOrganizationApplication.mockRejectedValueOnce(new Error('admin_forbidden'))
+    await expect(reviewOrganizationApplication(applicationId, 'approved', 'Verified records.')).resolves.toEqual({
+      ok: false,
+      error: 'You do not have permission to review organization applications.',
+    })
+    // No MFA lookup for a member who is not an administrator.
+    expect(adminMfa.getCurrentMfaStatus).not.toHaveBeenCalled()
   })
 
   it('rejects invalid ids and decisions before authentication', async () => {

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { userCan } from '@/features/access/server'
-import { canAccessPlatformAdmin } from '@/features/admin/access'
+import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { coursePaymentRepository } from './course-payment-repository'
 import { enrollmentRepository } from './enrollment-repository'
@@ -61,7 +61,7 @@ export async function openCourseAsTeamMember(courseId: string): Promise<TeamAcce
   try {
     const user = await requireAwsUser()
     const allowed = await coursePaymentRepository.isCourseManager(user.id, parsedId.data)
-      || await canAccessPlatformAdmin(user.id)
+      || await canUsePlatformAdminAuthority(user.id)
     if (!allowed) {
       return { ok: false, error: 'Only the course owner, its organization’s learning managers and the Sea N Shore team can open this course without buying it.' }
     }

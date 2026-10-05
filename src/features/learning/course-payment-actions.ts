@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { userCan } from '@/features/access/server'
 import { canAccessPlatformAdmin } from '@/features/admin/access'
+import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import type { ConfirmCheckoutResult, StartCheckoutResult } from '@/features/payments/checkout-types'
 import { loadCheckoutCustomer, PHONE_INVALID_MESSAGE, PHONE_REJECTED_MESSAGE, PHONE_REQUIRED_MESSAGE } from '@/features/payments/customer-contact'
@@ -140,7 +141,7 @@ export async function refundCoursePaymentAction(orderId: string): Promise<Refund
   try {
     const user = await requireAwsUser()
     const managed = await coursePaymentRepository.getOrderForManager(id.data, user.id)
-    const isAdmin = managed ? false : await canAccessPlatformAdmin(user.id)
+    const isAdmin = managed ? false : await canUsePlatformAdminAuthority(user.id)
     const order = managed ?? (isAdmin ? await coursePaymentRepository.getOrderById(id.data) : null)
     if (!order) return { ok: false, error: 'Only the course owner, its organization’s learning managers or the Sea N Shore team can refund this purchase.' }
 

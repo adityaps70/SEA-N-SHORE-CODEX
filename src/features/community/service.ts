@@ -1,4 +1,4 @@
-import { canAccessPlatformAdmin as canAccessPlatformAdminDefault } from '@/features/admin/access'
+import { canUsePlatformAdminAuthority as canAccessPlatformAdminDefault } from '@/features/admin/mfa-gate'
 import { communityRepository, type CommunityRepository } from './repository'
 import { groupSlugFromName, uniqueGroupSlug } from './slug'
 import { suggestedGroupSlugs } from './suggestions'
@@ -56,7 +56,7 @@ export function joinApprovedDedupeKey(groupId: string, memberId: string) {
 
 export function createCommunityService(input: {
   repository?: CommunityRepository
-  /** Whether a profile is a Sea N Shore platform administrator (they moderate every community). */
+  /** Whether a profile is a Sea N Shore platform administrator with admin MFA (they moderate every community). */
   canAccessPlatformAdmin?: (userId: string) => Promise<boolean>
 } = {}) {
   const repository = input.repository ?? communityRepository

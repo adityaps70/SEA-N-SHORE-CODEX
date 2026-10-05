@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { canAccessPlatformAdmin } from '@/features/admin/access'
+import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { removeCommunityMedia, uploadCommunityMedia } from './media-service'
 import type { CommunityMediaKind } from './media'
@@ -15,11 +15,11 @@ const groupIdSchema = z.string().uuid()
 
 const FORBIDDEN = 'Only the owner and moderators of this group can change its images.'
 
-/** The group's active owner or moderators (stored role 'owner' | 'admin'), or a platform administrator. */
+/** The group's active owner or moderators (stored role 'owner' | 'admin'), or a platform administrator with admin MFA. */
 async function canManageCommunityMedia(userId: string, groupId: string) {
   const membership = await communityRepository.getMembership(groupId, userId)
   if (membership?.status === 'active' && isGroupAdminRole(membership.role)) return true
-  return canAccessPlatformAdmin(userId)
+  return canUsePlatformAdminAuthority(userId)
 }
 
 function revalidateCommunityMedia() {

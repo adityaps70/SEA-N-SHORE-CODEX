@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from '@/features/admin/mfa-gate'
 import {
   learningAdminRepository,
   type CourseAdminDecision,
@@ -105,6 +106,7 @@ export async function reviewMentorApplication(
   }
 
   const user = await requireAwsUser()
+  if (await adminActionMfaMissing(user.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
 
   try {
     const result = await learningAdminRepository.reviewMentorApplication(
@@ -133,6 +135,7 @@ export async function reviewCourse(
   }
 
   const user = await requireAwsUser()
+  if (await adminActionMfaMissing(user.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
 
   try {
     const result = await learningAdminRepository.reviewCourse(
