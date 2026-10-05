@@ -41,7 +41,7 @@ test('the runner reports read-only cutover readiness for the app role', () => {
   const script = readFileSync('scripts/aws/app-database-role-migration.sh', 'utf8')
   assert.match(script, /c\.relrowsecurity/)
   assert.match(script, /has_table_privilege\('sea_n_shore_app', format\('%I\.%I', t\.schemaname, t\.tablename\), 'SELECT,INSERT,UPDATE,DELETE'\)/)
-  assert.match(script, /has_sequence_privilege\('sea_n_shore_app', c\.oid, 'USAGE'\)/)
+  assert.match(script, /CASE WHEN c\.relkind = 'S' THEN NOT has_sequence_privilege\('sea_n_shore_app', c\.oid, 'USAGE'\) ELSE false END/)
   assert.match(script, /has_function_privilege\('sea_n_shore_app', p\.oid, 'EXECUTE'\)/)
   assert.match(script, /APP_DATABASE_ROLE_CUTOVER_READY=true/)
   assert.match(script, /if applied; then report AFTER; cutover_readiness;/)

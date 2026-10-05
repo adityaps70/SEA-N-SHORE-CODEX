@@ -71,14 +71,16 @@ applied(){ role_exists && [[ "$(count "$ROLE_SQL")" == "1" && "$(count "$GRANTED
 
 # Round 14 (2.12): read-only cutover readiness. The app role does not own the tables, so row-level
 # security would apply to it (the master owner bypasses it), and anything it cannot read, write or
-# execute in public/private would break the app after the switch. All counts must be 0.
+# execute in public/private would break the app after the switch. All counts must be 0. Privilege
+# functions sit behind CASE: Postgres may evaluate them before the relkind filter, and
+# has_sequence_privilege errors on non-sequences.
 cutover_readiness(){
   local rls missing_tables missing_views missing_sequences missing_functions
   rls="$(count "SELECT count(*)::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('public','private') AND c.relkind IN ('r','p') AND c.relrowsecurity")"
   missing_tables="$(count "SELECT count(*)::bigint FROM pg_tables t WHERE t.schemaname IN ('public','private') AND NOT has_table_privilege('sea_n_shore_app', format('%I.%I', t.schemaname, t.tablename), 'SELECT,INSERT,UPDATE,DELETE')")"
   missing_views="$(count "SELECT count(*)::bigint FROM pg_views v WHERE v.schemaname IN ('public','private') AND NOT has_table_privilege('sea_n_shore_app', format('%I.%I', v.schemaname, v.viewname), 'SELECT')")"
-  missing_sequences="$(count "SELECT count(*)::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('public','private') AND c.relkind = 'S' AND NOT has_sequence_privilege('sea_n_shore_app', c.oid, 'USAGE')")"
-  missing_functions="$(count "SELECT count(*)::bigint FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname IN ('public','private') AND p.prokind IN ('f','p') AND NOT has_function_privilege('sea_n_shore_app', p.oid, 'EXECUTE')")"
+  missing_sequences="$(count "SELECT count(*)::bigint FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname IN ('public','private') AND c.relkind = 'S' AND CASE WHEN c.relkind = 'S' THEN NOT has_sequence_privilege('sea_n_shore_app', c.oid, 'USAGE') ELSE false END")"
+  missing_functions="$(count "SELECT count(*)::bigint FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname IN ('public','private') AND p.prokind IN ('f','p') AND CASE WHEN p.prokind IN ('f','p') THEN NOT has_function_privilege('sea_n_shore_app', p.oid, 'EXECUTE') ELSE false END")"
   echo "APP_DATABASE_ROLE_CUTOVER_RLS_TABLES=$rls"
   echo "APP_DATABASE_ROLE_CUTOVER_MISSING_TABLE_DML=$missing_tables"
   echo "APP_DATABASE_ROLE_CUTOVER_MISSING_VIEW_SELECT=$missing_views"
