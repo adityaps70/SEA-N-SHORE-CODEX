@@ -41,10 +41,10 @@ function setup(options: { effects?: Record<string, ReturnType<typeof vi.fn>> } =
     finalizeAccountDeletion: vi.fn(async () => ({ mediaPaths: [] as string[] })),
   }
   const identityAdmin = {
-    disableUser: vi.fn(async (_username: string) => undefined),
-    enableUser: vi.fn(async (_username: string) => undefined),
-    deleteUser: vi.fn(async (_username: string) => undefined),
-    globalSignOut: vi.fn(async (_username: string) => undefined),
+    disableUser: vi.fn<(username: string) => Promise<void>>(async () => undefined),
+    enableUser: vi.fn<(username: string) => Promise<void>>(async () => undefined),
+    deleteUser: vi.fn<(username: string) => Promise<void>>(async () => undefined),
+    globalSignOut: vi.fn<(username: string) => Promise<void>>(async () => undefined),
   }
   const deleteMediaObject = vi.fn(async () => undefined)
   return {
