@@ -33,10 +33,10 @@ git diff --quiet HEAD -- \
 
 ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
 case "$ACTION" in
-  plan|run-once) ;;
+  plan|run-once|accounts-once) ;;
   *) echo "Unsupported identity cleanup action." >&2; exit 1 ;;
 esac
-if [[ "$ACTION" == "run-once" ]]; then
+if [[ "$ACTION" != "plan" ]]; then
   [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$IDENTITY_CLEANUP_EXPECTED_SHA" ]]
 fi
 
@@ -68,6 +68,9 @@ action, pool, region, cluster_arn, secret_arn, database, focus_slug, stale_day, 
 max_e2e = int(max_e2e)
 # Only the disposable identities the E2E runs create (scripts/aws/onboarding-e2e-*); example.com addresses.
 E2E_EMAIL = re.compile(r'^sea-n-shore-e2e-[0-9]+-(seafarer|shore|recruiter|trainer|student|family|enthusiast|other)@example\.com$')
+# Every E2E suite's disposable address: onboarding, realtime, events, hiring, learning review.
+ANY_E2E_EMAIL = re.compile(r'^sea-n-shore-(?:(realtime|events|hiring|learning-review)-)?e2e-[0-9]+-[a-z]+@example\.com$')
+MAX_E2E_ACCOUNTS = 600
 
 def run(label, args, parse=True):
     result = subprocess.run(args, capture_output=True, text=True)
@@ -139,6 +142,97 @@ eligible = len(stale) == 1 and stale[0]['created_day'] == stale_day and not str(
 print(f'IDENTITY_CLEANUP_STALE_ROW_ELIGIBLE={str(eligible).lower()}')
 if len(targets) > max_e2e:
     raise SystemExit(f'Refusing: {len(targets)} E2E users exceeds the cap of {max_e2e}.')
+
+def e2e_accounts(users):
+    """Profiles whose every sign-in is an E2E address (never an administrator), plus E2E Cognito users without a profile."""
+    rows, _ = sql('e2e_rows', """
+      select ia.profile_id::text as profile_id, ia.provider_subject as subject, lower(coalesce(ia.email, '')) as email,
+             p.full_name as name, p.account_status::text as status, p.created_at::date::text as created,
+             exists (select 1 from public.user_roles r where r.user_id = p.id and r.role::text = 'administrator') as is_admin
+        from public.identity_accounts ia
+        join public.profiles p on p.id = ia.profile_id
+       where ia.provider = 'cognito'""")
+    by_profile = {}
+    for row in rows:
+        by_profile.setdefault(row['profile_id'], []).append(row)
+    targets, kept_named = [], []
+    for pid, prow in by_profile.items():
+        all_e2e = all(ANY_E2E_EMAIL.match(r['email']) for r in prow)
+        if all_e2e and not prow[0]['is_admin']:
+            targets.append({'profile_id': pid, 'name': prow[0]['name'], 'emails': sorted(r['email'] for r in prow),
+                            'subjects': sorted(r['subject'] for r in prow), 'created': prow[0]['created'], 'status': prow[0]['status']})
+        elif 'e2e' in str(prow[0]['name'] or '').lower():
+            kept_named.append({'name': prow[0]['name'], 'created': prow[0]['created'], 'admin': bool(prow[0]['is_admin'])})
+    mapped_all = {r['subject'] for r in rows}
+    loose = sorted(({'username': u['Username'], 'sub': sub, 'email': str(a.get('email') or '').strip().lower(), 'created': str(u.get('UserCreateDate'))[:10]}
+                    for sub, (u, a) in users.items()
+                    if sub not in mapped_all and ANY_E2E_EMAIL.match(str(a.get('email') or '').strip().lower())), key=lambda t: (t['created'], t['email']))
+    return sorted(targets, key=lambda t: (t['created'], t['emails'])), kept_named, loose
+
+def suite(email):
+    m = ANY_E2E_EMAIL.match(email)
+    return (m.group(1) or 'onboarding') if m else 'other'
+
+accounts, kept_named, loose = e2e_accounts(users)
+from collections import Counter
+print(f'IDENTITY_CLEANUP_E2E_ACCOUNTS={len(accounts)}')
+print('IDENTITY_CLEANUP_E2E_ACCOUNTS_BY_SUITE=' + json.dumps(dict(Counter(suite(a['emails'][0]) for a in accounts)), sort_keys=True))
+for a in accounts:
+    print('IDENTITY_CLEANUP_E2E_ACCOUNT=' + json.dumps({'name': a['name'], 'emails': a['emails'], 'created': a['created'], 'status': a['status']}, sort_keys=True))
+print(f'IDENTITY_CLEANUP_E2E_LOOSE_COGNITO_USERS={len(loose)}')
+for t in loose:
+    print('IDENTITY_CLEANUP_E2E_LOOSE=' + json.dumps({'email': t['email'], 'created': t['created']}, sort_keys=True))
+print(f'IDENTITY_CLEANUP_E2E_NAMED_KEPT={len(kept_named)}')
+for k in kept_named:
+    print('IDENTITY_CLEANUP_E2E_NAMED_KEPT_PROFILE=' + json.dumps(k, sort_keys=True))
+if len(accounts) + len(loose) > MAX_E2E_ACCOUNTS:
+    raise SystemExit(f'Refusing: {len(accounts) + len(loose)} E2E accounts exceeds the cap of {MAX_E2E_ACCOUNTS}.')
+
+if action == 'accounts-once':
+    def cognito_username_for(sub):
+        found = run('find_sub', ['aws', 'cognito-idp', 'list-users', '--region', region, '--user-pool-id', pool,
+                                 '--filter', f'sub = "{sub}"', '--output', 'json']).get('Users', [])
+        return found[0]['Username'] if found else None
+    profiles_deleted, users_deleted, failures = 0, 0, []
+    for a in accounts:
+        # Re-checked inside the statement: still only E2E sign-ins, still not an administrator.
+        _, n = sql('delete_e2e_profile', """
+          delete from public.profiles p
+           where p.id = cast(:id as uuid)
+             and not exists (select 1 from public.user_roles r where r.user_id = p.id and r.role::text = 'administrator')
+             and not exists (select 1 from public.identity_accounts ia where ia.profile_id = p.id
+                              and lower(coalesce(ia.email, '')) !~ '^sea-n-shore-((realtime|events|hiring|learning-review)-)?e2e-[0-9]+-[a-z]+@example[.]com$')""",
+          {'id': a['profile_id']})
+        if n != 1:
+            failures.append(a['name'])
+            continue
+        profiles_deleted += 1
+        for sub in a['subjects']:
+            username = cognito_username_for(sub)
+            if username:
+                run('admin_delete_user', ['aws', 'cognito-idp', 'admin-delete-user', '--region', region, '--user-pool-id', pool, '--username', username], parse=False)
+                users_deleted += 1
+    for t in loose:
+        user = run('get_user', ['aws', 'cognito-idp', 'admin-get-user', '--region', region, '--user-pool-id', pool, '--username', t['username'], '--output', 'json'])
+        attrs = {x['Name']: x['Value'] for x in user.get('UserAttributes') or []}
+        if attrs.get('sub') != t['sub'] or not ANY_E2E_EMAIL.match(str(attrs.get('email') or '').strip().lower()):
+            failures.append(t['email'])
+            continue
+        run('admin_delete_user', ['aws', 'cognito-idp', 'admin-delete-user', '--region', region, '--user-pool-id', pool, '--username', t['username']], parse=False)
+        users_deleted += 1
+    print(f'IDENTITY_CLEANUP_E2E_PROFILES_DELETED={profiles_deleted}')
+    print(f'IDENTITY_CLEANUP_E2E_COGNITO_USERS_DELETED={users_deleted}')
+    print(f'IDENTITY_CLEANUP_E2E_FAILURES={len(failures)}')
+    for f in failures:
+        print('IDENTITY_CLEANUP_E2E_FAILED=' + json.dumps(f))
+    users_after = list_users()
+    accounts_after, kept_after, loose_after = e2e_accounts(users_after)
+    print(f'IDENTITY_CLEANUP_E2E_ACCOUNTS_AFTER={len(accounts_after)}')
+    print(f'IDENTITY_CLEANUP_E2E_LOOSE_AFTER={len(loose_after)}')
+    if failures or accounts_after or loose_after:
+        raise SystemExit('E2E account cleanup left accounts behind.')
+    print('IDENTITY_CLEANUP_E2E_ACCOUNTS_VERIFIED=true')
+    raise SystemExit(0)
 
 if action == 'plan':
     print('IDENTITY_CLEANUP_PLAN_ONLY_NO_CHANGES')
