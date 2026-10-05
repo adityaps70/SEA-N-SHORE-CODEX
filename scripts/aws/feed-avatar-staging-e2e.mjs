@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { deflateSync } from 'node:zlib'
 import { chromium, expect } from '@playwright/test'
 
 const siteUrl = process.env.SITE_URL
@@ -31,10 +32,55 @@ for (const user of Object.values(users)) {
   assert.ok(user.fullName)
 }
 
-const avatarPng = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlYwQAAAABJRU5ErkJggg==',
-  'base64',
-)
+// A photo-sized avatar (160x160 PNG). A 1x1 image cannot stand in for a photo: picked from a
+// srcset at 96w for a 44px slot, its density-corrected naturalWidth rounds down to 0, which
+// the feed's photo component takes for an image that failed before hydration.
+const crcTable = Array.from({ length: 256 }, (_, n) => {
+  let c = n
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+  return c >>> 0
+})
+
+function crc32(buffer) {
+  let c = 0xffffffff
+  for (const byte of buffer) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8)
+  return (c ^ 0xffffffff) >>> 0
+}
+
+function pngChunk(type, data) {
+  const length = Buffer.alloc(4)
+  length.writeUInt32BE(data.length)
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(body))
+  return Buffer.concat([length, body, crc])
+}
+
+function gradientPng(size) {
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(size, 0)
+  header.writeUInt32BE(size, 4)
+  header[8] = 8 // bit depth
+  header[9] = 2 // truecolour RGB
+  const rows = []
+  for (let y = 0; y < size; y++) {
+    const row = Buffer.alloc(1 + size * 3)
+    for (let x = 0; x < size; x++) {
+      row[1 + x * 3] = 20 + Math.round((x / size) * 60)
+      row[2 + x * 3] = 90 + Math.round((y / size) * 80)
+      row[3 + x * 3] = 160
+    }
+    rows.push(row)
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', header),
+    pngChunk('IDAT', deflateSync(Buffer.concat(rows))),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+const avatarPng = gradientPng(160)
 
 const postText = 'Feed avatar hydration staging proof ' + runId
 const fallbackPostText = 'Feed avatar fallback staging proof ' + runId
