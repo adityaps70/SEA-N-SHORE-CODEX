@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from '../dual-runner.mjs'
 import { buildImportPlan, normalizeEmail } from './beaufortmarine-import.mjs'
 
 const empty = {

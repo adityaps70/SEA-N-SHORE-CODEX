@@ -464,7 +464,7 @@ export function createNewsletterRepository(input: { query?: Query; withTransacti
         `select lower(email) as email
          from public.identity_accounts
          where profile_id = $1 and email_verified = true and email is not null
-         order by id
+         order by created_at asc, id asc
          limit 1`,
         [profileId],
       )

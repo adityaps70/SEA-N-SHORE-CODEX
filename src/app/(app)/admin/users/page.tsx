@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ExternalLink, Search, ShieldCheck, UserCog } from 'lucide-react'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { withAdminAvatarUrls } from '@/features/admin/avatars'
+import { signInMethodsLabel } from '@/features/admin/sign-in-methods'
 import {
   AdminAvatar,
   AdminChip,
@@ -186,7 +187,12 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                     { label: 'Role', value: user.isAdministrator ? 'Admin' : 'Member' },
                     { label: 'Status', value: <AdminChip tone={statusTone[user.status]}>{statusLabels[user.status]}</AdminChip> },
                     { label: 'Joined', value: formatAdminDate(user.createdAt) },
-                    { label: 'Email', value: user.email ?? (deleted ? '—' : 'None') },
+                    {
+                      label: 'Email',
+                      value: signInMethodsLabel(user)
+                        ? <>{user.email ?? (deleted ? '—' : 'None')}<span className="block text-xs text-muted">{signInMethodsLabel(user)}</span></>
+                        : user.email ?? (deleted ? '—' : 'None'),
+                    },
                   ]}
                   actions={[
                     { kind: 'link', href: `/admin/users/${user.id}`, label: deleted ? 'View deletion record' : 'Manage user', icon: <UserCog aria-hidden="true" /> },
@@ -239,7 +245,10 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
                           </div>
                         </div>
                       </td>
-                      <td className="truncate px-4 py-2.5 text-navy-900" title={user.email ?? undefined}>{user.email ?? (deleted ? '—' : 'No email retained')}</td>
+                      <td className="truncate px-4 py-2.5 text-navy-900" title={user.email ?? undefined}>
+                        {user.email ?? (deleted ? '—' : 'No email retained')}
+                        {signInMethodsLabel(user) ? <span className="block truncate text-xs text-muted">{signInMethodsLabel(user)}</span> : null}
+                      </td>
                       <td className="px-4 py-2.5"><AdminChip tone={statusTone[user.status]}>{statusLabels[user.status]}</AdminChip></td>
                       <td className="whitespace-nowrap px-4 py-2.5 text-muted">{formatAdminDate(user.createdAt)}</td>
                       <td className="px-4 py-2.5 text-right">

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from '@/features/admin/mfa-gate'
 import { organizationAccessRequestRepository } from './access-request-repository'
 import { organizationWorkspaceRepository } from './workspace-repository'
 import { COMPANY_ACCESS_REQUEST_ROLES, type CompanyAccessRequestRole } from './types'
@@ -65,6 +66,7 @@ export async function decideOrganizationAccessRequest(input: {
 
   try {
     const user = await requireAwsUser()
+    if (await adminActionMfaMissing(user.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
     const result = await organizationAccessRequestRepository.decide(user.id, {
       requestId: parsed.data.requestId,
       decision: parsed.data.decision,

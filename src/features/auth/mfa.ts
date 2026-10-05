@@ -1,7 +1,7 @@
 import { CognitoApiError, type CognitoSoftwareTokenVerification, type CognitoUserMfaSettings } from '@/lib/auth/cognito-api'
 import { safeAdminReturnPath } from '@/lib/auth/admin-mfa-paths'
 import { normalizeAuthenticatorCode } from './mfa-sign-in'
-import { isPhoneLoginEmail } from './phone-auth-admin'
+import { isPhoneLoginEmail } from './phone-login-email'
 
 /**
  * Round 14 (2.11): optional authenticator-app (TOTP) MFA for email/password members, required for

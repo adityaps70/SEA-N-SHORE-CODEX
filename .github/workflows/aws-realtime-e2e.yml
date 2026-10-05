@@ -149,13 +149,6 @@ jobs:
           set -euo pipefail
           [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$GITHUB_SHA" ]] || { echo 'Branch moved; refusing stale Realtime E2E.' >&2; exit 1; }
 
-      - name: Verify live staging endpoints
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
-
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
@@ -167,6 +160,18 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
+
+      # Round 15: after the AWS credentials, so the deep health check can send its token.
+      - name: Verify live staging endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
+          HEALTH_HEADER_FILE="$(mktemp)"
+          trap 'rm -f -- "$HEALTH_HEADER_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+          source scripts/aws/health-check-token-header.sh
+          write_health_check_header "$HEALTH_HEADER_FILE"
+          curl -fsS --retry 3 --retry-delay 2 -H "@$HEALTH_HEADER_FILE" "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
 
       - name: Discover bootstrap instance
         shell: bash
@@ -295,13 +300,6 @@ jobs:
           set -euo pipefail
           [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$GITHUB_SHA" ]] || { echo 'Branch moved; refusing stale Realtime connect probe.' >&2; exit 1; }
 
-      - name: Verify live staging endpoints
-        shell: bash
-        run: |
-          set -euo pipefail
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
-          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
-
       - name: Configure AWS credentials with GitHub OIDC
         uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
@@ -313,6 +311,18 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$(aws sts get-caller-identity --query Account --output text)" == 310356785722 ]]
+
+      # Round 15: after the AWS credentials, so the deep health check can send its token.
+      - name: Verify live staging endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --retry-delay 2 "$SITE_URL/" >/dev/null
+          HEALTH_HEADER_FILE="$(mktemp)"
+          trap 'rm -f -- "$HEALTH_HEADER_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
+          source scripts/aws/health-check-token-header.sh
+          write_health_check_header "$HEALTH_HEADER_FILE"
+          curl -fsS --retry 3 --retry-delay 2 -H "@$HEALTH_HEADER_FILE" "$SITE_URL/api/health/home" | jq -e '.status == "ok"' >/dev/null
 
       - name: Discover bootstrap instance
         shell: bash

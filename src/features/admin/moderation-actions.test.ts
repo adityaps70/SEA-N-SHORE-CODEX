@@ -6,13 +6,20 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
 }))
 
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('./repository', () => ({
-  adminRepository: { moderateContent: mocks.moderateContent },
+  adminRepository: { isPlatformAdministrator: adminMfa.isPlatformAdministrator, moderateContent: mocks.moderateContent },
 }))
 
 import { moderateContent } from './actions'
+import { ADMIN_MFA_REQUIRED_MESSAGE } from './mfa-gate'
 
 const targetId = '22222222-2222-4222-8222-222222222222'
 
@@ -21,6 +28,13 @@ describe('admin moderation actions', () => {
     vi.clearAllMocks()
     mocks.requireAwsUser.mockResolvedValue({ id: 'admin-1' })
     mocks.moderateContent.mockResolvedValue(true)
+  })
+
+  it('refuses a platform administrator whose session has not answered an authenticator app', async () => {
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: true })
+    await expect(moderateContent({ targetType: 'post', targetId, action: 'remove', note: 'Spam.' })).resolves.toEqual({ ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE })
+    expect(mocks.moderateContent).not.toHaveBeenCalled()
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
   })
 
   it('requires a note for destructive moderation actions', async () => {

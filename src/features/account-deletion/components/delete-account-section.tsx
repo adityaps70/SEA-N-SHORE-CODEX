@@ -7,7 +7,7 @@ import { DeleteAccountPanel } from './delete-account-panel'
 
 /**
  * Server wrapper: works out, from the member's real data, what deleting the account
- * would do, and how this session confirms it (password, texted code or recent Google sign-in).
+ * would do, and how this session confirms it (password or recent Google sign-in).
  */
 export async function DeleteAccountSection() {
   let plan: AccountDeletionPlan | null = null

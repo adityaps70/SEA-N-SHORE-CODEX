@@ -6,10 +6,13 @@ import {
   type AccountDeletionEffects,
 } from '@/features/account-deletion/service'
 import { adminRepository, type AdminRepository, type AdminUserSummary } from './repository'
+import { AdminSignInControlError } from './sign-in-control-error'
+
+export { AdminSignInControlError }
 
 type AdminUserRepository = Pick<
   AdminRepository,
-  'getAdminUser' | 'setUserAccountStatus' | 'recordUserDeletionAudit'
+  'getAdminUser' | 'listUserSignIns' | 'setUserAccountStatus' | 'recordUserDeletionAudit'
 >
 
 type AccountDeletionRepository = Pick<
@@ -26,8 +29,20 @@ export type AdminIdentityControl = {
 
 type DeleteMediaObject = (key: string) => Promise<void>
 
-function targetUsername(target: AdminUserSummary) {
-  return target.email?.trim() || target.cognitoSubject?.trim() || null
+function isUserNotFound(error: unknown) {
+  return error instanceof Error && error.name === 'UserNotFoundException'
+}
+
+/**
+ * A sign-in whose Cognito user no longer exists cannot be used, so there is nothing to disable,
+ * enable or delete (production has identity rows left from Cognito users replaced since).
+ */
+async function ignoreMissingUser(action: Promise<void>) {
+  try {
+    await action
+  } catch (error) {
+    if (!isUserNotFound(error)) throw error
+  }
 }
 
 function assertControllableTarget(adminId: string, target: AdminUserSummary | null) {
@@ -53,22 +68,32 @@ export function createAdminUserControlService(input: {
     return assertControllableTarget(adminId, await repository.getAdminUser(adminId, targetId))
   }
 
+  /** Every Cognito user of the member (email + password, Google, a re-linked Google...). */
+  async function signInUsernames(adminId: string, target: AdminUserSummary) {
+    const signIns = await repository.listUserSignIns(adminId, target.id)
+    return [...new Set(signIns.map((signIn) => signIn.username))]
+  }
+
   return {
     async suspendAccount(adminId: string, targetId: string, reason: string) {
       const target = await loadTarget(adminId, targetId)
       if (target.status === 'deletion_requested') throw new Error('admin_user_deleted')
 
+      // The database gate first: every request re-checks account_status, whichever sign-in it uses.
       await repository.setUserAccountStatus(adminId, targetId, 'suspended', reason)
 
-      const username = targetUsername(target)
-      if (username) {
+      const usernames = await signInUsernames(adminId, target)
+      const outcomes = await Promise.all(usernames.map(async (username) => {
         const results = await Promise.allSettled([
-          input.identityAdmin.disableUser(username),
-          input.identityAdmin.globalSignOut(username),
+          ignoreMissingUser(input.identityAdmin.disableUser(username)),
+          ignoreMissingUser(input.identityAdmin.globalSignOut(username)),
         ])
-        if (results.some((result) => result.status === 'rejected')) {
-          console.error('[admin_user_cognito_suspend_incomplete]', { targetId })
-        }
+        return results.every((result) => result.status === 'fulfilled')
+      }))
+      const failed = outcomes.filter((ok) => !ok).length
+      if (failed) {
+        console.error('[admin_user_cognito_suspend_incomplete]', { targetId, failed, total: usernames.length })
+        throw new AdminSignInControlError('admin_user_cognito_suspend_incomplete', failed, usernames.length)
       }
       return { ok: true as const }
     },
@@ -77,8 +102,15 @@ export function createAdminUserControlService(input: {
       const target = await loadTarget(adminId, targetId)
       if (target.status !== 'suspended') throw new Error('admin_user_restore_forbidden')
 
-      const username = targetUsername(target)
-      if (username) await input.identityAdmin.enableUser(username)
+      // Every sign-in is enabled before database access returns; if any fails the account stays
+      // suspended (enabling again is harmless), so the member is never half restored.
+      const usernames = await signInUsernames(adminId, target)
+      const results = await Promise.allSettled(usernames.map((username) => ignoreMissingUser(input.identityAdmin.enableUser(username))))
+      const failed = results.filter((result) => result.status === 'rejected').length
+      if (failed) {
+        console.error('[admin_user_cognito_restore_incomplete]', { targetId, failed, total: usernames.length })
+        throw new AdminSignInControlError('admin_user_cognito_restore_incomplete', failed, usernames.length)
+      }
       await repository.setUserAccountStatus(adminId, targetId, 'active', reason)
       return { ok: true as const }
     },
@@ -86,8 +118,8 @@ export function createAdminUserControlService(input: {
     async permanentlyDeleteAccount(adminId: string, targetId: string, reason: string) {
       const target = await loadTarget(adminId, targetId)
       if (target.status === 'deletion_requested') throw new Error('admin_user_deleted')
-      const username = targetUsername(target)
-      if (!username) throw new Error('admin_user_identity_unavailable')
+      const usernames = await signInUsernames(adminId, target)
+      if (!usernames.length) throw new Error('admin_user_identity_unavailable')
 
       // The member deletion service, with the administrator's check instead of a password:
       // the same per-organization plan, auto-renew off first, refunds and notices.
@@ -98,13 +130,30 @@ export function createAdminUserControlService(input: {
         },
         repository: deletionRepository,
         deleteMediaObject: deleteMedia,
-        effects: input.deletionEffects?.() ?? {},
+        // Every sign-in is deleted below, inside the deletion transaction, so the member
+        // deletion's after-commit "other sign-ins" cleanup has nothing left to do.
+        effects: { ...input.deletionEffects?.(), deleteOtherSignIn: undefined },
       })
       try {
         await deletion.deleteVerifiedAccount({
           profileId: targetId,
           cognitoSub: target.cognitoSubject ?? null,
-          deleteIdentity: () => input.identityAdmin.deleteUser(username),
+          deleteIdentity: async () => {
+            // All of the member's Cognito users, so no sign-in is left to re-create a profile.
+            // One already gone counts as deleted (a retry after a partial failure).
+            let failed = 0
+            for (const username of usernames) {
+              try {
+                await ignoreMissingUser(input.identityAdmin.deleteUser(username))
+              } catch {
+                failed += 1
+              }
+            }
+            if (failed) {
+              console.error('[admin_user_cognito_delete_incomplete]', { targetId, failed, total: usernames.length })
+              throw new AdminSignInControlError('admin_user_cognito_delete_incomplete', failed, usernames.length)
+            }
+          },
         })
       } catch (error) {
         if (error instanceof AccountDeletionError && error.code === 'account_deletion_cleanup_failed') throw new Error('admin_user_cleanup_failed')

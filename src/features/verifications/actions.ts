@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
+import { ADMIN_MFA_REQUIRED_MESSAGE, adminActionMfaMissing } from '@/features/admin/mfa-gate'
 import {
   CREATOR_VERIFICATION_TYPES,
   creatorVerificationApplicationSchema,
@@ -133,6 +134,7 @@ export async function reviewCreatorVerificationApplication(
 
   try {
     const user = await requireAwsUser()
+    if (await adminActionMfaMissing(user.id)) return { ok: false, error: ADMIN_MFA_REQUIRED_MESSAGE }
     await creatorVerificationRepository.reviewApplication(
       user.id,
       parsed.data.verificationId,

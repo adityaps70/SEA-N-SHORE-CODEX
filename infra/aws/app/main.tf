@@ -424,6 +424,10 @@ resource "aws_ecs_task_definition" "web" {
         {
           name      = "NEWSLETTER_TOKEN_SECRET"
           valueFrom = aws_secretsmanager_secret.newsletter_token.arn
+        },
+        {
+          name      = "HEALTH_CHECK_TOKEN"
+          valueFrom = aws_secretsmanager_secret.health_check_token.arn
         }
       ]
 
@@ -460,6 +464,7 @@ resource "aws_ecs_task_definition" "web" {
     aws_iam_role_policy.ecs_execution_aurora_secret,
     aws_iam_role_policy.ecs_execution_realtime_ticket_secret,
     aws_iam_role_policy.ecs_execution_newsletter_token_secret,
+    aws_iam_role_policy.ecs_execution_health_check_token_secret,
     aws_iam_role_policy.ecs_task_aurora_secret,
     aws_iam_role_policy.ecs_task_media,
     aws_iam_role_policy.ecs_task_cognito_admin

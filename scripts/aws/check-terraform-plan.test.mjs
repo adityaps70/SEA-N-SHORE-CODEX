@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it } from '../dual-runner.mjs'
 import { evaluateTerraformPlan } from './check-terraform-plan.mjs'
 
 const base = { format_version: '1.2', resource_changes: [] }

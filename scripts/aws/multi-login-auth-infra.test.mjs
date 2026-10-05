@@ -27,9 +27,12 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.match(script, /plan\|apply-once/)
   assert.match(script, /aws_cognito_user_pool\.app/)
   assert.match(script, /aws_cognito_user_pool_client\.web/)
-  assert.match(script, /aws_lambda_function\.cognito_define_auth_challenge/)
-  assert.match(script, /aws_lambda_function\.cognito_create_auth_challenge/)
-  assert.match(script, /aws_lambda_function\.cognito_verify_auth_challenge/)
+  // Round 15: phone/SMS sign-in is retired; the custom auth challenge Lambdas are neither targeted
+  // nor accepted here (sms-retirement-infra removes them), and the live pool must not have them.
+  assert.doesNotMatch(script, /aws_lambda_function\.cognito_(define|create|verify)_auth_challenge|cognito_auth_challenge|otp_limits/)
+  assert.match(script, /\(\.UserPool\.LambdaConfig\.DefineAuthChallenge \/\/ null\) == null/)
+  assert.match(script, /\(\.UserPoolClient\.ExplicitAuthFlows \| index\("ALLOW_CUSTOM_AUTH"\)\) == null/)
+  assert.match(script, /CUSTOM_AUTH_RETIRED_VERIFIED=true/)
   assert.match(script, /aws_cognito_identity_provider\.google/)
   assert.match(script, /cognito-pre-sign-up-link\.mjs/)
   assert.match(script, /aws_lambda_function\.cognito_pre_sign_up_link/)
@@ -126,8 +129,9 @@ test('multi-login auth runner accepts only optional authenticator-app MFA and ve
   assert.match(pool, /software_token_mfa_configuration\s*\{\s*enabled\s*=\s*true\s*\}/)
   assert.doesNotMatch(pool, /mfa_configuration\s*=\s*"(OFF|ON)"/)
   assert.doesNotMatch(pool, /^\s*(sms_configuration|email_mfa_configuration|user_pool_add_ons|user_pool_tier|advanced_security_mode)\b/m)
-  // The web client's sign-in flows are unchanged.
-  assert.match(auth, /"ALLOW_USER_PASSWORD_AUTH",\s*"ALLOW_USER_SRP_AUTH",\s*"ALLOW_CUSTOM_AUTH",\s*"ALLOW_REFRESH_TOKEN_AUTH",/)
+  // Round 15: the web client keeps password, SRP and refresh-token sign-in; custom auth is retired.
+  assert.match(auth, /"ALLOW_USER_PASSWORD_AUTH",\s*"ALLOW_USER_SRP_AUTH",\s*"ALLOW_REFRESH_TOKEN_AUTH",\s*\]/)
+  assert.doesNotMatch(auth, /ALLOW_CUSTOM_AUTH"/)
 
   // Post-apply verification reads the live pool, read-only.
   assert.match(script, /aws cognito-idp get-user-pool-mfa-config --region "\$AWS_REGION" --user-pool-id "\$USER_POOL_ID"/)

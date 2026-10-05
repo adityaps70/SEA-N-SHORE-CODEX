@@ -12,7 +12,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
-vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: mocks.canAccessPlatformAdmin }))
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
+vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: (userId: string) => mocks.canAccessPlatformAdmin(userId) } }))
 vi.mock('./repository', () => ({
   communityRepository: { getMembership: mocks.getMembership, insertAuditEvent: mocks.insertAuditEvent },
 }))
@@ -98,6 +104,16 @@ describe('community media actions: who may change the images', () => {
     await expect(removeCommunityCoverAction(groupForm())).resolves.toEqual({ success: true })
     expect(mocks.uploadCommunityMedia).toHaveBeenCalledWith(groupId, 'icon', expect.anything())
     expect(mocks.removeCommunityMedia).toHaveBeenCalledWith(groupId, 'cover')
+  })
+
+  it('refuses a platform administrator whose session has not answered an authenticator app', async () => {
+    mocks.getMembership.mockResolvedValue(null)
+    mocks.canAccessPlatformAdmin.mockResolvedValue(true)
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false }).mockResolvedValueOnce(null)
+    await expect(uploadCommunityIconAction({}, imageForm())).resolves.toEqual({ error: FORBIDDEN })
+    await expect(removeCommunityCoverAction(groupForm())).resolves.toEqual({ error: FORBIDDEN })
+    expect(mocks.uploadCommunityMedia).not.toHaveBeenCalled()
+    expect(mocks.removeCommunityMedia).not.toHaveBeenCalled()
   })
 
   it('requires a signed-in member before looking at anything', async () => {

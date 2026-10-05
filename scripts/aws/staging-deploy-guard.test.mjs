@@ -154,3 +154,29 @@ test('staging deploy turns ECS Exec off on the web service and verifies it', () 
   assert.match(step, /ECS_EXEC_DISABLED_VERIFIED=true/)
   assert.match(readFileSync('infra/aws/app/main.tf', 'utf8'), /enable_execute_command = false/)
 })
+
+test('Round 15: the web task drops the phone OTP settings and gets HEALTH_CHECK_TOKEN from Secrets Manager', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  // Phone/SMS sign-in is retired: no OTP table or calling-code settings are set any more, and the
+  // copy of the live task definition strips any that are still there.
+  assert.doesNotMatch(workflow, /OTP_LIMITS_TABLE:|ALLOWED_PHONE_CALLING_CODES:|--arg OTP_LIMITS_TABLE|--arg ALLOWED_PHONE_CALLING_CODES/)
+  assert.doesNotMatch(workflow, /\{"name":"OTP_LIMITS_TABLE"|\{"name":"ALLOWED_PHONE_CALLING_CODES"/)
+  assert.match(workflow, /and \.name != "OTP_LIMITS_TABLE"\n\s+and \.name != "ALLOWED_PHONE_CALLING_CODES"/)
+
+  // The secret's ARN is resolved (never its value) before the build, and only for a real deploy.
+  assert.match(workflow, /HEALTH_CHECK_TOKEN_SECRET_NAME: sea-n-shore-staging\/health-check-token\n/)
+  const resolve = workflow.slice(workflow.indexOf('- name: Resolve health check token secret'), workflow.indexOf('- name: Login to Amazon ECR'))
+  assert.match(resolve, /if: env\.DEPLOY_TO_ECS == 'true'/)
+  assert.match(resolve, /aws secretsmanager describe-secret --secret-id "\$HEALTH_CHECK_TOKEN_SECRET_NAME" --query ARN --output text/)
+  assert.match(resolve, /secret:sea-n-shore-staging\/health-check-token-\[A-Za-z0-9\]\{6\}\$/)
+  assert.doesNotMatch(workflow, /get-secret-value|SecretString/)
+  assert.ok(workflow.indexOf('- name: Resolve health check token secret') < workflow.indexOf('Build and push immutable application image'))
+
+  // Web container only, same pattern as AURORA_USER / AURORA_PASSWORD.
+  const web = workflow.slice(workflow.indexOf('- name: Create new ECS task definition revision'), workflow.indexOf('- name: Deploy ECS service and wait for stability'))
+  assert.match(web, /--arg HEALTH_CHECK_TOKEN_SECRET "\$HEALTH_CHECK_TOKEN_SECRET_ARN"/)
+  assert.match(web, /and \.name != "HEALTH_CHECK_TOKEN"/)
+  assert.match(web, /\{"name":"AURORA_PASSWORD","valueFrom":\$AURORA_PASSWORD_SECRET\},\n\s+\{"name":"HEALTH_CHECK_TOKEN","valueFrom":\$HEALTH_CHECK_TOKEN_SECRET\}/)
+  const workers = workflow.slice(workflow.indexOf('- name: Promote event worker task definitions'), workflow.indexOf('- name: Deploy event workers and wait for stability'))
+  assert.doesNotMatch(workers, /HEALTH_CHECK_TOKEN/)
+})

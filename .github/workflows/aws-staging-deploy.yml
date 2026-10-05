@@ -135,9 +135,9 @@ jobs:
       SERVER_ACTION_ALLOWED_ORIGINS: https://seanshore.in,https://d3prih0q6jofyr.cloudfront.net
       # Round 14 (1.6): the site is HTTPS end to end for browsers; no insecure auth cookies.
       AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES: "false"
-      # Round 14 (1.1): phone OTP limits table (shared with the Cognito challenge Lambda) and allowed countries.
-      OTP_LIMITS_TABLE: sea-n-shore-staging-otp-limits
-      ALLOWED_PHONE_CALLING_CODES: "91"
+      # Round 15: phone/SMS sign-in is retired; OTP_LIMITS_TABLE and ALLOWED_PHONE_CALLING_CODES are
+      # removed from the web task. The deep health check token is injected from Secrets Manager.
+      HEALTH_CHECK_TOKEN_SECRET_NAME: sea-n-shore-staging/health-check-token
       AWS_MEDIA_BUCKET: sea-n-shore-staging-310356785722-media
       AURORA_HOST: sea-n-shore-staging-aurora.cluster-cvaiukw021g5.ap-south-1.rds.amazonaws.com
       AURORA_PORT: "5432"
@@ -188,6 +188,22 @@ jobs:
             echo "Commit $GITHUB_SHA is already deployed (${LIVE_IMAGE##*:}); refusing to deploy it again." >&2
             exit 1
           fi
+
+      - name: Resolve health check token secret
+        if: env.DEPLOY_TO_ECS == 'true'
+        run: |
+          set -euo pipefail
+          # Round 15: the web task reads HEALTH_CHECK_TOKEN from this secret (ARN only; the value is
+          # never read here). Fails before the build when the secret or the deploy role's access is
+          # missing: run sms-retirement-infra and bootstrap-budget-retirement first.
+          HEALTH_CHECK_TOKEN_SECRET_ARN="$(aws secretsmanager describe-secret --secret-id "$HEALTH_CHECK_TOKEN_SECRET_NAME" --query ARN --output text)" || {
+            echo "Cannot describe $HEALTH_CHECK_TOKEN_SECRET_NAME; apply the SMS retirement and bootstrap budget retirement runners before deploying." >&2
+            exit 1
+          }
+          [[ "$HEALTH_CHECK_TOKEN_SECRET_ARN" =~ ^arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore-staging/health-check-token-[A-Za-z0-9]{6}$ ]] \
+            || { echo "Unexpected health check token secret ARN." >&2; exit 1; }
+          echo "HEALTH_CHECK_TOKEN_SECRET_ARN=$HEALTH_CHECK_TOKEN_SECRET_ARN" >> "$GITHUB_ENV"
+          echo "HEALTH_CHECK_TOKEN_SECRET_ARN=$HEALTH_CHECK_TOKEN_SECRET_ARN"
 
       - name: Login to Amazon ECR
         id: ecr
@@ -307,8 +323,6 @@ jobs:
             --arg NAME "$ECS_CONTAINER_NAME" \
             --arg SITE "$NEXT_PUBLIC_SITE_URL" \
             --arg ALLOW_INSECURE_HTTP_COOKIES "$AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES" \
-            --arg OTP_LIMITS_TABLE "$OTP_LIMITS_TABLE" \
-            --arg ALLOWED_PHONE_CALLING_CODES "$ALLOWED_PHONE_CALLING_CODES" \
             --arg LIVENESS_CHECK "node -e \"fetch('http://127.0.0.1:3000/api/health/live').then(r=>process.exit(r.status<400?0:1)).catch(()=>process.exit(1))\"" \
             --arg AWS_MEDIA_BUCKET "$AWS_MEDIA_BUCKET" \
             --arg AURORA_HOST "$AURORA_HOST" \
@@ -317,6 +331,7 @@ jobs:
             --arg AURORA_USER_SECRET "$AURORA_USER_SECRET" \
             --arg AURORA_PASSWORD_SECRET "$AURORA_PASSWORD_SECRET" \
             --arg DB_CREDENTIALS_SECRET_ARN "$DB_CREDENTIALS_SECRET_ARN" \
+            --arg HEALTH_CHECK_TOKEN_SECRET "$HEALTH_CHECK_TOKEN_SECRET_ARN" \
             '
             del(
               .taskDefinitionArn,
@@ -353,8 +368,6 @@ jobs:
                       + [
                           {"name":"NEXT_PUBLIC_SITE_URL","value":$SITE},
                           {"name":"AWS_COGNITO_ALLOW_INSECURE_HTTP_COOKIES","value":$ALLOW_INSECURE_HTTP_COOKIES},
-                          {"name":"OTP_LIMITS_TABLE","value":$OTP_LIMITS_TABLE},
-                          {"name":"ALLOWED_PHONE_CALLING_CODES","value":$ALLOWED_PHONE_CALLING_CODES},
                           {"name":"AWS_MEDIA_BUCKET","value":$AWS_MEDIA_BUCKET},
                           {"name":"AURORA_HOST","value":$AURORA_HOST},
                           {"name":"AURORA_PORT","value":$AURORA_PORT},
@@ -368,10 +381,12 @@ jobs:
                         | map(select(
                             .name != "AURORA_USER"
                             and .name != "AURORA_PASSWORD"
+                            and .name != "HEALTH_CHECK_TOKEN"
                           )))
                       + [
                           {"name":"AURORA_USER","valueFrom":$AURORA_USER_SECRET},
-                          {"name":"AURORA_PASSWORD","valueFrom":$AURORA_PASSWORD_SECRET}
+                          {"name":"AURORA_PASSWORD","valueFrom":$AURORA_PASSWORD_SECRET},
+                          {"name":"HEALTH_CHECK_TOKEN","valueFrom":$HEALTH_CHECK_TOKEN_SECRET}
                         ]
                     )
                 else . end

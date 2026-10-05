@@ -261,8 +261,59 @@ describe('platform admin user controls', () => {
       isAdministrator: false,
     })])
     expect(seen[1]?.text).toContain('public.identity_accounts')
-    expect(seen[1]?.text).toContain('lower(coalesce(ia.email')
+    // Any of the member's sign-ins matches, and one representative sign-in is shown per profile.
+    expect(seen[1]?.text).toContain('lower(coalesce(x.email')
+    expect(seen[1]?.text).toContain('left join lateral')
+    expect(seen[1]?.text).not.toMatch(/left join public\.identity_accounts ia\s+on ia\.profile_id/)
     expect(seen[1]?.values).toContain('%member@example.com%')
+  })
+
+  it('shows a member with several sign-ins once, with how many and which kinds', async () => {
+    const repository = createAdminRepository({
+      query: async (text) => {
+        if (text.includes('public.user_roles ur') && !text.includes('is_administrator')) return [{ allowed: true }]
+        return [{ ...userRow, login_methods: '3', login_kinds: ['google', 'email'] }]
+      },
+    })
+
+    const users = await repository.searchUsers(adminId, { query: '', status: 'all', limit: 30 })
+
+    expect(users).toHaveLength(1)
+    expect(users[0]).toEqual(expect.objectContaining({ loginMethods: 3, loginKinds: ['email', 'google'] }))
+  })
+
+  it('picks the representative sign-in deterministically: verified email, then email, then oldest', async () => {
+    const seen: string[] = []
+    const repository = createAdminRepository({
+      query: async (text) => {
+        seen.push(text)
+        if (text.includes('public.user_roles ur') && !text.includes('is_administrator')) return [{ allowed: true }]
+        return [userRow]
+      },
+    })
+
+    await repository.getAdminUser(adminId, targetId)
+
+    expect(seen[1]).toMatch(/order by \(x\.email_verified and x\.email is not null\) desc,\s+\(x\.email is not null\) desc,\s+x\.created_at asc,\s+x\.id asc\s+limit 1/)
+  })
+
+  it('lists every Cognito user of a member for the account controls', async () => {
+    const repository = createAdminRepository({
+      query: async (text) => {
+        if (text.includes('public.user_roles ur')) return [{ allowed: true }]
+        return [
+          { provider_subject: 'sub-email', provider_username: 'f3a1c2d4-0000-4000-8000-000000000001', email: 'member@example.com' },
+          { provider_subject: 'sub-google', provider_username: 'google_1234567890', email: 'member@example.com' },
+          { provider_subject: 'sub-legacy', provider_username: null, email: 'phone-0123456789abcdef0123456789abcdef@auth.seaandshore.in' },
+        ]
+      },
+    })
+
+    await expect(repository.listUserSignIns(adminId, targetId)).resolves.toEqual([
+      { username: 'f3a1c2d4-0000-4000-8000-000000000001', subject: 'sub-email', kind: 'email' },
+      { username: 'google_1234567890', subject: 'sub-google', kind: 'google' },
+      { username: 'sub-legacy', subject: 'sub-legacy', kind: 'phone' },
+    ])
   })
 
   it('excludes deleted tombstones from the normal All users view but allows the explicit deleted-records filter', async () => {
@@ -305,8 +356,10 @@ describe('platform admin user controls', () => {
     })
 
     await expect(repository.countUsers(adminId, { query: 'Meera', status: 'active' })).resolves.toBe(1234)
-    expect(seen[1]?.text).toContain('count(distinct p.id)')
-    expect(seen[1]?.text).toContain('lower(coalesce(ia.email')
+    // One row per profile, so a plain count agrees with the list.
+    expect(seen[1]?.text).toContain('count(*) as total')
+    expect(seen[1]?.text).not.toContain('left join public.identity_accounts')
+    expect(seen[1]?.text).toContain('lower(coalesce(x.email')
     expect(seen[1]?.text).toContain('p.account_status::text = $2')
     expect(seen[1]?.values).toEqual(['%meera%', 'active'])
 

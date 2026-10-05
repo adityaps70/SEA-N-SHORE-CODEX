@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Round 14 Phase 1 guarded infrastructure: phone OTP limits (DynamoDB counters, Lambda limits and
-# country list, topic-proof SNS policy), SMS spend cap + alarm, the ALB liveness health check, and
-# alarms routed to the owner (SMS, OTP cap, Aurora, queues). Targeted plan; only the listed creates
-# and in-place updates are accepted. The public user pool client is not targeted: Cognito rejected
-# a phone-less write_attributes list, so any planned client change is refused.
+# Round 14 Phase 1 guarded infrastructure: the ALB liveness health check and alarms routed to the
+# owner (Aurora, queues). Targeted plan; only the listed creates and in-place updates are accepted.
+# Round 15 retired phone/SMS sign-in: the OTP limits table, the challenge Lambda's SMS/OTP policies,
+# the SMS spend cap and the SMS/OTP alarms left this runner; their removal belongs to
+# scripts/aws/sms-retirement-infra.sh. The public user pool client is not targeted here.
 # The action file holds "plan" or "apply-once".
 set -euo pipefail
 umask 077
@@ -32,7 +32,6 @@ git diff --quiet HEAD -- \
   infra/aws/app/realtime.tf \
   infra/aws/app/social-events.tf \
   infra/aws/app/security-hardening.tf \
-  infra/aws/app/lambda/cognito-create-auth-challenge.mjs \
   scripts/aws/security-hardening-infra.sh \
   scripts/aws/security-hardening-infra-action.txt \
   scripts/aws/security-hardening-infra.test.mjs \
@@ -71,10 +70,6 @@ json.dump({
 }, open(output_path, 'w'))
 PY
 
-echo "== Before =="
-aws sns get-sms-attributes --region "$AWS_REGION" --attributes MonthlySpendLimit DefaultSMSType --output json \
-  | jq -r '"SMS_BEFORE monthly_spend_limit=\(.attributes.MonthlySpendLimit // "unset") default_type=\(.attributes.DefaultSMSType // "unset")"'
-
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" \
   -backend-config="key=$STATE_KEY" \
@@ -82,16 +77,7 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config=use_lockfile=true > "$WORK_DIR/init.log"
 
 TARGETS=(
-  aws_dynamodb_table.otp_limits
-  aws_iam_role_policy.cognito_auth_challenge_otp_limits
-  aws_iam_role_policy.ecs_task_otp_limits
-  aws_iam_role_policy.cognito_auth_challenge_sms
-  aws_lambda_function.cognito_create_auth_challenge
   aws_lb_target_group.app
-  aws_sns_sms_preferences.account
-  aws_cloudwatch_metric_alarm.sms_spend_high
-  aws_cloudwatch_log_metric_filter.otp_global_cap
-  aws_cloudwatch_metric_alarm.otp_global_cap
   aws_cloudwatch_metric_alarm.aurora_cpu_high
   aws_cloudwatch_metric_alarm.aurora_capacity_at_max
   aws_cloudwatch_metric_alarm.aurora_connections_high
@@ -110,16 +96,7 @@ terraform -chdir="$APP_DIR" show -json "$WORK_DIR/hardening.tfplan" > "$WORK_DIR
 python3 - "$WORK_DIR/plan.json" <<'PY'
 import json, sys
 allowed = {
-  'aws_dynamodb_table.otp_limits': {('create',)},
-  'aws_iam_role_policy.cognito_auth_challenge_otp_limits': {('create',)},
-  'aws_iam_role_policy.ecs_task_otp_limits': {('create',)},
-  'aws_iam_role_policy.cognito_auth_challenge_sms': {('update',)},
-  'aws_lambda_function.cognito_create_auth_challenge': {('update',)},
   'aws_lb_target_group.app': {('update',)},
-  'aws_sns_sms_preferences.account': {('create',)},
-  'aws_cloudwatch_metric_alarm.sms_spend_high': {('create',)},
-  'aws_cloudwatch_log_metric_filter.otp_global_cap': {('create',)},
-  'aws_cloudwatch_metric_alarm.otp_global_cap': {('create',)},
   'aws_cloudwatch_metric_alarm.aurora_cpu_high': {('create',)},
   'aws_cloudwatch_metric_alarm.aurora_capacity_at_max': {('create',)},
   'aws_cloudwatch_metric_alarm.aurora_connections_high': {('create',)},
@@ -150,8 +127,6 @@ for r in changes:
         keys = changed_keys(r)
         if set(keys) - {'alarm_actions', 'ok_actions'}:
             raise SystemExit(r['address'] + ' change outside alarm/ok actions refused: ' + ','.join(keys))
-    if r['address'] == 'aws_lambda_function.cognito_create_auth_challenge':
-        print('LAMBDA_CHANGED_KEYS=' + ','.join(changed_keys(r)))
 PY
 
 echo "STATE_SERIAL_BEFORE=$(jq -r '.serial' "$WORK_DIR/state.json")"
@@ -180,12 +155,6 @@ terraform -chdir="$APP_DIR" show -json "$WORK_DIR/after.tfplan" > "$WORK_DIR/pla
   exit 1
 }
 
-aws dynamodb describe-time-to-live --region "$AWS_REGION" --table-name sea-n-shore-staging-otp-limits --output json \
-  | jq -e '.TimeToLiveDescription.AttributeName == "expiresAt" and (.TimeToLiveDescription.TimeToLiveStatus | test("ENABL"))' >/dev/null
-echo "OTP_LIMITS_TABLE_VERIFIED=true"
-aws lambda get-function-configuration --region "$AWS_REGION" --function-name sea-n-shore-staging-cognito-create-auth-challenge --output json \
-  | jq -e '.Environment.Variables.OTP_LIMITS_TABLE == "sea-n-shore-staging-otp-limits" and .Environment.Variables.ALLOWED_PHONE_CALLING_CODES == "91" and .State == "Active"' >/dev/null
-echo "OTP_LAMBDA_VERIFIED=true"
 aws elbv2 describe-target-groups --region "$AWS_REGION" --names sea-n-shore-staging-web --output json \
   | jq -e '.TargetGroups[0].HealthCheckPath == "/api/health/live"' >/dev/null
 # Both targets must stay healthy on the new check.
@@ -201,6 +170,4 @@ for attempt in $(seq 1 30); do
 done
 [[ "$HEALTHY" == true ]] || { echo "Web targets are not healthy on /api/health/live." >&2; exit 1; }
 echo "TARGET_GROUP_LIVENESS_VERIFIED=true"
-aws sns get-sms-attributes --region "$AWS_REGION" --attributes MonthlySpendLimit DefaultSMSType --output json \
-  | jq -r '"SMS_AFTER monthly_spend_limit=\(.attributes.MonthlySpendLimit // "unset") default_type=\(.attributes.DefaultSMSType // "unset")"'
 echo "SECURITY_HARDENING_APPLY_VERIFIED=true"

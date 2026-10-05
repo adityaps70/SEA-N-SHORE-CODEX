@@ -20,6 +20,13 @@ const mocks = vi.hoisted(() => ({
   grantTeamAccess: vi.fn(),
 }))
 
+// Round 15: platform-admin server actions require a session that answered an authenticator app.
+const adminMfa = vi.hoisted(() => ({
+  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
+  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+}))
+vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
+vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: (userId: string) => mocks.canAccessPlatformAdmin(userId) } }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/access/server', () => ({ userCan: mocks.userCan }))
@@ -150,6 +157,15 @@ describe('refundCoursePaymentAction', () => {
     expect(mocks.service.refundOrder).toHaveBeenCalledWith(expect.objectContaining({ actor: { type: 'admin', profileId: userId }, reason: 'admin_refund' }))
   })
 
+  it('does not let a platform admin refund without an authenticator-app session', async () => {
+    mocks.repository.getOrderForManager.mockResolvedValueOnce(null)
+    mocks.canAccessPlatformAdmin.mockResolvedValueOnce(true)
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false })
+    await expect(refundCoursePaymentAction(orderId)).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/Only the course owner/) })
+    expect(mocks.repository.getOrderById).not.toHaveBeenCalled()
+    expect(mocks.service.refundOrder).not.toHaveBeenCalled()
+  })
+
   it('refuses everyone else without touching the gateway', async () => {
     mocks.repository.getOrderForManager.mockResolvedValueOnce(null)
     await expect(refundCoursePaymentAction(orderId)).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/Only the course owner/) })
@@ -171,6 +187,20 @@ describe('openCourseAsTeamMember', () => {
     mocks.repository.isCourseManager.mockResolvedValueOnce(true)
     mocks.grantTeamAccess.mockResolvedValueOnce({ enrollmentId: 'e1', status: 'active' })
     await expect(openCourseAsTeamMember(courseId)).resolves.toEqual({ ok: true, href: '/learn/courses/sire-2-masterclass/learn' })
+    expect(mocks.grantTeamAccess).toHaveBeenCalledWith(userId, courseId)
+  })
+
+  it('opens it for a platform admin only with an authenticator-app session', async () => {
+    mocks.repository.isCourseManager.mockResolvedValueOnce(false)
+    mocks.canAccessPlatformAdmin.mockResolvedValueOnce(true)
+    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false })
+    await expect(openCourseAsTeamMember(courseId)).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/without buying it/) })
+    expect(mocks.grantTeamAccess).not.toHaveBeenCalled()
+
+    mocks.repository.isCourseManager.mockResolvedValueOnce(false)
+    mocks.canAccessPlatformAdmin.mockResolvedValueOnce(true)
+    mocks.grantTeamAccess.mockResolvedValueOnce({ enrollmentId: 'e1', status: 'active' })
+    await expect(openCourseAsTeamMember(courseId)).resolves.toMatchObject({ ok: true })
     expect(mocks.grantTeamAccess).toHaveBeenCalledWith(userId, courseId)
   })
 

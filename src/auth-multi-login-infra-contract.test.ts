@@ -4,17 +4,16 @@ import { describe, expect, it } from 'vitest'
 describe('multi-login Cognito infrastructure contract', () => {
   const auth = fs.readFileSync('infra/aws/app/auth.tf', 'utf8')
   const main = fs.readFileSync('infra/aws/app/main.tf', 'utf8')
-  const defineChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-define-auth-challenge.mjs', 'utf8')
-  const createChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-create-auth-challenge.mjs', 'utf8')
-  const verifyChallenge = fs.readFileSync('infra/aws/app/lambda/cognito-verify-auth-challenge.mjs', 'utf8')
   const preSignUpLink = fs.readFileSync('infra/aws/app/lambda/cognito-pre-sign-up-link.mjs', 'utf8')
   const variables = fs.readFileSync('infra/aws/app/aws-native-variables.tf', 'utf8')
 
-  it('enables custom auth and wires the three Cognito challenge triggers', () => {
-    expect(auth).toMatch(/ALLOW_CUSTOM_AUTH/)
-    expect(auth).toMatch(/define_auth_challenge\s*=\s*aws_lambda_function\.cognito_define_auth_challenge\.arn/)
-    expect(auth).toMatch(/create_auth_challenge\s*=\s*aws_lambda_function\.cognito_create_auth_challenge\.arn/)
-    expect(auth).toMatch(/verify_auth_challenge_response\s*=\s*aws_lambda_function\.cognito_verify_auth_challenge\.arn/)
+  it('Round 15: phone/SMS sign-in is retired, so custom auth and its three challenge triggers are gone', () => {
+    expect(auth).not.toMatch(/"ALLOW_CUSTOM_AUTH"/)
+    expect(auth).not.toMatch(/define_auth_challenge\s*=|create_auth_challenge\s*=|verify_auth_challenge_response\s*=/)
+    expect(auth).not.toMatch(/cognito_(define|create|verify)_auth_challenge|sns:Publish/)
+    for (const lambda of ['define', 'create', 'verify']) {
+      expect(fs.existsSync(`infra/aws/app/lambda/cognito-${lambda}-auth-challenge.mjs`)).toBe(false)
+    }
     expect(auth).toMatch(/pre_sign_up\s*=\s*aws_lambda_function\.cognito_pre_sign_up_link\.arn/)
     expect(auth).toMatch(/cognito-idp\.amazonaws\.com/)
   })
@@ -27,14 +26,6 @@ describe('multi-login Cognito infrastructure contract', () => {
     expect(preSignUpLink).toMatch(/email_verified/)
     expect(auth).toMatch(/cognito-idp:AdminLinkProviderForUser/)
     expect(auth).toMatch(/cognito-idp:ListUsers/)
-  })
-
-  it('limits OTP challenge attempts and sends the code only to the Cognito phone attribute', () => {
-    expect(defineChallenge).toMatch(/session\.length\s*>=\s*3/)
-    expect(createChallenge).toMatch(/request\?\.userAttributes\?\.phone_number/)
-    expect(createChallenge).toMatch(/sns:Publish|PublishCommand/)
-    expect(createChallenge).not.toMatch(/console\.log\([^)]*code/i)
-    expect(verifyChallenge).toMatch(/privateChallengeParameters\?\.answer/)
   })
 
   it('keeps Google federation enabled as the deployed desired state', () => {
