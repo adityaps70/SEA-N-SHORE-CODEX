@@ -476,6 +476,11 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
 
     steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
       - name: Validate staging OIDC configuration
         run: |
           test -n "${{ vars.AWS_ROLE_TO_ASSUME }}" || (echo "Missing staging variable AWS_ROLE_TO_ASSUME" && exit 1)
@@ -503,7 +508,19 @@ jobs:
           INSTANCE_ID: ${{ steps.instance.outputs.instance_id }}
           TRIGGER_SHA: ${{ github.sha }}
         run: |
-          jq -n --arg sha "$TRIGGER_SHA" '{commands:[("runuser -u ssm-user -- bash -lc '\''set -euo pipefail; cd /home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1; git fetch origin feat/aws-native-phase-0-1; git cat-file -e " + $sha + "^{commit}; git reset --hard " + $sha + "; bash scripts/aws/remote-verify.sh'\''") ]}' > /tmp/ssm-parameters.json
+          set -euo pipefail
+          [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" publish "$TRIGGER_SHA" --history
+          python3 - "$TRIGGER_SHA" > /tmp/ssm-parameters.json <<'PYTHON'
+          import json, shlex, sys
+          import os, sys; sys.path.insert(0, os.path.join(os.environ["GITHUB_WORKSPACE"], "scripts", "aws")); from ci_checkout import host_update_worktree
+          sha = sys.argv[1]
+          script = f"""set -euo pipefail
+          {host_update_worktree('/home/ssm-user/SEA-N-SHORE-CODEX/.worktrees/aws-native-phase-0-1', sha)}
+          bash scripts/aws/remote-verify.sh
+          """
+          print(json.dumps({"commands": ["runuser -u ssm-user -- bash -lc " + shlex.quote(script)]}))
+          PYTHON
           COMMAND_ID=$(aws ssm send-command --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --document-name AWS-RunShellScript --comment "Sea N Shore remote verify $TRIGGER_SHA" --timeout-seconds 1800 --parameters file:///tmp/ssm-parameters.json --query 'Command.CommandId' --output text)
           test -n "$COMMAND_ID" || (echo "SSM did not return a command ID." >&2 && exit 1)
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
@@ -527,3 +544,8 @@ jobs:
           FINAL_STATUS=$(jq -r '.Status' /tmp/ssm-result.json)
           echo "SSM final status: $FINAL_STATUS"
           if [ "$FINAL_STATUS" != "Success" ]; then exit 1; fi
+
+      - name: Delete the host checkout bundle
+        if: always()
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup

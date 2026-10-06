@@ -37,7 +37,7 @@ case "$ACTION" in
   *) echo "Unsupported identity cleanup action." >&2; exit 1 ;;
 esac
 if [[ "$ACTION" != "plan" ]]; then
-  [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$IDENTITY_CLEANUP_EXPECTED_SHA" ]]
+  [[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$IDENTITY_CLEANUP_EXPECTED_SHA" ]]
 fi
 
 WORK_DIR="$(mktemp -d /var/tmp/sea-n-shore-identity-cleanup.XXXXXXXX)"

@@ -84,7 +84,7 @@ if [[ "$BASE_SHAPE" == "$BASE_COMPLETE" && "$PRODUCT_SHAPE" == "$PRODUCT_COMPLET
 
 echo "EVENTS_MIGRATION_PLAN_VERIFIED=ADDITIVE_FORWARD_APPLY"
 if [[ "$ACTION" == "plan" ]]; then echo "EVENTS_MIGRATION_PLAN_ONLY_NO_APPLY"; exit 0; fi
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$EVENTS_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$EVENTS_MIGRATION_EXPECTED_SHA" ]]
 
 FILES=()
 COUNTS=()

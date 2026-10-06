@@ -21,7 +21,7 @@ test('events migration is guarded, exact-head and one-shot', () => {
   assert.doesNotMatch(runner, /992382634586/)
   assert.match(runner, /0012_events_engine\.sql/)
   assert.match(runner, /case "\$ACTION" in plan\|apply-once/)
-  assert.match(runner, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(runner, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(runner, /begin-transaction/)
   assert.match(runner, /rollback-transaction/)
   assert.match(runner, /commit-transaction/)

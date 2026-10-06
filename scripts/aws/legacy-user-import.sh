@@ -49,7 +49,7 @@ if [[ "$ACTION" == "plan" ]]; then
 fi
 
 [[ "$OBJECT_PRESENT" == true ]] || { echo "Legacy SQL object has not been uploaded." >&2; exit 1; }
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEGACY_USER_IMPORT_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEGACY_USER_IMPORT_EXPECTED_SHA" ]]
 
 # Ensure the claim bridge exists before the data task runs.
 export LEGACY_PROFILE_CLAIMS_EXPECTED_SHA="$LEGACY_USER_IMPORT_EXPECTED_SHA"

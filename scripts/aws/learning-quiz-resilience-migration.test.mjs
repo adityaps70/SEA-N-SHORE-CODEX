@@ -23,7 +23,7 @@ assert.match(script, /310356785722/)
 assert.match(script, /migrate-once/)
 assert.match(script, /LEARNING_QUIZ_RESILIENCE_MIGRATION_APPLY_VERIFIED=true/)
 assert.match(script, /LEARNING_QUIZ_RESILIENCE_MIGRATION_ALREADY_APPLIED=true/)
-assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
 assert.match(script, /sea-n-shore-learning-quiz-resilience-0021/)
 assert.doesNotMatch(script, /992382634586/)
 

@@ -402,7 +402,7 @@ test('the sea job gate runs against a temporary sea job that is always removed (
   ])
   assert.match(seaJob, /status = 'closed'::public\.job_listing_status/)
   assert.match(seaJob, /ONBOARDING_E2E_TEMP_SEA_JOB_CLEANUP_VERIFIED=true/)
-  assert.match(seaJobSsm, /git checkout --quiet --detach \{sha\}/)
+  assert.match(seaJobSsm, /\{host_checkout\('\$WORK_DIR', sha\)\}/)
   assert.match(seaJobSsm, /bash scripts\/aws\/onboarding-e2e-sea-job\.sh \{mode\}/)
 })
 
@@ -431,7 +431,7 @@ test('the feed proof posts of a run are always removed, by exact body and exact 
   assert.match(proof, /-le 2 \]\]/)
   assert.match(proof, /Stale feed proof run ids must be numeric/)
   assert.ok(stale.split('\n').filter((line) => line && !line.startsWith('#')).every((line) => /^\d+$/.test(line)))
-  assert.match(proofSsm, /git checkout --quiet --detach \{sha\}/)
+  assert.match(proofSsm, /\{host_checkout\('\$WORK_DIR', sha\)\}/)
   assert.match(proofSsm, /bash scripts\/aws\/onboarding-e2e-feed-proof\.sh/)
 })
 

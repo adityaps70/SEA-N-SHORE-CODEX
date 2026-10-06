@@ -38,7 +38,7 @@ test('profile identity migration runner is exact-head, staging-only, explicit-ac
   assert.ok(['plan', 'apply-once'].includes(action), `Unexpected migration action: ${action}`)
   assert.match(runner, /PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA/)
   assert.match(runner, /git rev-parse HEAD/)
-  assert.match(runner, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(runner, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(runner, /310356785722/)
   assert.match(runner, /sea-n-shore-staging-aurora/)
   assert.match(runner, /case "\$ACTION" in plan\|apply-once/)

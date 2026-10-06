@@ -74,7 +74,7 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.match(script, /GOOGLE_VERIFIED_EMAIL_MAPPING_VERIFIED=true/)
   assert.match(script, /sea-n-shore-staging-cognito-pre-sign-up-link/)
   assert.match(script, /\.UserPoolClient\.CallbackURLs \| index\(\$site \+ "\/auth\/google\/callback"\)/)
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   // Cognito account emails through Resend: sender first with a no-send smoke call, then the pool switch.
   assert.match(script, /infra\/aws\/app\/cognito-email-sender\.tf \\/)
   assert.match(script, /infra\/aws\/app\/lambda\/cognito-resend-email-sender\.mjs \\/)

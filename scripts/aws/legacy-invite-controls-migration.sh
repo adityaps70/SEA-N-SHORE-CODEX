@@ -48,7 +48,7 @@ if [[ "$HAS_PREPARED" == "1" ]]; then echo "LEGACY_INVITE_CONTROLS_ALREADY_APPLI
 
 echo "LEGACY_INVITE_CONTROLS_PLAN_VERIFIED=true"
 [[ "$ACTION" == "migrate-once" ]] || { echo "LEGACY_INVITE_CONTROLS_PLAN_ONLY_NO_APPLY"; exit 0; }
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEGACY_INVITE_CONTROLS_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEGACY_INVITE_CONTROLS_EXPECTED_SHA" ]]
 
 TX="$(aws rds-data begin-transaction --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --query transactionId --output text)"
 committed=false

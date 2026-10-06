@@ -38,7 +38,7 @@ case "$ACTION" in
   *) echo "Unsupported signup recovery email action." >&2; exit 1 ;;
 esac
 if [[ "$ACTION" != "plan" ]]; then
-  [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SIGNUP_RECOVERY_EMAIL_EXPECTED_SHA" ]]
+  [[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SIGNUP_RECOVERY_EMAIL_EXPECTED_SHA" ]]
 fi
 
 WORK_DIR="$(mktemp -d /var/tmp/sea-n-shore-signup-recovery-email.XXXXXXXX)"

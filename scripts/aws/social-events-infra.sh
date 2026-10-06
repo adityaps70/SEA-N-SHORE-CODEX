@@ -147,7 +147,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SOCIAL_EVENTS_INFRA_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SOCIAL_EVENTS_INFRA_EXPECTED_SHA" ]]
 [[ "$(aws s3api get-bucket-versioning --bucket "$STATE_BUCKET" --query Status --output text)" == Enabled ]]
 aws ecr describe-images --region "$AWS_REGION" --repository-name sea-n-shore --image-ids "imageTag=$IMAGE_TAG" >/dev/null
 

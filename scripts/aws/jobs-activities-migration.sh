@@ -115,7 +115,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$JOBS_ACTIVITIES_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$JOBS_ACTIVITIES_MIGRATION_EXPECTED_SHA" ]]
 
 mapfile -t STATEMENT_B64 < <(python3 - "$MIGRATION_FILE" <<'PY'
 import base64, re, sys

@@ -54,7 +54,7 @@ test('the runner is guarded, transactional and verifies the column', () => {
   assert.match(script, /table_name='event_outbox' AND column_name='claimed_until' AND data_type='timestamp with time zone' AND is_nullable='YES' AND column_default IS NULL/)
   assert.match(script, /applied\(\)\{ \[\[ "\$\(count "\$COLUMN_SQL"\)" == "1" \]\]; \}/)
   assert.match(script, /public\.event_outbox \(migration 0003\) is missing; refusing to apply/)
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1 \| cut -f1\)" == "\$EVENT_OUTBOX_LEASE_EXPECTED_SHA"/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1 \| cut -f1\)" == "\$EVENT_OUTBOX_LEASE_EXPECTED_SHA"/)
   assert.match(script, /trap cleanup EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM/)
   // The apply happens after the plan gate, inside the transaction, and is verified after commit.
   const planGate = script.indexOf('[[ "$ACTION" == "migrate-once" ]]')

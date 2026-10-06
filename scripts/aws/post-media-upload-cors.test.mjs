@@ -80,7 +80,7 @@ test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and
   assert.match(workflow, /head_sha=\$\{GITHUB_SHA\}/)
   assert.match(workflow, /Name=tag:Name,Values=sea-n-shore-bootstrap/)
   assert.match(workflow, /AWS-RunShellScript/)
-  assert.match(workflow, /git checkout --quiet --detach \{sha\}/)
+  assert.match(workflow, /\{host_checkout\('\$WORK_DIR', sha\)\}/)
   assert.match(workflow, /GITHUB_DEPLOY_IAM_EXPECTED_SHA=\{sha\}/)
   assert.match(workflow, /bash scripts\/aws\/github-deploy-iam\.sh/)
 
@@ -94,7 +94,7 @@ test('live GitHub deploy IAM reconciliation is exact-head gated, SSM-routed, and
   assert.match(script, /s3:GetBucketCORS/)
   assert.match(script, /sea-n-shore-staging-\$\{EXPECTED_ACCOUNT\}-media/)
   assert.match(script, /aws iam put-role-policy/)
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(script, /GITHUB_DEPLOY_IAM_PLAN_ONLY_NO_WRITE/)
   assert.match(script, /GITHUB_DEPLOY_IAM_ALREADY_RECONCILED/)
   assert.doesNotMatch(script, /"s3:\*"/)

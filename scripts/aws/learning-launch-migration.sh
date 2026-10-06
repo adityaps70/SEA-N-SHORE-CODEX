@@ -102,7 +102,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEARNING_LAUNCH_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEARNING_LAUNCH_MIGRATION_EXPECTED_SHA" ]]
 
 FILES=()
 [[ "$APPLY_QUIZ" == true ]] && FILES+=("$QUIZ_MIGRATION")

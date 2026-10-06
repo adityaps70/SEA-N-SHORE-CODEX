@@ -20,7 +20,7 @@ test('web resilience runner is guarded, targeted and refuses anything outside it
   assert.match(script, /'aws_appautoscaling_policy\.memory': \{\('create',\)\}/)
   assert.match(script, /'aws_appautoscaling_target\.web': \{\('update',\)\}/)
   assert.doesNotMatch(script, /aws_ecs_service\.web|aws_ecs_task_definition\.web\b(?!')|aws_lb\.app/)
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(script, /STATE_BACKUP_VERSION/)
   assert.match(script, /Web resilience resources still drift after apply/)
   assert.match(script, /WEB_SCALING_VERIFIED min=2 max=4 policies=cpu,memory/)

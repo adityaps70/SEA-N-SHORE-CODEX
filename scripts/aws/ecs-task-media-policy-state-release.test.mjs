@@ -41,7 +41,7 @@ test('ECS task media policy has a single-resource guarded Terraform state-import
   assert.match(script, /\$changes\[0\]\.change\.actions == \["create"\]/)
   assert.match(script, /ECS_TASK_MEDIA_POLICY_STATE_PLAN_VERIFIED=IMPORT_ONLY/)
   assert.match(script, /ECS_TASK_MEDIA_POLICY_STATE_PLAN_ONLY_NO_IMPORT/)
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(script, /get-bucket-versioning/)
   assert.match(script, /STATE_BACKUP_VERSION=/)
   assert.match(script, /terraform[^\n]+import/)

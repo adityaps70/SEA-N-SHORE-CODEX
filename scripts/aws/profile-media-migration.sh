@@ -65,7 +65,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$PROFILE_MEDIA_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$PROFILE_MEDIA_MIGRATION_EXPECTED_SHA" ]]
 SQL="$(cat "$MIGRATION_FILE")"
 aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" \
   --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$SQL" >/dev/null

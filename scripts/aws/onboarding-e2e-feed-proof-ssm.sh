@@ -11,17 +11,16 @@ PARAMS_FILE="$(mktemp)"
 RESULT_FILE="$(mktemp)"
 trap 'rm -f -- "$PARAMS_FILE" "$RESULT_FILE"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 
+bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" publish "$TRIGGER_SHA"
 python3 - "$TRIGGER_SHA" "$GITHUB_RUN_ID" > "$PARAMS_FILE" <<'PYTHON'
 import json, shlex, sys
+import os, sys; sys.path.insert(0, os.path.join(os.environ["GITHUB_WORKSPACE"], "scripts", "aws")); from ci_checkout import host_checkout
 sha, run_id = sys.argv[1:]
 script = f"""set -euo pipefail
 umask 077
 WORK_DIR=$(mktemp -d /var/tmp/sea-n-shore-e2e-feed-proof.XXXXXXXX)
 trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$WORK_DIR/repo"
-cd "$WORK_DIR/repo"
-git checkout --quiet --detach {sha}
-test "$(git rev-parse HEAD)" = "{sha}"
+{host_checkout('$WORK_DIR', sha)}
 export ONBOARDING_E2E_EXPECTED_SHA={sha}
 export E2E_RUN_ID={shlex.quote(run_id)}
 bash scripts/aws/onboarding-e2e-feed-proof.sh

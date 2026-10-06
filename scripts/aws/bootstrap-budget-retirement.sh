@@ -214,7 +214,7 @@ if grep -qx 'BOOTSTRAP_BUDGET_RETIREMENT_ALREADY_APPLIED=true' "$WORK_DIR/classi
   exit 1
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_BUDGET_RETIREMENT_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_BUDGET_RETIREMENT_EXPECTED_SHA" ]]
 [[ "$(aws s3api get-bucket-versioning --bucket "$STATE_BUCKET" --query Status --output text)" == Enabled ]]
 STATE_BACKUP_VERSION="$(jq -r '.VersionId // empty' "$STATE_OBJECT")"
 [[ -n "$STATE_BACKUP_VERSION" ]]

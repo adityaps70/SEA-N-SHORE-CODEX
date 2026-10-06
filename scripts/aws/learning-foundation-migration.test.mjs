@@ -31,7 +31,7 @@ test('learning foundation migration is guarded, exact-head and one-shot', () => 
   assert.match(runner, /EXPECTED_TABLES=7/)
   assert.match(runner, /EXPECTED_INDEXES=10/)
   assert.match(runner, /case "\$ACTION" in plan\|apply-once/)
-  assert.match(runner, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(runner, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(runner, /begin-transaction/)
   assert.match(runner, /pg_advisory_xact_lock/)
   assert.match(runner, /rollback-transaction/)
