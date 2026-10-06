@@ -115,7 +115,7 @@ if [[ "$ACTION" == "grow-root-once" ]]; then
     echo "A terraform process is still running as this user; refusing to grow the root volume now." >&2
     exit 1
   fi
-  [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA" ]]
+  [[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA" ]]
   sudo -n true 2>/dev/null || { echo "ssm-user has no passwordless sudo; cannot extend the filesystem." >&2; exit 1; }
   [[ "$ROOT_VOLUME_ID" == vol-* ]] || { echo "Could not identify the root volume." >&2; exit 1; }
   CURRENT_GB="$(jq -r '.size // 0' <<<"$ROOT_VOLUME_JSON")"
@@ -162,7 +162,7 @@ if [[ "$ACTION" == "swap-once" ]]; then
     echo "A terraform process is still running as this user; refusing to add swap now." >&2
     exit 1
   fi
-  [[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA" ]]
+  [[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA" ]]
   sudo -n true 2>/dev/null || { echo "ssm-user has no passwordless sudo; cannot add swap." >&2; exit 1; }
   if swap_active; then
     echo "BOOTSTRAP_SWAP_ALREADY_PRESENT=true"
@@ -204,7 +204,7 @@ if pgrep -u "$(id -u)" -x terraform >/dev/null 2>&1; then
   echo "A terraform process is still running as this user; refusing cleanup." >&2
   exit 1
 fi
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA" ]]
 
 for path in "${CANDIDATES[@]}"; do
   rm -rf -- "$path"

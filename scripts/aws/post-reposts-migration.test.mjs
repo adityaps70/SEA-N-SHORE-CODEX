@@ -27,7 +27,7 @@ test('post repost migration is guarded, exact-head and one-shot', () => {
   assert.doesNotMatch(runner, /992382634586/)
   assert.match(runner, /0015_post_reposts\.sql/)
   assert.match(runner, /case "\$ACTION" in plan\|apply-once/)
-  assert.match(runner, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(runner, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(runner, /ENUM_VALUES/)
   assert.match(runner, /REPOST_COLUMN/)
   assert.match(runner, /REPOST_CONSTRAINTS/)

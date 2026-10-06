@@ -88,7 +88,7 @@ if pgrep -u "$(id -u)" -x terraform >/dev/null 2>&1; then
   echo "A terraform process is still running on this instance; refusing to release the lock." >&2
   exit 1
 fi
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$TERRAFORM_STATE_UNLOCK_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$TERRAFORM_STATE_UNLOCK_EXPECTED_SHA" ]]
 
 terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" \

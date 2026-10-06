@@ -155,7 +155,7 @@ else
     exit 1
   }
 fi
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$EDGE_AUDIT_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$EDGE_AUDIT_EXPECTED_SHA" ]]
 [[ "$(aws s3api get-bucket-versioning --bucket "$STATE_BUCKET" --query Status --output text)" == Enabled ]]
 echo "STATE_BACKUP_VERSION=$(jq -r '.VersionId' "$RECOVERY_DIR/object.json")"
 jq -e '.VersionId != null' "$RECOVERY_DIR/object.json" >/dev/null

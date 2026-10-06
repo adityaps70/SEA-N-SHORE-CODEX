@@ -179,7 +179,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-REMOTE_HEAD="$(git ls-remote origin "refs/heads/$EXPECTED_BRANCH" | cut -f1)"
+REMOTE_HEAD="$(bash scripts/aws/branch-head.sh "refs/heads/$EXPECTED_BRANCH" | cut -f1)"
 [[ "$REMOTE_HEAD" == "$POST_MEDIA_VIDEO_MIGRATION_EXPECTED_SHA" ]] || {
   echo "Feature branch moved after this migration run was triggered; refusing apply." >&2
   exit 1

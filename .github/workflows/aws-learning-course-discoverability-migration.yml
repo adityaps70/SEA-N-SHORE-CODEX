@@ -197,17 +197,16 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$TRIGGER_SHA" =~ ^[0-9a-f]{40}$ ]]
+          bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" publish "$TRIGGER_SHA"
           python3 - "$TRIGGER_SHA" > /tmp/ssm-parameters.json <<'PYTHON'
           import json, shlex, sys
+          import os, sys; sys.path.insert(0, os.path.join(os.environ["GITHUB_WORKSPACE"], "scripts", "aws")); from ci_checkout import host_checkout
           sha = sys.argv[1]
           script = f"""set -euo pipefail
           umask 077
           WORK_DIR=$(mktemp -d /var/tmp/sea-n-shore-learning-course-discoverability.XXXXXXXX)
           trap 'rm -rf -- "$WORK_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
-          git clone --quiet --single-branch --branch feat/aws-native-phase-0-1 https://github.com/adityaps70/SEA-N-SHORE-CODEX.git "$WORK_DIR/repo"
-          cd "$WORK_DIR/repo"
-          git checkout --quiet --detach {sha}
-          test "$(git rev-parse HEAD)" = "{sha}"
+          {host_checkout('$WORK_DIR', sha)}
           export LEARNING_COURSE_DISCOVERABILITY_MIGRATION_EXPECTED_SHA={sha}
           export AWS_REGION=ap-south-1
           bash scripts/aws/learning-course-discoverability-migration.sh
@@ -240,3 +239,8 @@ jobs:
           [[ "$FINAL_STATUS" == Success ]]
           STDOUT_CONTENT=$(jq -r '.StandardOutputContent // empty' /tmp/result.json)
           grep -q 'LEARNING_COURSE_DISCOVERABILITY_MIGRATION_APPLY_VERIFIED=true\|LEARNING_COURSE_DISCOVERABILITY_MIGRATION_ALREADY_APPLIED=true' <<<"$STDOUT_CONTENT"
+
+      - name: Delete the host checkout bundle
+        if: always()
+        shell: bash
+        run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup

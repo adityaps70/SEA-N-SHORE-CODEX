@@ -287,7 +287,7 @@ if grep -qx 'SMS_RETIREMENT_ALREADY_APPLIED=true' "$WORK_DIR/classify.out"; then
   exit 1
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SMS_RETIREMENT_INFRA_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SMS_RETIREMENT_INFRA_EXPECTED_SHA" ]]
 [[ "$(aws s3api get-bucket-versioning --bucket "$STATE_BUCKET" --query Status --output text)" == Enabled ]]
 STATE_BACKUP_VERSION="$(jq -r '.VersionId // empty' "$WORK_DIR/object.json")"
 [[ -n "$STATE_BACKUP_VERSION" ]]

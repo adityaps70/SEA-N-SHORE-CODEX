@@ -72,7 +72,7 @@ if [[ "$ACTION" == "plan" ]]; then
   echo "LEARNING_LMS_PHASE_2A_MIGRATION_PLAN_ONLY_NO_APPLY"
   exit 0
 fi
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEARNING_LMS_PHASE_2A_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$LEARNING_LMS_PHASE_2A_MIGRATION_EXPECTED_SHA" ]]
 
 mapfile -t STATEMENT_B64 < <(python3 - "$MIGRATION" <<'PY'
 import base64, re, sys

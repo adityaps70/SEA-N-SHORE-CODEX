@@ -167,7 +167,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$MEMBERSHIP_ACCESS_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$MEMBERSHIP_ACCESS_MIGRATION_EXPECTED_SHA" ]]
 
 if [[ "$FOUNDATION_BEFORE" == "$FOUNDATION_EMPTY" ]]; then
   apply_migration_file "$FOUNDATION_MIGRATION" "sea-n-shore-membership-access-0032" 20

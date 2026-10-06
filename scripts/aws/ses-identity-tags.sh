@@ -119,7 +119,7 @@ fi
   echo "Live SES identity tags are not the observed empty set; refusing bounded tag reconciliation." >&2
   exit 1
 }
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SES_IDENTITY_TAGS_EXPECTED_SHA" ]] || {
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$SES_IDENTITY_TAGS_EXPECTED_SHA" ]] || {
   echo "Branch head moved before SES identity tag reconciliation." >&2
   exit 1
 }

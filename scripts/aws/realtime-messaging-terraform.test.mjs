@@ -274,7 +274,7 @@ test('realtime infrastructure release is bounded, guarded, and executed through 
   assert.match(script, /realtime-infra-action\.txt/)
   assert.match(script, /realtime-infra-plan-classifier\.mjs/)
   assert.match(script, /plan\|apply-once/)
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(script, /terraform[^\n]+init/)
   assert.doesNotMatch(script, /-plugin-dir/)
   assert.doesNotMatch(script, /-lockfile=readonly/)

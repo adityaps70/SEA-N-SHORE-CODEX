@@ -98,7 +98,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA" ]]
 
 TX_ID="$(aws rds-data begin-transaction --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" \
   --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --query transactionId --output text)"

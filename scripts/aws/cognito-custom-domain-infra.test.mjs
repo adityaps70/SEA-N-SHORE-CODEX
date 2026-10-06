@@ -48,7 +48,7 @@ test('Cognito custom domain auth.seanshore.in has a guarded create-only release 
   assert.match(script, /COGNITO_PREFIX_DOMAIN_KEPT=true/)
   assert.match(script, /COGNITO_CUSTOM_DOMAIN_ALIAS_RECORDS_VERIFIED=true/)
   assert.match(script, /COGNITO_CUSTOM_DOMAIN_APPLY_VERIFIED=true/)
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(script, /get-bucket-versioning/)
   assert.doesNotMatch(script, /-auto-approve/)
   assert.doesNotMatch(script, /aws ecs (update-service|register-task-definition)/)

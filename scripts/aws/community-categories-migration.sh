@@ -54,7 +54,7 @@ echo "COMMUNITY_CATEGORIES_EXISTING_CATEGORY_NAMES=$(category_names)"
 
 echo "COMMUNITY_CATEGORIES_PLAN_VERIFIED=true"
 [[ "$ACTION" == "migrate-once" ]] || { echo "COMMUNITY_CATEGORIES_PLAN_ONLY_NO_APPLY=true"; exit 0; }
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$COMMUNITY_CATEGORIES_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$COMMUNITY_CATEGORIES_EXPECTED_SHA" ]]
 
 TX="$(aws rds-data begin-transaction --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --query transactionId --output text)"
 committed=false

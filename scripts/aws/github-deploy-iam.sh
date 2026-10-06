@@ -286,7 +286,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-REMOTE_SHA="$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | awk '{print $1}')"
+REMOTE_SHA="$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | awk '{print $1}')"
 [[ "$REMOTE_SHA" == "$EXPECTED_SHA" ]] || { echo "Feature branch moved; refusing IAM mutation." >&2; exit 1; }
 
 aws iam put-role-policy \

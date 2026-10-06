@@ -36,7 +36,7 @@ test('the bootstrap runner is guarded like the app-stack runners and finds its s
   const applyAt = script.indexOf('apply -input=false -no-color "$WORK_DIR/bootstrap.tfplan"')
   assert.ok(applyAt > 0)
   assert.ok(script.indexOf('BOOTSTRAP_BUDGET_RETIREMENT_PLAN_ONLY_NO_APPLY') < applyAt)
-  assert.ok(script.indexOf('git ls-remote origin refs/heads/feat/aws-native-phase-0-1') < applyAt)
+  assert.ok(script.indexOf('bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1') < applyAt)
   assert.ok(script.indexOf('STATE_BACKUP_VERSION=') < applyAt)
   // Never touches the console budget or the anomaly subscription.
   assert.doesNotMatch(script, /aws budgets (create|update|delete)-|aws ce |anomaly-(monitor|subscription)/i)

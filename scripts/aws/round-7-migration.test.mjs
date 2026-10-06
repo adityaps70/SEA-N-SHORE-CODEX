@@ -38,7 +38,7 @@ assert.match(script, /sea_n_shore_applied_migrations/)
 assert.match(script, /ROUND_7_MIGRATION_PLAN_ONLY_NO_APPLY/)
 assert.match(script, /ROUND_7_MIGRATION_APPLY_VERIFIED=true/)
 assert.match(script, /ROUND_7_MIGRATION_ALREADY_APPLIED=true/)
-assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
 
 assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
 assert.match(workflow, /Guard migration against a moved branch/)

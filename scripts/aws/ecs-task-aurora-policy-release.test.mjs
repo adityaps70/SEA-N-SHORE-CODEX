@@ -33,7 +33,7 @@ test('ECS task Aurora runtime policy has a single-resource guarded Terraform rel
   assert.match(script, /\$changes\[0\]\.address == \$resource/)
   assert.match(script, /\$changes\[0\]\.change\.actions == \["create"\]/)
   assert.match(script, /terraform[^\n]+apply/)
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   assert.match(script, /get-bucket-versioning/)
   assert.match(script, /STATE_BACKUP_VERSION=/)
   assert.match(script, /aws iam get-role-policy/)

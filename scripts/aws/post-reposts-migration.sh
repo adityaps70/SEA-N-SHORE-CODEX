@@ -99,7 +99,7 @@ if [[ "$ACTION" == "plan" ]]; then
   exit 0
 fi
 
-[[ "$(git ls-remote origin refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$POST_REPOSTS_MIGRATION_EXPECTED_SHA" ]]
+[[ "$(bash scripts/aws/branch-head.sh refs/heads/feat/aws-native-phase-0-1 | cut -f1)" == "$POST_REPOSTS_MIGRATION_EXPECTED_SHA" ]]
 
 if [[ "$ENUM_VALUES" == "0" ]]; then
   aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" \

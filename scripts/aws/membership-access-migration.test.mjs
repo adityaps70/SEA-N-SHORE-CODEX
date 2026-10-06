@@ -41,7 +41,7 @@ assert.match(script, /MEMBERSHIP_ACCESS_MIGRATION_APPLY_VERIFIED=true/)
 assert.match(script, /MEMBERSHIP_ACCESS_MIGRATION_ALREADY_APPLIED=true/)
 assert.match(script, /legacy_organization_conversions/)
 assert.match(script, /COMPLETE="5\/5\/4"/)
-assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
 
 assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
 assert.match(workflow, /Guard migration against a moved branch/)

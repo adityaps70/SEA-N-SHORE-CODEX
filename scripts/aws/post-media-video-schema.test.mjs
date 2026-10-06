@@ -66,7 +66,7 @@ test('post media video migration execution is branch-scoped and safe by default'
   assert.match(guard, /git remote get-url origin/)
   assert.match(guard, /https:\/\/github\.com\/adityaps70\/SEA-N-SHORE-CODEX\.git/)
   assert.match(guard, /plan\|apply-once/)
-  assert.match(guard, /git ls-remote origin "refs\/heads\/\$EXPECTED_BRANCH"/)
+  assert.match(guard, /bash scripts\/aws\/branch-head\.sh "refs\/heads\/\$EXPECTED_BRANCH"/)
   assert.match(guard, /aws rds-data begin-transaction/)
   assert.match(guard, /pg_get_constraintdef/)
   assert.match(guard, /POST_MEDIA_VIDEO_MIGRATION_APPLY_VERIFIED=true/)

@@ -46,7 +46,7 @@ test('the runner is guarded, transactional and verifies the table and both index
   assert.match(script, /auth_email_events_action_ip_created_idx/)
   assert.match(script, /trap cleanup EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM/)
   // Applying is allowed only from the exact pushed head, and is verified after commit.
-  assert.match(script, /git ls-remote origin refs\/heads\/feat\/aws-native-phase-0-1/)
+  assert.match(script, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
   const commitAt = script.indexOf('commit-transaction')
   const verifyAt = script.indexOf('AUTH_EMAIL_LIMITS_APPLY_VERIFIED=true')
   assert.ok(commitAt > 0 && verifyAt > commitAt, 'the apply must be verified after the commit')
