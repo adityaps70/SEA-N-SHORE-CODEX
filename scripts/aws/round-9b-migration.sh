@@ -16,7 +16,7 @@ MIGRATIONS=(
   "infra/aws/database/migrations/0056_community_tagging_notifications.sql"
 )
 
-[[ "${ROUND_9B_MIGRATION_EXPECTED_SHA:-}" =~ ^[0-9b-f]{40}$ ]] || {
+[[ "${ROUND_9B_MIGRATION_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "ROUND_9B_MIGRATION_EXPECTED_SHA must be an exact commit SHA." >&2
   exit 1
 }

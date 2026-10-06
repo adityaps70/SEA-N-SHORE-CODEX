@@ -13,3 +13,20 @@ test('edge state audit treats the two repository CloudFront Functions as support
   assert.match(script, /sea-n-shore-staging-legacy-domain-redirect/)
   assert.match(script, /LIVE=true id=\$id name=\$live_name/)
 })
+
+test('edge state audit has a read-only live check for every CloudFront/WAF resource type the app declares', async () => {
+  const script = await read('./audit-edge-state.sh')
+  const { readdir } = await import('node:fs/promises')
+  const appDir = new URL('../../infra/aws/app/', import.meta.url)
+  const types = new Set()
+  for (const name of (await readdir(appDir)).filter((n) => n.endsWith('.tf'))) {
+    for (const m of (await readFile(new URL(name, appDir), 'utf8')).matchAll(/resource "(aws_(?:cloudfront|wafv2)_[a-z_]+)"/g)) types.add(m[1])
+  }
+  assert.ok(types.has('aws_cloudfront_cache_policy'))
+  for (const type of types) assert.match(script, new RegExp(`^    ${type}\\)$`, 'm'), `${type} has no live check`)
+
+  // The cache policy check only reads, and compares id and name with state.
+  assert.match(script, /aws cloudfront get-cache-policy --id "\$id" --output json/)
+  assert.match(script, /\.CachePolicy\.Id == \$id and \.CachePolicy\.CachePolicyConfig\.Name == \$name/)
+  assert.doesNotMatch(script, /aws cloudfront (create|update|delete)-/)
+})

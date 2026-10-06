@@ -66,9 +66,9 @@ with open(output_path,'w') as f:
     json.dump(values,f)
 PY
 
-PLUGIN_DIR="$HOME/SEA-N-SHORE-CODEX/infra/aws/app/.terraform/providers"
-[[ -x "$PLUGIN_DIR/registry.terraform.io/hashicorp/aws/6.62.0/linux_amd64/terraform-provider-aws_v6.62.0_x5" ]]
-terraform -chdir="$APP_DIR" init -input=false -no-color -lockfile=readonly -plugin-dir="$PLUGIN_DIR" \
+# Providers come from the registry like every other app runner (the old persistent-worktree
+# provider cache predates hashicorp/random, so initialising from that local directory failed).
+terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="bucket=$STATE_BUCKET" -backend-config="key=$STATE_KEY" \
   -backend-config="region=$AWS_REGION" -backend-config=use_lockfile=true > "$WORK_DIR/init.log"
 
