@@ -7,11 +7,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 const migration = read('../../infra/aws/database/migrations/0067_people_search_text.sql')
 const script = read('./people-search-text-migration.sh')
-const action = read('./people-search-text-migration-action.txt').trim()
+const action = guardAction(read('./people-search-text-migration-action.txt'))
 const workflow = read('../../.github/workflows/aws-people-search-text-migration.yml')
 const ci = read('../../.github/workflows/aws-infra-ci.yml')
 const repository = read('../../src/features/profiles/repository.ts')

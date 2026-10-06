@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('structured roles migration adds role keys to profiles and jobs and backfills them without destructive SQL', async () => {
   const sql = await readFile(new URL('../../infra/aws/database/migrations/0062_structured_roles.sql', import.meta.url), 'utf8')
@@ -27,7 +28,7 @@ test('structured roles migration adds role keys to profiles and jobs and backfil
   assert.equal(existsSync(scriptUrl), true)
   assert.equal(existsSync(actionUrl), true)
   assert.equal(existsSync(workflowUrl), true)
-  assert.ok(['plan', 'migrate-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
+  assert.ok(['plan', 'migrate-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))))
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /0062_structured_roles\.sql/)

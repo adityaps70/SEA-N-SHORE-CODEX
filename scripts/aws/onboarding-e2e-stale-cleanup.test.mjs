@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const scriptPath = 'scripts/aws/onboarding-e2e-stale-cleanup.sh'
 const actionPath = 'scripts/aws/onboarding-e2e-stale-cleanup-action.txt'
@@ -10,7 +11,7 @@ assert.equal(existsSync(actionPath), true)
 assert.equal(existsSync(workflowPath), true)
 
 const script = readFileSync(scriptPath, 'utf8')
-const action = readFileSync(actionPath, 'utf8').trim()
+const action = guardAction(readFileSync(actionPath, 'utf8'))
 const workflow = readFileSync(workflowPath, 'utf8')
 
 assert.ok(['plan', 'cleanup-once'].includes(action))

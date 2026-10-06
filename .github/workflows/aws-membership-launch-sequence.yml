@@ -137,6 +137,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$(tr -d '[:space:]' < scripts/aws/membership-access-migration-action.txt)" == "plan" ]]
-          [[ "$(tr -d '[:space:]' < scripts/aws/staging-deploy-action.txt)" == "plan" ]]
-          [[ "$(tr -d '[:space:]' < scripts/aws/onboarding-e2e-action.txt)" == "plan" ]]
+          [[ "$(cut -d' ' -f1 < scripts/aws/membership-access-migration-action.txt | tr -d '[:space:]')" == "plan" ]]
+          [[ "$(cut -d' ' -f1 < scripts/aws/staging-deploy-action.txt | tr -d '[:space:]')" == "plan" ]]
+          [[ "$(cut -d' ' -f1 < scripts/aws/onboarding-e2e-action.txt | tr -d '[:space:]')" == "plan" ]]

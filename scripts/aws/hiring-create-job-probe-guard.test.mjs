@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const actionPath = 'scripts/aws/hiring-create-job-probe-action.txt'
 const workflowPath = '.github/workflows/aws-hiring-create-job-probe.yml'
@@ -12,7 +13,7 @@ test('hiring create-job probe is exact-head, staging-only and one-shot guarded',
     assert.equal(existsSync(path), true, `${path} must exist`)
   }
 
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
   const workflow = readFileSync(workflowPath, 'utf8')
   const wrapper = readFileSync(wrapperPath, 'utf8')
 

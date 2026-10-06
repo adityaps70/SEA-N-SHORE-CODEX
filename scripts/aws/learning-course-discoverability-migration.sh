@@ -16,7 +16,7 @@ ACTION_FILE="scripts/aws/learning-course-discoverability-migration-action.txt"
 git diff --quiet HEAD -- "$MIGRATION" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|migrate-once) ;; *) echo "Unsupported learning course discoverability migration action: $ACTION" >&2; exit 1 ;; esac
 
 python3 - "$MIGRATION" <<'PY'

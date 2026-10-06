@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const sql = fs.readFileSync('infra/aws/database/migrations/0020_learning_assignment_grading.sql', 'utf8')
 const script = fs.readFileSync('scripts/aws/learning-lms-phase-2a-migration.sh', 'utf8')
-const guard = fs.readFileSync('scripts/aws/learning-lms-phase-2a-migration-action.txt', 'utf8').trim()
+const guard = guardAction(fs.readFileSync('scripts/aws/learning-lms-phase-2a-migration-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-learning-lms-phase-2a-migration.yml', 'utf8')
 
 assert.ok(['plan', 'migrate-once'].includes(guard))

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('seanshore.in AWS bootstrap has a guarded create-only release path', async () => {
   const tfUrl = new URL('../../infra/aws/app/seanshore_domain.tf', import.meta.url)
@@ -13,7 +14,7 @@ test('seanshore.in AWS bootstrap has a guarded create-only release path', async 
   assert.equal(existsSync(scriptUrl), true)
   assert.equal(existsSync(actionUrl), true)
   assert.equal(existsSync(workflowUrl), true)
-  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
+  assert.ok(['plan', 'apply-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))))
 
   const tf = await readFile(tfUrl, 'utf8')
   assert.match(tf, /aws_route53_zone" "seanshore"/)

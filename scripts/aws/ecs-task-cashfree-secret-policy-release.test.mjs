@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const SECRET_PATTERN = 'arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore/staging/cashfree*'
 
@@ -24,7 +25,7 @@ test('ECS task Cashfree secret policy has a guarded single-resource Terraform re
   assert.equal(existsSync(scriptUrl), true, 'missing ECS task Cashfree secret policy runner')
   assert.equal(existsSync(actionUrl), true, 'missing ECS task Cashfree secret policy action guard')
   assert.equal(existsSync(workflowUrl), true, 'missing ECS task Cashfree secret policy workflow')
-  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()), 'action guard must be plan or apply-once')
+  assert.ok(['plan', 'apply-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))), 'action guard must be plan or apply-once')
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

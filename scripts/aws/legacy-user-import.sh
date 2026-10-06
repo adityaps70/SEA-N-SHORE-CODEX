@@ -21,7 +21,7 @@ ACTION_FILE="scripts/aws/legacy-user-import-action.txt"
 git diff --quiet HEAD -- "$0" "$ACTION_FILE" scripts/migration/beaufortmarine-import.mjs infra/aws/database/migrations/0058_legacy_profile_claims.sql
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 if [[ -n "${LEGACY_USER_IMPORT_ACTION:-}" ]]; then ACTION="$(tr -d '[:space:]' <<<"$LEGACY_USER_IMPORT_ACTION")"; fi
 case "$ACTION" in plan|import-once) ;; *) echo "Unsupported action: $ACTION" >&2; exit 1 ;; esac
 

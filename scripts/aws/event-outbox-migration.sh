@@ -18,7 +18,7 @@ MIGRATION_FILE="infra/aws/database/migrations/0003_event_outbox.sql"
 git diff --quiet HEAD -- "$MIGRATION_FILE" scripts/aws/event-outbox-migration.sh scripts/aws/event-outbox-migration-action.txt
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < scripts/aws/event-outbox-migration-action.txt)"
+ACTION="$(cut -d' ' -f1 < scripts/aws/event-outbox-migration-action.txt | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported event outbox migration action." >&2; exit 1 ;; esac
 
 # Fail closed if the migration ever grows beyond additive schema DDL.

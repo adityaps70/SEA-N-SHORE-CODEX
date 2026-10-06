@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const sql = fs.readFileSync('infra/aws/database/migrations/0024_messaging_rich_media.sql', 'utf8')
 const script = fs.readFileSync('scripts/aws/messaging-rich-migration.sh', 'utf8')
-const guard = fs.readFileSync('scripts/aws/messaging-rich-migration-action.txt', 'utf8').trim()
+const guard = guardAction(fs.readFileSync('scripts/aws/messaging-rich-migration-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-messaging-rich-migration.yml', 'utf8')
 
 assert.ok(['plan', 'migrate-once'].includes(guard))

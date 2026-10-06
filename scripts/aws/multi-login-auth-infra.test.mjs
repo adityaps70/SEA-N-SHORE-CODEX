@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 // Stale state-lock recovery should leave this auth release path plan-safe.
 test('multi-login Cognito infrastructure has a guarded bounded release path', async () => {
@@ -13,7 +14,7 @@ test('multi-login Cognito infrastructure has a guarded bounded release path', as
   assert.equal(existsSync(scriptUrl), true)
   assert.equal(existsSync(actionUrl), true)
   assert.equal(existsSync(workflowUrl), true)
-  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
+  assert.ok(['plan', 'apply-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))))
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

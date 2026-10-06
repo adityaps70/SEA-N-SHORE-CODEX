@@ -9,7 +9,7 @@ CLUSTER_ID="sea-n-shore-staging-aurora"
 DATABASE_NAME="sea_n_shore"
 POOL_NAME="sea-n-shore-staging-users"
 TEST_EMAIL_REGEX='^sea-n-shore-.*@example[.]com$'
-ACTION="$(tr -d '[:space:]' < scripts/aws/staging-data-cleanup-action.txt)"
+ACTION="$(cut -d' ' -f1 < scripts/aws/staging-data-cleanup-action.txt | tr -d '[:space:]')"
 
 [[ "${STAGING_DATA_CLEANUP_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "STAGING_DATA_CLEANUP_EXPECTED_SHA must be an exact commit SHA." >&2

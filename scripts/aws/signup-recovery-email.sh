@@ -32,7 +32,7 @@ git diff --quiet HEAD -- \
 
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in
   plan|send-once) ;;
   *) echo "Unsupported signup recovery email action." >&2; exit 1 ;;

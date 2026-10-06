@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const terraform = await readFile(new URL('../../infra/aws/app/realtime.tf', import.meta.url), 'utf8')
 const mainTerraform = await readFile(new URL('../../infra/aws/app/main.tf', import.meta.url), 'utf8')
@@ -266,7 +267,7 @@ test('realtime infrastructure release is bounded, guarded, and executed through 
     /Expected create-only realtime resource change/,
   )
 
-  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
+  assert.ok(['plan', 'apply-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))))
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

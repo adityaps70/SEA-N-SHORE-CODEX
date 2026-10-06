@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFileSync(path, 'utf8')
 const script = read('scripts/aws/account-security-infra.sh')
@@ -15,7 +16,7 @@ const cleanupPolicy = read('infra/aws/app/unconfirmed-user-cleanup.tf')
 const outboxWorker = read('scripts/workers/publish-outbox.ts')
 
 test('the account security runner only creates the listed resources and proves the app role can log in', () => {
-  assert.ok(['plan', 'apply-once'].includes(read('scripts/aws/account-security-infra-action.txt').trim()))
+  assert.ok(['plan', 'apply-once'].includes(guardAction(read('scripts/aws/account-security-infra-action.txt'))))
   assert.match(script, /source scripts\/aws\/bootstrap-terraform-lock\.sh/)
   assert.match(script, /r\['change'\]\['actions'\] != \['create'\]/)
   assert.match(script, /unexpected account security change refused/)

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const actionPath = 'scripts/aws/events-e2e-action.txt'
 const workflowPath = '.github/workflows/aws-events-e2e.yml'
@@ -10,7 +11,7 @@ const remotePath = 'scripts/aws/events-e2e-remote.sh'
 
 test('events e2e is branch-scoped and guarded by plan or run-once', () => {
   assert.equal(existsSync(actionPath), true)
-  assert.ok(['plan', 'run-once'].includes(readFileSync(actionPath, 'utf8').trim()))
+  assert.ok(['plan', 'run-once'].includes(guardAction(readFileSync(actionPath, 'utf8'))))
   for (const path of [workflowPath, browserPath, ssmPath, remotePath]) assert.equal(existsSync(path), true, `${path} must exist`)
   const workflow = readFileSync(workflowPath, 'utf8')
   assert.match(workflow, /feat\/aws-native-phase-0-1/)

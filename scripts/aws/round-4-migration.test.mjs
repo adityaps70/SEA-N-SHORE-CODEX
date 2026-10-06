@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const migrations = [
   '0042_profile_current_organization_link',
@@ -8,7 +9,7 @@ const migrations = [
   '0045_messaging_conversation_delete_for_me',
 ]
 const script = fs.readFileSync('scripts/aws/round-4-migration.sh', 'utf8')
-const guard = fs.readFileSync('scripts/aws/round-4-migration-action.txt', 'utf8').trim()
+const guard = guardAction(fs.readFileSync('scripts/aws/round-4-migration-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-round-4-migration.yml', 'utf8')
 
 assert.ok(['plan', 'migrate-once'].includes(guard))

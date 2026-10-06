@@ -20,7 +20,7 @@ ACTION_FILE="scripts/aws/membership-access-migration-action.txt"
 git diff --quiet HEAD -- "$FOUNDATION_MIGRATION" "$COMPLETION_MIGRATION" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in
   plan|migrate-once) ;;
   *) echo "Unsupported membership access migration action: $ACTION" >&2; exit 1 ;;

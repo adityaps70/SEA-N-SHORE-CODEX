@@ -17,7 +17,7 @@ git diff --quiet HEAD -- scripts/aws infra/aws/app
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 source scripts/aws/bootstrap-terraform-lock.sh
 
-ACTION="$(tr -d '[:space:]' < scripts/aws/origin-tls-certificate-action.txt)"
+ACTION="$(cut -d' ' -f1 < scripts/aws/origin-tls-certificate-action.txt | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported origin certificate action." >&2; exit 1 ;; esac
 
 APP_DIR="$PWD/infra/aws/app"

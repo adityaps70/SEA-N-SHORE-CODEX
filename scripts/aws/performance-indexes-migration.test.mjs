@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 
@@ -21,7 +22,7 @@ test('migration 0063 is additive: six CREATE ... IF NOT EXISTS statements and no
 
 test('the runner is guarded, transactional and verifies every index', async () => {
   const script = await read('./performance-indexes-migration.sh')
-  const action = (await read('./performance-indexes-migration-action.txt')).trim()
+  const action = guardAction(await read('./performance-indexes-migration-action.txt'))
   const workflow = await read('../../.github/workflows/aws-performance-indexes-migration.yml')
   const ci = await read('../../.github/workflows/aws-infra-ci.yml')
   assert.ok(['plan', 'migrate-once'].includes(action))

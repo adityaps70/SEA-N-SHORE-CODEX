@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('Cognito Google/native duplicate repair is guarded and fail-closed', async () => {
   const scriptUrl = new URL('./cognito-google-native-link-repair.sh', import.meta.url)
@@ -12,7 +13,7 @@ test('Cognito Google/native duplicate repair is guarded and fail-closed', async 
   assert.equal(existsSync(actionUrl), true)
   assert.equal(existsSync(workflowUrl), true)
 
-  const action = (await readFile(actionUrl, 'utf8')).trim()
+  const action = guardAction(await readFile(actionUrl, 'utf8'))
   assert.ok(['plan', 'repair-once', 'send-reset-once'].includes(action))
 
   const script = await readFile(scriptUrl, 'utf8')

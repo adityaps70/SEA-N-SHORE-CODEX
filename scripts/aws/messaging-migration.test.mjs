@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const workflowPath = '.github/workflows/aws-messaging-migration.yml'
 const runnerPath = 'scripts/aws/messaging-migration.sh'
@@ -10,7 +11,7 @@ const migrationPath = 'infra/aws/database/migrations/0014_messaging.sql'
 test('messaging migration is guarded, exact-head, fail-closed and one-shot', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
   const runner = readFileSync(runnerPath, 'utf8')
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
   const migration = readFileSync(migrationPath, 'utf8')
 
   assert.ok(['plan', 'apply-once'].includes(action), `Unexpected messaging migration action: ${action}`)

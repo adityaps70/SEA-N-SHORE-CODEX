@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { guardAction } from './guard-value.mjs'
 
 const repoRoot = new URL('../../', import.meta.url)
 const emailTf = fs.readFileSync(new URL('infra/aws/app/email.tf', repoRoot), 'utf8')
@@ -175,7 +176,7 @@ test('Phase 5B SES identity has a single-resource guarded Terraform state-import
   assert.equal(fs.existsSync(runnerUrl), true, 'missing SES identity state runner')
   assert.equal(fs.existsSync(actionUrl), true, 'missing SES identity state action guard')
   assert.equal(fs.existsSync(workflowUrl), true, 'missing SES identity state workflow')
-  assert.ok(['plan', 'apply-once'].includes(fs.readFileSync(actionUrl, 'utf8').trim()))
+  assert.ok(['plan', 'apply-once'].includes(guardAction(fs.readFileSync(actionUrl, 'utf8'))))
 
   const runner = fs.readFileSync(runnerUrl, 'utf8')
   assert.match(runner, /EXPECTED_ACCOUNT="310356785722"/)
@@ -226,7 +227,7 @@ test('Phase 5B SES identity tags reconcile through a guarded exact-head SSM path
   assert.equal(fs.existsSync(runnerUrl), true, 'missing SES identity tags runner')
   assert.equal(fs.existsSync(actionUrl), true, 'missing SES identity tags action guard')
   assert.equal(fs.existsSync(workflowUrl), true, 'missing SES identity tags workflow')
-  assert.ok(['plan', 'apply-once'].includes(fs.readFileSync(actionUrl, 'utf8').trim()))
+  assert.ok(['plan', 'apply-once'].includes(guardAction(fs.readFileSync(actionUrl, 'utf8'))))
 
   const runner = fs.readFileSync(runnerUrl, 'utf8')
   assert.match(runner, /EXPECTED_ACCOUNT="310356785722"/)

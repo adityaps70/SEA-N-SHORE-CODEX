@@ -7,11 +7,12 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 const migration = read('../../infra/aws/database/migrations/0068_event_outbox_lease.sql')
 const script = read('./event-outbox-lease-migration.sh')
-const action = read('./event-outbox-lease-migration-action.txt').trim()
+const action = guardAction(read('./event-outbox-lease-migration-action.txt'))
 const workflow = read('../../.github/workflows/aws-event-outbox-lease-migration.yml')
 const ci = read('../../.github/workflows/aws-infra-ci.yml')
 const publisher = read('../../src/features/events/outbox-publisher.ts')

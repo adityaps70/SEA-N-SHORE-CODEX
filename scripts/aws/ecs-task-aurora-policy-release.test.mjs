@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('ECS task Aurora runtime policy has a single-resource guarded Terraform release path', async () => {
   const scriptUrl = new URL('./ecs-task-aurora-policy.sh', import.meta.url)
@@ -11,7 +12,7 @@ test('ECS task Aurora runtime policy has a single-resource guarded Terraform rel
   assert.equal(existsSync(scriptUrl), true, 'missing ECS task Aurora policy runner')
   assert.equal(existsSync(actionUrl), true, 'missing ECS task Aurora policy action guard')
   assert.equal(existsSync(workflowUrl), true, 'missing ECS task Aurora policy workflow')
-  assert.equal((await readFile(actionUrl, 'utf8')).trim(), 'plan')
+  assert.equal(guardAction(await readFile(actionUrl, 'utf8')), 'plan')
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

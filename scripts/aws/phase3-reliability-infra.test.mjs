@@ -6,10 +6,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 const script = await read('./phase3-reliability-infra.sh')
-const action = (await read('./phase3-reliability-infra-action.txt')).trim()
+const action = guardAction(await read('./phase3-reliability-infra-action.txt'))
 const workflow = await read('../../.github/workflows/aws-phase3-reliability-infra.yml')
 const ci = await read('../../.github/workflows/aws-infra-ci.yml')
 const database = await read('../../infra/aws/app/database.tf')

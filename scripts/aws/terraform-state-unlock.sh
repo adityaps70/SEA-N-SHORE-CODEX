@@ -29,7 +29,7 @@ git diff --quiet HEAD -- \
   .github/workflows/aws-terraform-state-unlock.yml
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 [[ "$ACTION" == "plan" || "$ACTION" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || {
   echo "Unsupported Terraform state unlock action (plan or an exact lock ID)." >&2
   exit 1

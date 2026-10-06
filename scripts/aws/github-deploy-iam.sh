@@ -27,7 +27,7 @@ command -v git >/dev/null 2>&1 || { echo "git is required." >&2; exit 1; }
 [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]] || { echo "Detached checkout does not match expected SHA." >&2; exit 1; }
 [[ -f "$ACTION_FILE" ]] || { echo "Missing IAM action guard." >&2; exit 1; }
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once|apply-production-access-once) ;;
   *) echo "Unsupported deploy IAM action: $ACTION" >&2; exit 1 ;;
 esac

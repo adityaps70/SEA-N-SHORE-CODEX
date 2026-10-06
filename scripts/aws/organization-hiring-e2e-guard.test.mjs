@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const actionPath = 'scripts/aws/organization-hiring-e2e-action.txt'
 const workflowPath = '.github/workflows/aws-organization-hiring-e2e.yml'
@@ -11,7 +12,7 @@ const remoteScriptPath = 'scripts/aws/organization-hiring-e2e-remote.sh'
 
 test('organization hiring e2e is branch scoped with a plan or exact one-shot guard', () => {
   assert.equal(existsSync(actionPath), true, `${actionPath} must exist`)
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
   assert.ok(['plan', 'run-once'].includes(action), `Unexpected organization hiring E2E action: ${action}`)
   assert.equal(existsSync(workflowPath), true, `${workflowPath} must exist`)
 

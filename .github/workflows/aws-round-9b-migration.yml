@@ -43,6 +43,9 @@ jobs:
   apply-gate:
     if: github.ref == 'refs/heads/feat/aws-native-phase-0-1'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       approval: ${{ steps.apply_guard.outputs.approval }}
       skip: ${{ steps.plan_scope.outputs.skip }}
@@ -51,7 +54,9 @@ jobs:
       - name: Checkout the guard file
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          sparse-checkout: scripts/aws/round-9b-migration-action.txt
+          sparse-checkout: |
+            scripts/aws/round-9b-migration-action.txt
+            scripts/aws/arm-commit-guard.sh
           sparse-checkout-cone-mode: false
 
       # Round 16: runs that change AWS wait for the owner's approval in 'staging-apply';
@@ -61,12 +66,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ACTION="$(tr -d '[:space:]' < scripts/aws/round-9b-migration-action.txt)"
+          ACTION="$(cut -d' ' -f1 < scripts/aws/round-9b-migration-action.txt | tr -d '[:space:]')"
           case "$ACTION" in
             plan|discover) echo "approval=false" >> "$GITHUB_OUTPUT" ;;
             *) echo "approval=true" >> "$GITHUB_OUTPUT" ;;
           esac
           echo "Guard action: $ACTION"
+
+      # Pre-private: GitHub Pro does not enforce the approval environment's required reviewer on a private repo. Any guard
+      # value but plan/discover also needs its arm commit to be a pull request merged by adityaps70 whose guard file
+      # names the exact commit it arms (scripts/aws/arm-commit-guard.sh).
+      - name: Require an owner-merged arm naming the exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARD_FILE: scripts/aws/round-9b-migration-action.txt
+        shell: bash
+        run: bash scripts/aws/arm-commit-guard.sh
 
       # Actions minutes: a plan (or discover) run only reads AWS, so it is skipped when this push changed none of
       # this runner's own scripts or tests (only its guard file and/or this workflow, e.g. a rearm).
@@ -79,7 +94,7 @@ jobs:
         run: |
           set -euo pipefail
           SKIP=false
-          ACTION="$(tr -d '[:space:]' < "$GUARD_FILE")"
+          ACTION="$(cut -d' ' -f1 < "$GUARD_FILE" | tr -d '[:space:]')"
           if [[ "$GITHUB_EVENT_NAME" == "push" && ( "$ACTION" == "plan" || "$ACTION" == "discover" ) ]]; then
             SKIP="$(python3 -c '
           import fnmatch, json, os, sys
@@ -143,7 +158,7 @@ jobs:
               [[ "$CONFIRMATION" == "I_APPROVE_ROUND_9B_STAGING_MIGRATION" ]] || { echo "Explicit launch confirmation is required." >&2; exit 1; }
             fi
           else
-            ACTION="$(tr -d '[:space:]' < scripts/aws/round-9b-migration-action.txt)"
+            ACTION="$(cut -d' ' -f1 < scripts/aws/round-9b-migration-action.txt | tr -d '[:space:]')"
             case "$ACTION" in plan|migrate-once) ;; *) echo "Unsupported round 9B migration action: $ACTION" >&2; exit 1 ;; esac
           fi
           echo "action=$ACTION" >> "$GITHUB_OUTPUT"

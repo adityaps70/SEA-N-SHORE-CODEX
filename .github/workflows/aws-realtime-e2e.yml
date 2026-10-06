@@ -24,6 +24,9 @@ concurrency:
 jobs:
   guard:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       run_e2e: ${{ steps.guard.outputs.run_e2e }}
       messaging_only: ${{ steps.guard.outputs.messaging_only }}
@@ -39,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ACTION=$(tr -d '[:space:]' < scripts/aws/realtime-e2e-action.txt)
+          ACTION=$(cut -d' ' -f1 < scripts/aws/realtime-e2e-action.txt | tr -d '[:space:]')
           case "$ACTION" in
             plan)
               echo 'run_e2e=false' >> "$GITHUB_OUTPUT"
@@ -101,6 +104,16 @@ jobs:
               ;;
             *) echo "Unsupported REALTIME_E2E_ACTION=$ACTION" >&2; exit 1 ;;
           esac
+
+      # Pre-private: GitHub Pro does not enforce the approval environment's required reviewer on a private repo. Any guard
+      # value but plan/discover also needs its arm commit to be a pull request merged by adityaps70 whose guard file
+      # names the exact commit it arms (scripts/aws/arm-commit-guard.sh).
+      - name: Require an owner-merged arm naming the exact SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARD_FILE: scripts/aws/realtime-e2e-action.txt
+        shell: bash
+        run: bash scripts/aws/arm-commit-guard.sh
 
   realtime-e2e:
     needs: guard

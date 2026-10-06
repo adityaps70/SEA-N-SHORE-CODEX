@@ -40,7 +40,7 @@ git diff --quiet HEAD -- \
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 source scripts/aws/bootstrap-terraform-lock.sh
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported security hardening infrastructure action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.security-hardening-infra.XXXXXXXX")"

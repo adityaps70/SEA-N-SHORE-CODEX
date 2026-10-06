@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const migrationPath = 'infra/aws/database/migrations/0005_profile_identity.sql'
 
@@ -33,7 +34,7 @@ test('exact identity migration supports lightweight activation without breaking 
 test('profile identity migration runner is exact-head, staging-only, explicit-action and fail-closed', () => {
   const runner = readFileSync('scripts/aws/profile-identity-migration.sh', 'utf8')
   const workflow = readFileSync('.github/workflows/aws-profile-identity-migration.yml', 'utf8')
-  const action = readFileSync('scripts/aws/profile-identity-migration-action.txt', 'utf8').trim()
+  const action = guardAction(readFileSync('scripts/aws/profile-identity-migration-action.txt', 'utf8'))
 
   assert.ok(['plan', 'apply-once'].includes(action), `Unexpected migration action: ${action}`)
   assert.match(runner, /PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA/)

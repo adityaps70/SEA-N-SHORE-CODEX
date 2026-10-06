@@ -2,10 +2,11 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 const script = await read('./private-migration-relocate.sh')
-const action = (await read('./private-migration-relocate-action.txt')).trim()
+const action = guardAction(await read('./private-migration-relocate-action.txt'))
 const workflow = await read('../../.github/workflows/aws-private-migration-relocate.yml')
 const ci = await read('../../.github/workflows/aws-infra-ci.yml')
 const storage = await read('../../infra/aws/app/bucket-policies.tf')
