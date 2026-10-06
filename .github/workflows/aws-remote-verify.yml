@@ -1,18 +1,8 @@
 name: AWS Remote Verify
 
 on:
-  push:
-    branches:
-      - feat/aws-native-phase-0-1
-    paths:
-      - src/**
-      - scripts/aws/**
-      - infra/aws/**
-      - package.json
-      - package-lock.json
-      - vitest.config.ts
-      - tsconfig.json
-      - .github/workflows/aws-remote-verify.yml
+  # Actions minutes: started once per deploy by aws-staging-deploy.yml (after the ECS rollout is
+  # verified), or by hand; not on every push.
   workflow_dispatch:
 
 permissions:

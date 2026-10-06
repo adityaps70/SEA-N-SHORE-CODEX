@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       approval: ${{ steps.apply_guard.outputs.approval }}
+      skip: ${{ steps.plan_scope.outputs.skip }}
+    timeout-minutes: 10
     steps:
       - name: Checkout the guard file
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -45,11 +47,39 @@ jobs:
           esac
           echo "Guard action: $ACTION"
 
+      # Actions minutes: a plan (or discover) run only reads AWS, so it is skipped when this push changed none of
+      # this runner's own scripts or tests (only its guard file and/or this workflow, e.g. a rearm).
+      - name: Skip a plan run when none of this runner's scripts changed
+        id: plan_scope
+        env:
+          GUARD_FILE: scripts/aws/performance-indexes-migration-action.txt
+          RUNNER_FILES: "infra/aws/database/migrations/0063_performance_indexes.sql scripts/aws/performance-indexes-migration.sh scripts/aws/performance-indexes-migration.test.mjs"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SKIP=false
+          ACTION="$(tr -d '[:space:]' < "$GUARD_FILE")"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && ( "$ACTION" == "plan" || "$ACTION" == "discover" ) ]]; then
+            SKIP="$(python3 -c '
+          import fnmatch, json, os, sys
+          event = json.load(open(os.environ["GITHUB_EVENT_PATH"]))
+          commits = event.get("commits") or []
+          files = {f for c in commits for k in ("added", "modified", "removed") for f in (c.get(k) or [])}
+          watched = os.environ["RUNNER_FILES"].split()
+          # Only a complete, non-empty list of changed files can show that nothing of this runner changed.
+          complete = bool(commits) and len(commits) < 2048 and bool(files)
+          print("true" if complete and not any(fnmatch.fnmatch(f, p) for f in files for p in watched) else "false")
+          ')"
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+          echo "Plan run skipped: $SKIP"
+
   apply-approval:
     needs: apply-gate
     if: needs.apply-gate.outputs.approval == 'true'
     runs-on: ubuntu-latest
     environment: staging-apply
+    timeout-minutes: 10
     steps:
       - name: Approved for a run that changes AWS
         run: echo "Approved in staging-apply."
@@ -58,11 +88,12 @@ jobs:
     needs:
       - apply-gate
       - apply-approval
-    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && (needs.apply-approval.result == 'success' || needs.apply-approval.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.apply-gate.result == 'success' && needs.apply-gate.outputs.skip != 'true' && (needs.apply-approval.result == 'success' || needs.apply-approval.result == 'skipped') }}
     runs-on: ubuntu-latest
     environment: staging
     env:
       AWS_REGION: ap-south-1
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Wait for exact-head AWS Infrastructure CI
