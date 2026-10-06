@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -33,9 +33,8 @@ function identity(users, rows) {
   try {
     writeFileSync(join(dir, 'c.json'), JSON.stringify({ Users: users }));
     writeFileSync(join(dir, 'a.json'), JSON.stringify({ records: rows }));
-    return { ok: true, out: execFileSync('python3', ['-c', identityBlock, join(dir, 'c.json'), join(dir, 'a.json')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
-  } catch (error) {
-    return { ok: false, out: String(error.stderr) };
+    const r = spawnSync('python3', ['-c', identityBlock, join(dir, 'c.json'), join(dir, 'a.json')], { encoding: 'utf8' });
+    return { ok: r.status === 0, out: r.status === 0 ? r.stdout : r.stderr, err: r.stderr };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -66,6 +65,13 @@ test('identity parity accepts multi-login and unfinished sign-ups, and still ref
   const deleted = identity(base, [...rows, row('p7', 's7', 'w@x.test', 'deletion_requested')]);
   assert.ok(deleted.ok, deleted.out);
   assert.match(deleted.out, /AURORA_IDENTITIES_WITHOUT_COGNITO_USER=\{"deletion_requested": 1\}/);
+  assert.match(deleted.out, /AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=\{"deletion_requested:no_sign_in_left": 1\}/);
+
+  // The summary also goes to stderr (SSM truncates stdout); a refusal still says which kind of profile it is.
+  const stale = identity(base, [...rows, row('p1', 's6', 'a@x.test', 'active')]);
+  assert.equal(stale.ok, false);
+  assert.match(stale.err, /AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=\{"active:has_other_sign_in": 1\}/);
+  assert.match(stale.err, /Aurora identity has no Cognito user \(profile not deleted\)/);
   refuse('identity email differs', base, [row('p1', 's1', 'other@x.test')], /Aurora identity email differs from Cognito/);
   refuse('duplicate provider subject', base, [row('p1', 's1', 'a@x.test'), row('p2', 's1', 'a@x.test')], /Duplicate Aurora provider subject token/);
   refuse('duplicate Cognito subject', [...base, user('s1', 'q@x.test')], rows, /Duplicate Cognito subject token/);
