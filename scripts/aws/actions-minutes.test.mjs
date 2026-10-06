@@ -69,7 +69,7 @@ test('Infra CI: superseded runs cancel; heavy jobs follow the change scope; cont
 })
 
 // Behaviour of scripts/aws/infra-ci-scope.sh on real git history, with the GitHub API stubbed.
-function scope({ event = 'push', before, merge, parentCi = 'success', api = true, setup }) {
+function scope({ event = 'push', before, parentCi = 'success', api = true, setup }) {
   const root = mkdtempSync(join(tmpdir(), 'ci-scope-'))
   const repo = join(root, 'repo')
   const sh = (cmd) => execSync(cmd, { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
