@@ -20,10 +20,18 @@ describe('isStaleAssetError', () => {
     expect(isStaleAssetError(new Error('Loading chunk 389 failed.'))).toBe(true)
   })
 
+  it('recognises a form posted to a Server Action from an older build', () => {
+    // Next.js throws UnrecognizedActionError in the browser when the server answers "action not found".
+    const unrecognized = Object.assign(new Error('Server Action "7f3a9c0d" was not found on the server.'), { name: 'UnrecognizedActionError' })
+    expect(isStaleAssetError(unrecognized)).toBe(true)
+    expect(isStaleAssetError(new Error('Server Action "7f3a9c0d" was not found on the server. \nRead more: https://nextjs.org/docs/messages/failed-to-find-server-action'))).toBe(true)
+  })
+
   it('ignores ordinary errors', () => {
     expect(isStaleAssetError(new Error('Network request failed'))).toBe(false)
     expect(isStaleAssetError(null)).toBe(false)
     expect(isStaleAssetError('ChunkLoadError')).toBe(false)
+    expect(isStaleAssetError(new Error('Server Action failed validation'))).toBe(false)
   })
 })
 
