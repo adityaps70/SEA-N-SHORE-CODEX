@@ -145,6 +145,8 @@ jobs:
         run: node --test scripts/aws/actions-minutes.test.mjs
       - name: Verify staging-apply approval gate contract
         run: node --test scripts/aws/apply-approval-gate.test.mjs
+      - name: Verify CI checkout bundle IAM contract
+        run: node --test scripts/aws/github-deploy-iam-ci-checkouts.test.mjs
       - name: Verify onboarding e2e guard contract
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
       - name: Verify membership launch sequence contract
