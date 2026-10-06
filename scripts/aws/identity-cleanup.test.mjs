@@ -39,6 +39,22 @@ test('identity cleanup deletes only unmapped E2E test users and the one stale fo
   assert.match(script, /lower\(coalesce\(ia\.email, ''\)\) !~ '\^sea-n-shore-/)
   assert.match(script, /MAX_E2E_ACCOUNTS = 600/)
   assert.match(script, /IDENTITY_CLEANUP_E2E_ACCOUNTS_VERIFIED=true/)
+  // Proof the targets are not real members, before anything is deleted: the live Cognito address is an E2E one,
+  // sign-in domains and creator runs are listed, and a catalog walk of every cascade from profiles counts rows
+  // of real members that would go with them, or that block the delete. accounts-once refuses on any of those.
+  assert.match(script, /all_e2e = all_e2e and all\(ANY_E2E_EMAIL\.match\(str\(users\[r\['subject'\]\]\[1\]\.get\('email'\)/)
+  assert.match(script, /where c\.contype = 'f' and cardinality\(c\.conkey\) = 1 and c\.connamespace = 'public'::regnamespace/)
+  assert.match(script, /MAX_FK_DEPTH = 4/)
+  assert.match(script, /fk\['rule'\] not in \('c', 'r', 'a'\)/)
+  assert.match(script, /terms\.append\(f'not \(id = any\(\{ids_sql\}\)\)'\)/)
+  for (const marker of ['SIGNIN_DOMAINS', 'CREATOR_RUNS', 'FOOTPRINT', 'REAL_MEMBER_LINKS', 'REAL_MEMBER_COLLATERAL', 'BLOCKING', 'REAL_MEMBER_SAFE']) {
+    assert.match(script, new RegExp(`IDENTITY_CLEANUP_E2E_${marker}=`))
+  }
+  assert.match(script, /real_member_safe = set\(signin_domains\) <= \{'example\.com'\} and not collateral and not blocking/)
+  assert.match(script, /if action == 'accounts-once':\n\s+if not real_member_safe:\n\s+raise SystemExit\('Refusing: /)
+  // The footprint is read-only: no write statement is built from the catalog.
+  const footprint = script.slice(script.indexOf('def e2e_footprint'), script.indexOf('signin_domains = Counter'))
+  assert.doesNotMatch(footprint, /\b(delete|update|insert|truncate|alter|drop)\b\s+(from|into|table|public)/i)
   const workflow = read('../../.github/workflows/aws-identity-cleanup.yml')
   assert.match(workflow, /environment: staging-apply/)
   assert.match(workflow, /Guard cleanup against a moved branch/)
