@@ -337,6 +337,13 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-media/private-migrations/beaufortmarine.sql"
       },
       {
+        # Exact-SHA git bundles handed to the bootstrap host (the host never clones from GitHub).
+        Sid      = "CiCheckoutBundles"
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"]
+        Resource = "arn:aws:s3:::${local.name_prefix}-${data.aws_caller_identity.current.account_id}-migration/ci-checkouts/*"
+      },
+      {
         Sid      = "DiscoverBootstrapInstance"
         Effect   = "Allow"
         Action   = ["ec2:DescribeInstances"]
