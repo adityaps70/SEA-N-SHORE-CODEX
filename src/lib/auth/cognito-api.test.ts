@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { CognitoApiError, createCognitoApi } from './cognito-api'
+import { CognitoApiError, createCognitoApi, passwordRuleReason } from './cognito-api'
 
 const config = {
   region: 'ap-south-1',
@@ -496,5 +496,17 @@ describe('Cognito authenticator-app MFA (Round 14, 2.11)', () => {
 
     await expect(api.associateSoftwareToken('access-token')).rejects.toMatchObject({ code: 'UnexpectedResponse' })
     await expect(api.verifySoftwareToken({ accessToken: 'access-token', code: '123456' })).resolves.toEqual({ status: 'ERROR' })
+  })
+})
+
+describe('passwordRuleReason', () => {
+  it('keeps only which policy rule Cognito named, never its message', () => {
+    expect(passwordRuleReason('InvalidPasswordException', 'Password did not conform with policy: Password not long enough')).toBe('length')
+    expect(passwordRuleReason('InvalidPasswordException', 'Password did not conform with policy: Password must have uppercase characters')).toBe('uppercase')
+    expect(passwordRuleReason('InvalidPasswordException', 'Password did not conform with policy: Password must have lowercase characters')).toBe('lowercase')
+    expect(passwordRuleReason('InvalidPasswordException', 'Password did not conform with policy: Password must have numeric characters')).toBe('number')
+    expect(passwordRuleReason('InvalidPasswordException', 'Password did not conform with policy: Password must have symbol characters')).toBe('symbol')
+    expect(passwordRuleReason('InvalidPasswordException', 'Something else')).toBeNull()
+    expect(passwordRuleReason('NotAuthorizedException', 'Password must have uppercase characters')).toBeNull()
   })
 })

@@ -8,6 +8,7 @@ import { isDisposableEmail } from '@/lib/auth/disposable-email'
 import { AUTH_EMAIL_RATE_LIMITED_MESSAGE, DISPOSABLE_EMAIL_MESSAGE } from '@/lib/errors/user-messages'
 import type { AuthEmailAction, AuthEmailLimiter } from './email-limits'
 import { resetPasswordSchema, signInSchema, signUpSchema } from './schemas'
+import { cognitoPasswordRule, failedPasswordRules, PASSWORD_MAX_LENGTH, passwordRulesMessage } from './password-rules'
 
 export type CognitoAuthActionState = {
   error?: string
@@ -221,8 +222,18 @@ export function createCognitoAuthActions(input: {
     ): Promise<CognitoAuthActionState> {
       const parsed = signUpSchema.safeParse(Object.fromEntries(formData))
       if (!parsed.success) {
-        return { error: parsed.error.issues[0]?.message ?? 'Check your details.' }
+        const issue = parsed.error.issues[0]
+        if (issue?.path[0] === 'password') {
+          const password = String(formData.get('password') ?? '')
+          if (password.length > PASSWORD_MAX_LENGTH) return { error: `Use ${PASSWORD_MAX_LENGTH} characters or fewer for your password.` }
+          return { error: passwordRulesMessage(failedPasswordRules(password)) }
+        }
+        return { error: issue?.message ?? 'Check your details.' }
       }
+      // The pool's password policy, checked here first so the message names the exact rule (and a
+      // typo does not count against the sign-up email limit).
+      const failedRules = failedPasswordRules(parsed.data.password)
+      if (failedRules.length > 0) return { error: passwordRulesMessage(failedRules) }
       if (isDisposableEmail(parsed.data.email)) return { error: DISPOSABLE_EMAIL_MESSAGE }
       const limited = await emailLimitError('sign_up', parsed.data.email, 'We could not create your account. Please try again.')
       if (limited) return { error: limited }
@@ -252,7 +263,8 @@ export function createCognitoAuthActions(input: {
             return { error: 'Email confirmation is temporarily unavailable. Please try again in a little while, or continue with Google if it is offered.' }
           }
           if (error.code === 'InvalidPasswordException') {
-            return { error: 'Use a stronger password with uppercase, lowercase, a number and a symbol.' }
+            const rule = cognitoPasswordRule(error.reason)
+            return { error: passwordRulesMessage(rule ? [rule] : failedPasswordRules(parsed.data.password)) }
           }
         }
         return { error: 'We could not create your account. Please try again.' }

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { PasswordField } from "@/features/auth/components/password-field";
 import type { AuthActionState } from "@/features/auth/actions";
+import { PASSWORD_RULES } from "@/features/auth/password-rules";
 
 type AuthAction = (
   state: AuthActionState,
@@ -41,6 +42,7 @@ const labels: Record<AuthMode, { title: string; submit: string }> = {
 export function AuthForm({ mode, action, flow, initialEmail, lead }: AuthFormProps) {
   const [state, formAction, pending] = useActionState(action, {});
   const [confirmationError, setConfirmationError] = useState<string>();
+  const [password, setPassword] = useState("");
   const showName = mode === "sign-up";
   const showMfaCode = mode === "verify-mfa";
   const showEmail = !showMfaCode && (mode !== "update-password" || flow === "confirm-reset");
@@ -100,7 +102,9 @@ export function AuthForm({ mode, action, flow, initialEmail, lead }: AuthFormPro
             label="Password"
             name="password"
             autoComplete={mode === "update-password" ? "new-password" : mode === "sign-in" ? "current-password" : "new-password"}
-            hint={mode === "sign-up" || mode === "update-password" ? "Use at least 12 characters." : undefined}
+            hint={mode === "update-password" ? "Use at least 12 characters." : undefined}
+            requirements={mode === "sign-up" ? PASSWORD_RULES.map((rule) => ({ id: rule.id, label: rule.label, met: rule.test(password) })) : undefined}
+            onChange={mode === "sign-up" ? (event) => setPassword(event.target.value) : undefined}
             required
             minLength={12}
           />
