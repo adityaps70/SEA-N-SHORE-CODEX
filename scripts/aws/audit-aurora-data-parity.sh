@@ -85,7 +85,7 @@ echo "AURORA_BUSINESS_PARITY_INVENTORY_COMPLETE=true"
 TMP_IDENTITY_DIR="$(mktemp -d)"
 trap 'rm -rf -- "$TMP_IDENTITY_DIR"' EXIT; trap 'exit 129' HUP; trap 'exit 130' INT; trap 'exit 143' TERM
 aws cognito-idp list-users --region "$AWS_REGION" --user-pool-id "$COGNITO_POOL_ID" --output json > "$TMP_IDENTITY_DIR/cognito.json"
-IDENTITY_SQL="SELECT profile_id::text, provider_subject, coalesce(email, '') FROM public.identity_accounts WHERE provider = 'cognito' ORDER BY profile_id"
+IDENTITY_SQL="SELECT ia.profile_id::text, ia.provider_subject, coalesce(ia.email, ''), coalesce(p.account_status::text, 'missing') FROM public.identity_accounts ia LEFT JOIN public.profiles p ON p.id = ia.profile_id WHERE ia.provider = 'cognito' ORDER BY ia.profile_id"
 aws rds-data execute-statement --region "$AWS_REGION" --resource-arn "$CLUSTER_ARN" --secret-arn "$SECRET_ARN" --database "$DATABASE_NAME" --sql "$IDENTITY_SQL" --output json > "$TMP_IDENTITY_DIR/accounts.json"
 python3 - "$TMP_IDENTITY_DIR/cognito.json" "$TMP_IDENTITY_DIR/accounts.json" <<'PY'
 import collections, hashlib, json, re, sys
@@ -106,12 +106,15 @@ for user in cognito.get('Users', []):
     cognito_rows.append((token(email), token(subject)))
 
 account_rows=[]
+account_status={}
 for row in accounts.get('records', []):
     profile=row[0].get('stringValue','')
     subject=row[1].get('stringValue','')
     email=row[2].get('stringValue','')
+    status=row[3].get('stringValue','') if len(row) > 3 else 'active'
     if not profile or not subject or not email: raise SystemExit('Aurora identity row missing profile, subject, or email')
     account_rows.append((token(email), token(profile), token(subject)))
+    account_status[token(subject)]=status
 
 # Round 15 multi-login: one person may hold several Cognito users with the same email (email + Google), each linked
 # to the same profile through its own identity_accounts row; Cognito users with no profile yet (sign-up not finished)
@@ -122,9 +125,15 @@ if len({x[2] for x in account_rows}) != len(account_rows): raise SystemExit('Dup
 
 cognito_email_by_subject={subject_token: email_token for email_token, subject_token in cognito_rows}
 profile_by_subject={subject_token: profile_token for _, profile_token, subject_token in account_rows}
+# An identity whose Cognito user is gone is expected only for a profile whose deletion was requested (the account
+# deletion removes the sign-in); on any other profile it fails. Counts are by profile status only.
+orphans=collections.Counter(account_status[subject_token] for _, _, subject_token in account_rows if subject_token not in cognito_email_by_subject)
+print('AURORA_IDENTITIES_WITHOUT_COGNITO_USER=' + json.dumps(dict(sorted(orphans.items()))))
+if any(status != 'deletion_requested' for status in orphans):
+    raise SystemExit('Aurora identity has no Cognito user (profile not deleted)')
 for email_token, profile_token, subject_token in account_rows:
-    if subject_token not in cognito_email_by_subject: raise SystemExit('Aurora identity has no Cognito user')
-    if cognito_email_by_subject[subject_token] != email_token: raise SystemExit('Aurora identity email differs from Cognito')
+    if subject_token in cognito_email_by_subject and cognito_email_by_subject[subject_token] != email_token:
+        raise SystemExit('Aurora identity email differs from Cognito')
 
 profiles_by_email={}
 for email_token, profile_token, _ in account_rows:
@@ -150,7 +159,7 @@ print(f'AURORA_PROFILES_WITH_SEVERAL_IDENTITIES={profiles_with_several}')
 print(f'COGNITO_USER_COUNT={len(cognito_rows)}')
 print(f'AURORA_IDENTITY_COUNT={len(account_rows)}')
 cognito_pairs={(email_token, subject_token) for email_token, subject_token in cognito_rows}
-provider_pairs={(email_token, subject_token) for email_token, _, subject_token in account_rows}
+provider_pairs={(email_token, subject_token) for email_token, _, subject_token in account_rows if subject_token in cognito_email_by_subject}
 if not provider_pairs <= cognito_pairs:
     raise SystemExit('Cognito and Aurora provider identity mappings differ')
 for email_token, subject_token in sorted(cognito_rows):

@@ -101,6 +101,24 @@ terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s \
   > "$WORK_DIR/plan.log"
 terraform -chdir="$APP_DIR" show -json "$WORK_DIR/social-events.tfplan" > "$WORK_DIR/plan.json"
 
+# Read-only evidence, printed before the create-only classifier can refuse: which attributes an in-place update
+# would change and, for an event rule, which event names its pattern would add or drop (names only).
+python3 - "$WORK_DIR/plan.json" <<'PY'
+import json, sys
+with open(sys.argv[1]) as f: plan=json.load(f)
+for r in plan.get('resource_changes', []):
+    change=r.get('change', {})
+    if change.get('actions') != ['update']: continue
+    before, after = change.get('before') or {}, change.get('after') or {}
+    keys=sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+    print(f"SOCIAL_EVENTS_UPDATE {r['address']} attributes={','.join(keys)}")
+    if r.get('type') == 'aws_cloudwatch_event_rule' and 'event_pattern' in keys and isinstance(after.get('event_pattern'), str):
+        old_types=set(json.loads(before.get('event_pattern') or '{}').get('detail-type', []))
+        new_types=set(json.loads(after['event_pattern']).get('detail-type', []))
+        print('SOCIAL_EVENTS_RULE_DETAIL_TYPES_ADDED=' + json.dumps(sorted(new_types - old_types)))
+        print('SOCIAL_EVENTS_RULE_DETAIL_TYPES_REMOVED=' + json.dumps(sorted(old_types - new_types)))
+PY
+
 CLASSIFICATION="$(node "$PLAN_CLASSIFIER" "$WORK_DIR/plan.json" "$ACTION")"
 PLAN_MODE="$(jq -r '.mode' <<<"$CLASSIFICATION")"
 CREATE_COUNT="$(jq -r '.createCount' <<<"$CLASSIFICATION")"
