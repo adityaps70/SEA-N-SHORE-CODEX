@@ -104,6 +104,8 @@ jobs:
         run: node --test scripts/aws/admin-identity-audit.test.mjs
       - name: Verify identity cleanup contract
         run: node --test scripts/aws/identity-cleanup.test.mjs
+      - name: Verify signup recovery email contract
+        run: node --test scripts/aws/signup-recovery-email.test.mjs
       - name: Verify staging-apply approval gate contract
         run: node --test scripts/aws/apply-approval-gate.test.mjs
       - name: Verify onboarding e2e guard contract
