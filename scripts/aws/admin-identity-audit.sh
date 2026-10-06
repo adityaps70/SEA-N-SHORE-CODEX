@@ -57,7 +57,7 @@ SECRET_ARN="$(jq -r '.DBClusters[0].MasterUserSecret.SecretArn // empty' <<<"$CL
 # The CLI pages through every user.
 aws cognito-idp list-users --region "$AWS_REGION" --user-pool-id "$USER_POOL_ID" --output json > "$WORK_DIR/users.json"
 
-python3 - "$WORK_DIR/users.json" "$AWS_REGION" "$CLUSTER_ARN" "$SECRET_ARN" "$DATABASE_NAME" "$FOCUS_SLUG" <<'PY'
+python3 - "$WORK_DIR/users.json" "$AWS_REGION" "$CLUSTER_ARN" "$SECRET_ARN" "$DATABASE_NAME" "$FOCUS_SLUG" "$USER_POOL_ID" <<'PY'
 import hashlib
 import json
 import re
@@ -65,7 +65,7 @@ import subprocess
 import sys
 from collections import Counter, defaultdict
 
-users_path, region, cluster_arn, secret_arn, database, focus_slug = sys.argv[1:]
+users_path, region, cluster_arn, secret_arn, database, focus_slug, pool_id = sys.argv[1:]
 PHONE_LOGIN_EMAIL = re.compile(r'^phone-[0-9a-f]{32}@auth\.seaandshore\.in$', re.I)
 
 with open(users_path, encoding='utf-8') as handle:
@@ -219,6 +219,141 @@ for sub, user, user_attrs in sorted(phone_only, key=lambda item: str(item[1].get
         'created': day(user.get('UserCreateDate')),
         'has_profile': sub in mapped,
     }, sort_keys=True))
+
+# Round 16 follow-up: non-test Cognito users with no profile. For each, the step it reached and any
+# web-log error around its sign-up or sign-in, to tell an abandoned sign-up from a provisioning bug.
+# The profile is only created when a signed-in user first reaches the app (/auth/post-sign-in), and an
+# email confirmation does not sign anyone in. Logs carry no user id, so errors are matched by time.
+ANY_E2E_EMAIL = re.compile(r'^sea-n-shore-(?:[a-z-]+-)?e2e-', re.I)
+TEST_DOMAINS = {'example.com', 'example.org', 'example.net', 'example.invalid'}
+PUBLIC_DOMAINS = {'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'yahoo.in', 'icloud.com', 'rediffmail.com', 'proton.me', 'protonmail.com'}
+WEB_LOG_GROUP = '/ecs/sea-n-shore-staging/web'
+WEB_ERROR_PATTERN = '?"routing failed" ?"cognito_issue" ?"cognito_mfa_issue" ?"IdentityMapping" ?"auth_email" ?"Error:"'
+MASKS = [(re.compile(r'[^\s"\'<>@]+@[^\s"\'<>]+'), '<address>'),
+         (re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.I), '<uuid>'),
+         (re.compile(r'\b[0-9a-f]{24,}\b', re.I), '<hex>'),
+         (re.compile(r'\+\d{8,15}\b|\b\d{10,15}\b'), '<number>'),
+         (re.compile(r'eyJ[\w-]+\.[\w-]+\.?[\w-]*'), '<token>')]
+from datetime import datetime, timedelta, timezone
+
+def domain_class(address):
+    domain = str(address or '').rsplit('@', 1)[-1].strip().lower()
+    if not domain or '@' not in str(address or ''):
+        return 'none'
+    if domain in TEST_DOMAINS or domain.endswith('.test') or domain.endswith('.invalid'):
+        return 'test'
+    if domain == 'auth.seaandshore.in':
+        return 'phone-login'
+    return 'public-provider' if domain in PUBLIC_DOMAINS else 'other'
+
+def when(value):
+    try:
+        moment = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+def masked(text):
+    text = str(text or '').replace('\n', ' ')
+    for pattern, replacement in MASKS:
+        text = pattern.sub(replacement, text)
+    return text[:240]
+
+def web_errors(start, end):
+    args = ['aws', 'logs', 'filter-log-events', '--region', region, '--log-group-name', WEB_LOG_GROUP,
+            '--start-time', str(int(start.timestamp() * 1000)), '--end-time', str(int(end.timestamp() * 1000)),
+            '--filter-pattern', WEB_ERROR_PATTERN, '--max-items', '200', '--output', 'json']
+    result = subprocess.run(args, capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    events = json.loads(result.stdout or '{}').get('events', [])
+    return [(datetime.fromtimestamp(e['timestamp'] / 1000, timezone.utc), masked(e.get('message'))) for e in events]
+
+def auth_events(username):
+    # Needs Cognito threat protection; reported as unavailable otherwise.
+    result = subprocess.run(['aws', 'cognito-idp', 'admin-list-user-auth-events', '--region', region,
+                             '--user-pool-id', pool_id, '--username', username, '--max-results', '10', '--output', 'json'],
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        return 'unavailable'
+    return [{'type': e.get('EventType'), 'response': e.get('EventResponse'), 'at': str(e.get('CreationDate'))[:16]}
+            for e in json.loads(result.stdout or '{}').get('AuthEvents', [])]
+
+def step(user, user_attrs, age_hours):
+    status = user.get('UserStatus')
+    phone_login = kind(user.get('Username'), user_attrs.get('email')) == 'phone'
+    if phone_login:
+        return 'mobile sign-up (retired flow); ' + ('number verified' if user_attrs.get('phone_number_verified') == 'true' else 'number never verified')
+    if status == 'UNCONFIRMED':
+        return 'signed up; email code never entered' + ('' if age_hours < 24 else '; older than 24 h, so the daily cleanup should have removed it')
+    if status == 'EXTERNAL_PROVIDER':
+        return 'Google sign-in finished at Cognito; the app never created the profile'
+    if status == 'CONFIRMED':
+        return 'email confirmed; no sign-in ever reached the app'
+    if status == 'FORCE_CHANGE_PASSWORD':
+        return 'created by an admin or import; temporary password never changed'
+    return f'status {status}'
+
+now = datetime.now(timezone.utc)
+no_profile = []
+for sub, (user, user_attrs) in cognito_by_sub.items():
+    address = str(user_attrs.get('email') or '')
+    if sub in mapped or ANY_E2E_EMAIL.match(address):
+        continue
+    no_profile.append((sub, user, user_attrs))
+real = [item for item in no_profile if domain_class(item[2].get('email')) != 'test']
+# Reconciles with the identity cleanup's NON_E2E_UNMAPPED_KEPT, which only treats onboarding E2E addresses as tests.
+ONBOARDING_E2E_EMAIL = re.compile(r'^sea-n-shore-e2e-[0-9]+-(seafarer|shore|recruiter|trainer|student|family|enthusiast|other)@example\.com$')
+cleanup_view = [(u, a) for sub, (u, a) in cognito_by_sub.items() if sub not in mapped and not ONBOARDING_E2E_EMAIL.match(str(a.get('email') or '').strip().lower())]
+other_e2e = Counter(re.sub(r'-?[0-9]+.*$', '', ANY_E2E_EMAIL.sub('', str(a.get('email') or '')).split('@')[0]) or 'suite'
+                    for u, a in cleanup_view if ANY_E2E_EMAIL.match(str(a.get('email') or '')))
+print(f'ADMIN_IDENTITY_AUDIT_NO_PROFILE_AS_CLEANUP_COUNTS={len(cleanup_view)}')
+print('ADMIN_IDENTITY_AUDIT_NO_PROFILE_OTHER_E2E=' + json.dumps(dict(other_e2e), sort_keys=True))
+print(f'ADMIN_IDENTITY_AUDIT_NO_PROFILE_NON_E2E={len(no_profile)}')
+print(f'ADMIN_IDENTITY_AUDIT_NO_PROFILE_TEST_DOMAIN={len(no_profile) - len(real)}')
+print(f'ADMIN_IDENTITY_AUDIT_NO_PROFILE_REAL={len(real)}')
+steps = Counter()
+for sub, user, user_attrs in sorted(no_profile, key=lambda item: str(item[1].get('UserCreateDate'))):
+    created, modified = when(user.get('UserCreateDate')), when(user.get('UserLastModifiedDate'))
+    age_hours = (now - created).total_seconds() / 3600 if created else 0
+    reached = step(user, user_attrs, age_hours)
+    steps[reached.split(';')[0]] += 1
+    linked = []
+    if user_attrs.get('identities'):
+        try:
+            linked = sorted({item.get('providerName') for item in json.loads(user_attrs['identities']) if item.get('providerName')})
+        except (json.JSONDecodeError, AttributeError):
+            linked = ['unreadable']
+    errors = None
+    if created and now - created < timedelta(days=85):
+        errors = web_errors(created - timedelta(minutes=2), max(created, modified or created) + timedelta(minutes=60))
+    print('ADMIN_IDENTITY_AUDIT_NO_PROFILE=' + json.dumps({
+        'sub': sub[:8],
+        'kind': kind(user.get('Username'), user_attrs.get('email')),
+        'domain_class': domain_class(user_attrs.get('email')),
+        'status': user.get('UserStatus'),
+        'enabled': user.get('Enabled'),
+        'email_verified': user_attrs.get('email_verified') == 'true',
+        'linked_providers': linked,
+        'created': created.strftime('%Y-%m-%d %H:%M') if created else None,
+        'modified': modified.strftime('%Y-%m-%d %H:%M') if modified else None,
+        'step': reached,
+        'auth_events': auth_events(user['Username']) if user.get('Username') else 'unavailable',
+        'web_errors_in_window': 'logs-unavailable' if errors is None and created and now - created < timedelta(days=85) else (len(errors) if errors is not None else 'outside-retention'),
+    }, sort_keys=True))
+    for at, message in (errors or [])[:5]:
+        print('ADMIN_IDENTITY_AUDIT_NO_PROFILE_WEB_ERROR=' + json.dumps({'sub': sub[:8], 'at': at.strftime('%Y-%m-%d %H:%M:%S'), 'line': message}))
+print('ADMIN_IDENTITY_AUDIT_NO_PROFILE_STEPS=' + json.dumps(dict(steps), sort_keys=True))
+
+# The same error signals across the last 7 days, by day, to see whether anything is systemic.
+week = web_errors(now - timedelta(days=7), now)
+if week is None:
+    print('ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERRORS_7D=unavailable')
+else:
+    by_day = Counter((at.strftime('%m-%d'), re.sub(r'\d', '#', re.sub(r'\s+', ' ', line))[:70]) for at, line in week)
+    print(f'ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERRORS_7D={len(week)}')
+    for (d, line), count in sorted(by_day.most_common(40)):
+        print('ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERROR_DAY=' + json.dumps({'day': d, 'count': count, 'line': line}))
 
 print('ADMIN_IDENTITY_AUDIT_READ_ONLY_VERIFIED=true')
 PY
