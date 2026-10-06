@@ -25,13 +25,18 @@ test('admin identity audit is read-only, guarded and never prints addresses or n
   assert.match(script, /ADMIN_IDENTITY_AUDIT_PHONE_ONLY_USERS=/)
   assert.match(script, /ADMIN_IDENTITY_AUDIT_READ_ONLY_VERIFIED=true/)
   // Non-test Cognito users with no profile: the step each reached and web-log errors around it, read-only.
-  for (const marker of ['NO_PROFILE_NON_E2E', 'NO_PROFILE_REAL', 'NO_PROFILE_AS_CLEANUP_COUNTS', 'NO_PROFILE', 'NO_PROFILE_WEB_ERROR', 'NO_PROFILE_STEPS', 'WEB_AUTH_ERRORS_7D']) {
+  for (const marker of ['NO_PROFILE_NON_E2E', 'NO_PROFILE_REAL', 'NO_PROFILE_AS_CLEANUP_COUNTS', 'NO_PROFILE', 'NO_PROFILE_WEB_ERROR', 'NO_PROFILE_STEPS', 'NO_PROFILE_STEP_LEGEND', 'WEB_AUTH_ERRORS_SPAN', 'WEB_AUTH_ERROR_DAY']) {
     assert.match(script, new RegExp(`ADMIN_IDENTITY_AUDIT_${marker}=`))
   }
   assert.match(script, /WEB_LOG_GROUP = '\/ecs\/sea-n-shore-staging\/web'/)
   // Log lines are printed only after addresses, ids, numbers and tokens are masked.
   for (const mask of ['<address>', '<uuid>', '<hex>', '<number>', '<token>']) assert.ok(script.includes(`'${mask}'`))
-  assert.match(script, /'line': message/)
+  assert.match(script, /'line': line\[:160\]/)
+  // Output stays inside SSM's 24,000-character limit so the final marker is always printed.
+  assert.match(script, /PER_USER_BUDGET = 13000/)
+  assert.match(script, /ADMIN_IDENTITY_AUDIT_NO_PROFILE_OMITTED=/)
+  // Failed auth callbacks (logged by the app as [auth_callback_failed]) are counted too.
+  assert.match(script, /\?"auth_callback"/)
   assert.match(script, /def masked\(text\):/)
   // Only reads: log search and Cognito auth-event listing.
   assert.match(script, /'logs', 'filter-log-events'/)

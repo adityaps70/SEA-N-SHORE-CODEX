@@ -228,7 +228,7 @@ ANY_E2E_EMAIL = re.compile(r'^sea-n-shore-(?:[a-z-]+-)?e2e-', re.I)
 TEST_DOMAINS = {'example.com', 'example.org', 'example.net', 'example.invalid'}
 PUBLIC_DOMAINS = {'gmail.com', 'googlemail.com', 'outlook.com', 'hotmail.com', 'live.com', 'yahoo.com', 'yahoo.in', 'icloud.com', 'rediffmail.com', 'proton.me', 'protonmail.com'}
 WEB_LOG_GROUP = '/ecs/sea-n-shore-staging/web'
-WEB_ERROR_PATTERN = '?"routing failed" ?"cognito_issue" ?"cognito_mfa_issue" ?"IdentityMapping" ?"auth_email" ?"Error:"'
+WEB_ERROR_PATTERN = '?"routing failed" ?"cognito_issue" ?"cognito_mfa_issue" ?"IdentityMapping" ?"auth_email" ?"auth_callback" ?"Error:"'
 MASKS = [(re.compile(r'[^\s"\'<>@]+@[^\s"\'<>]+'), '<address>'),
          (re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.I), '<uuid>'),
          (re.compile(r'\b[0-9a-f]{24,}\b', re.I), '<hex>'),
@@ -259,10 +259,10 @@ def masked(text):
         text = pattern.sub(replacement, text)
     return text[:240]
 
-def web_errors(start, end):
+def web_errors(start, end, max_items=300):
     args = ['aws', 'logs', 'filter-log-events', '--region', region, '--log-group-name', WEB_LOG_GROUP,
             '--start-time', str(int(start.timestamp() * 1000)), '--end-time', str(int(end.timestamp() * 1000)),
-            '--filter-pattern', WEB_ERROR_PATTERN, '--max-items', '200', '--output', 'json']
+            '--filter-pattern', WEB_ERROR_PATTERN, '--max-items', str(max_items), '--output', 'json']
     result = subprocess.run(args, capture_output=True, text=True)
     if result.returncode != 0:
         return None
@@ -279,20 +279,30 @@ def auth_events(username):
     return [{'type': e.get('EventType'), 'response': e.get('EventResponse'), 'at': str(e.get('CreationDate'))[:16]}
             for e in json.loads(result.stdout or '{}').get('AuthEvents', [])]
 
+STEP_LEGEND = {
+    'code_not_entered': 'signed up; email code never entered',
+    'code_not_entered_24h': 'signed up; email code never entered; older than 24 h, so the daily cleanup should have removed it',
+    'google_no_profile': 'Google sign-in finished at Cognito; the app never created the profile',
+    'confirmed_no_sign_in': 'email confirmed; no sign-in ever reached the app',
+    'admin_created': 'created by an admin or import; temporary password never changed',
+    'phone_verified': 'mobile sign-up (retired flow); number verified',
+    'phone_unverified': 'mobile sign-up (retired flow); number never verified',
+}
+
 def step(user, user_attrs, age_hours):
     status = user.get('UserStatus')
     phone_login = kind(user.get('Username'), user_attrs.get('email')) == 'phone'
     if phone_login:
-        return 'mobile sign-up (retired flow); ' + ('number verified' if user_attrs.get('phone_number_verified') == 'true' else 'number never verified')
+        return 'phone_verified' if user_attrs.get('phone_number_verified') == 'true' else 'phone_unverified'
     if status == 'UNCONFIRMED':
-        return 'signed up; email code never entered' + ('' if age_hours < 24 else '; older than 24 h, so the daily cleanup should have removed it')
+        return 'code_not_entered' if age_hours < 24 else 'code_not_entered_24h'
     if status == 'EXTERNAL_PROVIDER':
-        return 'Google sign-in finished at Cognito; the app never created the profile'
+        return 'google_no_profile'
     if status == 'CONFIRMED':
-        return 'email confirmed; no sign-in ever reached the app'
+        return 'confirmed_no_sign_in'
     if status == 'FORCE_CHANGE_PASSWORD':
-        return 'created by an admin or import; temporary password never changed'
-    return f'status {status}'
+        return 'admin_created'
+    return f'status_{status}'
 
 now = datetime.now(timezone.utc)
 no_profile = []
@@ -312,48 +322,82 @@ print('ADMIN_IDENTITY_AUDIT_NO_PROFILE_OTHER_E2E=' + json.dumps(dict(other_e2e),
 print(f'ADMIN_IDENTITY_AUDIT_NO_PROFILE_NON_E2E={len(no_profile)}')
 print(f'ADMIN_IDENTITY_AUDIT_NO_PROFILE_TEST_DOMAIN={len(no_profile) - len(real)}')
 print(f'ADMIN_IDENTITY_AUDIT_NO_PROFILE_REAL={len(real)}')
+# SSM keeps only the first 24,000 characters of output, so: daily totals first, then one compact
+# line per user with error counts by category, then a few distinct (masked) sample lines.
+def category(line):
+    m = re.search(r"routing failed \{ name: '(\w+)'", line)
+    if 'Post-sign-in session routing failed' in line:
+        return 'session_fail:' + (m.group(1) if m else 'unknown')
+    if 'Post-sign-in profile routing failed' in line:
+        return 'profile_fail'
+    if 'Failed to find Server Action' in line:
+        return 'stale_action'
+    m = re.search(r"\[(cognito_issue|cognito_mfa_issue)\] \{ operation: '(\w+)', reason: '(\w+)'", line)
+    if m:
+        return ('cognito:' if m.group(1) == 'cognito_issue' else 'mfa:') + m.group(2) + ':' + m.group(3)
+    m = re.search(r"\[auth_email_limited\] \{ action: '(\w+)'", line)
+    if m:
+        return 'email_limited:' + m.group(1)
+    m = re.search(r"\[auth_callback_failed\] \{ provider: '(\w+)', reason: '([\w:-]+)'", line)
+    if m:
+        return 'callback_failed:' + m.group(1) + ':' + m.group(2)
+    return 'other_error'
+
+first_created = min((when(u.get('UserCreateDate')) for _, u, _ in no_profile if when(u.get('UserCreateDate'))), default=now)
+span_start = max(first_created - timedelta(hours=1), now - timedelta(days=14))
+span = web_errors(span_start, now, max_items=20000)
+if span is None:
+    print('ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERRORS_SPAN=unavailable')
+else:
+    print(f'ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERRORS_SPAN={span_start:%m-%d}..{now:%m-%d} total={len(span)}')
+    per_day = defaultdict(Counter)
+    for at, line in span:
+        per_day[at.strftime('%m-%d')][category(line)] += 1
+    for d in sorted(per_day):
+        print('ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERROR_DAY=' + json.dumps({'day': d, **dict(per_day[d].most_common(7))}))
+
 steps = Counter()
-for sub, user, user_attrs in sorted(no_profile, key=lambda item: str(item[1].get('UserCreateDate'))):
+samples = {}
+PER_USER_BUDGET = 13000  # characters, so the final marker always fits in SSM's 24,000
+printed, omitted = 0, 0
+for sub, user, user_attrs in sorted(no_profile, key=lambda item: str(item[1].get('UserCreateDate')))[:60]:
     created, modified = when(user.get('UserCreateDate')), when(user.get('UserLastModifiedDate'))
     age_hours = (now - created).total_seconds() / 3600 if created else 0
     reached = step(user, user_attrs, age_hours)
-    steps[reached.split(';')[0]] += 1
-    linked = []
-    if user_attrs.get('identities'):
-        try:
-            linked = sorted({item.get('providerName') for item in json.loads(user_attrs['identities']) if item.get('providerName')})
-        except (json.JSONDecodeError, AttributeError):
-            linked = ['unreadable']
+    steps[reached] += 1
     errors = None
-    if created and now - created < timedelta(days=85):
+    in_retention = bool(created and now - created < timedelta(days=85))
+    if in_retention:
         errors = web_errors(created - timedelta(minutes=2), max(created, modified or created) + timedelta(minutes=60))
-    print('ADMIN_IDENTITY_AUDIT_NO_PROFILE=' + json.dumps({
+    by_category = Counter(category(line) for _, line in (errors or []))
+    for _, line in (errors or []):
+        samples.setdefault(category(line), line)
+    session_gaps = [int((at - created).total_seconds()) for at, line in (errors or []) if 'session routing failed' in line]
+    events = auth_events(user['Username']) if user.get('Username') else 'unavailable'
+    line = 'ADMIN_IDENTITY_AUDIT_NO_PROFILE=' + json.dumps({
         'sub': sub[:8],
         'kind': kind(user.get('Username'), user_attrs.get('email')),
-        'domain_class': domain_class(user_attrs.get('email')),
+        'dom': domain_class(user_attrs.get('email')),
         'status': user.get('UserStatus'),
-        'enabled': user.get('Enabled'),
-        'email_verified': user_attrs.get('email_verified') == 'true',
-        'linked_providers': linked,
-        'created': created.strftime('%Y-%m-%d %H:%M') if created else None,
-        'modified': modified.strftime('%Y-%m-%d %H:%M') if modified else None,
+        'verified': user_attrs.get('email_verified') == 'true',
+        'created': created.strftime('%m-%d %H:%M') if created else None,
+        'modified': modified.strftime('%m-%d %H:%M') if modified else None,
         'step': reached,
-        'auth_events': auth_events(user['Username']) if user.get('Username') else 'unavailable',
-        'web_errors_in_window': 'logs-unavailable' if errors is None and created and now - created < timedelta(days=85) else (len(errors) if errors is not None else 'outside-retention'),
-    }, sort_keys=True))
-    for at, message in (errors or [])[:5]:
-        print('ADMIN_IDENTITY_AUDIT_NO_PROFILE_WEB_ERROR=' + json.dumps({'sub': sub[:8], 'at': at.strftime('%Y-%m-%d %H:%M:%S'), 'line': message}))
+        'errors': dict(by_category.most_common(4)) if errors is not None else ('logs-unavailable' if in_retention else 'outside-retention'),
+        'session_fail_s_after_create': min(session_gaps, key=abs) if session_gaps else None,
+        **({} if events == 'unavailable' else {'auth_events': events[:3]}),
+    }, sort_keys=True)
+    if printed + len(line) > PER_USER_BUDGET:
+        omitted += 1
+        continue
+    printed += len(line) + 1
+    print(line)
+if omitted:
+    print(f'ADMIN_IDENTITY_AUDIT_NO_PROFILE_OMITTED={omitted}')
 print('ADMIN_IDENTITY_AUDIT_NO_PROFILE_STEPS=' + json.dumps(dict(steps), sort_keys=True))
-
-# The same error signals across the last 7 days, by day, to see whether anything is systemic.
-week = web_errors(now - timedelta(days=7), now)
-if week is None:
-    print('ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERRORS_7D=unavailable')
-else:
-    by_day = Counter((at.strftime('%m-%d'), re.sub(r'\d', '#', re.sub(r'\s+', ' ', line))[:70]) for at, line in week)
-    print(f'ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERRORS_7D={len(week)}')
-    for (d, line), count in sorted(by_day.most_common(40)):
-        print('ADMIN_IDENTITY_AUDIT_WEB_AUTH_ERROR_DAY=' + json.dumps({'day': d, 'count': count, 'line': line}))
+print('ADMIN_IDENTITY_AUDIT_NO_PROFILE_STEP_LEGEND=' + json.dumps({k: v for k, v in STEP_LEGEND.items() if k in steps}))
+for cat, line in sorted(samples.items())[:12]:
+    print('ADMIN_IDENTITY_AUDIT_NO_PROFILE_WEB_ERROR=' + json.dumps({'category': cat, 'line': line[:160]}))
 
 print('ADMIN_IDENTITY_AUDIT_READ_ONLY_VERIFIED=true')
 PY
