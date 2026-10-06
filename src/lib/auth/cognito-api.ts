@@ -116,6 +116,20 @@ function lambdaRefusalReason(code: string, message: unknown) {
   return /\b(otp_[a-z_]{2,40})\b/.exec(message)?.[1] ?? null
 }
 
+/**
+ * For InvalidPasswordException, which policy rule Cognito named ("Password must have uppercase
+ * characters", "Password not long enough", …) as a short code; the raw message is never kept.
+ */
+export function passwordRuleReason(code: string, message: unknown) {
+  if (code !== 'InvalidPasswordException' || typeof message !== 'string') return null
+  if (/long enough|minimum length/i.test(message)) return 'length'
+  if (/uppercase/i.test(message)) return 'uppercase'
+  if (/lowercase/i.test(message)) return 'lowercase'
+  if (/numeric|number/i.test(message)) return 'number'
+  if (/symbol/i.test(message)) return 'symbol'
+  return null
+}
+
 function mapAuthenticationTokens(response: CognitoAuthenticationResponse): CognitoAuthenticationResult {
   const authentication = response.AuthenticationResult
   if (!authentication?.AccessToken || typeof authentication.ExpiresIn !== 'number') {
@@ -189,7 +203,7 @@ export function createCognitoApi(config: CognitoConfig, transport: Transport = f
     if (!response.ok) {
       const error = payload as { __type?: unknown; code?: unknown; message?: unknown }
       const code = normalizeErrorCode(error.__type ?? error.code)
-      throw new CognitoApiError(code, undefined, lambdaRefusalReason(code, error.message))
+      throw new CognitoApiError(code, undefined, lambdaRefusalReason(code, error.message) ?? passwordRuleReason(code, error.message))
     }
 
     return payload as T
