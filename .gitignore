@@ -25,3 +25,7 @@ crash.*.log
 # Local migration evidence; upload backups to the dedicated private S3 bucket instead
 artifacts/migration/
 /dist
+
+# Python bytecode
+__pycache__/
+*.pyc
