@@ -106,11 +106,11 @@ describe('CommunityMediaControls', () => {
     expect(submitted).toBeInstanceOf(File)
     expect(submitted.type).toBe('image/webp')
     expect(submitted.size).toBe(512)
+    // The action state settles one render after the action resolves; wait for it instead of racing it.
+    expect(await screen.findByRole('button', { name: `Remove ${label}` })).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     // Round 14 (3.9): the action revalidates, which already re-renders the route.
     expect(mocks.refresh).not.toHaveBeenCalled()
-    // After a successful upload the remove option appears.
-    expect(screen.getByRole('button', { name: `Remove ${label}` })).toBeInTheDocument()
   })
 
   it('uploads nothing and clears the picker when the crop is cancelled', () => {
