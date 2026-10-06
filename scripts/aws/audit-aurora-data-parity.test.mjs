@@ -27,7 +27,7 @@ const identityBlock = (() => {
   return /python3 - "\$TMP_IDENTITY_DIR\/cognito\.json" "\$TMP_IDENTITY_DIR\/accounts\.json" <<'PY'\n([\s\S]*?)\nPY\n/.exec(script)[1];
 })();
 const user = (sub, email) => ({ Username: sub, Attributes: [{ Name: 'sub', Value: sub }, { Name: 'email', Value: email }] });
-const row = (profile, sub, email) => [{ stringValue: profile }, { stringValue: sub }, { stringValue: email }];
+const row = (profile, sub, email, status = 'active') => [{ stringValue: profile }, { stringValue: sub }, { stringValue: email }, { stringValue: status }];
 function identity(users, rows) {
   const dir = mkdtempSync(join(tmpdir(), 'parity-'));
   try {
@@ -49,6 +49,7 @@ test('identity parity accepts multi-login and unfinished sign-ups, and still ref
   assert.match(good.out, /COGNITO_DUPLICATE_EMAIL_GROUPS=\{"multi_login": 1, "multi_login_plus_unmapped": 0, "unmapped_only": 1\}/);
   assert.match(good.out, /COGNITO_UNMAPPED_USERS=2/);
   assert.match(good.out, /AURORA_PROFILES_WITH_SEVERAL_IDENTITIES=1/);
+  assert.match(good.out, /AURORA_IDENTITIES_WITHOUT_COGNITO_USER=\{\}/);
   assert.match(good.out, /AWS_IDENTITY_MAPPING_MATCH=true/);
   assert.doesNotMatch(good.out, /@/);
 
@@ -59,6 +60,12 @@ test('identity parity accepts multi-login and unfinished sign-ups, and still ref
   };
   refuse('one email, two profiles', base, [...rows, row('p3', 's4', 'c@x.test')].concat([row('p4', 's5', 'c@x.test')]), /One email is mapped to several profiles/);
   refuse('identity without a Cognito user', base, [...rows, row('p5', 's9', 'z@x.test')], /Aurora identity has no Cognito user/);
+  refuse('identity without a Cognito user on a suspended profile', base, [...rows, row('p6', 's8', 'y@x.test', 'suspended')], /Aurora identity has no Cognito user \(profile not deleted\)/);
+
+  // A deleted account's sign-in is gone from Cognito; its identity row is counted, not failed.
+  const deleted = identity(base, [...rows, row('p7', 's7', 'w@x.test', 'deletion_requested')]);
+  assert.ok(deleted.ok, deleted.out);
+  assert.match(deleted.out, /AURORA_IDENTITIES_WITHOUT_COGNITO_USER=\{"deletion_requested": 1\}/);
   refuse('identity email differs', base, [row('p1', 's1', 'other@x.test')], /Aurora identity email differs from Cognito/);
   refuse('duplicate provider subject', base, [row('p1', 's1', 'a@x.test'), row('p2', 's1', 'a@x.test')], /Duplicate Aurora provider subject token/);
   refuse('duplicate Cognito subject', [...base, user('s1', 'q@x.test')], rows, /Duplicate Cognito subject token/);
