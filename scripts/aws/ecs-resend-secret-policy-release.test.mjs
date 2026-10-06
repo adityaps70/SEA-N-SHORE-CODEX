@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const SECRET_PATTERN = 'arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore/resend*'
 
@@ -25,7 +26,7 @@ test('Resend secret IAM has a guarded two-resource Terraform release path', asyn
   assert.equal(existsSync(scriptUrl), true, 'missing Resend secret IAM runner')
   assert.equal(existsSync(actionUrl), true, 'missing Resend secret IAM action guard')
   assert.equal(existsSync(workflowUrl), true, 'missing Resend secret IAM workflow')
-  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()), 'action guard must be plan or apply-once')
+  assert.ok(['plan', 'apply-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))), 'action guard must be plan or apply-once')
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

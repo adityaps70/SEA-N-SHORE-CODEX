@@ -44,7 +44,7 @@ PERMISSION_DECISION="$(jq -r '.EvaluationResults[0].EvalDecision // empty' <<<"$
 [[ -n "$PERMISSION_DECISION" ]]
 echo "SES_IDENTITY_TAGS_PERMISSION_DECISION=$PERMISSION_DECISION"
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported SES identity tags action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.ses-identity-tags.XXXXXXXX")"

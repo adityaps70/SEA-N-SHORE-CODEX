@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFileSync(path, 'utf8')
 const migrationRunner = read('scripts/aws/app-database-role-migration.sh')
@@ -18,7 +19,7 @@ test('migration 0066 runs exactly the reviewed least-privilege statements', () =
   assert.match(migrationRunner, /Some public tables are not owned by the master user; refusing/)
   assert.match(migrationRunner, /APP_DATABASE_ROLE_APPLY_VERIFIED=true/)
   assert.match(ci, /node --test scripts\/aws\/app-database-role-migration\.test\.mjs/)
-  assert.ok(['plan', 'migrate-once'].includes(read('scripts/aws/app-database-role-migration-action.txt').trim()))
+  assert.ok(['plan', 'migrate-once'].includes(guardAction(read('scripts/aws/app-database-role-migration-action.txt'))))
 
   // Run the runner's own SQL guard: the reviewed migration passes, any edit is refused.
   const start = migrationRunner.indexOf(`python3 - "$MIGRATION" <<'PY'\n`)

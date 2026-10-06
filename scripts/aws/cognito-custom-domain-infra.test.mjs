@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('Cognito custom domain auth.seanshore.in has a guarded create-only release path', async () => {
   const scriptUrl = new URL('./cognito-custom-domain-infra.sh', import.meta.url)
@@ -10,7 +11,7 @@ test('Cognito custom domain auth.seanshore.in has a guarded create-only release 
   const terraformUrl = new URL('../../infra/aws/app/cognito_custom_domain.tf', import.meta.url)
 
   for (const url of [scriptUrl, actionUrl, workflowUrl, terraformUrl]) assert.equal(existsSync(url), true)
-  assert.ok(['plan', 'apply-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
+  assert.ok(['plan', 'apply-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))))
 
   const terraform = await readFile(terraformUrl, 'utf8')
   assert.match(terraform, /cognito_custom_auth_domain = "auth\.seanshore\.in"/)

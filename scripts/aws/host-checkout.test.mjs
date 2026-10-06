@@ -13,7 +13,7 @@ const read = (path) => readFileSync(join(ROOT, path), 'utf8')
 const workflows = readdirSync(join(ROOT, '.github/workflows')).filter((n) => n.endsWith('.yml')).map((n) => ({ name: n, text: read(`.github/workflows/${n}`) }))
 const shellScripts = readdirSync(join(ROOT, 'scripts/aws')).filter((n) => n.endsWith('.sh')).map((n) => ({ name: n, text: read(`scripts/aws/${n}`) }))
 // Scripts that run on the GitHub runner, never on the host.
-const RUNNER_ONLY = new Set(['ci-checkout.sh', 'infra-ci-scope.sh', 'onboarding-e2e-feed-proof-ssm.sh', 'onboarding-e2e-sea-job-ssm.sh'])
+const RUNNER_ONLY = new Set(['ci-checkout.sh', 'arm-commit-guard.sh', 'infra-ci-scope.sh', 'onboarding-e2e-feed-proof-ssm.sh', 'onboarding-e2e-sea-job-ssm.sh'])
 const GIT_NETWORK = /\bgit\s+(?:-c\s+\S+\s+)*(?:clone|fetch|pull|ls-remote|remote\s+update|submodule|push)\b/
 const jobBlocks = (text) => text.slice(text.indexOf('\njobs:\n')).split(/^(?=  [A-Za-z0-9_-]+:\n)/m).slice(1)
 

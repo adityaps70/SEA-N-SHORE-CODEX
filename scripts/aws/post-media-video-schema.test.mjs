@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const migrationPath = 'infra/aws/database/migrations/0008_post_media_video.sql'
 const guardPath = 'scripts/aws/post-media-video-migration.sh'
@@ -55,7 +56,7 @@ test('post media video migration execution is branch-scoped and safe by default'
     assert.equal(existsSync(path), true, `${path} must exist`)
   }
 
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
   assert.ok(['plan', 'apply-once'].includes(action), `Unexpected post media video migration action: ${action}`)
 
   const guard = readFileSync(guardPath, 'utf8')

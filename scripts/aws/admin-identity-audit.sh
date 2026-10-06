@@ -29,7 +29,7 @@ git diff --quiet HEAD -- \
 
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in
   plan) echo "ADMIN_IDENTITY_AUDIT_SKIPPED=true"; exit 0 ;;
   audit-once) ;;

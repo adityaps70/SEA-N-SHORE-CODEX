@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const workflowPath = '.github/workflows/aws-staging-deploy.yml'
 const actionPath = 'scripts/aws/staging-deploy-action.txt'
 
 test('staging deploy supports an explicit exact-head push trigger without weakening manual dispatch', () => {
   const workflow = readFileSync(workflowPath, 'utf8')
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
 
   assert.ok(['plan', 'deploy-once'].includes(action), `Unexpected staging deploy action: ${action}`)
   assert.match(workflow, /workflow_dispatch:/)

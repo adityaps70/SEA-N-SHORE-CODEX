@@ -19,7 +19,7 @@ EXPECTED_CERTIFICATE_STATEMENTS=3
 git diff --quiet HEAD -- "$QUIZ_MIGRATION" "$CERTIFICATE_MIGRATION" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported learning launch migration action." >&2; exit 1 ;; esac
 
 python3 - "$QUIZ_MIGRATION" "$EXPECTED_QUIZ_STATEMENTS" "$CERTIFICATE_MIGRATION" "$EXPECTED_CERTIFICATE_STATEMENTS" <<'PY'

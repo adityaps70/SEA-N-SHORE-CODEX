@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const migrationPath = 'infra/aws/database/migrations/0006_profile_passport.sql'
 
@@ -26,7 +27,7 @@ test('Maritime Passport migration is additive, owner-linked and verification-saf
 test('Maritime Passport migration runner is exact-head, staging-only, explicit-action and transactional', () => {
   const runner = readFileSync('scripts/aws/profile-passport-migration.sh', 'utf8')
   const workflow = readFileSync('.github/workflows/aws-profile-passport-migration.yml', 'utf8')
-  const action = readFileSync('scripts/aws/profile-passport-migration-action.txt', 'utf8').trim()
+  const action = guardAction(readFileSync('scripts/aws/profile-passport-migration-action.txt', 'utf8'))
 
   assert.ok(['plan', 'apply-once'].includes(action), `Unexpected migration action: ${action}`)
   assert.match(runner, /PROFILE_PASSPORT_MIGRATION_EXPECTED_SHA/)

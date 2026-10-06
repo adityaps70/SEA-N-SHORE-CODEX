@@ -32,6 +32,9 @@ permissions:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       run_build: ${{ steps.resolve.outputs.run_build }}
       deploy_to_ecs: ${{ steps.resolve.outputs.deploy_to_ecs }}
@@ -66,7 +69,7 @@ jobs:
           fi
 
           [[ "$GITHUB_REF" == "refs/heads/feat/aws-native-phase-0-1" ]]
-          ACTION="$(tr -d '[:space:]' < scripts/aws/staging-deploy-action.txt)"
+          ACTION="$(cut -d' ' -f1 < scripts/aws/staging-deploy-action.txt | tr -d '[:space:]')"
           echo "STAGING_DEPLOY_ACTION=$ACTION" >> "$GITHUB_ENV"
           case "$ACTION" in
             plan)
@@ -82,6 +85,17 @@ jobs:
               exit 1
               ;;
           esac
+
+      # Pre-private: GitHub Pro does not enforce the approval environment's required reviewer on a private repo. Any guard
+      # value but plan/discover also needs its arm commit to be a pull request merged by adityaps70 whose guard file
+      # names the exact commit it arms (scripts/aws/arm-commit-guard.sh).
+      - name: Require an owner-merged arm naming the exact SHA
+        if: steps.resolve.outputs.deploy_to_ecs == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARD_FILE: scripts/aws/staging-deploy-action.txt
+        shell: bash
+        run: bash scripts/aws/arm-commit-guard.sh
 
       - name: Wait for exact-head AWS Infrastructure CI
         if: steps.resolve.outputs.run_build == 'true'

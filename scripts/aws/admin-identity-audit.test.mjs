@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('admin identity audit is read-only, guarded and never prints addresses or numbers', async () => {
   const scriptUrl = new URL('./admin-identity-audit.sh', import.meta.url)
@@ -12,7 +13,7 @@ test('admin identity audit is read-only, guarded and never prints addresses or n
   assert.equal(existsSync(actionUrl), true)
   assert.equal(existsSync(workflowUrl), true)
 
-  const action = (await readFile(actionUrl, 'utf8')).trim()
+  const action = guardAction(await readFile(actionUrl, 'utf8'))
   assert.ok(['plan', 'audit-once'].includes(action))
 
   const script = await readFile(scriptUrl, 'utf8')

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 
 test('stale Terraform state locks are released only through the bounded guarded path', async () => {
   const script = await read('./terraform-state-unlock.sh')
-  const action = (await read('./terraform-state-unlock-action.txt')).trim()
+  const action = guardAction(await read('./terraform-state-unlock-action.txt'))
   const workflow = await read('../../.github/workflows/aws-terraform-state-unlock.yml')
 
   assert.ok(action === 'plan' || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(action), `Unexpected unlock action: ${action}`)

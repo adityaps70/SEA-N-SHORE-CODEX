@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('legacy invite migration is additive and guarded', async () => {
   const sql = await readFile(new URL('../../infra/aws/database/migrations/0059_legacy_profile_invites.sql', import.meta.url), 'utf8')
@@ -17,7 +18,7 @@ test('legacy invite migration is additive and guarded', async () => {
   assert.equal(existsSync(scriptUrl), true)
   assert.equal(existsSync(actionUrl), true)
   assert.equal(existsSync(workflowUrl), true)
-  assert.ok(['plan', 'migrate-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
+  assert.ok(['plan', 'migrate-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))))
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /0059_legacy_profile_invites\.sql/)

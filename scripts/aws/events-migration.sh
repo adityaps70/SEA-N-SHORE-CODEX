@@ -24,7 +24,7 @@ EXPECTED_PRODUCT_INDEXES=2
 git diff --quiet HEAD -- "$BASE_MIGRATION_FILE" "$PRODUCT_MIGRATION_FILE" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported events migration action." >&2; exit 1 ;; esac
 
 verify_sql() {

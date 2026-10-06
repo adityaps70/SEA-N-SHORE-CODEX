@@ -22,7 +22,7 @@ git diff --quiet HEAD -- infra/aws/app scripts/aws/social-events-infra.sh script
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 source scripts/aws/bootstrap-terraform-lock.sh
 
-ACTION="$(tr -d '[:space:]' < scripts/aws/social-events-infra-action.txt)"
+ACTION="$(cut -d' ' -f1 < scripts/aws/social-events-infra-action.txt | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported social event infrastructure action." >&2; exit 1 ;; esac
 
 IMAGE_TAG="$(tr -d '[:space:]' < "$IMAGE_TAG_FILE")"

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const migrations = [
   '0050_unclaimed_organizations',
@@ -7,7 +8,7 @@ const migrations = [
   '0052_event_cancelled_notification',
 ]
 const script = fs.readFileSync('scripts/aws/round-7-migration.sh', 'utf8')
-const guard = fs.readFileSync('scripts/aws/round-7-migration-action.txt', 'utf8').trim()
+const guard = guardAction(fs.readFileSync('scripts/aws/round-7-migration-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-round-7-migration.yml', 'utf8')
 
 assert.ok(['plan', 'migrate-once'].includes(guard))

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('community categories migration adds the category column and seeds the category communities without destructive SQL', async () => {
   const sql = await readFile(new URL('../../infra/aws/database/migrations/0061_community_categories.sql', import.meta.url), 'utf8')
@@ -22,7 +23,7 @@ test('community categories migration adds the category column and seeds the cate
   assert.equal(existsSync(scriptUrl), true)
   assert.equal(existsSync(actionUrl), true)
   assert.equal(existsSync(workflowUrl), true)
-  assert.ok(['plan', 'migrate-once'].includes((await readFile(actionUrl, 'utf8')).trim()))
+  assert.ok(['plan', 'migrate-once'].includes(guardAction(await readFile(actionUrl, 'utf8'))))
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /0061_community_categories\.sql/)

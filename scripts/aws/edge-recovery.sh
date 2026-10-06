@@ -9,7 +9,7 @@ export AWS_PAGER=""
 git diff --quiet HEAD -- scripts/aws infra/aws/app
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "310356785722" ]]
 source scripts/aws/bootstrap-terraform-lock.sh
-ACTION="$(tr -d '[:space:]' < scripts/aws/edge-recovery-action.txt)"
+ACTION="$(cut -d' ' -f1 < scripts/aws/edge-recovery-action.txt | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported edge action." >&2; exit 1 ;; esac
 APP_DIR="$PWD/infra/aws/app"
 RECOVERY_DIR="$(mktemp -d "$PWD/.edge-recovery-data.XXXXXXXX")"

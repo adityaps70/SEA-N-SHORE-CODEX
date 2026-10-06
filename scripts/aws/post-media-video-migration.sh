@@ -45,7 +45,7 @@ git diff --quiet HEAD -- "$MIGRATION_FILE" "$0" "$ACTION_FILE" || {
   exit 1
 }
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in
   plan|apply-once) ;;
   *)

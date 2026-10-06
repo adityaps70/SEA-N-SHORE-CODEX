@@ -25,7 +25,7 @@ git diff --quiet HEAD -- infra/aws/app/ecs-database-runtime.tf scripts/aws/socia
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 source scripts/aws/bootstrap-terraform-lock.sh
 
-ACTION="$(tr -d '[:space:]' < scripts/aws/social-shared-iam-state-action.txt)"
+ACTION="$(cut -d' ' -f1 < scripts/aws/social-shared-iam-state-action.txt | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported shared IAM state action." >&2; exit 1 ;; esac
 
 WORK_DIR="$(mktemp -d "$PWD/.social-shared-iam-state.XXXXXXXX")"

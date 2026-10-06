@@ -20,7 +20,7 @@ EXPECTED_STATEMENTS=28
 git diff --quiet HEAD -- "$MIGRATION_FILE" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 case "$ACTION" in plan|apply-once) ;; *) echo "Unsupported feed social migration action." >&2; exit 1 ;; esac
 
 python3 - "$MIGRATION_FILE" "$EXPECTED_STATEMENTS" <<'PY'

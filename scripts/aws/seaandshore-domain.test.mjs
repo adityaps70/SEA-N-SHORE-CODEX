@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 
@@ -8,7 +9,7 @@ test('seaandshore.in has a guarded two-stage release path that copies the legacy
   const tf = await read('../../infra/aws/app/seaandshore_domain.tf')
   const script = await read('./seaandshore-domain.sh')
   const workflow = await read('../../.github/workflows/aws-seaandshore-domain.yml')
-  const action = (await read('./seaandshore-domain-action.txt')).trim()
+  const action = guardAction(await read('./seaandshore-domain-action.txt'))
 
   assert.ok(['plan', 'apply-once'].includes(action), `Unexpected seaandshore domain action: ${action}`)
 

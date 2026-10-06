@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 test('ECS task Cognito admin policy has a guarded single-resource Terraform release path', async () => {
   const scriptUrl = new URL('./ecs-task-cognito-admin-policy.sh', import.meta.url)
@@ -11,7 +12,7 @@ test('ECS task Cognito admin policy has a guarded single-resource Terraform rele
   assert.equal(existsSync(scriptUrl), true, 'missing ECS task Cognito admin policy runner')
   assert.equal(existsSync(actionUrl), true, 'missing ECS task Cognito admin policy action guard')
   assert.equal(existsSync(workflowUrl), true, 'missing ECS task Cognito admin policy workflow')
-  assert.equal((await readFile(actionUrl, 'utf8')).trim(), 'plan')
+  assert.equal(guardAction(await readFile(actionUrl, 'utf8')), 'plan')
 
   const script = await readFile(scriptUrl, 'utf8')
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

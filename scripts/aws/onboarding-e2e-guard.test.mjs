@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const workflowPath = '.github/workflows/aws-onboarding-e2e.yml'
 const actionPath = 'scripts/aws/onboarding-e2e-action.txt'
@@ -8,7 +9,7 @@ const browserScriptPath = 'scripts/aws/onboarding-staging-e2e.mjs'
 const persistenceAuditPath = 'scripts/aws/onboarding-e2e-persistence-audit.sh'
 
 test('onboarding e2e is safe by default and branch-scoped with exact-head CI gating', () => {
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
   assert.ok(['plan', 'probe', 'run-once'].includes(action), `Unexpected onboarding e2e action: ${action}`)
 
   const workflow = readFileSync(workflowPath, 'utf8')

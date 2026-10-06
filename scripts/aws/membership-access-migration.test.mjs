@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const sql = fs.readFileSync('infra/aws/database/migrations/0032_membership_access_foundation.sql', 'utf8')
 const completionSql = fs.readFileSync('infra/aws/database/migrations/0033_membership_experience_completion.sql', 'utf8')
 const script = fs.readFileSync('scripts/aws/membership-access-migration.sh', 'utf8')
-const guard = fs.readFileSync('scripts/aws/membership-access-migration-action.txt', 'utf8').trim()
+const guard = guardAction(fs.readFileSync('scripts/aws/membership-access-migration-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-membership-access-migration.yml', 'utf8')
 
 assert.ok(['plan', 'migrate-once'].includes(guard))

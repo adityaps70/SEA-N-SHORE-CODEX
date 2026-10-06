@@ -3,10 +3,11 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 const script = await read('./phase2-hardening-infra.sh')
-const action = (await read('./phase2-hardening-infra-action.txt')).trim()
+const action = guardAction(await read('./phase2-hardening-infra-action.txt'))
 const workflow = await read('../../.github/workflows/aws-phase2-hardening-infra.yml')
 const ci = await read('../../.github/workflows/aws-infra-ci.yml')
 const hardening = await read('../../infra/aws/app/phase2-hardening.tf')

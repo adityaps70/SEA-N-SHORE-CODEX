@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
 test('identity cleanup deletes only unmapped E2E test users and the one stale focus row', () => {
   assert.equal(existsSync(new URL('../../.github/workflows/aws-identity-cleanup.yml', import.meta.url)), true)
-  assert.ok(['plan', 'run-once', 'accounts-once'].includes(read('./identity-cleanup-action.txt').trim()))
+  assert.ok(['plan', 'run-once', 'accounts-once'].includes(guardAction(read('./identity-cleanup-action.txt'))))
   const script = read('./identity-cleanup.sh')
   assert.match(script, /IDENTITY_CLEANUP_EXPECTED_SHA/)
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

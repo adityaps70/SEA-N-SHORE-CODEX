@@ -6,10 +6,11 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 const script = await read('./bootstrap-budget-retirement.sh')
-const action = (await read('./bootstrap-budget-retirement-action.txt')).trim()
+const action = guardAction(await read('./bootstrap-budget-retirement-action.txt'))
 const workflow = await read('../../.github/workflows/aws-bootstrap-budget-retirement.yml')
 const ci = await read('../../.github/workflows/aws-infra-ci.yml')
 const bootstrap = await read('../../infra/aws/bootstrap/main.tf')

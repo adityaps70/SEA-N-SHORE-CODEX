@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { guardAction } from './guard-value.mjs'
 
 const sql = fs.readFileSync('infra/aws/database/migrations/0031_multi_login_identity.sql', 'utf8')
 const script = fs.readFileSync('scripts/aws/multi-login-identity-migration.sh', 'utf8')
-const guard = fs.readFileSync('scripts/aws/multi-login-identity-migration-action.txt', 'utf8').trim()
+const guard = guardAction(fs.readFileSync('scripts/aws/multi-login-identity-migration-action.txt', 'utf8'))
 const workflow = fs.readFileSync('.github/workflows/aws-multi-login-identity-migration.yml', 'utf8')
 
 assert.match(sql, /add column if not exists provider_username text/i)

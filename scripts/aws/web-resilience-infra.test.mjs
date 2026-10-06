@@ -2,10 +2,11 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 const script = await read('./web-resilience-infra.sh')
-const action = (await read('./web-resilience-infra-action.txt')).trim()
+const action = guardAction(await read('./web-resilience-infra-action.txt'))
 const workflow = await read('../../.github/workflows/aws-web-resilience-infra.yml')
 const terraform = await read('../../infra/aws/app/web-resilience.tf')
 const main = await read('../../infra/aws/app/main.tf')

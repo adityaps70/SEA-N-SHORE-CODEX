@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 
 test('bootstrap disk maintenance is bounded to stale Sea N Shore temp directories', async () => {
   const script = await read('./bootstrap-disk-maintenance.sh')
-  const action = (await read('./bootstrap-disk-maintenance-action.txt')).trim()
+  const action = guardAction(await read('./bootstrap-disk-maintenance-action.txt'))
 
   assert.ok(['plan', 'apply-once', 'swap-once', 'grow-root-once'].includes(action))
   assert.match(script, /BOOTSTRAP_DISK_MAINTENANCE_EXPECTED_SHA/)

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
 test('signup recovery email: guarded, pinned to the 14 audited people, one send each, never an address in output', () => {
   assert.equal(existsSync(new URL('../../.github/workflows/aws-signup-recovery-email.yml', import.meta.url)), true)
-  assert.ok(['plan', 'send-once'].includes(read('./signup-recovery-email-action.txt').trim()))
+  assert.ok(['plan', 'send-once'].includes(guardAction(read('./signup-recovery-email-action.txt'))))
   const script = read('./signup-recovery-email.sh')
   assert.match(script, /SIGNUP_RECOVERY_EMAIL_EXPECTED_SHA/)
   assert.match(script, /EXPECTED_ACCOUNT="310356785722"/)

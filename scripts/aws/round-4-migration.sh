@@ -27,7 +27,7 @@ MIGRATIONS=(
 git diff --quiet HEAD -- "${MIGRATIONS[@]}" "$0" "$ACTION_FILE"
 [[ "$(aws sts get-caller-identity --query Account --output text)" == "$EXPECTED_ACCOUNT" ]]
 
-ACTION="$(tr -d '[:space:]' < "$ACTION_FILE")"
+ACTION="$(cut -d' ' -f1 < "$ACTION_FILE" | tr -d '[:space:]')"
 # A manual "migrate-once" dispatch (already checked by the workflow: exact SHA + confirmation phrase)
 # overrides the committed plan switch, so no execute/rearm commits are needed.
 if [[ -n "${ROUND_4_MIGRATION_ACTION:-}" ]]; then

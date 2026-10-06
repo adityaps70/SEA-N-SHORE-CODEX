@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import test from 'node:test'
+import { guardAction } from './guard-value.mjs'
 
 const actionPath = 'scripts/aws/realtime-e2e-action.txt'
 const workflowPath = '.github/workflows/aws-realtime-e2e.yml'
@@ -11,7 +12,7 @@ const remotePath = 'scripts/aws/realtime-e2e-remote.sh'
 
 test('realtime e2e is branch-scoped and guarded by plan, run-once, bounded connect probe, targeted cleanup-once, or read-only connect diagnosis', () => {
   assert.equal(existsSync(actionPath), true)
-  const action = readFileSync(actionPath, 'utf8').trim()
+  const action = guardAction(readFileSync(actionPath, 'utf8'))
   assert.ok(
     action === 'plan'
       || action === 'run-once'
