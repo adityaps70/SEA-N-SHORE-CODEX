@@ -128,7 +128,15 @@ profile_by_subject={subject_token: profile_token for _, profile_token, subject_t
 # An identity whose Cognito user is gone is expected only for a profile whose deletion was requested (the account
 # deletion removes the sign-in); on any other profile it fails. Counts are by profile status only.
 orphans=collections.Counter(account_status[subject_token] for _, _, subject_token in account_rows if subject_token not in cognito_email_by_subject)
-print('AURORA_IDENTITIES_WITHOUT_COGNITO_USER=' + json.dumps(dict(sorted(orphans.items()))))
+live_by_profile=collections.Counter(p for _, p, subject in account_rows if subject in cognito_email_by_subject)
+orphan_profiles={(p, account_status[subject]) for _, p, subject in account_rows if subject not in cognito_email_by_subject}
+orphan_kinds=collections.Counter(f"{status}:{'has_other_sign_in' if live_by_profile[p] else 'no_sign_in_left'}" for p, status in orphan_profiles)
+summary=['AURORA_IDENTITIES_WITHOUT_COGNITO_USER=' + json.dumps(dict(sorted(orphans.items()))),
+         'AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=' + json.dumps(dict(sorted(orphan_kinds.items())))]
+for line in summary:
+    print(line)
+    # Also on stderr: SSM keeps only the first 24,000 characters of stdout, which the table hashes fill.
+    print(line, file=sys.stderr)
 if any(status != 'deletion_requested' for status in orphans):
     raise SystemExit('Aurora identity has no Cognito user (profile not deleted)')
 for email_token, profile_token, subject_token in account_rows:
@@ -152,9 +160,10 @@ for subjects in (s for s in subjects_by_email.values() if len(s) > 1):
     else: groups['multi_login_plus_unmapped'] += 1
 unmapped=sum(1 for _, subject_token in cognito_rows if subject_token not in profile_by_subject)
 profiles_with_several=sum(1 for n in collections.Counter(p for _, p, _ in account_rows).values() if n > 1)
-print('COGNITO_DUPLICATE_EMAIL_GROUPS=' + json.dumps(groups, sort_keys=True))
-print(f'COGNITO_UNMAPPED_USERS={unmapped}')
-print(f'AURORA_PROFILES_WITH_SEVERAL_IDENTITIES={profiles_with_several}')
+for line in ['COGNITO_DUPLICATE_EMAIL_GROUPS=' + json.dumps(groups, sort_keys=True), f'COGNITO_UNMAPPED_USERS={unmapped}',
+             f'AURORA_PROFILES_WITH_SEVERAL_IDENTITIES={profiles_with_several}']:
+    print(line)
+    print(line, file=sys.stderr)
 
 print(f'COGNITO_USER_COUNT={len(cognito_rows)}')
 print(f'AURORA_IDENTITY_COUNT={len(account_rows)}')
