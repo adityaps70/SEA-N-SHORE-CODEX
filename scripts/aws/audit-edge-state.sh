@@ -177,6 +177,28 @@ while IFS=$'\t' read -r type state_name id live_name; do
         echo "aws_cloudfront_function.$state_name LIVE_QUERY_FAILED id=$id name=$live_name error=$ERROR_TEXT"
       fi
       ;;
+    aws_cloudfront_cache_policy)
+      # Read-only: the managed cache policy must exist under the same id and name as in state.
+      if [[ -z "$live_name" || "$live_name" == "null" ]]; then
+        LIVE_CHECK_FAILED=1
+        echo "aws_cloudfront_cache_policy.$state_name LIVE_QUERY_SKIPPED id=$id reason=missing-name-in-state"
+        continue
+      fi
+      if aws cloudfront get-cache-policy --id "$id" --output json > "$EVIDENCE_DIR/edge-cache-policy.json" 2>"$EVIDENCE_DIR/edge-live-error.txt"; then
+        if jq -e --arg id "$id" --arg name "$live_name" '.CachePolicy.Id == $id and .CachePolicy.CachePolicyConfig.Name == $name' "$EVIDENCE_DIR/edge-cache-policy.json" >/dev/null; then
+          jq -r --arg address "aws_cloudfront_cache_policy.$state_name" '
+            "\($address) LIVE=true id=\(.CachePolicy.Id) name=\(.CachePolicy.CachePolicyConfig.Name) default_ttl=\(.CachePolicy.CachePolicyConfig.DefaultTTL)"
+          ' "$EVIDENCE_DIR/edge-cache-policy.json"
+        else
+          LIVE_CHECK_FAILED=1
+          echo "aws_cloudfront_cache_policy.$state_name LIVE_QUERY_FAILED id=$id name=$live_name reason=unexpected-live-cache-policy"
+        fi
+      else
+        LIVE_CHECK_FAILED=1
+        ERROR_TEXT="$(tr '\n' ' ' < "$EVIDENCE_DIR/edge-live-error.txt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-300)"
+        echo "aws_cloudfront_cache_policy.$state_name LIVE_QUERY_FAILED id=$id name=$live_name error=$ERROR_TEXT"
+      fi
+      ;;
     aws_wafv2_web_acl)
       if [[ -z "$live_name" || "$live_name" == "null" ]]; then
         LIVE_CHECK_FAILED=1

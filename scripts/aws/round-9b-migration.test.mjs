@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
+import fs, { readdirSync, readFileSync } from 'node:fs'
 import { guardAction } from './guard-value.mjs'
 
 const migrations = [
@@ -29,6 +29,12 @@ assert.deepEqual([...order].sort((a, b) => a - b), order)
 
 assert.match(script, /310356785722/)
 assert.match(script, /ROUND_9B_MIGRATION_EXPECTED_SHA/)
+// The SHA guard accepts every hex digit (a [0-9b-f] typo once refused any SHA containing an 'a').
+assert.match(script, /"\$\{ROUND_9B_MIGRATION_EXPECTED_SHA:-\}" =~ \^\[0-9a-f\]\{40\}\$/)
+for (const name of readdirSync(new URL('./', import.meta.url)).filter((n) => n.endsWith('.sh'))) {
+  const source = readFileSync(new URL(`./${name}`, import.meta.url), 'utf8')
+  for (const m of source.matchAll(/\[([^[\]]*)\]\{40\}/g)) assert.equal(m[1], '0-9a-f', `${name}: ${m[0]}`)
+}
 assert.match(script, /plan\|migrate-once/)
 assert.match(script, /begin-transaction/)
 assert.match(script, /commit-transaction/)
