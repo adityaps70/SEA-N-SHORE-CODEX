@@ -1,20 +1,16 @@
 name: AWS Logo Browser Verify
 
 on:
-  push:
-    branches:
-      - feat/aws-native-phase-0-1
-    paths:
-      - src/components/brand/**
-      - src/components/navigation/**
-      - public/brand/**
-      - scripts/aws/verify-staging-logo-browser.mjs
-      - scripts/aws/staging-deploy-action.txt
-      - .github/workflows/aws-logo-browser-verify.yml
+  # Actions minutes: started once per deploy by aws-staging-deploy.yml (after the ECS rollout is
+  # verified), or by hand; not on every push.
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: sea-n-shore-logo-browser-verify
+  cancel-in-progress: true
 
 jobs:
   chromium-render:

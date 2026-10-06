@@ -34,6 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       approved_sha: ${{ steps.validate.outputs.approved_sha }}
+    timeout-minutes: 10
     steps:
       - name: Checkout exact dispatch ref
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -72,6 +73,7 @@ jobs:
     if: inputs.mode == 'execute'
     runs-on: ubuntu-latest
     environment: staging-apply
+    timeout-minutes: 10
     steps:
       - name: Approved for a run that changes AWS
         run: echo "Approved in staging-apply."
@@ -121,6 +123,7 @@ jobs:
       contents: write
       actions: write
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout launch helper
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

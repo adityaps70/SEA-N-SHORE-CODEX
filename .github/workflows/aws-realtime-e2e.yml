@@ -32,6 +32,7 @@ jobs:
       cleanup_source_run_id: ${{ steps.guard.outputs.cleanup_source_run_id }}
       run_diagnostic: ${{ steps.guard.outputs.run_diagnostic }}
       diagnostic_source_run_id: ${{ steps.guard.outputs.diagnostic_source_run_id }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: guard

@@ -35,6 +35,7 @@ jobs:
     outputs:
       run_build: ${{ steps.resolve.outputs.run_build }}
       deploy_to_ecs: ${{ steps.resolve.outputs.deploy_to_ecs }}
+    timeout-minutes: 10
     steps:
       - name: Checkout exact ref
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -121,6 +122,7 @@ jobs:
     if: needs.gate.outputs.deploy_to_ecs == 'true'
     runs-on: ubuntu-latest
     environment: staging-apply
+    timeout-minutes: 10
     steps:
       - name: Approved for a run that changes AWS
         run: echo "Approved in staging-apply."
@@ -132,6 +134,11 @@ jobs:
     if: ${{ !cancelled() && needs.gate.result == 'success' && (needs.apply-approval.result == 'success' || (needs.apply-approval.result == 'skipped' && needs.gate.outputs.deploy_to_ecs != 'true')) && needs.gate.outputs.run_build == 'true' }}
     runs-on: ubuntu-latest
     environment: staging
+    # The workflow's permissions, plus actions: write to start the post-deploy checks.
+    permissions:
+      id-token: write
+      contents: read
+      actions: write
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
@@ -160,6 +167,7 @@ jobs:
       AURORA_APP_SECRET_ARN: arn:aws:secretsmanager:ap-south-1:310356785722:secret:sea-n-shore-staging/aurora-app-1fXL2g
       DEPLOY_TO_ECS: ${{ needs.gate.outputs.deploy_to_ecs }}
 
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -656,6 +664,20 @@ jobs:
           echo "- Image: \`$EXPECTED_IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- rolloutState: \`$PRIMARY_ROLLOUT_STATE\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- desiredCount/runningCount/pendingCount: \`$DESIRED_COUNT/$RUNNING_COUNT/$PENDING_COUNT\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # Actions minutes: the live checks run once per deploy, after the rollout above is verified,
+      # instead of on every push.
+      - name: Start the post-deploy checks
+        if: env.DEPLOY_TO_ECS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for workflow in aws-remote-verify.yml aws-google-auth-live-verify.yml aws-logo-browser-verify.yml; do
+            gh workflow run "$workflow" --repo "$GITHUB_REPOSITORY" --ref feat/aws-native-phase-0-1
+            echo "Started $workflow"
+          done
 
 # legacy-import-rollout-trigger: 2026-10-02
 

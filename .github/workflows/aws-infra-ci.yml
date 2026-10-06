@@ -39,10 +39,45 @@ on:
 permissions:
   contents: read
 
+# Actions minutes: a newer push to the same ref supersedes this run (a guarded runner on an older
+# commit refuses anyway once the branch has moved).
+concurrency:
+  group: aws-infra-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Actions minutes: a heavy job below is skipped only when every file it reads is byte-identical to a
+  # commit whose Infra CI passed (a merge of an up-to-date PR branch, a rearm, a workflow-only change);
+  # see scripts/aws/infra-ci-scope.sh. The SSM execution contract job (guard and runner contract
+  # tests) always runs. A non-push event, or any doubt, runs everything.
+  scope:
+    name: Change scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      application: ${{ steps.scope.outputs.application }}
+      terraform: ${{ steps.scope.outputs.terraform }}
+      guard: ${{ steps.scope.outputs.guard }}
+      container: ${{ steps.scope.outputs.container }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 2
+      - name: Decide which heavy jobs this commit needs
+        id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+        run: bash scripts/aws/infra-ci-scope.sh
+
   remote-execution-contract:
     name: GitHub SSM execution contract
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -106,6 +141,8 @@ jobs:
         run: node --test scripts/aws/identity-cleanup.test.mjs
       - name: Verify signup recovery email contract
         run: node --test scripts/aws/signup-recovery-email.test.mjs
+      - name: Verify Actions minutes contract
+        run: node --test scripts/aws/actions-minutes.test.mjs
       - name: Verify staging-apply approval gate contract
         run: node --test scripts/aws/apply-approval-gate.test.mjs
       - name: Verify onboarding e2e guard contract
@@ -235,7 +272,10 @@ jobs:
 
   application:
     name: Application verify
+    needs: scope
+    if: needs.scope.outputs.application == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -258,7 +298,10 @@ jobs:
 
   terraform:
     name: Terraform validate
+    needs: scope
+    if: needs.scope.outputs.terraform == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -283,7 +326,10 @@ jobs:
 
   guard:
     name: Terraform plan guard tests
+    needs: scope
+    if: needs.scope.outputs.guard == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -308,7 +354,10 @@ jobs:
 
   container:
     name: Docker build
+    needs: scope
+    if: needs.scope.outputs.container == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

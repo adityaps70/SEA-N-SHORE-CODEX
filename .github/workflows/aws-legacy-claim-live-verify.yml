@@ -17,6 +17,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Verify public restored-profile claim flow
         shell: bash
