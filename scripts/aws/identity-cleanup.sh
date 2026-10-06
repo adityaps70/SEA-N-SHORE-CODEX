@@ -158,6 +158,9 @@ def e2e_accounts(users):
     targets, kept_named = [], []
     for pid, prow in by_profile.items():
         all_e2e = all(ANY_E2E_EMAIL.match(r['email']) for r in prow)
+        # The live Cognito address must be an E2E one too (identity_accounts.email could lag a change).
+        all_e2e = all_e2e and all(ANY_E2E_EMAIL.match(str(users[r['subject']][1].get('email') or '').strip().lower())
+                                  for r in prow if r['subject'] in users)
         if all_e2e and not prow[0]['is_admin']:
             targets.append({'profile_id': pid, 'name': prow[0]['name'], 'emails': sorted(r['email'] for r in prow),
                             'subjects': sorted(r['subject'] for r in prow), 'created': prow[0]['created'], 'status': prow[0]['status']})
@@ -188,7 +191,104 @@ for k in kept_named:
 if len(accounts) + len(loose) > MAX_E2E_ACCOUNTS:
     raise SystemExit(f'Refusing: {len(accounts) + len(loose)} E2E accounts exceeds the cap of {MAX_E2E_ACCOUNTS}.')
 
+# Proof the targets are not real members, read-only: sign-in domains, the E2E runs that created them,
+# and everything a profile delete would touch, walked from the live foreign-key catalog.
+UUID = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')
+IDENT = re.compile(r'^[a-z_][a-z0-9_]*$')
+RUN_ID = re.compile(r'e2e-([0-9]+)-[a-z]+@')
+MAX_FK_DEPTH = 4
+
+def e2e_footprint(accounts):
+    ids = [a['profile_id'] for a in accounts]
+    if not all(UUID.match(i) for i in ids):
+        raise SystemExit('Refusing: a target profile id is not a uuid.')
+    if not ids:
+        return {}, {}, {}, {}
+    fks, _ = sql('fk_catalog', """
+      select c.conrelid::regclass::text as tbl, a.attname::text as col, c.confrelid::regclass::text as ref,
+             fa.attname::text as ref_col, c.confdeltype::text as rule
+        from pg_constraint c
+        join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+        join pg_attribute fa on fa.attrelid = c.confrelid and fa.attnum = c.confkey[1]
+       where c.contype = 'f' and cardinality(c.conkey) = 1 and c.connamespace = 'public'::regnamespace""")
+    for fk in fks:
+        fk['tbl'] = fk['tbl'].removeprefix('public.')
+        fk['ref'] = fk['ref'].removeprefix('public.')
+        if not all(IDENT.match(fk[k]) for k in ('tbl', 'col', 'ref', 'ref_col')):
+            raise SystemExit('Refusing: unexpected identifier in the foreign-key catalog.')
+    profile_cols = {}
+    for fk in fks:
+        if fk['ref'] == 'profiles' and fk['ref_col'] == 'id':
+            profile_cols.setdefault(fk['tbl'], []).append(fk['col'])
+    ids_sql = 'cast(:ids as uuid[])'
+
+    def real_member(tbl, skip=None):
+        # A row is a real member's when any of its profile columns names someone outside the targets.
+        cols = [c for c in profile_cols.get(tbl, []) if c != skip]
+        terms = [f'({c} is not null and not ({c} = any({ids_sql})))' for c in cols]
+        if tbl == 'profiles':
+            terms.append(f'not (id = any({ids_sql}))')
+        return ' or '.join(terms) or 'false'
+
+    # Paths of rows a profile delete removes (cascade) or is blocked by (restrict / no action).
+    paths = []
+    def walk(tbl, key_sql, label, seen, depth):
+        for fk in fks:
+            # Self-references (replies to a removed comment) are followed too; the depth bounds them.
+            if fk['ref'] != tbl or (fk['tbl'] in seen and fk['tbl'] != tbl) or fk['rule'] not in ('c', 'r', 'a'):
+                continue
+            where = f"{fk['col']} = any({ids_sql})" if depth == 1 else f"{fk['col']} in ({key_sql(fk['ref_col'])})"
+            node = {'path': f"{label}>{fk['tbl']}.{fk['col']}" if label else f"{fk['tbl']}.{fk['col']}",
+                    'tbl': fk['tbl'], 'where': where, 'depth': depth, 'blocking': fk['rule'] != 'c',
+                    'real': real_member(fk['tbl'], fk['col'] if depth == 1 else None)}
+            paths.append(node)
+            if fk['rule'] == 'c' and depth < MAX_FK_DEPTH:
+                walk(fk['tbl'], lambda col, t=fk['tbl'], w=where: f'select {col} from public.{t} where {w}',
+                     node['path'], seen | {fk['tbl']}, depth + 1)
+    walk('profiles', None, '', {'profiles'}, 1)
+    params = {'ids': '{' + ','.join(ids) + '}'}
+    counts = {}
+    for start in range(0, len(paths), 40):
+        batch = paths[start:start + 40]
+        statement = '\nunion all\n'.join(
+            f"select {i + start} as i, count(*)::int as n, count(*) filter (where {p['real']})::int as real from public.{p['tbl']} where {p['where']}"
+            for i, p in enumerate(batch))
+        rows, _ = sql('fk_footprint', statement, params)
+        for row in rows:
+            counts[row['i']] = (row['n'], row['real'])
+    footprint, links, collateral, blocking = {}, {}, {}, {}
+    for i, p in enumerate(paths):
+        n, real = counts.get(i, (0, 0))
+        if not n:
+            continue
+        if p['blocking']:
+            blocking[p['path']] = n
+        elif p['depth'] == 1 and p['tbl'] != 'profiles':
+            footprint[p['path']] = n
+            if real:
+                links[p['path']] = real
+        elif real:
+            collateral[p['path']] = real
+    return footprint, links, collateral, blocking
+
+signin_domains = Counter(e.rsplit('@', 1)[-1] for a in accounts for e in a['emails'])
+runs = Counter(m.group(1) for a in accounts for e in a['emails'][:1] for m in [RUN_ID.search(e)] if m)
+cognito_created = sorted(str(users[s][0].get('UserCreateDate'))[:10] for a in accounts for s in a['subjects'] if s in users)
+footprint, links, collateral, blocking = e2e_footprint(accounts)
+print('IDENTITY_CLEANUP_E2E_SIGNIN_DOMAINS=' + json.dumps(dict(signin_domains), sort_keys=True))
+print('IDENTITY_CLEANUP_E2E_CREATOR_RUNS=' + json.dumps(dict(sorted(runs.items())), sort_keys=True))
+print('IDENTITY_CLEANUP_E2E_PROFILES_CREATED=' + json.dumps([min((a['created'] for a in accounts), default=None), max((a['created'] for a in accounts), default=None)]))
+print('IDENTITY_CLEANUP_E2E_COGNITO_CREATED=' + json.dumps([cognito_created[0] if cognito_created else None, cognito_created[-1] if cognito_created else None]))
+print('IDENTITY_CLEANUP_E2E_FOOTPRINT=' + json.dumps(footprint, sort_keys=True))
+print('IDENTITY_CLEANUP_E2E_REAL_MEMBER_LINKS=' + json.dumps(links, sort_keys=True))
+print('IDENTITY_CLEANUP_E2E_REAL_MEMBER_COLLATERAL=' + json.dumps(collateral, sort_keys=True))
+print('IDENTITY_CLEANUP_E2E_BLOCKING=' + json.dumps(blocking, sort_keys=True))
+real_member_safe = set(signin_domains) <= {'example.com'} and not collateral and not blocking
+print(f'IDENTITY_CLEANUP_E2E_REAL_MEMBER_SAFE={str(real_member_safe).lower()}')
+
 if action == 'accounts-once':
+    if not real_member_safe:
+        raise SystemExit('Refusing: an E2E account has a non-test sign-in, real members\' rows would be removed, or a row blocks the delete.')
     def cognito_username_for(sub):
         found = run('find_sub', ['aws', 'cognito-idp', 'list-users', '--region', region, '--user-pool-id', pool,
                                  '--filter', f'sub = "{sub}"', '--output', 'json']).get('Users', [])
