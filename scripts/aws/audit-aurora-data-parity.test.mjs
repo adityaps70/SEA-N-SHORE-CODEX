@@ -72,6 +72,7 @@ test('identity parity accepts multi-login and unfinished sign-ups, and still ref
   assert.equal(stale.ok, false);
   assert.match(stale.err, /AURORA_PROFILES_WITH_A_MISSING_SIGN_IN=\{"active:has_other_sign_in": 1\}/);
   assert.match(stale.err, /Aurora identity has no Cognito user \(profile not deleted\)/);
+  assert.match(stale.err, /COGNITO_DUPLICATE_EMAIL_GROUPS=\{"multi_login": 1, "multi_login_plus_unmapped": 0, "unmapped_only": 1\}/);
   refuse('identity email differs', base, [row('p1', 's1', 'other@x.test')], /Aurora identity email differs from Cognito/);
   refuse('duplicate provider subject', base, [row('p1', 's1', 'a@x.test'), row('p2', 's1', 'a@x.test')], /Duplicate Aurora provider subject token/);
   refuse('duplicate Cognito subject', [...base, user('s1', 'q@x.test')], rows, /Duplicate Cognito subject token/);

@@ -137,8 +137,6 @@ for line in summary:
     print(line)
     # Also on stderr: SSM keeps only the first 24,000 characters of stdout, which the table hashes fill.
     print(line, file=sys.stderr)
-if any(status != 'deletion_requested' for status in orphans):
-    raise SystemExit('Aurora identity has no Cognito user (profile not deleted)')
 for email_token, profile_token, subject_token in account_rows:
     if subject_token in cognito_email_by_subject and cognito_email_by_subject[subject_token] != email_token:
         raise SystemExit('Aurora identity email differs from Cognito')
@@ -164,6 +162,9 @@ for line in ['COGNITO_DUPLICATE_EMAIL_GROUPS=' + json.dumps(groups, sort_keys=Tr
              f'AURORA_PROFILES_WITH_SEVERAL_IDENTITIES={profiles_with_several}']:
     print(line)
     print(line, file=sys.stderr)
+# Refuse only after every summary line is out, so a failing run still answers what it found.
+if any(status != 'deletion_requested' for status in orphans):
+    raise SystemExit('Aurora identity has no Cognito user (profile not deleted)')
 
 print(f'COGNITO_USER_COUNT={len(cognito_rows)}')
 print(f'AURORA_IDENTITY_COUNT={len(account_rows)}')
