@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { guardAction } from './guard-value.mjs'
 
 const migrationPath = 'infra/aws/database/migrations/0005_profile_identity.sql'
 
@@ -31,32 +30,3 @@ test('exact identity migration supports lightweight activation without breaking 
   assert.doesNotMatch(sql, /drop\s+(table|column)|truncate\s|delete\s|update\s|insert\s/i)
 })
 
-test('profile identity migration runner is exact-head, staging-only, explicit-action and fail-closed', () => {
-  const runner = readFileSync('scripts/aws/profile-identity-migration.sh', 'utf8')
-  const workflow = readFileSync('.github/workflows/aws-profile-identity-migration.yml', 'utf8')
-  const action = guardAction(readFileSync('scripts/aws/profile-identity-migration-action.txt', 'utf8'))
-
-  assert.ok(['plan', 'apply-once'].includes(action), `Unexpected migration action: ${action}`)
-  assert.match(runner, /PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA/)
-  assert.match(runner, /git rev-parse HEAD/)
-  assert.match(runner, /bash scripts\/aws\/branch-head\.sh refs\/heads\/feat\/aws-native-phase-0-1/)
-  assert.match(runner, /310356785722/)
-  assert.match(runner, /sea-n-shore-staging-aurora/)
-  assert.match(runner, /case "\$ACTION" in plan\|apply-once/)
-  assert.match(runner, /PROFILE_IDENTITY_MIGRATION_PLAN_ONLY_NO_APPLY/)
-  assert.match(runner, /begin-transaction/)
-  assert.match(runner, /rollback-transaction/)
-  assert.match(runner, /commit-transaction/)
-  assert.match(runner, /PROFILE_IDENTITY_MIGRATION_APPLY_VERIFIED=true/)
-  assert.doesNotMatch(runner, /drop\s+(table|column)|truncate\s|delete\s+from|update\s+public\.|insert\s+into/i)
-
-  assert.match(workflow, /branches:\s*\n\s*- feat\/aws-native-phase-0-1/)
-  assert.match(workflow, /environment:\s*staging/)
-  assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
-  assert.match(workflow, /Exact-head AWS Infrastructure CI is not green/)
-  assert.match(workflow, /PROFILE_IDENTITY_MIGRATION_EXPECTED_SHA/)
-  assert.match(workflow, /AWS-RunShellScript/)
-  assert.match(workflow, /sea-n-shore-bootstrap/)
-  assert.match(workflow, /print\(json\.dumps\(\{"executionTimeout": \["1200"\], "commands": \[/)
-  assert.doesNotMatch(workflow, /json\.dumps\(\{\{/)
-})

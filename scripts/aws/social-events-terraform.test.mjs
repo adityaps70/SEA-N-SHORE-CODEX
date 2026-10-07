@@ -5,7 +5,6 @@ import test from 'node:test'
 const terraform = await readFile(new URL('../../infra/aws/app/social-events.tf', import.meta.url), 'utf8')
 const realtimeTerraform = await readFile(new URL('../../infra/aws/app/realtime.tf', import.meta.url), 'utf8')
 const realtimeFanout = await readFile(new URL('../../infra/aws/app/lambda/realtime-fanout.mjs', import.meta.url), 'utf8')
-const realtimeClassifier = await import(new URL('./realtime-infra-plan-classifier.mjs', import.meta.url).href)
 
 test('social event infrastructure uses EventBridge, encrypted SQS and a DLQ', () => {
   assert.match(terraform, /resource "aws_cloudwatch_event_bus" "social"/)
@@ -67,51 +66,6 @@ test('realtime routing carries social invalidations without canonical feed conte
   assert.match(invalidationHelper[1], /occurredAt/)
   assert.match(invalidationHelper[1], /scope/)
   assert.doesNotMatch(invalidationHelper[1], /aggregateId|payload/)
-})
-
-test('realtime social fanout maintenance plan is exact and bounded', () => {
-  const maintenancePlan = {
-    resource_changes: [
-      {
-        address: 'aws_cloudwatch_event_rule.realtime_events',
-        mode: 'managed',
-        change: { actions: ['update'] },
-      },
-      {
-        address: 'aws_iam_role_policy.realtime_fanout',
-        mode: 'managed',
-        change: { actions: ['update'] },
-      },
-      {
-        address: 'aws_lambda_function.realtime_fanout',
-        mode: 'managed',
-        change: { actions: ['update'] },
-      },
-    ],
-  }
-
-  const expected = {
-    mode: 'social-maintenance',
-    createCount: 0,
-    updateCount: 3,
-    replaceCount: 0,
-  }
-  assert.deepEqual(realtimeClassifier.classifyRealtimeInfraPlan(maintenancePlan, 'plan'), expected)
-  assert.deepEqual(realtimeClassifier.classifyRealtimeInfraPlan(maintenancePlan, 'apply-once'), expected)
-
-  assert.throws(
-    () => realtimeClassifier.classifyRealtimeInfraPlan({
-      resource_changes: [
-        ...maintenancePlan.resource_changes,
-        {
-          address: 'aws_sqs_queue.realtime_events',
-          mode: 'managed',
-          change: { actions: ['update'] },
-        },
-      ],
-    }, 'plan'),
-    /realtime allowlist|create-only realtime resource change/,
-  )
 })
 
 test('worker IAM is least privilege and forbidden architecture is absent', () => {

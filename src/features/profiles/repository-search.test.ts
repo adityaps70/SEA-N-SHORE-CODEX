@@ -50,7 +50,7 @@ describe('Aurora professional search', () => {
     expect(sql).toContain('from public.user_blocks')
     // Round 14 (3.6): every token must match the stored search_text (one LIKE per token so the
     // trigram index serves each); the fields it is built from are checked below and in the
-    // migration contract (people-search-text-migration.test.mjs).
+    // migration (infra/aws/database/migrations/0067_people_search_text.sql).
     expect(sql).toContain('and p.search_text like ($2::text[])[1]')
     expect(sql).toContain('and p.search_text like ($2::text[])[2]')
     expect(sql).not.toContain('($2::text[])[3]')

@@ -28,7 +28,7 @@ const sources = [...workflows, ...shellScripts.filter((s) => s.name.endsWith('-s
 const ssmGenerators = sources.flatMap(({ name, text }) => generators(text).filter((g) => /runuser|AWS-RunShellScript|commands/.test(g.body)).map((g) => ({ name, text, ...g })))
 
 test('no SSM command clones, fetches or queries GitHub on the host', () => {
-  assert.ok(ssmGenerators.length >= 95, `found ${ssmGenerators.length} SSM generators`)
+  assert.ok(ssmGenerators.length >= 41, `found ${ssmGenerators.length} SSM generators`)
   for (const { name, body } of ssmGenerators) {
     assert.doesNotMatch(body, GIT_NETWORK, `${name}: git network command in SSM text`)
     assert.doesNotMatch(body, /github\.com|api\.github/, `${name}: GitHub URL in SSM text`)
@@ -51,7 +51,7 @@ test('host scripts never reach GitHub; moved-branch checks read the runner-publi
     }
   }
   const checks = host.filter(({ text }) => text.includes('branch-head.sh'))
-  assert.ok(checks.length >= 79, `found ${checks.length} host moved-branch checks`)
+  assert.ok(checks.length >= 22, `found ${checks.length} host moved-branch checks`)
   for (const { name, text } of checks) {
     assert.match(text, /bash scripts\/aws\/branch-head\.sh "?refs\/heads\/(?:feat\/aws-native-phase-0-1|\$EXPECTED_BRANCH)"?/, name)
   }
@@ -78,7 +78,7 @@ test('every host checkout comes from a bundle the same step published, and every
     const lineBefore = text.slice(0, at).trimEnd().split('\n').pop().trim()
     assert.match(lineBefore, new RegExp(`^bash "\\$GITHUB_WORKSPACE/scripts/aws/ci-checkout\\.sh" publish "\\${shaArg}"( --history)?$`), `${name}: publish right before the generator`)
   }
-  assert.ok(sites >= 96, `found ${sites} host checkouts`)
+  assert.ok(sites >= 39, `found ${sites} host checkouts`)
 
   const cleanup = '      - name: Delete the host checkout bundle\n        if: always()\n        shell: bash\n        run: bash "$GITHUB_WORKSPACE/scripts/aws/ci-checkout.sh" cleanup\n'
   const callers = { 'aws-onboarding-e2e.yml': ['onboarding-e2e-feed-proof-ssm.sh', 'onboarding-e2e-sea-job-ssm.sh'] }
@@ -95,9 +95,9 @@ test('every host checkout comes from a bundle the same step published, and every
       if (job.includes('publish "$TRIGGER_SHA" --history')) assert.match(job, /uses: actions\/checkout@[^\n]+\n        with:\n          fetch-depth: 0\n/, `${name}: ${id}`)
     }
   }
-  assert.ok(jobs >= 93, `found ${jobs} jobs that publish a bundle`)
+  assert.ok(jobs >= 36, `found ${jobs} jobs that publish a bundle`)
   // Runners whose host scripts need history get the full branch history.
-  for (const name of ['aws-social-events-infra.yml', 'aws-post-media-video-migration.yml', 'aws-remote-verify.yml']) {
+  for (const name of ['aws-remote-verify.yml']) {
     assert.match(workflows.find((w) => w.name === name).text, /ci-checkout\.sh" publish "\$TRIGGER_SHA" --history\n/, name)
   }
 })

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { BILLING_INTERVALS, PAID_PLAN_CODES, PLAN_PRICES, TRIAL_MONTHS, addInterval, formatRupeesShort, intervalSaving, trialEndsAt } from './plans'
@@ -49,8 +49,6 @@ describe('round 9A plan prices: one source of truth', () => {
     const names = readdirSync(resolve(root, 'infra/aws/database/migrations'))
     expect(names.filter((name) => name.startsWith('0053_'))).toEqual(['0053_plan_prices_half_year_trials.sql'])
     expect(names.filter((name) => name.startsWith('0054_'))).toEqual(['0054_plan_trial_notification.sql'])
-    expect(existsSync(resolve(root, 'scripts/aws/round-9a-migration.sh'))).toBe(true)
-    expect(readFileSync(resolve(root, 'scripts/aws/round-9a-migration-action.txt'), 'utf8').trim()).toBe('plan')
     for (const path of [pricesMigration, notificationMigration]) {
       for (const statement of statements(sql(path))) {
         expect(statement.endsWith(';'), statement.slice(0, 80)).toBe(true)

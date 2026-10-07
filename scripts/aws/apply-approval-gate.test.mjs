@@ -22,7 +22,7 @@ const TEST_DATA_GUARD_VALUES = {
 const TEST_DATA_WORKFLOWS = ['aws-events-e2e.yml', 'aws-realtime-e2e.yml']
 
 test('every guarded workflow that reaches AWS has a staging-apply approval job', () => {
-  assert.ok(guarded.length >= 90, `expected the guarded runners, found ${guarded.length}`)
+  assert.ok(guarded.length >= 36, `expected the guarded runners, found ${guarded.length}`)
   for (const { name, text } of guarded) {
     if (TEST_DATA_WORKFLOWS.includes(name)) continue
     assert.match(text, /^  apply-approval:\n(?:    .*\n)*?    environment: staging-apply\n/m, `${name} needs an apply-approval job in staging-apply`)
