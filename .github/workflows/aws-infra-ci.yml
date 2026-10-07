@@ -139,6 +139,8 @@ jobs:
         run: node --test scripts/aws/social-events-rule.test.mjs
       - name: Verify stale sign-in cleanup contract
         run: node --test scripts/aws/stale-sign-in-cleanup.test.mjs
+      - name: Verify worker drift contract
+        run: node --test scripts/aws/worker-drift-plan.test.mjs
       - name: Verify host Terraform init and SHA-guard contracts
         run: node --test scripts/aws/terraform-init-providers.test.mjs scripts/aws/round-9b-migration.test.mjs
       - name: Verify onboarding e2e guard contract

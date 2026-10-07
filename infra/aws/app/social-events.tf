@@ -275,7 +275,7 @@ resource "aws_ecs_service" "outbox_worker" {
   task_definition  = aws_ecs_task_definition.outbox_worker.arn
   desired_count    = var.social_worker_desired_count
   launch_type      = "FARGATE"
-  platform_version = "LATEST"
+  platform_version = "1.4.0"
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 200
@@ -289,6 +289,13 @@ resource "aws_ecs_service" "outbox_worker" {
     subnets          = [aws_subnet.public_a.id, aws_subnet.public_b.id]
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = true
+  }
+
+  # Each staging deploy registers a new worker revision with the freshly built image and points the service at it
+  # (aws-staging-deploy.yml, promote_worker, which starts from the family's latest revision). Terraform must never
+  # move the service back to the revision it manages, which carries the pinned image; this matches the web service.
+  lifecycle {
+    ignore_changes = [task_definition]
   }
 
   tags = local.common_tags
@@ -300,7 +307,7 @@ resource "aws_ecs_service" "notification_worker" {
   task_definition  = aws_ecs_task_definition.notification_worker.arn
   desired_count    = var.social_worker_desired_count
   launch_type      = "FARGATE"
-  platform_version = "LATEST"
+  platform_version = "1.4.0"
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 200
@@ -314,6 +321,13 @@ resource "aws_ecs_service" "notification_worker" {
     subnets          = [aws_subnet.public_a.id, aws_subnet.public_b.id]
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = true
+  }
+
+  # Each staging deploy registers a new worker revision with the freshly built image and points the service at it
+  # (aws-staging-deploy.yml, promote_worker, which starts from the family's latest revision). Terraform must never
+  # move the service back to the revision it manages, which carries the pinned image; this matches the web service.
+  lifecycle {
+    ignore_changes = [task_definition]
   }
 
   tags = local.common_tags
