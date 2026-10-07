@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMessagingRealtimeConnection, TYPING_MIN_INTERVAL_MS } from './connection'
 
