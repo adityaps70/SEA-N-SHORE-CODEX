@@ -71,8 +71,9 @@ terraform -chdir="$APP_DIR" init -input=false -no-color \
   -backend-config="region=$AWS_REGION" -backend-config=use_lockfile=true > "$WORK_DIR/init.log"
 
 plan() {
-  terraform -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s -target="$RULE_ADDRESS" \
-    -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/$1.tfplan" > "$WORK_DIR/$1.log"
+  # Bounded like every host plan: interrupted and retried once if it hangs (scripts/aws/bootstrap-terraform-lock.sh).
+  terraform_plan_bounded "$WORK_DIR/$1.log" -chdir="$APP_DIR" plan -input=false -no-color -lock-timeout=60s -target="$RULE_ADDRESS" \
+    -var-file="$WORK_DIR/variables.json" -out="$WORK_DIR/$1.tfplan"
   terraform -chdir="$APP_DIR" show -json "$WORK_DIR/$1.tfplan" > "$WORK_DIR/$1.json"
 }
 
