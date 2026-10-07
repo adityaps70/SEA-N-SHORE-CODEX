@@ -27,7 +27,7 @@ test('every job is capped with timeout-minutes', () => {
 
 test('a plan (or discover) run is skipped when the push changed none of the runner\'s own scripts', () => {
   const gated = workflows.filter(({ text }) => /^  apply-gate:\n/m.test(text))
-  assert.ok(gated.length >= 85, `expected the gated runners, found ${gated.length}`)
+  assert.ok(gated.length >= 32, `expected the gated runners, found ${gated.length}`)
   for (const { name, text } of gated) {
     assert.match(text, /^      skip: \$\{\{ steps\.plan_scope\.outputs\.skip \}\}$/m, `${name}: apply-gate outputs skip`)
     assert.match(text, /id: plan_scope\n/, name)

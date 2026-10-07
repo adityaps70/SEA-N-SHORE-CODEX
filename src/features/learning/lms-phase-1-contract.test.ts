@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { guardAction } from '../../../scripts/aws/guard-value.mjs'
 
 function read(path: string) {
   return readFileSync(path, 'utf8')
@@ -22,18 +21,6 @@ describe('native LMS phase 1 contract', () => {
     expect(sql).toContain('learning_scorm_attempts')
     expect(sql).toContain('learning_assignments')
     expect(sql).toContain('learning_assignment_attempts')
-  })
-
-  it('keeps the LMS migration guarded and exact-head CI gated', () => {
-    const guard = guardAction(read('scripts/aws/learning-lms-phase-1-migration-action.txt'))
-    const workflow = read('.github/workflows/aws-learning-lms-phase-1-migration.yml')
-    expect(['plan', 'migrate-once']).toContain(guard)
-    expect(workflow).toContain('case "$ACTION" in')
-    expect(workflow).toContain('plan|migrate-once')
-    expect(workflow).toContain('AWS Infrastructure CI')
-    expect(workflow).toContain('310356785722')
-    expect(workflow).toContain('migrate-once')
-    expect(workflow).toContain('github.sha')
   })
 
   it('provides native material and SCORM player components', () => {

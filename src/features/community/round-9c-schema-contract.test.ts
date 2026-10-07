@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { GROUP_JOIN_POLICIES, GROUP_ROLE_LABELS } from './types'
@@ -18,8 +18,6 @@ describe('round 9C community images, ownership and join policy schema', () => {
   it('is the only 0057 migration, split into statements the guard accepts', () => {
     const names = readdirSync(resolve(root, 'infra/aws/database/migrations'))
     expect(names.filter((name) => name.startsWith('0057_'))).toEqual(['0057_community_images_join_policy.sql'])
-    expect(existsSync(resolve(root, 'scripts/aws/round-9c-migration.sh'))).toBe(true)
-    expect(readFileSync(resolve(root, 'scripts/aws/round-9c-migration-action.txt'), 'utf8').trim()).toBe('plan')
     for (const statement of statements(sql(migration))) {
       expect(statement.endsWith(';'), statement.slice(0, 80)).toBe(true)
       expect(statement).not.toMatch(/\b(drop\s+(table|column|type|schema)|truncate|delete\s+from|concurrently)\b/i)

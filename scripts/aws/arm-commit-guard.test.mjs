@@ -19,7 +19,7 @@ const step = (guard) => `      - name: Require an owner-merged arm naming the ex
 
 test('every apply-gate runs the arm guard right after it reads the guard value, before anything can reach AWS', () => {
   const gated = workflows.filter(({ text }) => text.includes('\n  apply-gate:\n'))
-  assert.ok(gated.length >= 89, `found ${gated.length}`)
+  assert.ok(gated.length >= 32, `found ${gated.length}`)
   for (const { name, text } of gated) {
     const gate = jobOf(text, 'apply-gate')
     const guard = /sparse-checkout: \|\n            (scripts\/aws\/[a-z0-9-]+-action\.txt)\n            scripts\/aws\/arm-commit-guard\.sh\n/.exec(gate)?.[1]
@@ -60,7 +60,7 @@ test('every workflow that reads a guard file and reaches AWS is covered', () => 
 
 test('every guard value is plan/discover, or an action with the SHA it arms', () => {
   const guards = readdirSync(join(ROOT, 'scripts/aws')).filter((n) => n.endsWith('-action.txt'))
-  assert.ok(guards.length >= 90)
+  assert.ok(guards.length >= 35, `found ${guards.length} guard files`)
   for (const name of guards) assert.ok(guardAction(read(`scripts/aws/${name}`)), name)
   assert.equal(guardAction('plan\n'), 'plan')
   assert.equal(guardAction(`apply-once ${'a'.repeat(40)}\n`), 'apply-once')

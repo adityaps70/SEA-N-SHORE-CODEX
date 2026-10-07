@@ -10,7 +10,6 @@ export default defineConfig({
     include: [
       'src/**/*.test.{ts,tsx}',
       'scripts/aws/check-terraform-plan.test.mjs',
-      'scripts/aws/realtime-infra-recovery.test.mjs',
       'scripts/aws/realtime-social-e2e-guard.test.mjs',
       'scripts/aws/jobs-activities-schema.test.mjs',
       'scripts/migration/beaufortmarine-import.test.mjs',

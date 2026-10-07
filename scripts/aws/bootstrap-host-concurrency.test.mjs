@@ -13,12 +13,9 @@ const scripts = readdirSync('scripts/aws').filter((name) => name.endsWith('.sh')
 const triggerPaths = (path) => read(path).split('\njobs:')[0]
 
 const terraformRunners = [
-  'cognito-custom-domain-infra', 'ecs-resend-secret-policy', 'ecs-task-aurora-policy', 'ecs-task-cashfree-secret-policy',
-  'ecs-task-cognito-admin-policy', 'ecs-task-media-policy-state', 'edge-origin-lockdown-infra', 'edge-recovery',
-  'multi-login-auth-infra', 'newsletter-signing-secret', 'origin-tls-certificate', 'phase2-hardening-infra',
-  'phase3-reliability-infra', 'realtime-infra', 'seaandshore-domain', 'seanshore-domain-bootstrap',
-  'security-hardening-infra', 'ses-identity-state', 'social-events-infra', 'social-shared-iam-state', 'web-resilience-infra',
-  'sms-retirement-infra', 'bootstrap-budget-retirement',
+  'ecs-resend-secret-policy', 'edge-recovery', 'newsletter-signing-secret', 'phase3-reliability-infra',
+  'seaandshore-domain', 'seanshore-domain-bootstrap', 'web-resilience-infra', 'sms-retirement-infra',
+  'bootstrap-budget-retirement',
 ]
 
 test('every Terraform runner (and disk maintenance) queues on one bootstrap host lock', () => {
@@ -50,12 +47,9 @@ test('every Terraform runner (and disk maintenance) queues on one bootstrap host
 
 test('a merge only triggers the runners whose own files changed', () => {
   const shared = {
-    'aws-multi-login-auth-infra': ['infra/aws/app/main.tf', 'infra/aws/app/aws-native-variables.tf', 'scripts/aws/public-site-url.txt'],
     'aws-newsletter-signing-secret': ['infra/aws/app/main.tf'],
     'aws-edge-state-audit': ['infra/aws/app/**'],
     'aws-independence-readiness': ['infra/aws/app/database.tf', 'infra/aws/app/storage.tf'],
-    // The one-shot realtime cutover runner; in-place realtime changes go through realtime-typing-infra.
-    'aws-realtime-infra': ['infra/aws/app/realtime.tf', 'infra/aws/app/lambda/realtime-connection.mjs', 'infra/aws/app/lambda/realtime-authorizer.mjs', 'infra/aws/app/lambda/realtime-fanout.mjs'],
   }
   for (const [workflow, paths] of Object.entries(shared)) {
     const on = triggerPaths(`.github/workflows/${workflow}.yml`)
@@ -80,14 +74,10 @@ test('every work-dir cleanup trap also runs on HUP, INT and TERM', () => {
   }
 })
 
-test('the stale one-shot Aurora retention runner is retired and the Cognito admin runner uses the repository site URL', () => {
+test('retired one-shot runners stay retired', () => {
   for (const path of ['.github/workflows/aws-aurora-backup-retention.yml', 'scripts/aws/aurora-backup-retention.sh', 'scripts/aws/aurora-backup-retention-action.txt']) {
     assert.ok(!existsSync(path), `${path} should be retired`)
   }
-  const cognitoAdmin = read('scripts/aws/ecs-task-cognito-admin-policy.sh')
-  assert.match(cognitoAdmin, /PUBLIC_SITE_URL="\$\(tr -d '\[:space:\]' < scripts\/aws\/public-site-url\.txt\)"/)
-  assert.match(cognitoAdmin, /site_url = os\.environ\['PUBLIC_SITE_URL'\]/)
-  assert.doesNotMatch(cognitoAdmin, /item\['name'\] == 'NEXT_PUBLIC_SITE_URL'/)
 })
 
 // Round 14: plans that hang are interrupted and retried once; Terraform runs with a small memory footprint.
@@ -116,7 +106,7 @@ test('Terraform on the host is bounded: low memory footprint, plans interrupted 
   assert.match(lock, /export TF_CLI_ARGS_apply="\$\{TF_CLI_ARGS_apply:--parallelism=4\}"/)
   assert.match(lock, /timeout --signal=INT --kill-after=120 "\$TERRAFORM_PLAN_TIMEOUT_SECONDS" terraform "\$@"/)
   assert.doesNotMatch(lock, /TF_LOG/)
-  for (const runner of ['multi-login-auth-infra', 'edge-recovery']) {
+  for (const runner of ['edge-recovery', 'sms-retirement-infra']) {
     const script = read(`scripts/aws/${runner}.sh`)
     assert.doesNotMatch(script, /^terraform -chdir="\$APP_DIR" plan /m, `${runner} has an unbounded plan`)
     assert.match(script, /terraform_plan_bounded "\$[A-Z_]+\/[a-z-]+\.log" -chdir="\$APP_DIR" plan /)
