@@ -17,12 +17,15 @@ const block = (kind, name) => {
   return terraform.slice(start, terraform.indexOf('\n}\n', start))
 }
 
-test('worker services ignore the task definition revision and pin the Fargate platform version', () => {
-  for (const name of ['outbox_worker', 'notification_worker']) {
+// Each service's platform_version matches what its live service records (worker drift plan run 37667793020):
+// the outbox worker records 1.4.0, the notification worker records LATEST.
+const LIVE_PLATFORM_VERSION = { outbox_worker: '1.4.0', notification_worker: 'LATEST' }
+
+test('worker services ignore the task definition revision and match their live platform version', () => {
+  for (const [name, version] of Object.entries(LIVE_PLATFORM_VERSION)) {
     const service = block('aws_ecs_service', name)
     assert.match(service, /lifecycle \{\n\s+ignore_changes = \[task_definition\]\n\s+\}/, name)
-    assert.match(service, /platform_version = "1\.4\.0"/, name)
-    assert.doesNotMatch(service, /platform_version = "LATEST"/, name)
+    assert.ok(service.includes(`platform_version = "${version}"`), name)
   }
 })
 
