@@ -151,6 +151,8 @@ jobs:
         run: node --test scripts/aws/host-checkout.test.mjs
       - name: Verify owner-merged arm guard contract
         run: node --test scripts/aws/arm-commit-guard.test.mjs
+      - name: Verify Social Events notification rule contract
+        run: node --test scripts/aws/social-events-rule.test.mjs
       - name: Verify host Terraform init and SHA-guard contracts
         run: node --test scripts/aws/terraform-init-providers.test.mjs scripts/aws/round-9b-migration.test.mjs scripts/aws/social-events-infra-evidence.test.mjs
       - name: Verify onboarding e2e guard contract
