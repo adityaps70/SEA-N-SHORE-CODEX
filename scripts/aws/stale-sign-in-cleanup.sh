@@ -18,10 +18,10 @@ STATE_KEY="sea-n-shore/staging/terraform.tfstate"
 ACTION_FILE="scripts/aws/stale-sign-in-cleanup-action.txt"
 DATABASE_NAME="sea_n_shore"
 CLUSTER_ID="sea-n-shore-staging-aurora"
-# Pinned from the plan run (first 8 hex characters of the identity row id and of its profile id). Empty means
+# Pinned from plan run 37609424071 (first 8 hex characters of the identity row id and of its profile id). Empty means
 # delete-once refuses.
-PINNED_IDENTITY_PREFIX=""
-PINNED_PROFILE_PREFIX=""
+PINNED_IDENTITY_PREFIX="99814dd4"
+PINNED_PROFILE_PREFIX="0617eede"
 
 [[ "${STALE_SIGN_IN_CLEANUP_EXPECTED_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || {
   echo "STALE_SIGN_IN_CLEANUP_EXPECTED_SHA must be an exact commit SHA." >&2
