@@ -85,6 +85,7 @@ describe('community media presigned upload actions', () => {
     expect(mocks.createMediaUploadUrl).toHaveBeenCalledWith({
       key: result.key,
       contentType: 'image/webp',
+      contentLength: 56000,
     })
   })
 
