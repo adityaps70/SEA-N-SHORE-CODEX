@@ -73,12 +73,17 @@ test('execution guards allow only one approved one-shot stage at a time', () => 
     new Set(['plan', 'deploy-once']),
     new Set(['plan', 'run-once']),
   ]
+  // An armed guard reads "<action> <40-hex SHA of the commit it arms>" (scripts/aws/arm-commit-guard.sh); plan has no SHA.
   const states = guardPaths.map((path) => readFileSync(path, 'utf8').trim())
 
   states.forEach((state, index) => {
-    assert.equal(allowed[index].has(state), true, `${guardPaths[index]} has unsupported state ${state}`)
+    const [action, sha, ...rest] = state.split(' ')
+    assert.equal(allowed[index].has(action), true, `${guardPaths[index]} has unsupported state ${state}`)
+    assert.equal(rest.length, 0, `${guardPaths[index]} has unsupported state ${state}`)
+    if (action === 'plan') assert.equal(sha, undefined, `${guardPaths[index]}: plan carries no SHA`)
+    else assert.match(sha ?? '', /^[0-9a-f]{40}$/, `${guardPaths[index]}: an armed guard must name the exact 40-hex SHA it arms`)
   })
 
-  const armed = states.filter((state) => state !== 'plan')
+  const armed = states.filter((state) => state.split(' ')[0] !== 'plan')
   assert.ok(armed.length <= 1, `only one one-shot stage may be armed, found: ${armed.join(', ')}`)
 })
