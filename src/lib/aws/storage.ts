@@ -110,15 +110,19 @@ export async function readMediaObjectPrefix(key: string, byteCount: number): Pro
 }
 
 export async function createMediaUploadUrl(
-  input: { key: string; contentType: string },
+  input: { key: string; contentType: string; contentLength?: number },
   expiresInSeconds = 300,
 ): Promise<string> {
   const command = new PutObjectCommand({
     Bucket: getMediaBucketName(),
     Key: input.key,
     ContentType: input.contentType,
+    ...(input.contentLength !== undefined ? { ContentLength: input.contentLength } : {}),
   })
-  return getSignedUrl(getS3Client(), command, { expiresIn: expiresInSeconds })
+  return getSignedUrl(getS3Client(), command, {
+    expiresIn: expiresInSeconds,
+    ...(input.contentLength !== undefined ? { signableHeaders: new Set(['content-length']) } : {}),
+  })
 }
 
 export async function headMediaObject(key: string): Promise<{

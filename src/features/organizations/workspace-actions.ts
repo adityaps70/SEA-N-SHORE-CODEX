@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { requireCapability } from '@/features/access/server'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import type { OrganizationAccessRole } from '@/features/access/policy'
-import { deleteMediaObject, putMediaObject } from '@/lib/aws/storage'
+import { createMediaUploadUrl, deleteMediaObject, headMediaObject } from '@/lib/aws/storage'
 import { organizationWorkspaceRepository } from './workspace-repository'
 import { WELLBEING_SERVICE_VALUES, isWellbeingType } from './organization-types'
 import { COMPANY_SIZE_VALUES, MAX_SPECIALTIES, TAGLINE_MAX_LENGTH, type CompanySize } from './organization-page-profile'
@@ -102,7 +102,6 @@ const logoTypes: Record<string, string> = {
   'image/webp': 'webp',
 }
 const MAX_LOGO_BYTES = 5 * 1024 * 1024
-const MAX_COVER_BYTES = 5 * 1024 * 1024
 
 export type OrganizationWorkspaceActionResult =
   | { ok: true }
@@ -258,43 +257,9 @@ export async function updateOrganizationBranding(
       pageDetails = details.data
     }
 
-    const logo = formData.get('logo')
-    const cover = formData.get('cover')
     const removeCover = formData.get('removeCover') === 'on'
-    const hasNewLogo = logo instanceof File && logo.size > 0
-    const hasNewCover = cover instanceof File && cover.size > 0
-
-    if (hasNewLogo && (!logoTypes[logo.type] || logo.size > MAX_LOGO_BYTES)) {
-      return { error: 'Organization logo must be a JPG, PNG or WebP image up to 5 MB.' }
-    }
-    if (hasNewCover && (!logoTypes[cover.type] || cover.size > MAX_COVER_BYTES)) {
-      return { error: 'Cover image must be a JPG, PNG or WebP image up to 5 MB.' }
-    }
-
-    const uploaded: string[] = []
-    let nextLogoPath: string | null = null
-    let nextCoverPath: string | null = null
 
     try {
-      if (hasNewLogo) {
-        nextLogoPath = `organizations/${parsed.data.companyId}/logo-${randomUUID()}.${logoTypes[logo.type]}`
-        await putMediaObject({
-          key: nextLogoPath,
-          body: new Uint8Array(await logo.arrayBuffer()),
-          contentType: logo.type,
-        })
-        uploaded.push(nextLogoPath)
-      }
-      if (hasNewCover) {
-        nextCoverPath = `organizations/${parsed.data.companyId}/cover-${randomUUID()}.${logoTypes[cover.type]}`
-        await putMediaObject({
-          key: nextCoverPath,
-          body: new Uint8Array(await cover.arrayBuffer()),
-          contentType: cover.type,
-        })
-        uploaded.push(nextCoverPath)
-      }
-
       await organizationWorkspaceRepository.updateBranding(parsed.data.companyId, {
         website: parsed.data.website,
         description: parsed.data.description,
@@ -304,22 +269,12 @@ export async function updateOrganizationBranding(
         ...(pageDetails ?? {}),
         supportDetails,
       })
-      if (nextLogoPath) {
-        await organizationWorkspaceRepository.updateLogoPath(parsed.data.companyId, nextLogoPath)
+      if (removeCover && workspace.coverPath) {
+        await organizationWorkspaceRepository.updateCoverPath(parsed.data.companyId, null)
+        await deleteMediaObject(workspace.coverPath).catch(() => undefined)
       }
-      if (nextCoverPath || (removeCover && workspace.coverPath)) {
-        await organizationWorkspaceRepository.updateCoverPath(parsed.data.companyId, nextCoverPath)
-      }
-    } catch (error) {
-      await Promise.all(uploaded.map((key) => deleteMediaObject(key).catch(() => undefined)))
-      throw error
-    }
-
-    if (nextLogoPath && workspace.logoPath && workspace.logoPath !== nextLogoPath) {
-      await deleteMediaObject(workspace.logoPath).catch(() => undefined)
-    }
-    if ((nextCoverPath || removeCover) && workspace.coverPath && workspace.coverPath !== nextCoverPath) {
-      await deleteMediaObject(workspace.coverPath).catch(() => undefined)
+    } catch {
+      return { error: 'We could not update the organization workspace. Your entered information is still here.' }
     }
 
     refreshOrganizationWorkspace(workspace.slug)
@@ -330,5 +285,68 @@ export async function updateOrganizationBranding(
       return { error: 'Organization Pro branding access is required to edit this workspace.' }
     }
     return { error: 'We could not update the organization workspace. Your entered information is still here.' }
+  }
+}
+
+export type OrganizationMediaKind = 'logo' | 'cover'
+
+/** Signed size-limited ticket, issued only after organization-branding capability checks. */
+export async function requestOrganizationMediaUploadAction(input: {
+  companyId: string
+  kind: OrganizationMediaKind
+  contentType: string
+  size: number
+}): Promise<{ success?: boolean; error?: string; key?: string; uploadUrl?: string }> {
+  const parsed = uuidSchema.safeParse(input.companyId)
+  if (!parsed.success || !['logo', 'cover'].includes(input.kind)) return { error: 'Invalid organization.' }
+  if (!logoTypes[input.contentType] || !Number.isInteger(input.size) || input.size <= 0 || input.size > MAX_LOGO_BYTES) {
+    return { error: 'Image must be a JPG, PNG or WebP file up to 5 MB.' }
+  }
+  try {
+    const user = await requireAwsUser()
+    await requireCapability(user.id, 'organization.branding', { companyId: parsed.data })
+    const workspace = await organizationWorkspaceRepository.getById(parsed.data)
+    if (!workspace) return { error: 'This organization workspace could not be found.' }
+    const key = `organizations/${parsed.data}/${input.kind}-${randomUUID()}.${logoTypes[input.contentType]}`
+    const uploadUrl = await createMediaUploadUrl({ key, contentType: input.contentType, contentLength: input.size })
+    return { success: true, key, uploadUrl }
+  } catch {
+    return { error: 'Upload failed, try again.' }
+  }
+}
+
+export async function completeOrganizationMediaUploadAction(input: {
+  companyId: string
+  kind: OrganizationMediaKind
+  key: string
+}): Promise<{ success?: boolean; error?: string }> {
+  const parsed = uuidSchema.safeParse(input.companyId)
+  if (!parsed.success || !['logo', 'cover'].includes(input.kind)) return { error: 'Invalid organization.' }
+  const expectedPrefix = `organizations/${parsed.data}/${input.kind}-`
+  if (!input.key.startsWith(expectedPrefix) || !/\.(jpg|png|webp)$/.test(input.key)) return { error: 'Upload failed, try again.' }
+  try {
+    const user = await requireAwsUser()
+    await requireCapability(user.id, 'organization.branding', { companyId: parsed.data })
+    const workspace = await organizationWorkspaceRepository.getById(parsed.data)
+    if (!workspace) return { error: 'This organization workspace could not be found.' }
+    const object = await headMediaObject(input.key)
+    if (!object.contentType || !logoTypes[object.contentType] || !object.contentLength ||
+        object.contentLength > MAX_LOGO_BYTES || !input.key.endsWith('.' + logoTypes[object.contentType])) {
+      await deleteMediaObject(input.key).catch(() => undefined)
+      return { error: 'Image must be a JPG, PNG or WebP file up to 5 MB.' }
+    }
+    try {
+      if (input.kind === 'logo') await organizationWorkspaceRepository.updateLogoPath(parsed.data, input.key)
+      else await organizationWorkspaceRepository.updateCoverPath(parsed.data, input.key)
+    } catch {
+      await deleteMediaObject(input.key).catch(() => undefined)
+      throw new Error('organization_media_finalize_failed')
+    }
+    const oldPath = input.kind === 'logo' ? workspace.logoPath : workspace.coverPath
+    if (oldPath && oldPath !== input.key) await deleteMediaObject(oldPath).catch(() => undefined)
+    refreshOrganizationWorkspace(workspace.slug)
+    return { success: true }
+  } catch {
+    return { error: 'Upload failed, try again.' }
   }
 }

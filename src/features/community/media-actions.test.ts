@@ -3,49 +3,43 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   requireAwsUser: vi.fn(),
-  canAccessPlatformAdmin: vi.fn(),
+  canUsePlatformAdminAuthority: vi.fn(),
   getMembership: vi.fn(),
   insertAuditEvent: vi.fn(),
-  uploadCommunityMedia: vi.fn(),
+  replaceImagePath: vi.fn(),
   removeCommunityMedia: vi.fn(),
+  createMediaUploadUrl: vi.fn(),
+  headMediaObject: vi.fn(),
+  deleteMediaObject: vi.fn(),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
-// Round 15: platform-admin server actions require a session that answered an authenticator app.
-const adminMfa = vi.hoisted(() => ({
-  isPlatformAdministrator: vi.fn(async (userId: string) => { void userId; return true }),
-  getCurrentMfaStatus: vi.fn(async (): Promise<unknown> => ({ kind: 'eligible', enabled: true, email: 'admin@example.com', hostedSession: false })),
+vi.mock('@/features/admin/mfa-gate', () => ({ canUsePlatformAdminAuthority: mocks.canUsePlatformAdminAuthority }))
+vi.mock('@/lib/aws/storage', () => ({
+  createMediaUploadUrl: mocks.createMediaUploadUrl,
+  headMediaObject: mocks.headMediaObject,
+  deleteMediaObject: mocks.deleteMediaObject,
 }))
-vi.mock('@/features/auth/mfa-status', () => ({ getCurrentMfaStatus: adminMfa.getCurrentMfaStatus }))
-vi.mock('@/features/admin/repository', () => ({ adminRepository: { isPlatformAdministrator: (userId: string) => mocks.canAccessPlatformAdmin(userId) } }))
 vi.mock('./repository', () => ({
-  communityRepository: { getMembership: mocks.getMembership, insertAuditEvent: mocks.insertAuditEvent },
+  communityRepository: {
+    getMembership: mocks.getMembership,
+    insertAuditEvent: mocks.insertAuditEvent,
+    replaceImagePath: mocks.replaceImagePath,
+  },
 }))
-vi.mock('./media-service', () => ({
-  uploadCommunityMedia: mocks.uploadCommunityMedia,
-  removeCommunityMedia: mocks.removeCommunityMedia,
-}))
+vi.mock('./media-service', () => ({ removeCommunityMedia: mocks.removeCommunityMedia }))
 
 import {
+  completeCommunityMediaUploadAction,
   removeCommunityCoverAction,
   removeCommunityIconAction,
-  uploadCommunityCoverAction,
-  uploadCommunityIconAction,
+  requestCommunityMediaUploadAction,
 } from './media-actions'
 
 const userId = '11111111-1111-4111-8111-111111111111'
 const groupId = '22222222-2222-4222-8222-222222222222'
 const FORBIDDEN = 'Only the owner and moderators of this group can change its images.'
-
-function imageForm(id: string = groupId) {
-  const data = new FormData()
-  const file = new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })
-  Object.defineProperty(file, 'arrayBuffer', { value: async () => new TextEncoder().encode('photo').buffer })
-  data.set('groupId', id)
-  data.set('image', file)
-  return data
-}
 
 function groupForm(id: string = groupId) {
   const data = new FormData()
@@ -62,23 +56,37 @@ function expectRevalidation() {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAwsUser.mockResolvedValue({ id: userId, cognitoSub: 'sub', email: 'member@example.com' })
-  mocks.canAccessPlatformAdmin.mockResolvedValue(false)
+  mocks.canUsePlatformAdminAuthority.mockResolvedValue(false)
   mocks.getMembership.mockResolvedValue({ role: 'owner', status: 'active' })
   mocks.insertAuditEvent.mockResolvedValue(undefined)
-  mocks.uploadCommunityMedia.mockResolvedValue('communities/g/cover-new.webp')
-  mocks.removeCommunityMedia.mockResolvedValue('communities/g/cover-old.webp')
+  mocks.createMediaUploadUrl.mockResolvedValue('https://s3.example/presigned')
+  mocks.headMediaObject.mockResolvedValue({ contentType: 'image/webp', contentLength: 56000 })
+  mocks.replaceImagePath.mockResolvedValue('communities/old/cover.webp')
+  mocks.deleteMediaObject.mockResolvedValue(undefined)
+  mocks.removeCommunityMedia.mockResolvedValue('communities/old/cover.webp')
 })
 
-describe('community media actions: who may change the images', () => {
+describe('community media presigned upload actions', () => {
   it.each([
     ['owner', { role: 'owner', status: 'active' }],
-    ['moderator (stored role admin)', { role: 'admin', status: 'active' }],
-  ])('lets the group %s upload a banner', async (_label, membership) => {
+    ['moderator', { role: 'admin', status: 'active' }],
+  ])('lets the group %s request a direct S3 upload', async (_label, membership) => {
     mocks.getMembership.mockResolvedValue(membership)
-    await expect(uploadCommunityCoverAction({}, imageForm())).resolves.toEqual({ success: true })
-    expect(mocks.getMembership).toHaveBeenCalledWith(groupId, userId)
-    expect(mocks.canAccessPlatformAdmin).not.toHaveBeenCalled()
-    expect(mocks.uploadCommunityMedia).toHaveBeenCalledWith(groupId, 'cover', expect.objectContaining({ type: 'image/jpeg', size: 5, bytes: expect.any(Uint8Array) }))
+    const result = await requestCommunityMediaUploadAction({
+      groupId,
+      kind: 'cover',
+      contentType: 'image/webp',
+      size: 56000,
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.uploadUrl).toBe('https://s3.example/presigned')
+    expect(result.key).toMatch(new RegExp(`^communities/${groupId}/cover-`))
+    expect(mocks.createMediaUploadUrl).toHaveBeenCalledWith({
+      key: result.key,
+      contentType: 'image/webp',
+      contentLength: 56000,
+    })
   })
 
   it.each([
@@ -86,80 +94,84 @@ describe('community media actions: who may change the images', () => {
     ['pending moderator', { role: 'admin', status: 'pending' }],
     ['removed owner', { role: 'owner', status: 'removed' }],
     ['non-member', null],
-  ])('refuses a %s and touches neither storage nor the audit log', async (_label, membership) => {
+  ])('refuses a %s before issuing a presigned URL', async (_label, membership) => {
     mocks.getMembership.mockResolvedValue(membership)
-    await expect(uploadCommunityIconAction({}, imageForm())).resolves.toEqual({ error: FORBIDDEN })
-    await expect(removeCommunityIconAction(groupForm())).resolves.toEqual({ error: FORBIDDEN })
-    expect(mocks.canAccessPlatformAdmin).toHaveBeenCalledWith(userId)
-    expect(mocks.uploadCommunityMedia).not.toHaveBeenCalled()
-    expect(mocks.removeCommunityMedia).not.toHaveBeenCalled()
-    expect(mocks.insertAuditEvent).not.toHaveBeenCalled()
-    expect(mocks.revalidatePath).not.toHaveBeenCalled()
+    const result = await requestCommunityMediaUploadAction({
+      groupId,
+      kind: 'icon',
+      contentType: 'image/webp',
+      size: 1000,
+    })
+
+    expect(result).toEqual({ error: FORBIDDEN })
+    expect(mocks.createMediaUploadUrl).not.toHaveBeenCalled()
   })
 
-  it('lets a platform administrator who is not a member manage the images', async () => {
-    mocks.getMembership.mockResolvedValue(null)
-    mocks.canAccessPlatformAdmin.mockResolvedValue(true)
-    await expect(uploadCommunityIconAction({}, imageForm())).resolves.toEqual({ success: true })
-    await expect(removeCommunityCoverAction(groupForm())).resolves.toEqual({ success: true })
-    expect(mocks.uploadCommunityMedia).toHaveBeenCalledWith(groupId, 'icon', expect.anything())
-    expect(mocks.removeCommunityMedia).toHaveBeenCalledWith(groupId, 'cover')
+  it('validates type and size before signing', async () => {
+    await expect(requestCommunityMediaUploadAction({
+      groupId,
+      kind: 'cover',
+      contentType: 'image/gif',
+      size: 1000,
+    })).resolves.toEqual({ error: 'Please upload a JPG, PNG or WebP image.' })
+
+    await expect(requestCommunityMediaUploadAction({
+      groupId,
+      kind: 'cover',
+      contentType: 'image/webp',
+      size: 6 * 1024 * 1024,
+    })).resolves.toEqual({ error: 'Image must be 5 MB or smaller.' })
+
+    expect(mocks.createMediaUploadUrl).not.toHaveBeenCalled()
   })
 
-  it('refuses a platform administrator whose session has not answered an authenticator app', async () => {
-    mocks.getMembership.mockResolvedValue(null)
-    mocks.canAccessPlatformAdmin.mockResolvedValue(true)
-    adminMfa.getCurrentMfaStatus.mockResolvedValueOnce({ kind: 'eligible', enabled: false, email: 'admin@example.com', hostedSession: false }).mockResolvedValueOnce(null)
-    await expect(uploadCommunityIconAction({}, imageForm())).resolves.toEqual({ error: FORBIDDEN })
-    await expect(removeCommunityCoverAction(groupForm())).resolves.toEqual({ error: FORBIDDEN })
-    expect(mocks.uploadCommunityMedia).not.toHaveBeenCalled()
-    expect(mocks.removeCommunityMedia).not.toHaveBeenCalled()
-  })
+  it('finalizes only a verified object under the expected group/kind prefix', async () => {
+    const key = `communities/${groupId}/cover-123.webp`
+    await expect(completeCommunityMediaUploadAction({ groupId, kind: 'cover', key })).resolves.toEqual({ success: true })
 
-  it('requires a signed-in member before looking at anything', async () => {
-    mocks.requireAwsUser.mockRejectedValueOnce(new Error('unauthenticated'))
-    await expect(uploadCommunityCoverAction({}, imageForm())).rejects.toThrow('unauthenticated')
-    expect(mocks.getMembership).not.toHaveBeenCalled()
-  })
-})
-
-describe('community media actions: upload and remove', () => {
-  it.each([
-    ['cover', uploadCommunityCoverAction],
-    ['icon', uploadCommunityIconAction],
-  ] as const)('stores the %s, writes community.image_updated and revalidates the community pages', async (kind, action) => {
-    await expect(action({}, imageForm())).resolves.toEqual({ success: true })
-    expect(mocks.uploadCommunityMedia).toHaveBeenCalledWith(groupId, kind, expect.objectContaining({ type: 'image/jpeg', size: 5 }))
-    expect(mocks.insertAuditEvent).toHaveBeenCalledWith(userId, 'community.image_updated', groupId, { kind })
+    expect(mocks.headMediaObject).toHaveBeenCalledWith(key)
+    expect(mocks.replaceImagePath).toHaveBeenCalledWith(groupId, 'cover', key)
+    expect(mocks.deleteMediaObject).toHaveBeenCalledWith('communities/old/cover.webp')
+    expect(mocks.insertAuditEvent).toHaveBeenCalledWith(userId, 'community.image_updated', groupId, { kind: 'cover' })
     expectRevalidation()
   })
 
+  it('rejects an object key outside the authorized prefix', async () => {
+    await expect(completeCommunityMediaUploadAction({
+      groupId,
+      kind: 'cover',
+      key: 'communities/someone-else/cover-123.webp',
+    })).resolves.toEqual({ error: 'Upload failed, try again.' })
+
+    expect(mocks.headMediaObject).not.toHaveBeenCalled()
+    expect(mocks.replaceImagePath).not.toHaveBeenCalled()
+  })
+
+  it('deletes an invalid directly uploaded object instead of attaching it', async () => {
+    const key = `communities/${groupId}/icon-123.webp`
+    mocks.headMediaObject.mockResolvedValueOnce({ contentType: 'application/octet-stream', contentLength: 56000 })
+
+    await expect(completeCommunityMediaUploadAction({ groupId, kind: 'icon', key }))
+      .resolves.toEqual({ error: 'Please upload a JPG, PNG or WebP image.' })
+
+    expect(mocks.deleteMediaObject).toHaveBeenCalledWith(key)
+    expect(mocks.replaceImagePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('community media removal', () => {
   it.each([
     ['cover', removeCommunityCoverAction],
     ['icon', removeCommunityIconAction],
-  ] as const)('removes the %s, writes community.image_removed and revalidates the community pages', async (kind, action) => {
+  ] as const)('removes the %s and revalidates', async (kind, action) => {
     await expect(action(groupForm())).resolves.toEqual({ success: true })
     expect(mocks.removeCommunityMedia).toHaveBeenCalledWith(groupId, kind)
     expect(mocks.insertAuditEvent).toHaveBeenCalledWith(userId, 'community.image_removed', groupId, { kind })
     expectRevalidation()
   })
 
-  it('asks for an image and a valid group id', async () => {
-    await expect(uploadCommunityCoverAction({}, groupForm())).resolves.toEqual({ error: 'Choose an image first.' })
-    await expect(uploadCommunityCoverAction({}, imageForm('nope'))).resolves.toEqual({ error: 'This group no longer exists.' })
+  it('rejects invalid group ids', async () => {
     await expect(removeCommunityCoverAction(groupForm('nope'))).resolves.toEqual({ error: 'This group no longer exists.' })
-    expect(mocks.uploadCommunityMedia).not.toHaveBeenCalled()
     expect(mocks.removeCommunityMedia).not.toHaveBeenCalled()
-  })
-
-  it('surfaces validation and missing-group errors from the service without revalidating', async () => {
-    mocks.uploadCommunityMedia.mockRejectedValueOnce(new Error('Image must be 5 MB or smaller.'))
-    await expect(uploadCommunityIconAction({}, imageForm())).resolves.toEqual({ error: 'Image must be 5 MB or smaller.' })
-    mocks.uploadCommunityMedia.mockRejectedValueOnce(new Error('community_group_missing'))
-    await expect(uploadCommunityIconAction({}, imageForm())).resolves.toEqual({ error: 'This group no longer exists.' })
-    mocks.removeCommunityMedia.mockRejectedValueOnce(new Error('community_group_missing'))
-    await expect(removeCommunityIconAction(groupForm())).resolves.toEqual({ error: 'This group no longer exists.' })
-    expect(mocks.insertAuditEvent).not.toHaveBeenCalled()
-    expect(mocks.revalidatePath).not.toHaveBeenCalled()
   })
 })

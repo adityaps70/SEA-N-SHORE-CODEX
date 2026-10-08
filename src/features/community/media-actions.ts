@@ -4,8 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { canUsePlatformAdminAuthority } from '@/features/admin/mfa-gate'
 import { requireAwsUser } from '@/features/auth/aws-queries'
-import { removeCommunityMedia, uploadCommunityMedia } from './media-service'
-import type { CommunityMediaKind } from './media'
+import { removeCommunityMedia } from './media-service'
+import { buildCommunityMediaKey, isCommunityMediaKind, validateCommunityImage, type CommunityMediaKind } from './media'
+import { createMediaUploadUrl, deleteMediaObject, headMediaObject } from '@/lib/aws/storage'
 import { communityRepository } from './repository'
 import { isGroupAdminRole } from './types'
 
@@ -33,33 +34,72 @@ function describeError(error: unknown, fallback: string) {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-function uploadActionFor(kind: CommunityMediaKind) {
-  return async function uploadAction(
-    _previousState: CommunityMediaActionState,
-    formData: FormData,
-  ): Promise<CommunityMediaActionState> {
-    const user = await requireAwsUser()
-    const groupId = groupIdSchema.safeParse(formData.get('groupId'))
-    if (!groupId.success) return { error: 'This group no longer exists.' }
-    const image = formData.get('image')
-    if (!(image instanceof File) || image.size === 0) {
-      return { error: 'Choose an image first.' }
-    }
-    if (!(await canManageCommunityMedia(user.id, groupId.data))) return { error: FORBIDDEN }
+export type CommunityMediaUploadTicket = CommunityMediaActionState & { uploadUrl?: string; key?: string }
 
+/** Creates a short-lived S3 PUT URL after auth/role and image metadata validation. No image bytes cross CloudFront/WAF. */
+export async function requestCommunityMediaUploadAction(input: {
+  groupId: string
+  kind: CommunityMediaKind
+  contentType: string
+  size: number
+}): Promise<CommunityMediaUploadTicket> {
+  const user = await requireAwsUser()
+  const groupId = groupIdSchema.safeParse(input.groupId)
+  if (!groupId.success || !isCommunityMediaKind(input.kind)) return { error: 'This group no longer exists.' }
+  const validation = validateCommunityImage({ type: input.contentType, size: input.size })
+  if (!validation.ok) return { error: validation.error }
+  if (!(await canManageCommunityMedia(user.id, groupId.data))) return { error: FORBIDDEN }
+
+  try {
+    const key = buildCommunityMediaKey(groupId.data, input.kind, input.contentType)
+    const uploadUrl = await createMediaUploadUrl({ key, contentType: input.contentType, contentLength: input.size })
+    return { success: true, uploadUrl, key }
+  } catch (error) {
+    return { error: describeError(error, 'Upload failed, try again.') }
+  }
+}
+
+/** Verifies the directly-uploaded S3 object, atomically swaps the DB path, then cleans up the prior object. */
+export async function completeCommunityMediaUploadAction(input: {
+  groupId: string
+  kind: CommunityMediaKind
+  key: string
+}): Promise<CommunityMediaActionState> {
+  const user = await requireAwsUser()
+  const groupId = groupIdSchema.safeParse(input.groupId)
+  if (!groupId.success || !isCommunityMediaKind(input.kind)) return { error: 'This group no longer exists.' }
+  if (!(await canManageCommunityMedia(user.id, groupId.data))) return { error: FORBIDDEN }
+
+  const expectedPrefix = `communities/${groupId.data}/${input.kind}-`
+  if (!input.key.startsWith(expectedPrefix)) return { error: 'Upload failed, try again.' }
+
+  try {
+    const object = await headMediaObject(input.key)
+    const validation = validateCommunityImage({
+      type: object.contentType ?? '',
+      size: object.contentLength ?? 0,
+    })
+    if (!validation.ok) {
+      await deleteMediaObject(input.key).catch(() => undefined)
+      return { error: validation.error }
+    }
+
+    let previousPath: string | null = null
     try {
-      await uploadCommunityMedia(groupId.data, kind, {
-        type: image.type,
-        size: image.size,
-        bytes: new Uint8Array(await image.arrayBuffer()),
-      })
+      previousPath = await communityRepository.replaceImagePath(groupId.data, input.kind, input.key)
     } catch (error) {
-      return { error: describeError(error, 'Unable to upload image.') }
+      await deleteMediaObject(input.key).catch(() => undefined)
+      throw error
+    }
+    if (previousPath && previousPath !== input.key) {
+      await deleteMediaObject(previousPath).catch(() => undefined)
     }
 
-    await communityRepository.insertAuditEvent(user.id, 'community.image_updated', groupId.data, { kind }).catch(() => undefined)
+    await communityRepository.insertAuditEvent(user.id, 'community.image_updated', groupId.data, { kind: input.kind }).catch(() => undefined)
     revalidateCommunityMedia()
     return { success: true }
+  } catch (error) {
+    return { error: describeError(error, 'Upload failed, try again.') }
   }
 }
 
@@ -82,7 +122,5 @@ function removeActionFor(kind: CommunityMediaKind) {
   }
 }
 
-export const uploadCommunityCoverAction = uploadActionFor('cover')
-export const uploadCommunityIconAction = uploadActionFor('icon')
 export const removeCommunityCoverAction = removeActionFor('cover')
 export const removeCommunityIconAction = removeActionFor('icon')

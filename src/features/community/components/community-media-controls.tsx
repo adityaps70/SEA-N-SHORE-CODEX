@@ -1,20 +1,18 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { Camera, Trash2 } from 'lucide-react'
-import { startTransition, useActionState, useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
+import { useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
 import { cn } from '@/lib/cn'
 import { downscaleImage, isDownscalableImage } from '@/lib/images/downscale-image'
 import {
+  completeCommunityMediaUploadAction,
   removeCommunityCoverAction,
   removeCommunityIconAction,
-  uploadCommunityCoverAction,
-  uploadCommunityIconAction,
-  type CommunityMediaActionState,
+  requestCommunityMediaUploadAction,
 } from '../media-actions'
 import type { CommunityMediaKind } from '../media'
-
-const initialState: CommunityMediaActionState = {}
 
 /** The community photo is a rounded square (1:1); the banner keeps the 4:1 cover ratio. */
 const CROP: Record<CommunityMediaKind, { shape: 'rect'; aspect: number; title: string }> = {
@@ -51,9 +49,11 @@ export function CommunityMediaControls({
 const BUTTON_CLASS = 'inline-flex size-10 items-center justify-center rounded-full border-2 border-white shadow-md disabled:opacity-60 md:size-9'
 
 function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: string; kind: CommunityMediaKind; hasImage: boolean }) {
-  const uploadAction = kind === 'icon' ? uploadCommunityIconAction : uploadCommunityCoverAction
+  const router = useRouter()
   const removeAction = kind === 'icon' ? removeCommunityIconAction : removeCommunityCoverAction
-  const [state, formAction, uploading] = useActionState(uploadAction, initialState)
+  const [uploadError, setUploadError] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploaded, setUploaded] = useState(false)
   const [removeError, setRemoveError] = useState('')
   const [removed, setRemoved] = useState(false)
   const [removing, startRemoving] = useTransition()
@@ -62,21 +62,44 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
   const label = LABEL[kind]
   const hydrated = useSyncExternalStore(subscribeToHydration, getHydratedSnapshot, getServerHydratedSnapshot)
 
-  const imagePresent = removed ? false : state.success ? true : hasImage
+  const imagePresent = removed ? false : uploaded ? true : hasImage
 
-  // The upload action revalidates /community/[slug], which already re-renders this page.
-  useEffect(() => {
-    if (!state.success) return
-    if (inputRef.current) inputRef.current.value = ''
-  }, [state])
-
-  /** Shrunk in the browser first (photo: 800px long edge, banner: 1920px, WebP), then posted as `image`. */
+  /** Shrink in-browser, then PUT straight to S3. Only metadata/finalization goes through the Server Action. */
   async function submitImage(picked: File) {
-    const image = await downscaleImage(picked, kind === 'icon' ? 'avatar' : 'cover')
-    const formData = new FormData()
-    formData.set('groupId', groupId)
-    formData.set('image', image, image.name)
-    startTransition(() => formAction(formData))
+    setUploadError('')
+    setUploading(true)
+    try {
+      const image = await downscaleImage(picked, kind === 'icon' ? 'avatar' : 'cover')
+      const ticket = await requestCommunityMediaUploadAction({
+        groupId,
+        kind,
+        contentType: image.type,
+        size: image.size,
+      })
+      if (!ticket.success || !ticket.uploadUrl || !ticket.key) throw new Error(ticket.error ?? 'Upload failed, try again.')
+
+      const response = await fetch(ticket.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': image.type },
+        body: image,
+      })
+      if (!response.ok) throw new Error('Upload failed, try again.')
+
+      const completed = await completeCommunityMediaUploadAction({ groupId, kind, key: ticket.key })
+      if (!completed.success) throw new Error(completed.error ?? 'Upload failed, try again.')
+
+      setUploaded(true)
+      setRemoved(false)
+      setCropping(null)
+      if (inputRef.current) inputRef.current.value = ''
+      router.refresh()
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : 'Upload failed, try again.'
+      setUploadError(message)
+      throw new Error(message)
+    } finally {
+      setUploading(false)
+    }
   }
 
   /** A photo the browser can re-encode is framed in the crop dialog first; a GIF is uploaded as it is. */
@@ -85,7 +108,7 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
       setCropping(picked)
       return
     }
-    void submitImage(picked)
+    void submitImage(picked).catch(() => undefined)
   }
 
   function cancelCrop() {
@@ -93,9 +116,8 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
     if (inputRef.current) inputRef.current.value = ''
   }
 
-  function saveCrop(cropped: File) {
-    setCropping(null)
-    void submitImage(cropped)
+  async function saveCrop(cropped: File) {
+    await submitImage(cropped)
   }
 
   function removeImage() {
@@ -110,16 +132,16 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
         return
       }
       setRemoved(true)
+      router.refresh()
     })
   }
 
-  const error = state.error ?? removeError
+  const error = uploadError || removeError
   const busy = uploading || removing
 
   return (
     <div className="relative flex items-center gap-2">
-      <form action={formAction}>
-        <input type="hidden" name="groupId" value={groupId} />
+      <div>
         <input
           ref={inputRef}
           type="file"
@@ -128,6 +150,7 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
           className="sr-only"
           onChange={(event) => {
             setRemoveError('')
+            setUploadError('')
             const picked = event.currentTarget.files?.[0]
             if (picked) {
               setRemoved(false)
@@ -145,7 +168,7 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
         >
           <Camera aria-hidden="true" className="size-4" />
         </button>
-      </form>
+      </div>
 
       {imagePresent ? (
         <button
@@ -160,7 +183,7 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
         </button>
       ) : null}
 
-      {error ? (
+      {error && !cropping ? (
         <span role="alert" className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 shadow-sm">
           {error}
         </span>

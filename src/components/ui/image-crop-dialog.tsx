@@ -16,9 +16,10 @@ export type ImageCropDialogProps = {
   /** Width ÷ height of the crop box, e.g. 1 for a square, 4 for a 4:1 banner. */
   aspect: number
   title: string
+  initialError?: string
   onCancel(): void
   /** Receives the cropped photo (WebP, JPEG where WebP cannot be encoded), named like the original. */
-  onSave(file: File): void
+  onSave(file: File): void | Promise<void>
 }
 
 const MIN_ZOOM = 1
@@ -69,7 +70,7 @@ function useObjectUrl(file: File) {
  * focus moves inside, Tab stays inside, Escape and the backdrop cancel, and focus returns to the
  * button that opened it when it unmounts.
  */
-export function ImageCropDialog({ file, shape, aspect, title, onCancel, onSave }: ImageCropDialogProps) {
+export function ImageCropDialog({ file, shape, aspect, title, initialError = '', onCancel, onSave }: ImageCropDialogProps) {
   const titleId = useId()
   const zoomId = useId()
   const containerRef = useModalLayer<HTMLDivElement>({ onClose: onCancel })
@@ -79,7 +80,7 @@ export function ImageCropDialog({ file, shape, aspect, title, onCancel, onSave }
   const [area, setArea] = useState<Area | null>(null)
   const [pixelCrop, setPixelCrop] = useState<PixelCrop | null>(null)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialError)
 
   const onCropChange = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
     setArea(croppedArea)
@@ -93,7 +94,12 @@ export function ImageCropDialog({ file, shape, aspect, title, onCancel, onSave }
     try {
       const cropped = await cropImageToFile(file, pixelCrop, { maxEdge: CROP_MAX_EDGE_PX[shape] })
       // A browser that cannot crop (no decoder or encoder) still uploads the photo as picked.
-      onSave(cropped ?? file)
+      try {
+        await onSave(cropped ?? file)
+      } catch {
+        setError('Upload failed, try again')
+        setSaving(false)
+      }
     } catch {
       setError('Unable to crop this photo. Try again or cancel to keep the original.')
       setSaving(false)

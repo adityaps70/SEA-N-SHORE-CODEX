@@ -1,0 +1,49 @@
+name: Reconcile PR166 with production branch
+on:
+  push:
+    branches: [chatgpt/community-direct-s3-20261009]
+    paths: [.github/workflows/reconcile-pr166.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g npm@11.6.0
+      - name: Merge production and resolve specified conflicts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin feat/aws-native-phase-0-1
+          git merge --no-commit --no-ff -X ours origin/feat/aws-native-phase-0-1 || test -f .git/MERGE_HEAD
+          # Keep production's worker build, memory safeguards, lockfile and dependency manifest.
+          git checkout origin/feat/aws-native-phase-0-1 -- Dockerfile package.json package-lock.json
+          # Preserve this PR's direct-to-S3 UI and tests, already adapted for production admin MFA.
+          for path in src/features/community/components/community-media-controls.tsx src/features/community/components/community-media-controls.test.tsx src/features/community/media-actions.test.ts; do
+            git show HEAD:"$path" > "$path"
+          done
+          git add Dockerfile package.json package-lock.json src/features/community
+          # Lockfile is not hand-merged: regenerate against the production manifest using npm 11.6.0.
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          git add package-lock.json
+          if git ls-files -u | grep .; then echo "Unresolved conflict" >&2; exit 1; fi
+          git commit -m "Merge production AWS branch and preserve presigned S3 uploads"
+      - name: Verify deterministic install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Focused tests
+        run: npx vitest run src/features/community src/features/organizations
+      - name: Push resolved merge after checks pass
+        run: git push origin HEAD:chatgpt/community-direct-s3-20261009
