@@ -183,7 +183,7 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
         </button>
       ) : null}
 
-      {error ? (
+      {error && !cropping ? (
         <span role="alert" className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 shadow-sm">
           {error}
         </span>
