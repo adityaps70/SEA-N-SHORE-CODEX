@@ -90,19 +90,23 @@ PREREQUISITES="$(read_count "SELECT count(*)::bigint FROM information_schema.tab
 }
 
 # Read-only: the SIRE 2.0 quiz attempt settings (blank = unlimited) and where its content mentions attempts.
-# Course content only; no learner data is read.
+# Course content only; no learner data is read. The course is matched by its expected slug or, when that
+# slug is not found, by the word "SIRE" in its title (live courses only, not draft revisions).
+SIRE_COURSES="WITH sire AS (SELECT course.id, course.slug, course.title, course.status FROM public.learning_courses course WHERE course.revision_of_course_id IS NULL AND (course.slug = '$SIRE_COURSE_SLUG' OR course.title ~* '\\msire\\M'))"
 echo "SIRE_QUIZ_REPORT course=$SIRE_COURSE_SLUG"
-data_api --output json --sql "SELECT lesson.title, coalesce(lesson.max_attempts::text, 'unlimited'), lesson.is_published::text, coalesce(quiz.pass_percentage::text, 'none') FROM public.learning_courses course JOIN public.learning_course_sections section ON section.course_id = course.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id LEFT JOIN public.learning_quizzes quiz ON quiz.lesson_id = lesson.id WHERE course.slug = '$SIRE_COURSE_SLUG' AND lesson.lesson_type = 'quiz' ORDER BY section.position, lesson.position" \
-  | jq -r '.records[]? | "SIRE_QUIZ title=\(.[0].stringValue) max_attempts=\(.[1].stringValue) published=\(.[2].stringValue) pass_percentage=\(.[3].stringValue)"'
-data_api --output json --sql "WITH content AS (
-    SELECT 'course description' AS field, course.title AS item, course.description AS body FROM public.learning_courses course WHERE course.slug = '$SIRE_COURSE_SLUG'
-    UNION ALL SELECT 'course subtitle', course.title, course.subtitle FROM public.learning_courses course WHERE course.slug = '$SIRE_COURSE_SLUG'
-    UNION ALL SELECT 'material summary', lesson.title, lesson.summary FROM public.learning_courses course JOIN public.learning_course_sections section ON section.course_id = course.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id WHERE course.slug = '$SIRE_COURSE_SLUG'
-    UNION ALL SELECT 'article content', lesson.title, lesson.article_body FROM public.learning_courses course JOIN public.learning_course_sections section ON section.course_id = course.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id WHERE course.slug = '$SIRE_COURSE_SLUG'
-    UNION ALL SELECT 'quiz instructions', lesson.title, quiz.instructions FROM public.learning_courses course JOIN public.learning_course_sections section ON section.course_id = course.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id JOIN public.learning_quizzes quiz ON quiz.lesson_id = lesson.id WHERE course.slug = '$SIRE_COURSE_SLUG'
+data_api --output json --sql "$SIRE_COURSES SELECT sire.slug, sire.status, (SELECT count(*) FROM public.learning_course_sections section JOIN public.learning_lessons lesson ON lesson.section_id = section.id WHERE section.course_id = sire.id AND lesson.lesson_type = 'quiz')::text FROM sire ORDER BY sire.slug" \
+  | jq -r '.records[]? | "SIRE_COURSE slug=\(.[0].stringValue) status=\(.[1].stringValue) quiz_materials=\(.[2].stringValue)"'
+data_api --output json --sql "$SIRE_COURSES SELECT sire.slug, lesson.title, coalesce(lesson.max_attempts::text, 'unlimited'), lesson.is_published::text, coalesce(quiz.pass_percentage::text, 'none') FROM sire JOIN public.learning_course_sections section ON section.course_id = sire.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id LEFT JOIN public.learning_quizzes quiz ON quiz.lesson_id = lesson.id WHERE lesson.lesson_type = 'quiz' ORDER BY sire.slug, section.position, lesson.position" \
+  | jq -r '.records[]? | "SIRE_QUIZ course=\(.[0].stringValue) title=\(.[1].stringValue) max_attempts=\(.[2].stringValue) published=\(.[3].stringValue) pass_percentage=\(.[4].stringValue)"'
+data_api --output json --sql "$SIRE_COURSES, content AS (
+    SELECT sire.slug AS course, 'course description' AS field, sire.title AS item, course.description AS body FROM sire JOIN public.learning_courses course ON course.id = sire.id
+    UNION ALL SELECT sire.slug, 'course subtitle', sire.title, course.subtitle FROM sire JOIN public.learning_courses course ON course.id = sire.id
+    UNION ALL SELECT sire.slug, 'material summary', lesson.title, lesson.summary FROM sire JOIN public.learning_course_sections section ON section.course_id = sire.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id
+    UNION ALL SELECT sire.slug, 'article content', lesson.title, lesson.article_body FROM sire JOIN public.learning_course_sections section ON section.course_id = sire.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id
+    UNION ALL SELECT sire.slug, 'quiz instructions', lesson.title, quiz.instructions FROM sire JOIN public.learning_course_sections section ON section.course_id = sire.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id JOIN public.learning_quizzes quiz ON quiz.lesson_id = lesson.id
   )
-  SELECT field, item, substring(body FROM '(?i)(.{0,60}(unlimited|three|[0-9]+)\\s+(attempt|tr(y|ies)|retake)s?.{0,60})') FROM content WHERE body ~* '(unlimited|three|[0-9]+)\\s+(attempt|tr(y|ies)|retake)s?'" \
-  | jq -r '.records[]? | "SIRE_ATTEMPT_WORDING field=\(.[0].stringValue) item=\(.[1].stringValue) text=\(.[2].stringValue // "")"'
+  SELECT course, field, item, substring(body FROM '(?i)(.{0,60}(unlimited|three|[0-9]+)\\s+(attempt|tr(y|ies)|retake)s?.{0,60})') FROM content WHERE body ~* '(unlimited|three|[0-9]+)\\s+(attempt|tr(y|ies)|retake)s?'" \
+  | jq -r '.records[]? | "SIRE_ATTEMPT_WORDING course=\(.[0].stringValue) field=\(.[1].stringValue) item=\(.[2].stringValue) text=\(.[3].stringValue // "")"'
 echo "SIRE_QUIZ_REPORT_DONE"
 
 LEDGER_EXISTS="$(read_count "SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema='public' AND table_name='sea_n_shore_applied_migrations'")"

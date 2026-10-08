@@ -46,7 +46,7 @@ describe('assignment grading repository', () => {
   })
 
   it('records an explicit needs-revision grade without completing learner progress', async () => {
-    const query = vi.fn()
+    const query = vi.fn().mockResolvedValue([])
       .mockResolvedValueOnce([{
         attempt_id: 'attempt-1', status: 'submitted', enrollment_id: 'enrollment-1', lesson_id: 'lesson-1',
         learner_id: 'learner-1', course_id: 'course-1', course_slug: 'course-slug', max_points: 100, passing_percentage: 70,
@@ -61,7 +61,11 @@ describe('assignment grading repository', () => {
     })
 
     expect(result).toMatchObject({ percentage: 60, passed: false, progressPercent: null, enrollmentCompleted: false })
-    expect(query).toHaveBeenCalledTimes(2)
+    const statements = query.mock.calls.map(([sql]) => String(sql))
+    expect(statements.some((sql) => sql.includes('learning_progress'))).toBe(false)
+    // The learner is told about the grade after it is stored, behind a savepoint (learning round A, A6).
+    expect(statements[1]).toContain("set status = 'graded'")
+    expect(statements.slice(2)).toEqual(['savepoint learning_notification', expect.stringContaining('from public.learning_assignment_attempts attempt'), 'release savepoint learning_notification'])
   })
 
   it('completes the material only when an explicit pass meets the configured pass threshold', async () => {

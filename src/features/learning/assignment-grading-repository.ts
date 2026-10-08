@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
 import { courseManagerAccessSql } from './course-access'
+import { notifyAssignmentGraded } from './learning-notifications'
 import { loadAssignmentAttachmentsWithQuery, type LearnerAssignmentAttachment } from './learner-assignment-repository'
 
 export type AssignmentGradingQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
@@ -351,6 +352,7 @@ export function createAssignmentGradingRepository(input: {
         progressPercent = progress.progressPercent
         enrollmentCompleted = progress.enrollmentCompleted
       }
+      await notifyAssignmentGraded(query, { attemptId })
 
       return {
         attemptId,

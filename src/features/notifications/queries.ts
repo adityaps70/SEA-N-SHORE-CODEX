@@ -4,6 +4,8 @@ import { POST_REACTION_META } from '@/features/feed/types'
 import { getAwsPublicProfilesByIds } from '@/features/profiles/aws-queries'
 import { createNotificationRepository, type NotificationPostPreviewRow, type NotificationRow } from './repository'
 import type { NetworkNotification, NetworkNotificationType, NotificationChrome, NotificationPostPreview } from './types'
+import { learningKindOf, learningNotificationCopy } from '@/features/learning/learning-notification-copy'
+import type { LearningNotificationDetails } from '@/features/learning/learning-notifications'
 
 const copyByType: Record<NetworkNotificationType, string> = {
   connection_request: 'sent you a connection request',
@@ -22,6 +24,20 @@ const copyByType: Record<NetworkNotificationType, string> = {
   group_post: 'posted in a group you manage',
   organization_mention: 'mentioned an organization you manage',
   photo_tag: 'tagged you in a photo',
+  // Learning notifications have no actor; their words come from learningNotificationCopy.
+  learning_enrolled: 'enrolled you in a course',
+  learning_lessons_released: 'released new course materials',
+  learning_assignment_graded: 'graded your assignment',
+  learning_certificate_issued: 'issued your certificate',
+  learning_course_approved: 'approved your course',
+  learning_course_changes_requested: 'asked for changes to your course',
+  learning_submissions_to_grade: 'submitted assignments to grade',
+}
+
+function learningCopy(row: NotificationRow) {
+  const kind = learningKindOf(row.notification_type)
+  const details = row.details as LearningNotificationDetails | null | undefined
+  return kind && details?.courseTitle ? learningNotificationCopy(kind, details) : null
 }
 
 const EVENT_CANCELLED_MESSAGE = 'An event you registered for was cancelled because its organiser left Sea N Shore. Paid tickets are refunded in full.'
@@ -79,6 +95,9 @@ function socialCopy(row: NotificationRow) {
 }
 
 function destinationFor(row: NotificationRow, actor: ProfileSummary | null) {
+  const learning = learningCopy(row)
+  if (learning) return learning.path
+  if (learningKindOf(row.notification_type)) return '/learn/my-learning'
   if (row.notification_type === 'connection_request') return '/network?tab=requests'
   if (row.notification_type === 'event_cancelled') return '/events/my'
   if (row.notification_type === 'plan_trial_ending') return '/settings/billing'
@@ -114,7 +133,9 @@ function mapNotifications(
         ? EVENT_CANCELLED_MESSAGE
         : row.notification_type === 'plan_trial_ending'
           ? PLAN_TRIAL_ENDING_MESSAGE
-          : `${actorName} ${socialCopy(row)}.`,
+          : learningKindOf(row.notification_type)
+            ? learningCopy(row)?.message ?? 'There is news about one of your courses.'
+            : `${actorName} ${socialCopy(row)}.`,
       destination: destinationFor(row, actor),
       postId: row.post_id,
       commentId: row.comment_id,

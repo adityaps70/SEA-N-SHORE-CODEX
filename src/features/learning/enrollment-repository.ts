@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import { courseOpenToNewLearnersSql, coursePublisherNameSql, learnerCourseAccessSql, publishedCourseVisibilitySql } from './course-publication'
+import { notifyEnrolled } from './learning-notifications'
 
 type EnrollmentQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -169,6 +170,7 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
     const created = rows[0]
     if (created) {
       const enrollment = mapEnrollment(created)
+      await notifyEnrolled(queryRows, { learnerId, courseId, enrollmentId: enrollment.enrollmentId }, { inTransaction: false })
       return {
         enrollmentId: enrollment.enrollmentId,
         status: enrollment.status,
