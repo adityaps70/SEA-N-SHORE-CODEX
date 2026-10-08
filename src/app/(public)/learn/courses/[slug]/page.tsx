@@ -231,7 +231,7 @@ function CourseCurriculum({ slug, sections, enrolled }: { slug: string; sections
   if (!lessonCount) return null
   const previews = sections.reduce((total, section) => total + section.lessons.filter((lesson) => lesson.preview).length, 0)
   return (
-    <section aria-label="Curriculum" className={`${PHONE_FLAT_SECTION} lg:col-span-2`}>
+    <section aria-label="Curriculum" className={`${PHONE_FLAT_SECTION} lg:order-3 lg:col-span-2`}>
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Curriculum</p>
@@ -443,10 +443,11 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
         </div>
       </section>
 
+      {/* Two columns on desktop with the full-width curriculum after the first row (lg:order); phones keep source order. */}
       <div className="mt-6 grid gap-6 max-md:order-2 max-md:mt-2 max-md:gap-2 lg:grid-cols-[1.15fr_0.85fr]">
         <section
           aria-label="What you will learn"
-          className={PHONE_FLAT_SECTION}
+          className={`${PHONE_FLAT_SECTION} lg:order-1`}
         >
           <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Learning outcomes</p>
           <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">What you will learn</h2>
@@ -459,7 +460,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
 
         <section
           aria-label="Who this course is for"
-          className={PHONE_FLAT_SECTION}
+          className={`${PHONE_FLAT_SECTION} lg:order-2`}
         >
           <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Intended learners</p>
           <h2 className="mt-1 flex items-center gap-2 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">
@@ -472,7 +473,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
 
         <section
           aria-label="Requirements"
-          className={PHONE_FLAT_SECTION}
+          className={`${PHONE_FLAT_SECTION} lg:order-4`}
         >
           <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Before you begin</p>
           <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">Requirements</h2>
@@ -481,7 +482,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
           </div>
         </section>
 
-        <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50/70 p-6 max-md:hidden sm:p-7">
+        <section className="rounded-[1.5rem] border border-mist-100 bg-mist-50/70 p-6 max-md:hidden sm:p-7 lg:order-5">
           <span className="grid size-11 place-items-center rounded-2xl bg-navy-950 text-white">
             <GraduationCap aria-hidden="true" className="size-5" />
           </span>
