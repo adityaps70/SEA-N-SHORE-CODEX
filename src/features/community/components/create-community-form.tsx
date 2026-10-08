@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useActionState, useEffect, useEffectEvent, useRef, useState, type ChangeEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ImageUp } from 'lucide-react'
@@ -172,12 +172,14 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
     if (!finish.success) throw new Error('Upload failed, try again')
   }
 
-  useEffect(() => {
-    if (!state?.ok || createdGroup) return
-    const group = { id: state.id, slug: state.slug }
-    setCreatedGroup(group)
+  // Remember the new group once, while rendering (not in an effect), then start its image uploads.
+  if (state?.ok && !createdGroup) setCreatedGroup({ id: state.id, slug: state.slug })
+  const startUploads = useEffectEvent((group: { id: string; slug: string }) => {
     void uploadRemaining(group)
-  }, [state, createdGroup, router])
+  })
+  useEffect(() => {
+    if (createdGroup) startUploads(createdGroup)
+  }, [createdGroup])
 
   const error = cropping ? null : clientError ?? (state && !state.ok ? state.error : null)
 

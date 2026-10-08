@@ -40,15 +40,6 @@ function form(entries: Record<string, string | File>) {
   return data
 }
 
-function image(name: string, type = 'image/jpeg', size = 10) {
-  const file = new File([new Uint8Array(size)], name, { type })
-  // jsdom's File has no arrayBuffer(); Node's (used by server actions) does.
-  if (typeof file.arrayBuffer !== 'function') {
-    Object.defineProperty(file, 'arrayBuffer', { value: async () => new ArrayBuffer(size) })
-  }
-  return file
-}
-
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAwsUser.mockResolvedValue({ id: 'user-1' })
