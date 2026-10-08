@@ -11,6 +11,7 @@ import {
   type MentorApplicationStatus,
 } from './mentor-application'
 import { applyCourseRevisionWithQuery, revisionChangesFromLiveCourse } from './course-revision-repository'
+import { notifyCourseReviewed } from './learning-notifications'
 
 type LearningAdminQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type LearningAdminTransaction = <T>(work: (query: LearningAdminQuery) => Promise<T>) => Promise<T>
@@ -825,6 +826,10 @@ export function createLearningAdminRepository(input: {
         ],
       )
 
+      if (decision === 'approved' || decision === 'changes_requested') {
+        await notifyCourseReviewed(txQuery, { reviewedCourseId: courseId, liveCourseId: course.revision_of_course_id ?? courseId, decision })
+      }
+
       return { courseId, status: persistedStatus }
     })
   }
@@ -877,6 +882,7 @@ export function createLearningAdminRepository(input: {
         JSON.stringify({ revisionCourseId: revision.id, mentorId: revision.mentor_id, reviewerNote }),
       ],
     )
+    await notifyCourseReviewed(txQuery, { reviewedCourseId: revision.id, liveCourseId, decision: 'approved' })
     return { courseId: liveCourseId, status: 'published' as const }
   }
 

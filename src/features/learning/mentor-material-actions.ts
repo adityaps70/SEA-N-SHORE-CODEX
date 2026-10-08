@@ -51,6 +51,7 @@ const materialSchema = z.object({
   articleBody: nullableText(100000),
   articleFormat: z.enum(['plain', 'html']).default('plain'),
   assetPath: nullableText(1024),
+  captionPath: nullableText(1024).optional(),
   externalUrl: nullableUrl,
   durationSeconds: z.union([z.null(), z.number().int().nonnegative()]),
   isPreview: z.boolean(),
@@ -158,6 +159,15 @@ async function prepareArticle(userId: string, courseId: string, draft: MentorMat
 }
 
 async function verifyAsset(userId: string, courseId: string, draft: MentorMaterialDraft) {
+  if (draft.materialType === 'video' && draft.captionPath) {
+    await verifyLearningMediaObject({
+      userId,
+      courseId,
+      kind: 'lesson_caption',
+      storagePath: draft.captionPath,
+      alreadyAttached: await learningMediaRepository.isMediaReferenced(userId, courseId, draft.captionPath),
+    })
+  }
   if (!draft.assetPath) return
   const kind = uploadKind(draft.materialType)
   if (!kind) return

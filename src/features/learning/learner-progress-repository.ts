@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { issueCertificateForCompletedEnrollmentWithQuery } from './certificate-repository'
+import { nextMediaProgress } from './media-watch-policy'
 import { learnerCourseAccessSql } from './course-publication'
 
 export type LearnerProgressQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
@@ -227,6 +228,7 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
     lessonId: string,
     positionSeconds: number,
     reportedDurationSeconds?: number,
+    reportedWatchedSeconds?: number,
   ) {
     return transaction(async (query) => {
       const accessRows = await query(
@@ -269,9 +271,32 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
       const duration = reportedDurationSeconds && reportedDurationSeconds > 0
         ? reportedDurationSeconds
         : Number(accessible.duration_seconds ?? 0)
-      const mediaPercent = duration > 0
-        ? Math.max(0, Math.min(100, Math.floor((positionSeconds / duration) * 100)))
-        : 0
+      // Learning round A (A7): progress from real viewing, checked against the clock (media-watch-policy).
+      let next = { positionSeconds, watchedSeconds: 0, furthestPositionSeconds: 0, mediaPercent: 0 }
+      if (duration > 0) {
+        const storedRows = await query(
+          `select watched_seconds, furthest_position_seconds, last_position_seconds, media_percent,
+                  extract(epoch from now() - updated_at)::float8 as seconds_since_last_save
+           from public.learning_progress
+           where enrollment_id = $1 and lesson_id = $2
+           for update`,
+          [accessible.enrollment_id, accessible.lesson_id],
+        )
+        const stored = storedRows[0]
+        next = nextMediaProgress({
+          stored: stored ? {
+            watchedSeconds: Number(stored.watched_seconds ?? 0),
+            furthestPositionSeconds: Number(stored.furthest_position_seconds ?? 0),
+            lastPositionSeconds: Number(stored.last_position_seconds ?? 0),
+            mediaPercent: Number(stored.media_percent ?? 0),
+            secondsSinceLastSave: stored.seconds_since_last_save === null ? null : Number(stored.seconds_since_last_save),
+          } : null,
+          positionSeconds,
+          durationSeconds: duration,
+          reportedWatchedSeconds,
+        })
+      }
+      const mediaPercent = next.mediaPercent
       const threshold = Number(accessible.completion_threshold ?? 90)
       const autoComplete = accessible.completion_rule === 'media_percentage'
         && duration > 0
@@ -294,10 +319,13 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
       } else if (autoComplete) {
         positionRows = await query(
           `insert into public.learning_progress (
-             enrollment_id, lesson_id, last_position_seconds, first_started_at, viewed_at, media_percent, completed, completed_at, updated_at
-           ) values ($1, $2, $3, now(), now(), $4, true, now(), now())
+             enrollment_id, lesson_id, last_position_seconds, first_started_at, viewed_at, media_percent, completed, completed_at, updated_at,
+             watched_seconds, furthest_position_seconds
+           ) values ($1, $2, $3, now(), now(), $4, true, now(), now(), $5, $6)
            on conflict (enrollment_id, lesson_id) do update
            set last_position_seconds = greatest(public.learning_progress.last_position_seconds, excluded.last_position_seconds),
+               watched_seconds = greatest(public.learning_progress.watched_seconds, excluded.watched_seconds),
+               furthest_position_seconds = greatest(public.learning_progress.furthest_position_seconds, excluded.furthest_position_seconds),
                first_started_at = coalesce(public.learning_progress.first_started_at, excluded.first_started_at),
                viewed_at = coalesce(public.learning_progress.viewed_at, excluded.viewed_at),
                media_percent = greatest(public.learning_progress.media_percent, excluded.media_percent),
@@ -305,21 +333,24 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
                completed_at = coalesce(public.learning_progress.completed_at, excluded.completed_at),
                updated_at = now()
            returning last_position_seconds, media_percent, completed`,
-          [accessible.enrollment_id, accessible.lesson_id, positionSeconds, mediaPercent],
+          [accessible.enrollment_id, accessible.lesson_id, next.positionSeconds, mediaPercent, next.watchedSeconds, next.furthestPositionSeconds],
         ) as PlaybackPositionRow[]
       } else {
         positionRows = await query(
           `insert into public.learning_progress (
-             enrollment_id, lesson_id, last_position_seconds, first_started_at, viewed_at, media_percent, updated_at
-           ) values ($1, $2, $3, now(), now(), $4, now())
+             enrollment_id, lesson_id, last_position_seconds, first_started_at, viewed_at, media_percent, updated_at,
+             watched_seconds, furthest_position_seconds
+           ) values ($1, $2, $3, now(), now(), $4, now(), $5, $6)
            on conflict (enrollment_id, lesson_id) do update
            set last_position_seconds = excluded.last_position_seconds,
+               watched_seconds = greatest(public.learning_progress.watched_seconds, excluded.watched_seconds),
+               furthest_position_seconds = greatest(public.learning_progress.furthest_position_seconds, excluded.furthest_position_seconds),
                first_started_at = coalesce(public.learning_progress.first_started_at, excluded.first_started_at),
                viewed_at = coalesce(public.learning_progress.viewed_at, excluded.viewed_at),
                media_percent = greatest(public.learning_progress.media_percent, excluded.media_percent),
                updated_at = now()
            returning last_position_seconds, media_percent, completed`,
-          [accessible.enrollment_id, accessible.lesson_id, positionSeconds, mediaPercent],
+          [accessible.enrollment_id, accessible.lesson_id, next.positionSeconds, mediaPercent, next.watchedSeconds, next.furthestPositionSeconds],
         ) as PlaybackPositionRow[]
       }
 
@@ -334,6 +365,8 @@ export function createLearnerProgressRepository(input: { transaction?: ProgressT
         enrollmentId: accessible.enrollment_id,
         lessonId: accessible.lesson_id,
         lastPositionSeconds: Number(position.last_position_seconds),
+        // Only media with a known length tracks how far the learner reached.
+        ...(duration > 0 ? { furthestPositionSeconds: next.furthestPositionSeconds, watchedSeconds: next.watchedSeconds } : {}),
       }
     })
   }

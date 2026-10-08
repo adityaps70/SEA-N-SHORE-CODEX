@@ -19,6 +19,9 @@ export type NotificationRow = QueryResultRow & {
   /** Organization the notification is about (round 9B). */
   company_id?: string | null
   company_name?: string | null
+  /** Learning notifications (learning round A): the course and what to say (LearningNotificationDetails). */
+  course_id?: string | null
+  details?: Record<string, unknown> | null
 }
 
 /** A compact look at the post a notification is about: its text and first photo or video. */
@@ -54,7 +57,8 @@ export function createNotificationRepository(input: { query?: NotificationQuery 
                 n.post_id, n.comment_id, n.reaction_type::text as reaction_type,
                 n.created_at, n.read_at,
                 n.group_id, g.slug as group_slug, g.name as group_name,
-                n.company_id, c.name as company_name
+                n.company_id, c.name as company_name,
+                n.course_id, n.details
          from public.notifications n
          left join public.community_groups g on g.id = n.group_id
          left join public.companies c on c.id = n.company_id

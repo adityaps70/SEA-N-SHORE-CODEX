@@ -7,6 +7,8 @@ export type LearningMediaKind =
   | 'lesson_document'
   | 'lesson_resource'
   | 'scorm_package'
+  /** WebVTT captions for a video material (learning round A, A7). */
+  | 'lesson_caption'
 
 export const LEARNING_MEDIA_MAX_BYTES: Record<LearningMediaKind, number> = {
   course_thumbnail: 5 * 1024 * 1024,
@@ -17,6 +19,7 @@ export const LEARNING_MEDIA_MAX_BYTES: Record<LearningMediaKind, number> = {
   lesson_document: 100 * 1024 * 1024,
   lesson_resource: 100 * 1024 * 1024,
   scorm_package: 200 * 1024 * 1024,
+  lesson_caption: 2 * 1024 * 1024,
 }
 
 const IMAGE_TYPES = {
@@ -65,6 +68,7 @@ const MIME_EXTENSION: Record<LearningMediaKind, Record<string, string>> = {
   lesson_document: DOCUMENT_TYPES,
   lesson_resource: RESOURCE_TYPES,
   scorm_package: { 'application/zip': 'zip', 'application/x-zip-compressed': 'zip' },
+  lesson_caption: { 'text/vtt': 'vtt' },
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -87,6 +91,7 @@ function formatLabel(kind: LearningMediaKind) {
     case 'lesson_document': return 'PDF, PowerPoint, Word, Excel, or text document'
     case 'lesson_resource': return 'supported document, image, or ZIP resource'
     case 'scorm_package': return 'SCORM ZIP package'
+    case 'lesson_caption': return 'WebVTT caption file (.vtt)'
   }
 }
 

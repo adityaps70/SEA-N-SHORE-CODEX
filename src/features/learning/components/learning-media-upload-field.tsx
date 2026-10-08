@@ -96,11 +96,13 @@ export function LearningMediaUploadField({
 
     let preparedPath: string | null = null
     const previousPendingPath = pendingPath
+    // Some browsers give .vtt caption files no type; the extension is what identifies them.
+    const mimeType = file.type || (kind === 'lesson_caption' && /\.vtt$/i.test(file.name) ? 'text/vtt' : '')
     try {
       const prepared = await createLearningMediaUpload({
         courseId,
         kind,
-        mimeType: file.type,
+        mimeType,
         size: file.size,
       })
       if (!prepared.ok) {
@@ -113,6 +115,7 @@ export function LearningMediaUploadField({
       await uploadLearningMediaFile({
         uploadUrl: prepared.upload.uploadUrl,
         file,
+        contentType: prepared.upload.mimeType,
         onProgress: setProgress,
       })
 

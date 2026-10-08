@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { requireCapability } from '@/features/access/server'
+import { PAYMENT_CURRENCIES } from '@/features/payments/types'
 import {
   CourseEditConflictError,
   CourseEditLockedError,
@@ -101,7 +102,7 @@ const courseDraftSchema = z.object({
   accessType: z.enum(['free', 'paid'], 'Choose free or paid access.'),
   priceMinor: z.number('Enter the course price as a number.').int('Enter the course price in rupees and paise only.').nonnegative('Course price cannot be negative.'),
   discountPriceMinor: z.number('Enter the discount price as a number.').int('Enter the discount price in rupees and paise only.').nonnegative('Discount price cannot be negative.').nullable(),
-  currency: z.string().trim().transform((value) => value.toUpperCase()).pipe(z.string().regex(/^[A-Z]{3}$/, 'Use a three-letter currency code, for example INR.')),
+  currency: z.string().trim().transform((value) => value.toUpperCase()).pipe(z.enum(PAYMENT_CURRENCIES, { message: 'Choose INR or USD.' })),
   certificateEnabled: z.boolean(),
   courseFormat: z.enum(['recorded', 'live_cohort', 'hybrid'], 'Choose a course format.'),
 }).superRefine((course, context) => {

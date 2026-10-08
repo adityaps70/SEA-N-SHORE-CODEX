@@ -6,6 +6,7 @@ import { createNewsletterWorker } from '../../src/features/newsletter/worker'
 import { createLegacyInviteWorker } from '../../src/features/legacy-invites/sending'
 import { subscriptionService } from '../../src/features/billing/subscription-service'
 import { createUnconfirmedUserCleanup } from '../../src/features/auth/unconfirmed-user-cleanup'
+import { createLearningDigestSweep, createLearningEmailWorker } from '../../src/features/learning/learning-email-sending'
 
 const busName = process.env.SOCIAL_EVENT_BUS_NAME
 if (!busName) throw new Error('SOCIAL_EVENT_BUS_NAME is required')
@@ -30,6 +31,15 @@ let nextBillingSweepAt = 0
 const UNCONFIRMED_USER_SWEEP_MS = 24 * 60 * 60 * 1000
 let nextUnconfirmedUserSweepAt = 0
 const unconfirmedUserCleanup = process.env.AWS_COGNITO_USER_POOL_ID ? createUnconfirmedUserCleanup() : null
+// Learning round A (A6): queued learning emails every minute; the released-materials and
+// submissions-to-grade digests hourly. Both are idempotent.
+const LEARNING_EMAIL_SWEEP_MS = 60 * 1000
+const LEARNING_DIGEST_SWEEP_MS = 60 * 60 * 1000
+let nextLearningEmailSweepAt = 0
+let nextLearningDigestSweepAt = 0
+let learningEmailDisabledLogged = false
+const learningEmailWorker = createLearningEmailWorker()
+const learningDigestSweep = createLearningDigestSweep()
 let stopping = false
 process.on('SIGTERM', () => { stopping = true })
 process.on('SIGINT', () => { stopping = true })
@@ -117,6 +127,36 @@ async function runUnconfirmedUserSweepIfDue() {
   }
 }
 
+async function runLearningDigestSweepIfDue() {
+  const now = Date.now()
+  if (now < nextLearningDigestSweepAt) return
+  nextLearningDigestSweepAt = now + LEARNING_DIGEST_SWEEP_MS
+
+  try {
+    const result = await learningDigestSweep.run()
+    console.info('[learning_digest_sweep]', result)
+  } catch (error) {
+    console.error('[learning_digest_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
+async function runLearningEmailSweepIfDue() {
+  const now = Date.now()
+  if (now < nextLearningEmailSweepAt) return
+  nextLearningEmailSweepAt = now + LEARNING_EMAIL_SWEEP_MS
+
+  try {
+    const result = await learningEmailWorker.runSweep(10)
+    if (result.claimed > 0) console.info('[learning_email_sweep]', result)
+    if (result.disabled && !learningEmailDisabledLogged) {
+      learningEmailDisabledLogged = true
+      console.info('[learning_email_sweep]', { disabled: true })
+    }
+  } catch (error) {
+    console.error('[learning_email_sweep_error]', error instanceof Error ? error.message : 'unknown_error')
+  }
+}
+
 async function main() {
   // Round 14 (3.10): loop straight on while batches claim work; when idle, back off from 5 s to
   // 10 s (outboxIdleDelayMs) and log only batches that claimed something.
@@ -131,6 +171,8 @@ async function main() {
       await runLegacyInviteSweepIfDue()
       await runBillingSweepIfDue()
       await runUnconfirmedUserSweepIfDue()
+      await runLearningDigestSweepIfDue()
+      await runLearningEmailSweepIfDue()
       if (consecutiveIdleBatches > 0) await sleep(outboxIdleDelayMs(consecutiveIdleBatches))
       if (result.failed > 0) await sleep(2000)
     } catch (error) {

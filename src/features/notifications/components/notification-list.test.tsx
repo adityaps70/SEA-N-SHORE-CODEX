@@ -171,7 +171,7 @@ describe('NotificationList on phones', () => {
     expect(markAll).toHaveLength(2)
     const chips = screen.getByRole('group', { name: 'Filter notifications' })
     expect(chips).toHaveClass('md:hidden')
-    expect(Array.from(chips.querySelectorAll('button')).map((chip) => chip.textContent)).toEqual(['All', 'Jobs', 'My posts', 'Mentions'])
+    expect(Array.from(chips.querySelectorAll('button')).map((chip) => chip.textContent)).toEqual(['All', 'Jobs', 'My posts', 'Mentions', 'Learning'])
     expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
   })
 

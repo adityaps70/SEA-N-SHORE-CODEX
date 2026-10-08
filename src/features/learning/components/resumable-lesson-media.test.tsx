@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -127,6 +127,73 @@ describe('ResumableLessonMedia', () => {
     await waitFor(() => {
       expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledTimes(2)
       expect(mocks.saveLearningPlaybackPosition).toHaveBeenLastCalledWith(slug, lessonId, 155)
+    })
+  })
+
+  describe('learning round A (A7): real viewing, speed and captions', () => {
+    function video(props: Partial<Parameters<typeof ResumableLessonMedia>[0]> = {}) {
+      const { container } = render(
+        <ResumableLessonMedia kind="video" src={src} slug={slug} lessonId={lessonId} initialPositionSeconds={0} {...props} />,
+      )
+      const media = container.querySelector('video')!
+      Object.defineProperty(media, 'duration', { configurable: true, value: 600 })
+      return media
+    }
+
+    it('always allows seeking back, but forward only a few seconds past the furthest point watched', () => {
+      const media = video({ initialPositionSeconds: 100, initialFurthestSeconds: 120 })
+      fireEvent.loadedMetadata(media)
+
+      media.currentTime = 30
+      fireEvent.seeking(media)
+      expect(media.currentTime).toBe(30)
+
+      media.currentTime = 124
+      fireEvent.seeking(media)
+      expect(media.currentTime).toBe(124)
+
+      media.currentTime = 400
+      fireEvent.seeking(media)
+      expect(media.currentTime).toBe(120)
+      expect(screen.getByRole('status')).toHaveTextContent('You can skip ahead once you’ve watched up to here.')
+    })
+
+    it('lets a learner who completed the video watch it in any order', () => {
+      const media = video({ completed: true })
+      media.currentTime = 500
+      fireEvent.seeking(media)
+      expect(media.currentTime).toBe(500)
+    })
+
+    it('counts real playback time and sends it with the position', async () => {
+      const media = video({ initialWatchedSeconds: 40, initialFurthestSeconds: 40, initialPositionSeconds: 40 })
+      fireEvent.loadedMetadata(media)
+      for (let second = 41; second <= 56; second += 1) {
+        media.currentTime = second
+        fireEvent.timeUpdate(media)
+      }
+      await waitFor(() => expect(mocks.saveLearningPlaybackPosition).toHaveBeenCalledWith(slug, lessonId, 55, 600, 55))
+    })
+
+    it('offers speeds from 0.75× to 2×', () => {
+      const media = video()
+      const speed = screen.getByRole('combobox', { name: 'Speed' })
+      expect(Array.from(speed.querySelectorAll('option')).map((option) => option.textContent)).toEqual(['0.75×', '1×', '1.25×', '1.5×', '1.75×', '2×'])
+      fireEvent.change(speed, { target: { value: '1.5' } })
+      expect(media.playbackRate).toBe(1.5)
+    })
+
+    it('adds captions and a transcript that jumps to a line', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nWelcome aboard.\n\n00:00:04.000 --> 00:00:06.000\nCheck the mooring lines.\n'))
+      vi.stubGlobal('fetch', fetchMock)
+      const media = video({ captionsSrc: `/api/learn/captions/${lessonId}`, initialFurthestSeconds: 30 })
+
+      expect(media.querySelector('track')).toHaveAttribute('src', `/api/learn/captions/${lessonId}`)
+      fireEvent.click(screen.getByRole('button', { name: 'Transcript' }))
+      fireEvent.click(await screen.findByRole('button', { name: /Check the mooring lines/ }))
+      expect(media.currentTime).toBe(4)
+      expect(fetchMock).toHaveBeenCalledWith(`/api/learn/captions/${lessonId}`, { credentials: 'same-origin' })
+      vi.unstubAllGlobals()
     })
   })
 })
