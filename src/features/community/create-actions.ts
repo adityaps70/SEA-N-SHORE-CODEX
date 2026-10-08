@@ -1,14 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { communityErrorMessage } from './actions'
 import { CREATE_AS_SELF, ELIGIBILITY_REASON_TEXT } from './eligibility'
 import { getCommunityCreationEligibility } from './eligibility-server'
-import { validateCommunityImage, type CommunityMediaKind } from './media'
-import { uploadCommunityMedia } from './media-service'
 import { communityService } from './service'
 import {
   COMMUNITY_CATEGORIES,
@@ -17,10 +14,9 @@ import {
   GROUP_NAME_MAX_LENGTH,
   GROUP_RULES_MAX_LENGTH,
   GROUP_VISIBILITIES,
-  groupHref,
 } from './types'
 
-export type CreateCommunityState = { ok: false; error: string } | null
+export type CreateCommunityState = { ok: false; error: string } | { ok: true; id: string; slug: string } | null
 
 const createSchema = z.object({
   as: z.string().trim().max(64).default(CREATE_AS_SELF),
@@ -37,11 +33,6 @@ function readForm(formData: FormData, keys: string[]) {
   return Object.fromEntries(keys.map((key) => [key, formData.get(key)?.toString() ?? '']))
 }
 
-function chosenImage(formData: FormData, field: string): File | null {
-  const value = formData.get(field)
-  return value instanceof File && value.size > 0 ? value : null
-}
-
 /**
  * Creates a community for the signed-in member (Creator Pro) or for one of their
  * organizations (Organization Pro). Eligibility is recomputed here from the database; the
@@ -51,15 +42,6 @@ export async function createCommunity(_previous: CreateCommunityState, formData:
   const user = await requireAwsUser()
   const parsed = createSchema.safeParse(readForm(formData, ['as', 'name', 'description', 'rules', 'joinPolicy', 'visibility', 'category']))
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Check the community details and try again.' }
-
-  const images: Array<{ kind: CommunityMediaKind; file: File }> = []
-  for (const [field, kind, label] of [['cover', 'cover', 'banner'], ['icon', 'icon', 'profile photo']] as const) {
-    const file = chosenImage(formData, field)
-    if (!file) continue
-    const validation = validateCommunityImage(file)
-    if (!validation.ok) return { ok: false, error: `The ${label}: ${validation.error}` }
-    images.push({ kind, file })
-  }
 
   const options = await getCommunityCreationEligibility(user.id)
   const { eligibility } = options
@@ -92,21 +74,8 @@ export async function createCommunity(_previous: CreateCommunityState, formData:
     return { ok: false, error: await communityErrorMessage(error, 'We could not create the community. Please try again.') }
   }
 
-  // The community exists now; a failed image upload is logged and the owner can add it from the page.
-  for (const image of images) {
-    try {
-      await uploadCommunityMedia(created.id, image.kind, {
-        type: image.file.type,
-        size: image.file.size,
-        bytes: new Uint8Array(await image.file.arrayBuffer()),
-      })
-    } catch (error) {
-      console.error('community_create_image_failed', { groupId: created.id, kind: image.kind, message: error instanceof Error ? error.message : null })
-    }
-  }
-
   revalidatePath('/community')
   revalidatePath('/community/[slug]', 'page')
   if (ownerCompanyId) revalidatePath('/organizations/[slug]', 'page')
-  redirect(groupHref(created.slug))
+  return { ok: true, id: created.id, slug: created.slug }
 }
