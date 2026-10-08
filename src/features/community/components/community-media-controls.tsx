@@ -108,7 +108,7 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
       setCropping(picked)
       return
     }
-    void submitImage(picked)
+    void submitImage(picked).catch(() => undefined)
   }
 
   function cancelCrop() {
