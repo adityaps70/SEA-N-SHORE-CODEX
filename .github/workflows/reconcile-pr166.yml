@@ -30,7 +30,9 @@ jobs:
           # Keep production's worker build, memory safeguards, lockfile and dependency manifest.
           git checkout origin/feat/aws-native-phase-0-1 -- Dockerfile package.json package-lock.json
           # Preserve this PR's direct-to-S3 UI and tests, already adapted for production admin MFA.
-          git checkout --ours -- src/features/community/components/community-media-controls.tsx src/features/community/components/community-media-controls.test.tsx src/features/community/media-actions.test.ts || true
+          for path in src/features/community/components/community-media-controls.tsx src/features/community/components/community-media-controls.test.tsx src/features/community/media-actions.test.ts; do
+            git show HEAD:"$path" > "$path"
+          done
           git add Dockerfile package.json package-lock.json src/features/community
           # Lockfile is not hand-merged: regenerate against the production manifest using npm 11.6.0.
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
