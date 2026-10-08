@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   requireAwsUser: vi.fn(),
-  canAccessPlatformAdmin: vi.fn(),
+  canUsePlatformAdminAuthority: vi.fn(),
   getMembership: vi.fn(),
   insertAuditEvent: vi.fn(),
   replaceImagePath: vi.fn(),
@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
-vi.mock('@/features/admin/access', () => ({ canAccessPlatformAdmin: mocks.canAccessPlatformAdmin }))
+vi.mock('@/features/admin/mfa-gate', () => ({ canUsePlatformAdminAuthority: mocks.canUsePlatformAdminAuthority }))
 vi.mock('@/lib/aws/storage', () => ({
   createMediaUploadUrl: mocks.createMediaUploadUrl,
   headMediaObject: mocks.headMediaObject,
@@ -56,7 +56,7 @@ function expectRevalidation() {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireAwsUser.mockResolvedValue({ id: userId, cognitoSub: 'sub', email: 'member@example.com' })
-  mocks.canAccessPlatformAdmin.mockResolvedValue(false)
+  mocks.canUsePlatformAdminAuthority.mockResolvedValue(false)
   mocks.getMembership.mockResolvedValue({ role: 'owner', status: 'active' })
   mocks.insertAuditEvent.mockResolvedValue(undefined)
   mocks.createMediaUploadUrl.mockResolvedValue('https://s3.example/presigned')
