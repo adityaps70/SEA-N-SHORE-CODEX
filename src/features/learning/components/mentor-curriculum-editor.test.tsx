@@ -17,6 +17,12 @@ const mocks = vi.hoisted(() => ({
   processScorm: vi.fn(),
 }))
 
+// The rich-text editor has its own test; here a plain stand-in keeps these material-policy tests simple.
+vi.mock('./article-rich-text-editor', () => ({
+  ArticleRichTextEditor: ({ ariaLabel, value, onChange }: { ariaLabel: string; value: string; onChange: (html: string) => void }) => (
+    <textarea aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)} />
+  ),
+}))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }))
 vi.mock('../mentor-curriculum-actions', () => ({
   createCurriculumSection: mocks.createSection,
@@ -76,6 +82,7 @@ const curriculum: MentorMaterialCurriculum = {
           position: 0,
           summary: 'Prepare shipboard evidence and the team.',
           articleBody: 'Review records, procedures and crew readiness before inspection.',
+          articleFormat: 'plain',
           assetPath: null,
           externalUrl: null,
           durationSeconds: 360,
@@ -101,6 +108,7 @@ const curriculum: MentorMaterialCurriculum = {
           position: 1,
           summary: 'Check core inspection knowledge.',
           articleBody: null,
+          articleFormat: 'plain',
           assetPath: null,
           externalUrl: null,
           durationSeconds: null,
@@ -199,6 +207,7 @@ describe('MentorCurriculumEditor native materials', () => {
       title: 'Emergency towing preparation',
       materialType: 'article',
       articleBody: 'Review equipment, procedures and assigned responsibilities.',
+      articleFormat: 'html',
       releaseMode: 'drip',
       dripDelayDays: 2,
       prerequisiteLessonId: articleMaterialId,

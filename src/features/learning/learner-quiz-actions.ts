@@ -18,7 +18,7 @@ const quizAnswersSchema = z.array(z.object({
 
 type SubmitLearningQuizActionResult =
   | ({ ok: true } & LearnerQuizAttemptResult)
-  | { ok: false; error: string }
+  | { ok: false; error: string; limitReached?: boolean }
 
 type SubmissionUuid = `${string}-${string}-${string}-${string}-${string}`
 
@@ -32,6 +32,9 @@ function quizSubmissionError(error: unknown) {
     }
     if (error.message === 'quiz_not_ready') {
       return 'This quiz is not ready for assessment yet.'
+    }
+    if (error.message === 'learning_attempt_limit_reached') {
+      return 'You have used all your attempts for this quiz, so this answer was not submitted.'
     }
   }
   return 'We could not submit this quiz. Please try again.'
@@ -67,6 +70,10 @@ export async function submitLearningQuiz(
 
     return { ok: true, ...result }
   } catch (error) {
-    return { ok: false, error: quizSubmissionError(error) }
+    return {
+      ok: false,
+      error: quizSubmissionError(error),
+      ...(error instanceof Error && error.message === 'learning_attempt_limit_reached' ? { limitReached: true } : {}),
+    }
   }
 }

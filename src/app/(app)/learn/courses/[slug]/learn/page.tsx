@@ -15,6 +15,7 @@ import {
 } from '@/features/learning/learner-course-repository'
 import { learnerQuizRepository } from '@/features/learning/learner-quiz-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
+import { renderArticleHtml } from '@/features/learning/article-html'
 
 type LearnerCoursePageProps = {
   params: Promise<{ slug: string }>
@@ -96,6 +97,9 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
     : null
   const selectedMediaUrl = selectedLesson?.assetPath && shouldSignLessonAsset(selectedLesson)
     ? await createMediaReadUrl(selectedLesson.assetPath)
+    : null
+  const selectedArticleHtml = selectedLesson?.isAvailable && selectedLesson.articleFormat === 'html' && selectedLesson.articleBody
+    ? await renderArticleHtml(selectedLesson.articleBody, (path) => createMediaReadUrl(path))
     : null
 
   const curriculumList = (
@@ -234,6 +238,7 @@ export default async function LearnerCoursePage({ params, searchParams }: Learne
                   mediaUrl={selectedMediaUrl}
                   slug={course.slug}
                   quiz={selectedQuiz}
+                  articleHtml={selectedArticleHtml}
                   nextLessonHref={nextLesson ? lessonHref(course.slug, nextLesson.id) : null}
                   phoneActions={curriculumSheet}
                 />

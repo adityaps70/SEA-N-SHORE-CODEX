@@ -40,6 +40,8 @@ import type {
   MentorMaterialDraft,
 } from '../mentor-material-repository'
 import { ASSIGNMENT_DEFAULTS } from '../assignment-policy'
+import { plainTextToArticleHtml } from '../article-html'
+import { ArticleRichTextEditor } from './article-rich-text-editor'
 import type {
   MentorQuizDefinition,
   MentorQuizDefinitionInput,
@@ -176,7 +178,10 @@ function materialStateFromPersisted(material: MentorMaterial): MaterialFormState
     title: material.title,
     materialType: material.materialType,
     summary: material.summary ?? '',
-    articleBody: material.articleBody ?? '',
+    // Articles written before rich text open as paragraphs; they are stored as HTML only once saved.
+    articleBody: material.articleFormat === 'html'
+      ? material.articleBody ?? ''
+      : plainTextToArticleHtml(material.articleBody ?? ''),
     assetPath: material.assetPath ?? '',
     externalUrl: material.externalUrl ?? '',
     durationSeconds: material.durationSeconds === null ? '' : String(material.durationSeconds),
@@ -228,6 +233,7 @@ function materialPayload(form: MaterialFormState): MentorMaterialDraft {
     materialType: form.materialType,
     summary: form.summary.trim() || null,
     articleBody: form.materialType === 'article' ? form.articleBody.trim() || null : null,
+    articleFormat: form.materialType === 'article' ? 'html' : 'plain',
     assetPath: form.assetPath.trim() || null,
     externalUrl: form.externalUrl.trim() || null,
     durationSeconds: numericOrNull(form.durationSeconds),
@@ -376,10 +382,15 @@ function MaterialFields({
       </label>
 
       {form.materialType === 'article' ? (
-        <label className="text-sm font-semibold text-navy-950">
-          Article content
-          <textarea aria-label={`${prefix} material article content`} className={`${inputClassName()} min-h-44 resize-y`} value={form.articleBody} onChange={(event) => update('articleBody', event.target.value)} />
-        </label>
+        <div className="text-sm font-semibold text-navy-950">
+          <span id={`${prefix}-article-label`}>Article content</span>
+          <ArticleRichTextEditor
+            courseId={courseId}
+            ariaLabel={`${prefix} material article content`}
+            value={form.articleBody}
+            onChange={(html) => update('articleBody', html)}
+          />
+        </div>
       ) : null}
 
       {upload ? (

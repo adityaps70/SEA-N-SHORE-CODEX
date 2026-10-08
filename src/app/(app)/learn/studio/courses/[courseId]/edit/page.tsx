@@ -19,6 +19,8 @@ import {
 import { loadSellerFeeTerms } from '@/features/learning/course-seller-fees'
 import { canMentorEditCourse } from '@/features/learning/course-workflow'
 import { mentorMaterialRepository } from '@/features/learning/mentor-material-repository'
+import { ARTICLE_IMAGE_PATH_ATTRIBUTE, renderArticleHtml } from '@/features/learning/article-html'
+import { createMediaReadUrl } from '@/lib/aws/storage'
 
 export const metadata: Metadata = { title: 'Edit course' }
 
@@ -190,6 +192,18 @@ export default async function EditMentorCoursePage({
     loadSellerFeeTerms(course.companyId ? { companyId: course.companyId } : { profileId: user.id }),
   ])
   if (!curriculum) return notFound()
+  // Article images are stored by path; the editor shows them through short-lived signed URLs.
+  const editableCurriculum = {
+    ...curriculum,
+    sections: await Promise.all(curriculum.sections.map(async (section) => ({
+      ...section,
+      materials: await Promise.all(section.materials.map(async (material) => (
+        material.articleFormat === 'html' && material.articleBody?.includes(ARTICLE_IMAGE_PATH_ATTRIBUTE)
+          ? { ...material, articleBody: await renderArticleHtml(material.articleBody, (path) => createMediaReadUrl(path)) }
+          : material
+      ))),
+    }))),
+  }
 
   const isRevision = Boolean(course.revisionOf)
   const editable = canMentorEditCourse(course.status) && !course.revisionClosed
@@ -255,7 +269,7 @@ export default async function EditMentorCoursePage({
         </div>
 
         <div className="mt-5">
-          <MentorCurriculumEditor courseId={course.id} curriculum={curriculum} readOnly={!editable} />
+          <MentorCurriculumEditor courseId={course.id} curriculum={editableCurriculum} readOnly={!editable} />
         </div>
 
         {editable ? (

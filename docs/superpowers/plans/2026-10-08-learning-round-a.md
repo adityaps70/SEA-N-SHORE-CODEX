@@ -59,9 +59,21 @@ A2 — assignment file uploads
 - [x] Tests: wrong type and oversized refused; another learner can't download; the mentor and admins can
 
 ## PR 2: A3 + A4 + A5
-- [ ] A3 public catalogue and course pages, free preview, trailer, SEO
-- [ ] A4 rich-text lessons with server-side sanitizing
-- [ ] A5 quiz attempts left and limit messages
+- [x] A3 public catalogue and course pages, free preview, trailer, SEO
+  - [x] `/learn` and `/learn/courses/<slug>` render for signed-out visitors (proxy exemption, `(public)` route group)
+  - [x] Curriculum outline with locks, "Free preview" links and "Enrol to continue"; sign-in CTA instead of enrol
+  - [x] Free preview page: read or watch only, nothing recorded, noindex; activities never preview (checked in SQL)
+  - [x] Trailer on the course page; public cover image for share cards
+  - [x] Title, description, canonical, Open Graph / Twitter, schema.org Course JSON-LD, sitemap.xml, robots.txt
+  - [x] Drafts, unpublished, archived courses and draft revisions stay invisible (real-SQL tests)
+  - [x] The player and every other learn page still need sign-in; HTML is not cached at the edge (CachingDisabled)
+- [x] A4 rich-text lessons with server-side sanitizing
+  - [x] Tiptap editor: headings, bold/italic/underline, links, lists, quote, tables, course images
+  - [x] Allow-list sanitizing on save and again before rendering; images only from this course's storage
+  - [x] Older plain-text articles render unchanged; they become paragraphs the first time they are edited
+- [x] A5 quiz attempts left and limit messages
+  - [x] "Attempts left: N" or "Unlimited attempts"; "Try again" hidden at the limit; a clear limit message
+  - [ ] SIRE quiz attempt setting read from the migration plan run (reported to the owner)
 
 ## PR 3: A6 + A7
 - [ ] A6 learning notifications (email + in-app, digests, Learning settings, unsubscribe)

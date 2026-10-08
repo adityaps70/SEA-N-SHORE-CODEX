@@ -12,11 +12,18 @@ import {
   Clock3,
   Globe2,
   GraduationCap,
+  LockKeyhole,
+  LogIn,
+  PlayCircle,
   ShieldCheck,
   Users,
 } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
-import { requireAwsUser } from '@/features/auth/aws-queries'
+import { getVerifiedUser } from '@/features/auth/queries'
+import { jsonLdScript } from '@/components/marketing/faq/faq-data'
+import { courseJsonLd, courseMetadata } from '@/features/learning/course-seo'
+import { publicCourseRepository, type PublicCurriculumSection } from '@/features/learning/public-course-repository'
+import { createMediaReadUrl } from '@/lib/aws/storage'
 import { CourseActionBar, type CourseActionBarMode } from '@/features/learning/components/course-action-bar'
 import { PageActionsSheet } from '@/features/learning/components/page-actions-sheet'
 import { EnrollFreeControl } from '@/features/learning/components/enroll-free-control'
@@ -127,7 +134,7 @@ function actionBarMode(isFree: boolean, initiallyEnrolled: boolean, purchase: Co
 const EMPTY_OVERVIEW: PublishedCourseOverview = { sections: [], lessonCount: 0, durationSeconds: 0, learnerCount: 0, publisher: null }
 
 /** Phone course header (round 8): cover, chips, title, trainer link and learners. */
-function PhoneCourseHeader({ course, overview }: { course: MarketplaceCourse; overview: PublishedCourseOverview }) {
+function PhoneCourseHeader({ course, overview, trailerUrl }: { course: MarketplaceCourse; overview: PublishedCourseOverview; trailerUrl: string | null }) {
   const duration = durationLabel(overview.durationSeconds)
   const publisherHref = overview.publisher
     ? overview.publisher.kind === 'organization' ? `/organizations/${overview.publisher.slug}` : `/people/${overview.publisher.slug}`
@@ -136,7 +143,16 @@ function PhoneCourseHeader({ course, overview }: { course: MarketplaceCourse; ov
   return (
     <div data-testid="phone-course-header" className="-mx-4 -mt-3 bg-white md:hidden max-md:order-1">
       <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-navy-950 via-navy-900 to-teal-800">
-        {course.thumbnailPath ? (
+        {trailerUrl ? (
+          <video
+            controls
+            preload="metadata"
+            src={trailerUrl}
+            poster={course.thumbnailPath ? `/api/learning-media/${course.thumbnailPath}` : undefined}
+            aria-label={`${course.title} trailer`}
+            className="absolute inset-0 size-full bg-navy-950 object-contain"
+          />
+        ) : course.thumbnailPath ? (
           <Image
             unoptimized
             fill
@@ -200,24 +216,82 @@ function PhoneCourseHeader({ course, overview }: { course: MarketplaceCourse; ov
   )
 }
 
-/** Phone curriculum summary: section names with published lesson counts (no lesson content). */
-function PhoneCurriculumSummary({ overview }: { overview: PublishedCourseOverview }) {
-  if (!overview.lessonCount) return null
+const LESSON_TYPE_LABELS: Record<string, string> = {
+  video: 'Video', audio: 'Audio', article: 'Article', image: 'Image', pdf: 'PDF', presentation_document: 'Presentation',
+  external_embed: 'Video', quiz: 'Quiz', assignment: 'Assignment', downloadable_resource: 'Resource', scorm: 'Interactive module',
+  live_session: 'Live session',
+}
+
+/**
+ * The curriculum outline: every section and material title (no content). Free previews open for
+ * anyone; everything else shows a lock until the visitor enrols.
+ */
+function CourseCurriculum({ slug, sections, enrolled }: { slug: string; sections: PublicCurriculumSection[]; enrolled: boolean }) {
+  const lessonCount = sections.reduce((total, section) => total + section.lessons.length, 0)
+  if (!lessonCount) return null
+  const previews = sections.reduce((total, section) => total + section.lessons.filter((lesson) => lesson.preview).length, 0)
   return (
-    <section aria-label="Curriculum" className="-mx-4 bg-white px-4 py-4 md:hidden">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-lg font-bold text-navy-950">Curriculum</h2>
-        <p className="text-sm font-semibold text-ocean-700">{overview.lessonCount} {overview.lessonCount === 1 ? 'lesson' : 'lessons'}</p>
+    <section aria-label="Curriculum" className={`${PHONE_FLAT_SECTION} lg:col-span-2`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700 max-md:hidden">Curriculum</p>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-navy-950 max-md:mt-0 max-md:text-lg">What’s inside</h2>
+        </div>
+        <p className="text-sm font-semibold text-ocean-700">
+          {lessonCount} {lessonCount === 1 ? 'material' : 'materials'}{previews ? ` · ${previews} free ${previews === 1 ? 'preview' : 'previews'}` : ''}
+        </p>
       </div>
-      <ol className="mt-2 divide-y divide-mist-100">
-        {overview.sections.map((section, index) => (
-          <li key={`${index}-${section.title}`} className="flex min-h-12 items-center justify-between gap-3 py-2 text-[15px]">
-            <span className="min-w-0 text-navy-950">{index + 1}. {section.title}</span>
-            <span className="shrink-0 text-sm text-muted">{section.lessonCount} {section.lessonCount === 1 ? 'lesson' : 'lessons'}</span>
+      <ol className="mt-4 space-y-4">
+        {sections.map((section, sectionIndex) => (
+          <li key={`${sectionIndex}-${section.title}`}>
+            <p className="text-sm font-bold text-navy-950">{sectionIndex + 1}. {section.title}</p>
+            <ul className="mt-2 divide-y divide-mist-100 rounded-xl border border-mist-100">
+              {section.lessons.map((lesson) => {
+                const duration = lesson.durationSeconds ? durationLabel(lesson.durationSeconds) : null
+                const meta = [LESSON_TYPE_LABELS[lesson.lessonType] ?? 'Material', duration].filter(Boolean).join(' · ')
+                return (
+                  <li key={lesson.id} className="flex min-h-12 items-center gap-3 px-3 py-2 text-[15px]">
+                    {lesson.preview ? (
+                      <PlayCircle aria-hidden="true" className="size-4 shrink-0 text-teal-700" />
+                    ) : (
+                      <LockKeyhole aria-label={enrolled ? undefined : 'Locked'} aria-hidden={enrolled ? 'true' : undefined} className="size-4 shrink-0 text-muted" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-navy-950">{lesson.title}</span>
+                      <span className="block text-xs text-muted">{meta}</span>
+                    </span>
+                    {lesson.preview ? (
+                      <Link href={`/learn/courses/${slug}/preview/${lesson.id}`} className="shrink-0 rounded-full bg-teal-50 px-3 py-1 text-xs font-bold text-teal-800 transition hover:bg-teal-100">
+                        Free preview
+                      </Link>
+                    ) : null}
+                  </li>
+                )
+              })}
+            </ul>
           </li>
         ))}
       </ol>
+      {!enrolled ? (
+        <p className="mt-4 flex items-center gap-2 text-sm text-muted">
+          <LockKeyhole aria-hidden="true" className="size-4 shrink-0" /> Enrol to continue with every material, quiz and assignment.
+        </p>
+      ) : null}
     </section>
+  )
+}
+
+/** For visitors who are not signed in: enrolling and buying need a Sea N Shore account. */
+function SignInToEnrol({ isFree }: { isFree: boolean }) {
+  return (
+    <div className="mt-6 space-y-2">
+      <Link href="/auth/sign-in" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:bg-teal-50">
+        <LogIn aria-hidden="true" className="size-4" /> {isFree ? 'Sign in to enrol' : 'Sign in to buy'}
+      </Link>
+      <p className="text-center text-xs text-white/65">
+        New to Sea N Shore? <Link href="/auth/sign-up" className="font-bold text-teal-200 underline-offset-2 hover:underline">Create a free account</Link>
+      </p>
+    </div>
   )
 }
 
@@ -226,8 +300,8 @@ const loadPublishedCourse = cache((slug: string) => marketplaceRepository.getPub
 export async function generateMetadata({ params }: PublishedCoursePageProps): Promise<Metadata> {
   const { slug } = await params
   const course = await loadPublishedCourse(slug)
-  if (!course) return { title: 'Course not found' }
-  return { title: course.title, description: course.subtitle ?? undefined }
+  if (!course) return { title: 'Course not found', robots: { index: false } }
+  return courseMetadata(course)
 }
 
 export default async function PublishedCoursePage({ params }: PublishedCoursePageProps) {
@@ -236,20 +310,24 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
 
   if (!course) return notFound()
 
-  const user = await requireAwsUser()
-  const [enrollment, overview] = await Promise.all([
-    enrollmentRepository.getLearnerEnrollment(user.id, course.id),
-    // The phone summary is a convenience: the course page must still render without it.
+  // Public page: signed-out visitors see the course and its free previews; enrolling needs an account.
+  const user = await getVerifiedUser()
+  const [enrollment, overview, curriculum, trailerUrl] = await Promise.all([
+    user ? enrollmentRepository.getLearnerEnrollment(user.id, course.id) : Promise.resolve(null),
+    // The summary and outline are conveniences: the course page must still render without them.
     marketplaceRepository.getPublishedCourseOverview(course.id).catch(() => EMPTY_OVERVIEW),
+    publicCourseRepository.getPublicCurriculum(course.id).catch(() => [] as PublicCurriculumSection[]),
+    course.trailerPath ? createMediaReadUrl(course.trailerPath).catch(() => null) : Promise.resolve(null),
   ])
   const initiallyEnrolled = enrollment?.status === 'active' || enrollment?.status === 'completed'
   const isFree = !isPaidCourse(course)
-  const purchase: CoursePurchaseState | null = isFree ? null : await loadCoursePurchaseState({ userId: user.id, course, enrollment })
-  const barMode = actionBarMode(isFree, initiallyEnrolled, purchase, enrollment?.status === 'completed')
+  const purchase: CoursePurchaseState | null = isFree || !user ? null : await loadCoursePurchaseState({ userId: user.id, course, enrollment })
+  const barMode = user ? actionBarMode(isFree, initiallyEnrolled, purchase, enrollment?.status === 'completed') : null
   const coursePath = `/learn/courses/${course.slug}`
 
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:flex max-md:flex-col max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(courseJsonLd(course, overview.publisher)) }} />
       <MobilePageBar
         backHref="/learn"
         className="max-md:order-first"
@@ -271,7 +349,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
         <ArrowLeft aria-hidden="true" className="size-4" /> Explore courses
       </Link>
 
-      <PhoneCourseHeader course={course} overview={overview} />
+      <PhoneCourseHeader course={course} overview={overview} trailerUrl={trailerUrl} />
 
       <section id="course-access" className="mt-4 scroll-mt-20 overflow-hidden rounded-[1.9rem] bg-navy-950 text-white shadow-[var(--shadow-card)] max-md:order-3 max-md:rounded-2xl">
         <div className="grid lg:grid-cols-[1.45fr_0.55fr]">
@@ -298,6 +376,16 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
               <p className="mt-4 max-w-3xl text-base font-medium leading-7 text-white/78 sm:text-lg">{course.subtitle}</p>
             ) : null}
             <CourseDescription text={course.description} />
+            {trailerUrl ? (
+              <video
+                controls
+                preload="metadata"
+                src={trailerUrl}
+                poster={course.thumbnailPath ? `/api/learning-media/${course.thumbnailPath}` : undefined}
+                aria-label={`${course.title} trailer`}
+                className="mt-6 aspect-video w-full max-w-3xl rounded-2xl bg-navy-900"
+              />
+            ) : null}
 
             <div className="mt-7 flex flex-wrap gap-2 text-xs font-bold text-white/82">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1">
@@ -320,7 +408,9 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
                 : 'One-time payment for your Sea N Shore account. The course unlocks as soon as your payment is confirmed.'}
             </p>
 
-            {isFree ? (
+            {!user ? (
+              <SignInToEnrol isFree={isFree} />
+            ) : isFree ? (
               <div className="mt-6">
                 {/* Remounts after the phone bar enrolls and the page refreshes. */}
                 <EnrollFreeControl key={initiallyEnrolled ? 'enrolled' : 'open'} courseId={course.id} initiallyEnrolled={initiallyEnrolled} />
@@ -365,7 +455,7 @@ export default async function PublishedCoursePage({ params }: PublishedCoursePag
           </div>
         </section>
 
-        <PhoneCurriculumSummary overview={overview} />
+        <CourseCurriculum slug={course.slug} sections={curriculum} enrolled={initiallyEnrolled} />
 
         <section
           aria-label="Who this course is for"

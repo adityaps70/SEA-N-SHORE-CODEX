@@ -17,6 +17,8 @@ import {
   type CourseReviewItem,
 } from '@/features/learning/admin-repository'
 import { CourseReviewControls } from '@/features/learning/components/course-review-controls'
+import { renderArticleHtml } from '@/features/learning/article-html'
+import { createMediaReadUrl } from '@/lib/aws/storage'
 import type { CourseReviewChange } from '@/features/learning/course-review-snapshot'
 import type { CourseStatus } from '@/features/learning/course-workflow'
 
@@ -241,7 +243,10 @@ function CurriculumEvidence({ course }: { course: CourseReviewItem }) {
                     {lesson.isDownloadable ? <Chip>Downloadable</Chip> : null}
                   </div>
                   {lesson.summary ? <p className="mt-2 text-sm leading-6 text-muted">{lesson.summary}</p> : null}
-                  {lesson.articleBody ? (
+                  {lesson.articleFormat === 'html' && lesson.articleHtml ? (
+                    // Sanitized with an allow-list on the server (article-html.ts) when the page was rendered.
+                    <div className="lesson-article mt-3 rounded-xl border border-mist-100 bg-white p-3 text-sm leading-6 text-navy-900" dangerouslySetInnerHTML={{ __html: lesson.articleHtml }} />
+                  ) : lesson.articleBody && lesson.articleFormat !== 'html' ? (
                     <div className="mt-3 rounded-xl border border-mist-100 bg-white p-3 text-sm leading-6 text-navy-900 whitespace-pre-wrap">
                       {lesson.articleBody}
                     </div>
@@ -381,7 +386,19 @@ export default async function LearningCoursesAdminPage({
   const user = await requireAwsUser()
   const params = await searchParams
   const status = selectedStatus(params.status)
-  const courses = await learningAdminRepository.listCoursesForReview(user.id, status)
+  const listed = await learningAdminRepository.listCoursesForReview(user.id, status)
+  // Rich-text articles are shown formatted: sanitized again here, with their images signed.
+  const courses = await Promise.all(listed.map(async (course) => ({
+    ...course,
+    curriculum: await Promise.all(course.curriculum.map(async (section) => ({
+      ...section,
+      lessons: await Promise.all(section.lessons.map(async (lesson) => (
+        lesson.articleFormat === 'html' && lesson.articleBody
+          ? { ...lesson, articleHtml: await renderArticleHtml(lesson.articleBody, (path) => createMediaReadUrl(path)) }
+          : lesson
+      ))),
+    }))),
+  })))
 
   return (
     <div className="space-y-6">
