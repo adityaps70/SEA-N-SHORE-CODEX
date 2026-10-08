@@ -324,7 +324,7 @@ export async function completeOrganizationMediaUploadAction(input: {
   const parsed = uuidSchema.safeParse(input.companyId)
   if (!parsed.success || !['logo', 'cover'].includes(input.kind)) return { error: 'Invalid organization.' }
   const expectedPrefix = `organizations/${parsed.data}/${input.kind}-`
-  if (!input.key.startsWith(expectedPrefix) || !/\\.(jpg|png|webp)$/.test(input.key)) return { error: 'Upload failed, try again.' }
+  if (!input.key.startsWith(expectedPrefix) || !/\.(jpg|png|webp)$/.test(input.key)) return { error: 'Upload failed, try again.' }
   try {
     const user = await requireAwsUser()
     await requireCapability(user.id, 'organization.branding', { companyId: parsed.data })
