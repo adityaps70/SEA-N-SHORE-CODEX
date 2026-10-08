@@ -6,7 +6,7 @@ import { ImageUp } from 'lucide-react'
 import { FormErrorSummary } from '@/components/ui/form-error-summary'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
 import { isDownscalableImage } from '@/lib/images/downscale-image'
-import { updateOrganizationBranding, type OrganizationBrandingActionState } from '../workspace-actions'
+import { updateOrganizationBranding, requestOrganizationMediaUploadAction, completeOrganizationMediaUploadAction, type OrganizationBrandingActionState } from '../workspace-actions'
 import type { OrganizationWorkspace } from '../workspace-repository'
 import { WELLBEING_SERVICES, isWellbeingType, organizationTypeHasField } from '../organization-types'
 import {
@@ -63,6 +63,7 @@ function chosenFile(value: FormDataEntryValue | null) {
 export function OrganizationBrandingForm({ workspace }: { workspace: OrganizationWorkspace }) {
   const [state, formAction, pending] = useActionState(updateOrganizationBranding, initialState)
   const [clientError, setClientError] = useState<string | null>(null)
+  const [mediaUploading, setMediaUploading] = useState(false)
   const [logoPreview, previewLogo] = usePreview()
   const [coverPreview, previewCover] = usePreview()
   const [cropping, setCropping] = useState<{ kind: BrandingImageKind; file: File } | null>(null)
@@ -86,14 +87,37 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
   const previewFor = (kind: BrandingImageKind) => (kind === 'logo' ? previewLogo : previewCover)
 
   /** A photo the browser can re-encode is framed in the crop dialog first; anything else previews as picked. */
+  async function uploadMedia(kind: BrandingImageKind, file: File) {
+    setMediaUploading(true)
+    setClientError(null)
+    try {
+      const ticket = await requestOrganizationMediaUploadAction({
+        companyId: workspace.id, kind, contentType: file.type, size: file.size,
+      })
+      if (!ticket.success || !ticket.uploadUrl || !ticket.key) throw new Error('Upload failed, try again')
+      const result = await fetch(ticket.uploadUrl, {
+        method: 'PUT', headers: { 'Content-Type': file.type }, body: file,
+      })
+      if (!result.ok) throw new Error('Upload failed, try again')
+      const complete = await completeOrganizationMediaUploadAction({ companyId: workspace.id, kind, key: ticket.key })
+      if (!complete.success) throw new Error('Upload failed, try again')
+      previewFor(kind)(file)
+      if (kind === 'cover') setRemoveCover(false)
+      const input = inputFor(kind)
+      if (input) input.value = ''
+    } finally {
+      setMediaUploading(false)
+    }
+  }
+
   function onImageChange(kind: BrandingImageKind, event: ChangeEvent<HTMLInputElement>) {
-    if (kind === 'cover') setRemoveCover(false)
     const file = event.target.files?.[0]
-    if (file && IMAGE_TYPES.has(file.type) && isDownscalableImage(file)) {
+    if (!file) return
+    if (IMAGE_TYPES.has(file.type) && isDownscalableImage(file)) {
       setCropping({ kind, file })
       return
     }
-    previewFor(kind)(file)
+    void uploadMedia(kind, file).catch(() => setClientError('Upload failed, try again'))
   }
 
   function cancelCrop() {
@@ -104,10 +128,9 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
     setCropping(null)
   }
 
-  function saveCrop(cropped: File) {
+  async function saveCrop(cropped: File) {
     if (!cropping) return
-    const replaced = replaceInputFile(inputFor(cropping.kind), cropped)
-    previewFor(cropping.kind)(replaced ? cropped : cropping.file)
+    await uploadMedia(cropping.kind, cropped)
     setCropping(null)
   }
 
@@ -115,14 +138,14 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
     const data = new FormData(event.currentTarget)
     const message = brandingImagesProblem(chosenFile(data.get('logo')), chosenFile(data.get('cover')))
     setClientError(message)
-    if (message) event.preventDefault()
+    if (message || mediaUploading || cropping) event.preventDefault()
   }
 
   return (
     <form action={formAction} onSubmit={onSubmit} className="space-y-5">
       <input type="hidden" name="companyId" value={workspace.id} />
       <FormErrorSummary
-        error={clientError ?? state.error}
+        error={cropping ? state.error : clientError ?? state.error}
         fieldErrors={clientError ? undefined : state.fieldErrors}
         fieldLabels={{
           website: 'Website',
@@ -168,13 +191,13 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className={labelClass}>
             Organization logo
-            <input ref={logoInputRef} name="logo" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('logo', event)} className={`${fileClass} mt-2`} />
+            <input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('logo', event)} className={`${fileClass} mt-2`} />
             <span className={hintClass}>Square image works best. JPG, PNG or WebP, up to 5 MB. Leave empty to keep the current logo.</span>
           </label>
           <div>
             <label className={labelClass}>
               Cover image
-              <input ref={coverInputRef} name="cover" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('cover', event)} className={`${fileClass} mt-2`} />
+              <input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('cover', event)} className={`${fileClass} mt-2`} />
               <span className={hintClass}>Wide image, about 1584 × 396 pixels. JPG, PNG or WebP, up to 5 MB.</span>
             </label>
             {workspace.coverPath ? (
@@ -293,7 +316,7 @@ export function OrganizationBrandingForm({ workspace }: { workspace: Organizatio
         </div>
 
         <div className="mt-5 flex justify-end">
-          <button type="submit" disabled={pending} className="min-h-11 cursor-pointer rounded-xl bg-navy-950 px-5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60">
+          <button type="submit" disabled={pending || mediaUploading || Boolean(cropping)} className="min-h-11 cursor-pointer rounded-xl bg-navy-950 px-5 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-wait disabled:opacity-60">
             {pending ? 'Saving…' : 'Save page details'}
           </button>
         </div>
