@@ -1,0 +1,27 @@
+name: Generate Lockfile for PR 166
+on:
+  push:
+    branches: [chatgpt/community-direct-s3-20261009]
+    paths: [.github/workflows/generate-pr166-lockfile.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install -g npm@11.6.0
+      - run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Lock npm dependencies for deterministic Docker and Vitest installs"
+          git push origin HEAD:chatgpt/community-direct-s3-20261009
