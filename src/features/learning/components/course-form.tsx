@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { AlertCircle, Loader2 } from 'lucide-react'
+import { PAYMENT_CURRENCIES } from '@/features/payments/types'
 import { createCourseDraft, updateCourseDraft } from '../course-actions'
 import type { CourseDraftInput } from '../course-repository'
 import { coursePrice, courseSellerNet, formatCourseAmount, formatFeePercent, type SellerFeeTerms } from '../course-pricing'
@@ -468,14 +469,19 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
           </label>
           {form.accessType === 'paid' ? (
             <>
-              <label className="text-sm font-semibold text-navy-950">Course price (INR)
-                <input aria-label="Course price (INR)" type="number" min="0" step="0.01" className={inputClassName()} value={form.price} onChange={(event) => update('price', event.target.value)} />
+              <label className="text-sm font-semibold text-navy-950">Course price ({form.currency || 'INR'})
+                <input aria-label={`Course price (${form.currency || 'INR'})`} type="number" min="0" step="0.01" className={inputClassName()} value={form.price} onChange={(event) => update('price', event.target.value)} />
               </label>
-              <label className="text-sm font-semibold text-navy-950">Discount price (INR)
-                <input aria-label="Discount price (INR)" type="number" min="0" step="0.01" className={inputClassName()} value={form.discountPrice} onChange={(event) => update('discountPrice', event.target.value)} />
+              <label className="text-sm font-semibold text-navy-950">Discount price ({form.currency || 'INR'})
+                <input aria-label={`Discount price (${form.currency || 'INR'})`} type="number" min="0" step="0.01" className={inputClassName()} value={form.discountPrice} onChange={(event) => update('discountPrice', event.target.value)} />
               </label>
               <label className="text-sm font-semibold text-navy-950">Currency
-                <input aria-label="Currency" className={inputClassName()} value={form.currency} onChange={(event) => update('currency', event.target.value)} />
+                {/* Learners can pay in these currencies only (payments). */}
+                <select aria-label="Currency" className={inputClassName()} value={form.currency} onChange={(event) => update('currency', event.target.value)}>
+                  {(PAYMENT_CURRENCIES as readonly string[]).includes(form.currency) ? null : <option value={form.currency}>{form.currency || 'Choose a currency'}</option>}
+                  <option value="INR">INR · Indian rupee</option>
+                  <option value="USD">USD · US dollar</option>
+                </select>
               </label>
             </>
           ) : null}

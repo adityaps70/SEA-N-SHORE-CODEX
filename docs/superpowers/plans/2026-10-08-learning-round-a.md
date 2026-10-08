@@ -76,8 +76,18 @@ A2 — assignment file uploads
   - [ ] SIRE quiz attempt setting read from the migration plan run (reported to the owner)
 
 ## PR 3: A6 + A7
-- [ ] A6 learning notifications (email + in-app, digests, Learning settings, unsubscribe)
-- [ ] A7 learner player polish and Studio copy fixes
+- [x] A6 learning notifications (email + in-app, digests, Learning settings, unsubscribe)
+  - [x] Enrolment, materials released (daily learner digest), assignment graded, certificate issued (first issue only)
+  - [x] Course approved / changes requested and submissions to grade (daily trainer digest) for course managers
+  - [x] Idempotent dedupe keys; writers behind a savepoint so a failed notification never breaks the action
+  - [x] Emails from the outbox worker's sweep loop (no new infrastructure or secrets); stale news skipped
+  - [x] Settings → Email notifications (Learning switch); one-click unsubscribe and confirmation page
+  - [x] Learning filter chip in Notifications; real-SQL tests for every kind
+- [x] A7 learner player polish and Studio copy fixes
+  - [x] Compact course card, focus mode, plain type labels, lock icons, prerequisite tag, section %, Complete & next
+  - [x] Speed 0.75–2×, picture in picture, captions from a .vtt upload, transcript panel (no quality switching: no renditions)
+  - [x] Seek back always; forward to the furthest point watched + 5 s; completion from real viewing, checked against the clock
+  - [x] Studio: "Edmingle-style" copy removed; currency is a dropdown (INR, USD)
 
 ## Release
 - [ ] One guarded migration, one deploy, rearm, Remote Verify green

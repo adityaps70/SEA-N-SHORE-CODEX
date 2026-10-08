@@ -101,7 +101,11 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
 
     case 'video':
       if (preview && mediaUrl) {
-        return <video controls preload="metadata" src={mediaUrl} className="aspect-video w-full rounded-2xl bg-navy-950" />
+        return (
+          <video controls preload="metadata" src={mediaUrl} className="aspect-video w-full rounded-2xl bg-navy-950">
+            {lesson.hasCaptions ? <track kind="captions" src={`/api/learn/captions/${lesson.id}`} srcLang="en" label="Captions" default /> : null}
+          </video>
+        )
       }
       return mediaUrl ? (
         <ResumableLessonMedia
@@ -110,6 +114,10 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
           slug={slug}
           lessonId={lesson.id}
           initialPositionSeconds={lesson.lastPositionSeconds}
+          initialFurthestSeconds={lesson.furthestPositionSeconds ?? 0}
+          initialWatchedSeconds={lesson.watchedSeconds ?? 0}
+          completed={lesson.completed}
+          captionsSrc={lesson.hasCaptions ? `/api/learn/captions/${lesson.id}` : null}
         />
       ) : lesson.externalUrl ? (
         <a href={lesson.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition-colors">
@@ -126,6 +134,9 @@ export function MaterialBody({ lesson, slug, mediaUrl, quiz, nextLessonHref, art
           slug={slug}
           lessonId={lesson.id}
           initialPositionSeconds={lesson.lastPositionSeconds}
+          initialFurthestSeconds={lesson.furthestPositionSeconds ?? 0}
+          initialWatchedSeconds={lesson.watchedSeconds ?? 0}
+          completed={lesson.completed}
         />
       ) : null
 

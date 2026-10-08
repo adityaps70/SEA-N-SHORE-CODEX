@@ -33,6 +33,7 @@ import { loadCoursePurchaseState } from '@/features/learning/course-purchase-sta
 import { enrollmentRepository } from '@/features/learning/enrollment-repository'
 import { marketplaceRepository, type MarketplaceCourse, type PublishedCourseOverview } from '@/features/learning/marketplace-repository'
 import { splitDescription } from '@/features/learning/description'
+import { lessonTypeLabel } from '@/features/learning/lesson-type-labels'
 
 type PublishedCoursePageProps = {
   params: Promise<{ slug: string }>
@@ -216,12 +217,6 @@ function PhoneCourseHeader({ course, overview, trailerUrl }: { course: Marketpla
   )
 }
 
-const LESSON_TYPE_LABELS: Record<string, string> = {
-  video: 'Video', audio: 'Audio', article: 'Article', image: 'Image', pdf: 'PDF', presentation_document: 'Presentation',
-  external_embed: 'Video', quiz: 'Quiz', assignment: 'Assignment', downloadable_resource: 'Resource', scorm: 'Interactive module',
-  live_session: 'Live session',
-}
-
 /**
  * The curriculum outline: every section and material title (no content). Free previews open for
  * anyone; everything else shows a lock until the visitor enrols.
@@ -248,7 +243,7 @@ function CourseCurriculum({ slug, sections, enrolled }: { slug: string; sections
             <ul className="mt-2 divide-y divide-mist-100 rounded-xl border border-mist-100">
               {section.lessons.map((lesson) => {
                 const duration = lesson.durationSeconds ? durationLabel(lesson.durationSeconds) : null
-                const meta = [LESSON_TYPE_LABELS[lesson.lessonType] ?? 'Material', duration].filter(Boolean).join(' · ')
+                const meta = [lessonTypeLabel(lesson.lessonType), duration].filter(Boolean).join(' · ')
                 return (
                   <li key={lesson.id} className="flex min-h-12 items-center gap-3 px-3 py-2 text-[15px]">
                     {lesson.preview ? (

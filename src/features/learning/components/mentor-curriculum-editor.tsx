@@ -64,6 +64,7 @@ type MaterialFormState = {
   summary: string
   articleBody: string
   assetPath: string
+  captionPath: string
   externalUrl: string
   durationSeconds: string
   isPreview: boolean
@@ -143,6 +144,7 @@ function emptyMaterialState(): MaterialFormState {
     summary: '',
     articleBody: '',
     assetPath: '',
+    captionPath: '',
     externalUrl: '',
     durationSeconds: '',
     isPreview: false,
@@ -183,6 +185,7 @@ function materialStateFromPersisted(material: MentorMaterial): MaterialFormState
       ? material.articleBody ?? ''
       : plainTextToArticleHtml(material.articleBody ?? ''),
     assetPath: material.assetPath ?? '',
+    captionPath: material.captionPath ?? '',
     externalUrl: material.externalUrl ?? '',
     durationSeconds: material.durationSeconds === null ? '' : String(material.durationSeconds),
     isPreview: material.isPreview,
@@ -235,6 +238,7 @@ function materialPayload(form: MaterialFormState): MentorMaterialDraft {
     articleBody: form.materialType === 'article' ? form.articleBody.trim() || null : null,
     articleFormat: form.materialType === 'article' ? 'html' : 'plain',
     assetPath: form.assetPath.trim() || null,
+    captionPath: form.materialType === 'video' ? form.captionPath.trim() || null : null,
     externalUrl: form.externalUrl.trim() || null,
     durationSeconds: numericOrNull(form.durationSeconds),
     isPreview: form.isPreview,
@@ -403,6 +407,19 @@ function MaterialFields({
           onChange={(storagePath) => update('assetPath', storagePath ?? '')}
           accept={learningMediaAccept(upload.kind)}
           previewType={upload.previewType}
+        />
+      ) : null}
+
+      {form.materialType === 'video' ? (
+        <LearningMediaUploadField
+          courseId={courseId}
+          kind="lesson_caption"
+          label="Captions (.vtt, optional)"
+          inputAriaLabel={`${prefix} captions file`}
+          value={form.captionPath.trim() || null}
+          onChange={(storagePath) => update('captionPath', storagePath ?? '')}
+          accept=".vtt,text/vtt"
+          previewType="file"
         />
       ) : null}
 
@@ -878,7 +895,7 @@ export function MentorCurriculumEditor({ courseId, curriculum, readOnly = false 
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Learning experience</p>
           <h2 className="mt-1 text-2xl font-bold text-navy-950">Curriculum</h2>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">Build Edmingle-style sections and first-class materials. Uploaded photos, videos, audio, PDFs and SCORM packages stay inside the Sea N Shore learner experience.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">Organise the course into sections and add its materials. Uploaded photos, videos, audio, PDFs and SCORM packages stay inside the Sea N Shore learner experience.</p>
         </div>
         <div className="min-w-64 rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 text-xs leading-5 text-teal-950">
           <p className="font-bold">Course navigation</p>

@@ -57,6 +57,9 @@ export type LearnerCourseRow = QueryResultRow & {
   lesson_summary: string | null
   article_body: string | null
   article_format?: string | null
+  has_captions?: boolean | null
+  furthest_position_seconds?: number | null
+  watched_seconds?: number | null
   asset_path: string | null
   external_url: string | null
   duration_seconds: number | null
@@ -114,6 +117,12 @@ export type LearnerLesson = {
   completed: boolean
   completedAt: string | null
   lastPositionSeconds: number
+  /** How far the learner has reached in this video or audio (learning round A, A7). */
+  furthestPositionSeconds?: number
+  /** Playback time counted so far (all sessions). */
+  watchedSeconds?: number
+  /** A video with WebVTT captions, served by /api/learn/captions/<lesson id>. */
+  hasCaptions?: boolean
   viewedAt: string | null
   mediaPercent: number
   attemptsUsed: number
@@ -268,6 +277,7 @@ export function createLearnerCourseRepository(input: {
          lesson.summary as lesson_summary,
          lesson.article_body,
          lesson.article_format,
+         (lesson.caption_path is not null and lesson.lesson_type = 'video') as has_captions,
          lesson.asset_path,
          lesson.external_url,
          lesson.duration_seconds,
@@ -286,6 +296,8 @@ export function createLearnerCourseRepository(input: {
          progress.completed,
          progress.completed_at,
          progress.last_position_seconds,
+         progress.furthest_position_seconds,
+         progress.watched_seconds,
          progress.viewed_at,
          progress.media_percent,
          progress.attempts_used,
@@ -410,6 +422,9 @@ export function createLearnerCourseRepository(input: {
         completed: row.completed ?? false,
         completedAt: nullableIsoDateTime(row.completed_at),
         lastPositionSeconds: Number(row.last_position_seconds ?? 0),
+        furthestPositionSeconds: Number(row.furthest_position_seconds ?? 0),
+        watchedSeconds: Number(row.watched_seconds ?? 0),
+        hasCaptions: row.has_captions === true,
         viewedAt: nullableIsoDateTime(row.viewed_at),
         mediaPercent: Number(row.media_percent ?? 0),
         attemptsUsed: Number(row.attempts_used ?? 0),

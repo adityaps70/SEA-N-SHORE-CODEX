@@ -55,6 +55,7 @@ function previewAsLesson({ lesson }: PreviewLesson): LearnerLesson {
     attemptsUsed: 0,
     assignment: null,
     scorm: null,
+    hasCaptions: lesson.lessonType === 'video' && Boolean(lesson.captionPath),
   }
 }
 
