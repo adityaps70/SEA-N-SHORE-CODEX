@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return { title: group.name, description: group.description || undefined }
 }
 
-type SearchParams = Promise<{ tab?: string | string[]; q?: string | string[]; requests?: string | string[]; edit?: string | string[] }>
+type SearchParams = Promise<{ tab?: string | string[]; q?: string | string[]; requests?: string | string[]; edit?: string | string[]; mediaUpload?: string | string[] }>
 
 function single(value: string | string[] | undefined) {
   return (Array.isArray(value) ? value[0] : value) ?? ''
@@ -112,6 +112,7 @@ export default async function CommunityGroupPage({ params, searchParams }: { par
     <div className="mx-auto w-full max-w-4xl py-2 sm:py-4 max-md:py-0">
       <MobilePageBar backHref="/community" title={group.name} className="max-md:mb-0" />
       <div className="space-y-4 max-md:space-y-2">
+        {single(search.mediaUpload) === "failed" && canManageMedia ? <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">Community created. The banner/photo didn’t upload — you can add it from the community page.</div> : null}
         <section aria-labelledby="group-name" className="rounded-2xl border border-mist-100 bg-white shadow-[var(--shadow-card)] max-md:-mx-4 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:shadow-none">
           <div className="relative">
             <GroupCover coverUrl={group.coverUrl} name={group.name} className="h-32 rounded-t-2xl sm:h-44 max-md:h-28 max-md:rounded-none" />
