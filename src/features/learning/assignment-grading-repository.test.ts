@@ -17,6 +17,9 @@ describe('assignment grading repository', () => {
         response_text: 'Initial inspection evidence.', attachment_path: null, score_points: 60, percentage: 60,
         passed: false, feedback: 'Add stronger evidence.', graded_at: new Date('2026-09-15T10:00:00.000Z'),
       }])
+      .mockResolvedValueOnce([{
+        id: 'file-1', attempt_id: 'attempt-2', file_name: 'evidence.pdf', content_type: 'application/pdf', size_bytes: 1024,
+      }])
     const repository = createAssignmentGradingRepository({ query })
 
     const result = await repository.getForMentor('mentor-1', 'attempt-2')
@@ -25,9 +28,11 @@ describe('assignment grading repository', () => {
       id: 'attempt-2',
       assignmentInstructions: 'Submit a structured inspection readiness response.',
       learnerName: 'Test Learner',
-      previousAttempts: [{ id: 'attempt-1', attemptNumber: 1, passed: false, feedback: 'Add stronger evidence.' }],
+      attachments: [{ id: 'file-1', fileName: 'evidence.pdf', contentType: 'application/pdf', sizeBytes: 1024 }],
+      previousAttempts: [{ id: 'attempt-1', attemptNumber: 1, passed: false, feedback: 'Add stronger evidence.', attachments: [] }],
     })
-    expect(query).toHaveBeenCalledTimes(2)
+    expect(query).toHaveBeenCalledTimes(3)
+    expect(query.mock.calls[2]?.[1]).toEqual([['attempt-2', 'attempt-1']])
     expect(String(query.mock.calls[0]?.[0])).toContain('mentor.user_id = $1')
     expect(query.mock.calls[0]?.[1]).toEqual(['mentor-1', 'attempt-2'])
   })

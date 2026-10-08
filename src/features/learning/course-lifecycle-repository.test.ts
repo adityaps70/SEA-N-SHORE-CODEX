@@ -118,6 +118,9 @@ describe('learning course lifecycle repository', () => {
         reviewedAt: null,
       },
       submittedAt: null,
+      revisionOf: null,
+      revisionClosed: false,
+      openRevision: null,
     })
 
     expect(seen[0]?.text).toContain('public.learning_mentors access_mentor')

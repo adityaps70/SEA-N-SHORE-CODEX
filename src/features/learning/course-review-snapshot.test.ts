@@ -126,3 +126,74 @@ describe('course review snapshot diff', () => {
     expect(isCourseReviewSnapshot(null)).toBe(false)
   })
 })
+
+describe('the review diff covers every course and material setting', () => {
+  const fullMaterial = (overrides: Partial<CourseSnapshotMaterial> = {}) => material('m1', {
+    articleFormat: 'plain',
+    durationSeconds: 60,
+    isPreview: false,
+    isDownloadable: false,
+    releaseAt: null,
+    dripDelayDays: null,
+    prerequisiteId: null,
+    completionThreshold: null,
+    maxAttempts: null,
+    embedKind: null,
+    captionPath: null,
+    assignment: null,
+    scorm: null,
+    ...overrides,
+  })
+
+  it('reports each changed setting by name', () => {
+    const base = snapshot({ sections: [{ id: 's1', title: 'Section', materials: [fullMaterial()] }] })
+    const before = { ...base, details: { ...base.details, navigationMode: 'free' } }
+    const after: CourseReviewSnapshot = {
+      version: 1,
+      details: {
+        slug: 'sire-new', title: 'New title', subtitle: 'New subtitle', description: 'New description', category: 'Safety',
+        level: 'beginner', language: 'Hindi', thumbnailPath: 'learning/t.png', trailerPath: 'learning/t.mp4',
+        learningOutcomes: ['New outcome'], requirements: ['New requirement'], targetAudience: ['New audience'],
+        accessType: 'paid', priceMinor: 99900, discountPriceMinor: 49900, currency: 'USD', certificateEnabled: false,
+        courseFormat: 'hybrid', navigationMode: 'sequential',
+      },
+      sections: [{
+        id: 's1',
+        title: 'Section',
+        materials: [fullMaterial({
+          title: 'New material title', materialType: 'video', summary: 'New summary', articleBody: 'New body',
+          assetPath: 'learning/v.mp4', externalUrl: 'https://example.com', isPublished: false, releaseMode: 'drip',
+          completionRule: 'media_percentage', assignmentInstructions: 'New instructions',
+          quiz: { passPercentage: 50, instructions: null, questions: [] }, articleFormat: 'html', durationSeconds: 120,
+          isPreview: true, isDownloadable: true, releaseAt: '2026-11-01T00:00:00.000Z', dripDelayDays: 3,
+          prerequisiteId: 'm0', completionThreshold: 80, maxAttempts: 3, embedKind: 'youtube', captionPath: 'learning/c.vtt',
+          assignment: { instructions: 'New instructions', acceptedExtensions: ['.pdf'], maxUploadBytes: 1, maxFiles: 2, maxPoints: 50, passingPercentage: 60 },
+          scorm: { sourceZipPath: 'learning/p.zip', launchPath: 'index.html' },
+        })],
+      }],
+    }
+
+    const changes = diffCourseSnapshots(before, after)
+    const details = changes.find((change) => change.area === 'details')!
+    expect(details.fields).toEqual([
+      'Title', 'URL slug', 'Subtitle', 'Description', 'Category', 'Level', 'Language', 'Course format', 'Thumbnail',
+      'Trailer', 'Learning outcomes', 'Requirements', 'Target audience', 'Access type', 'Price', 'Discount price',
+      'Currency', 'Certificate', 'Navigation (free or in order)',
+    ])
+    const materialChange = changes.find((change) => change.area === 'material')!
+    expect(materialChange.fields).toEqual([
+      'title', 'type', 'summary', 'article content', 'uploaded file', 'URL', 'visibility', 'release', 'completion rule',
+      'assignment instructions', 'quiz questions', 'article formatting', 'duration', 'free preview', 'download setting',
+      'release date', 'drip delay', 'prerequisite', 'completion threshold', 'attempt limit', 'embed provider', 'captions',
+      'assignment settings', 'SCORM package',
+    ])
+  })
+
+  it('does not report settings an older snapshot never recorded', () => {
+    const older = snapshot({ sections: [{ id: 's1', title: 'Section', materials: [material('m1')] }] })
+    const current = snapshot({ sections: [{ id: 's1', title: 'Section', materials: [fullMaterial({ maxAttempts: 3, isPreview: true })] }] })
+    const currentDetails = { ...current, details: { ...current.details, navigationMode: 'sequential' } }
+
+    expect(diffCourseSnapshots(older, currentDetails)).toEqual([])
+  })
+})

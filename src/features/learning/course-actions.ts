@@ -12,8 +12,10 @@ import {
   type CourseCreateInput,
   type CourseDraftInput,
 } from './course-repository'
+import { CourseRevisionError, courseRevisionRepository } from './course-revision-repository'
 import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
+import { learningMediaRepository } from './media-repository'
 
 const courseIdSchema = z.string().uuid()
 const revisionSchema = z.number().int().min(1).nullable()
@@ -250,14 +252,26 @@ export async function updateCourseDraft(
     const user = await requireAwsUser()
     if (parsed.data.thumbnailPath) {
       try {
-        await verifyLearningMediaObject({ userId: user.id, courseId: parsedId.data, kind: 'course_thumbnail', storagePath: parsed.data.thumbnailPath })
+        await verifyLearningMediaObject({
+          userId: user.id,
+          courseId: parsedId.data,
+          kind: 'course_thumbnail',
+          storagePath: parsed.data.thumbnailPath,
+          alreadyAttached: await learningMediaRepository.isMediaReferenced(user.id, parsedId.data, parsed.data.thumbnailPath),
+        })
       } catch {
         return { ok: false, error: 'We could not verify the uploaded course thumbnail. Please upload it again.' }
       }
     }
     if (parsed.data.trailerPath) {
       try {
-        await verifyLearningMediaObject({ userId: user.id, courseId: parsedId.data, kind: 'course_trailer', storagePath: parsed.data.trailerPath })
+        await verifyLearningMediaObject({
+          userId: user.id,
+          courseId: parsedId.data,
+          kind: 'course_trailer',
+          storagePath: parsed.data.trailerPath,
+          alreadyAttached: await learningMediaRepository.isMediaReferenced(user.id, parsedId.data, parsed.data.trailerPath),
+        })
       } catch {
         return { ok: false, error: 'We could not verify the uploaded course trailer. Please upload it again.' }
       }
@@ -312,5 +326,57 @@ export async function withdrawCourseFromReview(courseId: string): Promise<Course
     return { ok: true }
   } catch (error) {
     return { ok: false, error: mutationError(error, 'withdraw') }
+  }
+}
+
+type CourseRevisionActionResult =
+  | { ok: true; revisionCourseId: string }
+  | { ok: false; error: string }
+
+type CourseDiscardActionResult =
+  | { ok: true; liveCourseId: string }
+  | { ok: false; error: string }
+
+function revisionError(error: unknown) {
+  if (error instanceof CourseRevisionError) {
+    if (error.message === 'course_not_found') return 'We could not find this course in your Learning Studio.'
+    if (error.message === 'course_revision_not_published') return 'Only a published course is edited through a draft copy. Edit this course directly.'
+    if (error.message === 'course_revision_of_revision') return 'This is already the draft copy of a published course.'
+    if (error.message === 'course_revision_not_found') return 'We could not find this draft copy.'
+    if (error.message === 'course_revision_closed') return 'These changes were already applied or discarded. Reload the page to see the current course.'
+    if (error.message === 'course_revision_in_review') return 'Withdraw these changes from review before discarding them.'
+  }
+  return 'We could not open the course for editing. Please try again.'
+}
+
+/**
+ * Opens a draft copy of a published course for editing (or the one already open). Learners keep
+ * using the live course until the changes are approved.
+ */
+export async function startCourseRevision(courseId: string): Promise<CourseRevisionActionResult> {
+  const parsedId = courseIdSchema.safeParse(courseId)
+  if (!parsedId.success) return { ok: false, error: 'Invalid course.' }
+  try {
+    const user = await requireAwsUser()
+    const result = await courseRevisionRepository.startRevision(user.id, parsedId.data)
+    refreshReviewQueues(parsedId.data)
+    return { ok: true, revisionCourseId: result.revisionCourseId }
+  } catch (error) {
+    return { ok: false, error: revisionError(error) }
+  }
+}
+
+/** Throws away the draft copy of a published course. The live course is not changed. */
+export async function discardCourseRevision(revisionCourseId: string): Promise<CourseDiscardActionResult> {
+  const parsedId = courseIdSchema.safeParse(revisionCourseId)
+  if (!parsedId.success) return { ok: false, error: 'Invalid course.' }
+  try {
+    const user = await requireAwsUser()
+    const result = await courseRevisionRepository.discardRevision(user.id, parsedId.data)
+    refreshReviewQueues(result.liveCourseId)
+    revalidatePath(`/learn/studio/courses/${parsedId.data}/edit`)
+    return { ok: true, liveCourseId: result.liveCourseId }
+  } catch (error) {
+    return { ok: false, error: revisionError(error) }
   }
 }

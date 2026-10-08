@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Archive, CheckCircle2, MessageSquareWarning, Send } from 'lucide-react'
+import { Archive, ArchiveRestore, CheckCircle2, MessageSquareWarning, Send } from 'lucide-react'
 import { reviewCourse } from '@/features/learning/admin-actions'
 import type { CourseStatus } from '@/features/learning/course-workflow'
 import type { CourseAdminDecision } from '@/features/learning/admin-repository'
@@ -9,9 +9,12 @@ import type { CourseAdminDecision } from '@/features/learning/admin-repository'
 export function CourseReviewControls({
   courseId,
   status,
+  revision = false,
 }: {
   courseId: string
   status: CourseStatus
+  /** Changes to a published course: approve (applies them) or request changes; never publish or archive. */
+  revision?: boolean
 }) {
   const [reviewerNote, setReviewerNote] = useState('')
   const [feedback, setFeedback] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
@@ -39,16 +42,20 @@ export function CourseReviewControls({
       const message = decision === 'changes_requested'
         ? 'Changes requested. The trainer or organization manager can revise and resubmit the course.'
         : decision === 'approved'
-          ? 'Course approved and published. It is now visible in Learn.'
+          ? revision
+            ? 'Changes approved and applied to the live course. Learners keep their progress.'
+            : 'Course approved and published. It is now visible in Learn.'
           : decision === 'published'
-            ? 'Course published. It is now eligible for the learning marketplace.'
-            : 'Course archived. It has been removed from active marketplace circulation.'
+            ? status === 'archived'
+              ? 'Course unarchived. It is back in the catalogue and open to new learners.'
+              : 'Course published. It is now eligible for the learning marketplace.'
+            : 'Course archived. It is off the catalogue and closed to new learners; enrolled learners keep their access.'
 
       setFeedback({ tone: 'success', message })
     })
   }
 
-  const actionable = status === 'submitted' || status === 'approved' || status === 'published'
+  const actionable = status === 'submitted' || (!revision && (status === 'approved' || status === 'published' || status === 'archived'))
 
   return (
     <div className="rounded-2xl border border-mist-100 bg-mist-50 p-4">
@@ -82,7 +89,7 @@ export function CourseReviewControls({
                 onClick={() => submit('approved')}
                 className="inline-flex items-center gap-2 rounded-xl bg-navy-950 px-3.5 py-2 text-sm font-bold text-white transition hover:bg-navy-900 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <CheckCircle2 aria-hidden="true" className="size-4" /> Approve course
+                <CheckCircle2 aria-hidden="true" className="size-4" /> {revision ? 'Approve and apply changes' : 'Approve course'}
               </button>
               <button
                 type="button"
@@ -114,6 +121,17 @@ export function CourseReviewControls({
               className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-3.5 py-2 text-sm font-bold text-navy-950 transition hover:bg-mist-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Archive aria-hidden="true" className="size-4" /> Archive course
+            </button>
+          ) : null}
+
+          {status === 'archived' ? (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => submit('published')}
+              className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-3.5 py-2 text-sm font-bold text-navy-950 transition hover:bg-mist-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <ArchiveRestore aria-hidden="true" className="size-4" /> Unarchive course
             </button>
           ) : null}
         </div>

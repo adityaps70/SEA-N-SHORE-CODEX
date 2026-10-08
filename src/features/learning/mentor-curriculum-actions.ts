@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
+import { learningMediaRepository } from './media-repository'
 import {
   mentorCurriculumRepository,
   type MentorLessonDraft,
@@ -70,8 +71,10 @@ const quizSchema = z.object({
   passPercentage: z.number().int().min(1).max(100),
   instructions: nullableText(4000),
   questions: z.array(z.object({
+    id: z.string().uuid().nullable().optional(),
     prompt: z.string().trim().min(1, 'Quiz question prompt is required.').max(4000),
     options: z.array(z.object({
+      id: z.string().uuid().nullable().optional(),
       label: z.string().trim().min(1, 'Quiz answer text is required.').max(2000),
       isCorrect: z.boolean(),
     })).min(2, 'Each quiz question needs at least two answer options.').max(20),
@@ -127,7 +130,13 @@ function parseLessonId(lessonId: string): { ok: true; id: string } | { ok: false
 async function verifyVideoUpload(userId: string, courseId: string, lesson: MentorLessonDraft): Promise<ActionResult> {
   if (lesson.lessonType !== 'video' || !lesson.assetPath) return { ok: true }
   try {
-    await verifyLearningMediaObject({ userId, courseId, kind: 'lesson_video', storagePath: lesson.assetPath })
+    await verifyLearningMediaObject({
+      userId,
+      courseId,
+      kind: 'lesson_video',
+      storagePath: lesson.assetPath,
+      alreadyAttached: await learningMediaRepository.isMediaReferenced(userId, courseId, lesson.assetPath),
+    })
     return { ok: true }
   } catch {
     return { ok: false, error: 'We could not verify the uploaded lesson video. Please upload it again.' }

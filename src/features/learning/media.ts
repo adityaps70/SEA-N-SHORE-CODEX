@@ -37,11 +37,17 @@ export async function createPendingLearningMediaUpload(input: {
   }
 }
 
+/**
+ * Confirms a stored file is the declared kind and size. A new upload must also be the caller's own
+ * upload for this course; a file the course already references (for example one another manager
+ * uploaded, or one a draft revision carries over from the live course) only needs to be valid.
+ */
 export async function verifyLearningMediaObject(input: {
   userId: string
   courseId: string
   kind: LearningMediaKind
   storagePath: string
+  alreadyAttached?: boolean
 }) {
   let stored: Awaited<ReturnType<typeof headMediaObject>>
   try {
@@ -59,7 +65,7 @@ export async function verifyLearningMediaObject(input: {
     size: stored.contentLength,
   })
   if (!metadata.ok) throw new Error('learning_media_metadata_mismatch')
-  if (!isOwnedLearningMediaStoragePath({
+  if (!input.alreadyAttached && !isOwnedLearningMediaStoragePath({
     userId: input.userId,
     courseId: input.courseId,
     kind: input.kind,
@@ -87,6 +93,7 @@ export async function resolveLearningMediaReadUrl(input: {
   courseId: string
   kind: LearningMediaKind
   storagePath: string
+  alreadyAttached?: boolean
 }) {
   await verifyLearningMediaObject(input)
   return createMediaReadUrl(input.storagePath)

@@ -31,8 +31,15 @@ function statusClasses(status: MentorCourseSummary['status']) {
   return 'border-mist-200 bg-white text-navy-950'
 }
 
+function revisionLabel(revision: NonNullable<MentorCourseSummary['openRevision']>) {
+  if (revision.status === 'submitted') return 'Changes in review'
+  if (revision.status === 'changes_requested') return 'Changes requested on your edits'
+  return 'Draft changes in progress'
+}
+
 function CourseCard({ course }: { course: MentorCourseSummary }) {
   const editable = course.status === 'draft' || course.status === 'changes_requested'
+  const livePublished = course.status === 'published'
 
   return (
     <article className="rounded-[1.4rem] border border-mist-100 bg-white p-5 shadow-[var(--shadow-card)]">
@@ -53,6 +60,12 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
 
       {course.hiddenForPlan ? <PlanHiddenBanner companyId={course.companyId} className="mt-4" /> : null}
 
+      {course.openRevision ? (
+        <p className="mt-4 inline-flex items-center gap-2 rounded-xl border border-teal-100 bg-teal-50/70 px-3 py-2 text-sm font-semibold text-teal-900">
+          <FilePenLine aria-hidden="true" className="size-4" /> {revisionLabel(course.openRevision)} · learners see the live version
+        </p>
+      ) : null}
+
       {course.adminReviewNote ? (
         <div className="mt-4 break-words rounded-xl border border-amber-100 bg-amber-50/70 p-3 text-sm leading-6 text-amber-950">
           <span className="font-bold">Reviewer feedback:</span> {course.adminReviewNote}
@@ -64,9 +77,9 @@ function CourseCard({ course }: { course: MentorCourseSummary }) {
           <span>{course.courseFormat.replace('_', ' ')}</span>
           <span>{course.accessType === 'free' ? 'Free' : 'Paid'}</span>
         </div>
-        {editable ? (
+        {editable || livePublished ? (
           <Link
-            href={`/learn/studio/courses/${course.id}/edit`}
+            href={`/learn/studio/courses/${course.openRevision?.courseId ?? course.id}/edit`}
             aria-label={`Edit ${course.title}`}
             className="inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-3 py-2 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
           >

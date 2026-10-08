@@ -1,6 +1,7 @@
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import type { CourseStatus } from './course-workflow'
+import { liveCourseSql } from './course-publication'
 
 export type AdminLearningAnalyticsQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -133,6 +134,7 @@ export function createAdminLearningAnalyticsRepository(input: { query?: AdminLea
            course.title,
            course.status
          from public.learning_courses course
+         where ${liveCourseSql('course')}
        ),
        published_lesson_counts as (
          select

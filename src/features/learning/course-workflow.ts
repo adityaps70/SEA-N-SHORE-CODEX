@@ -31,6 +31,8 @@ const COURSE_TRANSITIONS: Record<
     submitted: ['changes_requested', 'approved'],
     approved: ['published'],
     published: ['archived'],
+    // Unarchive: the course returns to the catalogue. Enrolled learners never lost access.
+    archived: ['published'],
   },
 }
 
@@ -45,7 +47,9 @@ export function canTransitionCourseStatus(input: CourseStatusTransition): boolea
  * - submitted (in review): read-only. The trainer can withdraw it from review,
  *   which returns it to draft, edit, and resubmit.
  * - approved, published and archived: read-only. The live copy stays exactly as
- *   the reviewer approved it.
+ *   the reviewer approved it. A published course is changed through a draft
+ *   revision (a private copy that is editable as a draft); on approval the
+ *   revision is applied to the live course.
  */
 export function canMentorEditCourse(status: CourseStatus): boolean {
   return status === 'draft' || status === 'changes_requested'
@@ -70,7 +74,7 @@ export function courseEditLockedCopy(status: CourseStatus | null, subject = 'You
     return `${subject} were not saved because this course is archived and can no longer be edited.`
   }
   if (lock === 'published') {
-    return `${subject} were not saved because this course is published. Published courses stay exactly as approved and can't be edited in Learning Studio.`
+    return `${subject} were not saved because this course is live. Choose “Edit course” on its Learning Studio page to make your changes in a draft copy, then submit them for review.`
   }
   return `${subject} were not saved because this course is in review or published. Reload the page to see its current status.`
 }

@@ -303,6 +303,7 @@ export function createLearnerCourseRepository(input: {
          on company.id = course.company_id
        left join public.learning_course_sections section
          on section.course_id = course.id
+        and section.removed_at is null
        left join public.learning_lessons lesson
          on lesson.section_id = section.id
         and lesson.is_published = true

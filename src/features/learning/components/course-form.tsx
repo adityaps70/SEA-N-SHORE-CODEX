@@ -24,6 +24,8 @@ type Props = {
   publisherName?: string
   /** Course is in review, published or archived: show the details without letting them change. */
   readOnly?: boolean
+  /** Editing a published course: its address (slug) stays the same. */
+  slugLocked?: boolean
   /**
    * Sea N Shore's fee and payout hold for the seller (read-only preview next to the price).
    * `byPublisherKey` is used while creating a course, where the seller depends on the chosen publisher.
@@ -173,7 +175,7 @@ function SellerFeePreview({ form, terms }: { form: FormState; terms: SellerFeeTe
   )
 }
 
-export function CourseForm({ initialValue, courseId, publisherOptions = [], publisherName, readOnly = false, sellerFees }: Props) {
+export function CourseForm({ initialValue, courseId, publisherOptions = [], publisherName, readOnly = false, slugLocked = false, sellerFees }: Props) {
   const router = useRouter()
   const session = useCourseEditSession()
   const initial = useMemo(() => toFormState(initialValue), [initialValue])
@@ -367,7 +369,8 @@ export function CourseForm({ initialValue, courseId, publisherOptions = [], publ
             <input aria-label="Course title" className={inputClassName()} value={form.title} onChange={(event) => update('title', event.target.value)} />
           </label>
           <label className="text-sm font-semibold text-navy-950">Course URL slug
-            <input aria-label="Course URL slug" className={inputClassName()} value={form.slug} onChange={(event) => update('slug', event.target.value)} placeholder="sire-2-readiness" />
+            <input aria-label="Course URL slug" className={`${inputClassName()} read-only:bg-mist-50 read-only:text-muted`} value={form.slug} readOnly={slugLocked} aria-describedby={slugLocked ? 'course-slug-locked' : undefined} onChange={(event) => update('slug', event.target.value)} placeholder="sire-2-readiness" />
+            {slugLocked ? <span id="course-slug-locked" className="mt-1 block text-xs font-normal text-muted">A published course keeps its address, so links learners have shared keep working.</span> : null}
           </label>
         </div>
 

@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
 import type { CourseStatus } from './course-workflow'
 import { courseManagerAccessSql } from './course-access'
+import { liveCourseSql } from './course-publication'
 
 export type MentorAnalyticsQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 
@@ -110,6 +111,7 @@ export function createMentorAnalyticsRepository(input: { query?: MentorAnalytics
            course.status
          from public.learning_courses course
          where ${courseManagerAccessSql('course', '$1')}
+           and ${liveCourseSql('course')}
        ),
        published_lesson_counts as (
          select

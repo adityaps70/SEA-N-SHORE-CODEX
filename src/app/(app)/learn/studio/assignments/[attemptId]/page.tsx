@@ -1,16 +1,44 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ArrowLeft, ChevronDown, ExternalLink, FileText, History } from 'lucide-react'
+import { ArrowLeft, ChevronDown, Download, ExternalLink, FileText, History } from 'lucide-react'
 import { MobilePageBar } from '@/components/navigation/mobile-page-bar'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { assignmentGradingRepository } from '@/features/learning/assignment-grading-repository'
 import { AssignmentGradingControl } from '@/features/learning/components/assignment-grading-control'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
+import { assignmentAttachmentRoute, ASSIGNMENT_ATTACHMENT_ROOT } from '@/features/learning/assignment-policy'
+import type { LearnerAssignmentAttachment } from '@/features/learning/learner-assignment-repository'
 import { createMediaReadUrl } from '@/lib/aws/storage'
 
 export const metadata: Metadata = { title: 'Assignment review' }
+
+function fileSize(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Downloads go through the access-checked route, which hands out a five-minute signed URL. */
+function AttachmentDownloads({ attachments }: { attachments: LearnerAssignmentAttachment[] }) {
+  if (attachments.length === 0) return null
+  return (
+    <ul className="mt-4 space-y-2" aria-label="Learner files">
+      {attachments.map((attachment) => (
+        <li key={attachment.id}>
+          <a
+            href={assignmentAttachmentRoute(attachment.id)}
+            className="inline-flex max-w-full items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"
+          >
+            <Download className="size-4 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 break-all">{attachment.fileName}</span>
+            <span className="shrink-0 font-normal text-muted">{fileSize(attachment.sizeBytes)}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
@@ -33,7 +61,10 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
   const review = await assignmentGradingRepository.getForMentor(user.id, attemptId)
   if (!review) return notFound()
 
-  const attachmentUrl = review.attachmentPath ? await createMediaReadUrl(review.attachmentPath) : null
+  // A single file stored before multi-file uploads existed opens directly; newer submissions list their files.
+  const legacyAttachmentUrl = review.attachments.length === 0 && review.attachmentPath && !review.attachmentPath.startsWith(`${ASSIGNMENT_ATTACHMENT_ROOT}/`)
+    ? await createMediaReadUrl(review.attachmentPath, 300)
+    : null
 
   const previousAttemptList = (
     <div className="mt-4 space-y-3">
@@ -45,7 +76,8 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
               {attempt.passed ? 'Passed' : 'Needs revision'}
             </span>
           </div>
-          <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-navy-900">{attempt.responseText || 'No written response was provided.'}</div>
+          <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-navy-900">{attempt.responseText || (attempt.attachments.length ? 'Files only.' : 'No written response was provided.')}</div>
+          <AttachmentDownloads attachments={attempt.attachments} />
           {attempt.scorePoints !== null ? <p className="mt-3 text-sm font-bold text-navy-950">Score {attempt.scorePoints}/{review.maxPoints} · {attempt.percentage}%</p> : null}
           {attempt.feedback ? (
             <div className="mt-3 rounded-xl border border-teal-100 bg-white p-3 text-sm leading-6 text-muted">
@@ -91,11 +123,12 @@ export default async function MentorAssignmentReviewPage({ params }: { params: P
               <h2 className="text-lg font-bold text-navy-950">Learner response</h2>
             </div>
             <div className="mt-4 whitespace-pre-wrap rounded-2xl border border-mist-100 bg-mist-50 p-4 text-sm leading-7 text-navy-900">
-              {review.responseText || 'No written response was provided.'}
+              {review.responseText || (review.attachments.length ? 'No written response; see the attached files.' : 'No written response was provided.')}
             </div>
-            {attachmentUrl ? (
+            <AttachmentDownloads attachments={review.attachments} />
+            {legacyAttachmentUrl ? (
               <a
-                href={attachmentUrl}
+                href={legacyAttachmentUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 inline-flex items-center gap-2 rounded-xl border border-mist-200 bg-white px-4 py-2.5 text-sm font-bold text-navy-950 transition hover:border-teal-300 hover:text-teal-800"

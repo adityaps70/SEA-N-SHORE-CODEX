@@ -142,7 +142,7 @@ jobs:
       - name: Verify worker drift contract
         run: node --test scripts/aws/worker-drift-plan.test.mjs
       - name: Verify host Terraform init and SHA-guard contracts
-        run: node --test scripts/aws/terraform-init-providers.test.mjs scripts/aws/round-9b-migration.test.mjs
+        run: node --test scripts/aws/terraform-init-providers.test.mjs scripts/aws/round-9b-migration.test.mjs scripts/aws/learning-round-a-migration.test.mjs
       - name: Verify onboarding e2e guard contract
         run: node --test scripts/aws/onboarding-e2e-guard.test.mjs
       - name: Verify membership launch sequence contract
