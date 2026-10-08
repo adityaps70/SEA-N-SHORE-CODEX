@@ -43,7 +43,7 @@ describe('remaining website quality audit contract', () => {
   })
 
   it('keeps learning cards visual and distinguishes zero catalog from no-match', () => {
-    const learn = source('src/app/(app)/learn/page.tsx')
+    const learn = source('src/app/(public)/learn/page.tsx')
     expect(learn).toContain('thumbnailPath')
     expect(learn).toContain('Browse all courses')
     expect(learn).toContain('No published courses yet')

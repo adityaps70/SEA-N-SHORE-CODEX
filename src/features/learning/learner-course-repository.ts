@@ -56,6 +56,7 @@ export type LearnerCourseRow = QueryResultRow & {
   lesson_position: number | null
   lesson_summary: string | null
   article_body: string | null
+  article_format?: string | null
   asset_path: string | null
   external_url: string | null
   duration_seconds: number | null
@@ -92,6 +93,8 @@ export type LearnerLesson = {
   position: number
   summary: string | null
   articleBody: string | null
+  /** 'html' for rich-text articles (render with renderArticleHtml); 'plain' for older ones. */
+  articleFormat: 'plain' | 'html'
   assetPath: string | null
   externalUrl: string | null
   durationSeconds: number | null
@@ -264,6 +267,7 @@ export function createLearnerCourseRepository(input: {
          lesson.position as lesson_position,
          lesson.summary as lesson_summary,
          lesson.article_body,
+         lesson.article_format,
          lesson.asset_path,
          lesson.external_url,
          lesson.duration_seconds,
@@ -386,6 +390,7 @@ export function createLearnerCourseRepository(input: {
         position: Number(row.lesson_position),
         summary: row.lesson_summary,
         articleBody: row.article_body,
+        articleFormat: row.article_format === 'html' ? 'html' : 'plain',
         assetPath: row.asset_path,
         externalUrl: row.external_url,
         durationSeconds: row.duration_seconds === null ? null : Number(row.duration_seconds),

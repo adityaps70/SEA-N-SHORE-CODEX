@@ -65,7 +65,25 @@ export function createLearningMediaRepository() {
     return rows[0]?.referenced ?? false
   }
 
-  return { assertOwnedCourse, assertEditableOwnedCourse, isMediaReferenced }
+  /**
+   * Course ids whose media this course may use: itself, and for a draft revision the published
+   * course it copies (its existing images carry over).
+   */
+  async function courseMediaScope(actorId: string, courseId: string) {
+    const rows = await databaseQuery<QueryResultRow & { id: string; revision_of_course_id: string | null }>(
+      `select course.id, course.revision_of_course_id
+       from public.learning_courses course
+       where course.id = $1
+         and ${courseManagerAccessSql('course', '$2')}
+       limit 1`,
+      [courseId, actorId],
+    )
+    const course = rows[0]
+    if (!course) return []
+    return course.revision_of_course_id ? [course.id, course.revision_of_course_id] : [course.id]
+  }
+
+  return { assertOwnedCourse, assertEditableOwnedCourse, isMediaReferenced, courseMediaScope }
 }
 
 export const learningMediaRepository = createLearningMediaRepository()

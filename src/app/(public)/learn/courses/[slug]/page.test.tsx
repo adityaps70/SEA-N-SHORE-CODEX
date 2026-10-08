@@ -12,13 +12,18 @@ const mocks = vi.hoisted(() => ({
   loadCoursePurchaseState: vi.fn(),
   push: vi.fn(),
   refresh: vi.fn(),
+  getPublicCurriculum: vi.fn(),
+  createMediaReadUrl: vi.fn(),
 }))
 
 vi.mock('next/navigation', () => ({ notFound: mocks.notFound, useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }))
 vi.mock('@/features/learning/course-purchase-state', () => ({ loadCoursePurchaseState: mocks.loadCoursePurchaseState }))
 vi.mock('@/features/learning/course-payment-actions', () => ({ startCourseCheckoutAction: vi.fn(), confirmCoursePaymentAction: vi.fn() }))
 vi.mock('@/features/learning/enrollment-actions', () => ({ openCourseAsTeamMember: vi.fn(), enrollInFreeCourse: mocks.enrollInFreeCourse }))
-vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+// The page is public: it reads the signed-in member if there is one (getVerifiedUser), else renders for a visitor.
+vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.requireAwsUser }))
+vi.mock('@/features/learning/public-course-repository', () => ({ publicCourseRepository: { getPublicCurriculum: mocks.getPublicCurriculum } }))
+vi.mock('@/lib/aws/storage', () => ({ createMediaReadUrl: mocks.createMediaReadUrl }))
 vi.mock('@/features/learning/marketplace-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/features/learning/marketplace-repository')>()
   return {
@@ -93,6 +98,8 @@ describe('/learn/courses/[slug]', () => {
     mocks.requireAwsUser.mockResolvedValue({ id: 'learner-1', cognitoSub: 'sub-1', email: 'learner@example.com' })
     mocks.getLearnerEnrollment.mockResolvedValue(null)
     mocks.getPublishedCourseOverview.mockResolvedValue({ sections: [], lessonCount: 0, durationSeconds: 0, learnerCount: 0, publisher: null })
+    mocks.getPublicCurriculum.mockResolvedValue([])
+    mocks.createMediaReadUrl.mockResolvedValue('https://bucket.example/trailer.mp4?signed')
   })
 
   function desktopHero() {
@@ -121,6 +128,10 @@ describe('/learn/courses/[slug]', () => {
   })
 
   it('gives phones a page bar, a cover header with chips and trainer link, and a sticky Enroll free bar', async () => {
+    mocks.getPublicCurriculum.mockResolvedValueOnce([
+      { title: 'Inspection foundations', lessons: [{ id: '66666666-6666-4666-8666-666666666666', title: 'Why SIRE 2.0 changed', lessonType: 'video', durationSeconds: 420, preview: true }] },
+      { title: 'Inspection day', lessons: [{ id: '88888888-8888-4888-8888-888888888888', title: 'Knowledge check', lessonType: 'quiz', durationSeconds: null, preview: false }] },
+    ])
     mocks.getPublishedCourseOverview.mockResolvedValueOnce({
       sections: [{ title: 'Inspection foundations', lessonCount: 5 }, { title: 'Inspection day', lessonCount: 7 }],
       lessonCount: 12,
@@ -144,9 +155,10 @@ describe('/learn/courses/[slug]', () => {
     expect(within(header).getByRole('link', { name: 'Capt. Maya Singh' })).toHaveAttribute('href', '/people/maya-singh')
     expect(within(header).getByText(/312 learners/)).toBeInTheDocument()
 
+    // The curriculum outline is the same on phones and desktop (round A: public course pages).
     const curriculum = screen.getByRole('region', { name: 'Curriculum' })
-    expect(curriculum).toHaveClass('md:hidden')
-    expect(within(curriculum).getByText('12 lessons')).toBeInTheDocument()
+    expect(curriculum).not.toHaveClass('md:hidden')
+    expect(within(curriculum).getByText('2 materials · 1 free preview')).toBeInTheDocument()
     expect(within(curriculum).getByText('2. Inspection day')).toBeInTheDocument()
 
     const bar = screen.getByTestId('course-action-bar')
@@ -312,5 +324,70 @@ describe('/learn/courses/[slug]', () => {
     expect(mocks.notFound).toHaveBeenCalledOnce()
     expect(mocks.requireAwsUser).not.toHaveBeenCalled()
     expect(mocks.getLearnerEnrollment).not.toHaveBeenCalled()
+  })
+
+  describe('for a visitor who is not signed in', () => {
+    beforeEach(() => {
+      mocks.requireAwsUser.mockResolvedValue(null)
+      mocks.getPublicCurriculum.mockResolvedValue([
+        { title: 'Inspection foundations', lessons: [
+          { id: '66666666-6666-4666-8666-666666666666', title: 'Why SIRE 2.0 changed', lessonType: 'video', durationSeconds: 420, preview: true },
+          { id: '77777777-7777-4777-8777-777777777777', title: 'The question library', lessonType: 'article', durationSeconds: null, preview: false },
+        ] },
+        { title: 'Inspection day', lessons: [
+          { id: '88888888-8888-4888-8888-888888888888', title: 'Knowledge check', lessonType: 'quiz', durationSeconds: null, preview: false },
+        ] },
+      ])
+    })
+
+    it('shows the course, its outline and free previews, and asks the visitor to sign in to enrol', async () => {
+      render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+      expect(mocks.getLearnerEnrollment).not.toHaveBeenCalled()
+      expect(within(desktopHero()).getByRole('link', { name: /Sign in to enrol/ })).toHaveAttribute('href', '/auth/sign-in')
+      expect(screen.queryByRole('button', { name: 'Enroll free' })).not.toBeInTheDocument()
+      const curriculum = screen.getByRole('region', { name: 'Curriculum' })
+      expect(within(curriculum).getByText('Why SIRE 2.0 changed')).toBeInTheDocument()
+      expect(within(curriculum).getByRole('link', { name: 'Free preview' })).toHaveAttribute('href', `/learn/courses/${freeCourse.slug}/preview/66666666-6666-4666-8666-666666666666`)
+      expect(within(curriculum).getAllByLabelText('Locked')).toHaveLength(2)
+      expect(within(curriculum).getByText(/Enrol to continue/)).toBeInTheDocument()
+    })
+
+    it('shows the trailer and describes the course to search engines (schema.org Course)', async () => {
+      const { container } = render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+      expect(mocks.createMediaReadUrl).toHaveBeenCalledWith(freeCourse.trailerPath)
+      expect(screen.getAllByLabelText(`${freeCourse.title} trailer`)[0]).toHaveAttribute('src', 'https://bucket.example/trailer.mp4?signed')
+      const jsonLd = JSON.parse(container.querySelector('script[type="application/ld+json"]')!.textContent!)
+      expect(jsonLd).toMatchObject({
+        '@type': 'Course',
+        name: freeCourse.title,
+        url: expect.stringContaining(`/learn/courses/${freeCourse.slug}`),
+        provider: { name: 'Capt. Maya Singh' },
+        offers: { category: 'Free', price: '0', priceCurrency: 'INR' },
+      })
+    })
+  })
+
+  it('gives search engines and share previews a title, description, canonical address and image', async () => {
+    const { generateMetadata } = await import('./page')
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: freeCourse.slug }) })
+
+    expect(metadata).toMatchObject({
+      title: freeCourse.title,
+      description: freeCourse.subtitle,
+      alternates: { canonical: `/learn/courses/${freeCourse.slug}` },
+      openGraph: { title: freeCourse.title, url: `/learn/courses/${freeCourse.slug}`, images: [{ url: `/api/learning-media/${freeCourse.thumbnailPath}` }] },
+      twitter: { card: 'summary_large_image' },
+    })
+  })
+
+  it('keeps a course that is not public (draft, unpublished or archived) out of search: 404 and noindex', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValue(null)
+    const { generateMetadata } = await import('./page')
+
+    await expect(generateMetadata({ params: Promise.resolve({ slug: 'a-draft-course' }) })).resolves.toEqual({ title: 'Course not found', robots: { index: false } })
+    await PublishedCoursePage({ params: Promise.resolve({ slug: 'a-draft-course' }) })
+    expect(mocks.notFound).toHaveBeenCalled()
   })
 })

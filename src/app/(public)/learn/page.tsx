@@ -8,16 +8,19 @@ import {
   BookOpen,
   ChevronDown,
   GraduationCap,
+  LogIn,
   Search,
 } from 'lucide-react'
 import { getAccessContext } from '@/features/access/server'
-import { requireAwsUser } from '@/features/auth/aws-queries'
+import { getVerifiedUser } from '@/features/auth/queries'
 import { coursePrice, formatCourseAmount, isPaidCourse } from '@/features/learning/course-pricing'
+import { catalogueMetadata } from '@/features/learning/course-seo'
 import { marketplaceRepository, type MarketplaceCourse } from '@/features/learning/marketplace-repository'
 import { learningRepository } from '@/features/learning/repository'
 import { organizationRepository } from '@/features/organizations/repository'
 
-export const metadata: Metadata = { title: 'Learn' }
+// Public: anyone can browse the catalogue. Signed-in members also get My learning and Studio links.
+export const metadata: Metadata = catalogueMetadata()
 
 /** Round 8 phone chips: 32px+ tall, selected = navy-950 filled. */
 const PHONE_CHIP_CLASS = 'inline-flex min-h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-mist-300 bg-white px-3.5 text-sm font-semibold text-navy-900 transition hover:bg-mist-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ocean-500'
@@ -175,20 +178,20 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   const params = await searchParams
   const category = normalizeParam(params.category)
   const search = normalizeParam(params.search)
-  const user = await requireAwsUser()
+  const user = await getVerifiedUser()
   const [courses, mentorState, access, organizations] = await Promise.all([
     marketplaceRepository.listPublishedCourses({ category, search }),
-    learningRepository.getMentorApplicationState(user.id),
-    getAccessContext(user.id),
-    organizationRepository.listUserOrganizations(user.id),
+    user ? learningRepository.getMentorApplicationState(user.id) : null,
+    user ? getAccessContext(user.id) : null,
+    user ? organizationRepository.listUserOrganizations(user.id) : [],
   ])
-  const isActiveTrainer = mentorState.kind === 'mentor' && mentorState.mentorStatus === 'active'
+  const isActiveTrainer = mentorState?.kind === 'mentor' && mentorState.mentorStatus === 'active'
   const hasOrganizationLmsAccess = organizations.some((organization) =>
     organization.role === 'owner'
     || organization.role === 'administrator'
     || organization.role === 'lms_manager')
   const hasLearningStudio = isActiveTrainer || hasOrganizationLmsAccess
-  const hasCreatorPro = access.personalPlan === 'creator_pro'
+  const hasCreatorPro = access?.personalPlan === 'creator_pro'
   const hasFilters = Boolean(category || search)
   // Keep an old ?category= link selectable even if that label is no longer in the standard list.
   const categoryOptions: readonly string[] = category && !(categories as readonly string[]).includes(category) ? [...categories, category] : categories
@@ -204,9 +207,15 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
   return (
     <main className="mx-auto w-full max-w-7xl px-4 py-6 max-md:px-0 max-md:py-0 sm:px-6 lg:px-8">
       <nav aria-label="Learning sections" className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:hidden [&::-webkit-scrollbar]:hidden">
-        <Link href="/learn/my-learning" className={PHONE_CHIP_CLASS}>
-          <GraduationCap aria-hidden="true" className="size-4" /> My learning
-        </Link>
+        {user ? (
+          <Link href="/learn/my-learning" className={PHONE_CHIP_CLASS}>
+            <GraduationCap aria-hidden="true" className="size-4" /> My learning
+          </Link>
+        ) : (
+          <Link href="/auth/sign-in" className={PHONE_CHIP_CLASS}>
+            <LogIn aria-hidden="true" className="size-4" /> Sign in
+          </Link>
+        )}
         <Link href="/learn" aria-current="page" className={`${PHONE_CHIP_CLASS} ${PHONE_CHIP_ACTIVE_CLASS}`}>
           All courses
         </Link>
@@ -230,9 +239,15 @@ export default async function LearnPage({ searchParams }: LearnPageProps) {
           </div>
 
           <div className="flex shrink-0 items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm max-md:hidden">
-            <Link href="/learn/my-learning" className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/10">
-              <GraduationCap aria-hidden="true" className="size-4" /> My learning
-            </Link>
+            {user ? (
+              <Link href="/learn/my-learning" className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/10">
+                <GraduationCap aria-hidden="true" className="size-4" /> My learning
+              </Link>
+            ) : (
+              <Link href="/auth/sign-in" className="inline-flex items-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-bold text-white transition hover:bg-white/10">
+                <LogIn aria-hidden="true" className="size-4" /> Sign in
+              </Link>
+            )}
             {hasLearningStudio ? (
               <>
                 <span className="text-white/75">Build and manage your courses</span>

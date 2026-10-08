@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   listPublishedCourses: vi.fn(),
 }))
 
-vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
+vi.mock('@/features/auth/queries', () => ({ getVerifiedUser: mocks.requireAwsUser }))
 vi.mock('@/features/access/server', () => ({ getAccessContext: mocks.getAccessContext }))
 vi.mock('@/features/organizations/repository', () => ({
   organizationRepository: { listUserOrganizations: mocks.listUserOrganizations },
@@ -219,5 +219,30 @@ describe('/learn marketplace', () => {
     expect(screen.getByText('No published courses match these filters yet.')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Clear filters' })).toHaveAttribute('href', '/learn')
     expect(screen.queryByText(course.title)).not.toBeInTheDocument()
+  })
+
+  it('lets a visitor who is not signed in browse the catalogue, with Sign in in place of My learning', async () => {
+    mocks.requireAwsUser.mockResolvedValue(null)
+    await renderLearnPage()
+
+    expect(screen.getByRole('link', { name: new RegExp(course.title) })).toHaveAttribute('href', `/learn/courses/${course.slug}`)
+    expect(mocks.getMentorApplicationState).not.toHaveBeenCalled()
+    expect(mocks.getAccessContext).not.toHaveBeenCalled()
+    expect(mocks.listUserOrganizations).not.toHaveBeenCalled()
+    expect(screen.queryByRole('link', { name: 'My learning' })).not.toBeInTheDocument()
+    const signIn = screen.getAllByRole('link', { name: 'Sign in' })
+    expect(signIn).toHaveLength(2)
+    expect(signIn.every((link) => link.getAttribute('href') === '/auth/sign-in')).toBe(true)
+    expect(within(screen.getByRole('navigation', { name: 'Learning sections' })).getByRole('link', { name: 'Teach' })).toHaveAttribute('href', '/learn/teach')
+  })
+
+  it('describes the catalogue to search engines and share previews', async () => {
+    const { metadata } = await import('./page')
+    expect(metadata).toMatchObject({
+      title: 'Maritime courses',
+      alternates: { canonical: '/learn' },
+      openGraph: { url: '/learn', title: 'Maritime courses on Sea N Shore' },
+      twitter: { card: 'summary_large_image' },
+    })
   })
 })

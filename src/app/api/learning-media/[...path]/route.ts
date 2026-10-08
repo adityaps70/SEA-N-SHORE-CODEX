@@ -1,4 +1,5 @@
 import { getVerifiedUser } from '@/features/auth/queries'
+import { publicCourseRepository } from '@/features/learning/public-course-repository'
 import { getMediaObject } from '@/lib/aws/storage'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -19,12 +20,14 @@ export async function GET(
   _request: Request,
   context: { params: Promise<{ path: string[] }> },
 ) {
-  const user = await getVerifiedUser()
-  if (!user) return new Response('Unauthorized', { status: 401 })
-
   const { path } = await context.params
   const key = canonicalThumbnailKey(path)
   if (!key) return new Response('Not found', { status: 404 })
+
+  // Signed-out visitors (and link-preview crawlers) get the cover of a public course only.
+  const user = await getVerifiedUser()
+  const publicCover = user ? false : await publicCourseRepository.isPublicCourseThumbnail(key).catch(() => false)
+  if (!user && !publicCover) return new Response('Unauthorized', { status: 401 })
 
   try {
     const object = await getMediaObject({ key, maxBytes: MAX_THUMBNAIL_BYTES })
@@ -34,7 +37,8 @@ export async function GET(
       headers: {
         'content-type': object.contentType ?? 'application/octet-stream',
         ...(object.contentLength === null ? {} : { 'content-length': String(object.contentLength) }),
-        'cache-control': 'private, max-age=3600, stale-while-revalidate=86400',
+        // A public cover may be cached briefly by anyone; everything else stays private.
+        'cache-control': publicCover ? 'public, max-age=600' : 'private, max-age=3600, stale-while-revalidate=86400',
         'x-content-type-options': 'nosniff',
       },
     })

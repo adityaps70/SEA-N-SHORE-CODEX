@@ -41,6 +41,8 @@ export type MentorMaterialDraft = {
   materialType: MaterialType
   summary: string | null
   articleBody: string | null
+  /** 'html' for articles written in the rich-text editor; older articles are 'plain'. */
+  articleFormat: 'plain' | 'html'
   assetPath: string | null
   externalUrl: string | null
   durationSeconds: number | null
@@ -101,6 +103,7 @@ type Row = QueryResultRow & {
   lesson_position: string | number | null
   lesson_summary: string | null
   article_body: string | null
+  article_format?: string | null
   asset_path: string | null
   external_url: string | null
   duration_seconds: string | number | null
@@ -210,6 +213,7 @@ function build(rows: Row[]): MentorMaterialCurriculum | null {
         position: Number(row.lesson_position),
         summary: row.lesson_summary,
         articleBody: row.article_body,
+        articleFormat: row.article_format === 'html' ? 'html' : 'plain',
         assetPath: row.asset_path,
         externalUrl: row.external_url,
         durationSeconds: row.duration_seconds === null ? null : Number(row.duration_seconds),
@@ -329,6 +333,7 @@ function settingsValues(draft: MentorMaterialDraft) {
     draft.completionThreshold,
     draft.maxAttempts,
     draft.embedKind,
+    draft.articleFormat,
   ] as const
 }
 
@@ -342,7 +347,7 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
          course.id as course_id, course.status as course_status, course.navigation_mode,
          section.id as section_id, section.title as section_title, section.position as section_position,
          lesson.id as lesson_id, lesson.title as lesson_title, lesson.lesson_type, lesson.position as lesson_position,
-         lesson.summary as lesson_summary, lesson.article_body, lesson.asset_path, lesson.external_url,
+         lesson.summary as lesson_summary, lesson.article_body, lesson.article_format, lesson.asset_path, lesson.external_url,
          lesson.duration_seconds, lesson.is_preview, lesson.is_downloadable, lesson.is_published,
          lesson.release_mode, lesson.release_at, lesson.drip_delay_days, lesson.prerequisite_lesson_id,
          lesson.completion_rule, lesson.completion_threshold, lesson.max_attempts, lesson.embed_kind,
@@ -400,9 +405,9 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
            section_id, title, lesson_type, position, summary, article_body, asset_path, external_url,
            duration_seconds, is_preview, is_downloadable, is_published, release_mode, release_at,
            drip_delay_days, prerequisite_lesson_id, completion_rule, completion_threshold, max_attempts, embed_kind,
-           created_at, updated_at
+           article_format, created_at, updated_at
          ) values (
-           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21,
            now(), now()
          ) returning id`,
         [sectionId, draft.title, draft.materialType, nextPosition, ...settingsValues(draft).slice(2)],
@@ -433,7 +438,7 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
              external_url = $8, duration_seconds = $9, is_preview = $10, is_downloadable = $11,
              is_published = $12, release_mode = $13, release_at = $14, drip_delay_days = $15,
              prerequisite_lesson_id = $16, completion_rule = $17, completion_threshold = $18,
-             max_attempts = $19, embed_kind = $20, updated_at = now()
+             max_attempts = $19, embed_kind = $20, article_format = $21, updated_at = now()
          from public.learning_course_sections section
          where lesson.id = $1 and section.course_id = $2 and section.id = lesson.section_id and lesson.removed_at is null
          returning lesson.id`,

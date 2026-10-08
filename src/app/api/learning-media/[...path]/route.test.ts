@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { getVerifiedUser, getMediaObject } = vi.hoisted(() => ({
+const { getVerifiedUser, getMediaObject, isPublicCourseThumbnail } = vi.hoisted(() => ({
   getVerifiedUser: vi.fn(),
   getMediaObject: vi.fn(),
+  isPublicCourseThumbnail: vi.fn(),
 }))
 
 vi.mock('@/features/auth/queries', () => ({ getVerifiedUser }))
 vi.mock('@/lib/aws/storage', () => ({ getMediaObject }))
+vi.mock('@/features/learning/public-course-repository', () => ({ publicCourseRepository: { isPublicCourseThumbnail } }))
 
 const userId = '11111111-1111-4111-8111-111111111111'
 const courseId = '22222222-2222-4222-8222-222222222222'
@@ -22,6 +24,7 @@ describe('GET /api/learning-media/[...path]', () => {
     vi.resetModules()
     vi.clearAllMocks()
     getVerifiedUser.mockResolvedValue({ id: userId, email: 'captain@example.com' })
+    isPublicCourseThumbnail.mockResolvedValue(false)
     getMediaObject.mockResolvedValue({
       body: new TextEncoder().encode('image-bytes'),
       contentType: 'image/webp',
@@ -84,5 +87,34 @@ describe('GET /api/learning-media/[...path]', () => {
     )
 
     expect(response.status).toBe(404)
+  })
+
+  it('serves a public course’s cover to signed-out visitors and link-preview crawlers, cacheable briefly', async () => {
+    getVerifiedUser.mockResolvedValueOnce(null)
+    isPublicCourseThumbnail.mockResolvedValueOnce(true)
+    const { GET } = await loadRoute()
+
+    const response = await GET(
+      new Request(`https://seaandshore.example/api/learning-media/${path.join('/')}`),
+      { params: Promise.resolve({ path }) },
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('public, max-age=600')
+    expect(isPublicCourseThumbnail).toHaveBeenCalledWith(path.join('/'))
+  })
+
+  it('keeps a draft or unlisted course’s cover private', async () => {
+    getVerifiedUser.mockResolvedValueOnce(null)
+    isPublicCourseThumbnail.mockResolvedValueOnce(false)
+    const { GET } = await loadRoute()
+
+    const response = await GET(
+      new Request(`https://seaandshore.example/api/learning-media/${path.join('/')}`),
+      { params: Promise.resolve({ path }) },
+    )
+
+    expect(response.status).toBe(401)
+    expect(getMediaObject).not.toHaveBeenCalled()
   })
 })

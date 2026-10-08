@@ -7,6 +7,7 @@ import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
 import { learningMediaRepository } from './media-repository'
 import { ASSIGNMENT_DEFAULTS } from './assignment-policy'
+import { articleImagePaths, articlePlainText, sanitizeArticleHtml } from './article-html'
 import { mentorMaterialRepository, type MentorMaterialDraft, type MaterialType } from './mentor-material-repository'
 import type { LearningMediaKind } from './media-policy'
 
@@ -48,6 +49,7 @@ const materialSchema = z.object({
   materialType: materialTypeSchema,
   summary: nullableText(2000),
   articleBody: nullableText(100000),
+  articleFormat: z.enum(['plain', 'html']).default('plain'),
   assetPath: nullableText(1024),
   externalUrl: nullableUrl,
   durationSeconds: z.union([z.null(), z.number().int().nonnegative()]),
@@ -114,6 +116,9 @@ function errorMessage(error: unknown) {
     if (error.message === 'material_not_found') return 'We could not find this material.'
     if (error.message === 'prerequisite_not_found') return 'The prerequisite must belong to this course.'
     if (error.message === 'prerequisite_self') return 'A material cannot depend on itself.'
+    if (error.message === 'article_empty') return 'Article materials require content.'
+    if (error.message === 'article_too_long') return 'This article is too long. Split it into two materials.'
+    if (error.message === 'article_image_invalid') return 'An image in this article belongs to another course. Upload it again here.'
   }
   return 'We could not save this material. Please try again.'
 }
@@ -134,6 +139,22 @@ function uploadKind(materialType: MaterialType): LearningMediaKind | null {
     case 'scorm': return 'scorm_package'
     default: return null
   }
+}
+
+/**
+ * Rich-text articles are sanitized on the server before they are saved, and may only show images
+ * uploaded to this course (or, for a draft revision, to the published course it copies).
+ */
+async function prepareArticle(userId: string, courseId: string, draft: MentorMaterialDraft): Promise<MentorMaterialDraft> {
+  if (draft.materialType !== 'article' || draft.articleFormat !== 'html' || !draft.articleBody) return draft
+  const articleBody = sanitizeArticleHtml(draft.articleBody)
+  if (!articlePlainText(articleBody, 'html') && articleImagePaths(articleBody).length === 0) throw new Error('article_empty')
+  if (articleBody.length > 100000) throw new Error('article_too_long')
+  const allowedCourses = await learningMediaRepository.courseMediaScope(userId, courseId)
+  for (const path of articleImagePaths(articleBody)) {
+    if (!allowedCourses.includes(path.split('/')[2] ?? '')) throw new Error('article_image_invalid')
+  }
+  return { ...draft, articleBody }
 }
 
 async function verifyAsset(userId: string, courseId: string, draft: MentorMaterialDraft) {
@@ -158,7 +179,8 @@ export async function createCurriculumMaterial(courseId: string, sectionId: stri
   try {
     const user = await requireAwsUser()
     await verifyAsset(user.id, course.data, material.data)
-    const result = await mentorMaterialRepository.createMaterial(user.id, course.data, section.data, material.data)
+    const draft = await prepareArticle(user.id, course.data, material.data)
+    const result = await mentorMaterialRepository.createMaterial(user.id, course.data, section.data, draft)
     refresh(course.data)
     return { ok: true, materialId: result.materialId }
   } catch (error) {
@@ -175,7 +197,8 @@ export async function updateCurriculumMaterial(courseId: string, materialId: str
   try {
     const user = await requireAwsUser()
     await verifyAsset(user.id, course.data, material.data)
-    await mentorMaterialRepository.updateMaterial(user.id, course.data, materialIdResult.data, material.data)
+    const draft = await prepareArticle(user.id, course.data, material.data)
+    await mentorMaterialRepository.updateMaterial(user.id, course.data, materialIdResult.data, draft)
     refresh(course.data)
     return { ok: true }
   } catch (error) {

@@ -64,6 +64,9 @@ export type CourseReviewLesson = {
   position: number
   summary: string | null
   articleBody: string | null
+  articleFormat?: 'plain' | 'html'
+  /** A rich-text article, sanitized and with images signed, filled in by the review page. */
+  articleHtml?: string | null
   assetPath: string | null
   externalUrl: string | null
   durationSeconds: number | null
@@ -206,6 +209,7 @@ type CourseCurriculumReviewRow = QueryResultRow & {
   lesson_position: string | number | null
   lesson_summary: string | null
   article_body: string | null
+  article_format?: string | null
   asset_path: string | null
   external_url: string | null
   duration_seconds: string | number | null
@@ -383,6 +387,7 @@ export function createLearningAdminRepository(input: {
          lesson.position as lesson_position,
          lesson.summary as lesson_summary,
          lesson.article_body,
+         lesson.article_format,
          lesson.asset_path,
          lesson.external_url,
          lesson.duration_seconds,
@@ -452,6 +457,7 @@ export function createLearningAdminRepository(input: {
           position: Number(row.lesson_position),
           summary: row.lesson_summary,
           articleBody: row.article_body,
+          articleFormat: row.article_format === 'html' ? 'html' : 'plain',
           assetPath: row.asset_path,
           externalUrl: row.external_url,
           durationSeconds: row.duration_seconds === null ? null : Number(row.duration_seconds),

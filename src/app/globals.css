@@ -141,3 +141,24 @@ input[type="file"]:focus-visible {
 @keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
+
+/* Rich-text lesson articles (learner player, admin review and the lesson editor). The HTML is
+   sanitized on the server; these styles only give its allowed elements the design system's look. */
+.lesson-article > * + * { margin-top: 0.85em; }
+.lesson-article h2 { font-size: 1.25rem; line-height: 1.4; font-weight: 700; color: var(--navy-950); margin-top: 1.4em; }
+.lesson-article h3 { font-size: 1.075rem; line-height: 1.45; font-weight: 700; color: var(--navy-950); margin-top: 1.2em; }
+.lesson-article h2:first-child, .lesson-article h3:first-child { margin-top: 0; }
+.lesson-article a { color: var(--ocean-700); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.lesson-article ul { list-style: disc; padding-left: 1.4em; }
+.lesson-article ol { list-style: decimal; padding-left: 1.4em; }
+.lesson-article li + li { margin-top: 0.3em; }
+.lesson-article li > p { margin: 0; }
+.lesson-article blockquote { border-left: 3px solid var(--teal-500); background: var(--mist-50); padding: 0.6em 1em; border-radius: 0 0.75rem 0.75rem 0; color: var(--navy-800); }
+.lesson-article code { background: var(--mist-100); border-radius: 0.35rem; padding: 0.1em 0.35em; font-size: 0.9em; }
+.lesson-article hr { border: 0; border-top: 1px solid var(--mist-200); }
+.lesson-article img { max-width: 100%; height: auto; border-radius: 0.9rem; border: 1px solid var(--mist-200); }
+.lesson-article table { display: block; width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 0.925em; }
+.lesson-article th, .lesson-article td { border: 1px solid var(--mist-200); padding: 0.45em 0.7em; text-align: left; vertical-align: top; min-width: 6rem; }
+.lesson-article th { background: var(--mist-50); font-weight: 700; color: var(--navy-950); }
+.lesson-article .selectedCell { background: var(--ocean-50); }
+.lesson-article.ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--muted); float: left; height: 0; pointer-events: none; }

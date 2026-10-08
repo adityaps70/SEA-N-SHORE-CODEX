@@ -68,6 +68,7 @@ const curriculum: MentorMaterialCurriculum = {
       position: 0,
       summary: null,
       articleBody: null,
+      articleFormat: 'plain',
       assetPath: null,
       externalUrl: 'https://example.com/bridge-video',
       durationSeconds: 600,
