@@ -10,6 +10,7 @@ import { downscaleImage, isDownscalableImage } from '@/lib/images/downscale-imag
 import { createCommunity, type CreateCommunityState } from '../create-actions'
 import { requestCommunityMediaUploadAction, completeCommunityMediaUploadAction } from '../media-actions'
 import { CREATE_AS_SELF } from '../eligibility'
+import { COMMUNITY_MEDIA_FAILURE_NOTICE, communityMediaCancelDestination, uploadRemainingCreationImages } from '../creation-media-flow'
 import { COMMUNITY_IMAGE_CONTENT_TYPES, validateCommunityImage, type CommunityMediaKind } from '../media'
 import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type GroupJoinPolicy, type GroupVisibility } from '../types'
 
@@ -139,7 +140,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
     setCropUploadError('')
     setUploadNotice(true)
     // Keep the destination available even when client-side navigation is unavailable.
-    router.push(`/community/${group.slug}?mediaUpload=failed`)
+    router.push(communityMediaCancelDestination(group.slug))
   }
 
   async function uploadRemaining(group: { id: string; slug: string }) {
@@ -147,18 +148,13 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
     uploadRunning.current = true
     setUploading(true)
     try {
-      for (const kind of ['cover', 'icon'] as const) {
-        if (completedKinds.current.includes(kind)) continue
-        const file = selectedImages.current[kind]
-        if (!file) continue
-        try {
-          await uploadOne(group.id, kind, file)
-          completedKinds.current.push(kind)
-        } catch {
-          setCropUploadError('Upload failed, try again')
-          setCropping({ kind, file })
-          return
-        }
+      const result = await uploadRemainingCreationImages(
+        group.id, selectedImages.current, completedKinds.current, uploadOne,
+      )
+      if (!result.success) {
+        setCropUploadError('Upload failed, try again')
+        setCropping({ kind: result.kind, file: result.file })
+        return
       }
       router.push(`/community/${group.slug}`)
     } finally {
@@ -306,7 +302,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
         </div>
       </section>
 
-      {uploadNotice && createdGroup ? <p role="status" className="rounded-xl bg-amber-50 px-3 py-2 text-sm">Community created. The banner/photo didn’t upload — you can add it from the community page. <Link href={`/community/${createdGroup.slug}`} className="underline">Open community</Link></p> : null}
+      {uploadNotice && createdGroup ? <p role="status" className="rounded-xl bg-amber-50 px-3 py-2 text-sm">{COMMUNITY_MEDIA_FAILURE_NOTICE}. <Link href={`/community/${createdGroup.slug}`} className="underline">Open community</Link></p> : null}
       {error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
       <div className="flex flex-wrap items-center gap-3">
