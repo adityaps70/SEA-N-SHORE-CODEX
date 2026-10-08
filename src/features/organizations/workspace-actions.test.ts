@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   updateBranding: vi.fn(),
   updateLogoPath: vi.fn(),
   updateCoverPath: vi.fn(),
-  putMediaObject: vi.fn(),
+  createMediaUploadUrl: vi.fn(),
+  headMediaObject: vi.fn(),
   deleteMediaObject: vi.fn(),
   revalidatePath: vi.fn(),
 }))
@@ -15,7 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/access/server', () => ({ requireCapability: mocks.requireCapability }))
-vi.mock('@/lib/aws/storage', () => ({ putMediaObject: mocks.putMediaObject, deleteMediaObject: mocks.deleteMediaObject }))
+vi.mock('@/lib/aws/storage', () => ({ createMediaUploadUrl: mocks.createMediaUploadUrl, headMediaObject: mocks.headMediaObject, deleteMediaObject: mocks.deleteMediaObject }))
 vi.mock('./workspace-repository', () => ({
   organizationWorkspaceRepository: {
     getById: mocks.getById,
@@ -25,7 +26,7 @@ vi.mock('./workspace-repository', () => ({
   },
 }))
 
-import { updateOrganizationBranding } from './workspace-actions'
+import { updateOrganizationBranding, requestOrganizationMediaUploadAction, completeOrganizationMediaUploadAction } from './workspace-actions'
 
 const companyId = '22222222-2222-4222-8222-222222222222'
 
@@ -56,7 +57,8 @@ beforeEach(() => {
   mocks.updateBranding.mockResolvedValue(true)
   mocks.updateLogoPath.mockResolvedValue(true)
   mocks.updateCoverPath.mockResolvedValue(true)
-  mocks.putMediaObject.mockResolvedValue(undefined)
+  mocks.createMediaUploadUrl.mockResolvedValue('https://s3.example/signed')
+  mocks.headMediaObject.mockResolvedValue({ contentType: 'image/webp', contentLength: 1234 })
   mocks.deleteMediaObject.mockResolvedValue(undefined)
 })
 
@@ -89,38 +91,35 @@ describe('updateOrganizationBranding page details', () => {
     expect(mocks.updateBranding).not.toHaveBeenCalled()
   })
 
-  it('uploads a new cover image, stores its path and removes the old one', async () => {
-    const result = await updateOrganizationBranding({}, form({ tagline: '', cover: image('cover.webp', 'image/webp') }))
+  it('issues authenticated size-bound ticket and finalizes a verified organization cover', async () => {
+    const ticket = await requestOrganizationMediaUploadAction({ companyId, kind: 'cover', contentType: 'image/webp', size: 1234 })
+    expect(ticket.success).toBe(true)
+    expect(mocks.createMediaUploadUrl).toHaveBeenCalledWith({ key: ticket.key, contentType: 'image/webp', contentLength: 1234 })
+    const result = await completeOrganizationMediaUploadAction({ companyId, kind: 'cover', key: ticket.key! })
     expect(result).toEqual({ success: true })
-    const key = mocks.putMediaObject.mock.calls[0]?.[0]?.key as string
-    expect(key).toMatch(new RegExp(`^organizations/${companyId}/cover-[0-9a-f-]+\\.webp$`))
-    expect(mocks.updateCoverPath).toHaveBeenCalledWith(companyId, key)
+    expect(mocks.updateCoverPath).toHaveBeenCalledWith(companyId, ticket.key)
     expect(mocks.deleteMediaObject).toHaveBeenCalledWith('organizations/old-cover.jpg')
-    expect(mocks.updateBranding).toHaveBeenCalledWith(companyId, expect.objectContaining({ tagline: null }))
   })
 
   it('removes the cover image when asked', async () => {
     await updateOrganizationBranding({}, form({ removeCover: 'on' }))
     expect(mocks.updateCoverPath).toHaveBeenCalledWith(companyId, null)
     expect(mocks.deleteMediaObject).toHaveBeenCalledWith('organizations/old-cover.jpg')
-    expect(mocks.putMediaObject).not.toHaveBeenCalled()
+
   })
 
-  it('rejects covers that are not images or are too large, before uploading anything', async () => {
-    const wrongType = await updateOrganizationBranding({}, form({ cover: image('cover.gif', 'image/gif') }))
-    expect(wrongType.error).toBe('Cover image must be a JPG, PNG or WebP image up to 5 MB.')
-    const tooLarge = await updateOrganizationBranding({}, form({ cover: image('cover.jpg', 'image/jpeg', 5 * 1024 * 1024 + 1) }))
-    expect(tooLarge.error).toBe('Cover image must be a JPG, PNG or WebP image up to 5 MB.')
-    expect(mocks.putMediaObject).not.toHaveBeenCalled()
+  it('rejects oversize and unsupported image tickets before S3', async () => {
+    expect((await requestOrganizationMediaUploadAction({ companyId, kind: 'cover', contentType: 'image/gif', size: 2 })).error).toMatch(/5 MB/)
+    expect((await requestOrganizationMediaUploadAction({ companyId, kind: 'cover', contentType: 'image/webp', size: 5 * 1024 * 1024 + 1 })).error).toMatch(/5 MB/)
+    expect(mocks.createMediaUploadUrl).not.toHaveBeenCalled()
   })
 
-  it('deletes freshly uploaded images when saving fails, and keeps the form contents', async () => {
-    mocks.updateBranding.mockRejectedValue(new Error('db down'))
-    const result = await updateOrganizationBranding({}, form({ logo: image('logo.png', 'image/png'), cover: image('cover.jpg') }))
-    expect(result.error).toBe('We could not update the organization workspace. Your entered information is still here.')
-    expect(mocks.putMediaObject).toHaveBeenCalledTimes(2)
-    const uploaded = mocks.putMediaObject.mock.calls.map((call) => call[0].key)
-    expect(mocks.deleteMediaObject.mock.calls.map((call) => call[0]).sort()).toEqual([...uploaded].sort())
+  it('does not replace branding paths for invalid S3 objects', async () => {
+    mocks.headMediaObject.mockResolvedValueOnce({ contentType: 'image/gif', contentLength: 100 })
+    const result = await completeOrganizationMediaUploadAction({
+      companyId, kind: 'cover', key: `organizations/${companyId}/cover-abcd.webp`,
+    })
+    expect(result.success).not.toBe(true)
     expect(mocks.updateCoverPath).not.toHaveBeenCalled()
   })
 
