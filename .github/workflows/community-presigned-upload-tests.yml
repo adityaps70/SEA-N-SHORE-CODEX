@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 jobs:
   targeted-tests:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
