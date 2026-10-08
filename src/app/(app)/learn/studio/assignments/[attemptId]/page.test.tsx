@@ -55,6 +55,7 @@ const review = {
   lessonTitle: 'Inspection assignment',
   learnerName: 'Test Learner',
   assignmentInstructions: 'Submit a structured inspection readiness response.',
+  attachments: [],
   previousAttempts: [{
     id: '44444444-4444-4444-8444-444444444444',
     attemptNumber: 1,
@@ -67,6 +68,7 @@ const review = {
     passed: false,
     feedback: 'Add stronger evidence.',
     gradedAt: '2026-09-15T10:00:00.000Z',
+    attachments: [],
   }],
 } as const
 
@@ -121,11 +123,28 @@ describe('/learn/studio/assignments/[attemptId]', () => {
 
     render(await MentorAssignmentReviewPage({ params: Promise.resolve({ attemptId }) }))
 
-    expect(mocks.createMediaReadUrl).toHaveBeenCalledWith('learning/assignments/evidence.pdf')
+    expect(mocks.createMediaReadUrl).toHaveBeenCalledWith('learning/assignments/evidence.pdf', 300)
     expect(screen.getByRole('link', { name: /open learner attachment/i })).toHaveAttribute(
       'href',
       'https://signed.example/assignment-evidence.pdf',
     )
+  })
+
+  it('lists every attached file through the access-checked download route, never a pre-signed URL', async () => {
+    mocks.getForMentor.mockResolvedValue({
+      ...review,
+      attachmentPath: 'learning-submissions/e/l/s/',
+      attachments: [
+        { id: '66666666-6666-4666-8666-666666666666', fileName: 'inspection-report.pdf', contentType: 'application/pdf', sizeBytes: 2_500_000 },
+        { id: '77777777-7777-4777-8777-777777777777', fileName: 'deck-photo.jpg', contentType: 'image/jpeg', sizeBytes: 300_000 },
+      ],
+    })
+
+    render(await MentorAssignmentReviewPage({ params: Promise.resolve({ attemptId }) }))
+
+    expect(screen.getByRole('link', { name: /inspection-report\.pdf/ })).toHaveAttribute('href', '/api/learn/assignment-attachments/66666666-6666-4666-8666-666666666666')
+    expect(screen.getByRole('link', { name: /deck-photo\.jpg/ })).toHaveAttribute('href', '/api/learn/assignment-attachments/77777777-7777-4777-8777-777777777777')
+    expect(mocks.createMediaReadUrl).not.toHaveBeenCalled()
   })
 
   it('fails closed when the attempt is not owned by the authenticated active mentor', async () => {

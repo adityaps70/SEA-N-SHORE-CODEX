@@ -84,7 +84,8 @@ describe('learning admin course review repository', () => {
       updatedAt: '2026-09-14T12:00:00.000Z',
       curriculum: [],
       publisherType: 'personal',
-      review: { submissionNumber: 0, submittedAt: null, previousReview: null, changesSinceLastReview: null },
+      review: { submissionNumber: 0, submittedAt: null, previousReview: null, changesSinceLastReview: null, changesFromLiveCourse: null },
+      revisionOf: null,
     }])
 
     const listQuery = seen.find((entry) => entry.text.includes('from public.learning_courses course'))

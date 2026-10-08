@@ -5,6 +5,8 @@ import { z } from 'zod'
 import { requireAwsUser } from '@/features/auth/aws-queries'
 import { courseEditLockedCopy } from './course-workflow'
 import { verifyLearningMediaObject } from './media'
+import { learningMediaRepository } from './media-repository'
+import { ASSIGNMENT_DEFAULTS } from './assignment-policy'
 import { mentorMaterialRepository, type MentorMaterialDraft, type MaterialType } from './mentor-material-repository'
 import type { LearningMediaKind } from './media-policy'
 
@@ -36,6 +38,9 @@ const assignmentSchema = z.object({
   instructions: z.string().trim().min(1).max(12000),
   acceptedExtensions: z.array(z.string().trim().regex(/^\.[a-z0-9]{1,10}$/i)).max(20),
   maxUploadBytes: z.number().int().min(1).max(100 * 1024 * 1024),
+  maxFiles: z.number().int().min(1, 'Allow at least one file.').max(10, 'Allow at most 10 files.').default(ASSIGNMENT_DEFAULTS.maxFiles),
+  maxPoints: z.number().int().min(1, 'Points must be at least 1.').max(100000).default(ASSIGNMENT_DEFAULTS.maxPoints),
+  passingPercentage: z.number().int().min(1, 'The pass mark must be between 1% and 100%.').max(100, 'The pass mark must be between 1% and 100%.').default(ASSIGNMENT_DEFAULTS.passingPercentage),
 })
 
 const materialSchema = z.object({
@@ -135,7 +140,13 @@ async function verifyAsset(userId: string, courseId: string, draft: MentorMateri
   if (!draft.assetPath) return
   const kind = uploadKind(draft.materialType)
   if (!kind) return
-  await verifyLearningMediaObject({ userId, courseId, kind, storagePath: draft.assetPath })
+  await verifyLearningMediaObject({
+    userId,
+    courseId,
+    kind,
+    storagePath: draft.assetPath,
+    alreadyAttached: await learningMediaRepository.isMediaReferenced(userId, courseId, draft.assetPath),
+  })
 }
 
 export async function createCurriculumMaterial(courseId: string, sectionId: string, input: MentorMaterialDraft): Promise<CreateResult> {

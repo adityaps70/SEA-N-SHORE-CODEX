@@ -223,7 +223,7 @@ describe('learning course server actions', () => {
 
   it.each([
     ['submitted', /not saved because this course is in review\. Withdraw it from review/],
-    ['published', /not saved because this course is published/],
+    ['published', /not saved because this course is live\. Choose “Edit course” .* draft copy/],
     ['archived', /not saved because this course is archived/],
   ] as const)('tells the trainer exactly why a save on a %s course was refused', async (status, copy) => {
     mocks.updateCourse.mockRejectedValueOnce(new CourseEditLockedError(status))

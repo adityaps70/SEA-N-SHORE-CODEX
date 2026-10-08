@@ -9,6 +9,7 @@ import { CourseEditSession } from '@/features/learning/components/course-edit-se
 import { CourseForm } from '@/features/learning/components/course-form'
 import { CourseSubmitControl } from '@/features/learning/components/course-submit-control'
 import { CourseWithdrawControl } from '@/features/learning/components/course-withdraw-control'
+import { CourseRevisionDiscardControl, CourseRevisionStartControl } from '@/features/learning/components/course-revision-controls'
 import { MentorCurriculumEditor } from '@/features/learning/components/mentor-curriculum-editor'
 import {
   courseRepository,
@@ -49,7 +50,55 @@ function ReviewerNote({ course, label = 'Reviewer note' }: { course: MentorOwned
   )
 }
 
+function RevisionBanner({ course }: { course: MentorOwnedCourseDetail }) {
+  const live = course.revisionOf!
+  if (course.revisionClosed) {
+    return (
+      <section aria-label="Review status" className="mt-5 rounded-2xl border border-mist-200 bg-mist-50 p-5 text-navy-950">
+        <p className="flex items-center gap-2 font-bold">
+          <Archive aria-hidden="true" className="size-5 shrink-0" /> These changes are closed
+        </p>
+        <p className="mt-1 text-sm leading-6 text-muted">
+          They were either approved and applied to the live course, or discarded. This copy is kept as a record and can’t be edited.
+        </p>
+        <Link href={`/learn/studio/courses/${live.courseId}/edit`} className="mt-3 inline-flex text-sm font-bold text-ocean-700 underline-offset-2 hover:underline">Go to the live course</Link>
+      </section>
+    )
+  }
+  if (course.status === 'submitted') {
+    const submittedOn = formatDate(course.submittedAt)
+    return (
+      <section aria-label="Review status" className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-5 text-sky-950">
+        <p className="flex items-center gap-2 font-bold">
+          <Clock3 aria-hidden="true" className="size-5 shrink-0" /> Changes in review{submittedOn ? ` · submitted ${submittedOn}` : ''}
+        </p>
+        <p className="mt-1 text-sm leading-6">
+          Learners keep the live version while Sea N Shore reviews your changes. When they’re approved, they replace it and every learner’s progress carries over. To change something, withdraw them from review first.
+        </p>
+        {course.lastReview?.decision === 'changes_requested' ? <ReviewerNote course={course} label="Feedback from the last review" /> : null}
+        <CourseWithdrawControl courseId={course.id} />
+      </section>
+    )
+  }
+  const requested = course.status === 'changes_requested'
+  return (
+    <section aria-label="Review status" className={`mt-5 rounded-2xl border p-5 ${requested ? 'border-amber-200 bg-amber-50 text-amber-950' : 'border-teal-200 bg-teal-50 text-navy-950'}`}>
+      <p className="flex items-center gap-2 font-bold">
+        {requested
+          ? <><AlertTriangle aria-hidden="true" className="size-5 shrink-0" /> Changes requested by Sea N Shore review</>
+          : <><FilePenLine aria-hidden="true" className="size-5 shrink-0" /> Editing a draft copy of your published course</>}
+      </p>
+      <p className="mt-1 text-sm leading-6">
+        Learners keep seeing the live version until Sea N Shore approves these changes. Save as you go, then submit them for review.
+      </p>
+      {requested ? <ReviewerNote course={course} /> : null}
+      <CourseRevisionDiscardControl revisionCourseId={course.id} liveCourseId={live.courseId} />
+    </section>
+  )
+}
+
 function StatusBanner({ course }: { course: MentorOwnedCourseDetail }) {
+  if (course.revisionOf) return <RevisionBanner course={course} />
   if (course.status === 'draft') {
     if (course.lastReview?.decision !== 'changes_requested' || !course.lastReview.note) return null
     return (
@@ -102,7 +151,9 @@ function StatusBanner({ course }: { course: MentorOwnedCourseDetail }) {
         <p className="flex items-center gap-2 font-bold">
           <Archive aria-hidden="true" className="size-5 shrink-0" /> Archived · read-only
         </p>
-        <p className="mt-1 text-sm leading-6 text-muted">This course has been removed from the marketplace and can no longer be edited.</p>
+        <p className="mt-1 text-sm leading-6 text-muted">
+          This course is off the catalogue and closed to new learners. Learners already enrolled keep full access, including their certificates. Sea N Shore can return it to the catalogue.
+        </p>
       </section>
     )
   }
@@ -110,12 +161,15 @@ function StatusBanner({ course }: { course: MentorOwnedCourseDetail }) {
   return (
     <section aria-label="Review status" className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-950">
       <p className="flex items-center gap-2 font-bold">
-        <BadgeCheck aria-hidden="true" className="size-5 shrink-0" /> Published · read-only
+        <BadgeCheck aria-hidden="true" className="size-5 shrink-0" /> Published · live
       </p>
       <p className="mt-1 text-sm leading-6">
-        This course is live exactly as the reviewer approved it, and enrolled learners’ progress depends on it. Published courses can’t be edited in Learning Studio yet.
+        {course.openRevision
+          ? 'You have changes to this course in progress. Learners keep this version until Sea N Shore approves them.'
+          : 'Learners see this version. To change it, edit a draft copy: learners keep this version until Sea N Shore approves your changes, and their progress carries over.'}
       </p>
       {course.lastReview?.note ? <ReviewerNote course={course} /> : null}
+      <CourseRevisionStartControl courseId={course.id} openRevision={course.openRevision ?? null} />
     </section>
   )
 }
@@ -137,10 +191,12 @@ export default async function EditMentorCoursePage({
   ])
   if (!curriculum) return notFound()
 
-  const editable = canMentorEditCourse(course.status)
+  const isRevision = Boolean(course.revisionOf)
+  const editable = canMentorEditCourse(course.status) && !course.revisionClosed
 
   const initialValue: CourseDraftInput = {
-    slug: course.slug,
+    // A draft copy shows (and keeps) the live course's address.
+    slug: course.revisionOf?.slug ?? course.slug,
     title: course.title,
     subtitle: course.subtitle,
     description: course.description,
@@ -162,7 +218,7 @@ export default async function EditMentorCoursePage({
 
   return (
     <div className="mx-auto w-full max-w-6xl py-6 max-md:pt-0 sm:px-6 lg:px-8">
-      <MobilePageBar backHref="/learn/studio" title={editable ? 'Edit course' : 'View course'} />
+      <MobilePageBar backHref="/learn/studio" title={isRevision ? 'Edit published course' : editable ? 'Edit course' : 'View course'} />
       <WorksBestOnComputer>The course editor and SCORM upload work best on a computer. Everything still works here.</WorksBestOnComputer>
       <Link href="/learn/studio" className="inline-flex items-center gap-2 text-sm font-bold text-ocean-700 underline-offset-2 transition-colors hover:text-navy-950 hover:underline max-md:hidden">
         <ArrowLeft aria-hidden="true" className="size-4" /> Learning Studio
@@ -171,14 +227,16 @@ export default async function EditMentorCoursePage({
       <CourseEditSession initialDetailsRevision={course.detailsRevision}>
         <section className="mt-5 rounded-[1.75rem] border border-mist-100 bg-white p-6 shadow-[var(--shadow-card)] sm:p-8">
           <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-700">
-            <FilePenLine aria-hidden="true" className="size-4" /> {editable ? 'Private course draft' : 'Course (read-only)'}
+            <FilePenLine aria-hidden="true" className="size-4" /> {isRevision ? 'Changes to a published course' : editable ? 'Private course draft' : 'Course (read-only)'}
           </p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-navy-950 sm:text-4xl">{editable ? 'Edit course' : 'View course'}</h1>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-navy-950 sm:text-4xl">{isRevision ? 'Edit published course' : editable ? 'Edit course' : 'View course'}</h1>
           <p className="mt-2 break-words text-lg font-semibold text-navy-900">{course.title}</p>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            {editable
-              ? 'Refine the course foundation and curriculum, save your changes, then submit it for Sea N Shore review. Learners cannot access this course while it remains editable in Learning Studio.'
-              : 'You can review everything in this course below. Fields are locked in its current status.'}
+            {isRevision
+              ? 'Change anything below: details, sections, materials, quizzes or price. Learners keep the live version until your changes are approved. A new price applies to new purchases only.'
+              : editable
+                ? 'Refine the course foundation and curriculum, save your changes, then submit it for Sea N Shore review. Learners cannot access this course while it remains editable in Learning Studio.'
+                : 'You can review everything in this course below. Fields are locked in its current status.'}
           </p>
         </section>
 
@@ -191,6 +249,7 @@ export default async function EditMentorCoursePage({
             courseId={course.id}
             publisherName={course.publisherName}
             readOnly={!editable}
+            slugLocked={isRevision}
             sellerFees={{ default: sellerFee }}
           />
         </div>
@@ -201,7 +260,11 @@ export default async function EditMentorCoursePage({
 
         {editable ? (
           <div className="mt-5">
-            <CourseSubmitControl courseId={course.id} resubmission={course.status === 'changes_requested' || course.lastReview?.decision === 'changes_requested'} />
+            <CourseSubmitControl
+              courseId={course.id}
+              revision={isRevision}
+              resubmission={course.status === 'changes_requested' || course.lastReview?.decision === 'changes_requested'}
+            />
           </div>
         ) : null}
       </CourseEditSession>

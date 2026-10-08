@@ -39,6 +39,7 @@ import type {
   MentorMaterialCurriculum,
   MentorMaterialDraft,
 } from '../mentor-material-repository'
+import { ASSIGNMENT_DEFAULTS } from '../assignment-policy'
 import type {
   MentorQuizDefinition,
   MentorQuizDefinitionInput,
@@ -77,14 +78,24 @@ type MaterialFormState = {
   assignmentInstructions: string
   assignmentExtensions: string
   assignmentMaxUploadMb: string
+  assignmentMaxFiles: string
+  assignmentMaxPoints: string
+  assignmentPassingPercentage: string
 }
+
+/** New assignments accept common document, image and archive files, up to 20 MB and 5 files each. */
+const NEW_ASSIGNMENT_EXTENSIONS = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.zip'
+
 
 type QuizDraftState = {
   passPercentage: string
   instructions: string
+  // Saved questions and options keep their id, so saving updates them in place and learners'
+  // attempts stay attached; new ones have none until saved.
   questions: Array<{
+    id?: string
     prompt: string
-    options: Array<{ label: string; isCorrect: boolean }>
+    options: Array<{ id?: string; label: string; isCorrect: boolean }>
   }>
 }
 
@@ -144,8 +155,11 @@ function emptyMaterialState(): MaterialFormState {
     maxAttempts: '',
     embedKind: 'youtube',
     assignmentInstructions: '',
-    assignmentExtensions: '.pdf,.doc,.docx,.jpg,.png',
-    assignmentMaxUploadMb: '10',
+    assignmentExtensions: NEW_ASSIGNMENT_EXTENSIONS,
+    assignmentMaxUploadMb: String(ASSIGNMENT_DEFAULTS.maxUploadBytes / (1024 * 1024)),
+    assignmentMaxFiles: String(ASSIGNMENT_DEFAULTS.maxFiles),
+    assignmentMaxPoints: String(ASSIGNMENT_DEFAULTS.maxPoints),
+    assignmentPassingPercentage: String(ASSIGNMENT_DEFAULTS.passingPercentage),
   }
 }
 
@@ -178,8 +192,13 @@ function materialStateFromPersisted(material: MentorMaterial): MaterialFormState
     maxAttempts: material.maxAttempts === null ? '' : String(material.maxAttempts),
     embedKind: material.embedKind ?? 'youtube',
     assignmentInstructions: material.assignment?.instructions ?? '',
-    assignmentExtensions: material.assignment?.acceptedExtensions.join(',') ?? '.pdf,.doc,.docx,.jpg,.png',
-    assignmentMaxUploadMb: material.assignment ? String(Math.max(1, Math.round(material.assignment.maxUploadBytes / (1024 * 1024)))) : '10',
+    assignmentExtensions: material.assignment?.acceptedExtensions.join(',') ?? NEW_ASSIGNMENT_EXTENSIONS,
+    assignmentMaxUploadMb: material.assignment
+      ? String(Math.max(1, Math.round(material.assignment.maxUploadBytes / (1024 * 1024))))
+      : String(ASSIGNMENT_DEFAULTS.maxUploadBytes / (1024 * 1024)),
+    assignmentMaxFiles: String(material.assignment?.maxFiles ?? ASSIGNMENT_DEFAULTS.maxFiles),
+    assignmentMaxPoints: String(material.assignment?.maxPoints ?? ASSIGNMENT_DEFAULTS.maxPoints),
+    assignmentPassingPercentage: String(material.assignment?.passingPercentage ?? ASSIGNMENT_DEFAULTS.passingPercentage),
   }
 }
 
@@ -202,7 +221,7 @@ function materialPayload(form: MaterialFormState): MentorMaterialDraft {
     .map((extension) => extension.trim().toLowerCase())
     .filter(Boolean)
     .map((extension) => extension.startsWith('.') ? extension : `.${extension}`)
-  const maxUploadMb = Math.max(1, numericOrNull(form.assignmentMaxUploadMb) ?? 10)
+  const maxUploadMb = Math.max(1, numericOrNull(form.assignmentMaxUploadMb) ?? ASSIGNMENT_DEFAULTS.maxUploadBytes / (1024 * 1024))
 
   return {
     title: form.title,
@@ -228,6 +247,9 @@ function materialPayload(form: MaterialFormState): MentorMaterialDraft {
           instructions: form.assignmentInstructions.trim(),
           acceptedExtensions: assignmentExtensions,
           maxUploadBytes: Math.round(maxUploadMb * 1024 * 1024),
+          maxFiles: numericOrNull(form.assignmentMaxFiles) ?? ASSIGNMENT_DEFAULTS.maxFiles,
+          maxPoints: numericOrNull(form.assignmentMaxPoints) ?? ASSIGNMENT_DEFAULTS.maxPoints,
+          passingPercentage: numericOrNull(form.assignmentPassingPercentage) ?? ASSIGNMENT_DEFAULTS.passingPercentage,
         }
       : null,
   }
@@ -239,8 +261,9 @@ function quizStateFromPersisted(quiz: MentorQuizDefinition | null): QuizDraftSta
     passPercentage: String(quiz.passPercentage),
     instructions: quiz.instructions ?? '',
     questions: quiz.questions.map((question) => ({
+      id: question.id,
       prompt: question.prompt,
-      options: question.options.map((option) => ({ label: option.label, isCorrect: option.isCorrect })),
+      options: question.options.map((option) => ({ id: option.id, label: option.label, isCorrect: option.isCorrect })),
     })),
   }
 }
@@ -250,8 +273,9 @@ function quizPayload(draft: QuizDraftState): MentorQuizDefinitionInput {
     passPercentage: Number(draft.passPercentage),
     instructions: draft.instructions.trim() || null,
     questions: draft.questions.map((question) => ({
+      id: question.id ?? null,
       prompt: question.prompt,
-      options: question.options.map((option) => ({ label: option.label, isCorrect: option.isCorrect })),
+      options: question.options.map((option) => ({ id: option.id ?? null, label: option.label, isCorrect: option.isCorrect })),
     })),
   }
 }
@@ -415,10 +439,23 @@ function MaterialFields({
               <input aria-label={`${prefix} assignment extensions`} className={inputClassName()} value={form.assignmentExtensions} onChange={(event) => update('assignmentExtensions', event.target.value)} placeholder=".pdf,.docx,.jpg" />
             </label>
             <label className="text-sm font-semibold text-navy-950">
-              Maximum upload size (MB)
+              Maximum upload size per file (MB)
               <input aria-label={`${prefix} assignment maximum upload MB`} type="number" min="1" max="100" className={inputClassName()} value={form.assignmentMaxUploadMb} onChange={(event) => update('assignmentMaxUploadMb', event.target.value)} />
             </label>
+            <label className="text-sm font-semibold text-navy-950">
+              Files per submission
+              <input aria-label={`${prefix} assignment files per submission`} type="number" min="1" max="10" className={inputClassName()} value={form.assignmentMaxFiles} onChange={(event) => update('assignmentMaxFiles', event.target.value)} />
+            </label>
+            <label className="text-sm font-semibold text-navy-950">
+              Points
+              <input aria-label={`${prefix} assignment points`} type="number" min="1" max="100000" className={inputClassName()} value={form.assignmentMaxPoints} onChange={(event) => update('assignmentMaxPoints', event.target.value)} />
+            </label>
+            <label className="text-sm font-semibold text-navy-950">
+              Pass mark (%)
+              <input aria-label={`${prefix} assignment pass mark`} type="number" min="1" max="100" className={inputClassName()} value={form.assignmentPassingPercentage} onChange={(event) => update('assignmentPassingPercentage', event.target.value)} />
+            </label>
           </div>
+          <p className="mt-2 text-xs leading-5 text-muted">Leave the extensions empty to accept any supported document, image or ZIP file.</p>
         </section>
       ) : null}
 

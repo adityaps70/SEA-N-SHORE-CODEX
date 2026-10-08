@@ -268,6 +268,8 @@ export function createEnrollmentRepository(input: { query?: EnrollmentQuery } = 
          on section.course_id = course.id
        left join public.learning_lessons lesson
          on lesson.section_id = section.id
+        -- Only published materials count, as in the course player (removed ones are unpublished).
+        and lesson.is_published = true
        left join public.learning_progress progress
          on progress.enrollment_id = enrollment.id
         and progress.lesson_id = lesson.id

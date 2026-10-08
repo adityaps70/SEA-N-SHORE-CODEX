@@ -126,6 +126,7 @@ export async function getLearningMediaReadUrl(input: {
       courseId: parsedCourse.data,
       kind: parsedKind.data,
       storagePath: parsedPath.data,
+      alreadyAttached: await learningMediaRepository.isMediaReferenced(user.id, parsedCourse.data, parsedPath.data),
     })
     return { ok: true, url }
   } catch {

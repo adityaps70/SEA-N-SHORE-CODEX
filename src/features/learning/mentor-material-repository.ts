@@ -3,6 +3,7 @@ import { query as databaseQuery, withTransaction as databaseTransaction, type Da
 import { canMentorEditCourse, type CourseStatus } from './course-workflow'
 import { courseManagerAccessSql } from './course-access'
 import type { MentorQuizDefinition } from './mentor-curriculum-repository'
+import { ASSIGNMENT_DEFAULTS } from './assignment-policy'
 
 export type MaterialType =
   | 'video'
@@ -26,7 +27,14 @@ export type AssignmentDefinitionInput = {
   instructions: string
   acceptedExtensions: string[]
   maxUploadBytes: number
+  /** Most files a learner may attach to one submission (1–10). */
+  maxFiles: number
+  /** Points a submission is graded out of. */
+  maxPoints: number
+  /** Percentage of maxPoints needed to pass. */
+  passingPercentage: number
 }
+
 
 export type MentorMaterialDraft = {
   title: string
@@ -110,6 +118,9 @@ type Row = QueryResultRow & {
   assignment_instructions: string | null
   assignment_extensions: string[] | null
   assignment_max_upload_bytes: string | number | null
+  assignment_max_files?: string | number | null
+  assignment_max_points?: string | number | null
+  assignment_passing_percentage?: string | number | null
   scorm_status: string | null
   scorm_version: string | null
   scorm_source_zip_path: string | null
@@ -217,7 +228,10 @@ function build(rows: Row[]): MentorMaterialCurriculum | null {
           ? {
               instructions: row.assignment_instructions,
               acceptedExtensions: row.assignment_extensions ?? [],
-              maxUploadBytes: Number(row.assignment_max_upload_bytes ?? 10485760),
+              maxUploadBytes: Number(row.assignment_max_upload_bytes ?? ASSIGNMENT_DEFAULTS.maxUploadBytes),
+              maxFiles: Number(row.assignment_max_files ?? ASSIGNMENT_DEFAULTS.maxFiles),
+              maxPoints: Number(row.assignment_max_points ?? ASSIGNMENT_DEFAULTS.maxPoints),
+              passingPercentage: Number(row.assignment_passing_percentage ?? ASSIGNMENT_DEFAULTS.passingPercentage),
             }
           : null,
         scorm: row.scorm_status && row.scorm_source_zip_path
@@ -257,18 +271,41 @@ function build(rows: Row[]): MentorMaterialCurriculum | null {
 
 async function syncAssignment(query: Query, lessonId: string, assignment: AssignmentDefinitionInput | null) {
   if (!assignment) {
-    await query(`delete from public.learning_assignments where lesson_id = $1`, [lessonId])
+    // A material changed away from an assignment keeps its assignment row (and learners'
+    // submissions) when anyone has submitted; otherwise the unused row is removed.
+    await query(
+      `delete from public.learning_assignments assignment
+       where assignment.lesson_id = $1
+         and not exists (
+           select 1 from public.learning_assignment_attempts attempt where attempt.assignment_id = assignment.id
+         )`,
+      [lessonId],
+    )
     return
   }
   await query(
-    `insert into public.learning_assignments (lesson_id, instructions, accepted_extensions, max_upload_bytes, created_at, updated_at)
-     values ($1, $2, $3, $4, now(), now())
+    `insert into public.learning_assignments (
+       lesson_id, instructions, accepted_extensions, max_upload_bytes, max_files, max_points, passing_percentage,
+       created_at, updated_at
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, now(), now())
      on conflict (lesson_id) do update
      set instructions = excluded.instructions,
          accepted_extensions = excluded.accepted_extensions,
          max_upload_bytes = excluded.max_upload_bytes,
+         max_files = excluded.max_files,
+         max_points = excluded.max_points,
+         passing_percentage = excluded.passing_percentage,
          updated_at = now()`,
-    [lessonId, assignment.instructions, assignment.acceptedExtensions, assignment.maxUploadBytes],
+    [
+      lessonId,
+      assignment.instructions,
+      assignment.acceptedExtensions,
+      assignment.maxUploadBytes,
+      assignment.maxFiles,
+      assignment.maxPoints,
+      assignment.passingPercentage,
+    ],
   )
 }
 
@@ -311,19 +348,21 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
          lesson.completion_rule, lesson.completion_threshold, lesson.max_attempts, lesson.embed_kind,
          assignment.instructions as assignment_instructions, assignment.accepted_extensions as assignment_extensions,
          assignment.max_upload_bytes as assignment_max_upload_bytes,
+         assignment.max_files as assignment_max_files, assignment.max_points as assignment_max_points,
+         assignment.passing_percentage as assignment_passing_percentage,
          package.status as scorm_status, package.scorm_version, package.source_zip_path as scorm_source_zip_path,
          package.launch_path as scorm_launch_path, package.processing_error as scorm_processing_error,
          quiz.id as quiz_id, quiz.pass_percentage, quiz.instructions as quiz_instructions,
          question.id as question_id, question.prompt as question_prompt, question.position as question_position,
          option.id as option_id, option.label as option_label, option.position as option_position, option.is_correct as option_is_correct
        from public.learning_courses course
-       left join public.learning_course_sections section on section.course_id = course.id
-       left join public.learning_lessons lesson on lesson.section_id = section.id
+       left join public.learning_course_sections section on section.course_id = course.id and section.removed_at is null
+       left join public.learning_lessons lesson on lesson.section_id = section.id and lesson.removed_at is null
        left join public.learning_assignments assignment on assignment.lesson_id = lesson.id
        left join public.learning_scorm_packages package on package.lesson_id = lesson.id
        left join public.learning_quizzes quiz on quiz.lesson_id = lesson.id
-       left join public.learning_quiz_questions question on question.quiz_id = quiz.id
-       left join public.learning_quiz_options option on option.question_id = question.id
+       left join public.learning_quiz_questions question on question.quiz_id = quiz.id and question.removed_at is null
+       left join public.learning_quiz_options option on option.question_id = question.id and option.removed_at is null
        where course.id = $2 and ${courseManagerAccessSql('course', '$1')}
        order by section.position asc nulls last, section.id asc nulls last,
                 lesson.position asc nulls last, lesson.id asc nulls last,
@@ -338,7 +377,7 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
     return transaction(async (query) => {
       await requireEditableCourse(query, actorId, courseId)
       const section = await query(
-        `select id from public.learning_course_sections where id = $1 and course_id = $2 limit 1`,
+        `select id from public.learning_course_sections where id = $1 and course_id = $2 and removed_at is null limit 1`,
         [sectionId, courseId],
       ) as IdRow[]
       if (!section[0]) throw new Error('section_not_found')
@@ -346,13 +385,13 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
         const prerequisite = await query(
           `select lesson.id from public.learning_lessons lesson
            inner join public.learning_course_sections section on section.id = lesson.section_id
-           where lesson.id = $1 and section.course_id = $2 limit 1`,
+           where lesson.id = $1 and section.course_id = $2 and lesson.removed_at is null limit 1`,
           [draft.prerequisiteLessonId, courseId],
         ) as IdRow[]
         if (!prerequisite[0]) throw new Error('prerequisite_not_found')
       }
       const positions = await query(
-        `select coalesce(max(position), -1) + 1 as next_position from public.learning_lessons where section_id = $1`,
+        `select coalesce(max(position), -1) + 1 as next_position from public.learning_lessons where section_id = $1 and removed_at is null`,
         [sectionId],
       ) as NextPositionRow[]
       const nextPosition = Number(positions[0]?.next_position ?? 0)
@@ -383,7 +422,7 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
         const prerequisite = await query(
           `select lesson.id from public.learning_lessons lesson
            inner join public.learning_course_sections section on section.id = lesson.section_id
-           where lesson.id = $1 and section.course_id = $2 limit 1`,
+           where lesson.id = $1 and section.course_id = $2 and lesson.removed_at is null limit 1`,
           [draft.prerequisiteLessonId, courseId],
         ) as IdRow[]
         if (!prerequisite[0]) throw new Error('prerequisite_not_found')
@@ -396,14 +435,20 @@ export function createMentorMaterialRepository(input: { query?: Query; transacti
              prerequisite_lesson_id = $16, completion_rule = $17, completion_threshold = $18,
              max_attempts = $19, embed_kind = $20, updated_at = now()
          from public.learning_course_sections section
-         where lesson.id = $1 and section.course_id = $2 and section.id = lesson.section_id
+         where lesson.id = $1 and section.course_id = $2 and section.id = lesson.section_id and lesson.removed_at is null
          returning lesson.id`,
         [materialId, courseId, ...settingsValues(draft)],
       ) as IdRow[]
       if (!rows[0]) throw new Error('material_not_found')
       await syncAssignment(query, materialId, draft.materialType === 'assignment' ? draft.assignment : null)
       if (draft.materialType !== 'scorm') {
-        await query(`delete from public.learning_scorm_packages where lesson_id = $1`, [materialId])
+        // Learners' SCORM attempts reference the package, so a package with attempts is kept.
+        await query(
+          `delete from public.learning_scorm_packages package
+           where package.lesson_id = $1
+             and not exists (select 1 from public.learning_scorm_attempts attempt where attempt.package_id = package.id)`,
+          [materialId],
+        )
       }
       return true
     })

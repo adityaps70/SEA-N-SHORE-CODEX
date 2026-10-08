@@ -54,8 +54,9 @@ export function createLearningMediaRepository() {
                from public.learning_course_sections section
                inner join public.learning_lessons lesson
                  on lesson.section_id = section.id
+                and lesson.removed_at is null
                where section.course_id = course.id
-                 and lesson.asset_path = $3
+                 and (lesson.asset_path = $3 or lesson.caption_path = $3)
              )
            )
        ) as referenced`,

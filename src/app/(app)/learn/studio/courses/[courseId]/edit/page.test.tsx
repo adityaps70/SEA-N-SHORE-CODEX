@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   capturedCurriculumReadOnly: null as boolean | null,
   capturedRevision: null as number | null,
   capturedResubmission: null as boolean | null,
+  capturedSlugLocked: null as boolean | null,
+  capturedSubmitRevision: null as boolean | null,
 }))
 
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }))
@@ -33,10 +35,11 @@ vi.mock('@/features/learning/components/course-edit-session', () => ({
   },
 }))
 vi.mock('@/features/learning/components/course-form', () => ({
-  CourseForm: ({ initialValue, courseId, readOnly }: { initialValue: unknown; courseId?: string; readOnly?: boolean }) => {
+  CourseForm: ({ initialValue, courseId, readOnly, slugLocked }: { initialValue: unknown; courseId?: string; readOnly?: boolean; slugLocked?: boolean }) => {
     mocks.capturedInitialValue = initialValue
     mocks.capturedCourseId = courseId ?? null
     mocks.capturedFormReadOnly = Boolean(readOnly)
+    mocks.capturedSlugLocked = Boolean(slugLocked)
     return <div data-testid="course-form">Course form</div>
   },
 }))
@@ -49,11 +52,18 @@ vi.mock('@/features/learning/components/mentor-curriculum-editor', () => ({
   },
 }))
 vi.mock('@/features/learning/components/course-submit-control', () => ({
-  CourseSubmitControl: ({ courseId, resubmission }: { courseId: string; resubmission?: boolean }) => {
+  CourseSubmitControl: ({ courseId, resubmission, revision }: { courseId: string; resubmission?: boolean; revision?: boolean }) => {
     mocks.capturedSubmitCourseId = courseId
     mocks.capturedResubmission = Boolean(resubmission)
+    mocks.capturedSubmitRevision = Boolean(revision)
     return <div data-testid="course-submit-control">Submit control</div>
   },
+}))
+vi.mock('@/features/learning/components/course-revision-controls', () => ({
+  CourseRevisionStartControl: ({ courseId, openRevision }: { courseId: string; openRevision: { courseId: string } | null }) => (
+    <div data-testid="course-revision-start">start:{courseId}:{openRevision?.courseId ?? 'none'}</div>
+  ),
+  CourseRevisionDiscardControl: ({ revisionCourseId }: { revisionCourseId: string }) => <div data-testid="course-revision-discard">discard:{revisionCourseId}</div>,
 }))
 vi.mock('@/features/learning/components/course-withdraw-control', () => ({
   CourseWithdrawControl: ({ courseId }: { courseId: string }) => <div data-testid="course-withdraw-control">withdraw:{courseId}</div>,
@@ -233,8 +243,8 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
   })
 
   it.each([
-    ['published', /Published · read-only/],
-    ['approved', /Published · read-only/],
+    ['published', /Published · live/],
+    ['approved', /Published · live/],
     ['archived', /Archived · read-only/],
   ])('shows a %s course read-only instead of silently redirecting', async (status, banner) => {
     mocks.getOwnedCourse.mockResolvedValue({ ...draftCourse, status })
@@ -247,5 +257,52 @@ describe('/learn/studio/courses/[courseId]/edit', () => {
     expect(mocks.capturedCurriculumReadOnly).toBe(true)
     expect(screen.queryByTestId('course-submit-control')).not.toBeInTheDocument()
     expect(screen.queryByTestId('course-withdraw-control')).not.toBeInTheDocument()
+  })
+
+  it('offers “Edit course” on a published course, which opens a draft copy (learners keep the live version)', async () => {
+    mocks.getOwnedCourse.mockResolvedValue({ ...draftCourse, status: 'published', openRevision: null })
+
+    render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
+
+    expect(screen.getByTestId('course-revision-start')).toHaveTextContent(`start:${courseId}:none`)
+    expect(screen.getByText(/learners keep this version until Sea N Shore approves your changes/)).toBeInTheDocument()
+    expect(screen.queryByText(/can’t be edited in Learning Studio yet/)).not.toBeInTheDocument()
+  })
+
+  it('edits a draft copy of a published course with the live address locked and a “submit changes” control', async () => {
+    const revisionId = '99999999-9999-4999-8999-999999999999'
+    mocks.getOwnedCourse.mockResolvedValue({
+      ...draftCourse,
+      id: revisionId,
+      slug: 'sire-2-readiness-for-tanker-officers-draft-1a2b3c4d',
+      status: 'draft',
+      revisionOf: { courseId, slug: 'sire-2-readiness-for-tanker-officers', title: draftCourse.title },
+      revisionClosed: false,
+    })
+
+    render(await EditMentorCoursePage({ params: Promise.resolve({ courseId: revisionId }) }))
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Edit published course' })).toBeInTheDocument()
+    expect(screen.getByText('Editing a draft copy of your published course')).toBeInTheDocument()
+    expect(screen.getByTestId('course-revision-discard')).toHaveTextContent(`discard:${revisionId}`)
+    expect(mocks.capturedFormReadOnly).toBe(false)
+    expect(mocks.capturedSlugLocked).toBe(true)
+    expect(mocks.capturedInitialValue).toMatchObject({ slug: 'sire-2-readiness-for-tanker-officers' })
+    expect(mocks.capturedSubmitRevision).toBe(true)
+  })
+
+  it('shows a closed draft copy read-only', async () => {
+    mocks.getOwnedCourse.mockResolvedValue({
+      ...draftCourse,
+      status: 'archived',
+      revisionOf: { courseId: '88888888-8888-4888-8888-888888888888', slug: 'live', title: 'Live' },
+      revisionClosed: true,
+    })
+
+    render(await EditMentorCoursePage({ params: Promise.resolve({ courseId }) }))
+
+    expect(screen.getByText('These changes are closed')).toBeInTheDocument()
+    expect(mocks.capturedFormReadOnly).toBe(true)
+    expect(screen.queryByTestId('course-submit-control')).not.toBeInTheDocument()
   })
 })

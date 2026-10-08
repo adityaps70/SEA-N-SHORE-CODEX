@@ -2,6 +2,7 @@ import type { QueryResultRow } from 'pg'
 import { query as databaseQuery, withTransaction as databaseTransaction, type DatabaseQueryClient } from '@/lib/db/client'
 import { finalizeEnrollmentIfComplete } from './learner-progress-repository'
 import { courseManagerAccessSql } from './course-access'
+import { loadAssignmentAttachmentsWithQuery, type LearnerAssignmentAttachment } from './learner-assignment-repository'
 
 export type AssignmentGradingQuery = (text: string, values?: readonly unknown[]) => Promise<QueryResultRow[]>
 type AssignmentGradingTransaction = <T>(work: (query: AssignmentGradingQuery) => Promise<T>) => Promise<T>
@@ -98,7 +99,9 @@ export type MentorAssignmentAttemptHistory = {
 
 export type MentorAssignmentReview = MentorAssignmentAttempt & {
   assignmentInstructions: string
-  previousAttempts: MentorAssignmentAttemptHistory[]
+  /** Files the learner attached to this attempt. */
+  attachments: LearnerAssignmentAttachment[]
+  previousAttempts: Array<MentorAssignmentAttemptHistory & { attachments: LearnerAssignmentAttachment[] }>
 }
 
 function runtimeTransaction<T>(work: (query: AssignmentGradingQuery) => Promise<T>) {
@@ -257,10 +260,16 @@ export function createAssignmentGradingRepository(input: {
       [selected.enrollment_id, selected.lesson_id, selected.learner_id, Number(selected.attempt_number)],
     ) as MentorAttemptHistoryRow[]
 
+    const attachments = await loadAssignmentAttachmentsWithQuery(
+      queryRows,
+      [selected.attempt_id, ...previousRows.map((row) => row.attempt_id)],
+    )
+
     return {
       ...mapMentorAttempt(selected),
       assignmentInstructions: selected.assignment_instructions,
-      previousAttempts: previousRows.map(mapAttemptHistory),
+      attachments: attachments.get(selected.attempt_id) ?? [],
+      previousAttempts: previousRows.map((row) => ({ ...mapAttemptHistory(row), attachments: attachments.get(row.attempt_id) ?? [] })),
     }
   }
 

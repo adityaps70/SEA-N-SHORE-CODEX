@@ -7,12 +7,14 @@ const mocks = vi.hoisted(() => ({
   updateCourse: vi.fn(),
   updateLesson: vi.fn(),
   verifyLearningMediaObject: vi.fn(),
+  isMediaReferenced: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('./media', () => ({ verifyLearningMediaObject: mocks.verifyLearningMediaObject }))
+vi.mock('./media-repository', () => ({ learningMediaRepository: { isMediaReferenced: mocks.isMediaReferenced } }))
 vi.mock('./course-repository', async (importOriginal) => {
   const original = await importOriginal<typeof import('./course-repository')>()
   return {
@@ -94,6 +96,7 @@ describe('learning media persistence verification', () => {
     mocks.verifyLearningMediaObject.mockResolvedValue({ contentType: 'video/mp4', contentLength: 1024 })
     mocks.updateCourse.mockResolvedValue(true)
     mocks.updateLesson.mockResolvedValue(true)
+    mocks.isMediaReferenced.mockResolvedValue(false)
   })
 
   it('HEAD-verifies an owned uploaded course image before persisting its storage path', async () => {
@@ -104,6 +107,7 @@ describe('learning media persistence verification', () => {
       courseId,
       kind: 'course_thumbnail',
       storagePath: thumbnailPath,
+      alreadyAttached: false,
     })
     expect(mocks.verifyLearningMediaObject.mock.invocationCallOrder[0]).toBeLessThan(mocks.updateCourse.mock.invocationCallOrder[0])
   })
@@ -116,8 +120,18 @@ describe('learning media persistence verification', () => {
       courseId,
       kind: 'lesson_video',
       storagePath: videoPath,
+      alreadyAttached: false,
     })
     expect(mocks.verifyLearningMediaObject.mock.invocationCallOrder[0]).toBeLessThan(mocks.updateLesson.mock.invocationCallOrder[0])
+  })
+
+  it('accepts a file the course already references (another manager’s upload, or one a draft revision carries over)', async () => {
+    mocks.isMediaReferenced.mockResolvedValue(true)
+
+    await expect(updateCourseDraft(courseId, courseInput())).resolves.toMatchObject({ ok: true })
+
+    expect(mocks.isMediaReferenced).toHaveBeenCalledWith('user-1', courseId, thumbnailPath)
+    expect(mocks.verifyLearningMediaObject).toHaveBeenCalledWith(expect.objectContaining({ storagePath: thumbnailPath, alreadyAttached: true }))
   })
 
   it('does not persist a media path when S3 metadata verification fails', async () => {

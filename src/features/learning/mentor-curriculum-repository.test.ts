@@ -273,7 +273,7 @@ describe('mentor curriculum repository', () => {
     ])
   })
 
-  it('replaces a quiz definition atomically for an owned editable quiz lesson', async () => {
+  it('saves a quiz definition in place, in one transaction, for an owned editable quiz lesson', async () => {
     const seen: Array<{ text: string; values?: readonly unknown[] }> = []
     const query: TestQuery = async (text, values) => {
       seen.push({ text, values })
@@ -298,7 +298,9 @@ describe('mentor curriculum repository', () => {
     await expect(repository.saveQuizDefinition(mentorUserId, courseId, lessonId, quizDefinition())).resolves.toBe(true)
 
     expect(transactionCalls).toBe(1)
-    expect(seen.some((entry) => entry.text.includes('delete from public.learning_quizzes') && entry.values?.[0] === lessonId)).toBe(true)
+    // The quiz row is never deleted (that would take learners' attempts with it); it is upserted in place.
+    expect(seen.some((entry) => entry.text.includes('delete from public.learning_quizzes'))).toBe(false)
+    expect(seen.find((entry) => entry.text.includes('insert into public.learning_quizzes'))?.text).toContain('on conflict (lesson_id) do update')
     expect(seen.find((entry) => entry.text.includes('insert into public.learning_quizzes'))?.values).toEqual([
       lessonId,
       80,

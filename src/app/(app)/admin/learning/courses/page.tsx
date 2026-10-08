@@ -101,6 +101,41 @@ function changeArea(change: CourseReviewChange) {
   return ''
 }
 
+function ChangeList({ changes }: { changes: CourseReviewChange[] }) {
+  return (
+    <ul className="mt-2 space-y-1.5">
+      {changes.map((change, index) => (
+        <li key={`${change.area}-${change.label}-${index}`} className="break-words rounded-lg bg-white px-3 py-2 text-sm text-navy-950">
+          <span className="font-bold">{changeVerb(change)}</span>
+          {changeArea(change) ? ` ${changeArea(change)}` : ''} “{change.label}”
+          {change.fields.length && !(change.fields.length === 1 && change.fields[0] === 'order') ? <span className="text-muted"> — {change.fields.join(', ')}</span> : null}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Changes to a published course: everything that differs from what learners see now. */
+function LiveCourseChanges({ course }: { course: CourseReviewItem }) {
+  if (!course.revisionOf || course.status !== 'submitted') return null
+  const changes = course.review.changesFromLiveCourse
+  return (
+    <section aria-label="Changes to the live course" className="mt-5 rounded-2xl border border-teal-100 bg-teal-50/60 p-4">
+      <p className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-teal-800">
+        <GitCompareArrows aria-hidden="true" className="size-4" /> Changes to the live course
+      </p>
+      <p className="mt-1 text-sm leading-6 text-navy-950">
+        Learners are using the live version. Approving applies these changes to it; learners keep their progress, and a price change only affects new purchases.
+      </p>
+      {changes === null || changes === undefined ? (
+        <p className="mt-2 text-sm text-muted">A comparison isn’t available. Review the full course below.</p>
+      ) : changes.length === 0 ? (
+        <p className="mt-2 text-sm font-semibold text-amber-800">Nothing differs from the live course.</p>
+      ) : <ChangeList changes={changes} />}
+    </section>
+  )
+}
+
 function ReviewHistory({ course }: { course: CourseReviewItem }) {
   const { review } = course
   // Only the Submitted queue needs history; other queues already show the current note.
@@ -140,17 +175,7 @@ function ReviewHistory({ course }: { course: CourseReviewItem }) {
             <p className="mt-1 text-sm text-muted">A comparison isn’t available for this submission. Review the full course below.</p>
           ) : review.changesSinceLastReview.length === 0 ? (
             <p className="mt-1 text-sm font-semibold text-amber-800">No changes since the last review.</p>
-          ) : (
-            <ul className="mt-2 space-y-1.5">
-              {review.changesSinceLastReview.map((change, index) => (
-                <li key={`${change.area}-${change.label}-${index}`} className="break-words rounded-lg bg-white px-3 py-2 text-sm text-navy-950">
-                  <span className="font-bold">{changeVerb(change)}</span>
-                  {changeArea(change) ? ` ${changeArea(change)}` : ''} “{change.label}”
-                  {change.fields.length && !(change.fields.length === 1 && change.fields[0] === 'order') ? <span className="text-muted"> — {change.fields.join(', ')}</span> : null}
-                </li>
-              ))}
-            </ul>
-          )}
+          ) : <ChangeList changes={review.changesSinceLastReview} />}
         </div>
       ) : null}
     </section>
@@ -270,6 +295,11 @@ function CourseCard({ course }: { course: CourseReviewItem }) {
             <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800">
               {statusLabel(course.status)}
             </span>
+            {course.revisionOf ? (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">
+                Changes to a published course
+              </span>
+            ) : null}
             <span className="text-xs font-semibold text-muted">
               Updated {new Date(course.updatedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </span>
@@ -302,6 +332,7 @@ function CourseCard({ course }: { course: CourseReviewItem }) {
             {course.mentorId ? <p className="mt-1 break-all text-xs font-semibold text-muted">Trainer record ID {course.mentorId}</p> : null}
           </section>
 
+          <LiveCourseChanges course={course} />
           <ReviewHistory course={course} />
 
           <div className="mt-5 grid gap-5 lg:grid-cols-3">
@@ -334,7 +365,7 @@ function CourseCard({ course }: { course: CourseReviewItem }) {
 
         {isActionable(course.status) ? (
           <div className="w-full shrink-0 xl:w-[22rem]">
-            <CourseReviewControls courseId={course.courseId} status={course.status} />
+            <CourseReviewControls courseId={course.courseId} status={course.status} revision={Boolean(course.revisionOf)} />
           </div>
         ) : null}
       </div>

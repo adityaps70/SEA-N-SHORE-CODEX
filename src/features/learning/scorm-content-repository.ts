@@ -1,6 +1,7 @@
 import { posix as path } from 'node:path'
 import type { QueryResultRow } from 'pg'
 import { query as databaseQuery } from '@/lib/db/client'
+import { learnerCourseAccessSql } from './course-publication'
 
 type ContentRow = QueryResultRow & { extracted_prefix: string }
 
@@ -25,11 +26,13 @@ export async function resolveLearnerScormContentKey(
     `select package.extracted_prefix
      from public.learning_enrollments enrollment
      inner join public.learning_courses course
-       on course.id = enrollment.course_id and course.status = 'published'
-     inner join public.learning_mentors mentor
-       on mentor.id = course.mentor_id and mentor.status = 'active'
-     inner join public.learning_mentor_applications application
-       on application.id = mentor.application_id and application.status = 'approved'
+       on course.id = enrollment.course_id
+     left join public.learning_mentors mentor
+       on mentor.id = course.mentor_id
+     left join public.learning_mentor_applications application
+       on application.id = mentor.application_id and application.user_id = mentor.user_id
+     left join public.companies company
+       on company.id = course.company_id
      inner join public.learning_course_sections section on section.course_id = course.id
      inner join public.learning_lessons lesson
        on lesson.section_id = section.id
@@ -45,6 +48,7 @@ export async function resolveLearnerScormContentKey(
       and prerequisite_progress.lesson_id = lesson.prerequisite_lesson_id
      where enrollment.learner_id = $1
        and enrollment.status in ('active', 'completed')
+       and ${learnerCourseAccessSql()}
        and (
          lesson.release_mode = 'immediate'
          or (lesson.release_mode = 'scheduled' and lesson.release_at <= now())
