@@ -1,11 +1,13 @@
 'use client'
 
 import { useActionState, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useRouter } from 'next/navigation'
 import { ImageUp } from 'lucide-react'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
 import { primaryButtonClass } from '@/components/ui/interactive-styles'
 import { downscaleImage, isDownscalableImage } from '@/lib/images/downscale-image'
 import { createCommunity, type CreateCommunityState } from '../create-actions'
+import { requestCommunityMediaUploadAction, completeCommunityMediaUploadAction } from '../media-actions'
 import { CREATE_AS_SELF } from '../eligibility'
 import { COMMUNITY_IMAGE_CONTENT_TYPES, validateCommunityImage, type CommunityMediaKind } from '../media'
 import { COMMUNITY_CATEGORIES, COMMUNITY_CATEGORY_LABELS, GROUP_DESCRIPTION_MAX_LENGTH, GROUP_NAME_MAX_LENGTH, GROUP_RULES_MAX_LENGTH, type GroupJoinPolicy, type GroupVisibility } from '../types'
@@ -67,7 +69,12 @@ function replaceInputFile(input: HTMLInputElement | null, file: File) {
  * visibility and the optional banner and photo. The server action re-checks eligibility.
  */
 export function CreateCommunityForm({ identities, initialAs }: { identities: CreateCommunityIdentity[]; initialAs?: string | null }) {
+  const router = useRouter()
   const [state, formAction, pending] = useActionState<CreateCommunityState, FormData>(createCommunity, null)
+  const [uploading, setUploading] = useState(false)
+  const [createdGroup, setCreatedGroup] = useState<{ id: string; slug: string } | null>(null)
+  const selectedImages = useRef<Partial<Record<CommunityMediaKind, File>>>({})
+  const completedKinds = useRef<CommunityMediaKind[]>([])
   const [clientError, setClientError] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [coverPreview, previewCover] = usePreview()
@@ -85,6 +92,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
     setClientError(null)
     const file = event.target.files?.[0]
     if (!file) {
+      delete selectedImages.current[kind]
       previewFor(kind)(null)
       return
     }
@@ -99,6 +107,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
       setCropping({ kind, file })
       return
     }
+    selectedImages.current[kind] = file
     previewFor(kind)(file)
   }
 
@@ -106,6 +115,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
     if (!cropping) return
     const input = inputFor(cropping.kind)
     if (input) input.value = ''
+    delete selectedImages.current[cropping.kind]
     previewFor(cropping.kind)(null)
     setCropping(null)
   }
@@ -113,12 +123,49 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
   async function saveCrop(cropped: File) {
     if (!cropping) return
     const kind = cropping.kind
-    const original = cropping.file
+    const scaled = await downscaleImage(cropped, CROP[kind].downscale)
+    selectedImages.current[kind] = scaled
+    previewFor(kind)(scaled)
+    if (createdGroup) {
+      await uploadOne(createdGroup.id, kind, scaled)
+      if (!completedKinds.current.includes(kind)) completedKinds.current.push(kind)
+      if (completedKinds.current.length === Object.keys(selectedImages.current).length) router.push(`/community/${createdGroup.slug}`)
+    }
     setCropping(null)
-    const scaled = await downscaleImage(cropped, CROP[kind].downscale).catch(() => cropped)
-    const replaced = replaceInputFile(inputFor(kind), scaled)
-    previewFor(kind)(replaced ? scaled : original)
   }
+
+  async function uploadOne(groupId: string, kind: CommunityMediaKind, file: File) {
+    const ticket = await requestCommunityMediaUploadAction({ groupId, kind, contentType: file.type, size: file.size })
+    if (!ticket.success || !ticket.uploadUrl || !ticket.key) throw new Error('Upload failed, try again')
+    const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file })
+    if (!put.ok) throw new Error('Upload failed, try again')
+    const finish = await completeCommunityMediaUploadAction({ groupId, kind, key: ticket.key })
+    if (!finish.success) throw new Error('Upload failed, try again')
+  }
+
+  useEffect(() => {
+    if (!state?.ok || createdGroup) return
+    const group = { id: state.id, slug: state.slug }
+    setCreatedGroup(group)
+    const uploadPending = async () => {
+      setUploading(true)
+      for (const kind of ['cover', 'icon'] as const) {
+        const file = selectedImages.current[kind]
+        if (!file) continue
+        try {
+          await uploadOne(group.id, kind, file)
+          completedKinds.current.push(kind)
+        } catch {
+          // Restore this crop dialog so the upload error is shown there, once, on retry.
+          setCropping({ kind, file })
+          setUploading(false)
+          return
+        }
+      }
+      router.push(`/community/${group.slug}`)
+    }
+    void uploadPending()
+  }, [state, createdGroup, router])
 
   const error = clientError ?? (state && !state.ok ? state.error : null)
 
@@ -232,12 +279,12 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <label className={labelClass}>
             Banner
-            <input ref={coverInputRef} name="cover" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('cover', event)} className={`${fileClass} mt-2`} />
+            <input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('cover', event)} className={`${fileClass} mt-2`} />
             <span className={hintClass}>Wide image (4:1). JPG, PNG or WebP, up to 5 MB.</span>
           </label>
           <label className={labelClass}>
             Profile photo
-            <input ref={iconInputRef} name="icon" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('icon', event)} className={`${fileClass} mt-2`} />
+            <input ref={iconInputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => onImageChange('icon', event)} className={`${fileClass} mt-2`} />
             <span className={hintClass}>Square image. JPG, PNG or WebP, up to 5 MB.</span>
           </label>
         </div>
@@ -246,7 +293,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
       {error ? <p role="alert" className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
 
       <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={pending || Boolean(cropping)} className={`${primaryButtonClass} max-md:w-full`}>{pending ? 'Creating…' : 'Create community'}</button>
+        <button type="submit" disabled={pending || uploading || Boolean(cropping) || Boolean(createdGroup)} className={`${primaryButtonClass} max-md:w-full`}>{pending ? 'Creating…' : uploading ? 'Uploading…' : 'Create community'}</button>
         <p className="text-xs text-muted">You become the owner and can appoint moderators from the Members tab.</p>
       </div>
 
@@ -257,7 +304,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
           aspect={CROP[cropping.kind].aspect}
           title={CROP[cropping.kind].title}
           onCancel={cancelCrop}
-          onSave={(file) => { void saveCrop(file) }}
+          onSave={saveCrop}
         />
       ) : null}
     </form>
