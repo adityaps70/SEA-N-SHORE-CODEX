@@ -127,6 +127,26 @@ describe('/learn/courses/[slug]', () => {
     expect(within(hero).getByText('Certificate')).toBeInTheDocument()
   })
 
+  it('shows each outcome, requirement and audience group as entered, one bullet each, commas included', async () => {
+    mocks.getPublishedCourseBySlug.mockResolvedValue({
+      ...freeCourse,
+      learningOutcomes: ['Navigate the CVIQ and identify Core, Rotational 1 and Rotational 2 questions', 'Run an effective onboard readiness review'],
+      requirements: ['Officer-level, deck or engine experience'],
+      targetAudience: ['Deck officers and engineers on oil, chemical and gas tankers'],
+    })
+    render(await PublishedCoursePage({ params: Promise.resolve({ slug: freeCourse.slug }) }))
+
+    const outcomes = within(screen.getByRole('region', { name: 'What you will learn' })).getAllByRole('listitem')
+    expect(outcomes.map((item) => item.textContent)).toEqual([
+      'Navigate the CVIQ and identify Core, Rotational 1 and Rotational 2 questions',
+      'Run an effective onboard readiness review',
+    ])
+    const requirements = within(screen.getByRole('region', { name: 'Requirements' })).getAllByRole('listitem')
+    expect(requirements.map((item) => item.textContent)).toEqual(['Officer-level, deck or engine experience'])
+    const audience = within(screen.getByRole('region', { name: 'Who this course is for' })).getAllByRole('listitem')
+    expect(audience.map((item) => item.textContent)).toEqual(['Deck officers and engineers on oil, chemical and gas tankers'])
+  })
+
   it('gives phones a page bar, a cover header with chips and trainer link, and a sticky Enroll free bar', async () => {
     mocks.getPublicCurriculum.mockResolvedValueOnce([
       { title: 'Inspection foundations', lessons: [{ id: '66666666-6666-4666-8666-666666666666', title: 'Why SIRE 2.0 changed', lessonType: 'video', durationSeconds: 420, preview: true }] },
