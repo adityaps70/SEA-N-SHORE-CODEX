@@ -51,19 +51,6 @@ function usePreview() {
   return [preview, previewFile] as const
 }
 
-/** Puts the cropped photo into the file input so the plain form submit sends it. */
-function replaceInputFile(input: HTMLInputElement | null, file: File) {
-  if (!input || typeof DataTransfer !== 'function') return false
-  try {
-    const transfer = new DataTransfer()
-    transfer.items.add(file)
-    input.files = transfer.files
-    return input.files?.[0] === file
-  } catch {
-    return false
-  }
-}
-
 /**
  * Create a community (round 9C): who it is for, name, description, rules, join setting,
  * visibility and the optional banner and photo. The server action re-checks eligibility.
@@ -80,6 +67,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
   const [coverPreview, previewCover] = usePreview()
   const [iconPreview, previewIcon] = usePreview()
   const [cropping, setCropping] = useState<{ kind: CommunityMediaKind; file: File } | null>(null)
+  const [cropUploadError, setCropUploadError] = useState('')
   const coverInputRef = useRef<HTMLInputElement>(null)
   const iconInputRef = useRef<HTMLInputElement>(null)
   const preselected = initialAs && identities.some((identity) => identity.value === initialAs) ? initialAs : null
@@ -104,6 +92,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
       return
     }
     if (isDownscalableImage(file)) {
+      setCropUploadError('')
       setCropping({ kind, file })
       return
     }
@@ -113,6 +102,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
 
   function cancelCrop() {
     if (!cropping) return
+    setCropUploadError('')
     const input = inputFor(cropping.kind)
     if (input) input.value = ''
     delete selectedImages.current[cropping.kind]
@@ -157,6 +147,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
           completedKinds.current.push(kind)
         } catch {
           // Restore this crop dialog so the upload error is shown there, once, on retry.
+          setCropUploadError('Upload failed, try again')
           setCropping({ kind, file })
           setUploading(false)
           return
@@ -167,7 +158,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
     void uploadPending()
   }, [state, createdGroup, router])
 
-  const error = clientError ?? (state && !state.ok ? state.error : null)
+  const error = cropping ? null : clientError ?? (state && !state.ok ? state.error : null)
 
   return (
     <form action={formAction} aria-label="Create a community" className="space-y-5">
@@ -303,6 +294,7 @@ export function CreateCommunityForm({ identities, initialAs }: { identities: Cre
           shape="rect"
           aspect={CROP[cropping.kind].aspect}
           title={CROP[cropping.kind].title}
+          initialError={cropUploadError}
           onCancel={cancelCrop}
           onSave={saveCrop}
         />
