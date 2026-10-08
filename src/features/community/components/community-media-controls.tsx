@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { Camera, Trash2 } from 'lucide-react'
 import { useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import { ImageCropDialog } from '@/components/ui/image-crop-dialog'
@@ -49,7 +48,6 @@ export function CommunityMediaControls({
 const BUTTON_CLASS = 'inline-flex size-10 items-center justify-center rounded-full border-2 border-white shadow-md disabled:opacity-60 md:size-9'
 
 function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: string; kind: CommunityMediaKind; hasImage: boolean }) {
-  const router = useRouter()
   const removeAction = kind === 'icon' ? removeCommunityIconAction : removeCommunityCoverAction
   const [uploadError, setUploadError] = useState('')
   const [uploading, setUploading] = useState(false)
@@ -92,7 +90,6 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
       setRemoved(false)
       setCropping(null)
       if (inputRef.current) inputRef.current.value = ''
-      router.refresh()
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : 'Upload failed, try again.'
       setUploadError(message)
@@ -132,7 +129,6 @@ function ManagedCommunityMediaControls({ groupId, kind, hasImage }: { groupId: s
         return
       }
       setRemoved(true)
-      router.refresh()
     })
   }
 

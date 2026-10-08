@@ -104,7 +104,8 @@ describe('CommunityMediaControls', () => {
       key: `communities/${groupId}/cover-123.webp`,
     }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(mocks.refresh).toHaveBeenCalled()
+    // The action revalidates the community pages, so no extra router.refresh() (redundant-router-refresh contract).
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 
   it('keeps the crop dialog open and shows Upload failed, try again when S3 PUT fails', async () => {
@@ -127,6 +128,7 @@ describe('CommunityMediaControls', () => {
 
     await waitFor(() => expect(mocks.removeCommunityCoverAction).toHaveBeenCalledTimes(1))
     expect((mocks.removeCommunityCoverAction.mock.calls[0]?.[0] as FormData).get('groupId')).toBe(groupId)
-    expect(mocks.refresh).toHaveBeenCalled()
+    // The action revalidates the community pages, so no extra router.refresh() (redundant-router-refresh contract).
+    expect(mocks.refresh).not.toHaveBeenCalled()
   })
 })
