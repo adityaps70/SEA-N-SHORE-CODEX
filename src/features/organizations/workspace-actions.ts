@@ -102,7 +102,6 @@ const logoTypes: Record<string, string> = {
   'image/webp': 'webp',
 }
 const MAX_LOGO_BYTES = 5 * 1024 * 1024
-const MAX_COVER_BYTES = 5 * 1024 * 1024
 
 export type OrganizationWorkspaceActionResult =
   | { ok: true }
