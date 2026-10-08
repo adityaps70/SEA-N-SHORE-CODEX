@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/features/auth/aws-queries', () => ({ requireAwsUser: mocks.requireAwsUser }))
 vi.mock('@/features/community/eligibility-server', () => ({ getCommunityCreationEligibility: mocks.getCommunityCreationEligibility }))
 vi.mock('@/features/community/create-actions', () => ({ createCommunity: vi.fn() }))
+// The form uses the router to open the new community once its images are uploaded.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }))
 
 import CreateCommunityPage from './page'
 
@@ -57,12 +59,13 @@ describe('/community/new', () => {
     expect(within(form).getByRole('radio', { name: /Approval required — a moderator approves requests/ })).not.toBeChecked()
     expect(within(form).getByRole('radio', { name: /^Public/ })).toBeChecked()
     expect(within(form).getByRole('radio', { name: /^Private/ })).toBeInTheDocument()
-    const cover = form.querySelector('input[name="cover"]')
-    const icon = form.querySelector('input[name="icon"]')
+    // The images go straight to S3 once the community exists (#166), so they are not posted with the form.
+    const cover = within(form).getByLabelText(/^Banner/, { selector: 'input' })
+    const icon = within(form).getByLabelText(/^Profile photo/, { selector: 'input' })
     expect(cover).toHaveAttribute('type', 'file')
-    expect(cover?.closest('label')).toHaveTextContent(/^Banner/)
+    expect(cover).not.toHaveAttribute('name')
     expect(icon).toHaveAttribute('accept', 'image/jpeg,image/png,image/webp')
-    expect(icon?.closest('label')).toHaveTextContent(/^Profile photo/)
+    expect(icon).not.toHaveAttribute('name')
     // One identity: no chooser, a hidden "as" value.
     expect(within(form).queryByRole('group', { name: 'Create as' })).not.toBeInTheDocument()
     expect(form.querySelector('input[name="as"]')).toHaveAttribute('value', 'me')

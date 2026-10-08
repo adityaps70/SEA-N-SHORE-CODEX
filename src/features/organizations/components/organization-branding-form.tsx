@@ -40,22 +40,6 @@ function usePreview() {
   return [preview, previewFile] as const
 }
 
-/**
- * Puts the cropped photo into the file input so the plain form submit sends it. Returns false
- * where the browser cannot build a FileList (no DataTransfer); the original then stays selected.
- */
-function replaceInputFile(input: HTMLInputElement | null, file: File) {
-  if (!input || typeof DataTransfer !== 'function') return false
-  try {
-    const transfer = new DataTransfer()
-    transfer.items.add(file)
-    input.files = transfer.files
-    return input.files?.[0] === file
-  } catch {
-    return false
-  }
-}
-
 function chosenFile(value: FormDataEntryValue | null) {
   return value instanceof File && value.size > 0 ? value : null
 }
