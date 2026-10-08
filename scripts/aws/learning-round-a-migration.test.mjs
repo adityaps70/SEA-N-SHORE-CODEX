@@ -53,6 +53,10 @@ assert.ok(report.length > 0, 'the SIRE quiz report is present')
 assert.doesNotMatch(report, /\b(insert|update|delete|alter|create|drop)\b/i, 'the SIRE quiz report only reads')
 assert.doesNotMatch(report, /public\.(learning_enrollments|learning_progress|profiles|learning_quiz_attempts|learning_assignment_attempts|learning_scorm_attempts)\b/i, 'the SIRE quiz report reads no learner data')
 assert.ok(script.indexOf('SIRE_QUIZ_REPORT_DONE') < script.indexOf('LEARNING_ROUND_A_MIGRATION_PLAN_ONLY_NO_APPLY'), 'plan runs print the SIRE report')
+// The report runs before 0069-0070 apply, so it must not touch a column they add, and it never stops the run.
+const reportSetup = script.slice(script.indexOf('SIRE_COURSES='), script.indexOf('SIRE_QUIZ_REPORT_DONE'))
+assert.doesNotMatch(reportSetup, /\b(revision_of_course_id|revision_closed_at|revision_outcome|revision_source_id|removed_at|article_format|caption_path|watched_seconds|furthest_position_seconds|max_files|trainer_digest_at)\b/, 'the SIRE report uses only columns that exist before this migration')
+assert.equal((reportSetup.match(/\|\| echo "SIRE_REPORT_UNAVAILABLE/g) ?? []).length, 3, 'each SIRE report query is non-fatal')
 
 assert.match(workflow, /Wait for exact-head AWS Infrastructure CI/)
 assert.match(workflow, /Guard migration against a moved branch/)
