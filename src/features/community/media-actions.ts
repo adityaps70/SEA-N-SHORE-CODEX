@@ -52,7 +52,7 @@ export async function requestCommunityMediaUploadAction(input: {
 
   try {
     const key = buildCommunityMediaKey(groupId.data, input.kind, input.contentType)
-    const uploadUrl = await createMediaUploadUrl({ key, contentType: input.contentType })
+    const uploadUrl = await createMediaUploadUrl({ key, contentType: input.contentType, contentLength: input.size })
     return { success: true, uploadUrl, key }
   } catch (error) {
     return { error: describeError(error, 'Upload failed, try again.') }
