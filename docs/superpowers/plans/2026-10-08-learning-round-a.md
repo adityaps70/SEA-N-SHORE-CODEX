@@ -29,8 +29,8 @@ Quality switching: skipped. Only the original MP4/WebM upload is stored; there a
       assignments, captions, watched time, article format, email preferences, email queue, release notices
 - [x] `aws-learning-round-a-migration.yml` + `learning-round-a-migration.sh` + guard (plan) + contract test
 - [x] Applies cleanly to every earlier migration in PGlite (`src/lib/db/test-database.ts`)
-- [ ] Plan run on the merged head (reports SIRE quiz setting)
-- [ ] Arm PR (owner merges and approves), migrate-once, rearm to plan
+- [x] Plan run on the merged head (reports SIRE quiz setting)
+- [x] Arm PR #157 (owner merged and approved), migrate-once on 7ff58f99 (0069: 7 statements, 0070: 30), rearmed to plan
 
 ## PR 1: A1 + A2
 
@@ -73,7 +73,7 @@ A2 — assignment file uploads
   - [x] Older plain-text articles render unchanged; they become paragraphs the first time they are edited
 - [x] A5 quiz attempts left and limit messages
   - [x] "Attempts left: N" or "Unlimited attempts"; "Try again" hidden at the limit; a clear limit message
-  - [ ] SIRE quiz attempt setting read from the migration plan run (reported to the owner)
+  - [x] SIRE quiz attempt setting read from the migration plan run (reported to the owner: Knowledge Checks 3 attempts / 70%, Final Assessment 2 / 80%; Knowledge Check 1.4 summary still says "unlimited attempts")
 
 ## PR 3: A6 + A7
 - [x] A6 learning notifications (email + in-app, digests, Learning settings, unsubscribe)
@@ -90,5 +90,5 @@ A2 — assignment file uploads
   - [x] Studio: "Edmingle-style" copy removed; currency is a dropdown (INR, USD)
 
 ## Release
-- [ ] One guarded migration, one deploy, rearm, Remote Verify green
-- [ ] Checks on seanshore.in
+- [x] One guarded migration, one deploy (arm #162, run 37802285917: web :236→:237, outbox :118→:119, notification :117→:118), rearm, Remote Verify green
+- [x] Checks on seanshore.in: /learn, a public course page (canonical, JSON-LD), robots.txt, sitemap.xml, unsubscribe page
