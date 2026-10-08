@@ -181,3 +181,15 @@ test('Round 15: the web task drops the phone OTP settings and gets HEALTH_CHECK_
   const workers = workflow.slice(workflow.indexOf('- name: Promote event worker task definitions'), workflow.indexOf('- name: Deploy event workers and wait for stability'))
   assert.doesNotMatch(workers, /HEALTH_CHECK_TOKEN/)
 })
+
+test('the job that waits for exact-head CI can read the Actions API (a job-level permissions block replaces the workflow one)', () => {
+  const workflow = readFileSync(workflowPath, 'utf8')
+  // Each job is a two-space-indented key under jobs:; find the one that runs the exact-head CI wait.
+  const jobs = workflow.slice(workflow.indexOf('\njobs:\n')).split(/\n(?=  [a-z0-9_-]+:\n)/)
+  const waiting = jobs.filter((job) => job.includes('Wait for exact-head AWS Infrastructure CI'))
+  assert.ok(waiting.length > 0, 'a job waits for exact-head AWS Infrastructure CI')
+  for (const job of waiting) {
+    const block = job.match(/\n    permissions:\n((?:      [a-z-]+: [a-z]+\n)+)/)
+    if (block) assert.match(block[1], /actions: (read|write)/, 'a job-level permissions block must keep actions: read for the CI wait')
+  }
+})
