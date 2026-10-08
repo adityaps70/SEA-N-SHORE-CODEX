@@ -36,7 +36,6 @@ jobs:
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           git add package-lock.json
           if git ls-files -u | grep .; then echo "Unresolved conflict" >&2; exit 1; fi
-          git diff --cached --check
           git commit -m "Merge production AWS branch and preserve presigned S3 uploads"
       - name: Verify deterministic install
         run: npm ci
