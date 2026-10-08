@@ -90,14 +90,17 @@ PREREQUISITES="$(read_count "SELECT count(*)::bigint FROM information_schema.tab
 }
 
 # Read-only: the SIRE 2.0 quiz attempt settings (blank = unlimited) and where its content mentions attempts.
-# Course content only; no learner data is read. The course is matched by its expected slug or, when that
-# slug is not found, by the word "SIRE" in its title (live courses only, not draft revisions).
-SIRE_COURSES="WITH sire AS (SELECT course.id, course.slug, course.title, course.status FROM public.learning_courses course WHERE course.revision_of_course_id IS NULL AND (course.slug = '$SIRE_COURSE_SLUG' OR course.title ~* '\\msire\\M'))"
+# Course content only; no learner data is read. The course is matched by its expected slug or by the word "SIRE" in
+# its title. It runs before 0069-0070 apply, so it uses only columns that already exist (draft copies of a published
+# course are told apart by their "-draft-xxxxxxxx" slug), and a failed report never stops the migration.
+SIRE_COURSES="WITH sire AS (SELECT course.id, course.slug, course.title, course.status FROM public.learning_courses course WHERE course.slug !~ '-draft-[0-9a-f]{8}\$' AND (course.slug = '$SIRE_COURSE_SLUG' OR course.title ~* '\\msire\\M'))"
 echo "SIRE_QUIZ_REPORT course=$SIRE_COURSE_SLUG"
 data_api --output json --sql "$SIRE_COURSES SELECT sire.slug, sire.status, (SELECT count(*) FROM public.learning_course_sections section JOIN public.learning_lessons lesson ON lesson.section_id = section.id WHERE section.course_id = sire.id AND lesson.lesson_type = 'quiz')::text FROM sire ORDER BY sire.slug" \
-  | jq -r '.records[]? | "SIRE_COURSE slug=\(.[0].stringValue) status=\(.[1].stringValue) quiz_materials=\(.[2].stringValue)"'
+  | jq -r '.records[]? | "SIRE_COURSE slug=\(.[0].stringValue) status=\(.[1].stringValue) quiz_materials=\(.[2].stringValue)"' \
+  || echo "SIRE_REPORT_UNAVAILABLE part=courses"
 data_api --output json --sql "$SIRE_COURSES SELECT sire.slug, lesson.title, coalesce(lesson.max_attempts::text, 'unlimited'), lesson.is_published::text, coalesce(quiz.pass_percentage::text, 'none') FROM sire JOIN public.learning_course_sections section ON section.course_id = sire.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id LEFT JOIN public.learning_quizzes quiz ON quiz.lesson_id = lesson.id WHERE lesson.lesson_type = 'quiz' ORDER BY sire.slug, section.position, lesson.position" \
-  | jq -r '.records[]? | "SIRE_QUIZ course=\(.[0].stringValue) title=\(.[1].stringValue) max_attempts=\(.[2].stringValue) published=\(.[3].stringValue) pass_percentage=\(.[4].stringValue)"'
+  | jq -r '.records[]? | "SIRE_QUIZ course=\(.[0].stringValue) title=\(.[1].stringValue) max_attempts=\(.[2].stringValue) published=\(.[3].stringValue) pass_percentage=\(.[4].stringValue)"' \
+  || echo "SIRE_REPORT_UNAVAILABLE part=quizzes"
 data_api --output json --sql "$SIRE_COURSES, content AS (
     SELECT sire.slug AS course, 'course description' AS field, sire.title AS item, course.description AS body FROM sire JOIN public.learning_courses course ON course.id = sire.id
     UNION ALL SELECT sire.slug, 'course subtitle', sire.title, course.subtitle FROM sire JOIN public.learning_courses course ON course.id = sire.id
@@ -106,7 +109,8 @@ data_api --output json --sql "$SIRE_COURSES, content AS (
     UNION ALL SELECT sire.slug, 'quiz instructions', lesson.title, quiz.instructions FROM sire JOIN public.learning_course_sections section ON section.course_id = sire.id JOIN public.learning_lessons lesson ON lesson.section_id = section.id JOIN public.learning_quizzes quiz ON quiz.lesson_id = lesson.id
   )
   SELECT course, field, item, substring(body FROM '(?i)(.{0,60}(unlimited|three|[0-9]+)\\s+(attempt|tr(y|ies)|retake)s?.{0,60})') FROM content WHERE body ~* '(unlimited|three|[0-9]+)\\s+(attempt|tr(y|ies)|retake)s?'" \
-  | jq -r '.records[]? | "SIRE_ATTEMPT_WORDING course=\(.[0].stringValue) field=\(.[1].stringValue) item=\(.[2].stringValue) text=\(.[3].stringValue // "")"'
+  | jq -r '.records[]? | "SIRE_ATTEMPT_WORDING course=\(.[0].stringValue) field=\(.[1].stringValue) item=\(.[2].stringValue) text=\(.[3].stringValue // "")"' \
+  || echo "SIRE_REPORT_UNAVAILABLE part=wording"
 echo "SIRE_QUIZ_REPORT_DONE"
 
 LEDGER_EXISTS="$(read_count "SELECT count(*)::bigint FROM information_schema.tables WHERE table_schema='public' AND table_name='sea_n_shore_applied_migrations'")"
