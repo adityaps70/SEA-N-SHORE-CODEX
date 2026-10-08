@@ -18,7 +18,7 @@ export type ImageCropDialogProps = {
   title: string
   onCancel(): void
   /** Receives the cropped photo (WebP, JPEG where WebP cannot be encoded), named like the original. */
-  onSave(file: File): void
+  onSave(file: File): void | Promise<void>
 }
 
 const MIN_ZOOM = 1
@@ -93,7 +93,12 @@ export function ImageCropDialog({ file, shape, aspect, title, onCancel, onSave }
     try {
       const cropped = await cropImageToFile(file, pixelCrop, { maxEdge: CROP_MAX_EDGE_PX[shape] })
       // A browser that cannot crop (no decoder or encoder) still uploads the photo as picked.
-      onSave(cropped ?? file)
+      try {
+        await onSave(cropped ?? file)
+      } catch {
+        setError('Upload failed, try again')
+        setSaving(false)
+      }
     } catch {
       setError('Unable to crop this photo. Try again or cancel to keep the original.')
       setSaving(false)
